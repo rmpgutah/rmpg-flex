@@ -4,6 +4,7 @@ import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
 import { useDesktopWindows } from '../DesktopWindowManager';
 import { useAuth } from '../../../context/AuthContext';
 import { apiFetch } from '../../../hooks/useApi';
+import { safeTimeStr } from '../../../utils/dateUtils';
 
 interface ActiveSession {
   id: number;
@@ -178,7 +179,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                   <tr key={s.id} style={{ borderBottom: '1px solid var(--border-default)' }}>
                     <td style={{ padding: '4px 8px', color: 'var(--text-primary)' }}>{s.username}</td>
                     <td style={{ padding: '4px 8px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{s.role}</td>
-                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>{s.last_active ? new Date(s.last_active).toLocaleTimeString() : '—'}</td>
+                    <td style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>{safeTimeStr(s.last_active)}</td>
                     <td style={{ padding: '4px 8px' }}>
                       {s.user_id !== undefined && (
                         <button

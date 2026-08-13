@@ -68,7 +68,7 @@ export default function DesktopClipboard({ onClose }: DesktopClipboardProps) {
     text.length > MAX_PREVIEW_CHARS ? text.slice(0, MAX_PREVIEW_CHARS) + '…' : text;
 
   const formatTs = (ts: number) => {
-    const d = new Date(ts);
+    const d = new Date(ts); // new-date-ok: ts is Date.now() epoch ms, not a server string
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 

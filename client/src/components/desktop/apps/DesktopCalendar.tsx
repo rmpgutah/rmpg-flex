@@ -36,7 +36,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [weekStart, setWeekStart] = useState(() => {
-    const d = new Date(now);
+    const d = new Date(now); // new-date-ok: cloning local Date object, not a server string
     d.setDate(d.getDate() - d.getDay());
     return d;
   });
@@ -53,14 +53,14 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
 
   const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else { setMonth(m => m - 1); } };
   const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else { setMonth(m => m + 1); } };
-  const prevWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; });
-  const nextWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; });
+  const prevWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; }); // new-date-ok: cloning Date object
+  const nextWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; }); // new-date-ok: cloning Date object
 
   const selectedShifts = selected ? shifts.filter(s => s.date?.slice(0, 10) === selected) : [];
 
   const renderMonth = () => {
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay(); // new-date-ok: local calendar math from integer y/m/d
+    const daysInMonth = new Date(year, month + 1, 0).getDate(); // new-date-ok: local calendar math from integer y/m/d
     const todayStr = isoDate(now.getFullYear(), now.getMonth(), now.getDate());
     const cells: React.ReactNode[] = [];
 
@@ -93,7 +93,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
     const days: React.ReactNode[] = [];
     const todayStr = isoDate(now.getFullYear(), now.getMonth(), now.getDate());
     for (let i = 0; i < 7; i++) {
-      const d = new Date(weekStart);
+      const d = new Date(weekStart); // new-date-ok: cloning Date object
       d.setDate(d.getDate() + i);
       const iso = isoDate(d.getFullYear(), d.getMonth(), d.getDate());
       const isToday = iso === todayStr;
@@ -142,7 +142,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
         <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', flex: 1, textAlign: 'center' }}>
           {view === 'month'
             ? `${MONTH_NAMES[month]} ${year}`
-            : `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()} – ${(() => { const e = new Date(weekStart); e.setDate(e.getDate() + 6); return e.getDate(); })()} ${weekStart.getFullYear()}`
+            : `${MONTH_NAMES[weekStart.getMonth()]} ${weekStart.getDate()} – ${(() => { const e = new Date(weekStart); e.setDate(e.getDate() + 6); return e.getDate(); })()} ${weekStart.getFullYear()}` // new-date-ok: cloning Date object
           }
         </span>
         <button aria-label="Next" onClick={view === 'month' ? nextMonth : nextWeek} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
