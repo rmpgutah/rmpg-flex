@@ -1494,7 +1494,7 @@ export default function DlSearchPage() {
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
                         <tr key={s.id} className={`border-t border-border-subtle text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
-                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
                               ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>

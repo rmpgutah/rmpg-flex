@@ -188,7 +188,7 @@ function formatGroupKey(key: string): string {
 
 function formatDateLabel(dateStr: string): string {
   const date = parseTimestamp(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 function exportToCSV(
@@ -674,7 +674,7 @@ function WeeklyDigestCard() {
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />

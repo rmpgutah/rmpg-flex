@@ -47,7 +47,7 @@ function fmtTs(ts?: string): string {
   if (!ts) return '';
   try {
     return parseTimestamp(ts).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {
     return ts;
@@ -194,7 +194,7 @@ export default function RemoteLockPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastPoll && (
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-              Updated {lastPoll.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              Updated {lastPoll.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
             </span>
           )}
           <button type="button" onClick={poll} title="Refresh"

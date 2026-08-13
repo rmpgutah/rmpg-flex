@@ -1184,7 +1184,8 @@ function CurrentTripPanel({
   const etaView = useMemo(() => {
     if (etaSeconds == null || !isFinite(etaSeconds)) return null;
     const arrival = new Date(Date.now() + etaSeconds * 1000);
-    const clock = arrival.toLocaleTimeString([], {
+    const clock = arrival.toLocaleTimeString('en-US', {
+      timeZone: 'America/Denver',
       hour: '2-digit',
       minute: '2-digit',
       hour12: prefs.clock === '12h',

@@ -1992,7 +1992,7 @@ export default function NavigationPage() {
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
-  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
+  const clock = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
   const course = gps.course ?? null;
@@ -2471,7 +2471,7 @@ export default function NavigationPage() {
     if (hM) mins += parseInt(hM[1], 10) * 60;
     if (mM) mins += parseInt(mM[1], 10);
     if (!hM && !mM) { const cM = etaStr.match(/^(\d+):(\d{2})$/); if (cM) mins = parseInt(cM[1], 10) + (parseInt(cM[2], 10) >= 30 ? 1 : 0); }
-    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
+    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
     return { upcomingSteps: upcoming, arrivalClock };
   }, [activeRoute, routeProgress, displayPrefs.clock]);
 

@@ -56,8 +56,8 @@ function canSendEmergency(role: string): boolean {
 
 function formatTime(iso: string): string {
   const d = parseTimestamp(iso);
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) +
-    ' ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: true }) +
+    ' ' + d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 export default function BroadcastMessagePage() {

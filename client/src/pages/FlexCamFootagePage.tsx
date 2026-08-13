@@ -760,7 +760,7 @@ export default function FlexCamFootagePage() {
       const res = await apiFetch<{ payloadHash: string; signedAt: string }>(
         `/flexcam/footage/${data.request.id}/court-package`, { method: 'POST' }
       );
-      setPkgMsg(`✓ Signed ${parseTimestamp(res.signedAt).toLocaleString()} · SHA-256: ${res.payloadHash.slice(0, 16)}…`);
+      setPkgMsg(`✓ Signed ${parseTimestamp(res.signedAt).toLocaleString('en-US', { timeZone: 'America/Denver' })} · SHA-256: ${res.payloadHash.slice(0, 16)}…`);
     } catch (e: unknown) {
       const err = e as Error & { status?: number };
       setPkgMsg(err.status === 409 ? '⚠ Lock footage as evidence first.' : `Error: ${err.message}`);

@@ -126,7 +126,7 @@ function formatTimestamp(isoStr: string | undefined, offsetSec: number): string 
 function formatDate(d?: string): string {
   if (!d) return '-';
   return parseTimestamp(d).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
 }
