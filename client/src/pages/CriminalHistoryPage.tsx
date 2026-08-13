@@ -678,7 +678,7 @@ export default function CriminalHistoryPage() {
                           <div className={`absolute -left-[15px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-base ${dotColor}`} />
                           {/* Date label */}
                           <div className="text-[9px] font-mono text-rmpg-500 mb-0.5">
-                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                           </div>
                           {/* Card */}
                           <button type="button" onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}
