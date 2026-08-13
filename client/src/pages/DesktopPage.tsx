@@ -40,6 +40,7 @@ import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
 import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
+import DesktopShortcutReference from '../components/desktop/DesktopShortcutReference';
 import DesktopTaskManager from '../components/desktop/apps/DesktopTaskManager';
 import DesktopClipboard from '../components/desktop/apps/DesktopClipboard';
 import DesktopSnippingTool from '../components/desktop/apps/DesktopSnippingTool';
@@ -89,7 +90,7 @@ function CadAutoOpen() {
 
 // Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
 // Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
-function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onSettings: () => void }) {
+function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef }: { onLock: () => void; onSettings: () => void; onOpenShortcutRef?: () => void }) {
   const vd = useVirtualDesktop();
   const active = vd?.active ?? 0;
   const setActive = vd?.setActive;
@@ -99,8 +100,21 @@ function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onS
       onToggleLauncher={onSettings}
       onPrevVirtualDesktop={() => setActive?.(active - 1)}
       onNextVirtualDesktop={() => setActive?.(active + 1)}
+      onOpenShortcutRef={onOpenShortcutRef}
     />
   );
+}
+
+type ArrangeHandles = { cascade: () => void; tileH: () => void; tileV: () => void };
+
+function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<ArrangeHandles | null> }) {
+  const { cascade, tileHorizontal, tileVertical } = useDesktopWindows();
+  mountRef.current = {
+    cascade: () => cascade(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+    tileH: () => tileHorizontal(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+    tileV: () => tileVertical(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+  };
+  return null;
 }
 
 // Does the actual desktop rendering/state work. Only mounted once the real
@@ -112,6 +126,7 @@ function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onS
 // would silently PUT default-derived state back to the server on the user's
 // very next interaction, clobbering their real saved cross-device layout.
 function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
+  const arrangeRef = useRef<ArrangeHandles | null>(null);
   const { user, signOut } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -175,6 +190,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [sysPrefOpen, setSysPrefOpen] = useState(false);
+  const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -375,6 +391,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
             { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
+            { label: 'Cascade Windows', onClick: () => arrangeRef.current?.cascade() },
+            { label: 'Tile Horizontally', onClick: () => arrangeRef.current?.tileH() },
+            { label: 'Tile Vertically', onClick: () => arrangeRef.current?.tileV() },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'System Preferences…', onClick: () => setSysPrefOpen(true) },
             { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
@@ -406,7 +426,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               ))}
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <CadAutoOpen />
-              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} />
+              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} onOpenShortcutRef={() => setShortcutRefOpen(true)} />
+              <WindowArrangeSync mountRef={arrangeRef} />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -469,6 +490,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           isAdmin={isAdmin}
         />
       )}
+      {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
     </div>
   );
 }

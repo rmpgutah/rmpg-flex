@@ -13,6 +13,7 @@ interface DesktopKeyboardShortcutsProps {
   onToggleLauncher: () => void;
   onPrevVirtualDesktop: () => void;
   onNextVirtualDesktop: () => void;
+  onOpenShortcutRef?: () => void;
 }
 
 export default function DesktopKeyboardShortcuts({
@@ -20,6 +21,7 @@ export default function DesktopKeyboardShortcuts({
   onToggleLauncher,
   onPrevVirtualDesktop,
   onNextVirtualDesktop,
+  onOpenShortcutRef,
 }: DesktopKeyboardShortcutsProps) {
   const { minimizeAll, restoreAll, focusedId, windows, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical } = useDesktopWindows();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
@@ -149,11 +151,27 @@ export default function DesktopKeyboardShortcuts({
         tileVertical(window.innerWidth, window.innerHeight - taskbarH);
         return;
       }
+
+      // Win+/ — Open keyboard shortcut reference
+      if (meta && key === '/') {
+        e.preventDefault();
+        onOpenShortcutRef?.();
+        return;
+      }
+
+      // Win+Z — Open Snap Layouts for focused window
+      if (meta && key === 'z' && !ctrl && !alt && !shift) {
+        e.preventDefault();
+        if (focusedId) {
+          window.dispatchEvent(new CustomEvent('flexos-open-snap-layouts', { detail: { winId: focusedId } }));
+        }
+        return;
+      }
     };
 
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, taskbarH]);
+  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onOpenShortcutRef, taskbarH]);
 
   return null;
 }

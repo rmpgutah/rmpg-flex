@@ -123,6 +123,8 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
   }, [commit]);
 
   const closeWindow = useCallback((id: string) => {
+    const closing = windowsRef.current.find(w => w.id === id);
+    if (closing) saveWindowPosition(closing.path, { x: closing.x, y: closing.y, width: closing.width, height: closing.height });
     commit(windowsRef.current.filter(w => w.id !== id));
     playDesktopSound();
   }, [commit]);

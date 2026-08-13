@@ -266,13 +266,17 @@ describe('FloatingWindow — opacity', () => {
     expect(windowEl.style.opacity).toBe('1');
   });
 
-  it('right-clicking the title bar offers Increase/Decrease opacity, which call setWindowOpacity', () => {
+  it('right-clicking the title bar opens the system menu with an opacity slider', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     fireEvent.click(screen.getByText('open'));
     fireEvent.contextMenu(screen.getByText('Dispatch'));
-    fireEvent.click(screen.getByText('Decrease opacity'));
+    // System menu should show an opacity slider
+    const slider = screen.getByRole('slider') as HTMLInputElement;
+    expect(parseInt(slider.value, 10)).toBe(100);
+    // Changing the slider calls setWindowOpacity
+    fireEvent.change(slider, { target: { value: '80' } });
     const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
-    expect(windowEl.style.opacity).toBe('0.9');
+    expect(windowEl.style.opacity).toBe('0.8');
   });
 });
 
