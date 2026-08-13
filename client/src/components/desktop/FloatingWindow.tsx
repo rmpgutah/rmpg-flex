@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Minus, Square, Pin, PinOff } from 'lucide-react';
+import { X, Minus, Square, Pin, PinOff, Maximize2, Minimize2 } from 'lucide-react';
 import { useDesktopWindows, type DesktopWindowState } from './DesktopWindowManager';
 import { getWindowConfigByPath } from '../../utils/windowManager';
 import { isSnapEnabled } from '../../utils/snapPreference';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarSize } from '../../utils/taskbarPreferences';
-import ContextMenu from '../ContextMenu';
 import { playDesktopSound } from '../../utils/desktopSounds';
+import SnapLayouts from './SnapLayouts';
 
 const TITLE_BAR_HEIGHT = 30;
 const TITLE_SYNC_POLL_MS = 500;
@@ -39,6 +39,12 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // Tracks x-direction reversals for Aero Shake detection
   const shakeRef = useRef<{ timestamps: number[]; lastSign: number }>({ timestamps: [], lastSign: 0 });
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [snapLayoutsOpen, setSnapLayoutsOpen] = useState(false);
+  const maximizeBtnRef = useRef<HTMLButtonElement>(null);
+  const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // System menu: position of the right-click context menu on the title bar
+  const [sysMenu, setSysMenu] = useState<{ x: number; y: number } | null>(null);
   const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
   // Tracks which edge the cursor is near during the drag — used in onUp to
   // determine if a snap should be applied. We need a ref here because the state
@@ -88,6 +94,43 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     }, TITLE_SYNC_POLL_MS);
     return () => clearInterval(interval);
   }, [win.id, win.minimized, updateWindowTitle]);
+
+  // F11 full-screen for this window (only when focused)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        const mgr = (window as unknown as { __rmpgFocusedId?: string }).__rmpgFocusedId;
+        if (mgr === win.id || !mgr) {
+          e.preventDefault();
+          setIsFullscreen(fs => !fs);
+        }
+      }
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [win.id, isFullscreen]);
+
+  // Win+Z opens snap layouts on the focused window via custom event
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent<{ winId: string }>).detail?.winId === win.id) {
+        setSnapLayoutsOpen(true);
+      }
+    };
+    window.addEventListener('flexos-open-snap-layouts', handler);
+    return () => window.removeEventListener('flexos-open-snap-layouts', handler);
+  }, [win.id]);
+
+  // Dismiss system menu on outside click
+  useEffect(() => {
+    if (!sysMenu) return;
+    const dismiss = () => setSysMenu(null);
+    window.addEventListener('pointerdown', dismiss, { capture: true });
+    return () => window.removeEventListener('pointerdown', dismiss, { capture: true });
+  }, [sysMenu]);
 
   const onTitleBarDoubleClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -245,7 +288,9 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // each of the two bands (pinned vs. unpinned) while pinned always wins
   // across them.
   const effectiveZIndex = win.zIndex + (win.alwaysOnTop ? ALWAYS_ON_TOP_ZINDEX_OFFSET : 0);
-  const style: React.CSSProperties = win.maximized
+  const style: React.CSSProperties = isFullscreen
+    ? { position: 'fixed', inset: 0, zIndex: effectiveZIndex + 50000, opacity: 1 }
+    : win.maximized
     ? { position: 'fixed', left: 0, top: 0, right: 0, bottom: taskbarHeight, zIndex: effectiveZIndex, opacity: win.opacity ?? 1 }
     : {
         position: 'fixed', left: win.x, top: win.y,
@@ -277,17 +322,13 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         focusWindow(win.id);
       }}
     >
-      <ContextMenu
-        items={[
-          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, Math.min(1, Math.round(((win.opacity ?? 1) + 0.1) * 10) / 10)) },
-          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, Math.max(0.1, Math.round(((win.opacity ?? 1) - 0.1) * 10) / 10)) },
-        ]}
-      >
+      {/* Title bar */}
       <div
         onPointerDown={onTitleBarPointerDown}
         onDoubleClick={onTitleBarDoubleClick}
+        onContextMenu={e => { e.preventDefault(); setSysMenu({ x: e.clientX, y: e.clientY }); }}
         className="flex items-center justify-between px-2 select-none cursor-move"
-        style={{ height: TITLE_BAR_HEIGHT, background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
+        style={{ height: isFullscreen ? 0 : TITLE_BAR_HEIGHT, overflow: 'hidden', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>
         <div className="flex items-center gap-1">
@@ -302,15 +343,104 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           <button type="button" aria-label={`Minimize ${win.title}`} onClick={() => minimizeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <Minus className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
           </button>
-          <button type="button" aria-label={`Maximize ${win.title}`} onClick={() => toggleMaximize(win.id)} className="p-1 hover:bg-surface-hover">
-            <Square className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
+          {/* Maximize button — hover for 400ms to open Snap Layouts */}
+          <div style={{ position: 'relative' }}>
+            <button
+              ref={maximizeBtnRef}
+              type="button"
+              aria-label={`Maximize ${win.title}`}
+              onClick={() => { setSnapLayoutsOpen(false); toggleMaximize(win.id); }}
+              onMouseEnter={() => {
+                snapHoverTimer.current = setTimeout(() => setSnapLayoutsOpen(true), 400);
+              }}
+              onMouseLeave={() => {
+                if (snapHoverTimer.current) clearTimeout(snapHoverTimer.current);
+              }}
+              className="p-1 hover:bg-surface-hover"
+            >
+              <Square className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
+            </button>
+            {snapLayoutsOpen && (
+              <SnapLayouts
+                windowId={win.id}
+                taskbarH={taskbarHeight}
+                onSnap={zone => moveResize(win.id, { x: zone.x, y: zone.y, width: zone.width, height: zone.height }, { persist: false })}
+                onDismiss={() => setSnapLayoutsOpen(false)}
+              />
+            )}
+          </div>
+          {/* F11 full-screen toggle */}
+          <button
+            type="button"
+            aria-label={isFullscreen ? `Exit full-screen for ${win.title}` : `Full-screen ${win.title}`}
+            onClick={() => setIsFullscreen(fs => !fs)}
+            className="p-1 hover:bg-surface-hover"
+          >
+            {isFullscreen
+              ? <Minimize2 className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
+              : <Maximize2 className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />}
           </button>
           <button type="button" aria-label={`Close ${win.title}`} onClick={() => closeWindow(win.id)} className="p-1 hover:bg-surface-hover">
             <X className="w-3 h-3" style={{ color: 'var(--sev-critical, var(--text-secondary))' }} />
           </button>
         </div>
       </div>
-      </ContextMenu>
+
+      {/* System menu (right-click on title bar) */}
+      {sysMenu && (
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', left: sysMenu.x, top: sysMenu.y,
+            background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: effectiveZIndex + 100,
+            minWidth: 180, padding: '4px 0',
+          }}
+        >
+          {[
+            { label: win.minimized || win.maximized ? 'Restore' : 'Restore', disabled: !win.minimized && !win.maximized, onClick: () => { if (win.maximized) toggleMaximize(win.id); else if (win.minimized) focusWindow(win.id); } },
+            { label: 'Minimize', disabled: win.minimized, onClick: () => minimizeWindow(win.id) },
+            { label: win.maximized ? 'Restore' : 'Maximize', disabled: false, onClick: () => toggleMaximize(win.id) },
+            null, // separator
+            { label: win.alwaysOnTop ? '✓ Always on Top' : '  Always on Top', disabled: false, onClick: () => toggleAlwaysOnTop(win.id) },
+            null, // separator
+            { label: 'Close', disabled: false, onClick: () => closeWindow(win.id), danger: true },
+          ].map((item, i) =>
+            item === null ? (
+              <div key={i} style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
+            ) : (
+              <button
+                key={item.label}
+                type="button"
+                disabled={item.disabled}
+                onClick={() => { setSysMenu(null); item.onClick(); }}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left',
+                  padding: '5px 16px', fontSize: 11, background: 'none', border: 'none',
+                  cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? 'var(--text-muted)' : item.danger ? 'var(--sev-critical, #ef4444)' : 'var(--text-primary)',
+                }}
+                onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-500-rgb),0.2)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}
+              >
+                {item.label}
+              </button>
+            )
+          )}
+          {/* Opacity slider */}
+          <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
+          <div style={{ padding: '6px 16px' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>Opacity: {Math.round((win.opacity ?? 1) * 100)}%</div>
+            <input
+              type="range" min={20} max={100} value={Math.round((win.opacity ?? 1) * 100)}
+              onChange={e => setWindowOpacity(win.id, parseInt(e.target.value, 10) / 100)}
+              style={{ width: '100%', accentColor: 'var(--brand-400)' }}
+              onClick={e => e.stopPropagation()}
+              onPointerDown={e => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
 
       {!win.minimized && (
         <>
@@ -319,7 +449,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
             title={win.title}
             src={win.path.includes('?') ? `${win.path}&standalone=1` : `${win.path}?standalone=1`}
             allow="microphone; camera; fullscreen"
-            style={{ width: '100%', height: `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
+            style={{ width: '100%', height: isFullscreen ? '100%' : `calc(100% - ${TITLE_BAR_HEIGHT}px)`, border: 'none' }}
           />
           {!win.maximized && (
             <>
