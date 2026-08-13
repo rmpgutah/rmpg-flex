@@ -1,5 +1,6 @@
 import type { FormSchema } from '../engine/types';
 import { toDisplayLabel } from '../../../formatters';
+import { parseTimestamp } from '../../../dateUtils';
 
 export interface PropertyRecordData {
   id?: number | string;
@@ -261,7 +262,7 @@ export const propertyRecordSchema: FormSchema<PropertyRecordData> = {
               call_number: safe(c.call_number),
               incident_type: toDisplayLabel(safe(c.incident_type, '')),
               status: toDisplayLabel(safe(c.status, '')),
-              created_at: c.created_at ? new Date(c.created_at).toLocaleDateString() : '—',
+              created_at: c.created_at ? parseTimestamp(c.created_at).toLocaleDateString() : '—',
             })),
           }, data);
         });
