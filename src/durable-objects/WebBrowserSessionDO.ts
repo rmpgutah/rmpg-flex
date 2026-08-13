@@ -46,8 +46,9 @@ interface WebBrowserEnv {
   DB: D1Database;
 }
 
-const FRAME_INTERVAL_MS = 300;
+const FRAME_INTERVAL_MS = 250;
 const AUTH_TIMEOUT_MS = 10_000;
+const JPEG_QUALITY = 35;
 
 export class WebBrowserSessionDO {
   state: DurableObjectState;
@@ -67,6 +68,7 @@ export class WebBrowserSessionDO {
   page: Page | null = null;
   lastInputAt = Date.now();
   frameTimer: ReturnType<typeof setInterval> | null = null;
+  lastFrameHash = '';
 
   constructor(state: DurableObjectState, env: WebBrowserEnv) {
     this.state = state;
@@ -145,6 +147,9 @@ export class WebBrowserSessionDO {
     if (!this.authenticated) { this.send(shapeErrorMessage('NOT_AUTHENTICATED')); return; }
     this.lastInputAt = Date.now();
     await this.state.storage.setAlarm(Date.now() + IDLE_TIMEOUT_MS);
+    // Fire an immediate frame after any input so interactions feel instant
+    // rather than waiting up to FRAME_INTERVAL_MS for the next tick.
+    this.captureFrame().catch(() => {});
 
     if (msg.type === 'navigate' && typeof msg.url === 'string') {
       try {
@@ -251,18 +256,21 @@ export class WebBrowserSessionDO {
       }
     });
 
-    this.frameTimer = setInterval(async () => {
-      if (!this.page) return;
-      try {
-        // encoding:'base64' returns a string directly — avoids a Buffer
-        // round-trip (Buffer is available via nodejs_compat, but the
-        // library's own base64 path is simpler and one fewer conversion).
-        const base64 = await this.page.screenshot({ type: 'jpeg', quality: 60, encoding: 'base64' });
-        this.send(shapeFrameMessage(base64));
-      } catch { /* page mid-navigation — skip this tick */ }
-    }, FRAME_INTERVAL_MS);
+    this.frameTimer = setInterval(() => { this.captureFrame().catch(() => {}); }, FRAME_INTERVAL_MS);
 
     await this.state.storage.setAlarm(Date.now() + IDLE_TIMEOUT_MS);
+  }
+
+  private async captureFrame(): Promise<void> {
+    if (!this.page) return;
+    // encoding:'base64' returns a string directly — avoids a Buffer round-trip.
+    const base64 = await this.page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, encoding: 'base64' }) as string;
+    // Skip sending if the frame is byte-for-byte identical to the last one —
+    // static pages would otherwise flood the socket with redundant data.
+    const hash = `${base64.length}:${base64.slice(0, 32)}`;
+    if (hash === this.lastFrameHash) return;
+    this.lastFrameHash = hash;
+    this.send(shapeFrameMessage(base64));
   }
 
   // alarm() fires when the idle timer set in onMessage()/startBrowser()
