@@ -40,16 +40,13 @@ import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
 import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
-<<<<<<< HEAD
+import DesktopShortcutReference from '../components/desktop/DesktopShortcutReference';
 import DesktopTaskManager from '../components/desktop/apps/DesktopTaskManager';
 import DesktopClipboard from '../components/desktop/apps/DesktopClipboard';
 import DesktopSnippingTool from '../components/desktop/apps/DesktopSnippingTool';
 import DesktopCalendar from '../components/desktop/apps/DesktopCalendar';
 import DesktopNotepad from '../components/desktop/apps/DesktopNotepad';
 import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPreferences';
-=======
-import DesktopShortcutReference from '../components/desktop/DesktopShortcutReference';
->>>>>>> 868a3ea4a1 (feat(desktop): Wave 1 window management — system menu, F11 full-screen, Snap Layouts, Win+/ shortcut card)
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -187,16 +184,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
-<<<<<<< HEAD
   const [taskManagerOpen, setTaskManagerOpen] = useState(false);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [snippingOpen, setSnippingOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [sysPrefOpen, setSysPrefOpen] = useState(false);
-=======
   const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
->>>>>>> 868a3ea4a1 (feat(desktop): Wave 1 window management — system menu, F11 full-screen, Snap Layouts, Win+/ shortcut card)
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -478,7 +472,6 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
-<<<<<<< HEAD
       {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
       {clipboardOpen && <DesktopClipboard onClose={() => setClipboardOpen(false)} />}
       {snippingOpen && <DesktopSnippingTool onClose={() => setSnippingOpen(false)} />}
@@ -497,9 +490,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           isAdmin={isAdmin}
         />
       )}
-=======
       {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
->>>>>>> 868a3ea4a1 (feat(desktop): Wave 1 window management — system menu, F11 full-screen, Snap Layouts, Win+/ shortcut card)
     </div>
   );
 }
