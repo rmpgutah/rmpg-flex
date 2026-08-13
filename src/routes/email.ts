@@ -288,6 +288,24 @@ email.get('/connect/callback', async (c) => {
       }
     } catch { /* best-effort */ }
 
+    // Enforce that the Microsoft account being connected matches the email
+    // address assigned to this user in the RMPG users table. Email addresses
+    // are case-insensitive (RFC 5321 §2.4) so compare lowercased.
+    const userRow = await queryFirst<{ email: string | null }>(
+      c.env.DB,
+      'SELECT email FROM users WHERE id = ?',
+      userId,
+    );
+    const assignedEmail = userRow?.email?.toLowerCase() ?? null;
+    if (assignedEmail && mailbox && mailbox.toLowerCase() !== assignedEmail) {
+      log.warn('email connect blocked: Microsoft account does not match assigned address', {
+        userId,
+        attempted: mailbox,
+        assigned: assignedEmail,
+      });
+      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
+    }
+
     const expiresIn = Number(data.expires_in) || 3600;
     await saveUserGraphToken(c.env.DB, c.env, userId, {
       accessToken: String(data.access_token),

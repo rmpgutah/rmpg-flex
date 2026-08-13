@@ -49,6 +49,10 @@ function isPublicAuthBypass(pathname: string): boolean {
   // before queueing the inbound event (see src/routes/fleetioWebhook.ts).
   return pathname === '/api/email/oauth/callback'
     || pathname.endsWith('/oauth/callback')
+    // Per-user mailbox connect callback (Phase 3): Microsoft redirects the
+    // browser here with ?code&state after consent — no JWT in the request.
+    // The callback authenticates via the CSRF state token stored in D1.
+    || pathname === '/api/email/connect/callback'
     || pathname === '/api/fleetio/webhook'
     // Dial Connect → calls_for_service push. External service, no human
     // JWT session — gated instead by requireApiKeyScope('service_request')
