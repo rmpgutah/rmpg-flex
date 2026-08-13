@@ -24,6 +24,13 @@ import type { MapUnit as Unit } from '../../pages/map/utils/mapConstants';
 import {
   buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, shouldAnimateMarkerMove,
 } from '../../pages/map/utils/mapMarkers';
+import {
+  buildServeJobMarkerEl, buildServeClusterEl, serveJobPopupHTML,
+  type ServeMapEntry,
+} from '../../utils/serveMapUtils';
+import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // Dispatch units poll — matches the Map module's UNITS_FAST_POLL_MS so a
 // server standing at a job site and a unit converging on it read as
@@ -76,138 +83,17 @@ interface LocationNote {
   active: number;
 }
 
-const PRIORITY_COLORS: Record<string, string> = {
-  urgent: '#ef4444',
-  rush:   '#f97316',
-  normal: '#3b82f6',
-  routine:'#6b7280',
-};
-const PRIORITY_GLOW: Record<string, string> = {
-  urgent: 'rgba(239,68,68,0.5)',
-  rush:   'rgba(249,115,22,0.4)',
-  normal: 'rgba(59,130,246,0.3)',
-  routine:'rgba(107,114,128,0.2)',
-};
-
-function buildServeMarker(item: QueueMapItem, selected: boolean = false): HTMLElement {
-  const isBusiness = (item.recipient_type || '').toLowerCase() === 'business';
-  const color = PRIORITY_COLORS[item.priority] ?? PRIORITY_COLORS.routine;
-  const glow  = PRIORITY_GLOW[item.priority]  ?? PRIORITY_GLOW.routine;
-  const hasNote = !!item.location_note_id;
-  const tier = urgencyTierForDeadline(item.deadline, Date.now());
-
-  const el = document.createElement('div');
-  // Build box-shadow upfront: base glow + optional risk halo
-  // (allows safe composition of urgency ring, notation badge, and risk icon without overlap)
-  const hasRisk = isRiskFlagged(item);
-  const boxShadowValue = hasRisk
-    ? `0 0 8px ${glow}, 0 0 0 3px rgba(239,68,68,0.6)`
-    : `0 0 8px ${glow}`;
-  // Selected markers get an extra outline ring so a bulk action's scope is
-  // visually obvious before the user confirms it.
-  const border = selected
-    ? '3px solid #22c55e'
-    : '2px solid rgba(255,255,255,0.7)';
-
-  // ROOT: position-neutral only. This is the element handed to
-  // `new mapboxgl.Marker({ element: el })`, and Mapbox GL REWRITES its
-  // `style.transform` on every render frame. Two things must therefore never
-  // live here: a `transition:transform` (each frame's reposition becomes an
-  // animation the pin chases) and any literal `transform` of our own (it
-  // overwrites Mapbox's `translate(...)`, teleporting the pin to the map's
-  // origin until the next frame restores it). Both were present before; the
-  // hover scale below now targets the inner wrapper instead.
-  el.style.cssText = 'display:block;cursor:pointer;';
-  el.title = item.recipient_name || 'serve target';
-
-  // INNER: every visual style, and the only element we may transform.
-  const inner = document.createElement('div');
-  inner.setAttribute('data-role', 'marker-inner');
-  inner.style.cssText = `
-    position:relative;
-    width:28px;height:28px;
-    border-radius:50%;
-    background:${color};
-    border:${border};
-    box-shadow:${boxShadowValue}${selected ? ', 0 0 0 2px rgba(34,197,94,0.5)' : ''};
-    display:flex;align-items:center;justify-content:center;
-    transition:transform 0.15s;
-  `;
-  el.appendChild(inner);
-
-  // Icon — building for business, person pin for individual
-  const icon = document.createElement('div');
-  icon.style.cssText = 'color:#fff;font-size:12px;line-height:1;font-weight:700;';
-  icon.textContent = isBusiness ? '🏢' : '👤';
-  inner.appendChild(icon);
-
-  // Notation badge — yellow dot in corner when a system constraint exists
-  if (hasNote) {
-    const badge = document.createElement('div');
-    badge.style.cssText = `
-      position:absolute;top:-3px;right:-3px;
-      width:9px;height:9px;
-      border-radius:50%;
-      background:#d4a017;
-      border:1px solid #000;
-      box-shadow:0 0 4px rgba(212,160,23,0.8);
-    `;
-    badge.title = 'Recorded service notation — see popup';
-    inner.appendChild(badge);
-  }
-
-  // Deadline urgency pulse ring
-  if (tier === 'critical' || tier === 'warning') {
-    const ring = document.createElement('div');
-    const ringColor = tier === 'critical' ? '#ef4444' : '#f59e0b';
-    ring.style.cssText = `
-      position:absolute;inset:-6px;border-radius:50%;
-      border:2px solid ${ringColor};
-      animation:srv-pulse-${tier} 1.6s ease-out infinite;
-    `;
-    inner.appendChild(ring);
-  }
-
-  // Officer-safety risk halo
-  // Note: box-shadow already includes risk halo (computed upfront to avoid unsafe += on style.boxShadow).
-  // Risk icon positioned at bottom-right to avoid notation badge (top-right) and urgency ring (inset:-6px).
-  if (hasRisk) {
-    const warningIcon = document.createElement('div');
-    warningIcon.style.cssText = 'position:absolute;bottom:-4px;right:-4px;font-size:10px;';
-    warningIcon.textContent = '⚠';
-    warningIcon.title = 'Officer safety flag';
-    inner.appendChild(warningIcon);
-  }
-
-  // Hover scale targets the INNER wrapper. Writing it on `el` clobbered the
-  // translate Mapbox owns, so hovering a pin visibly threw it to the corner
-  // of the map until the next render frame snapped it back.
-  el.addEventListener('mouseenter', () => { inner.style.transform = 'scale(1.2)'; });
-  el.addEventListener('mouseleave', () => { inner.style.transform = 'scale(1)'; });
-
-  return el;
-}
-
-function buildClusterMarker(cluster: { count: number; dominantPriority: string }): HTMLElement {
-  const color = PRIORITY_COLORS[cluster.dominantPriority] ?? PRIORITY_COLORS.routine;
-  const el = document.createElement('div');
-  el.style.cssText = `
-    width:34px;height:34px;border-radius:50%;
-    background:${color};border:2px solid rgba(255,255,255,0.85);
-    display:flex;align-items:center;justify-content:center;
-    font-family:monospace;font-weight:700;font-size:12px;color:#fff;
-    cursor:pointer;
-  `;
-  el.textContent = String(cluster.count);
-  el.title = `${cluster.count} serve jobs`;
-  return el;
-}
 
 interface Props {
   onSelectQueue?: (queueId: number) => void;
 }
 
 export default function ServeIntakeMap({ onSelectQueue }: Props) {
+  const gps = useGpsTracking({ upload: false });
+  const livePosition = gps.latitude != null && gps.longitude != null
+    ? { lat: gps.latitude, lng: gps.longitude }
+    : null;
+
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -311,11 +197,13 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     const container = mapContainerRef.current;
     const onMouseDown = (e: MouseEvent) => {
       if (!e.shiftKey || !container) return;
+      map.dragPan.disable();
       const rect = container.getBoundingClientRect();
       selectStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     };
     const MIN_DRAG_PX = 5;
     const onMouseUp = (e: MouseEvent) => {
+      map.dragPan.enable();
       if (!selectStartRef.current || !container) return;
       const start = selectStartRef.current;
       // Clear the origin unconditionally on mouseup — a stray shift-click or a
@@ -386,8 +274,9 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    // Clear old markers
-    for (const m of markersRef.current) m.remove();
+    // Clear stale markers before rebuilding — without this, each render
+    // appends new markers without removing the previous set.
+    markersRef.current.forEach(m => { try { m.remove(); } catch { /* gone */ } });
     markersRef.current = [];
     popupRef.current?.remove();
 
@@ -407,7 +296,8 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     for (const cluster of clusters) {
       if (cluster.count === 1) {
         const item = mappable.find((it) => it.id === cluster.itemIds[0])!;
-        const el = buildServeMarker(item, selectedIds.has(item.id));
+        const serveEntry: ServeMapEntry = { ...item, client_name: null };
+        const el = buildServeJobMarkerEl(serveEntry);
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
           .setHTML(buildPopupHtml(item));
 
@@ -449,7 +339,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
           .addTo(map);
         markersRef.current.push(marker);
       } else {
-        const el = buildClusterMarker(cluster);
+        const el = buildServeClusterEl(cluster.count, cluster.dominantPriority);
         el.addEventListener('click', () => {
           map.easeTo({ center: [cluster.lng, cluster.lat], zoom: currentZoom + 2 });
         });
@@ -556,20 +446,24 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       const currentMap = mapRef.current;
       if (!currentMap) return;
       clearTrail();
-      try {
-        currentMap.addSource(sourceId, {
-          type: 'geojson',
-          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
-        });
-        currentMap.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
-        });
-      } catch {
-        // non-fatal — map/style torn down before the fetch resolved
-      }
+      whenStyleReady(currentMap, () => {
+        if (hasSource(currentMap, sourceId)) safeRemoveSource(currentMap, sourceId);
+        if (hasLayer(currentMap, layerId)) safeRemoveLayer(currentMap, layerId);
+        try {
+          currentMap.addSource(sourceId, {
+            type: 'geojson',
+            data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: res.polyline } },
+          });
+          currentMap.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            paint: { 'line-color': '#94a3b8', 'line-width': 2, 'line-dasharray': [2, 2], 'line-opacity': 0.8 },
+          });
+        } catch {
+          // non-fatal — map/style torn down before the fetch resolved
+        }
+      });
     }).catch(() => { /* non-fatal — trail stays hidden */ });
 
     return () => { cancelled = true; clearTrail(); };
@@ -600,14 +494,17 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       setPreviewRoute(null);
     };
 
-    if (!previewOrigin || !previewTarget) {
+    // Prefer live GPS position over right-click simulated origin; fall back to
+    // right-click when GPS is unavailable (e.g. desktop supervisor session).
+    const origin = livePosition ?? (previewOrigin ? { lat: previewOrigin[1], lng: previewOrigin[0] } : null);
+    if (!origin || !previewTarget) {
       clearPreview();
       return;
     }
 
     let cancelled = false;
     fetchMapboxRoute(
-      { lng: previewOrigin[0], lat: previewOrigin[1] },
+      { lng: origin.lng, lat: origin.lat },
       { lng: previewTarget.lng, lat: previewTarget.lat },
     ).then((route) => {
       if (cancelled || !route) return;
@@ -636,7 +533,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     }).catch(() => { /* non-fatal — falls back to no preview */ });
 
     return () => { cancelled = true; clearPreview(); };
-  }, [previewOrigin, previewTarget, mapReady]);
+  }, [previewOrigin, previewTarget, mapReady, livePosition]);
 
   const notMapped = items.filter((it) => !isValidLngLat(it.recipient_lng, it.recipient_lat));
 
@@ -907,3 +804,4 @@ function buildPopupHtml(item: QueueMapItem): string {
     </div>
   `;
 }
+

@@ -61,6 +61,8 @@ vi.mock('../../../utils/mapboxLoader', () => ({
         unproject: vi.fn()
           .mockReturnValueOnce({ lng: -180, lat: -90 })
           .mockReturnValueOnce({ lng: 180, lat: 90 }),
+        dragPan: { enable: vi.fn(), disable: vi.fn() },
+        isStyleLoaded: vi.fn(() => true),
       };
       lastMapInstance = instance;
       return instance;
