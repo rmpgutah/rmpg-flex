@@ -1,10 +1,30 @@
-import React from 'react';
-import { Moon, BellOff, Wifi, RefreshCw } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
+
+const VOLUME_KEY = 'rmpg_desktop_volume';
+
+function getStoredVolume(): number {
+  try { return Math.min(100, Math.max(0, parseInt(localStorage.getItem(VOLUME_KEY) ?? '100', 10))); }
+  catch { return 100; }
+}
+
+function applyVolume(pct: number) {
+  const v = pct / 100;
+  document.querySelectorAll<HTMLMediaElement>('audio, video').forEach(el => { el.volume = v; });
+  try { localStorage.setItem(VOLUME_KEY, String(pct)); } catch { /* silent */ }
+}
 
 const UNIT_STATUSES = ['available', 'busy', 'on-call', 'traffic-stop', 'out-of-service'];
 
 export default function DesktopQuickSettings({ onClose }: { onClose: () => void }) {
+  const [volume, setVolume] = useState(getStoredVolume);
+
+  const handleVolume = useCallback((v: number) => {
+    setVolume(v);
+    applyVolume(v);
+  }, []);
+
   const ctx = useOptionalDesktopSystem();
   const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
 
@@ -52,6 +72,19 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
           <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
           <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Wi-Fi</span>
           <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{navigator.onLine ? 'Connected' : 'Offline'}</span>
+        </div>
+
+        {/* Volume */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            {volume === 0
+              ? <VolumeX className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+              : <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            }
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Volume</span>
+            <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{volume}%</span>
+          </div>
+          <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(Number(e.target.value))} style={{ width: '100%', height: 4 }} aria-label="Volume" />
         </div>
 
         {/* Brightness */}
