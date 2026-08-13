@@ -259,3 +259,90 @@ BR2_PACKAGE_BLUEZ5_UTILS=y
 # the whole intel/ibt-* set, which is what AX201 and AX211 also load from.
 # Without it BLUEZ5_UTILS and the whole kernel BT stack are inert.
 BR2_PACKAGE_LINUX_FIRMWARE_IBT=y
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FZ-55 FULL HARDWARE INTEGRATION PASS (2026-08-13)
+# Userspace for the hardware subsystems that already have kernel-level support
+# but were not connected to any daemon or library. Each block names its kernel
+# counterpart and the failure it prevents. All symbols verified in the pinned
+# Buildroot 2024.02.9 package tree.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── WWAN / 5G cellular (optional cellular xPAK, Mk3: EM7421/EM7511/EM7595 + EM9190)
+# ModemManager is the standard Linux WWAN modem manager. It discovers modems
+# that appear as QMI or MBIM network interfaces (CONFIG_USB_NET_QMI_WWAN and
+# CONFIG_USB_NET_CDC_MBIM already =y in kernel-fz55.fragment), configures the
+# APN, handles SIM PIN, and exposes a D-Bus interface ConnMan can use for
+# automatic cellular failover when Wi-Fi is unavailable.
+#
+# On units WITHOUT the WWAN xPAK installed, ModemManager starts, enumerates no
+# modem, and sits idle. It costs nothing on those units.
+#
+# libqmi and libmbim are the protocol libraries ModemManager links against to
+# speak to QMI (Qualcomm Modem Interface) and MBIM (Mobile Broadband Interface
+# Model) modems respectively. The Sierra Wireless / Semtech parts Panasonic ships
+# support both; which one a given firmware revision prefers is firmware-dependent.
+BR2_PACKAGE_MODEM_MANAGER=y
+BR2_PACKAGE_LIBMBIM=y
+BR2_PACKAGE_LIBQMI=y
+
+# ── GPS (optional dedicated GPS xPAK FZ-VGP551W; USB GPS dongles) ────────────
+# gpsd is the standard Linux GPS daemon. The optional u-blox NEO-M8N GPS module
+# and any USB GPS dongle appear as /dev/ttyACM0 (USB CDC-ACM, CONFIG_USB_ACM=y
+# already in kernel-fz55.fragment). gpsd parses NMEA/UBX sentences from that
+# device and serves position data on a local JSON socket (port 2947).
+#
+# The RMPG Flex browser app can read navigator.geolocation (which works through
+# the host's location stack) OR query gpsd's local socket directly from a
+# service worker / background fetch. S95kiosk-gps (rootfs overlay) starts gpsd
+# at boot when a GPS device is present.
+#
+# gpsd-clients provides cgps (real-time GPS console display) and gpsmon (raw
+# sentence monitor) for first-article hardware validation.
+BR2_PACKAGE_GPSD=y
+BR2_PACKAGE_GPSD_CLIENTS=y
+
+# ── Smartcard / CAC / PIV (optional xPAKs FZ-VCL551W contact + FZ-VCF551W contactless)
+# pcsc-lite is the standard PC/SC smartcard middleware daemon (pcscd).
+# ccid is the USB CCID class driver — the Panasonic smartcard xPAKs enumerate
+# as USB CCID devices, so no additional kernel driver is required beyond the
+# generic USB stack already present.
+#
+# This provides the infrastructure for CAC/PIV officer identification and is
+# NOT yet wired into the login flow. It is here so adding smartcard auth does
+# not require a full OS rebuild.
+BR2_PACKAGE_PCSC_LITE=y
+BR2_PACKAGE_CCID=y
+
+# ── Fingerprint reader (optional xPAK FZ-VFP551W) ────────────────────────────
+# libfprint is the userspace fingerprint library. Panasonic's fingerprint xPAKs
+# enumerate as USB HID class devices — no dedicated kernel driver required beyond
+# CONFIG_USB_HID (already =y). libfprint handles the reader protocol and
+# template storage.
+#
+# Same note as smartcard: not yet wired into the login flow. The library is here
+# so biometric officer authentication can be added without a rebuild.
+BR2_PACKAGE_LIBFPRINT=y
+
+# ── Ambient light sensor + auto-rotate (Intel ISH hub) ───────────────────────
+# iio-sensor-proxy bridges the kernel IIO subsystem to D-Bus. The Intel ISH HID
+# driver (INTEL_ISH_HID=y) exposes the FZ-55's built-in ambient-light sensor and
+# accelerometer as IIO channels (CONFIG_IIO=y, added in kernel-fz55.fragment).
+# iio-sensor-proxy reads those channels and publishes them on the
+# net.hadess.SensorProxy D-Bus interface so rmpg-shell can:
+#   - Auto-adjust backlight brightness from the ALS reading without polling /sys
+#   - Rotate the display via xrandr when the tablet is tilted (gyroscope channel)
+#
+# This is the correct architecture for embedded X11 + IIO: poll-from-shell is
+# CPU-wasteful and gets the timing wrong; D-Bus events are edge-triggered.
+BR2_PACKAGE_IIO_SENSOR_PROXY=y
+
+# ── Remote administration ─────────────────────────────────────────────────────
+# OpenSSH server: the only way to diagnose or recover a terminal in a vehicle
+# without driving to it. Disabled at boot by default (no S*-sshd init script
+# is installed); enable on demand by running:
+#   /usr/sbin/sshd
+# SSH host keys are generated once on first boot by S55kiosk-ssh-keygen
+# (rootfs overlay) — generated per-unit so every terminal has a unique key pair,
+# rather than baking a shared key into the image.
+BR2_PACKAGE_OPENSSH=y
