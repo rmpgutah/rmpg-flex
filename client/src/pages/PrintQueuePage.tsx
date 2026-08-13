@@ -21,7 +21,7 @@ interface ElectronPrint {
   pausePrintJob?: (id: string) => void;
   resumePrintJob?: (id: string) => void;
   clearCompletedPrintJobs?: () => void;
-  listPrinters?: () => string[];
+  getPrinters?: () => Promise<Array<{ name: string; isDefault: boolean }>>;
 }
 
 function getElectron(): ElectronPrint | undefined {
@@ -79,8 +79,11 @@ export default function PrintQueuePage() {
     }
   }, [electron]);
 
-  const loadPrinters = useCallback(() => {
-    const list = electron?.listPrinters?.() ?? [];
+  const loadPrinters = useCallback(async () => {
+    // preload exposes `getPrinters` (not `listPrinters`) and it returns a
+    // Promise<{name:string,isDefault:boolean}[]> via ipcRenderer.invoke.
+    const raw = await electron?.getPrinters?.() ?? [];
+    const list = Array.isArray(raw) ? raw.map((p: { name: string }) => p.name) : [];
     setPrinters(list);
     if (list.length > 0 && !defaultPrinter) {
       setDefaultPrinter(list[0]);
