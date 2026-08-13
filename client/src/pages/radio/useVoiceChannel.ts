@@ -224,6 +224,11 @@ export function useVoiceChannel(
       // Release the pre-acquired mic when leaving the channel.
       micStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
       micStreamRef.current = null;
+      // Release any in-progress fallback on-demand stream (used when pre-acquire
+      // failed). Without this, navigating away mid-transmission leaves the mic
+      // indicator lit and the audio device held open until GC.
+      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      streamRef.current = null;
       setConnected(false); setActiveSpeaker(null); setMembers(0);
     };
   }, [channelId, teardownPlayer]);
