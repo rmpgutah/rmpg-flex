@@ -6,13 +6,6 @@ interface BatteryStatus {
   percent: number;
 }
 
-interface SyncStatus {
-  queueDepth?: number;
-  pending?: number; // legacy alias — some versions returned this name
-  isSyncing?: boolean;
-  lastPush?: string | null;
-}
-
 type ConnectivityState = 'online' | 'offline' | 'degraded';
 
 function useTrayPolling() {
@@ -78,15 +71,17 @@ function useTrayPolling() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Sync queue: read from Tauri offline state
+  // Sync queue: preload exposes `getOfflineWriteQueueSize` (returns number),
+  // not `getSyncStatus` — using the wrong name made the guard always true,
+  // causing an immediate early return and a permanently-zero counter.
   useEffect(() => {
     const el = (window as any).electron;
-    if (!el?.isElectron || !el?.getSyncStatus) return;
+    if (!el?.isElectron || !el?.getOfflineWriteQueueSize) return;
     let cancelled = false;
     const poll = async () => {
       try {
-        const s: SyncStatus = await el.getSyncStatus();
-        if (!cancelled) setSyncPending(s?.queueDepth ?? s?.pending ?? 0);
+        const count: number = await el.getOfflineWriteQueueSize();
+        if (!cancelled) setSyncPending(count ?? 0);
       } catch { /* silent */ }
     };
     poll();
