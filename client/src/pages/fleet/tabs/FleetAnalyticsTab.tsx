@@ -645,7 +645,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <span className="font-mono font-bold text-rmpg-100">{alert.vehicle_number}</span>
                     <span className={`min-w-0 ${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
-                      {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
+                      {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) : '--'}
                     </span>
                   </div>
                 );
@@ -686,7 +686,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   formatter={(value: any) => [`${value} mi`, 'Miles']}
                   labelFormatter={(label) => {
                     const d = parseTimestamp(label);
-                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
                 <Bar dataKey="miles" fill={chartSeriesColors()[2]} radius={[2, 2, 0, 0]} />
@@ -786,7 +786,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   formatter={(value: any, name: any) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
                   labelFormatter={(label) => {
                     const d = parseTimestamp(label);
-                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
                 <Area
@@ -1542,7 +1542,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 ? a.days_until : null;
               const due = days != null
                 ? (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)
-                : (a.due_date ? parseTimestamp(a.due_date).toLocaleDateString() : '—');
+                : (a.due_date ? parseTimestamp(a.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—');
               // vehicle_id alone is not unique — one vehicle can raise an
               // insurance AND a registration alert, which collided as a key.
               const label = toDisplayLabel(a.service_type || a.type || a.issue || '');

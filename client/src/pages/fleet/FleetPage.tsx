@@ -1360,7 +1360,7 @@ export default function FleetPage() {
         onClose={() => setDeletingFuel(null)}
         onConfirm={handleDeleteFuel}
         title="Delete Fuel Log"
-        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1382,7 +1382,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${toDisplayLabel(deletingInspection?.inspection_type) || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${toDisplayLabel(deletingInspection?.inspection_type) || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

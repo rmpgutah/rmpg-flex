@@ -39,7 +39,7 @@ function footerStrip(doc: jsPDF, page: number, total: number) {
   const w = doc.internal.pageSize.getWidth(); const h = doc.internal.pageSize.getHeight();
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
   doc.text(`Page ${page} of ${total}`, 40, h - 25);
-  doc.text(`Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, h - 14);
+  doc.text(`Generated ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, h - 14);
 }
 
 function vehicleSummaryBlock(doc: jsPDF, v: FleetVehicle, y: number): number {
@@ -836,7 +836,7 @@ export function buildPersonnelProductivityReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'PERSONNEL PRODUCTIVITY REPORT',
-    `${data.rows.length} officers  •  ${data.days ?? 30}-day window  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} officers  •  ${data.days ?? 30}-day window  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
 
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
@@ -921,7 +921,7 @@ export function buildInspectionAnalysisReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'INSPECTION ANALYSIS REPORT',
-    `${data.rows.length} vehicles  •  ${data.totalInspections ?? 0} inspections  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  ${data.totalInspections ?? 0} inspections  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
   let page = 1;
 
@@ -1042,7 +1042,7 @@ export function buildCostPerMileReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COST-PER-MILE ANALYSIS REPORT',
-    `${data.rows.length} vehicles  •  Fleet Avg: $${(data.fleetAverageCpm ?? 0).toFixed(3)}/mi  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  Fleet Avg: $${(data.fleetAverageCpm ?? 0).toFixed(3)}/mi  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
 
@@ -1130,7 +1130,7 @@ export function buildMaintenanceForecastReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'MAINTENANCE FORECAST REPORT',
-    `${data.rows.length} vehicles  •  ${data.overdueCount ?? 0} overdue  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  ${data.overdueCount ?? 0} overdue  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
   let page = 1;
 
@@ -1229,7 +1229,7 @@ export function buildComplianceAuditReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COMPLIANCE AUDIT REPORT',
-    `${data.rows.length} vehicles  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
 
