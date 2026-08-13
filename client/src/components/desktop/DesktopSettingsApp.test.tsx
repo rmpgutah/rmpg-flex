@@ -1,6 +1,26 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DesktopSettingsApp from './DesktopSettingsApp';
+
+vi.mock('../../context/DesktopSystemContext', () => {
+  let _on = false;
+  let _intensity = 50;
+  return {
+    useDesktopSystem: () => ({
+      nightLightOn: _on,
+      nightLightIntensity: _intensity,
+      setNightLight: vi.fn((on: boolean, intensity?: number) => {
+        _on = on;
+        if (intensity !== undefined) _intensity = intensity;
+        if (on) localStorage.setItem('rmpg_night_light', '1');
+        else localStorage.removeItem('rmpg_night_light');
+      }),
+      dndOn: false, brightness: 100, activeCall: null, welfareTimer: null,
+      setDnd: vi.fn(), setBrightness: vi.fn(),
+      startWelfareTimer: vi.fn(), cancelWelfareTimer: vi.fn(),
+    }),
+  };
+});
 import { normalizeDesktopWidgets } from '../../utils/normalizeDesktopWidgets';
 import { isTaskbarAutoHideEnabled, getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
 import { getClockFormat } from '../../utils/clockPreference';
@@ -263,12 +283,21 @@ describe('DesktopSettingsApp — Personalization: clock format, sounds, transpar
     expect(isDesktopSoundEnabled()).toBe(false);
   });
 
-  it('Increase/Decrease transparency buttons adjust and clamp the default window opacity', () => {
+  it('opacity range slider adjusts and persists the default window opacity', () => {
     renderApp();
-    fireEvent.click(screen.getByText('Decrease'));
-    expect(getDefaultWindowOpacity()).toBe(0.9);
-    fireEvent.click(screen.getByText('Increase'));
+    const slider = screen.getByLabelText('Window transparency') as HTMLInputElement;
+    fireEvent.change(slider, { target: { value: '0.7' } });
+    expect(getDefaultWindowOpacity()).toBe(0.7);
+    fireEvent.change(slider, { target: { value: '1' } });
     expect(getDefaultWindowOpacity()).toBe(1);
+  });
+
+  it('toggling Night Light checkbox enables it and persists to localStorage', () => {
+    renderApp();
+    const toggle = screen.getByLabelText('Enable night light') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(localStorage.getItem('rmpg_night_light')).toBe('1');
   });
 });
 

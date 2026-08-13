@@ -18,6 +18,7 @@ import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/deskt
 import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
 import DesktopKioskSettings from './DesktopKioskSettings';
 import FlexOSSettings from './FlexOSSettings';
+import { useDesktopSystem } from '../../context/DesktopSystemContext';
 
 const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'clock', label: 'Clock & Shift' },
@@ -100,6 +101,7 @@ export default function DesktopSettingsApp({
   const [clockFormat, setClockFormatState] = useState<ClockFormat>(() => getClockFormat());
   const [soundEnabled, setSoundEnabledState] = useState(() => isDesktopSoundEnabled());
   const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
+  const { nightLightOn, nightLightIntensity, setNightLight } = useDesktopSystem();
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -227,12 +229,27 @@ export default function DesktopSettingsApp({
           {activeCategory === 'personalization' && (
             <div>
               <div className="text-[10px] font-semibold uppercase mt-2 mb-1" style={sectionLabelStyle()}>Wallpaper</div>
-              <div className="flex gap-1.5 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
                 {DESKTOP_WALLPAPERS.map(w => (
                   <button
-                    key={w.id} type="button" aria-label={`Wallpaper: ${w.label}`} onClick={() => onWallpaperChange(w.id)}
-                    style={{ width: 24, height: 24, background: w.background, border: wallpaperId === w.id ? '2px solid var(--brand-400)' : '1px solid var(--border-default)' }}
-                  />
+                    key={w.id}
+                    type="button"
+                    aria-label={`Wallpaper: ${w.label}`}
+                    onClick={() => onWallpaperChange(w.id)}
+                    className="flex flex-col items-center gap-0.5"
+                  >
+                    <div style={{
+                      width: 40,
+                      height: 40,
+                      background: w.background,
+                      border: wallpaperId === w.id
+                        ? '2px solid var(--brand-400)'
+                        : '1px solid var(--border-default)',
+                    }} />
+                    <span className="text-[9px] leading-tight text-center" style={{ color: 'var(--text-muted)', maxWidth: 40 }}>
+                      {w.label}
+                    </span>
+                  </button>
                 ))}
               </div>
 
@@ -273,24 +290,55 @@ export default function DesktopSettingsApp({
 
               <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Window Transparency</div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { const next = getDefaultWindowOpacity() - 0.1; setDefaultWindowOpacity(next); setWindowOpacityState(getDefaultWindowOpacity()); }}
-                  className="text-[10px] px-2 py-0.5"
-                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
-                >
-                  Decrease
-                </button>
-                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{Math.round(windowOpacity * 100)}%</span>
-                <button
-                  type="button"
-                  onClick={() => { const next = getDefaultWindowOpacity() + 0.1; setDefaultWindowOpacity(next); setWindowOpacityState(getDefaultWindowOpacity()); }}
-                  className="text-[10px] px-2 py-0.5"
-                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
-                >
-                  Increase
-                </button>
+                <input
+                  type="range"
+                  aria-label="Window transparency"
+                  min={0.2}
+                  max={1}
+                  step={0.05}
+                  value={windowOpacity}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setDefaultWindowOpacity(v);
+                    setWindowOpacityState(v);
+                  }}
+                  className="flex-1"
+                  style={{ accentColor: 'var(--brand-400)' }}
+                />
+                <span className="text-[10px] w-8 text-right" style={{ color: 'var(--text-muted)' }}>
+                  {Math.round(windowOpacity * 100)}%
+                </span>
               </div>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Night Light</div>
+              <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Enable night light"
+                  checked={nightLightOn}
+                  onChange={(e) => setNightLight(e.target.checked, nightLightIntensity)}
+                />
+                Reduce blue light with a warm amber tint
+              </label>
+              {nightLightOn && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Intensity</span>
+                  <input
+                    type="range"
+                    aria-label="Night light intensity"
+                    min={10}
+                    max={100}
+                    step={5}
+                    value={nightLightIntensity}
+                    onChange={(e) => setNightLight(true, parseInt(e.target.value, 10))}
+                    className="flex-1"
+                    style={{ accentColor: 'var(--stat-accent-amber-bright)' }}
+                  />
+                  <span className="text-[10px] w-8 text-right" style={{ color: 'var(--text-muted)' }}>
+                    {nightLightIntensity}%
+                  </span>
+                </div>
+              )}
 
               <div className="mt-3 pt-2" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <button
