@@ -704,7 +704,7 @@ export default function NavMapView({
     const pin: DroppedPin = {
       lat: position.latitude,
       lng: position.longitude,
-      label: `Pin ${new Date().toLocaleTimeString()}`,
+      label: `Pin ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })}`,
       color: palette[Math.floor(Math.random() * palette.length)],
       created_at: new Date().toISOString(),
     };

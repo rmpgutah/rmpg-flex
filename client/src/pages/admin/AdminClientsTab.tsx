@@ -666,7 +666,7 @@ export default function AdminClientsTab({
                           <td className="text-xs font-mono font-bold text-rmpg-300">{toDisplayLabel(inc.priority)}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{inc.location_address}</td>
-                          <td className="text-[10px] text-rmpg-400">{inc.created_at ? parseTimestamp(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
+                          <td className="text-[10px] text-rmpg-400">{inc.created_at ? parseTimestamp(inc.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -701,7 +701,7 @@ export default function AdminClientsTab({
                           <td className="text-xs font-mono font-bold text-rmpg-300">{toDisplayLabel(call.priority)}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(call.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{formatAddressDisplay(call.location)}</td>
-                          <td className="text-[10px] text-rmpg-400">{call.created_at ? parseTimestamp(call.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
+                          <td className="text-[10px] text-rmpg-400">{call.created_at ? parseTimestamp(call.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</td>
                         </tr>
                       ))}
                     </tbody>

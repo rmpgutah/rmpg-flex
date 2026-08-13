@@ -88,14 +88,14 @@ function fmtHM(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function fmtDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(t)) return '—';
-  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 function fmtDurSec(s: number | null | undefined): string | null {

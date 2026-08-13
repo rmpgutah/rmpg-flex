@@ -274,7 +274,7 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const time = useMemo(() => {
-    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
+    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
   // The list is correctly ordered DESC by full transmitted_at, but with
   // only a bare HH:MM:SS shown, rows from different days look randomly

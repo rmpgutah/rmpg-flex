@@ -78,7 +78,7 @@ export default function RecordingsTab() {
           <ul className="divide-y" style={{ borderColor: 'var(--rt-border)' }}>
             {recordings.map((r) => {
               const time = (() => {
-                try { return parseTimestamp(r.transmitted_at).toLocaleString('en-US', { hour12: false }); }
+                try { return parseTimestamp(r.transmitted_at).toLocaleString('en-US', { timeZone: 'America/Denver', hour12: false }); }
                 catch { return r.transmitted_at; }
               })();
               return (

@@ -27,7 +27,7 @@ function fmtDur(ms: number): string {
 
 function fmtClock(t: number): string {
   try {
-    return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch {
     return '—';
   }
@@ -126,7 +126,7 @@ const SPEED_MULTIPLIERS = [1, 2, 4, 8] as const;
 
 function fmtReplayClock(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return parseTimestamp(iso).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch {
     return '—';
   }

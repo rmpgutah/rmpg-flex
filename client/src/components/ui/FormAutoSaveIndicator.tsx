@@ -31,7 +31,7 @@ export default function FormAutoSaveIndicator({ status, lastSaved, className = '
       </span>
       {status === 'saved' && lastSaved && (
         <span className="text-[9px] text-fg-muted font-mono ml-1">
-          {lastSaved.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          {lastSaved.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
         </span>
       )}
     </div>

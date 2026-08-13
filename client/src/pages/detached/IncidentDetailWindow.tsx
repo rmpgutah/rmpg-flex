@@ -244,7 +244,7 @@ export default function IncidentDetailWindow() {
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Created</label>
-            <p className="text-rmpg-200">{incident.created_at ? parseTimestamp(incident.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
+            <p className="text-rmpg-200">{incident.created_at ? parseTimestamp(incident.created_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
           </div>
         </div>
       </div>

@@ -37,7 +37,7 @@ const EMPTY_PIP_FORM = { officer_id: '', start_date: '', end_date: '', reason: '
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 export default function PIPsTab({ userRole }: { userRole: string }) {

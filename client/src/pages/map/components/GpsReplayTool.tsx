@@ -143,7 +143,7 @@ export default function GpsReplayTool({ map, onClose }: Props) {
   };
 
   const fmtTime = (ts: string) => {
-    try { return parseTimestamp(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); } catch { return ts; }
+    try { return parseTimestamp(ts).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' }); } catch { return ts; }
   };
 
   return (

@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),
+  getCpuUsage: () => ipcRenderer.invoke('sys:cpu-usage'),
   getAppLogs: (lines) => ipcRenderer.invoke('sys:logs', lines),
   openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
   exportDiagnosticsBundle: () => ipcRenderer.invoke('sys:export-diagnostics'),

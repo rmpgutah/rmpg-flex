@@ -58,6 +58,7 @@ function formatTime(dateStr: string, showDate: boolean): string {
   if (isNaN(date.getTime())) return '--:--:--';
   if (showDate) {
     return date.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -67,6 +68,7 @@ function formatTime(dateStr: string, showDate: boolean): string {
     });
   }
   return date.toLocaleTimeString('en-US', {
+    timeZone: 'America/Denver',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
