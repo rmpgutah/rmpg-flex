@@ -119,12 +119,13 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (msgDate.getTime() === today.getTime()) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  if (now.getTime() - msgDate.getTime() < 7 * 86400000) return d.toLocaleDateString('en-US', { weekday: 'short' });
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const tz = 'America/Denver';
+  // Compare day boundaries in MT so "today" is correct regardless of machine timezone
+  const todayMT = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const msgMT   = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  if (msgMT === todayMT) return d.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true });
+  if (Date.now() - d.getTime() < 7 * 86400000) return d.toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' });
+  return d.toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
 }
 
 function formatSize(bytes: number): string {
@@ -721,7 +722,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
             </div>
             <div className="text-[9px] ml-[18px]">
               <span className={email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : 'text-rmpg-500'}>
-                {email.status === 'pending' ? `Sends ${scheduledDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` :
+                {email.status === 'pending' ? `Sends ${scheduledDate.toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` :
                  email.status === 'sent' ? 'Sent' : 'Failed'}
               </span>
             </div>
@@ -888,7 +889,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
 
   const footer = doc.createElement('div');
   footer.className = 'footer';
-  footer.textContent = `Printed from RMPG Flex — ${new Date().toLocaleString()}`;
+  footer.textContent = `Printed from RMPG Flex — ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`;
   doc.body.appendChild(footer);
 
   setTimeout(() => { printWindow.print(); }, 500);
@@ -2739,7 +2740,7 @@ export default function EmailPage() {
     try {
       await apiFetch(`/email/messages/${selectedMessage.id}/snooze`, { method: 'POST', body: JSON.stringify({ until: untilIso }) });
       removeFromList(selectedMessage.id);
-      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
       debouncedFolderRefresh();
     } catch { showSnackbar('Failed to snooze', 'error'); }
   };
@@ -3490,7 +3491,7 @@ export default function EmailPage() {
                         <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                       {fullMessage.toAddresses.length > 0 && (
                         <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">
