@@ -30,7 +30,7 @@ function timeAgo(dateStr: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return parseTimestamp(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver' });
 }
 
 function transportLabel(transports: string[]): string {
@@ -219,7 +219,7 @@ export default function SecurityKeyManager() {
 
               <div className="text-right flex-shrink-0">
                 <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
-                  Added {cred.createdAt ? parseTimestamp(cred.createdAt).toLocaleDateString() : 'N/A'}
+                  Added {cred.createdAt ? parseTimestamp(cred.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
                 </div>
               </div>
 

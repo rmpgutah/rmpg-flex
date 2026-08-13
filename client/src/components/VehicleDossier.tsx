@@ -30,7 +30,8 @@ interface DossierResponse {
 
 function fmtDate(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleString([], {
+    return parseTimestamp(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'numeric', day: 'numeric', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });

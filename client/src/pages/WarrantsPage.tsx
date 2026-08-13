@@ -843,13 +843,13 @@ export default function WarrantsPage() {
       expires_at: '',
       entered_by_name: '',
       created_at: w.issue_date || new Date().toISOString(),
-      notes: `Source: ${w._source === 'utah' ? 'Utah State Warrants API' : w._source === 'scraped' ? `Multi-Source (${w.source_key || 'scraped'})` : 'Local System'}\nSearch Date: ${new Date().toLocaleString()}`,
+      notes: `Source: ${w._source === 'utah' ? 'Utah State Warrants API' : w._source === 'scraped' ? `Multi-Source (${w.source_key || 'scraped'})` : 'Local System'}\nSearch Date: ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`,
       // Extended fields for source/verification
       county: w.city || '',
       case_number: w.case_id || '',
       filing_date: w.issue_date || '',
       data_source: w._source === 'utah' ? 'Utah State Warrants API (warrants.utah.gov)' : w._source === 'scraped' ? `Multi-Source Database (${w.source_key || 'scraped'})` : 'RMPG Local System',
-      search_date: new Date().toLocaleString(),
+      search_date: new Date().toLocaleString('en-US', { timeZone: 'America/Denver' }),
     };
     try {
       await downloadRecordPdf('warrant', pdfData, pdfData.warrant_number);

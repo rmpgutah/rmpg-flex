@@ -1556,7 +1556,7 @@ export default function LoginPage() {
               <div className="px-3 py-2">
                 <InfoRow label="Application" value="RMPG Flex CAD/RMS" />
                 <InfoRow label="Version" value={`v${APP_VERSION}`} />
-                {BUILD_TIME && <InfoRow label="Build" value={new Date(BUILD_TIME).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} />}
+                {BUILD_TIME && <InfoRow label="Build" value={new Date(BUILD_TIME).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' })} />}
                 <InfoRow label="Operator" value="Rocky Mountain Protective Group" />
                 <InfoRow label="Jurisdiction" value="Salt Lake City, UT" />
                 <div className="flex items-center justify-between py-[3px]">

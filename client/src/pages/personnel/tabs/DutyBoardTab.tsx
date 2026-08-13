@@ -56,7 +56,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
 
   const onDutyCount = officers.filter((o) => o.status === 'on_duty').length;
   const offDutyCount = officers.filter((o) => o.status === 'off_duty').length;
-  const lastUpdated = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const lastUpdated = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   function getElapsedHours(clockIn: string): string {
     const diff = Date.now() - parseTimestamp(clockIn).getTime();

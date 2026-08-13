@@ -42,6 +42,7 @@ function useCadClock(): string {
     return () => clearInterval(iv);
   }, []);
   return now.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     weekday: 'short', month: 'short', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });

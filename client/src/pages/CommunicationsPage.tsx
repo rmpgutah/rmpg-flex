@@ -1139,7 +1139,7 @@ export default function CommunicationsPage() {
           )}
           <span className="text-rmpg-400 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
-            {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+            {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false })}
           </span>
         </div>
       </div>

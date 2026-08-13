@@ -35,6 +35,7 @@ function formatTimestamp(dateStr: string): string {
   const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return '--:--:--';
   return date.toLocaleTimeString('en-US', {
+    timeZone: 'America/Denver',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',

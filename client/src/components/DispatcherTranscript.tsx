@@ -20,7 +20,7 @@ const SEV_COLOR: Record<AlertSeverity, string> = {
 
 function fmtTime(ms: number): string {
   const d = new Date(ms);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 export default function DispatcherTranscript() {

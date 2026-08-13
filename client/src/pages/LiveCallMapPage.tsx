@@ -435,7 +435,7 @@ export default function LiveCallMapPage() {
       {/* Last updated */}
       {lastUpdated && (
         <div className="px-4 py-1 text-[9px] text-[color:var(--text-secondary)] bg-[color:var(--surface-base)] shrink-0 border-b border-[color:var(--border-subtle,rgba(255,255,255,0.04))]">
-          Last updated: {lastUpdated.toLocaleTimeString()} · Auto-refresh every 15s
+          Last updated: {lastUpdated.toLocaleTimeString('en-US', { timeZone: 'America/Denver' })} · Auto-refresh every 15s
           {soundEnabled && <span className="ml-2 text-[color:var(--sev-critical)]">· Sound alert active for new P1</span>}
         </div>
       )}

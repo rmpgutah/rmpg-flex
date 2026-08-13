@@ -13,8 +13,6 @@ interface DesktopKeyboardShortcutsProps {
   onToggleLauncher: () => void;
   onPrevVirtualDesktop: () => void;
   onNextVirtualDesktop: () => void;
-  onSnapLayouts: () => void;
-  onShortcutReference: () => void;
 }
 
 export default function DesktopKeyboardShortcuts({
@@ -22,8 +20,6 @@ export default function DesktopKeyboardShortcuts({
   onToggleLauncher,
   onPrevVirtualDesktop,
   onNextVirtualDesktop,
-  onSnapLayouts,
-  onShortcutReference,
 }: DesktopKeyboardShortcutsProps) {
   const { minimizeAll, restoreAll, focusedId, windows, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical } = useDesktopWindows();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
@@ -76,20 +72,6 @@ export default function DesktopKeyboardShortcuts({
       if (meta && ctrl && key === 'ArrowRight') {
         e.preventDefault();
         onNextVirtualDesktop();
-        return;
-      }
-
-      // Win+Z — Snap layouts overlay
-      if (meta && key === 'z' && !ctrl && !alt && !shift) {
-        e.preventDefault();
-        onSnapLayouts();
-        return;
-      }
-
-      // Win+/ — Keyboard shortcut reference
-      if (meta && key === '/' && !ctrl && !alt && !shift) {
-        e.preventDefault();
-        onShortcutReference();
         return;
       }
 
@@ -171,7 +153,7 @@ export default function DesktopKeyboardShortcuts({
 
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onSnapLayouts, onShortcutReference, taskbarH]);
+  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, taskbarH]);
 
   return null;
 }

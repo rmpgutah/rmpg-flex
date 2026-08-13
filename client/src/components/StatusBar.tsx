@@ -124,10 +124,11 @@ function StatusBar({
       {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
         <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
-          {now.toLocaleTimeString('en-US', { hour12: false })}
+          {now.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false })}
         </span>
         <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>
           {now.toLocaleDateString('en-US', {
+            timeZone: 'America/Denver',
             weekday: 'short',
             month: 'short',
             day: 'numeric',

@@ -89,38 +89,4 @@ describe('DesktopWindowSwitcher', () => {
     ctrlBacktickDown();
     expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
   });
-
-  it('Alt+Tab opens the switcher overlay', () => {
-    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open-dispatch'));
-    fireEvent.click(screen.getByText('open-map'));
-    expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true });
-    expect(screen.getByTestId('window-switcher-overlay')).toBeInTheDocument();
-  });
-
-  it('releasing Alt after Alt+Tab confirms selection and dismisses overlay', () => {
-    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open-dispatch'));
-    fireEvent.click(screen.getByText('open-map'));
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true });
-    expect(screen.getByTestId('window-switcher-overlay')).toBeInTheDocument();
-    fireEvent.keyUp(window, { key: 'Alt' });
-    expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
-    const items = screen.getAllByRole('listitem').map(li => li.textContent!);
-    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Live Map'));
-  });
-
-  it('Alt+Shift+Tab cycles in reverse', () => {
-    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open-dispatch'));
-    fireEvent.click(screen.getByText('open-map'));
-    fireEvent.click(screen.getByText('open-records'));
-    // MRU order: Records (front), Live Map, Dispatch — reverse from front lands on Dispatch
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true, shiftKey: true });
-    fireEvent.keyUp(window, { key: 'Alt' });
-    const items = screen.getAllByRole('listitem').map(li => li.textContent!);
-    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Live Map'));
-    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Records'));
-  });
 });

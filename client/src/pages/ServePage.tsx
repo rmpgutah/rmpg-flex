@@ -379,7 +379,7 @@ export default function ServePage() {
               })()
             : '',
           time: at && !isNaN(at.getTime())
-            ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+            ? at.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false })
             : '',
           result: resultText,
           notes: a.notes || '',

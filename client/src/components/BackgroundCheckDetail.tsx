@@ -110,7 +110,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                 <div className="flex items-center gap-4 text-[10px] text-rmpg-400">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    Searched: {data.search?.created_at ? parseTimestamp(data.search.created_at).toLocaleString() : 'N/A'}
+                    Searched: {data.search?.created_at ? parseTimestamp(data.search.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
                   </span>
                   <span>Search ID: #{searchId}</span>
                   <span>{records.length} record(s) found</span>

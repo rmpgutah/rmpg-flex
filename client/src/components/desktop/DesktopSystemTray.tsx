@@ -1,16 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, RefreshCw } from 'lucide-react';
+import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, RefreshCw, Cpu } from 'lucide-react';
 
 interface BatteryStatus {
   charging: boolean;
   percent: number;
-}
-
-interface SyncStatus {
-  queueDepth?: number;
-  pending?: number; // legacy alias — some versions returned this name
-  isSyncing?: boolean;
-  lastPush?: string | null;
 }
 
 type ConnectivityState = 'online' | 'offline' | 'degraded';
@@ -67,8 +60,10 @@ function useTrayPolling() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const present = await el.checkGpsHardwarePresent();
-        if (!cancelled) setGpsLocked(!!present);
+        const result = await el.checkGpsHardwarePresent();
+        // classifyGpsPresence returns { present, portBusy } — read the field
+        const locked = typeof result === 'boolean' ? result : !!result?.present;
+        if (!cancelled) setGpsLocked(locked);
       } catch { /* silent */ }
     };
     poll();
@@ -76,15 +71,17 @@ function useTrayPolling() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // Sync queue: read from Tauri offline state
+  // Sync queue: preload exposes `getOfflineWriteQueueSize` (returns number),
+  // not `getSyncStatus` — using the wrong name made the guard always true,
+  // causing an immediate early return and a permanently-zero counter.
   useEffect(() => {
     const el = (window as any).electron;
-    if (!el?.isElectron || !el?.getSyncStatus) return;
+    if (!el?.isElectron || !el?.getOfflineWriteQueueSize) return;
     let cancelled = false;
     const poll = async () => {
       try {
-        const s: SyncStatus = await el.getSyncStatus();
-        if (!cancelled) setSyncPending(s?.queueDepth ?? s?.pending ?? 0);
+        const count: number = await el.getOfflineWriteQueueSize();
+        if (!cancelled) setSyncPending(count ?? 0);
       } catch { /* silent */ }
     };
     poll();
@@ -92,7 +89,24 @@ function useTrayPolling() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  return { battery, connectivity, gpsLocked, syncPending };
+  // CPU usage: sample every 15s (getCpuUsage itself takes 100ms, so keep interval > 1s)
+  const [cpuPercent, setCpuPercent] = useState<number | null>(null);
+  useEffect(() => {
+    const el = (window as any).electron;
+    if (!el?.isElectron || !el?.getCpuUsage) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const pct: number = await el.getCpuUsage();
+        if (!cancelled) setCpuPercent(pct);
+      } catch { /* silent */ }
+    };
+    poll();
+    const id = setInterval(poll, 15_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  return { battery, connectivity, gpsLocked, syncPending, cpuPercent };
 }
 
 function BatteryIcon({ battery }: { battery: BatteryStatus }) {
@@ -114,7 +128,7 @@ export interface DesktopSystemTrayProps {
 }
 
 export default function DesktopSystemTray({ className }: DesktopSystemTrayProps) {
-  const { battery, connectivity, gpsLocked, syncPending } = useTrayPolling();
+  const { battery, connectivity, gpsLocked, syncPending, cpuPercent } = useTrayPolling();
 
   const isElectron = !!(window as any).electron?.isElectron;
   if (!isElectron) return null;
@@ -144,6 +158,22 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
           style={{ color: '#4ade80' }}
           aria-label="GPS locked"
         />
+      )}
+
+      {/* CPU usage — only shown when elevated (>70%) to avoid visual clutter */}
+      {cpuPercent != null && cpuPercent >= 70 && (
+        <div
+          title={`CPU usage: ${cpuPercent}%`}
+          style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'default' }}
+        >
+          <Cpu
+            className="w-3 h-3"
+            style={{ color: cpuPercent >= 90 ? 'var(--sev-critical, #ef4444)' : 'var(--sev-medium, #f59e0b)' }}
+          />
+          <span style={{ fontSize: 9, color: cpuPercent >= 90 ? 'var(--sev-critical, #ef4444)' : 'var(--sev-medium, #f59e0b)', fontVariantNumeric: 'tabular-nums' }}>
+            {cpuPercent}%
+          </span>
+        </div>
       )}
 
       {/* Network */}

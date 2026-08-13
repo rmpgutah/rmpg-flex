@@ -29,6 +29,7 @@ function isNightShift(shiftStart: string): boolean {
 function formatShiftStart(shiftStart: string): string {
   if (!shiftStart) return '-';
   return parseTimestamp(shiftStart).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -41,6 +42,7 @@ function formatShiftStart(shiftStart: string): string {
 function formatShiftEnd(shiftEnd: string): string {
   if (!shiftEnd) return '-';
   return parseTimestamp(shiftEnd).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,

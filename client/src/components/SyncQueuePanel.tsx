@@ -10,17 +10,12 @@ import { withAlpha } from '../utils/withAlpha';
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
 interface SyncItem {
-  id: string;
-  type: 'citation' | 'fi_card' | 'evidence' | 'call' | string;
+  id: number;
+  type: string;      // table name (mapped from getSyncQueueDetail's `table` field)
   created_at: string;
   retry_count: number;
   status: 'pending' | 'failed' | 'in_progress';
   summary?: string;
-}
-
-interface SyncStatus {
-  pending: number;
-  items?: SyncItem[];
 }
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
@@ -48,11 +43,24 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
   const [items, setItems] = useState<SyncItem[]>([]);
   const [syncing, setSyncing] = useState(false);
 
-  const refresh = useCallback(() => {
-    if (!electron?.getSyncStatus) return;
-    const status: SyncStatus = electron.getSyncStatus();
-    if (status?.items) {
-      setItems(status.items);
+  const refresh = useCallback(async () => {
+    if (!electron?.getSyncQueueDetail) return;
+    try {
+      // getSyncQueueDetail returns { id, table, action, failCount, lastError }[]
+      const raw: { id: number; table: string; action: string; failCount: number; lastError: string | null }[] =
+        await electron.getSyncQueueDetail();
+      if (Array.isArray(raw)) {
+        setItems(raw.map((r) => ({
+          id: r.id,
+          type: r.table,
+          created_at: '',
+          retry_count: r.failCount,
+          status: (r.failCount > 0 ? 'failed' : 'pending') as SyncItem['status'],
+          summary: r.lastError ?? r.action,
+        })));
+      }
+    } catch {
+      // silent — panel is informational
     }
   }, []);
 
@@ -163,7 +171,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
                     {/* Summary / ID */}
                     <span className="text-[11px] text-[#c4d3e0] truncate flex-1">
-                      {item.summary || `#${item.id.slice(0, 8)}`}
+                      {item.summary || `#${item.id}`}
                     </span>
 
                     {/* Retry count */}
@@ -182,10 +190,12 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
                       <span className="led-dot led-green flex-shrink-0" style={{ opacity: 0.5 }} />
                     )}
 
-                    {/* Age */}
-                    <span className="text-[9px] text-[#5a6e80] flex-shrink-0 w-12 text-right">
-                      {formatAge(item.created_at)}
-                    </span>
+                    {/* Age (only shown when created_at is available) */}
+                    {item.created_at && (
+                      <span className="text-[9px] text-[#5a6e80] flex-shrink-0 w-12 text-right">
+                        {formatAge(item.created_at)}
+                      </span>
+                    )}
                   </div>
                 );
               })}

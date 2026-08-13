@@ -49,7 +49,7 @@ function formatDuration(ms: number): string {
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 // Badge for scraper type (legacy vs firecrawl)

@@ -32,13 +32,13 @@ interface MonthGroup {
 const formatMonthLabel = (ym: string): string => {
   const [y, m] = ym.split('-').map(Number);
   if (!y || !m) return ym;
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'long', year: 'numeric' });
 };
 
 const formatDayLabel = (ymd: string): string => {
   const [y, m, d] = ymd.split('-').map(Number);
   if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' });
 };
 
 const formatSize = (bytes: number): string => {

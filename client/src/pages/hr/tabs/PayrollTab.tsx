@@ -105,7 +105,7 @@ function formatCurrency(amount: number): string {
 function formatDate(d: string): string {
   if (!d) return '—';
   const date = parseTimestamp(d);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ─── Component ────────────────────────────────────────────────

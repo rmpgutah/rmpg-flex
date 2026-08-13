@@ -30,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 function formatTime(iso: string): string {
   try {
     const d = parseTimestamp(iso);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   } catch {
     return iso;
   }

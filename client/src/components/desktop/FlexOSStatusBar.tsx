@@ -148,7 +148,7 @@ export default function FlexOSStatusBar() {
       {/* Last-updated timestamp */}
       {lastUpdated && (
         <span style={{ fontSize: 8, color: 'var(--text-muted, #8da0b3)', padding: '0 10px', letterSpacing: '0.04em' }}>
-          {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          {lastUpdated.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </span>
       )}
     </div>

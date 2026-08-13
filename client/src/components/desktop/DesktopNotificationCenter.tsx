@@ -18,9 +18,8 @@ interface Notification {
 }
 
 interface NotifResponse {
-  notifications: Notification[];
-  total: number;
-  unread: number;
+  data: Notification[];
+  pagination: { page: number; per_page: number; total: number; totalPages: number };
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -66,9 +65,10 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
     try {
       const params = new URLSearchParams({ per_page: '50', ...(filter === 'unread' ? { unread: 'true' } : {}) });
       const res = await apiFetch<NotifResponse>(`/notifications?${params}`);
-      setNotifs(res?.notifications ?? []);
-      setTotal(res?.total ?? 0);
-      setUnread(res?.unread ?? 0);
+      const rows = res?.data ?? [];
+      setNotifs(rows);
+      setTotal(res?.pagination?.total ?? rows.length);
+      setUnread(rows.filter(n => !n.is_read).length);
     } catch { /* silent */ }
     setLoading(false);
   }, [filter]);

@@ -1478,7 +1478,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <div className="bg-surface-sunken p-2 text-center">
                 <p className="text-sm font-bold text-rmpg-200 font-mono">
                   {mediaStatus.last_media_sync
-                    ? parseTimestamp(mediaStatus.last_media_sync).toLocaleTimeString()
+                    ? parseTimestamp(mediaStatus.last_media_sync).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })
                     : '—'}
                 </p>
                 <p className="field-label">Last Sync</p>
@@ -1514,7 +1514,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     )}
                     <span className="text-rmpg-500">
                       {dev.last_media_synced_at
-                        ? `Synced ${parseTimestamp(dev.last_media_synced_at).toLocaleString()}`
+                        ? `Synced ${parseTimestamp(dev.last_media_synced_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}`
                         : 'Never synced'}
                     </span>
                   </div>

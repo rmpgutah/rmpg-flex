@@ -121,7 +121,7 @@ export default function PersonnelDashboard({
 
   const fmtTime = (iso: string) => {
     const d = parseTimestamp(iso);
-    return isNaN(d.getTime()) ? '--' : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return isNaN(d.getTime()) ? '--' : d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
   return (

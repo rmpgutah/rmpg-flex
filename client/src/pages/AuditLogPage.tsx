@@ -391,6 +391,7 @@ const AuditLogPage: React.FC = () => {
   const formatTimestamp = (timestamp: string): string => {
     const date = parseTimestamp(timestamp);
     return date.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

@@ -63,11 +63,12 @@ export default function DesktopPanicWidget() {
       await apiFetch('/dispatch/calls', {
         method: 'POST',
         body: JSON.stringify({
-          nature_of_call: 'OFFICER DOWN - EMERGENCY',
+          incident_type: 'officer_down',
           priority: 1,
           status: 'active',
-          address: 'GPS LOCATION',
+          location_address: 'GPS LOCATION',
           notes: 'Activated via FlexOS panic widget',
+          officer_safety_caution: true,
         }),
         headers: { 'Content-Type': 'application/json' },
       } as RequestInit);
@@ -339,6 +340,7 @@ export default function DesktopPanicWidget() {
           lineHeight: 1.3,
         }}>
           Last: {parseTimestamp(lastActivation).toLocaleString('en-US', {
+            timeZone: 'America/Denver',
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

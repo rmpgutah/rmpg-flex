@@ -182,7 +182,7 @@ export default function BodyCameraTab({
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {

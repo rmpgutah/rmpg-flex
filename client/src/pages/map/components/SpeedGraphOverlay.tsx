@@ -166,7 +166,7 @@ function formatTime(isoStr: string): string {
   try {
     const d = parseTimestamp(isoStr);
     if (isNaN(d.getTime())) return '--:--';
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
   } catch {
     return '--:--';
   }

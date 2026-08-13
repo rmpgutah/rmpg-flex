@@ -45,9 +45,13 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
     return () => clearTimeout(t);
   }, [ready]);
 
-  // Notify parent once fade finishes
-  const handleTransitionEnd = () => {
-    if (fading) onFaded();
+  // Notify parent once fade finishes.
+  // Guard on propertyName + target: the child progress bar has a `width`
+  // transition that also bubbles to this handler. If fading is already true
+  // when the width transition ends (~500 ms), onFaded fires before the opacity
+  // animation (~800 ms) completes, causing the splash to disappear mid-fade.
+  const handleTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
+    if (fading && e.propertyName === 'opacity' && e.target === e.currentTarget) onFaded();
   };
 
   return (

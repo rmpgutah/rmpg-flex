@@ -20,7 +20,7 @@ let nextId = 1;
 
 function formatTime(): string {
   const d = new Date();
-  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 const TYPE_COLORS: Record<LogEntry['type'], string> = {

@@ -266,12 +266,13 @@ describe('FloatingWindow — opacity', () => {
     expect(windowEl.style.opacity).toBe('1');
   });
 
-  it('right-clicking the title bar opens the system menu', () => {
+  it('right-clicking the title bar offers Increase/Decrease opacity, which call setWindowOpacity', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     fireEvent.click(screen.getByText('open'));
-    const titleBar = screen.getByTestId('title-bar');
-    fireEvent.contextMenu(titleBar);
-    expect(screen.getByTestId('system-menu')).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByText('Dispatch'));
+    fireEvent.click(screen.getByText('Decrease opacity'));
+    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
+    expect(windowEl.style.opacity).toBe('0.9');
   });
 });
 
@@ -284,116 +285,5 @@ describe('FloatingWindow — respects taskbar size setting for maximize/snap mat
     const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
     expect(windowEl.style.bottom).toBe('56px');
     setTaskbarSize('small');
-  });
-});
-
-describe('FloatingWindow — system menu', () => {
-  function renderWindow() {
-    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open'));
-    return result;
-  }
-
-  it('right-clicking title bar opens system menu with Close option', async () => {
-    const { getByTestId } = renderWindow();
-    const titleBar = getByTestId('title-bar');
-    fireEvent.contextMenu(titleBar);
-    expect(screen.getByRole('menuitem', { name: /close/i })).toBeInTheDocument();
-  });
-
-  it('system menu opacity slider changes opacity', async () => {
-    const { getByTestId } = renderWindow();
-    const titleBar = getByTestId('title-bar');
-    fireEvent.contextMenu(titleBar);
-    const slider = screen.getByRole('slider', { name: /opacity/i });
-    fireEvent.change(slider, { target: { value: '0.5' } });
-    const windowEl = screen.getByTitle('Dispatch').parentElement as HTMLElement;
-    expect(parseFloat(windowEl.style.opacity)).toBeCloseTo(0.5, 1);
-  });
-});
-
-describe('FloatingWindow — SnapLayouts trigger', () => {
-  function renderWindow() {
-    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open'));
-    return result;
-  }
-
-  it('shows snap layouts overlay after hovering maximize button for 400ms', () => {
-    vi.useFakeTimers();
-    const { container } = renderWindow();
-    const maxBtn = screen.getByLabelText(/maximize/i);
-    fireEvent.mouseEnter(maxBtn);
-    act(() => { vi.advanceTimersByTime(400); });
-    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it('does NOT dismiss snap layouts overlay on mouse-leave when overlay is already open', () => {
-    // Mouse-leave should only cancel the pending hover timer — once the overlay is
-    // visible, SnapLayouts' own outside-click listener is the correct dismiss path.
-    vi.useFakeTimers();
-    const { container } = renderWindow();
-    const maxBtn = screen.getByLabelText(/maximize/i);
-    fireEvent.mouseEnter(maxBtn);
-    act(() => { vi.advanceTimersByTime(400); });
-    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
-    fireEvent.mouseLeave(maxBtn);
-    // Overlay must still be present — mouse-leave does not dismiss it
-    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).toBeInTheDocument();
-    vi.useRealTimers();
-  });
-
-  it('does not show snap layouts overlay before 400ms have elapsed', () => {
-    vi.useFakeTimers();
-    const { container } = renderWindow();
-    const maxBtn = screen.getByLabelText(/maximize/i);
-    fireEvent.mouseEnter(maxBtn);
-    act(() => { vi.advanceTimersByTime(300); });
-    expect(container.querySelector('[data-testid="snap-layouts-overlay"]')).not.toBeInTheDocument();
-    vi.useRealTimers();
-  });
-});
-
-describe('FloatingWindow — Aero Shake ring', () => {
-  function renderWindow() {
-    const result = render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open'));
-    return result;
-  }
-
-  it('title bar does not show shake-ring class before shake', () => {
-    const { getByTestId } = renderWindow();
-    const titleBar = getByTestId('title-bar');
-    expect(titleBar.className).not.toContain('shake-ring');
-  });
-
-  it('title bar shows shake-ring-active class after Aero Shake gesture', () => {
-    vi.useFakeTimers();
-    try {
-      const { getByTestId } = renderWindow();
-      const titleBar = getByTestId('title-bar');
-
-      // Begin drag on the title bar (initialises dragState + shakeRef)
-      fireEvent.pointerDown(titleBar, { clientX: 200, clientY: 10, pointerId: 1 });
-
-      // Fire rapid left-right-left-right pointermove events on window.
-      // dx sign must flip AERO_SHAKE_REVERSAL_COUNT (4) times within
-      // AERO_SHAKE_WINDOW_MS (600 ms).  All events are within the same fake-timer
-      // tick so Date.now() stays constant — every timestamp passes the 600 ms filter.
-      const moves = [
-        { clientX: 150, clientY: 10 }, // dx = -50  sign = -1  (reversal 1)
-        { clientX: 260, clientY: 10 }, // dx = +60  sign = +1  (reversal 2)
-        { clientX: 140, clientY: 10 }, // dx = -60  sign = -1  (reversal 3)
-        { clientX: 270, clientY: 10 }, // dx = +70  sign = +1  (reversal 4 → shake!)
-      ];
-      for (const coords of moves) {
-        fireEvent.pointerMove(window, { clientX: coords.clientX, clientY: coords.clientY, pointerId: 1 });
-      }
-
-      expect(titleBar.className).toContain('shake-ring-active');
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

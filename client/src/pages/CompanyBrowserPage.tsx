@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
-import WebCompanyBrowserPage from './WebCompanyBrowserPage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -445,12 +444,6 @@ export default function CompanyBrowserPage() {
 
   const security = securityLabel(activeTab.url);
   const isElectron = !!(window as any).electron?.isElectron;
-
-  // Non-Electron path: delegate to the canvas-based web browser (headless
-  // Chrome session via WebBrowserSessionDO). This replaces the old dead-end
-  // "requires FlexOS desktop app" message and gives web users a fully
-  // functional browser with AEGIS-256X2-level session encryption.
-  if (!isElectron) return <WebCompanyBrowserPage />;
 
   const pinnedTabs = tabs.filter(t => t.pinned);
   const regularTabs = tabs.filter(t => !t.pinned);

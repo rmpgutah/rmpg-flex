@@ -157,7 +157,7 @@ export default function SecurityStatusCard() {
           className="px-3 py-1.5 text-[9px] font-mono"
           style={{ borderTop: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
         >
-          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
+          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
         </div>
       )}
     </div>
@@ -171,7 +171,7 @@ function formatExpiry(dateStr: string): string {
   if (days <= 0) return 'now';
   if (days === 1) return 'tomorrow';
   if (days <= 7) return `in ${days} days`;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 function computeScore(s: SecurityStatus): { label: string; led: string; color: string; warning?: string } {

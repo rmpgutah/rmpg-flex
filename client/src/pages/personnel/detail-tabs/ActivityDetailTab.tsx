@@ -39,6 +39,7 @@ function borderColor(action: string): string {
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
   return parseTimestamp(dateStr).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

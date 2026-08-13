@@ -39,7 +39,6 @@ import FlexOSPowerMenu from '../components/desktop/FlexOSPowerMenu';
 import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
-import DesktopShortcutReference from '../components/desktop/DesktopShortcutReference';
 import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
 
 const GRID_COLS = 6;
@@ -84,23 +83,16 @@ function CadAutoOpen() {
 
 // Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
 // Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
-function DesktopShortcutsInner({ onLock, onSettings, onShortcutReference }: {
-  onLock: () => void;
-  onSettings: () => void;
-  onShortcutReference: () => void;
-}) {
+function DesktopShortcutsInner({ onLock, onSettings }: { onLock: () => void; onSettings: () => void }) {
   const vd = useVirtualDesktop();
   const active = vd?.active ?? 0;
   const setActive = vd?.setActive;
-  const { focusedId, requestSnapLayouts } = useDesktopWindows();
   return (
     <DesktopKeyboardShortcuts
       onLock={onLock}
       onToggleLauncher={onSettings}
       onPrevVirtualDesktop={() => setActive?.(active - 1)}
       onNextVirtualDesktop={() => setActive?.(active + 1)}
-      onSnapLayouts={() => { if (focusedId) requestSnapLayouts(focusedId); }}
-      onShortcutReference={onShortcutReference}
     />
   );
 }
@@ -160,13 +152,17 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
   const [notifCenterOpen, setNotifCenterOpen] = useState(false);
 
-  const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
-    || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
+  const _storedLock = localStorage.getItem('rmpg_desktop_autolock_secs');
+  const _parsedLock = _storedLock !== null ? parseInt(_storedLock, 10) : null;
+  // 0 = "Never" (FlexOSSettings). `0 || fallback` treats null and 0 identically,
+  // silently overriding "Never" with the default — must check === null separately.
+  const autoLockSecs = _parsedLock === 0
+    ? Number.MAX_SAFE_INTEGER
+    : (_parsedLock || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900));
   const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
-  const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -367,13 +363,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               {notes.map(note => (
                 <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
               ))}
-              <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} onRemoveWidget={(id) => handleToggleWidget(id, false)} />
+              <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <CadAutoOpen />
-              <DesktopShortcutsInner
-                onLock={() => setManuallyLocked(true)}
-                onSettings={() => setWidgetSettingsOpen(true)}
-                onShortcutReference={() => setShortcutRefOpen(v => !v)}
-              />
+              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -418,7 +410,6 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
-      {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
     </div>
   );
 }

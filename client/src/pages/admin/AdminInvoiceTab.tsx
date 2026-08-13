@@ -20,7 +20,7 @@ import { importWithRetry } from '../../utils/importWithRetry';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
-  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
 }
 
 // ============================================================

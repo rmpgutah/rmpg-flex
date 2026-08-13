@@ -37,7 +37,7 @@ interface ElectronAPI {
   pausePrintJob?: (id: string) => Promise<void>;
   resumePrintJob?: (id: string) => Promise<void>;
   clearCompletedPrintJobs?: () => Promise<void>;
-  listPrinters?: () => Promise<string[]>;
+  getPrinters?: () => Promise<Array<{ name: string; isDefault: boolean }>>;
   // Body camera
   getBodyCamStatus?: () => Promise<{ recording: boolean; duration?: number; battery?: number; storage_remaining_gb?: number; device_id?: string } | null>;
   startBodyCamRecording?: () => Promise<void>;
@@ -79,6 +79,10 @@ export default function UpdateBanner() {
         devLog(`[UPDATE] Downloading v${data.version}... ${data.percent || 0}%`);
       } else if (data.status === 'ready') {
         devLog(`[UPDATE] v${data.version} ready — will install on next quit`);
+        // Notify DesktopSystemContext so the update banner becomes visible.
+        // DesktopSystemContext listens for this CustomEvent on window; without
+        // this dispatch, updateAvailable is never set and the banner never shows.
+        window.dispatchEvent(new CustomEvent('flexos:update-available', { detail: { version: data.version } }));
       } else if (data.status === 'error') {
         devWarn('[UPDATE] Check failed:', data.message);
       }

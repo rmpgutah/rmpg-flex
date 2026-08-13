@@ -13,9 +13,9 @@
 // `system` is the effective flat map of the system_settings table
 // (value ?? default_value) — the org-wide config edited in Admin →
 // Console Settings. Every authenticated client receives it so it can
-// apply branding/display/localization/report/fleet settings via
-// typed hooks (e.g. useFleetThresholds in useSystemSettings.ts).
-// Before this, Console Settings wrote 458 rows that nothing read.
+// actually APPLY branding/display/localization/report settings
+// (SystemSettingsProvider on the client). Before this, Console Settings
+// wrote 458 rows that nothing read.
 //
 // Tables created in migrations/0045_settings_sync.sql + 0049/0050 (system_settings).
 // ============================================================

@@ -29,7 +29,7 @@ function todayIso(): string {
 function formatTime(iso: string): string {
   try {
     return parseTimestamp(iso).toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {
     return iso;

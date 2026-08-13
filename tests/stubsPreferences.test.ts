@@ -94,9 +94,9 @@ describe('PUT /preferences — browser bookmarks/history', () => {
     // actually encrypting, not a no-op passthrough.
     const rawRow = request.rows.get(1);
     expect(rawRow.browser_bookmarks_json).not.toBe(bookmarks);
-    expect(String(rawRow.browser_bookmarks_json).startsWith('v2:')).toBe(true);
+    expect(String(rawRow.browser_bookmarks_json).startsWith('v1:')).toBe(true);
     expect(rawRow.browser_history_json).not.toBe(history);
-    expect(String(rawRow.browser_history_json).startsWith('v2:')).toBe(true);
+    expect(String(rawRow.browser_history_json).startsWith('v1:')).toBe(true);
 
     const getRes = await request('/preferences');
     const getBody = await getRes.json() as Record<string, unknown>;

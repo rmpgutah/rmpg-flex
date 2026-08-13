@@ -21,7 +21,7 @@ interface ElectronPrint {
   pausePrintJob?: (id: string) => void;
   resumePrintJob?: (id: string) => void;
   clearCompletedPrintJobs?: () => void;
-  listPrinters?: () => string[];
+  getPrinters?: () => Promise<Array<{ name: string; isDefault: boolean }>>;
 }
 
 function getElectron(): ElectronPrint | undefined {
@@ -79,8 +79,11 @@ export default function PrintQueuePage() {
     }
   }, [electron]);
 
-  const loadPrinters = useCallback(() => {
-    const list = electron?.listPrinters?.() ?? [];
+  const loadPrinters = useCallback(async () => {
+    // preload exposes `getPrinters` (not `listPrinters`) and it returns a
+    // Promise<{name:string,isDefault:boolean}[]> via ipcRenderer.invoke.
+    const raw = await electron?.getPrinters?.() ?? [];
+    const list = Array.isArray(raw) ? raw.map((p: { name: string }) => p.name) : [];
     setPrinters(list);
     if (list.length > 0 && !defaultPrinter) {
       setDefaultPrinter(list[0]);
@@ -156,7 +159,7 @@ export default function PrintQueuePage() {
         <Printer style={{ width: 14, height: 14, color: 'var(--brand-400)', flexShrink: 0 }} />
         <span style={{ ...LABEL9, fontSize: 10, flexGrow: 1 }}>PRINT QUEUE</span>
         <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-          {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {lastRefresh.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
         </span>
         <button
           type="button"

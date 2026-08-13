@@ -811,7 +811,7 @@ const PatrolPage: React.FC = () => {
 
   const formatDateTime = (dateString: string) => {
     return parseTimestamp(dateString).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
+      timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
   };

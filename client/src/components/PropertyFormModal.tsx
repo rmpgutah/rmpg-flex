@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Building2, MapPin, Shield, Key, Wrench, FileWarning, FileText, Printer } from 'lucide-react';
-import PrintRecordButton from './PrintRecordButton';
+import { Building2, MapPin, Shield, Key, Wrench, FileWarning, FileText } from 'lucide-react';
 import FormModal from './FormModal';
 import FormSection from './records/FormSection';
 import FormField from './records/FormField';
@@ -890,20 +889,6 @@ export default function PropertyFormModal({
               <ParcelDetailDrawer parcelNumber={(form as any).parcel_number} />
             </div>
           )}
-        </FormSection>
-      )}
-
-      {recordSaved && editingProperty && (
-        <FormSection title="Print Record" icon={Printer}>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <PrintRecordButton
-              recordType="property"
-              recordData={editingProperty}
-              identifier={String(editingProperty.id)}
-              entityType="property"
-              entityId={editingProperty.id}
-            />
-          </div>
         </FormSection>
       )}
     </FormModal>

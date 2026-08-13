@@ -127,6 +127,7 @@ export default function DashCameraTab({
   function formatDateTime(dateStr?: string): string {
     if (!dateStr) return '-';
     return parseTimestamp(dateStr).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -135,6 +136,7 @@ export default function DashCameraTab({
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return '-';
     return parseTimestamp(dateStr).toLocaleDateString('en-US', {
+      timeZone: 'America/Denver',
       year: 'numeric', month: 'short', day: 'numeric',
     });
   }

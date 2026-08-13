@@ -112,7 +112,7 @@ function LogRow({ entry }: LogRowProps) {
               </>
             )}
             <span className="text-fg-secondary">Timestamp</span>
-            <span className="text-rmpg-200">{parseTimestamp(entry.created_at).toLocaleString()}</span>
+            <span className="text-rmpg-200">{parseTimestamp(entry.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</span>
           </div>
           {entry.details !== undefined && entry.details !== null && (
             <pre className="bg-surface-sunken rounded-[2px] p-2 text-[10px] font-mono text-rmpg-200 overflow-x-auto whitespace-pre-wrap break-all">
