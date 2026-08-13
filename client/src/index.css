@@ -10617,3 +10617,13 @@ td.sparkline-cell {
     text-decoration: none !important;
   }
 }
+
+/* Aero Shake visual feedback — title bar ring pulse */
+@keyframes shake-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--brand-400-rgb, 127 140 158), 0.8); }
+  50%  { box-shadow: 0 0 0 8px rgba(var(--brand-400-rgb, 127 140 158), 0.3); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--brand-400-rgb, 127 140 158), 0); }
+}
+.shake-ring-active {
+  animation: shake-ring 300ms ease-out forwards;
+}

@@ -6,6 +6,13 @@ interface BatteryStatus {
   percent: number;
 }
 
+interface SyncStatus {
+  queueDepth?: number;
+  pending?: number; // legacy alias — some versions returned this name
+  isSyncing?: boolean;
+  lastPush?: string | null;
+}
+
 type ConnectivityState = 'online' | 'offline' | 'degraded';
 
 function useTrayPolling() {
@@ -60,10 +67,8 @@ function useTrayPolling() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const result = await el.checkGpsHardwarePresent();
-        // classifyGpsPresence returns { present, portBusy } — read the field
-        const locked = typeof result === 'boolean' ? result : !!result?.present;
-        if (!cancelled) setGpsLocked(locked);
+        const present = await el.checkGpsHardwarePresent();
+        if (!cancelled) setGpsLocked(!!present);
       } catch { /* silent */ }
     };
     poll();
@@ -80,8 +85,8 @@ function useTrayPolling() {
     let cancelled = false;
     const poll = async () => {
       try {
-        const count: number = await el.getOfflineWriteQueueSize();
-        if (!cancelled) setSyncPending(count ?? 0);
+        const s: SyncStatus = await el.getSyncStatus();
+        if (!cancelled) setSyncPending(s?.queueDepth ?? s?.pending ?? 0);
       } catch { /* silent */ }
     };
     poll();
