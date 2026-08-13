@@ -159,7 +159,7 @@ export default function PrintQueuePage() {
         <Printer style={{ width: 14, height: 14, color: 'var(--brand-400)', flexShrink: 0 }} />
         <span style={{ ...LABEL9, fontSize: 10, flexGrow: 1 }}>PRINT QUEUE</span>
         <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-          {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {lastRefresh.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
         </span>
         <button
           type="button"

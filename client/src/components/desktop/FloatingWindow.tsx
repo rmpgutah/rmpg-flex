@@ -279,8 +279,8 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     >
       <ContextMenu
         items={[
-          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) + 0.1) },
-          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, (win.opacity ?? 1) - 0.1) },
+          { label: 'Increase opacity', onClick: () => setWindowOpacity(win.id, Math.min(1, Math.round(((win.opacity ?? 1) + 0.1) * 10) / 10)) },
+          { label: 'Decrease opacity', onClick: () => setWindowOpacity(win.id, Math.max(0.1, Math.round(((win.opacity ?? 1) - 0.1) * 10) / 10)) },
         ]}
       >
       <div

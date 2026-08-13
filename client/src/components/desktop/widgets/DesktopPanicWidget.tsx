@@ -340,6 +340,7 @@ export default function DesktopPanicWidget() {
           lineHeight: 1.3,
         }}>
           Last: {parseTimestamp(lastActivation).toLocaleString('en-US', {
+            timeZone: 'America/Denver',
             month: 'short',
             day: 'numeric',
             hour: '2-digit',

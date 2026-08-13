@@ -57,6 +57,7 @@ function formatBps(bps: number): string {
 function fmtTimestamp(iso: string): string {
   try {
     return parseTimestamp(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true,
     });
