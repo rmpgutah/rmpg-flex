@@ -454,6 +454,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             isAdmin={isAdmin}
           />
         )}
+        {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
+        {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
@@ -472,11 +474,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
-      {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
       {clipboardOpen && <DesktopClipboard onClose={() => setClipboardOpen(false)} />}
       {snippingOpen && <DesktopSnippingTool onClose={() => setSnippingOpen(false)} />}
       {calendarOpen && <DesktopCalendar onClose={() => setCalendarOpen(false)} />}
-      {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
       {sysPrefOpen && (
         <DesktopSystemPreferences
           widgets={widgets} onToggleWidget={handleToggleWidget}
