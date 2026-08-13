@@ -2058,6 +2058,18 @@ export default function EmailPage() {
     }
   };
 
+  const handleDisconnectMailbox = async () => {
+    if (!window.confirm('Disconnect your Microsoft 365 mailbox? You can reconnect at any time.')) return;
+    try {
+      await apiFetch('/email/connect', { method: 'DELETE' });
+      setConnectStatus({ connected: false, mailbox: null });
+      setMessages([]);
+      setFolders([]);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to disconnect mailbox', 'error');
+    }
+  };
+
   // ─── URL deep-link contract ──────────────────────────────────────────
   // /email?folder=<name>       — switch to that folder on mount (well-known
   //                              keys like "inbox", "sentitems", "drafts",
@@ -3147,6 +3159,11 @@ export default function EmailPage() {
             <button type="button" onClick={() => setShowAutoReply(true)}
               className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
               <CalendarClock className="w-3 h-3" /> Automatic replies
+            </button>
+            <button type="button" onClick={handleDisconnectMailbox}
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-red-400 transition-colors py-0.5"
+              aria-label="Disconnect Microsoft 365 mailbox">
+              <X className="w-3 h-3" /> Disconnect mailbox
             </button>
             <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
               <div>Ctrl+N New &middot; Ctrl+R Reply</div>
