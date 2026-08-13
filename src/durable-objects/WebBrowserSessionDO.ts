@@ -48,7 +48,7 @@ interface WebBrowserEnv {
 
 const FRAME_INTERVAL_MS = 250;
 const AUTH_TIMEOUT_MS = 10_000;
-const JPEG_QUALITY = 35;
+const JPEG_QUALITY = 55;
 
 export class WebBrowserSessionDO {
   state: DurableObjectState;
@@ -155,6 +155,8 @@ export class WebBrowserSessionDO {
         await this.page.goto(msg.url, { waitUntil: 'domcontentloaded', timeout: 15_000 });
         this.send({ type: 'url_changed', url: this.page.url() });
         this.send({ type: 'title_changed', title: await this.page.title() });
+        this.lastFrameHash = ''; // force send even if page looks same as before
+        await this.captureFrame();
       } catch (err) {
         this.send(shapeErrorMessage(err instanceof Error ? err.message : 'Navigation failed'));
       } finally {
@@ -169,6 +171,8 @@ export class WebBrowserSessionDO {
         await (this.page as any).goBack({ waitUntil: 'domcontentloaded', timeout: 15_000 });
         this.send({ type: 'url_changed', url: this.page.url() });
         this.page.title().then(t => this.send({ type: 'title_changed', title: t })).catch(() => {});
+        this.lastFrameHash = '';
+        this.captureFrame().catch(() => {});
       } catch { /* no history */ } finally { this.send({ type: 'loading', loading: false }); }
       return;
     }
