@@ -132,17 +132,24 @@ describe('DesktopIconGrid — v1 launcher behavior (restored coverage)', () => {
     navigateSpy.mockClear();
   });
 
-  it('clicking a windowable icon opens an in-page window, not SPA navigation', () => {
+  it('double-clicking a windowable icon opens an in-page window, not SPA navigation', () => {
     const { getWindows } = renderRestoredGrid();
-    fireEvent.click(screen.getByText('Dispatch Console'));
+    fireEvent.dblClick(screen.getByText('Dispatch Console'));
     expect(getWindows().length).toBe(1);
     expect(getWindows()[0].path).toBe('/dispatch');
     expect(navigateSpy).not.toHaveBeenCalled();
   });
 
-  it('clicking a non-eligible icon does not open a window', () => {
+  it('single-clicking a windowable icon only selects it — does not open a window', () => {
     const { getWindows } = renderRestoredGrid();
-    fireEvent.click(screen.getByText('Impound'));
+    fireEvent.click(screen.getByText('Dispatch Console'));
+    expect(getWindows().length).toBe(0);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('double-clicking a non-eligible icon does not open a window but navigates', () => {
+    const { getWindows } = renderRestoredGrid();
+    fireEvent.dblClick(screen.getByText('Impound'));
     expect(getWindows().length).toBe(0);
     expect(navigateSpy).toHaveBeenCalledWith('/impound');
   });
