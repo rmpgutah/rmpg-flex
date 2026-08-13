@@ -16,4 +16,24 @@ describe('desktopWallpapers', () => {
       expect(w.background).not.toMatch(/#[0-9a-fA-F]{3,6}/);
     }
   });
+
+  it('includes all 8 new pattern wallpapers', () => {
+    const ids = DESKTOP_WALLPAPERS.map(w => w.id);
+    for (const id of [
+      'dot-grid', 'diagonal-stripes', 'blueprint', 'scanlines',
+      'cross-hatch', 'dark-matter', 'topographic', 'hex-shimmer',
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+
+  it('all new pattern wallpapers pass the no-hardcoded-hex constraint', () => {
+    const newIds = new Set([
+      'dot-grid', 'diagonal-stripes', 'blueprint', 'scanlines',
+      'cross-hatch', 'dark-matter', 'topographic', 'hex-shimmer',
+    ]);
+    for (const w of DESKTOP_WALLPAPERS.filter(wp => newIds.has(wp.id))) {
+      expect(w.background).not.toMatch(/#[0-9a-fA-F]{3,6}/);
+    }
+  });
 });

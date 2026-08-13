@@ -367,7 +367,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               {notes.map(note => (
                 <DesktopStickyNote key={note.id} note={note} onChange={(patch) => updateNote(note.id, patch)} onDelete={() => deleteNote(note.id)} />
               ))}
-              <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
+              <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} onRemoveWidget={(id) => handleToggleWidget(id, false)} />
               <CadAutoOpen />
               <DesktopShortcutsInner
                 onLock={() => setManuallyLocked(true)}

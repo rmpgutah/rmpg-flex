@@ -29,6 +29,7 @@ export interface DesktopWidgetPanelProps {
   catalog: NavFunction[];
   onMoveWidget: (id: string, x: number, y: number) => void;
   onAdjustWidget: (id: string, patch: Partial<Pick<DesktopWidgetState, 'opacity' | 'blur'>>) => void;
+  onRemoveWidget?: (id: string) => void;
 }
 
 // Left as `any`: every widget but 'quick-access' takes no props at all, so a
@@ -61,12 +62,13 @@ function clampOpacity(v: number): number {
 }
 
 function WidgetFrame({
-  widget, catalog, onMoveWidget, onAdjustWidget,
+  widget, catalog, onMoveWidget, onAdjustWidget, onRemoveWidget,
 }: {
   widget: DesktopWidgetState;
   catalog: NavFunction[];
   onMoveWidget: (id: string, x: number, y: number) => void;
   onAdjustWidget: (id: string, patch: Partial<Pick<DesktopWidgetState, 'opacity' | 'blur'>>) => void;
+  onRemoveWidget?: (id: string) => void;
 }) {
   const { onPointerDown } = useDraggablePosition(widget.x, widget.y, (x, y) => onMoveWidget(widget.id, x, y));
   const Widget = WIDGET_COMPONENTS[widget.id];
@@ -77,6 +79,8 @@ function WidgetFrame({
         { label: 'Increase opacity', onClick: () => onAdjustWidget(widget.id, { opacity: clampOpacity(widget.opacity + 0.1) }) },
         { label: 'Decrease opacity', onClick: () => onAdjustWidget(widget.id, { opacity: clampOpacity(widget.opacity - 0.1) }) },
         { label: 'Toggle blur', onClick: () => onAdjustWidget(widget.id, { blur: widget.blur > 0 ? 0 : 6 }) },
+        { label: 'Reset position', onClick: () => onMoveWidget(widget.id, 40, 40) },
+        ...(onRemoveWidget ? [{ label: 'Remove widget', onClick: () => onRemoveWidget(widget.id) }] : []),
       ]}
     >
       <div
@@ -98,11 +102,11 @@ function WidgetFrame({
   );
 }
 
-export default function DesktopWidgetPanel({ widgets = [], catalog, onMoveWidget, onAdjustWidget }: DesktopWidgetPanelProps) {
+export default function DesktopWidgetPanel({ widgets = [], catalog, onMoveWidget, onAdjustWidget, onRemoveWidget }: DesktopWidgetPanelProps) {
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
       {widgets.filter(w => w.on).map(w => (
-        <WidgetFrame key={w.id} widget={w} catalog={catalog} onMoveWidget={onMoveWidget} onAdjustWidget={onAdjustWidget} />
+        <WidgetFrame key={w.id} widget={w} catalog={catalog} onMoveWidget={onMoveWidget} onAdjustWidget={onAdjustWidget} onRemoveWidget={onRemoveWidget} />
       ))}
     </div>
   );
