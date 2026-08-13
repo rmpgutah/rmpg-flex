@@ -177,20 +177,26 @@ export function usePanicAudio() {
   const stopBroadcast = useCallback(() => {
     if (!isBroadcastingRef.current) return;
     isBroadcastingRef.current = false;
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
-    }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    mediaRecorderRef.current = null;
     if (broadcastTimerRef.current) { clearInterval(broadcastTimerRef.current); broadcastTimerRef.current = null; }
     if (broadcastTimeoutRef.current) { clearTimeout(broadcastTimeoutRef.current); broadcastTimeoutRef.current = null; }
-
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     const duration = Math.round((Date.now() - broadcastStartTimeRef.current) / 1000);
-    sendVoice({ type: 'transmit_end', duration });
     panicIdRef.current = null;
     broadcastStartTimeRef.current = 0;
     setState((prev) => ({ ...prev, isBroadcasting: false, broadcastTimeLeft: 0 }));
+
+    const rec = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    // transmit_end must arrive AFTER the final ondataavailable chunk —
+    // rec.stop() is async; sending before onstop fires causes the DO to clear
+    // activeTx and drop the last ~250–500ms of every broadcast.
+    if (rec && rec.state !== 'inactive') {
+      rec.onstop = () => sendVoice({ type: 'transmit_end', duration });
+      try { rec.stop(); } catch { sendVoice({ type: 'transmit_end', duration }); }
+    } else {
+      sendVoice({ type: 'transmit_end', duration });
+    }
   }, []);
 
   useEffect(() => { stopBroadcastRef.current = stopBroadcast; }, [stopBroadcast]);
@@ -225,14 +231,17 @@ export function usePanicAudio() {
   }, []);
 
   const stopResponse = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch { /* noop */ }
-    }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    mediaRecorderRef.current = null;
-    sendVoice({ type: 'transmit_end' });
     setState((prev) => ({ ...prev, isResponding: false }));
+    const rec = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    if (rec && rec.state !== 'inactive') {
+      rec.onstop = () => sendVoice({ type: 'transmit_end' });
+      try { rec.stop(); } catch { sendVoice({ type: 'transmit_end' }); }
+    } else {
+      sendVoice({ type: 'transmit_end' });
+    }
   }, []);
 
   // ─── Stop listening / leave the room (alert dismissed/resolved) ──
