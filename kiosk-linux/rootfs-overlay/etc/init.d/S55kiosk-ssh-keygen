@@ -1,0 +1,38 @@
+#!/bin/sh
+# S55kiosk-ssh-keygen — generate SSH host keys on first boot.
+#
+# OpenSSH is installed (BR2_PACKAGE_OPENSSH) but disabled by default: there is
+# no S*-sshd init script, so sshd does not start at boot. An admin enables it
+# manually when needed. But sshd refuses to start unless host keys exist, so
+# this script generates them once per unit on first boot.
+#
+# Host keys are NEVER baked into the image — that would mean every terminal in
+# the fleet shares the same private key, making MITM trivial. Generated once
+# per unit at /etc/ssh/ssh_host_*_key. The rootfs overlay ships empty
+# /etc/ssh/ so Buildroot does not pre-populate keys.
+#
+# Uses only the algorithms sshd supports by default on this OpenSSH version:
+# ed25519 (preferred), rsa (legacy compat), ecdsa (middle ground).
+set -u
+
+KEY_DIR="/etc/ssh"
+
+case "$1" in
+  start)
+    needs_keygen=0
+    for type in ed25519 rsa ecdsa; do
+      [ -f "${KEY_DIR}/ssh_host_${type}_key" ] || { needs_keygen=1; break; }
+    done
+    if [ "$needs_keygen" -eq 1 ]; then
+      echo "[kiosk-ssh-keygen] Generating SSH host keys (first boot)"
+      mkdir -p "$KEY_DIR"
+      ssh-keygen -A -f "" 2>&1 | head -10
+      echo "[kiosk-ssh-keygen] Host keys generated"
+    fi
+    ;;
+  stop) ;;
+  *)
+    echo "Usage: $0 {start|stop}" >&2
+    exit 1
+    ;;
+esac

@@ -475,3 +475,82 @@ CONFIG_BLK_SED_OPAL=y
 # (ACPI_BATTERY / ACPI_AC / POWER_SUPPLY are pinned for the same reason further
 # up, by the battery-guard block.)
 CONFIG_I2C_HID=y
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FZ-55 FULL HARDWARE INTEGRATION PASS (2026-08-13)
+# Enables all remaining FZ-55 subsystems: sensor hub IIO path (ambient light
+# and accelerometer), RS-232 legacy serial (rear xPAK and vehicle GPS), and
+# CPU frequency scaling assertion (load-bearing for the update pre-flight check
+# and the thermal-management chain). Each block states the failure it prevents.
+# All symbols verified in the pinned 6.6.63 source tree.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── IIO: ambient light sensor and accelerometer from the Intel ISH hub ────────
+# INTEL_ISH_HID (=y, above) is the kernel driver for the ISH co-processor.
+# On its own it surfaces sensor data as opaque HID reports — the FZ-55's ambient
+# light sensor (ALS) and gyroscope/accelerometer exist on the silicon but are
+# invisible to any userspace tool.
+#
+# IIO (Industrial I/O) is the kernel framework that translates those HID reports
+# into named sensor channels reachable at /sys/bus/iio/devices/. The userspace
+# daemon iio-sensor-proxy (added in desktop.fragment) bridges IIO to D-Bus so
+# rmpg-shell can read display brightness from the ALS without polling /sys.
+# The accelerometer channel is what drives tablet-mode screen rotation via xrandr.
+#
+# IIO_BUFFER and IIO_TRIGGERED_BUFFER are required for continuous sensor
+# streaming (not just one-shot reads): the ISH IIO driver uses triggered buffers
+# to coalesce HID events into a ring buffer. Without them the ISH IIO driver
+# still compiles but the buffer setup fails at probe time and the channels go
+# silent.
+CONFIG_IIO=y
+CONFIG_IIO_BUFFER=y
+CONFIG_IIO_TRIGGERED_BUFFER=y
+# IIO_HRTIMER_TRIGGER and IIO_KFIFO_BUF are selected automatically by
+# IIO_TRIGGERED_BUFFER; stated here so the build.sh assertion has a stable
+# name to grep for rather than relying on transitively-selected symbols.
+CONFIG_IIO_KFIFO_BUF=y
+
+# ── RS-232 legacy serial: xPAK ports and vehicle-mounted GPS ─────────────────
+# The FZ-55's xPAK bay accepts serial port modules (FZ-VCN551W / FZ-VCN552W /
+# FZ-VCN553W). A meaningful fraction of the vehicle-mounted AVL/GPS units in use
+# by law-enforcement fleets still output NMEA over RS-232 rather than USB, and
+# an RS-232 xPAK is cheaper than replacing them.
+#
+# SERIAL_8250 is the 8250/16550A UART driver — the standard PC serial port.
+# Virtually every x86 laptop has at least one mapped through the PCH even when no
+# physical connector is exposed (it is the BIOS debug UART). On the FZ-55 with a
+# serial xPAK it maps to /dev/ttyS0; without one the driver loads, finds nothing
+# to bind, and is inert.
+#
+# SERIAL_8250_CONSOLE adds early-boot serial console output. On first-article
+# hardware where the GPU has not been validated, this gives a ttyS0 console to
+# fall back to — which is the only way to diagnose a black screen before the
+# display stack is working.
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_PNP=y
+CONFIG_SERIAL_8250_CONSOLE=y
+
+# ── CPU frequency scaling — explicit pin ─────────────────────────────────────
+# The x86_64 base defconfig enables CPU_FREQ and X86_INTEL_PSTATE by default,
+# so these symbols are almost certainly already =y. They are pinned here because
+# three live code paths read /sys/devices/system/cpu/cpu*/cpufreq/:
+#
+#   1. rmpg-update's safe_to_update() checks that the terminal is not pegged
+#      at 100% before rebooting into a new slot (a high-load reboot on this
+#      platform sometimes does not complete POST, burning an A/B retry for a
+#      non-image reason).
+#   2. iio-sensor-proxy uses the cpufreq governor hint to decide how aggressively
+#      to poll the ALS when the system is busy.
+#   3. rmpg-watchdog reads load average as a secondary health signal.
+#
+# If a future kernel bump changes the defconfig default and drops these, none
+# of the above fail with an error — they just silently stop working. Pinning
+# them here makes build.sh's symbol assertion the catch rather than a field
+# incident.
+CONFIG_CPU_FREQ=y
+CONFIG_X86_INTEL_PSTATE=y
+# schedutil is the default governor for HWP-capable platforms in modern kernels;
+# it cooperates with intel_pstate's HWP mode so the hardware and software both
+# know the current performance intent rather than fighting each other.
+CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y

@@ -1,0 +1,39 @@
+#!/bin/sh
+# S94kiosk-modem — start ModemManager for WWAN cellular connectivity.
+#
+# ModemManager auto-discovers any QMI or MBIM WWAN modem (the Mk3 optional
+# cellular xPAK: Sierra Wireless / Semtech EM7421/EM7511/EM7595 + EM9190 5G).
+# On units without the WWAN xPAK it starts, enumerates no modem, and sits idle.
+#
+# ConnMan communicates with ModemManager via D-Bus to offer cellular as a network
+# bearer — when Wi-Fi drops or is unavailable, ConnMan can fall over to cellular
+# automatically. The APN for each SIM must be configured once via:
+#   mmcli -m 0 --simple-connect="apn=your.carrier.apn"
+# or through the rmpg-shell network picker (future work).
+#
+# Runs before the desktop session (S94 < S99kiosk-desktop).
+set -u
+
+LOG_TAG="kiosk-modem"
+log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null; }
+
+case "$1" in
+  start)
+    log "Starting ModemManager"
+    ModemManager &
+    log "ModemManager started (PID $!)"
+    ;;
+  stop)
+    killall ModemManager 2>/dev/null || true
+    log "ModemManager stopped"
+    ;;
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}" >&2
+    exit 1
+    ;;
+esac
