@@ -4,7 +4,12 @@
 // pushes locally-created records back when connectivity returns.
 // ============================================================
 
-const { net } = require('electron');
+// Lazy: require('electron') is only valid inside the Electron runtime.
+// The test suite runs in plain Node.js and must not trigger this at module
+// load time — doing so throws "Electron failed to install correctly" on CI
+// where the Electron binary is absent. The real `net` object is only needed
+// inside pullAll/pullTable (lines below), which are never called from tests.
+function getElectronNet() { return require('electron').net; }
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
@@ -416,7 +421,7 @@ function serverFetch(endpoint, options = {}) {
         return;
       }
 
-      const request = net.request({
+      const request = getElectronNet().request({
         url,
         method: options.method || 'GET',
       });
@@ -513,7 +518,7 @@ async function refreshAndRetry(endpoint, options) {
         return;
       }
 
-      const request = net.request({
+      const request = getElectronNet().request({
         url: refreshUrl,
         method: 'POST',
       });
