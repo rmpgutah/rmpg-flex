@@ -98,7 +98,7 @@ describe('POST /dispatch/panic — double-press dedupe', () => {
       { match: /SELECT full_name, badge_number FROM users WHERE id = \?/, rows: [{ full_name: 'Test Officer', badge_number: 'B042' }] },
       { match: /SELECT id, call_sign, current_call_id, latitude, longitude FROM units WHERE officer_id/, rows: [{ id: 19, call_sign: 'D19', current_call_id: 777, latitude: 40.76, longitude: -111.89 }] },
       // Dedupe SELECT — HIT. Officer pressed panic 1.5s ago for the same emergency.
-      { match: /FROM calls_for_service\s+WHERE source = 'panic' AND dispatcher_id = \?/, rows: [{ id: 777 }] },
+      { match: /FROM calls_for_service cfs\s+JOIN panic_alerts pa ON pa\.call_id = cfs\.id\s+WHERE cfs\.source = 'panic' AND pa\.user_id = \?/, rows: [{ id: 777 }] },
       // Final read of panic_alerts for the response payload.
       { match: /SELECT p\.\*, u\.full_name as user_name/, rows: [{ id: 2, call_id: 777, call_number: 'PAN-2026-000001' }] },
     ]);

@@ -408,6 +408,7 @@ function PttBar({ channelSelected, voice }: {
     onMouseLeave: () => voice.pttUp(),
     onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); voice.pttDown(); },
     onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); voice.pttUp(); },
+    onTouchCancel: (e: React.TouchEvent) => { e.preventDefault(); voice.pttUp(); },
   };
   const disabled = !voice.supported || !voice.connected || receiving;
 

@@ -16,6 +16,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
 import { requireRole } from '../../middleware/auth';
+import { getDecrypted } from '../../utils/encryptedR2';
 
 const panic = new Hono<Env>();
 
@@ -57,12 +58,15 @@ panic.post('/panic', async (c) => {
   // Dedupe: check for a recent panic CAD call, bounded to the last 30
   // minutes so a fresh activation never silently attaches to a stale call
   // from days/weeks ago.
+  // Dedup via user_id on the panic_alerts table — dispatcher_id is never
+  // populated on INSERT so querying it always returns zero rows.
   const recentCalls = await query<{ id: number }>(
     db,
-    `SELECT id FROM calls_for_service
-     WHERE source = 'panic' AND dispatcher_id = ?
-       AND created_at > datetime('now', '-30 minutes')
-     ORDER BY created_at DESC LIMIT 1`,
+    `SELECT cfs.id FROM calls_for_service cfs
+     JOIN panic_alerts pa ON pa.call_id = cfs.id
+     WHERE cfs.source = 'panic' AND pa.user_id = ?
+       AND cfs.created_at > datetime('now', '-30 minutes')
+     ORDER BY cfs.created_at DESC LIMIT 1`,
     userId,
   );
   
@@ -335,6 +339,52 @@ panic.post('/request-backup', async (c) => {
   } catch (err) {
     console.error('[dispatch] request-backup error', err);
     return c.json({ error: 'Failed to request backup', code: 'REQUEST_BACKUP_ERR' }, 500);
+  }
+});
+
+// POST /dispatch/panic/:id/deactivate — admin/manager hard-clear of any
+// terminal state. Used when a panic row is stuck in 'active' after comms
+// are restored but no one can reach the acknowledge/resolve flow.
+panic.post('/panic/:id/deactivate', requireRole('manager', 'admin'), async (c) => {
+  const db = getDb(c.env);
+  const id = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const result = await execute(
+    db,
+    `UPDATE panic_alerts
+     SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'),
+         resolution_notes = 'Force-deactivated by admin', updated_at = datetime('now')
+     WHERE id = ? AND status NOT IN ('resolved', 'cancelled', 'false_alarm')`,
+    userId, id,
+  );
+  if (result.meta.changes === 0) {
+    const exists = await queryFirst(db, 'SELECT id FROM panic_alerts WHERE id = ?', id);
+    return c.json({ error: exists ? 'Alert is already in a terminal state' : 'Not found' }, exists ? 409 : 404);
+  }
+  const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
+  broadcastAll('panic_alert', { action: 'panic_resolved', panic: updated });
+  return c.json(updated);
+});
+
+// GET /dispatch/panic/:id/audio — stream the archived distress recording.
+// Only dispatcher-tier+ may replay a panic recording.
+panic.get('/panic/:id/audio', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const db = getDb(c.env);
+  const id = c.req.param('id');
+  const row = await queryFirst<{ audio_file_id: number | null }>(
+    db, 'SELECT audio_file_id FROM panic_alerts WHERE id = ?', id,
+  );
+  if (!row) return c.json({ error: 'Not found' }, 404);
+  if (row.audio_file_id == null) return c.json({ error: 'No audio recorded for this alert' }, 404);
+  const key = `panic-audio/${id}.webm`;
+  try {
+    const result = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    if (!result) return c.json({ error: 'Audio not found in storage' }, 404);
+    return new Response(result.bytes, {
+      headers: { 'Content-Type': 'audio/webm', 'Cache-Control': 'no-store' },
+    });
+  } catch {
+    return c.json({ error: 'Failed to retrieve audio' }, 500);
   }
 });
 

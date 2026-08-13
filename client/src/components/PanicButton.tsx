@@ -105,7 +105,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     // Directly trigger panic (no confirmation needed for hardware trigger)
     setSending(true);
     try {
-      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
+      const result = await apiFetch<{ id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
@@ -113,12 +113,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
           trigger_method: 'hardware_button',
         }),
       });
-      if (result?.panic_id) {
-        setOwnPanicId(result.panic_id);
+      if (result?.id) {
+        setOwnPanicId(result.id);
         setOwnPanicTime(Date.now());
       }
       // Start live mic broadcast for 60 seconds
-      panicAudio.startBroadcast(result?.panic_id);
+      panicAudio.startBroadcast(result?.id);
     } catch (err) {
       console.error('Failed to send hardware panic alert:', err);
       addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);
@@ -305,7 +305,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     setIncomingAlert(null);
     alarmRef.current?.stop();
     alarmRef.current = null;
-  }, [incomingAlert?.panic_id]);
+    panicAudio.stopListening?.();
+  }, [incomingAlert?.panic_id, panicAudio]);
 
   // Cancel own panic (within 30 seconds)
   const cancelOwnPanic = useCallback(async () => {
@@ -411,19 +412,19 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
 
     try {
-      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
+      const result = await apiFetch<{ id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         }),
       });
-      if (result?.panic_id) {
-        setOwnPanicId(result.panic_id);
+      if (result?.id) {
+        setOwnPanicId(result.id);
         setOwnPanicTime(Date.now());
       }
       // Start live mic broadcast for 60 seconds
-      panicAudio.startBroadcast(result?.panic_id);
+      panicAudio.startBroadcast(result?.id);
     } catch (err) {
       console.error('Failed to send panic alert:', err);
       addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);

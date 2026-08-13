@@ -182,6 +182,21 @@ export class VoiceHubDO {
     return n;
   }
 
+  // Returns true when at least one authenticated user with a dispatch-capable
+  // role is connected to this room. Used to suppress the AI dispatcher so it
+  // never talks over or ahead of a human working the console.
+  private hasLiveDispatcher(): boolean {
+    for (const meta of this.conns.values()) {
+      if (meta.authenticated && (
+        meta.role === 'dispatcher' ||
+        meta.role === 'supervisor' ||
+        meta.role === 'manager' ||
+        meta.role === 'admin'
+      )) return true;
+    }
+    return false;
+  }
+
   private async onMessage(ws: WebSocket, ev: MessageEvent): Promise<void> {
     let msg: any;
     try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer)); }
@@ -317,12 +332,16 @@ export class VoiceHubDO {
       // Recording is gated by auto_record — when off, the transmission is still
       // logged (audit trail) but no audio is kept and no play button appears.
       if (settings.auto_record) {
-        const key = `radio-audio/${id}.webm`;
-        await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
-        await execute(
-          db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
-          `/api/radio/transmissions/${id}/audio`, id,
-        );
+        try {
+          const key = `radio-audio/${id}.webm`;
+          await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+          await execute(
+            db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+            `/api/radio/transmissions/${id}/audio`, id,
+          );
+        } catch (err) {
+          console.error('[VoiceHubDO] radio R2 persist failed — broadcast continues', err);
+        }
       }
 
       // Tell the room a recording is ready so feeds can show a play button
@@ -357,6 +376,12 @@ export class VoiceHubDO {
     // "recording present" flag for the dispatcher UI.
     if (this.kind === 'panic') {
       if (this.panicRecorded) return;
+      // DB-level guard: the in-memory flag is lost on DO eviction; a second
+      // activation after eviction would overwrite the first recording without this.
+      const existing = await queryFirst<{ audio_file_id: number | null }>(
+        db, 'SELECT audio_file_id FROM panic_alerts WHERE id = ?', this.refId,
+      ).catch(() => null);
+      if (existing?.audio_file_id != null) { this.panicRecorded = true; return; }
       this.panicRecorded = true;
       const key = `panic-audio/${this.refId}.webm`;
       await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
@@ -384,6 +409,11 @@ export class VoiceHubDO {
     // Master kill switch — when the AI dispatcher is disabled, the radio relay
     // still records + broadcasts; it just never speaks back.
     if (!settings.ai_dispatcher_enabled) return;
+
+    // Yield to any live human dispatcher on this channel. A connected user
+    // with a dispatch-capable role takes over — the AI stays silent so it
+    // cannot step on a live transmission or answer before the human can.
+    if (this.hasLiveDispatcher()) return;
 
     const db = getDb(this.env as any);
 
