@@ -108,6 +108,18 @@ function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef }: { onLo
   );
 }
 
+type ArrangeHandles = { cascade: () => void; tileH: () => void; tileV: () => void };
+
+function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<ArrangeHandles | null> }) {
+  const { cascade, tileHorizontal, tileVertical } = useDesktopWindows();
+  mountRef.current = {
+    cascade: () => cascade(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+    tileH: () => tileHorizontal(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+    tileV: () => tileVertical(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
+  };
+  return null;
+}
+
 // Does the actual desktop rendering/state work. Only mounted once the real
 // user preferences have loaded (see DesktopPage below) — its one-shot state
 // initializers below read `prefs` synchronously on first render, so `prefs`
@@ -117,6 +129,7 @@ function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef }: { onLo
 // would silently PUT default-derived state back to the server on the user's
 // very next interaction, clobbering their real saved cross-device layout.
 function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
+  const arrangeRef = useRef<ArrangeHandles | null>(null);
   const { user, signOut } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -384,6 +397,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
             { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
+            { label: 'Cascade Windows', onClick: () => arrangeRef.current?.cascade() },
+            { label: 'Tile Horizontally', onClick: () => arrangeRef.current?.tileH() },
+            { label: 'Tile Vertically', onClick: () => arrangeRef.current?.tileV() },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'System Preferences…', onClick: () => setSysPrefOpen(true) },
             { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
@@ -416,6 +433,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <CadAutoOpen />
               <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} onOpenShortcutRef={() => setShortcutRefOpen(true)} />
+              <WindowArrangeSync mountRef={arrangeRef} />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>

@@ -45,6 +45,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   const snapHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // System menu: position of the right-click context menu on the title bar
   const [sysMenu, setSysMenu] = useState<{ x: number; y: number } | null>(null);
+  const [shaking, setShaking] = useState(false);
   const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
   // Tracks which edge the cursor is near during the drag — used in onUp to
   // determine if a snap should be applied. We need a ref here because the state
@@ -160,6 +161,8 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         if (shakeRef.current.timestamps.length >= AERO_SHAKE_REVERSAL_COUNT) {
           minimizeOthers(win.id);
           shakeRef.current.timestamps = [];
+          setShaking(true);
+          setTimeout(() => setShaking(false), 500);
         }
       }
 
@@ -328,7 +331,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         onDoubleClick={onTitleBarDoubleClick}
         onContextMenu={e => { e.preventDefault(); setSysMenu({ x: e.clientX, y: e.clientY }); }}
         className="flex items-center justify-between px-2 select-none cursor-move"
-        style={{ height: isFullscreen ? 0 : TITLE_BAR_HEIGHT, overflow: 'hidden', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)' }}
+        style={{ height: isFullscreen ? 0 : TITLE_BAR_HEIGHT, overflow: 'hidden', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', boxShadow: shaking ? '0 0 0 2px var(--accent-silver-400, #8fa0b3), 0 0 14px 4px rgba(143,160,179,0.45)' : undefined, transition: 'box-shadow 0.3s ease' }}
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>
         <div className="flex items-center gap-1">
