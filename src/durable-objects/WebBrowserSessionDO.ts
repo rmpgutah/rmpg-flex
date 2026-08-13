@@ -147,9 +147,6 @@ export class WebBrowserSessionDO {
     if (!this.authenticated) { this.send(shapeErrorMessage('NOT_AUTHENTICATED')); return; }
     this.lastInputAt = Date.now();
     await this.state.storage.setAlarm(Date.now() + IDLE_TIMEOUT_MS);
-    // Fire an immediate frame after any input so interactions feel instant
-    // rather than waiting up to FRAME_INTERVAL_MS for the next tick.
-    this.captureFrame().catch(() => {});
 
     if (msg.type === 'navigate' && typeof msg.url === 'string') {
       if (!this.page) { this.send(shapeErrorMessage('Browser not ready')); return; }
@@ -218,14 +215,17 @@ export class WebBrowserSessionDO {
     }
     if (msg.type === 'click' && typeof msg.x === 'number' && typeof msg.y === 'number') {
       try { await this.page.mouse.click(msg.x, msg.y); } catch { /* page may have navigated away mid-click */ }
+      this.captureFrame().catch(() => {});
       return;
     }
     if (msg.type === 'type' && typeof msg.text === 'string') {
       try { await this.page.keyboard.type(msg.text); } catch { /* ignore */ }
+      this.captureFrame().catch(() => {});
       return;
     }
     if (msg.type === 'key' && typeof msg.key === 'string') {
       try { await this.page.keyboard.press(msg.key as any); } catch { /* ignore */ }
+      this.captureFrame().catch(() => {});
       return;
     }
     if (msg.type === 'scroll' && typeof msg.dx === 'number' && typeof msg.dy === 'number') {
@@ -238,6 +238,7 @@ export class WebBrowserSessionDO {
           msg.dx, msg.dy,
         );
       } catch { /* ignore */ }
+      this.captureFrame().catch(() => {});
       return;
     }
   }
@@ -267,14 +268,16 @@ export class WebBrowserSessionDO {
 
   private async captureFrame(): Promise<void> {
     if (!this.page) return;
-    // encoding:'base64' returns a string directly — avoids a Buffer round-trip.
-    const base64 = await this.page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, encoding: 'base64' }) as string;
-    // Skip sending if the frame is byte-for-byte identical to the last one —
-    // static pages would otherwise flood the socket with redundant data.
-    const hash = `${base64.length}:${base64.slice(0, 32)}`;
-    if (hash === this.lastFrameHash) return;
-    this.lastFrameHash = hash;
-    this.send(shapeFrameMessage(base64));
+    try {
+      // encoding:'base64' returns a string directly — avoids a Buffer round-trip.
+      const base64 = await this.page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, encoding: 'base64' }) as string;
+      // Skip sending if the frame is byte-for-byte identical to the last one —
+      // static pages would otherwise flood the socket with redundant data.
+      const hash = `${base64.length}:${base64.slice(0, 32)}`;
+      if (hash === this.lastFrameHash) return;
+      this.lastFrameHash = hash;
+      this.send(shapeFrameMessage(base64));
+    } catch { /* page mid-navigation or browser closing — skip this tick */ }
   }
 
   // alarm() fires when the idle timer set in onMessage()/startBrowser()
