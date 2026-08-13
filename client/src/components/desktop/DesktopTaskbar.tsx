@@ -13,6 +13,7 @@ import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTa
 import DesktopSystemTray from './DesktopSystemTray';
 import DesktopWelfareCountdown from './DesktopWelfareCountdown';
 import DesktopQuickSettings from './DesktopQuickSettings';
+import CalendarFlyout from './CalendarFlyout';
 import { SlidersHorizontal } from 'lucide-react';
 import { WorkspacePills } from './DesktopVirtualDesktops';
 import FlexOSAppDrawer from './FlexOSAppDrawer';
@@ -65,7 +66,9 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
     }
   }, [autoMinimizedIds, minimizeAll, restoreAll]);
 
-  const { time } = useClock();
+  const { time, date } = useClock();
+  const [calOpen, setCalOpen] = useState(false);
+  const clockRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -144,8 +147,9 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
   }, [navigate, openWindow, addToast, user?.role]);
 
 
+  const runningPaths = useMemo(() => new Set(windows.map(w => w.path)), [windows]);
+
   const pinnedNotRunning = useMemo(() => {
-    const runningPaths = new Set(windows.map(w => w.path));
     return getPinnedApps()
       .filter(path => !runningPaths.has(path))
       .map(path => catalog.find(fn => fn.path === path))
@@ -158,6 +162,16 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
   const [size] = useState(() => getTaskbarSize());
   const [autoHideEnabled] = useState(() => isTaskbarAutoHideEnabled());
   const [hidden, setHidden] = useState(autoHideEnabled);
+  const showDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleShow = useCallback(() => {
+    if (showDelayRef.current) clearTimeout(showDelayRef.current);
+    showDelayRef.current = setTimeout(() => setHidden(false), 300);
+  }, []);
+
+  const cancelShow = useCallback(() => {
+    if (showDelayRef.current) { clearTimeout(showDelayRef.current); showDelayRef.current = null; }
+  }, []);
   const barHeight = TASKBAR_HEIGHT_PX[size];
 
   const windowGroups = useMemo(() => {
@@ -183,9 +197,10 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         borderBottom: position === 'top' ? '1px solid var(--desktop-shell-accent, var(--border-default))' : undefined,
         zIndex: 1000,
         transform: autoHideEnabled && hidden ? `translateY(${position === 'top' ? '-100%' : '100%'})` : 'translateY(0px)',
-        transition: 'transform 150ms ease',
+        transition: 'transform 180ms ease',
       }}
-      onMouseLeave={autoHideEnabled ? () => setHidden(true) : undefined}
+      onMouseLeave={autoHideEnabled ? () => { cancelShow(); setHidden(true); } : undefined}
+      onMouseEnter={autoHideEnabled ? cancelShow : undefined}
     >
       <div className="flex items-center gap-2">
         <button type="button" aria-label="Open app launcher" onClick={() => setLauncherOpen(v => !v)} className="p-2 hover:bg-surface-hover">
@@ -232,10 +247,13 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 <button
                   type="button"
                   onClick={() => focusWindow(w.id)}
-                  className="px-3 py-1 text-[11px] truncate"
-                  style={{ maxWidth: 160, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                  className="relative px-3 text-[11px] truncate"
+                  style={{ maxWidth: 160, paddingTop: 2, paddingBottom: isAppPinned(w.path) ? 6 : 4, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
                 >
                   {w.title}
+                  {isAppPinned(w.path) && (
+                    <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400, #5b8ab5))', display: 'block' }} />
+                  )}
                 </button>
               </ContextMenu>
             );
@@ -259,8 +277,8 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 type="button"
                 aria-label={`${group[0].title} (${group.length})`}
                 onClick={handleGroupClick}
-                className="relative px-3 py-1 text-[11px] truncate"
-                style={{ maxWidth: 160, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
+                className="relative px-3 text-[11px] truncate"
+                style={{ maxWidth: 160, paddingTop: 2, paddingBottom: isAppPinned(path) ? 6 : 4, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
               >
                 {group[0].title}
                 <span
@@ -269,6 +287,13 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 >
                   {group.length}
                 </span>
+                {isAppPinned(path) && (
+                  <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2 }}>
+                    {Array.from({ length: Math.min(group.length, 3) }, (_, i) => (
+                      <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400, #5b8ab5))', display: 'block' }} />
+                    ))}
+                  </span>
+                )}
               </button>
             </ContextMenu>
           );
@@ -316,18 +341,38 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         <DesktopWelfareCountdown />
         <QuickSettingsButton />
         <DesktopSystemTray />
-        <span
-          className="text-[11px] font-mono cursor-default select-none"
-          style={{ color: 'var(--text-primary)' }}
-          onContextMenu={onPowerMenu ? (e) => { e.preventDefault(); onPowerMenu(); } : undefined}
-          title={onPowerMenu ? 'Right-click for power options' : undefined}
-        >{time}</span>
+        <div style={{ position: 'relative' }}>
+          <button
+            ref={clockRef}
+            type="button"
+            onClick={() => setCalOpen(v => !v)}
+            onContextMenu={onPowerMenu ? (e) => { e.preventDefault(); onPowerMenu(); } : undefined}
+            title={onPowerMenu ? 'Click for calendar · Right-click for power options' : 'Click for calendar'}
+            style={{
+              background: calOpen ? 'rgba(255,255,255,0.07)' : 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 4px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-end',
+              gap: 1,
+            }}
+          >
+            <span className="font-mono select-none" style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1 }}>{time}</span>
+            <span className="select-none" style={{ fontSize: 9, color: 'var(--text-secondary)', lineHeight: 1 }}>{date.replace(/,\s*\d{4}$/, '')}</span>
+          </button>
+          {calOpen && (
+            <CalendarFlyout anchorRef={clockRef} onClose={() => setCalOpen(false)} />
+          )}
+        </div>
       </div>
     </div>
     {autoHideEnabled && (
       <div
         data-testid="taskbar-hover-strip"
-        onMouseEnter={() => setHidden(false)}
+        onMouseEnter={scheduleShow}
+        onMouseLeave={cancelShow}
         style={{ position: 'fixed', left: 0, right: 0, height: 4, zIndex: 999, ...(position === 'top' ? { top: 0 } : { bottom: 0 }) }}
       />
     )}

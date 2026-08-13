@@ -6,10 +6,10 @@
  * Positioned above/below taskbar depending on taskbar position preference.
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, Star, Shield, type LucideIcon } from 'lucide-react';
+import { Search, X, Star, Shield, Clock, type LucideIcon } from 'lucide-react';
 import type { NavFunction } from '../../data/navCatalog';
 import { NAV_CATEGORIES } from '../../data/navCatalog';
-import { loadFavorites } from '../../utils/navFavorites';
+import { loadFavorites, loadRecent } from '../../utils/navFavorites';
 import { getTaskbarPosition, getTaskbarSize, isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import ContextMenu from '../ContextMenu';
@@ -57,8 +57,12 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
   useClickOutside(ref, onClose);
 
   const [query, setQuery] = useState('');
-  const [activeGroup, setActiveGroup] = useState('All');
+  const [activeGroup, setActiveGroup] = useState(() => loadRecent().length > 0 ? 'Recents' : 'All');
   const favorites = useMemo(() => loadFavorites(), []);
+  const recents = useMemo(() => {
+    const paths = loadRecent().slice(0, 6);
+    return paths.map(p => catalog.find(fn => fn.path === p)).filter((fn): fn is NavFunction => !!fn);
+  }, [catalog]);
   const taskbarPos = getTaskbarPosition();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
 
@@ -79,17 +83,19 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
   }, [catalog, favorites]);
 
   const groupTabs = useMemo(() => {
-    const tabs = ['All', 'Pinned'];
+    const tabs: string[] = [];
+    if (recents.length > 0) tabs.push('Recents');
+    tabs.push('All', 'Pinned');
     for (const k of CATEGORY_ORDER) { if (groups.has(k) && groups.get(k)!.length > 0) tabs.push(k); }
     return tabs;
-  }, [groups]);
+  }, [groups, recents.length]);
 
   const displayItems = useMemo(() => {
-    const base = groups.get(activeGroup) ?? [];
+    const base = activeGroup === 'Recents' ? recents : (groups.get(activeGroup) ?? []);
     if (!query.trim()) return base;
     const q = query.toLowerCase();
     return base.filter(fn => fn.label.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q));
-  }, [groups, activeGroup, query]);
+  }, [groups, recents, activeGroup, query]);
 
   // ESC closes drawer
   useEffect(() => {
@@ -190,6 +196,7 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
               gap: 4,
             }}
           >
+            {tab === 'Recents' && <Clock style={{ width: 9, height: 9 }} />}
             {tab === 'Pinned' && <Star style={{ width: 9, height: 9 }} />}
             {tab}
           </button>
