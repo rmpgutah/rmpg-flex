@@ -189,7 +189,7 @@ export default function CompanyBrowserPage() {
 
   // Load persisted bookmarks + history
   useEffect(() => {
-    apiFetch<{ browser_bookmarks_json?: string | null; browser_history_json?: string | null }>('/preferences')
+    apiFetch<{ browser_bookmarks_json?: string | null; browser_history_json?: string | null }>('/user/preferences')
       .then(prefs => {
         setBookmarks(parseJsonArray<BookmarkItem>(prefs.browser_bookmarks_json));
         setHistory(parseJsonArray<HistoryEntry>(prefs.browser_history_json));
@@ -202,7 +202,7 @@ export default function CompanyBrowserPage() {
     if (isFirstLoad.current) { isFirstLoad.current = false; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      apiFetch('/preferences', {
+      apiFetch('/user/preferences', {
         method: 'PUT',
         body: JSON.stringify({
           browser_bookmarks_json: JSON.stringify(bookmarks),

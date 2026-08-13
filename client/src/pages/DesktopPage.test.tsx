@@ -126,7 +126,7 @@ describe('DesktopPage', () => {
 
       await act(async () => { await vi.advanceTimersByTimeAsync(800); });
 
-      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/preferences' && c[1]?.method === 'PUT');
+      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/user/preferences' && c[1]?.method === 'PUT');
       expect(putCall).toBeDefined();
       const body = JSON.parse(putCall![1].body as string);
       const savedNotes = JSON.parse(body.desktop_notes_json);
@@ -158,7 +158,7 @@ describe('DesktopPage', () => {
       apiFetchMock.mockClear();
       await act(async () => { await vi.advanceTimersByTimeAsync(800); });
 
-      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/preferences' && c[1]?.method === 'PUT');
+      const putCall = apiFetchMock.mock.calls.find(c => c[0] === '/user/preferences' && c[1]?.method === 'PUT');
       expect(putCall).toBeDefined();
       const body = JSON.parse(putCall![1].body as string);
       expect(JSON.parse(body.desktop_notes_json)).toEqual([]);

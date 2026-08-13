@@ -266,6 +266,20 @@ export class VoiceHubDO {
       if (!this.activeTx || this.activeTx.ws !== ws || typeof msg.chunk !== 'string') return;
       try {
         const bytes = b64ToBytes(msg.chunk);
+        // Hard cap: a stuck PTT or malicious client can push the DO past its
+        // 128 MB memory limit, evicting it mid-transmission and locking the
+        // channel. Force-end the transmission and salvage what we have.
+        const MAX_TX_BYTES = 20 * 1024 * 1024;
+        if (this.activeTx.bytes + bytes.length > MAX_TX_BYTES) {
+          const finished = this.activeTx;
+          this.activeTx = null;
+          this.relay(ws, { type: 'radio_transmit_end', user_id: finished.userId });
+          this.send(ws, { type: 'error', code: 'TX_TOO_LARGE' });
+          this.state.waitUntil(
+            this.persist(finished, null).catch((err) => console.error('[VoiceHubDO] cap persist', err)),
+          );
+          return;
+        }
         this.activeTx.chunks.push(bytes);
         this.activeTx.bytes += bytes.length;
       } catch { /* bad chunk — drop */ }
