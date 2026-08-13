@@ -2079,7 +2079,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 <div key={s.timestamp} className="relative group">
                   <img
                     src={s.url}
-                    alt={`Snapshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+                    alt={`Snapshot at ${new Date(s.timestamp).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}`}
                     className="w-full h-auto border border-border-subtle"
                     style={{ borderRadius: 2 }}
                   />
@@ -2188,7 +2188,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
-                    <div className="text-[8px] text-rmpg-500">{new Date(bm.createdAt).toLocaleDateString()}</div>
+                    <div className="text-[8px] text-rmpg-500">{new Date(bm.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}

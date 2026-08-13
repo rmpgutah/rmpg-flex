@@ -32,9 +32,9 @@ interface CourtPackageResult { payloadHash: string; signedAt: string; }
 
 function fmtTs(ms: number, short = false): string {
   return new Date(ms).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric',
     ...(short ? {} : { hour: 'numeric', minute: '2-digit', hour12: true }),
-    timeZone: 'America/Denver',
   });
 }
 

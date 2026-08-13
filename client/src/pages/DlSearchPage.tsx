@@ -1395,7 +1395,7 @@ export default function DlSearchPage() {
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
                   </div>
                   {sourcesCfg?.sor_last_run && (
-                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
+                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</p>
                   )}
                   <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100">Run poll now</button>
 
