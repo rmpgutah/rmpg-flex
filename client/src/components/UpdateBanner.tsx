@@ -37,7 +37,7 @@ interface ElectronAPI {
   pausePrintJob?: (id: string) => Promise<void>;
   resumePrintJob?: (id: string) => Promise<void>;
   clearCompletedPrintJobs?: () => Promise<void>;
-  listPrinters?: () => Promise<string[]>;
+  getPrinters?: () => Promise<Array<{ name: string; isDefault: boolean }>>;
   // Body camera
   getBodyCamStatus?: () => Promise<{ recording: boolean; duration?: number; battery?: number; storage_remaining_gb?: number; device_id?: string } | null>;
   startBodyCamRecording?: () => Promise<void>;
