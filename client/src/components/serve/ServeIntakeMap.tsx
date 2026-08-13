@@ -297,7 +297,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
       if (cluster.count === 1) {
         const item = mappable.find((it) => it.id === cluster.itemIds[0])!;
         const serveEntry: ServeMapEntry = { ...item, client_name: null };
-        const el = buildServeJobMarkerEl(serveEntry);
+        const el = buildServeJobMarkerEl(serveEntry, { selected: selectedIds.has(serveEntry.id) });
         const popup = new mapboxgl.Popup({ offset: 18, closeButton: true, maxWidth: '280px' })
           .setHTML(buildPopupHtml(item));
 

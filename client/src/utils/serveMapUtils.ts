@@ -24,7 +24,7 @@ export interface ServeMapEntry {
   location_note_id?: number | null;
 }
 
-export function buildServeJobMarkerEl(job: ServeMapEntry): HTMLElement {
+export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: boolean }): HTMLElement {
   const color = SERVE_PRIORITY_COLOR[job.priority] ?? SERVE_PRIORITY_COLOR.routine;
   const hoursLeft = job.deadline
     ? (new Date(job.deadline).getTime() - Date.now()) / 3_600_000
@@ -43,6 +43,11 @@ export function buildServeJobMarkerEl(job: ServeMapEntry): HTMLElement {
   el.style.background = color;
   el.textContent = isBusiness ? '🏢' : '👤';
   el.title = `${job.recipient_name ?? 'Unknown'} — ${job.priority}`;
+
+  if (opts?.selected) {
+    el.style.border = '3px solid #22c55e';
+    el.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.4), 0 2px 6px rgba(0,0,0,0.4)';
+  }
 
   if (hasUrgencyRing) {
     const ring = document.createElement('div');

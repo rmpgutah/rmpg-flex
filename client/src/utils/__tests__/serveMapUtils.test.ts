@@ -50,6 +50,13 @@ describe('buildServeJobMarkerEl', () => {
     );
     expect(rings.length).toBeGreaterThan(0);
   });
+
+  it('applies green border when selected=true', () => {
+    const el = buildServeJobMarkerEl(baseJob, { selected: true });
+    // jsdom normalizes hex to rgb() — match either form
+    expect(el.style.border).toContain('solid');
+    expect(el.style.border).toMatch(/22c55e|rgb\(34,\s*197,\s*94\)/);
+  });
 });
 
 describe('buildServeClusterEl', () => {
