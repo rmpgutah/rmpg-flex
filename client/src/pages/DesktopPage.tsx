@@ -177,7 +177,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      apiFetch('/preferences', {
+      apiFetch('/user/preferences', {
         method: 'PUT',
         body: JSON.stringify({
           desktop_layout_json: serializeDesktopLayout(layout),
