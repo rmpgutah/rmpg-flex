@@ -7,7 +7,13 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
-const { app, safeStorage } = require('electron');
+// Lazy: require('electron') is only valid inside the Electron runtime.
+// The test suite runs in plain Node.js (ELECTRON_SKIP_BINARY_DOWNLOAD=1 on CI)
+// and must not trigger this at module load time — doing so throws "Electron
+// failed to install correctly". app and safeStorage are only used inside
+// functions (initLocalDb, upsertUsersRows), which are never called from tests.
+function getElectronApp() { return require('electron').app; }
+function getElectronSafeStorage() { return require('electron').safeStorage; }
 const { encryptPasswordHashForCache, decryptPasswordHashFromCache, enableSecureDelete, verifyLocalDbIntegrity, restrictLocalDbFilePermissions } = require('./security/secretsStore');
 
 let db = null;
@@ -30,8 +36,8 @@ function getLocalDbPath(appModule, pathModule) {
 }
 
 function initLocalDb() {
-  const dbDir = app.getPath('userData');
-  const dbPath = getLocalDbPath(app, path);
+  const dbDir = getElectronApp().getPath('userData');
+  const dbPath = getLocalDbPath(getElectronApp(), path);
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -435,7 +441,7 @@ function deltaSync(tableName, rows) {
  */
 function upsertUserWithEncryptedHash(row) {
   const encryptedRow = row.password_hash
-    ? { ...row, password_hash: encryptPasswordHashForCache(row.password_hash, safeStorage) }
+    ? { ...row, password_hash: encryptPasswordHashForCache(row.password_hash, getElectronSafeStorage()) }
     : row;
   upsertRow('users', encryptedRow);
 }
