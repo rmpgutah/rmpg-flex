@@ -40,6 +40,12 @@ import FlexOSSystemDashboard from '../components/desktop/FlexOSSystemDashboard';
 import FlexOSStatusBar, { STATUS_BAR_HEIGHT } from '../components/desktop/FlexOSStatusBar';
 import DesktopKeyboardShortcuts from '../components/desktop/DesktopKeyboardShortcuts';
 import { useVirtualDesktop } from '../components/desktop/DesktopVirtualDesktops';
+import DesktopTaskManager from '../components/desktop/apps/DesktopTaskManager';
+import DesktopClipboard from '../components/desktop/apps/DesktopClipboard';
+import DesktopSnippingTool from '../components/desktop/apps/DesktopSnippingTool';
+import DesktopCalendar from '../components/desktop/apps/DesktopCalendar';
+import DesktopNotepad from '../components/desktop/apps/DesktopNotepad';
+import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPreferences';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -163,6 +169,12 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
   const [sysDashboardOpen, setSysDashboardOpen] = useState(false);
+  const [taskManagerOpen, setTaskManagerOpen] = useState(false);
+  const [clipboardOpen, setClipboardOpen] = useState(false);
+  const [snippingOpen, setSnippingOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [notepadOpen, setNotepadOpen] = useState(false);
+  const [sysPrefOpen, setSysPrefOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -311,6 +323,26 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setSysDashboardOpen(v => !v);
       }
+      // Ctrl+Shift+Esc — Task Manager
+      if (e.ctrlKey && e.shiftKey && e.key === 'Escape') {
+        e.preventDefault();
+        setTaskManagerOpen(v => !v);
+      }
+      // Meta+V — Clipboard history (Win/Cmd+V intercepted before browser paste)
+      if (e.metaKey && !e.ctrlKey && e.key === 'v') {
+        e.preventDefault();
+        setClipboardOpen(v => !v);
+      }
+      // Meta+Shift+S — Snipping tool
+      if (e.metaKey && e.shiftKey && e.key === 's') {
+        e.preventDefault();
+        setSnippingOpen(v => !v);
+      }
+      // Meta+N — Notepad
+      if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key === 'n') {
+        e.preventDefault();
+        setNotepadOpen(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -337,10 +369,19 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Sort: Alphabetical', onClick: () => handleSortModeChange('alpha') },
             { label: 'Sort: Most Used', onClick: () => handleSortModeChange('usage') },
             { label: 'Sort: Manual', onClick: () => handleSortModeChange('manual') },
+            { label: `Icon Size: Small${layout.iconSize === 'small' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('small') },
+            { label: `Icon Size: Medium${layout.iconSize === 'medium' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('medium') },
+            { label: `Icon Size: Large${layout.iconSize === 'large' ? ' ✓' : ''}`, onClick: () => handleIconSizeChange('large') },
             { label: isAutoArrangeEnabled() ? 'Auto-arrange: On ✓' : 'Auto-arrange: Off', onClick: () => { setAutoArrangeEnabled(!isAutoArrangeEnabled()); forceRerender(n => n + 1); } },
             { label: areIconsHidden() ? 'Show Desktop Icons' : 'Hide Desktop Icons', onClick: () => { setIconsHidden(!areIconsHidden()); forceRerender(n => n + 1); } },
             { label: '', onClick: () => {}, divider: true },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
+            { label: 'System Preferences…', onClick: () => setSysPrefOpen(true) },
+            { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
+            { label: 'Clipboard History…', onClick: () => setClipboardOpen(true) },
+            { label: 'Notepad…', onClick: () => setNotepadOpen(true) },
+            { label: 'Schedule Calendar…', onClick: () => setCalendarOpen(true) },
+            { label: 'Snipping Tool…', onClick: () => setSnippingOpen(true) },
             { label: 'System Info…', onClick: () => setSysDashboardOpen(true) },
             { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
@@ -410,6 +451,24 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
+      {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
+      {clipboardOpen && <DesktopClipboard onClose={() => setClipboardOpen(false)} />}
+      {snippingOpen && <DesktopSnippingTool onClose={() => setSnippingOpen(false)} />}
+      {calendarOpen && <DesktopCalendar onClose={() => setCalendarOpen(false)} />}
+      {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
+      {sysPrefOpen && (
+        <DesktopSystemPreferences
+          widgets={widgets} onToggleWidget={handleToggleWidget}
+          iconSize={layout.iconSize} onIconSizeChange={handleIconSizeChange}
+          viewMode={layout.viewMode} onViewModeChange={handleViewModeChange}
+          sortMode={layout.sortMode} onSortModeChange={handleSortModeChange} onSnapToGrid={handleSnapToGrid}
+          wallpaperId={wallpaperId} onWallpaperChange={setWallpaperId}
+          accentId={accentId} onAccentChange={setAccentId}
+          onResetToDefault={handleResetToDefault}
+          onClose={() => setSysPrefOpen(false)}
+          isAdmin={isAdmin}
+        />
+      )}
     </div>
   );
 }
