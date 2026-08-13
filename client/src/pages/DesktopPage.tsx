@@ -152,8 +152,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [widgetSettingsOpen, setWidgetSettingsOpen] = useState(false);
   const [notifCenterOpen, setNotifCenterOpen] = useState(false);
 
-  const autoLockSecs = parseInt(localStorage.getItem('rmpg_desktop_autolock_secs') ?? '0', 10)
-    || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900);
+  const _storedLock = localStorage.getItem('rmpg_desktop_autolock_secs');
+  const _parsedLock = _storedLock !== null ? parseInt(_storedLock, 10) : null;
+  // 0 = "Never" (FlexOSSettings). `0 || fallback` treats null and 0 identically,
+  // silently overriding "Never" with the default — must check === null separately.
+  const autoLockSecs = _parsedLock === 0
+    ? Number.MAX_SAFE_INTEGER
+    : (_parsedLock || (localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900));
   const { ssActive, lockActive, dismissSS, dismissLock } = useIdleScreenSaver(autoLockSecs);
   const [manuallyLocked, setManuallyLocked] = useState(false);
   const [powerMenuOpen, setPowerMenuOpen] = useState(false);
