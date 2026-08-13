@@ -37,9 +37,9 @@ function parseWindowsBatteryOutput(rawJsonString) {
     };
   });
 
-  const overallPercent = Math.round(
-    batteries.reduce((sum, b) => sum + b.percent, 0) / batteries.length
-  );
+  const overallPercent = batteries.length > 0
+    ? Math.round(batteries.reduce((sum, b) => sum + b.percent, 0) / batteries.length)
+    : 0;
   const charging = batteries.some((b) => b.charging);
 
   return { batteries, overallPercent, charging };
