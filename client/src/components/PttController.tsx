@@ -217,6 +217,7 @@ export default function PttController() {
         onMouseLeave={holdUp}
         onTouchStart={(e) => { e.preventDefault(); holdDown(); }}
         onTouchEnd={(e) => { e.preventDefault(); holdUp(); }}
+        onTouchCancel={(e) => { e.preventDefault(); holdUp(); }}
         title={`Hold ${keyCodeLabel(prefs.keyCode)} (or click-hold) to transmit on ${channelName}`}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
