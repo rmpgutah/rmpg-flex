@@ -142,50 +142,18 @@ async function prepareCitationDispatch(opts: V2DispatchOptions) {
   return { v2, citationSchema, CITATION_INSTRUCTIONS, data, filename, sidecarOptions };
 }
 
-async function preparePropertyDispatch(opts: V2DispatchOptions) {
-  if (opts.recordType !== 'property') return null;
-  const { renderPdfV2 } = await importWithRetry(() => import('./v2/engine/renderer'));
-  const { propertyRecordSchema } = await importWithRetry(() => import('./v2/forms/propertyRecord'));
-  const data = opts.recordData ?? {};
-  const filename = `property-${opts.identifier || data.id || 'record'}.pdf`;
-  return { renderPdfV2, schema: propertyRecordSchema, data, filename };
-}
-
-async function prepareBusinessDispatch(opts: V2DispatchOptions) {
-  if (opts.recordType !== 'business') return null;
-  const { renderPdfV2 } = await importWithRetry(() => import('./v2/engine/renderer'));
-  const { businessRecordSchema } = await importWithRetry(() => import('./v2/forms/businessRecord'));
-  const data = opts.recordData ?? {};
-  const filename = `business-${opts.identifier || data.id || 'record'}.pdf`;
-  return { renderPdfV2, schema: businessRecordSchema, data, filename };
-}
-
 /**
  * Dispatch a record print/download through the v2 engine if the
  * record type is migrated. Returns true on handled.
  */
 export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
-  const citCtx = await prepareCitationDispatch(opts);
-  if (citCtx) {
-    await citCtx.v2.downloadMultiCopyPdfV2(
-      citCtx.citationSchema, citCtx.data, citCtx.CITATION_INSTRUCTIONS,
-      citCtx.filename, citCtx.sidecarOptions,
-    );
-    return true;
-  }
-  const propCtx = await preparePropertyDispatch(opts);
-  if (propCtx) {
-    const doc = await propCtx.renderPdfV2(propCtx.schema, propCtx.data);
-    doc.save(propCtx.filename);
-    return true;
-  }
-  const bizCtx = await prepareBusinessDispatch(opts);
-  if (bizCtx) {
-    const doc = await bizCtx.renderPdfV2(bizCtx.schema, bizCtx.data);
-    doc.save(bizCtx.filename);
-    return true;
-  }
-  return false;
+  const ctx = await prepareCitationDispatch(opts);
+  if (!ctx) return false;
+  await ctx.v2.downloadMultiCopyPdfV2(
+    ctx.citationSchema, ctx.data, ctx.CITATION_INSTRUCTIONS,
+    ctx.filename, ctx.sidecarOptions,
+  );
+  return true;
 }
 
 /**
@@ -194,26 +162,10 @@ export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
  * record type isn't migrated. Caller revokes the URL.
  */
 export async function tryV2DispatchBlobUrl(opts: V2DispatchOptions): Promise<string | null> {
-  const citCtx = await prepareCitationDispatch(opts);
-  if (citCtx) {
-    return citCtx.v2.multiCopyPdfV2BlobUrl(
-      citCtx.citationSchema, citCtx.data, citCtx.CITATION_INSTRUCTIONS,
-      citCtx.sidecarOptions,
-    );
-  }
-  const propCtx = await preparePropertyDispatch(opts);
-  if (propCtx) {
-    const doc = await propCtx.renderPdfV2(propCtx.schema, propCtx.data);
-    const ab = doc.output('arraybuffer') as ArrayBuffer;
-    const blob = new Blob([ab], { type: 'application/pdf' });
-    return URL.createObjectURL(blob);
-  }
-  const bizCtx = await prepareBusinessDispatch(opts);
-  if (bizCtx) {
-    const doc = await bizCtx.renderPdfV2(bizCtx.schema, bizCtx.data);
-    const ab = doc.output('arraybuffer') as ArrayBuffer;
-    const blob = new Blob([ab], { type: 'application/pdf' });
-    return URL.createObjectURL(blob);
-  }
-  return null;
+  const ctx = await prepareCitationDispatch(opts);
+  if (!ctx) return null;
+  return ctx.v2.multiCopyPdfV2BlobUrl(
+    ctx.citationSchema, ctx.data, ctx.CITATION_INSTRUCTIONS,
+    ctx.sidecarOptions,
+  );
 }

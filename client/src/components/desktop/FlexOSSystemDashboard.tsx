@@ -181,7 +181,7 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
             <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', marginBottom: 8, fontWeight: 600 }}>Session</div>
             <Row icon={User} label="Officer" value={user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.username : '—'} />
             <Row icon={Shield} label="Role" value={user?.role ?? '—'} />
-            <Row icon={Clock} label="Session Start" value={sessionStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} />
+            <Row icon={Clock} label="Session Start" value={sessionStart.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })} />
             {battery && (
               <Row icon={Battery} label="Battery" value={`${battery.percent ?? '?'}%${battery.charging ? ' ⚡' : ''}`} />
             )}

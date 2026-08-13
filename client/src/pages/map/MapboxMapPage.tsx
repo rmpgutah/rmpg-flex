@@ -2075,11 +2075,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 No snapshots yet.
               </div>
             ) : (
-              snapshot.snapshots.map((s) => (
+              snapshot.snapshots.map((s) => {
+                const snapshotTime = new Date(s.timestamp).toLocaleTimeString('en-US', { timeZone: 'America/Denver' }); // new-date-ok
+                return (
                 <div key={s.timestamp} className="relative group">
                   <img
                     src={s.url}
-                    alt={`Snapshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+                    alt={`Snapshot at ${snapshotTime}`}
                     className="w-full h-auto border border-border-subtle"
                     style={{ borderRadius: 2 }}
                   />
@@ -2092,7 +2094,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <X className="w-2.5 h-2.5" />
                   </button>
                 </div>
-              ))
+              );})
             )}
           </div>
         </div>
@@ -2176,7 +2178,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 No bookmarks yet — use "Drop Bookmark" to save a location.
               </div>
             ) : (
-              mapBookmarks.bookmarks.map((bm) => (
+              mapBookmarks.bookmarks.map((bm) => {
+                const bmDate = new Date(bm.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }); // new-date-ok
+                return (
                 <div
                   key={bm.id}
                   className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border-subtle cursor-pointer hover:bg-surface-overlay"
@@ -2188,7 +2192,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
-                    <div className="text-[8px] text-rmpg-500">{new Date(bm.createdAt).toLocaleDateString()}</div>
+                    <div className="text-[8px] text-rmpg-500">{bmDate}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}
@@ -2198,7 +2202,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <X className="w-3 h-3" />
                   </button>
                 </div>
-              ))
+              );})
             )}
           </div>
         </div>

@@ -792,7 +792,7 @@ export default function MdtPage() {
 
   // ── 24h Clock ──
   const now = new Date();
-  const clockStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const clockStr = now.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   // ── Officer Safety Check ──
   const hasOfficerSafety = checkOfficerSafety(selectedCall);

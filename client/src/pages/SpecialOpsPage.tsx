@@ -226,7 +226,7 @@ export default function SpecialOpsPage() {
       render: (r: Callout) => {
         try {
           return parseTimestamp(r.date).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric',
+            timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
           });
         } catch {
           return r.date?.slice(0, 10) || '--';

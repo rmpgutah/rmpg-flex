@@ -83,7 +83,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
   function formatTime(dateStr: string): string {
     if (!dateStr) return '';
     const d = parseTimestamp(dateStr);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function isNightShift(s: Schedule): boolean {

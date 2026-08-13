@@ -593,7 +593,7 @@ export default function DlSearchPage() {
           dl_state: verifyResult.dl_state || '',
           dl_class: verifyResult.dl_class || '',
           dl_expiry: verifyResult.dl_expiry || '',
-          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL verification on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_verify_imported'],
         }),
       });
@@ -867,7 +867,7 @@ export default function DlSearchPage() {
           dl_state: ocrResult.dl_state,
           dl_class: ocrResult.dl_class,
           dl_expiry: ocrResult.dl_expiry,
-          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_ocr_imported'],
         }),
       });
@@ -912,7 +912,7 @@ export default function DlSearchPage() {
     if (!d) return '—';
     try {
       const dt = parseTimestamp(d);
-      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString();
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { timeZone: 'America/Denver' });
     } catch { return d; }
   };
 
@@ -1395,7 +1395,7 @@ export default function DlSearchPage() {
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
                   </div>
                   {sourcesCfg?.sor_last_run && (
-                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
+                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</p>
                   )}
                   <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100">Run poll now</button>
 
@@ -1494,7 +1494,7 @@ export default function DlSearchPage() {
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
                         <tr key={s.id} className={`border-t border-border-subtle text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
-                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
                               ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>

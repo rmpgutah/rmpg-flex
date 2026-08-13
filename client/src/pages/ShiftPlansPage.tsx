@@ -72,7 +72,7 @@ const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 function formatDate(dateStr: string) {
   const d = parseTimestamp(dateStr);
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 function todayStr() {

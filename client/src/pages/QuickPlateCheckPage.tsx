@@ -73,12 +73,13 @@ function saveHistory(plate: string, state: string): void {
 
 function formatTs(ts: number): string {
   const d = new Date(ts); // new-date-ok — numeric Unix ms, not a D1 string
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatSightingTs(raw: string): string {
   const d = parseTimestamp(raw);
-  return d.toLocaleString([], {
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

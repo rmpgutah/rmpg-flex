@@ -2359,7 +2359,7 @@ export default function AdminSystemTab({
                     <div className="px-4 py-2 bg-rmpg-900">
                       <div className="flex justify-between text-[9px] text-rmpg-400">
                         <span>Report #: RKY26-00001-THF</span>
-                        <span>Date: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                        <span>Date: {new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                       </div>
                     </div>
                   </div>

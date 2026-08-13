@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),
+  getCpuUsage: () => ipcRenderer.invoke('sys:cpu-usage'),
   getAppLogs: (lines) => ipcRenderer.invoke('sys:logs', lines),
   openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
   exportDiagnosticsBundle: () => ipcRenderer.invoke('sys:export-diagnostics'),
@@ -256,9 +257,6 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
-
-  // Force clear all caches and reload (for update propagation)
-  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
 
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the

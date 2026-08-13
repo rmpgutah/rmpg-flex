@@ -1199,7 +1199,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           {session.user_agent?.substring(0, 60)}...
                         </div>
                         <div className="text-[9px] text-fg-muted">
-                          Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
+                          Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
                         </div>
                       </div>
                       <button type="button"

@@ -10,7 +10,7 @@ import RichTextArea from '../../../components/RichTextArea';
 import { toDisplayLabel } from '../../../utils/formatters';
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 interface FitnessScore {

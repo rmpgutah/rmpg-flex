@@ -97,11 +97,11 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
 
   const formatTime = (dt: string) => {
     const d = parseTimestamp(dt);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   const formatDate = (dt: string) => {
     const d = parseTimestamp(dt);
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: '2-digit', day: '2-digit' });
   };
 
   if (!unitId && !loading) {

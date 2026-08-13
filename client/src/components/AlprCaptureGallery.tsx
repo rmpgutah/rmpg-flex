@@ -105,7 +105,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
       </button>
       <div className="px-1.5 py-1 text-[9px] text-rmpg-400 flex items-center justify-between gap-1">
         <span className="truncate">{cap.state ? `${cap.state} · ` : ''}{cap.device_name || cap.location_text || '—'}</span>
-        <span className="shrink-0">{cap.created_at ? parseTimestamp(cap.created_at).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+        <span className="shrink-0">{cap.created_at ? parseTimestamp(cap.created_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
       </div>
       {/* Human-verification row — distinct from the OCR TrustBadge above. */}
       <div className="px-1.5 pb-1 flex items-center justify-between gap-1">

@@ -111,7 +111,7 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
 function formatDate(d: string | null): string {
   if (!d) return '--';
   return parseTimestamp(d).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
 

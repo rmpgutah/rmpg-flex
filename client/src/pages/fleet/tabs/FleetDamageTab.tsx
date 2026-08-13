@@ -196,7 +196,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>
               <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 <span>By: {r.reported_by_name}</span>
                 {(r.repair_cost || r.repair_estimate) && <span>Est: ${r.repair_cost || r.repair_estimate}</span>}
                 {r.insurance_claim_number && <span>Claim: {r.insurance_claim_number}</span>}

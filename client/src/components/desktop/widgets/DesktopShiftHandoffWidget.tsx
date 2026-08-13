@@ -15,16 +15,23 @@ const DEFAULT_ITEMS: Item[] = [
   { id: 'bodycam',   label: 'Body cam docked & charging',    done: false },
 ];
 
+function todayMT(): string {
+  // Always use Mountain Time so the key is consistent across machines in different timezones
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
 function todayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `rmpg_handoff_${y}-${m}-${day}`;
+  return `rmpg_handoff_${todayMT()}`;
 }
 
 function shiftDateLabel(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/Denver',
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
 }
 
 function loadItems(): Item[] {

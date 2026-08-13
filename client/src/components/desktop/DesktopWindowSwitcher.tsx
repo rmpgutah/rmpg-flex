@@ -26,16 +26,12 @@ export default function DesktopWindowSwitcher() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const isCtrlBacktick = e.ctrlKey && e.key === '`';
-      const isAltTab = e.altKey && e.key === 'Tab';
-      if (!isCtrlBacktick && !isAltTab) return;
+      if (!e.ctrlKey || e.key !== '`') return;
       e.preventDefault();
       advance(e.shiftKey ? -1 : 1);
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      const isCtrlRelease = e.key === 'Control';
-      const isAltRelease = e.key === 'Alt';
-      if (!isCtrlRelease && !isAltRelease) return;
+      if (e.key !== 'Control') return;
       if (cycling && mruWindows[highlightIndex]) {
         focusWindow(mruWindows[highlightIndex].id);
       }

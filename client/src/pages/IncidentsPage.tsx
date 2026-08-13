@@ -469,7 +469,7 @@ export default function IncidentsPage() {
         method: 'PUT',
         body: JSON.stringify({ narrative }),
       }).then(() => {
-        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        setNarrativeLastSaved(new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' }));
       }).catch(() => { /* silent fail — unmount save is the fallback */ });
     }, 10000);
     return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };

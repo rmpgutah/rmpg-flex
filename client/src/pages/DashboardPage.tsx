@@ -478,7 +478,7 @@ function buildVolumeSeries(rows: { date: string; count: number }[], days: number
     const iso = d.toISOString().slice(0, 10);
     out.push({
       date: iso,
-      label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      label: d.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' }),
       count: map.get(iso) ?? 0,
     });
   }
@@ -938,8 +938,8 @@ export default function DashboardPage() {
     const dt = new Date(d.date + 'T12:00:00');
     return {
       date: d.date,
-      label: dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-      shortLabel: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+      label: dt.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' }),
+      shortLabel: dt.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' }),
       count: d.count,
     };
   });
@@ -987,7 +987,7 @@ export default function DashboardPage() {
               : 'led-green';
         const statusWord = error ? 'Sync Error' : isStale ? 'Stale' : 'Operational';
         const syncLabel = lastSyncedAt
-          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}`
           : 'Awaiting first sync';
         return (
           <div className="spm-screen-title" onContextMenu={(e) => openMenu(e, [
@@ -1060,7 +1060,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -2280,7 +2280,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
@@ -2910,7 +2910,7 @@ export default function DashboardPage() {
                       <tr key={cred.id ?? idx} className={`border-b border-rmpg-700/30 hover:bg-surface-raised/50 transition-colors duration-150 ${isMobile ? 'min-h-[48px]' : ''}`}>
                         <td className="px-3 py-2.5 text-rmpg-200 font-medium">{cred.officer_name || cred.user_name || '-'}</td>
                         <td className="px-3 py-2.5 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
-                        {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
+                        {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
                         <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? 'var(--stat-accent-red-bright)' : isUrgent ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>

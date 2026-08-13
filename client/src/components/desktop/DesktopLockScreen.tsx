@@ -16,16 +16,6 @@ const AGENCY_SHORT = 'RMPG';
 const MAX_ATTEMPTS = 5;
 const LAST_USER_KEY = 'rmpg_last_login_user';
 
-// ── Auto-lock threshold ───────────────────────────────────────────────────────
-
-function getAutoLockSeconds(): number {
-  try {
-    const stored = localStorage.getItem('rmpg_desktop_autolock_secs');
-    if (stored) return Math.max(60, parseInt(stored, 10));
-  } catch { /* ignore */ }
-  return localStorage.getItem('rmpg_kiosk_shell_enabled') === '1' ? 300 : 900;
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface UserCard {

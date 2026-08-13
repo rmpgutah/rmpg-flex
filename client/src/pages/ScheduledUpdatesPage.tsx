@@ -28,7 +28,8 @@ type UpdateChannel = 'stable' | 'beta';
 
 interface ElectronBridge {
   checkForUpdates?: () => Promise<UpdateInfo> | UpdateInfo | undefined;
-  getVersion?: () => string;
+  // getVersion uses ipcRenderer.invoke — always returns Promise<string>
+  getVersion?: () => Promise<string>;
   installUpdate?: () => void;
 }
 
@@ -56,6 +57,7 @@ function formatBps(bps: number): string {
 function fmtTimestamp(iso: string): string {
   try {
     return parseTimestamp(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true,
     });
@@ -89,7 +91,10 @@ export default function ScheduledUpdatesPage() {
   const electron = getElectron();
   const inElectron = isElectron();
 
-  const currentVersion = electron?.getVersion?.() ?? '5.9.0';
+  // getVersion uses ipcRenderer.invoke and returns Promise<string> — not a plain
+  // string. Calling it without await assigned a Promise object to currentVersion,
+  // which rendered as "[object Promise]" in the UI.
+  const [currentVersion, setCurrentVersion] = useState('5.9.0');
 
   const [autoUpdate, setAutoUpdate]     = useState<boolean>(() => lsGet(LS_AUTO_UPDATE, true));
   const [channel, setChannel]           = useState<UpdateChannel>(() => lsGet<UpdateChannel>(LS_CHANNEL, 'stable'));
@@ -101,6 +106,12 @@ export default function ScheduledUpdatesPage() {
   const [progress, setProgress]         = useState<DownloadProgress | null>(null);
   const [confirmInstall, setConfirmInstall] = useState(false);
   const [error, setError]               = useState<string | null>(null);
+
+  // Fetch app version on mount (async — ipcRenderer.invoke)
+  useEffect(() => {
+    electron?.getVersion?.().then(v => { if (v) setCurrentVersion(v); }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // listen for download progress events
   useEffect(() => {

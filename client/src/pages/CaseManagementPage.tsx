@@ -1341,9 +1341,9 @@ export default function CaseManagementPage() {
                       ['Case Number', selected.case_number],
                       ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
-                      ['Opened', selected.opened_date ? parseTimestamp(selected.opened_date).toLocaleDateString() : '—'],
-                      ['Due Date', selected.due_date ? parseTimestamp(selected.due_date).toLocaleDateString() : '—'],
-                      ['Closed', selected.closed_date ? parseTimestamp(selected.closed_date).toLocaleDateString() : '—'],
+                      ['Opened', selected.opened_date ? parseTimestamp(selected.opened_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
+                      ['Due Date', selected.due_date ? parseTimestamp(selected.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
+                      ['Closed', selected.closed_date ? parseTimestamp(selected.closed_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
                     ].map(([label, value]) => (
                       <div key={label as string}>
                         <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -1377,7 +1377,7 @@ export default function CaseManagementPage() {
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="calls"
                   caseId={selected.id}
@@ -1395,7 +1395,7 @@ export default function CaseManagementPage() {
                     { key: 'incident_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="incidents"
                   caseId={selected.id}
@@ -1410,7 +1410,7 @@ export default function CaseManagementPage() {
                   items={caseFull?.persons || []}
                   columns={[
                     { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-rmpg-100">{row.last_name}, {row.first_name}</span> },
-                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                     { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
                     { key: 'phone', label: 'Phone' },
                   ]}
@@ -1485,7 +1485,7 @@ export default function CaseManagementPage() {
                     { key: 'warrant_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'subject_name', label: 'Subject' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="warrants"
                   caseId={selected.id}
@@ -1503,7 +1503,7 @@ export default function CaseManagementPage() {
                     { key: 'violation', label: 'Violation' },
                     { key: 'status', label: 'Status' },
                     { key: 'violator_name', label: 'Violator' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="citations"
                   caseId={selected.id}

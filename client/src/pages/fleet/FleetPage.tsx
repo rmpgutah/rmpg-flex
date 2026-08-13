@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useNavigate } from 'react-router';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
@@ -9,6 +9,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
+import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -38,7 +39,6 @@ import { useFleetVehicles } from './hooks/useFleetVehicles';
 import { useVehicleDetail } from './hooks/useVehicleDetail';
 import { useFleetCosts } from './hooks/useFleetCosts';
 import { useFleetForms, type ModalMode } from './hooks/useFleetForms';
-import { useFleetThresholds } from '../../hooks/useSystemSettings';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
@@ -64,7 +64,10 @@ const FLEET_VIEWS: { id: FleetViewMode; label: string; icon?: typeof FileText }[
   { id: 'driver_performance', label: 'Driver Performance', icon: Gauge },
 ];
 
-const FLEET_VIEW_IDS = FLEET_VIEWS.map((v) => v.id);
+// Rough patrol-fleet service-life heuristic (no per-vehicle target exists in
+// the schema) used only to color-code the utilization bar below — not a
+// retirement policy.
+const UTILIZATION_LIFETIME_MILES = 150000;
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
   in_service: '#22c55e', maintenance: '#f59e0b',
@@ -83,14 +86,14 @@ const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
   { value: 'retired', label: 'Retired' },
 ];
 
-function getExpiryStatus(dateStr: string | undefined, warnDays: number): 'ok' | 'expiring' | 'expired' | 'none' {
+function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
   const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
-  const warnDate = new Date();
-  warnDate.setDate(warnDate.getDate() + warnDays);
-  if (exp <= warnDate) return 'expiring';
+  const thirtyDays = new Date();
+  thirtyDays.setDate(thirtyDays.getDate() + 30);
+  if (exp <= thirtyDays) return 'expiring';
   return 'ok';
 }
 
@@ -138,34 +141,14 @@ const PRETRIP_DEFAULTS = PRETRIP_ITEMS.reduce<Record<string, boolean>>(
 
 export default function FleetPage() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
-  const thresholds = useFleetThresholds();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
   // Right-click context menu
   const { openMenu } = useContextMenu();
   const cm = useMenuActions();
-
-  // Pending URL initial values — read once before hooks initialize so we can
-  // seed hook-owned state on the first effect tick.
-  const pendingStatusRef = useRef(searchParams.get('status'));
-  const pendingSearchRef = useRef(searchParams.get('q'));
-  const pendingTabRef = useRef(searchParams.get('tab'));
-
-  // URL → state helper. Uses replace so filter/search changes don't stack history.
-  const updateUrl = useCallback((updates: Record<string, string | null>) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      for (const [k, v] of Object.entries(updates)) {
-        if (v == null || v === '') next.delete(k);
-        else next.set(k, v);
-      }
-      return next;
-    }, { replace: true });
-  }, [setSearchParams]);
 
   // Core state
   const {
@@ -174,22 +157,7 @@ export default function FleetPage() {
     showArchived, setShowArchived,
     statusCounts, avgMileage, refetch: fetchVehicles,
   } = useFleetVehicles();
-
-  // Apply URL-seeded filter/search on first render (hook owns the state so we
-  // can only drive it via the setters after the hook has initialized).
-  useEffect(() => {
-    if (pendingStatusRef.current) setFilterStatus(pendingStatusRef.current);
-    if (pendingSearchRef.current) setSearchQuery(pendingSearchRef.current);
-    pendingStatusRef.current = null;
-    pendingSearchRef.current = null;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Initialize selectedId from URL ?vehicle= param.
-  const [selectedId, setSelectedId] = useState<string | number | null>(() => {
-    const v = searchParams.get('vehicle');
-    return v && /^\d+$/.test(v) ? Number(v) : null;
-  });
+  const [selectedId, setSelectedId] = useState<string | number | null>(null);
 
   // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
   const vehicleNumberById = useMemo(() => {
@@ -205,19 +173,11 @@ export default function FleetPage() {
   // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
   // Persisted with the same mechanism as activeTab — the two mode
   // mechanisms behaving differently is what produced this page's tab bugs.
-  // viewMode: URL ?view= > localStorage > 'dashboard'. Write-back to both.
-  const [viewMode, _setViewModeRaw] = useState<FleetViewMode>(() => {
-    const urlView = searchParams.get('view');
-    if (urlView && (FLEET_VIEW_IDS as readonly string[]).includes(urlView)) return urlView as FleetViewMode;
-    const stored = localStorage.getItem('rmpg_fleet_view_mode');
-    if (stored && (FLEET_VIEW_IDS as readonly string[]).includes(stored)) return stored as FleetViewMode;
-    return 'dashboard';
-  });
-  const setViewMode = useCallback((v: FleetViewMode) => {
-    _setViewModeRaw(v);
-    localStorage.setItem('rmpg_fleet_view_mode', v);
-    updateUrl({ view: v === 'dashboard' ? null : v });
-  }, [updateUrl]);
+  const [viewMode, setViewMode] = usePersistedTab(
+    'rmpg_fleet_view_mode',
+    'dashboard' as FleetViewMode,
+    ['dashboard', 'analysis', 'work_orders', 'vendors', 'service'] as const,
+  );
   const [workOrdersVehicleFilter, setWorkOrdersVehicleFilter] = useState<number | null>(null);
   // Focus-follows-selection for the fleet-wide view tablist (WAI-ARIA tab
   // pattern). Only the keyboard handler flips this ref before changing
@@ -364,36 +324,6 @@ export default function FleetPage() {
   });
   modalRef.current = modal;
 
-  // URL-aware setters — keep URL in sync with current state on every change.
-  const selectVehicle = useCallback((id: string | number | null) => {
-    setSelectedId(id);
-    updateUrl({ vehicle: id != null ? String(id) : null, tab: null });
-  }, [updateUrl]);
-
-  const changeActiveTab = useCallback((tab: string) => {
-    setActiveTab(tab as any);
-    updateUrl({ tab: tab === 'overview' ? null : tab });
-  }, [setActiveTab, updateUrl]);
-
-  const changeFilterStatus = useCallback((status: string) => {
-    setFilterStatus(status);
-    updateUrl({ status: status === 'all' ? null : status });
-  }, [setFilterStatus, updateUrl]);
-
-  const changeSearchQuery = useCallback((q: string) => {
-    setSearchQuery(q);
-    updateUrl({ q: q || null });
-  }, [setSearchQuery, updateUrl]);
-
-  // Apply URL-seeded tab once useVehicleDetail initializes (one-shot).
-  useEffect(() => {
-    if (pendingTabRef.current && setActiveTab) {
-      setActiveTab(pendingTabRef.current as any);
-      pendingTabRef.current = null;
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const [showPretripModal, setShowPretripModal] = useState(false);
   // Derived from PRETRIP_ITEMS, not hand-listed: a key present in the item list
   // but missing here would render as undefined — an unchecked box reading as FAIL —
@@ -489,17 +419,17 @@ export default function FleetPage() {
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
     const exp = parseTimestamp(v.registration_expiry);
-    const warnDate = new Date();
-    warnDate.setDate(warnDate.getDate() + thresholds.expiryWarnDays);
-    return exp <= warnDate;
+    const thirtyDays = new Date();
+    thirtyDays.setDate(thirtyDays.getDate() + 30);
+    return exp <= thirtyDays;
   }).length;
 
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
     const exp = parseTimestamp(v.insurance_expiry);
-    const warnDate = new Date();
-    warnDate.setDate(warnDate.getDate() + thresholds.expiryWarnDays);
-    return exp <= warnDate;
+    const thirtyDays = new Date();
+    thirtyDays.setDate(thirtyDays.getDate() + 30);
+    return exp <= thirtyDays;
   }).length;
 
   const assignedVehicles = vehicles.filter(v => v.assigned_unit_call_sign).length;
@@ -576,7 +506,7 @@ export default function FleetPage() {
     try {
       await apiFetch(`/fleet/${selectedId}/archive`, { method: 'POST' });
       addToast('Vehicle archived', 'success');
-      selectVehicle(null);
+      setSelectedId(null);
       clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
@@ -589,7 +519,7 @@ export default function FleetPage() {
     try {
       await apiFetch(`/fleet/${selectedId}/unarchive`, { method: 'POST' });
       addToast('Vehicle unarchived', 'success');
-      selectVehicle(null);
+      setSelectedId(null);
       clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
@@ -604,7 +534,7 @@ export default function FleetPage() {
       await apiFetch(`/fleet/${deletingVehicleId}`, { method: 'DELETE' });
       addToast('Vehicle deleted', 'success');
       setDeletingVehicleId(null);
-      selectVehicle(null);
+      setSelectedId(null);
       clearDetail();
       fetchVehicles({ silent: true });
     } catch (err) {
@@ -816,7 +746,7 @@ export default function FleetPage() {
   const buildVehicleMenu = (vehicle: FleetVehicle): ContextMenuItem[] => {
     const label = `${vehicle.vehicle_number}${[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).length ? ' — ' + [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : ''}`;
     return [
-      cm.action('Open vehicle', () => selectVehicle(vehicle.id), { icon: <Eye size={12} /> }),
+      cm.action('Open vehicle', () => setSelectedId(vehicle.id), { icon: <Eye size={12} /> }),
       cm.separator(),
       cm.copy('Copy unit #', vehicle.vehicle_number),
       ...(vehicle.plate_number ? [cm.copy('Copy plate', vehicle.plate_number, <Tag size={12} />)] : []),
@@ -846,7 +776,7 @@ export default function FleetPage() {
           </div>
           <button type="button"
             className={`toolbar-btn ${showArchived ? 'text-amber-400 border-amber-600/50' : ''}`}
-            onClick={() => { setShowArchived(!showArchived); selectVehicle(null); clearDetail(); }}
+            onClick={() => { setShowArchived(!showArchived); setSelectedId(null); clearDetail(); }}
           >
             <Archive className="w-3 h-3" /> {showArchived ? 'Viewing Archives' : 'Show Archives'}
           </button>
@@ -917,7 +847,7 @@ export default function FleetPage() {
                 }`}
                 aria-label={`Filter by ${label}: ${statusCounts[value] || 0} vehicles`}
                 aria-pressed={filterStatus === value}
-                onClick={() => changeFilterStatus(filterStatus === value ? 'all' : value)}
+                onClick={() => setFilterStatus(filterStatus === value ? 'all' : value)}
               >
                 <GaugeRing
                   value={statusCounts[value] || 0}
@@ -1010,7 +940,7 @@ export default function FleetPage() {
             <select id="ff-fleetpage-0"
               className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
-              onChange={(e) => changeFilterStatus(e.target.value)}
+              onChange={(e) => setFilterStatus(e.target.value)}
             >
               <option value="all">All Status</option>
               {VEHICLE_STATUSES.map((s) => (
@@ -1023,7 +953,7 @@ export default function FleetPage() {
                 className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
                 placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
-                onChange={(e) => changeSearchQuery(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             <span
@@ -1050,9 +980,9 @@ export default function FleetPage() {
             {filtered.map((v, idx) => {
               const isSelected = selectedId != null && String(v.id) === String(selectedId);
               const statusColor = STATUS_COLOR[v.status];
-              const regStatus = getExpiryStatus(v.registration_expiry, thresholds.expiryWarnDays);
-              const insStatus = getExpiryStatus(v.insurance_expiry, thresholds.expiryWarnDays);
-              const svcStatus = getExpiryStatus(v.next_service_due, thresholds.expiryWarnDays);
+              const regStatus = getExpiryStatus(v.registration_expiry);
+              const insStatus = getExpiryStatus(v.insurance_expiry);
+              const svcStatus = getExpiryStatus(v.next_service_due);
               const hasAlert = regStatus === 'expired' || insStatus === 'expired' || svcStatus === 'expired';
               const hasWarning = regStatus === 'expiring' || insStatus === 'expiring' || svcStatus === 'expiring';
 
@@ -1061,12 +991,12 @@ export default function FleetPage() {
                   key={v.id}
                   role="listitem"
                   tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectVehicle(v.id); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(v.id); } }}
                   className={`px-3 py-2.5 cursor-pointer border-b border-rmpg-700 transition-all duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-brand-500/50 ${
                     isSelected ? 'panel-inset' : `hover:bg-rmpg-800 ${idx % 2 === 1 ? 'bg-rmpg-800/15' : ''}`
                   }`}
                   style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
-                  onClick={() => selectVehicle(v.id)}
+                  onClick={() => setSelectedId(v.id)}
                   onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
                   aria-selected={isSelected}
                 >
@@ -1138,7 +1068,7 @@ export default function FleetPage() {
                       {v.next_service_due && (() => {
                         const daysUntil = Math.ceil((parseTimestamp(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
-                        if (daysUntil <= thresholds.serviceWarnDays) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
+                        if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
                         return null;
                       })()}
                     </div>
@@ -1148,13 +1078,13 @@ export default function FleetPage() {
                     <div className="mt-1.5 w-full">
                       <div className="flex justify-between text-[7px] text-rmpg-600 mb-0.5">
                         <span>UTILIZATION</span>
-                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))}%</span>
+                        <span className="font-mono">{Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%</span>
                       </div>
-                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / thresholds.utilizationMaxMiles) * 100))}%`}>
+                      <div className="w-full h-1 bg-rmpg-700 overflow-hidden" role="progressbar" aria-valuenow={Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))} aria-valuemin={0} aria-valuemax={100} aria-label={`Vehicle utilization: ${Math.min(100, Math.round((v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100))}%`}>
                         <div
                           className="h-full transition-all duration-500"
                           style={{
-                            width: `${Math.min(100, (v.current_mileage / thresholds.utilizationMaxMiles) * 100)}%`,
+                            width: `${Math.min(100, (v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100)}%`,
                             background: v.current_mileage < 75000 ? '#22c55e'
                               : v.current_mileage < 120000 ? '#f59e0b' : '#ef4444',
                           }}
@@ -1232,7 +1162,7 @@ export default function FleetPage() {
               >
                 {viewMode === 'dashboard' ? (
                   <>
-                    <MaintenanceMonitor onSelectVehicle={(id) => { selectVehicle(id); fetchDetail(id); }} />
+                    <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
                     {fleetAnalytics ? (
                       <div className="px-3 pb-3">
                         <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
@@ -1266,7 +1196,7 @@ export default function FleetPage() {
           ) : (
             <>
             {isMobile && (
-              <button type="button" onClick={() => { selectVehicle(null); clearDetail(); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
+              <button type="button" onClick={() => { setSelectedId(null); clearDetail(); }} className="text-rmpg-400 hover:text-rmpg-100 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken">
                 ◀ Back to Vehicles
               </button>
             )}
@@ -1307,7 +1237,7 @@ export default function FleetPage() {
                 onNewInspection: openNewInspection,
                 onViewAllWorkOrders: () => {
                   setWorkOrdersVehicleFilter(Number(detail.id));
-                  selectVehicle(null);
+                  setSelectedId(null);
                   clearDetail();
                   setViewMode('work_orders');
                 },
@@ -1329,10 +1259,10 @@ export default function FleetPage() {
                 onDeleteVehicle: () => setDeletingVehicleId(selectedId),
                 onFetchGpsMileage: fetchGpsMileage,
                 onSyncGpsMileage: handleSyncGpsMileage,
-                onClose: () => { selectVehicle(null); clearDetail(); },
+                onClose: () => { setSelectedId(null); clearDetail(); },
               }}
               activeTab={activeTab}
-              onTabChange={changeActiveTab}
+              onTabChange={setActiveTab}
             />
             </>
           )}
@@ -1430,7 +1360,7 @@ export default function FleetPage() {
         onClose={() => setDeletingFuel(null)}
         onConfirm={handleDeleteFuel}
         title="Delete Fuel Log"
-        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1452,7 +1382,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${toDisplayLabel(deletingInspection?.inspection_type) || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${toDisplayLabel(deletingInspection?.inspection_type) || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
