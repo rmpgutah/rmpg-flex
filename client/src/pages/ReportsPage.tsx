@@ -394,7 +394,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
