@@ -128,6 +128,7 @@ import { openPageWindow, isWindowablePath } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
+import { useDeviceClass } from '../hooks/useDeviceClass';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 import { playUiNavigate } from '../utils/uiClickSounds';
 
@@ -423,6 +424,10 @@ export default function Layout() {
   // index.css ("MAPBOX CONTAINER POSITION COLLISION"). Removed rather than
   // wired up, so nobody re-derives the wrong diagnosis from it. <main> keeps
   // `overflow-auto` — the per-path scroll restore below depends on it.
+
+  // Stamps device-fz55 on <html> when running on a Toughbook FZ-55.
+  // The CSS in fz55.css scopes all layout fixes under that class.
+  useDeviceClass();
 
   const gps = useGpsTracking();
   const presence = usePresence();
