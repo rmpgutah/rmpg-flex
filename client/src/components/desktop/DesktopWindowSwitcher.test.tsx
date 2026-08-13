@@ -22,6 +22,12 @@ function ctrlBacktickDown(shift = false) {
 function ctrlUp() {
   fireEvent.keyUp(window, { key: 'Control' });
 }
+function altTabDown(shift = false) {
+  fireEvent.keyDown(window, { key: 'Tab', altKey: true, shiftKey: shift });
+}
+function altUp() {
+  fireEvent.keyUp(window, { key: 'Alt' });
+}
 
 function zIndexOf(items: string[], titlePrefix: string): number {
   const entry = items.find(t => t.startsWith(`${titlePrefix}-`))!;
@@ -88,5 +94,30 @@ describe('DesktopWindowSwitcher', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     ctrlBacktickDown();
     expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
+  });
+
+  it('Alt+Tab opens the switcher and Alt release confirms the selection', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open-dispatch'));
+    fireEvent.click(screen.getByText('open-map'));
+    // MRU: Live Map (front), Dispatch
+    altTabDown(); // opens switcher, advances to Dispatch
+    expect(screen.getByTestId('window-switcher-overlay')).toBeInTheDocument();
+    altUp(); // releasing Alt confirms → Dispatch focused
+    expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
+    const items = screen.getAllByRole('listitem').map(li => li.textContent!);
+    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Live Map'));
+  });
+
+  it('Alt+Shift+Tab reverses direction and Alt release confirms', () => {
+    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
+    fireEvent.click(screen.getByText('open-dispatch'));
+    fireEvent.click(screen.getByText('open-map'));
+    fireEvent.click(screen.getByText('open-records'));
+    // MRU: Records (front), Live Map, Dispatch — reverse from front wraps to Dispatch
+    altTabDown(true);
+    altUp();
+    const items = screen.getAllByRole('listitem').map(li => li.textContent!);
+    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Records'));
   });
 });

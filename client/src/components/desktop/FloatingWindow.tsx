@@ -32,7 +32,7 @@ interface FloatingWindowProps {
 }
 
 export default function FloatingWindow({ win }: FloatingWindowProps) {
-  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers } = useDesktopWindows();
+  const { closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, restoreAll, windows } = useDesktopWindows();
   const taskbarHeight = TASKBAR_HEIGHT_PX[getTaskbarSize()];
   const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
   const resizeState = useRef<{ startX: number; startY: number; originW: number; originH: number; originX: number; originY: number; dir: ResizeDir } | null>(null);
@@ -46,6 +46,8 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
   // System menu: position of the right-click context menu on the title bar
   const [sysMenu, setSysMenu] = useState<{ x: number; y: number } | null>(null);
   const [shaking, setShaking] = useState(false);
+  // Tracks windows minimized by this window's Aero Shake so a reverse-shake within 2 s restores them
+  const shakeRestorable = useRef<{ ids: string[]; until: number }>({ ids: [], until: 0 });
   const [snapPreview, setSnapPreview] = useState<'left' | 'right' | null>(null);
   // Tracks which edge the cursor is near during the drag — used in onUp to
   // determine if a snap should be applied. We need a ref here because the state
@@ -159,10 +161,18 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         shakeRef.current.timestamps.push(now);
         shakeRef.current.timestamps = shakeRef.current.timestamps.filter(t => now - t < AERO_SHAKE_WINDOW_MS);
         if (shakeRef.current.timestamps.length >= AERO_SHAKE_REVERSAL_COUNT) {
-          minimizeOthers(win.id);
           shakeRef.current.timestamps = [];
-          setShaking(true);
-          setTimeout(() => setShaking(false), 500);
+          const now2 = Date.now();
+          if (shakeRestorable.current.ids.length > 0 && now2 < shakeRestorable.current.until) {
+            restoreAll(shakeRestorable.current.ids);
+            shakeRestorable.current = { ids: [], until: 0 };
+          } else {
+            const otherIds = windows.filter(w => w.id !== win.id && !w.minimized).map(w => w.id);
+            minimizeOthers(win.id);
+            shakeRestorable.current = { ids: otherIds, until: now2 + 2000 };
+            setShaking(true);
+            setTimeout(() => setShaking(false), 500);
+          }
         }
       }
 
@@ -250,7 +260,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight, minimizeOthers, toggleMaximize]);
+  }, [win.id, win.x, win.y, win.width, win.height, focusWindow, moveResize, snapPreview, taskbarHeight, minimizeOthers, toggleMaximize, restoreAll, windows]);
 
   const onResizeHandlePointerDown = useCallback((e: React.PointerEvent, dir: ResizeDir) => {
     e.stopPropagation();

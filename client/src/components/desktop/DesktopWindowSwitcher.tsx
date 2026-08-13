@@ -12,6 +12,7 @@ export default function DesktopWindowSwitcher() {
   const { windows, focusWindow } = useDesktopWindows();
   const [cycling, setCycling] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
+  const [altOpen, setAltOpen] = useState(false);
 
   const mruWindows = useMemo(
     () => [...windows].sort((a, b) => b.zIndex - a.zIndex),
@@ -24,19 +25,47 @@ export default function DesktopWindowSwitcher() {
     setHighlightIndex(prev => (prev + direction + mruWindows.length) % mruWindows.length);
   }, [mruWindows.length]);
 
+  const confirm = useCallback(() => {
+    if (mruWindows[highlightIndex]) focusWindow(mruWindows[highlightIndex].id);
+    setCycling(false);
+    setHighlightIndex(0);
+    setAltOpen(false);
+  }, [mruWindows, highlightIndex, focusWindow]);
+
+  const dismiss = useCallback(() => {
+    setCycling(false);
+    setHighlightIndex(0);
+    setAltOpen(false);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || e.key !== '`') return;
-      e.preventDefault();
-      advance(e.shiftKey ? -1 : 1);
+      // Ctrl+` — existing binding
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        advance(e.shiftKey ? -1 : 1);
+        return;
+      }
+      // Alt+Tab / Alt+Shift+Tab
+      if (e.altKey && e.key === 'Tab') {
+        e.preventDefault();
+        setAltOpen(true);
+        advance(e.shiftKey ? -1 : 1);
+        return;
+      }
+      // Tab / Shift+Tab while switcher is open
+      if (cycling && e.key === 'Tab' && !e.ctrlKey) {
+        e.preventDefault();
+        advance(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (!cycling) return;
+      if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+      if (e.key === 'Escape') { e.preventDefault(); dismiss(); }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== 'Control') return;
-      if (cycling && mruWindows[highlightIndex]) {
-        focusWindow(mruWindows[highlightIndex].id);
-      }
-      setCycling(false);
-      setHighlightIndex(0);
+      if (e.key === 'Control' && cycling && !altOpen) { confirm(); }
+      if (e.key === 'Alt' && altOpen) { confirm(); }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -44,7 +73,7 @@ export default function DesktopWindowSwitcher() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [advance, cycling, highlightIndex, mruWindows, focusWindow]);
+  }, [advance, cycling, altOpen, confirm, dismiss]);
 
   if (!cycling || mruWindows.length === 0) return null;
 
