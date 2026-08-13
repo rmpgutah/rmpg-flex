@@ -54,6 +54,7 @@ function PanelTitleBar({
       className={`panel-title-bar ${className}`}
       role="heading"
       aria-level={3}
+      data-panel-header="true"
       onMouseEnter={() => setHovered('chrome')}
       onMouseLeave={() => setHovered(null)}
     >
