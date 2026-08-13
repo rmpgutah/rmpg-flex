@@ -203,9 +203,18 @@ export default function ScreenCapturePage() {
 
   const handleSave = useCallback(async () => {
     if (!capturedImage) return;
+    const el = (window as any).electron;
+    // Guard: saveScreenshot must exist in the preload bridge. Without this check
+    // the optional-chain returns undefined instead of throwing, so the code falls
+    // through and reports "Saved" even though no file was written — a silent false
+    // success with real evidence-chain implications.
+    if (!el?.saveScreenshot) {
+      flash('Save is not available in this version of the desktop app.', 'err');
+      return;
+    }
     const filename = buildFilename();
     try {
-      await (window as any).electron?.saveScreenshot?.(capturedImage, filename);
+      await el.saveScreenshot(capturedImage, filename);
       const fresh: RecentCapture = { timestamp: new Date().toISOString(), filename };
       const updated = [fresh, ...recentCaptures].slice(0, MAX_RECENT);
       setRecentCaptures(updated);
@@ -220,8 +229,16 @@ export default function ScreenCapturePage() {
 
   const handleCopy = useCallback(async () => {
     if (!capturedImage) return;
+    const el = (window as any).electron;
+    // Same guard as handleSave: copyToClipboard is not in the current preload;
+    // without the check the optional-chain silently returns undefined and the
+    // flash reports "Copied to clipboard." when nothing was actually written.
+    if (!el?.copyToClipboard) {
+      flash('Clipboard copy is not available in this version of the desktop app.', 'err');
+      return;
+    }
     try {
-      await (window as any).electron?.copyToClipboard?.(capturedImage);
+      await el.copyToClipboard(capturedImage);
       flash('Copied to clipboard.', 'ok');
     } catch (err: any) {
       flash(`Copy failed: ${err?.message ?? 'unknown'}`, 'err');
