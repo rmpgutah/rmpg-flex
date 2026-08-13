@@ -1,5 +1,5 @@
-@import './styles/fz55.css';
 @import './styles/theme-palettes.css';
+@import './styles/fz55.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
