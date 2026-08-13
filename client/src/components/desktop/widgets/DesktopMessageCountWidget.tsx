@@ -38,7 +38,7 @@ export default function DesktopMessageCountWidget() {
 
   const fetchComm = useCallback(async () => {
     try {
-      const data = await apiFetch<CommUnreadCount>('/communications/unread-count');
+      const data = await apiFetch<CommUnreadCount>('/comms/unread-count');
       setState(prev => ({
         ...prev,
         total: (data.total ?? 0) + prev.email,

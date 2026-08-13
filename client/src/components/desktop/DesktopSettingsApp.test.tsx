@@ -118,7 +118,7 @@ describe('DesktopSettingsApp', () => {
   it('Layout & Templates category shows a placeholder', () => {
     renderApp();
     fireEvent.click(screen.getByText('Layout & Templates'));
-    expect(screen.getByText(/coming in a future phase/i)).toBeInTheDocument();
+    expect(screen.getByText(/saved widget layouts/i)).toBeInTheDocument();
   });
 
   it('close button calls onClose', () => {

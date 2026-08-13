@@ -187,14 +187,14 @@ export default function DesktopPanicWidget() {
             {errorMsg || 'Network error'}
           </div>
           <button
-            onClick={dismiss}
+            onClick={triggerPanic}
             style={{
               fontSize: 9,
               padding: '2px 8px',
               borderRadius: 2,
-              border: '1px solid rgb(var(--text-secondary-rgb))',
+              border: '1px solid rgb(var(--sev-critical-rgb))',
               background: 'transparent',
-              color: 'rgb(var(--text-secondary-rgb))',
+              color: 'rgb(var(--sev-critical-rgb))',
               cursor: 'pointer',
             }}
           >

@@ -1926,7 +1926,7 @@ function runElevatedRegistryWrite(shellValue) {
     const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
     const regArgs = ['add', regKeyPath, '/v', 'Shell', '/t', 'REG_SZ', '/d', shellValue, '/f'];
     const argumentListLiteral = `@(${regArgs.map(psSingleQuote).join(',')})`;
-    const psCommand = `Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait`;
+    const psCommand = `$proc = Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait -PassThru; exit $proc.ExitCode`;
     const child = spawn('powershell.exe', ['-NoProfile', '-Command', psCommand], { windowsHide: false });
     let stderr = '';
     child.stderr?.on('data', (d) => { stderr += d.toString(); });
