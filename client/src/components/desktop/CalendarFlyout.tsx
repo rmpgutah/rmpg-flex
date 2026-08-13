@@ -28,8 +28,8 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
     return () => document.removeEventListener('mousedown', handler);
   }, [onClose, anchorRef]);
 
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDow = new Date(year, month, 1).getDay(); // new-date-ok — numeric year/month, not a server timestamp
+  const daysInMonth = new Date(year, month + 1, 0).getDate(); // new-date-ok — numeric year/month, not a server timestamp
 
   function prevMonth() {
     if (month === 0) { setYear(y => y - 1); setMonth(11); }
