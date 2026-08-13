@@ -380,9 +380,10 @@ export default function ServeRoutePlanner({
   isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress,
 }: ServeRoutePlannerProps) {
   const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
-  const geocodedJobs = jobs.filter(j =>
-    j.recipient_lat != null && j.recipient_lng != null && !TERMINAL_STATUSES.has(j.status)
-  );
+  // All non-terminal jobs appear in the list. Un-geocoded ones are visible but
+  // unselectable so officers can see what's missing from their route and why.
+  const visibleJobs = jobs.filter(j => !TERMINAL_STATUSES.has(j.status));
+  const geocodedJobs = visibleJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
 
   const [stops, setStops] = useState<StopItem[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -454,9 +455,11 @@ export default function ServeRoutePlanner({
   // Initialize stops from jobs
   useEffect(() => {
     if (!isOpen) return;
-    const items: StopItem[] = geocodedJobs.map((job, i) => ({
+    const items: StopItem[] = visibleJobs.map((job, i) => ({
       job,
-      selected: isJobPreselected(job.status, preselectedJobIds, job.id),
+      // Un-geocoded jobs are never pre-selected — they can't be routed.
+      selected: (job.recipient_lat != null && job.recipient_lng != null)
+        && isJobPreselected(job.status, preselectedJobIds, job.id),
       order: i,
     }));
     items.sort((a, b) => {
@@ -696,9 +699,17 @@ export default function ServeRoutePlanner({
 
   // Actions
   const toggleStop = useCallback((idx: number) => {
-    setStops(prev => prev.map((s, i) => i === idx ? { ...s, selected: !s.selected } : s));
+    setStops(prev => prev.map((s, i) => {
+      if (i !== idx) return s;
+      // Un-geocoded jobs can never be selected — they have no coordinates to route to.
+      if (s.job.recipient_lat == null || s.job.recipient_lng == null) return s;
+      return { ...s, selected: !s.selected };
+    }));
   }, []);
-  const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
+  const selectAll = useCallback(() => setStops(prev => prev.map(s => ({
+    ...s,
+    selected: s.job.recipient_lat != null && s.job.recipient_lng != null,
+  }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
@@ -1286,7 +1297,12 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <Route size={16} className="text-accent-silver-400" />
             <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
-            <span className="text-[11px] text-fg-muted ml-2">{selectedCount} of {stops.length} stops selected</span>
+            <span className="text-[11px] text-fg-muted ml-2">
+              {selectedCount} of {stops.filter(s => s.job.recipient_lat != null && s.job.recipient_lng != null).length} routable
+              {stops.some(s => s.job.recipient_lat == null || s.job.recipient_lng == null) && (
+                <span className="text-amber-400 ml-1">· {stops.filter(s => s.job.recipient_lat == null || s.job.recipient_lng == null).length} missing address</span>
+              )}
+            </span>
             {totalDistance > 0 && (
               <span className="text-[10px] text-rmpg-400 ml-2 pl-2 border-l border-rmpg-700 font-mono">
                 {totalDistance.toFixed(1)} mi · {Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m
@@ -1489,10 +1505,12 @@ export default function ServeRoutePlanner({
               {stops.map((stop, idx) => {
                 const isDragSource = dragIdx === idx;
                 const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
+                const hasCoords = stop.job.recipient_lat != null && stop.job.recipient_lng != null;
                 return (
                 <div key={stop.job.id}
-                  draggable
+                  draggable={hasCoords}
                   onDragStart={(e) => {
+                    if (!hasCoords) return;
                     setDragIdx(idx);
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/plain', String(idx));
@@ -1512,12 +1530,19 @@ export default function ServeRoutePlanner({
                     setDropIdx(null);
                   }}
                   onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-                  className={`flex items-center gap-2 px-3 py-2 border-b transition-colors cursor-grab active:cursor-grabbing ${
-                    isDropTarget ? 'border-b-brand-400 border-dashed bg-brand-400/10'
-                    : 'border-border-default'
-                  } ${stop.selected ? 'bg-surface-base' : 'opacity-50'} ${isDragSource ? 'opacity-30' : ''}`}>
-                  <GripVertical size={12} className="text-fg-muted flex-shrink-0" aria-hidden="true" />
-                  <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
+                  className={`flex items-center gap-2 px-3 py-2 border-b transition-colors ${
+                    !hasCoords ? 'cursor-default opacity-40 bg-surface-sunken/30'
+                    : isDropTarget ? 'border-b-brand-400 border-dashed bg-brand-400/10 cursor-grab active:cursor-grabbing'
+                    : `cursor-grab active:cursor-grabbing ${stop.selected ? 'bg-surface-base' : 'opacity-50'}`
+                  } ${isDragSource ? 'opacity-30' : ''} border-border-default`}>
+                  <GripVertical size={12} className={`flex-shrink-0 ${hasCoords ? 'text-fg-muted' : 'invisible'}`} aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => toggleStop(idx)}
+                    className="flex-shrink-0 p-0.5"
+                    disabled={!hasCoords}
+                    aria-label={!hasCoords ? 'Cannot select — no address' : stop.selected ? 'Deselect stop' : 'Select stop'}
+                  >
                     {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-fg-muted" />}
                   </button>
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
@@ -1554,8 +1579,23 @@ export default function ServeRoutePlanner({
                     {stop.job.status === 'failed' && (
                       <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-red-900/40 text-red-400 border border-red-700/40 leading-none">NON-SVC</span>
                     )}
-                    <PriorityBadge p={stop.job.priority} />
-                    <TimeWindowBadge tw={stop.job.time_window} />
+                    {!hasCoords && (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-amber-900/40 text-amber-400 border border-amber-700/40 leading-none" title="No geocoded address — cannot be added to route">
+                        NO ADDR
+                      </span>
+                    )}
+                    {!hasCoords && onVerifyAddress && (
+                      <button
+                        type="button"
+                        onClick={() => onVerifyAddress(stop.job.id)}
+                        className="text-[9px] text-[color:var(--field-label-color)] hover:underline leading-none flex-shrink-0"
+                        title="Verify address to add this stop to the route"
+                      >
+                        Verify →
+                      </button>
+                    )}
+                    {hasCoords && <PriorityBadge p={stop.job.priority} />}
+                    {hasCoords && <TimeWindowBadge tw={stop.job.time_window} />}
                     <div className="flex flex-col gap-0.5 ml-1">
                       <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30" aria-label="Move stop up">
                         <ChevronUp size={10} />
