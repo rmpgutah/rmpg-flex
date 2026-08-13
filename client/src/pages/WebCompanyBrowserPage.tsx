@@ -25,13 +25,20 @@ function resolveWsBaseUrl(): string {
     : 'wss://api.rmpgutah.us';
 }
 
-// Resolve user input to a navigable URL: plain words → Google search,
+// Resolve user input to a navigable URL: queries → RMPG proprietary search,
 // bare hostname → https://, full URL → unchanged.
 function normalize(raw: string): string {
   const t = raw.trim();
   if (!t) return 'about:blank';
   if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
-  if (/\s/.test(t) || !t.includes('.')) return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
+  // A dot present with no spaces and at least one character on each side
+  // is treated as a hostname; everything else is a search query.
+  if (/\s/.test(t) || !/^[^.\s]+\.[^.\s]/.test(t)) {
+    const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'http://localhost:8787'
+      : 'https://api.rmpgutah.us';
+    return `${base}/api/browser-search?q=${encodeURIComponent(t)}`;
+  }
   return `https://${t}`;
 }
 
