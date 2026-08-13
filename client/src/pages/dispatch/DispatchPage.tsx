@@ -2922,7 +2922,7 @@ export default function DispatchPage() {
                               }}
                             />
                             {ts.value && ts.field !== 'created_at' && (
-                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp" aria-label="Clear timestamp">
                                 <X className="w-3 h-3" />
                               </button>
                             )}
@@ -3543,6 +3543,7 @@ export default function DispatchPage() {
                 onClick={() => setSearchQuery('')}
                 className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-rmpg-100 transition-colors"
                 title="Clear search"
+                aria-label="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
               </button>
@@ -4967,7 +4968,7 @@ export default function DispatchPage() {
                                   }}
                                 />
                                 {ts.value && ts.field !== 'created_at' && (
-                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp" aria-label="Clear timestamp">
                                     <X className="w-3 h-3" />
                                   </button>
                                 )}
