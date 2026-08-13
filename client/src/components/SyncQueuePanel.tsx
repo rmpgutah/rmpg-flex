@@ -171,7 +171,7 @@ export default function SyncQueuePanel({ onClose }: SyncQueuePanelProps) {
 
                     {/* Summary / ID */}
                     <span className="text-[11px] text-[#c4d3e0] truncate flex-1">
-                      {item.summary || `#${item.id.slice(0, 8)}`}
+                      {item.summary || `#${item.id}`}
                     </span>
 
                     {/* Retry count */}
