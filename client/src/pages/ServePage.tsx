@@ -317,6 +317,7 @@ export default function ServePage() {
   const [skipTraceJob, setSkipTraceJob] = useState<ServeJob | null>(null);
   const [auditJobId, setAuditJobId] = useState<number | null>(null);
   const [routePlannerOpen, setRoutePlannerOpen] = useState(false);
+  const [serveMileageRate, setServeMileageRate] = useState<number>(0.67);
   const [createJobOpen, setCreateJobOpen] = useState(false);
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
 
@@ -725,6 +726,13 @@ export default function ServePage() {
       setSuccessRates(data);
     } catch { /* ignore */ }
   };
+
+  // ── Serve settings (mileage rate, etc.) ───────────────────────────
+  useEffect(() => {
+    apiFetch<{ data: { mileage_rate?: number } }>('/process-server/assignments/settings')
+      .then(res => { if (res?.data?.mileage_rate) setServeMileageRate(res.data.mileage_rate); })
+      .catch(() => { /* fall back to 0.67 — non-fatal */ });
+  }, []);
 
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -3102,6 +3110,7 @@ export default function ServePage() {
         // open job". Empty selectedJobIds falls back to the planner's own
         // default (every non-served/failed geocoded job).
         preselectedJobIds={selectedJobIds}
+        mileageRate={serveMileageRate}
       />
 
       {/* Skip Trace Panel */}
