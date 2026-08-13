@@ -885,7 +885,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
   }), [fetchWarrants, selectedWarrant, fetchWarrantDetail]);
 
   return (
-    <div style={{ display: isVisible ? undefined : 'none' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ display: isVisible ? undefined : 'none' }}>
       {pollStatus && (
         // pointer-events-none: this strip is PURELY INFORMATIONAL — no buttons,
         // no links, only a title tooltip — so it never needs to receive clicks.
@@ -929,20 +929,6 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
           )}
         </div>
       )}
-      {!showArchived && props.isAdminOrManager && (
-        <button type="button" onClick={props.onOpenNewForm} className="toolbar-btn toolbar-btn-primary text-[9px] px-3 py-1.5 font-semibold">
-          <Plus className="w-3 h-3" /> New Warrant
-        </button>
-      )}
-      <button type="button"
-        onClick={() => { setShowArchived(!showArchived); setPage(1); }}
-        className={`toolbar-btn text-[9px] px-3 py-1.5 font-semibold ${showArchived ? 'text-amber-400' : ''}`}
-        title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
-      >
-        <Archive className="w-3 h-3" />
-        {showArchived ? 'Showing Archived' : 'Archives'}
-      </button>
-
       <div className={`flex-1 ${props.isMobile ? 'flex flex-col' : 'flex'} overflow-hidden`}>
         {/* LEFT: Warrant List */}
         {/* Desktop width: the detail pane used to hold a fixed 45% even with
@@ -1027,6 +1013,20 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
                 <option value="scraper">Scraped</option>
               </select>
             </div>
+            {/* Action buttons inline with filter bar */}
+            {!showArchived && props.isAdminOrManager && (
+              <button type="button" onClick={props.onOpenNewForm} className="toolbar-btn toolbar-btn-primary text-[9px] px-3 py-1.5 font-semibold shrink-0">
+                <Plus className="w-3 h-3" /> New Warrant
+              </button>
+            )}
+            <button type="button"
+              onClick={() => { setShowArchived(!showArchived); setPage(1); }}
+              className={`toolbar-btn text-[9px] px-3 py-1.5 font-semibold shrink-0 ${showArchived ? 'text-amber-400' : ''}`}
+              title={showArchived ? 'Show active warrants' : 'Show archived warrants'}
+            >
+              <Archive className="w-3 h-3" />
+              {showArchived ? 'Showing Archived' : 'Archives'}
+            </button>
           </div>
 
           {/* Filter chips bar (Phase 1) */}
