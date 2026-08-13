@@ -338,3 +338,17 @@ describe('DesktopSettingsApp — per-category reset', () => {
     expect(localStorage.getItem('rmpg_desktop_pinned_apps')).toBe(JSON.stringify(['/dispatch']));
   });
 });
+
+describe('DesktopSettingsApp — Desktop & Icons: widget descriptions', () => {
+  it('shows a description beneath the Clock & Shift widget checkbox', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Desktop & Icons'));
+    expect(screen.getByText('Shows current time, date, and shift duration')).toBeInTheDocument();
+  });
+
+  it('shows a description beneath the Panic / Duress widget checkbox', () => {
+    renderApp();
+    fireEvent.click(screen.getByText('Desktop & Icons'));
+    expect(screen.getByText('One-tap officer panic and duress alert')).toBeInTheDocument();
+  });
+});

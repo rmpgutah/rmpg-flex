@@ -20,24 +20,24 @@ import DesktopKioskSettings from './DesktopKioskSettings';
 import FlexOSSettings from './FlexOSSettings';
 import { useDesktopSystem } from '../../context/DesktopSystemContext';
 
-const ALL_WIDGETS: { id: string; label: string }[] = [
-  { id: 'clock', label: 'Clock & Shift' },
-  { id: 'ops-summary', label: 'Live Ops Summary' },
-  { id: 'notifications', label: 'Notifications' },
-  { id: 'quick-access', label: 'Quick Access' },
-  { id: 'shift-timer', label: 'Shift Timer' },
-  { id: 'pinned-call-ticker', label: 'Pinned Call Ticker' },
-  { id: 'mini-map', label: 'Mini Map' },
-  { id: 'weather', label: 'Weather / Conditions' },
-  { id: 'radio-channel', label: 'Radio Channel' },
-  { id: 'roll-call', label: 'Roll Call' },
-  { id: 'incident-timer', label: 'Incident Timer' },
-  { id: 'gps-trail', label: 'GPS Trail' },
-  { id: 'shift-handoff', label: 'Shift Handoff Checklist' },
-  { id: 'panic', label: 'Panic / Duress' },
-  { id: 'warrant-count', label: 'Warrant Count' },
-  { id: 'body-cam', label: 'Body Camera' },
-  { id: 'message-count', label: 'Message Count' },
+const ALL_WIDGETS: { id: string; label: string; description: string }[] = [
+  { id: 'clock',            label: 'Clock & Shift',          description: 'Shows current time, date, and shift duration' },
+  { id: 'ops-summary',      label: 'Live Ops Summary',        description: 'Live count of active calls, cases, warrants, and serves' },
+  { id: 'notifications',    label: 'Notifications',           description: 'Recent system alerts and notifications' },
+  { id: 'quick-access',     label: 'Quick Access',            description: 'Starred module shortcuts for one-click navigation' },
+  { id: 'shift-timer',      label: 'Shift Timer',             description: 'Countdown or count-up timer for the current shift' },
+  { id: 'pinned-call-ticker', label: 'Pinned Call Ticker',    description: 'Scrolling ticker of pinned call-for-service summaries' },
+  { id: 'mini-map',         label: 'Mini Map',                description: 'Real-time unit positions on a compact map' },
+  { id: 'weather',          label: 'Weather / Conditions',    description: 'Current weather conditions and alerts for your area' },
+  { id: 'radio-channel',    label: 'Radio Channel',           description: 'Active radio channel selector and status indicator' },
+  { id: 'roll-call',        label: 'Roll Call',               description: 'Officer check-in and attendance tracking' },
+  { id: 'incident-timer',   label: 'Incident Timer',          description: 'Timer for tracking time on active incidents' },
+  { id: 'gps-trail',        label: 'GPS Trail',               description: 'Recent GPS track history for the current shift' },
+  { id: 'shift-handoff',    label: 'Shift Handoff Checklist', description: 'End-of-shift checklist for seamless handoffs' },
+  { id: 'panic',            label: 'Panic / Duress',          description: 'One-tap officer panic and duress alert' },
+  { id: 'warrant-count',    label: 'Warrant Count',           description: 'Count of active warrants in your jurisdiction' },
+  { id: 'body-cam',         label: 'Body Camera',             description: 'Body camera status and recording controls' },
+  { id: 'message-count',    label: 'Message Count',           description: 'Count of unread messages in your inbox' },
 ];
 
 const ICON_SIZES: Array<'small' | 'medium' | 'large'> = ['small', 'medium', 'large'];
@@ -365,9 +365,18 @@ export default function DesktopSettingsApp({
             <div>
               <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Widgets</div>
               {ALL_WIDGETS.map(w => (
-                <label key={w.id} className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
-                  <input type="checkbox" checked={enabledIds.has(w.id)} onChange={(e) => onToggleWidget(w.id, e.target.checked)} />
-                  {w.label}
+                <label key={w.id} className="flex items-start gap-2 py-1" style={{ color: 'var(--text-primary)' }}>
+                  <input
+                    type="checkbox"
+                    aria-label={w.label}
+                    checked={enabledIds.has(w.id)}
+                    onChange={(e) => onToggleWidget(w.id, e.target.checked)}
+                    className="mt-0.5 flex-shrink-0"
+                  />
+                  <div>
+                    <div className="text-[11px]">{w.label}</div>
+                    <div className="text-[9px] leading-tight" style={{ color: 'var(--text-muted)' }}>{w.description}</div>
+                  </div>
                 </label>
               ))}
 
