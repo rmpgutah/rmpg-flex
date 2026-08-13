@@ -284,16 +284,27 @@ export function useVoiceChannel(
     if (!transmitting) return;
     setTransmitting(false);
     const rec = recorderRef.current;
-    if (rec && rec.state !== 'inactive') {
-      try { rec.stop(); } catch { /* noop */ }
-    }
     recorderRef.current = null;
     // streamRef holds a one-off stream (fallback path only). The pre-acquired
     // stream lives in micStreamRef and must stay open for the next PTT press.
     streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
     streamRef.current = null;
-    send({ type: 'transmit_end' });
-    try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+    if (rec && rec.state !== 'inactive') {
+      // Send transmit_end AFTER the recorder flushes its final chunk —
+      // rec.stop() is async; the last ondataavailable fires after it returns.
+      // Without this, the DO clears activeTx and drops the final ~250ms clip.
+      rec.onstop = () => {
+        send({ type: 'transmit_end' });
+        try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+      };
+      try { rec.stop(); } catch {
+        send({ type: 'transmit_end' });
+        try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+      }
+    } else {
+      send({ type: 'transmit_end' });
+      try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+    }
   }, [transmitting]);
 
   return { connected, members, transmitting, activeSpeaker, busy, supported, pttDown, pttUp };

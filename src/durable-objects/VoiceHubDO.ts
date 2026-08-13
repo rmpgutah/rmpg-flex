@@ -243,9 +243,13 @@ export class VoiceHubDO {
 
     // ── PTT key-down ──
     if (msg.type === 'transmit_start') {
-      if (this.activeTx && this.activeTx.ws !== ws) {
-        // Half-duplex: someone already holds the channel.
-        this.send(ws, { type: 'voice_busy', user_id: this.activeTx.userId });
+      if (this.activeTx) {
+        if (this.activeTx.ws !== ws) {
+          // Half-duplex: a DIFFERENT socket holds the channel.
+          this.send(ws, { type: 'voice_busy', user_id: this.activeTx.userId });
+        }
+        // Same socket sent transmit_start twice (double-press / replay) —
+        // silently ignore to avoid discarding buffered chunks.
         return;
       }
       this.activeTx = { ws, userId: meta.userId, unitLabel: meta.unitLabel, chunks: [], bytes: 0, startedAt: Date.now() };
