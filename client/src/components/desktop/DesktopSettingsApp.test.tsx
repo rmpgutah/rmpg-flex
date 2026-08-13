@@ -233,6 +233,25 @@ describe('DesktopSettingsApp — search', () => {
     expect(screen.getByText('Personalization')).toBeInTheDocument();
     expect(screen.getByText('Taskbar')).toBeInTheDocument();
   });
+
+  it('searching "night light" shows Personalization category', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'night light' } });
+    expect(screen.getByText('Personalization')).toBeInTheDocument();
+    expect(screen.queryByText('Taskbar')).not.toBeInTheDocument();
+  });
+
+  it('searching "screensaver" shows FlexOS category', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'screensaver' } });
+    expect(screen.getByText('FlexOS')).toBeInTheDocument();
+  });
+
+  it('searching "clock" shows Personalization category', () => {
+    renderApp();
+    fireEvent.change(screen.getByPlaceholderText(/search settings/i), { target: { value: 'clock' } });
+    expect(screen.getByText('Personalization')).toBeInTheDocument();
+  });
 });
 
 describe('DesktopSettingsApp — export/import', () => {
