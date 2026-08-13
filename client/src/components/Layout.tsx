@@ -854,7 +854,8 @@ export default function Layout() {
   }, [profileModalOpen]);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchHeaderStats = useCallback(async () => {
+  // Lightweight poll: dispatch stats + BOLOs — runs on every dispatch/bolo event.
+  const fetchDispatchStats = useCallback(async () => {
     try {
       const stats = await apiFetch<any>('/dispatch/stats');
       setActiveCallCount(stats.activeCalls || 0);
@@ -864,35 +865,41 @@ export default function Layout() {
       const bolos = await apiFetch<any>('/comms/bolos/active');
       setActiveBOLOs(Array.isArray(bolos) ? bolos.length : 0);
     } catch { /* silent */ }
+  }, []);
+
+  // Heavier poll: scraper health + email — only on the 30 s timer, not per-event.
+  // Scraper health is a slow-changing indicator; polling it on every dispatch_update
+  // produced ×11 concurrent calls during a busy shift (F-006).
+  const fetchHeaderStats = useCallback(async () => {
+    await fetchDispatchStats();
     try {
       const email = await apiFetch<{ count: number }>('/email/unread-count');
       setEmailUnreadCount(email.count || 0);
     } catch { /* silent — email may not be configured */ }
     try {
-      // Phase 5: cheap scraper health for the conditional header badge
       const health = await apiFetch<{ healthy: number; degraded: number; failed: number; circuit_broken: number }>('/warrants/scrapers/health');
       setScraperHealth(health);
     } catch { /* silent — scraper may not be enabled */ }
-  }, []);
+  }, [fetchDispatchStats]);
 
-  // Fetch on mount and every 30 seconds
+  // Full stats on mount and every 30 seconds
   useEffect(() => {
     fetchHeaderStats();
     const interval = setInterval(fetchHeaderStats, 30000);
     return () => clearInterval(interval);
   }, [fetchHeaderStats]);
 
-  // Update on WebSocket dispatch events
+  // Lightweight dispatch/bolo event handler — no scraper health call
   useEffect(() => {
-    const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
-    const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
+    const unsub1 = subscribe('dispatch_update', () => fetchDispatchStats());
+    const unsub2 = subscribe('bolo_alert', () => fetchDispatchStats());
     const unsub3 = subscribe('email:new_messages', () => {
       apiFetch<{ count: number }>('/email/unread-count')
         .then(r => setEmailUnreadCount(r.count || 0))
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
     });
     return () => { unsub1(); unsub2(); unsub3(); };
-  }, [subscribe, fetchHeaderStats]);
+  }, [subscribe, fetchDispatchStats]);
 
   // Refresh header user data when personnel/admin changes occur (e.g. admin edits user profile)
   useEffect(() => {
