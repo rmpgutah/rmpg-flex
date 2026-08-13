@@ -50,3 +50,9 @@ registerV2Schema('arrest_report_blank', arrestReportBlankSchema);
 
 import { useOfForceBlankSchema } from '../blankForms/useOfForceBlank';
 registerV2Schema('use_of_force_blank', useOfForceBlankSchema);
+
+import { propertyRecordSchema } from './propertyRecord';
+registerV2Schema('property_record', propertyRecordSchema);
+
+import { businessRecordSchema } from './businessRecord';
+registerV2Schema('business_record', businessRecordSchema);
