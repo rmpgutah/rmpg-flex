@@ -8,10 +8,16 @@ import { stampCfAsync } from './src/utils/rocketLoaderOptout';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
+let buildSha = 'dev';
+try {
+  buildSha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf-8' }).trim();
+} catch { /* non-git env — keep 'dev' */ }
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    'import.meta.env.VITE_BUILD_SHA': JSON.stringify(buildSha),
   },
   plugins: [
     react(),

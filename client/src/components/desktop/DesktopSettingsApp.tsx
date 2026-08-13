@@ -485,8 +485,12 @@ export default function DesktopSettingsApp({
           )}
 
           {activeCategory === 'layout-templates' && (
-            <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Layout export/import and per-role templates are coming in a future phase.
+            <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>Layout &amp; Templates</div>
+              <div style={{ color: 'var(--text-muted)' }}>
+                Saved widget layouts and per-role templates will be configured here.
+                Use the widget context menu on the desktop to rearrange and save your current layout.
+              </div>
             </div>
           )}
 
