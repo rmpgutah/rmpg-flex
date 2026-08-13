@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import CompanyBrowserPage from './CompanyBrowserPage';
 
@@ -11,7 +11,12 @@ vi.mock('../context/AuthContext', () => ({
 }));
 
 describe('CompanyBrowserPage', () => {
-  beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (window as any).electron = { isElectron: true };
+  });
+  afterEach(() => { delete (window as any).electron; });
 
   it('starts with one tab on the new-tab page', () => {
     render(<CompanyBrowserPage />);

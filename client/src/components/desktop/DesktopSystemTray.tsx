@@ -118,7 +118,7 @@ function BatteryIcon({ battery }: { battery: BatteryStatus }) {
 function BatteryLabel({ battery }: { battery: BatteryStatus }) {
   return (
     <span style={{ fontSize: 9, color: battery.percent <= 15 ? 'var(--sev-critical, #ef4444)' : 'var(--text-secondary, #adbccc)', fontVariantNumeric: 'tabular-nums' }}>
-      {Math.round(battery.percent)}%
+      {Number.isFinite(battery.percent) ? Math.round(battery.percent) : 0}%
     </span>
   );
 }
@@ -187,7 +187,7 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
 
       {/* Battery */}
       {battery != null && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`Battery: ${Math.round(battery.percent ?? 0)}%${battery.charging ? ' (charging)' : ''}`}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }} title={`Battery: ${Number.isFinite(battery.percent) ? Math.round(battery.percent) : 0}%${battery.charging ? ' (charging)' : ''}`}>
           <BatteryIcon battery={battery} />
           <BatteryLabel battery={battery} />
         </div>

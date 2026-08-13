@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
+import WebCompanyBrowserPage from './WebCompanyBrowserPage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -444,6 +445,8 @@ export default function CompanyBrowserPage() {
 
   const security = securityLabel(activeTab.url);
   const isElectron = !!(window as any).electron?.isElectron;
+
+  if (!isElectron) return <WebCompanyBrowserPage />;
 
   const pinnedTabs = tabs.filter(t => t.pinned);
   const regularTabs = tabs.filter(t => !t.pinned);
