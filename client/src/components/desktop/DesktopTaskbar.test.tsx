@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { useEffect } from 'react';
 import { isAppPinned, pinApp, setTaskbarPosition, setTaskbarSize, setTaskbarAutoHide } from '../../utils/taskbarPreferences';
@@ -242,11 +242,14 @@ describe('DesktopTaskbar — position and size', () => {
   });
 
   it('auto-hide translates the bar off-screen until the hover strip is entered', () => {
+    vi.useFakeTimers();
     setTaskbarAutoHide(true);
     render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
     expect(screen.getByTestId('taskbar-hover-strip')).toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('taskbar-hover-strip'));
+    act(() => { vi.advanceTimersByTime(300); });
     const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
     expect(bar.style.transform).toBe('translateY(0px)');
+    vi.useRealTimers();
   });
 });

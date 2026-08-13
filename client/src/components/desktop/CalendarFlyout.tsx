@@ -108,7 +108,7 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
                 fontSize: 10,
                 padding: '3px 0',
                 background: isToday
-                  ? 'var(--desktop-shell-accent, var(--rmpg-500, #3e74a8))'
+                  ? 'var(--desktop-shell-accent, #3e74a8)'
                   : isSel
                     ? 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.25)'
                     : 'transparent',
