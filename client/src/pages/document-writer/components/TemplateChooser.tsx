@@ -229,7 +229,7 @@ export default function TemplateChooser({ onSelect }: Props) {
                     <button type="button" onClick={() => setSelected(asTemplate(t))} className="flex flex-col items-center gap-2 w-full">
                       <Bookmark className="w-5 h-5 text-rmpg-500 group-hover:text-accent-silver-300 transition-colors" />
                       <span className="text-[10px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words leading-tight">{t.name}</span>
-                      <span className="text-[9px] text-rmpg-600">Saved {new Date(t.savedAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}</span>
+                      <span className="text-[9px] text-rmpg-600">Saved {new Date(t.savedAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}</span> // new-date-ok
                     </button>
                     <button type="button" aria-label={`Delete template ${t.name}`} title="Delete saved template"
                       onClick={() => handleDeleteCustom(t.name)}

@@ -296,7 +296,7 @@ export default function FlexCamPage() {
         <button onClick={() => fetchReqs()} disabled={loading}
           className="flex items-center gap-1 text-[9px] text-rmpg-400 hover:text-brand-400 transition-colors disabled:opacity-40 px-2 py-1 border border-border-default">
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          {lastFetch ? new Date(lastFetch).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'REFRESH'}
+          {lastFetch ? new Date(lastFetch).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'REFRESH'} // new-date-ok
         </button>
       </div>
 

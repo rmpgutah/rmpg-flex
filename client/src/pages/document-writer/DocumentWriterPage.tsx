@@ -1057,7 +1057,7 @@ export default function DocumentWriterPage() {
 
       {!reading && !focusMode && (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[9px] text-rmpg-600 px-1">
-          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}` : ''}</span>
+          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}` : ''}</span> // new-date-ok
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
           <span>{author}</span>
         </div>

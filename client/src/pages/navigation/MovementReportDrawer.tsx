@@ -27,7 +27,7 @@ function fmtDur(ms: number): string {
 
 function fmtClock(t: number): string {
   try {
-    return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); // new-date-ok
   } catch {
     return '—';
   }

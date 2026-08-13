@@ -43,12 +43,12 @@ function parseMs(iso: string | null | undefined): number | null {
 function fmtClock(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '··';
-  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false }); // new-date-ok
 }
 function fmtDateShort(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '—';
-  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }); // new-date-ok
 }
 
 /** TripPoint (API breadcrumb) → FixPoint (telemetry engine). Only `time → timestamp` differs. */
