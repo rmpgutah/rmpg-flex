@@ -45,8 +45,8 @@ export default function DesktopRollCallWidget() {
   useEffect(() => {
     async function load() {
       try {
-        const r = await apiFetch<{ units: Unit[] }>('/dispatch/units');
-        if (r?.units) setUnits(r.units);
+        const r = await apiFetch<Unit[]>('/dispatch/units');
+        if (Array.isArray(r)) setUnits(r);
       } catch { /* offline */ }
       lastFetchRef.current = Date.now();
       setSecondsSince(0);

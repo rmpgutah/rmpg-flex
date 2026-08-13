@@ -9,7 +9,13 @@ const DEFAULT_SS_SECS = 120; // 2 min
 function getScreenSaverSecs(): number {
   try {
     const v = localStorage.getItem('rmpg_desktop_screensaver_secs');
-    if (v) return Math.max(30, parseInt(v, 10));
+    if (v !== null) {
+      const parsed = parseInt(v, 10);
+      // 0 = "Never" — must check separately; Math.max(30, 0) = 30 would silently
+      // override the user's choice and fire the screensaver every 30 seconds.
+      if (parsed === 0) return Number.MAX_SAFE_INTEGER;
+      return Math.max(30, parsed);
+    }
   } catch { /* ignore */ }
   return DEFAULT_SS_SECS;
 }
