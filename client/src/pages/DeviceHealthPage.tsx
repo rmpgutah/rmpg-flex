@@ -303,7 +303,7 @@ export default function DeviceHealthPage() {
           </div>
           {lastRefresh && (
             <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Last refreshed {lastRefresh.toLocaleTimeString()}
+              Last refreshed {lastRefresh.toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}
             </div>
           )}
         </div>

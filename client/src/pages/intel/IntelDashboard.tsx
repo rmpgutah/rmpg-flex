@@ -84,7 +84,7 @@ export default function IntelDashboard() {
       <div className="font-mono text-[10px] tracking-widest text-rmpg-400 uppercase flex items-center gap-2">
         Intelligence Dashboard
         <span className={`text-[8px] flex items-center gap-1 ${stale ? 'text-amber-400' : 'text-emerald-400'}`}
-              title={lastUpdated ? `Last updated ${new Date(lastUpdated).toLocaleTimeString()}` : 'Waiting…'}>
+              title={lastUpdated ? `Last updated ${new Date(lastUpdated).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}` : 'Waiting…'}>
           <span className={`w-[5px] h-[5px] rounded-full inline-block ${stale ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} />
           {stale ? 'STALE' : 'LIVE'}
         </span>

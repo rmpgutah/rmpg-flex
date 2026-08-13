@@ -593,7 +593,7 @@ export default function DlSearchPage() {
           dl_state: verifyResult.dl_state || '',
           dl_class: verifyResult.dl_class || '',
           dl_expiry: verifyResult.dl_expiry || '',
-          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL verification on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_verify_imported'],
         }),
       });
@@ -867,7 +867,7 @@ export default function DlSearchPage() {
           dl_state: ocrResult.dl_state,
           dl_class: ocrResult.dl_class,
           dl_expiry: ocrResult.dl_expiry,
-          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_ocr_imported'],
         }),
       });
@@ -912,7 +912,7 @@ export default function DlSearchPage() {
     if (!d) return '—';
     try {
       const dt = parseTimestamp(d);
-      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString();
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { timeZone: 'America/Denver' });
     } catch { return d; }
   };
 

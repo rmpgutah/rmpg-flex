@@ -375,7 +375,7 @@ export default function DashcamPage() {
                       {events.map((e: any) => (
                         <tr key={e.id} className="border-b border-border-default">
                           <td className="px-3 py-1.5 font-mono text-text-muted">
-                            {parseTimestamp(e.event_at).toLocaleString()}
+                            {parseTimestamp(e.event_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}
                           </td>
                           <td className="px-3 py-1.5">
                             <span className="text-brand-400">{e.device_id}</span>
@@ -485,7 +485,7 @@ export default function DashcamPage() {
                       </span>
                       <div className="text-text-muted text-[10px] mt-0.5">
                         {deviceDetail.last_gps_at
-                          ? parseTimestamp(deviceDetail.last_gps_at).toLocaleString()
+                          ? parseTimestamp(deviceDetail.last_gps_at).toLocaleString('en-US', { timeZone: 'America/Denver' })
                           : '—'}
                       </div>
                     </div>
@@ -520,7 +520,7 @@ export default function DashcamPage() {
                     Last connection:{' '}
                     <span className="text-text-default">
                       {deviceDetail.last_connection_at
-                        ? parseTimestamp(deviceDetail.last_connection_at).toLocaleString()
+                        ? parseTimestamp(deviceDetail.last_connection_at).toLocaleString('en-US', { timeZone: 'America/Denver' })
                         : '—'}
                     </span>
                   </div>

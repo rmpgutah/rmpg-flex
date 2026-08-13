@@ -611,7 +611,7 @@ export default function BodyCamerasPage() {
           stampLines={[
             redactingVideo.title,
             redactingVideo.officer_name || '',
-            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString() : '',
+            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : '',
           ].filter(Boolean)}
           initialRegions={(() => {
             const raw = redactingVideo.detection_regions_json;
@@ -664,7 +664,7 @@ export default function BodyCamerasPage() {
         recordType="body-cam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -674,7 +674,7 @@ export default function BodyCamerasPage() {
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</div>
               )}
               {videoToDelete.duration_seconds != null && (
                 <div className="text-rmpg-500">{Math.round(videoToDelete.duration_seconds)}s</div>

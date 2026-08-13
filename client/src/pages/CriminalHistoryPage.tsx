@@ -651,7 +651,7 @@ export default function CriminalHistoryPage() {
                               {toDisplayLabel(entry.type).toUpperCase()}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
-                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString() : ''}</span>
+                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-300 mt-0.5 truncate">{entry.description}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
