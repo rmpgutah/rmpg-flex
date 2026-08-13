@@ -1,0 +1,58 @@
+/* client/src/styles/fz55.css
+   Panasonic Toughbook FZ-55 layout fixes.
+   All rules scoped under .device-fz55 — zero effect on any other viewport. */
+
+/* ── Touch targets — WCAG 2.5.5 / 44px gloved-hand minimum ── */
+.device-fz55 button,
+.device-fz55 a,
+.device-fz55 [role="button"],
+.device-fz55 input,
+.device-fz55 select,
+.device-fz55 textarea {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Icon-only buttons: extra padding fills the tap target without changing
+   visual size. :has(> svg:only-child) matches a button whose only child is
+   an SVG — the Lucide icon pattern used throughout the app. */
+.device-fz55 button:has(> svg:only-child),
+.device-fz55 [role="button"]:has(> svg:only-child) {
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+/* ── Tables — horizontal scroll instead of viewport overflow ── */
+.device-fz55 .table-wrapper,
+.device-fz55 [class*="overflow-x-auto"] {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* ── Panel headers — never collapse under a flex parent ── */
+.device-fz55 [data-panel-header] {
+  flex-shrink: 0;
+}
+
+/* ── Modal height containment ── */
+/* Prevents Save/Cancel buttons from falling below the 768px effective
+   viewport at 125% Windows scaling. Targets the outer dialog backdrop. */
+.device-fz55 [role="dialog"] {
+  max-height: 90dvh;
+}
+
+/* Inner scroll body — allows content to scroll while footer buttons stay
+   visible. Apply to the first div child of the dialog. */
+.device-fz55 [role="dialog"] > div {
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+
+/* ── Z-index stacking ladder ── */
+/* Resolves sidebar-overlay-over-modal and dropdown-under-modal overlap
+   classes. Values are explicit px to override Tailwind z-* utilities. */
+.device-fz55 .sidebar-overlay { z-index: 40; }
+.device-fz55 .sidebar         { z-index: 50; }
+.device-fz55 [role="dialog"]  { z-index: 60; }
+.device-fz55 [role="tooltip"] { z-index: 65; }
+.device-fz55 .toast-container { z-index: 70; }
