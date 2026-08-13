@@ -98,6 +98,7 @@ function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
     return parseTimestamp(dateStr).toLocaleDateString('en-US', {
+      timeZone: 'America/Denver',
       year: 'numeric',
       month: 'short',
       day: 'numeric',
