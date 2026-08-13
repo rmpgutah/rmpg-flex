@@ -129,6 +129,7 @@ export default function PrintRecordButton({
         case 'person': endpoint = `/records/persons/${entityId}`; break;
         case 'vehicle': endpoint = `/records/vehicles/${entityId}`; break;
         case 'property': endpoint = `/records/properties/${entityId}`; break;
+        case 'business': endpoint = `/records/businesses/${entityId}`; break;
         case 'evidence': endpoint = `/records/evidence/${entityId}`; break;
         default: return data;
       }

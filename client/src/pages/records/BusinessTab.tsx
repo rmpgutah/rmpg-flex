@@ -409,30 +409,9 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
               {b.status.toUpperCase()}
             </RecordBadge>
           )}
-          {/* Business PDF — rendered by the property generator (businesses are
-              property-shaped). Includes a satellite site map of the address.
-              No `id` on the data → the property cross-ref enrichment (which keys
-              off a property id) is skipped so it can't pull the wrong links. */}
           <PrintRecordButton
-            recordType="property"
-            recordData={{
-              name: b.name,
-              property_type: 'commercial',
-              business_type: b.business_type,
-              structure_type: b.industry,
-              address: b.address,
-              city: b.city,
-              state: b.state,
-              zip: b.zip,
-              owner_name: b.owner_name,
-              key_holder_name: b.contact_name,
-              key_holder_phone: b.contact_phone || b.phone,
-              contact_email: b.contact_email || b.email,
-              notes: b.notes,
-              flags: b.flags,
-              created_at: b.created_at,
-              updated_at: b.updated_at,
-            }}
+            recordType="business"
+            recordData={b}
             identifier={b.name}
             entityType="business"
             entityId={b.id}
