@@ -997,6 +997,34 @@ sv.get('/folder-stats', async (c) => {
   return c.json({ date, stats });
 });
 
+// GET /aging must be registered BEFORE /:id — Hono matches in order, so
+// "/aging" would match /:id first (parseInt("aging") → NaN → 400).
+sv.get('/aging', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id,
+           u.full_name AS officer_name,
+           MAX(a.attempt_at) AS last_attempt_at,
+           CAST(julianday(q.deadline) - julianday('now') AS INTEGER) AS days_remaining
+    FROM serve_queue q
+    LEFT JOIN users u   ON u.id = q.officer_id
+    LEFT JOIN serve_attempts a ON a.serve_queue_id = q.id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.deadline IS NOT NULL
+      AND julianday(q.deadline) - julianday('now') <= 5
+    GROUP BY q.id
+    HAVING last_attempt_at IS NULL
+        OR (julianday('now') - julianday(last_attempt_at)) >= COALESCE(
+             (SELECT diligence_gap_days FROM serve_nudge_settings WHERE id = 1 LIMIT 1), 3)
+    ORDER BY days_remaining ASC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
 sv.get('/:id', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -1867,34 +1895,7 @@ sv.get('/:id/gps-trail', async (c) => {
 // Feature pack: 30 Process Server enhancements (PR 4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// [1] GET /aging — jobs approaching deadline with no recent activity
-// "Aging" = deadline within N days AND either no attempts ever or last attempt
-// was over diligence_gap_days ago. Returns days_remaining so UI can color-code.
-sv.get('/aging', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
-           q.status, q.attempt_count, q.officer_id,
-           u.full_name AS officer_name,
-           MAX(a.attempt_at) AS last_attempt_at,
-           CAST(julianday(q.deadline) - julianday('now') AS INTEGER) AS days_remaining
-    FROM serve_queue q
-    LEFT JOIN users u   ON u.id = q.officer_id
-    LEFT JOIN serve_attempts a ON a.serve_queue_id = q.id
-    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
-      AND q.deadline IS NOT NULL
-      AND julianday(q.deadline) - julianday('now') <= 5
-    GROUP BY q.id
-    HAVING last_attempt_at IS NULL
-        OR (julianday('now') - julianday(last_attempt_at)) >= COALESCE(
-             (SELECT diligence_gap_days FROM serve_nudge_settings WHERE id = 1 LIMIT 1), 3)
-    ORDER BY days_remaining ASC
-    LIMIT 200
-  `);
-  return c.json(rows);
-});
+// [1] GET /aging is registered above the /:id catch-all (route order matters in Hono).
 
 // [2] GET /upcoming — jobs with a scheduled attempt window in the next 48 hours
 sv.get('/upcoming', async (c) => {
