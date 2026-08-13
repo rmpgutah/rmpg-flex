@@ -1,0 +1,199 @@
+name: Kiosk OS — Build & Publish Staging
+
+# Builds the RMPG Flex Kiosk Linux OS image and publishes it to the STAGING
+# update channel. Terminals poll staging via rmpg-update; promoting to the
+# stable channel (which actually deploys to the fleet) is a separate deliberate
+# step requiring admin auth:
+#
+#   POST /api/os/promote  { "version": "<version>" }
+#
+# WHY STAGING ONLY: one bad commit auto-promoted would immediately instruct
+# every vehicle terminal to reboot into the broken image. The A/B rollback in
+# S01kiosk-boot-slot-check would eventually recover each unit, but only after
+# three failed reboots in a moving vehicle. CI publishes to staging; a human
+# verifies on one unit first and promotes deliberately.
+#
+# WHY DOCKER ON A LINUX RUNNER: build.sh drives a Docker container because the
+# build natively requires a GNU/Linux userland (Buildroot's own host check
+# rejects macOS clang-as-gcc). The GitHub Actions ubuntu-24.04 runner is Linux
+# and Docker is pre-installed, so there is no extra overhead — the container
+# just isolates the Buildroot toolchain from the runner's own packages.
+#
+# Caching: Buildroot's package download cache and compiled build-output tree are
+# persisted between runs as bind-mount-backed Docker volumes (Linux bind mounts
+# are reliable; macOS virtiofs is not — hence build.sh's Docker-volume default
+# on the developer machine). A cold build takes 3-4 h; a warm build rebuilding
+# only changed packages takes 30-60 min.
+#
+# Secrets required (same as the main deploy.yml):
+#   CLOUDFLARE_API_TOKEN   wrangler r2 object put permission
+#   CLOUDFLARE_ACCOUNT_ID  account where the rmpg-flex-downloads bucket lives
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'kiosk-linux/**'
+  workflow_dispatch:
+    inputs:
+      skip_qemu:
+        description: 'Skip QEMU boot verification (emergency publish only)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  build-publish:
+    name: Build OS image and publish to staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read OS version
+        id: version
+        run: echo "version=$(cat kiosk-linux/rootfs-overlay/etc/rmpg-os-version | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Enable KVM (speeds up QEMU boot test 10-20×)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # Non-fatal: GitHub-hosted runners may or may not have /dev/kvm
+          ls -la /dev/kvm 2>/dev/null && echo "kvm_available=true" >> "$GITHUB_ENV" \
+            || echo "kvm_available=false" >> "$GITHUB_ENV"
+
+      - name: Install build + test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential which sed make binutils diffutils gcc g++ bash \
+            patch gzip bzip2 perl tar cpio unzip rsync file bc findutils \
+            wget git python3 ca-certificates libncurses-dev locales libelf-dev \
+            flex bison libssl-dev \
+            qemu-system-x86 ovmf
+          sudo locale-gen en_US.UTF-8
+
+      - name: Set up cacheable Docker volume directories
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.cache/buildroot-src"
+          mkdir -p "$GITHUB_WORKSPACE/.cache/build-output"
+          # Create bind-mount-backed named Docker volumes so build.sh's
+          # `docker run -v rmpg-kiosk-buildroot-src:/buildroot ...` writes into
+          # the host-visible cache paths that actions/cache can save and restore.
+          docker volume create \
+            --driver local \
+            --opt type=none \
+            --opt o=bind \
+            --opt device="$GITHUB_WORKSPACE/.cache/buildroot-src" \
+            rmpg-kiosk-buildroot-src
+          docker volume create \
+            --driver local \
+            --opt type=none \
+            --opt o=bind \
+            --opt device="$GITHUB_WORKSPACE/.cache/build-output" \
+            rmpg-kiosk-build-output
+
+      - name: Restore Buildroot source cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/buildroot-src
+          key: buildroot-src-2024.02.9
+          restore-keys: buildroot-src-
+
+      - name: Restore Buildroot build-output cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/build-output
+          key: buildroot-output-2024.02.9-${{ hashFiles('kiosk-linux/configs/**', 'kiosk-linux/rootfs-overlay/**') }}
+          restore-keys: |
+            buildroot-output-2024.02.9-
+
+      - name: Build Docker image (Buildroot environment)
+        run: docker build -t rmpg-kiosk-buildenv kiosk-linux/docker/
+
+      - name: Build OS image
+        run: |
+          cd kiosk-linux
+          # build.sh detects that the Docker volumes already exist (pre-created
+          # above as bind-mount backed) and skips `docker volume create`.
+          # CI=1 silences the interactive "press enter to continue" prompts.
+          CI=1 ./build.sh
+        env:
+          BUILDROOT_VOLUME: rmpg-kiosk-buildroot-src
+          BUILD_OUTPUT_VOLUME: rmpg-kiosk-build-output
+
+      - name: Verify disk image was produced
+        run: |
+          ls -lh kiosk-linux/output/images/disk.img
+          ls -lh kiosk-linux/output/images/bzImage
+          ls -lh kiosk-linux/output/images/rootfs.cpio.gz
+
+      - name: Install QEMU packages for boot test
+        run: sudo apt-get install -y --no-install-recommends qemu-utils
+
+      - name: Boot verify (QEMU NVMe)
+        if: ${{ inputs.skip_qemu != 'true' }}
+        run: |
+          cd kiosk-linux
+          # KIOSK_NVME_CAPTURE_DELAY: how long to watch before reading markers.
+          # 120s is generous with KVM; without KVM use 300s.
+          DELAY=120
+          [ "$kvm_available" = "false" ] && DELAY=300
+          KIOSK_NVME_CAPTURE_DELAY=$DELAY \
+            test/run-qemu-nvme.sh test/boot-ci.log
+        env:
+          kvm_available: ${{ env.kvm_available }}
+
+      - name: Show boot log excerpt
+        if: always()
+        run: |
+          LOG=kiosk-linux/test/boot-ci.log
+          [ -f "$LOG" ] && grep -E \
+            "KIOSK_LINUX_(DESKTOP_OK|CONSOLE_FALLBACK_OK|BOOTSTORE|BOOT_ATTEMPT|BOOT_SLOT|HWREPORT)" \
+            "$LOG" | head -30 || echo "(no boot log)"
+
+      - name: Publish to staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cd kiosk-linux
+          # SKIP_BOOT_CHECK=1: the QEMU step above IS the boot verification gate.
+          # The publish script's own check looks for boot-desktop.log; the CI
+          # boot test writes boot-ci.log instead (same markers, different path).
+          SKIP_BOOT_CHECK=1 scripts/publish-os-release.sh
+
+      - name: Job summary
+        if: success()
+        env:
+          OS_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          VERSION="$OS_VERSION"
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+          ## Rocky Mountain Protective Group — Kiosk OS $VERSION published to staging
+
+          Test on ONE unit before promoting to stable:
+
+          \`\`\`
+          rmpg-update check   # on the test terminal
+          \`\`\`
+
+          When satisfied, promote to stable (admin token required):
+
+          \`\`\`bash
+          curl -X POST https://api.rmpgutah.us/api/os/promote \\
+            -H "Authorization: Bearer <admin-token>" \\
+            -H "Content-Type: application/json" \\
+            -d '{"version":"$VERSION"}'
+          \`\`\`
+
+          Verify the promote landed:
+
+          \`\`\`bash
+          curl -s "https://api.rmpgutah.us/api/os/manifest?channel=stable"
+          \`\`\`
+          SUMMARY
