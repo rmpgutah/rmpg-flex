@@ -179,16 +179,59 @@ describe('service worker fetch handler — requests it must decline', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('does not respond to API calls', async () => {
+  it('does not respond to POST API calls', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn();
     const { listeners } = loadServiceWorker(fetchMock);
 
-    const event = makeFetchEvent(`${ORIGIN}/api/dispatch/calls`);
+    const event = makeFetchEvent(`${ORIGIN}/api/dispatch/calls`, { method: 'POST' });
     listeners.fetch(event);
 
     expect(event.responded).toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not respond to auth or health API calls (no-cache list)', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn();
+    const { listeners } = loadServiceWorker(fetchMock);
+
+    for (const path of ['/api/auth/login', '/api/health']) {
+      const event = makeFetchEvent(`${ORIGIN}${path}`);
+      listeners.fetch(event);
+      expect(event.responded).toBeUndefined();
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('responds to GET API calls with network-first and stale fallback', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"data":[]}', { status: 200 }));
+    const { listeners } = loadServiceWorker(fetchMock);
+
+    const event = makeFetchEvent(`${ORIGIN}/api/dispatch/calls`);
+    listeners.fetch(event);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(event.responded).toBeDefined();
+    expect(fetchMock).toHaveBeenCalled();
+    expect((await event.responded)?.status).toBe(200);
+  });
+
+  it('serves stale API cache when offline', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const cached = new Response('{"data":["stale"]}', { status: 200 });
+    const { listeners } = loadServiceWorker(fetchMock, cached);
+
+    const event = makeFetchEvent(`${ORIGIN}/api/dispatch/calls`);
+    listeners.fetch(event);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(event.responded).toBeDefined();
+    // With the stale cache available, we get a real response rather than 503
+    const response = await event.responded;
+    expect(response?.status).not.toBe(503);
   });
 
   it('short-circuits blocked Mapbox telemetry with a 204', async () => {
