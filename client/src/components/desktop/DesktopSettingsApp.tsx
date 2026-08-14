@@ -1,5 +1,5 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, X } from 'lucide-react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID, CUSTOM_WALLPAPER_ID, setCustomWallpaperDataUrl, clearCustomWallpaper, CUSTOM_WALLPAPER_MAX_BYTES, isSlideshowEnabled, setSlideshowEnabled, getSlideshowIntervalMin, setSlideshowIntervalMin } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
@@ -16,6 +16,9 @@ import { exportSettings, importSettings } from '../../utils/settingsExportImport
 import { getClockFormat, setClockFormat, type ClockFormat } from '../../utils/clockPreference';
 import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
 import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
+import { getAutoLockMinutes, setAutoLockMinutes } from '../../utils/autoLockPreferences';
+import { isHighContrastEnabled, setHighContrastEnabled } from '../../utils/highContrastPreference';
+import { apiFetch } from '../../hooks/useApi';
 import {
   isDynamicWallpaperEnabled, setDynamicWallpaperEnabled,
   getDynamicWallpaperDayId, setDynamicWallpaperDayId,
@@ -63,6 +66,16 @@ const CATEGORIES = [
 
 export type CategoryId = typeof CATEGORIES[number]['id'];
 
+interface SessionLogEntry {
+  id: number;
+  severity: string;
+  category: string;
+  message: string;
+  source: string;
+  created_at: string;
+  user_id?: number | null;
+}
+
 export interface DesktopSettingsAppProps {
   widgets: DesktopWidgetState[];
   onToggleWidget: (id: string, enabled: boolean) => void;
@@ -108,6 +121,9 @@ export default function DesktopSettingsApp({
   const [customWallpaperError, setCustomWallpaperError] = useState<string | null>(null);
   const [slideshow, setSlideshowState] = useState(() => isSlideshowEnabled());
   const [slideshowInterval, setSlideshowIntervalState] = useState(() => getSlideshowIntervalMin());
+  const [dynamicWallpaperOn, setDynamicWallpaperOnState] = useState(() => isDynamicWallpaperEnabled());
+  const [dynamicDayId, setDynamicDayIdState] = useState(() => getDynamicWallpaperDayId());
+  const [dynamicNightId, setDynamicNightIdState] = useState(() => getDynamicWallpaperNightId());
   const [clockFormat, setClockFormatState] = useState<ClockFormat>(() => getClockFormat());
   const [soundEnabled, setSoundEnabledState] = useState(() => isDesktopSoundEnabled());
   const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
@@ -269,7 +285,11 @@ export default function DesktopSettingsApp({
   // isAdmin check without introducing async state just for this gate.
   const isWindows = window.electron?.platform === 'win32';
   const visibleCategories = useMemo(
-    () => CATEGORIES.filter(c => c.id !== 'kiosk-mode' || (isAdmin && isWindows)),
+    () => CATEGORIES.filter(c => {
+      if (c.id === 'kiosk-mode') return isAdmin && isWindows;
+      if (c.id === 'session-log') return isAdmin;
+      return true;
+    }),
     [isAdmin, isWindows],
   );
 
@@ -404,6 +424,49 @@ export default function DesktopSettingsApp({
                   </select>
                 )}
               </div>
+
+              {/* Dynamic (time-based) wallpaper */}
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={dynamicWallpaperOn}
+                    onChange={e => { setDynamicWallpaperEnabled(e.target.checked); setDynamicWallpaperOnState(e.target.checked); }}
+                    className="accent-rmpg-400"
+                  />
+                  <span className="text-[11px]" style={{ color: 'var(--text-primary)' }}>Dynamic wallpaper (day / night)</span>
+                </label>
+              </div>
+              {dynamicWallpaperOn && (
+                <div className="mt-2 flex flex-col gap-1 pl-5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] w-10 shrink-0" style={{ color: 'var(--text-secondary)' }}>Day</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {DESKTOP_WALLPAPERS.filter(w => w.id !== CUSTOM_WALLPAPER_ID).map(w => (
+                        <button
+                          key={w.id} type="button" aria-label={`Day wallpaper: ${w.label}`}
+                          onClick={() => { setDynamicWallpaperDayId(w.id); setDynamicDayIdState(w.id); }}
+                          style={{ width: 20, height: 20, background: w.background, border: dynamicDayId === w.id ? '2px solid var(--brand-400)' : '1px solid var(--border-default)' }}
+                          title={w.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] w-10 shrink-0" style={{ color: 'var(--text-secondary)' }}>Night</span>
+                    <div className="flex gap-1 flex-wrap">
+                      {DESKTOP_WALLPAPERS.filter(w => w.id !== CUSTOM_WALLPAPER_ID).map(w => (
+                        <button
+                          key={w.id} type="button" aria-label={`Night wallpaper: ${w.label}`}
+                          onClick={() => { setDynamicWallpaperNightId(w.id); setDynamicNightIdState(w.id); }}
+                          style={{ width: 20, height: 20, background: w.background, border: dynamicNightId === w.id ? '2px solid var(--brand-400)' : '1px solid var(--border-default)' }}
+                          title={w.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Accent Color</div>
               <div className="flex gap-1.5 flex-wrap">

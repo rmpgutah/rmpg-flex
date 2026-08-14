@@ -10,6 +10,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import ContextMenu from '../ContextMenu';
 import { isAppPinned, pinApp, unpinApp, getPinnedApps, getTaskbarPosition, getTaskbarSize, isTaskbarAutoHideEnabled, type TaskbarSize } from '../../utils/taskbarPreferences';
+import { getQuickLaunchPins, setQuickLaunchPins } from '../../utils/quickLaunchPreferences';
 import DesktopSystemTray from './DesktopSystemTray';
 import DesktopWelfareCountdown from './DesktopWelfareCountdown';
 import DesktopQuickSettings from './DesktopQuickSettings';
@@ -164,6 +165,31 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
 
   const [jumpList, setJumpList] = useState<{ appKey: string; appLabel: string; x: number; y: number; isRunning: boolean; closeWindowId?: string } | null>(null);
 
+  const [quickLaunchPins, setQuickLaunchPinsState] = useState<string[]>(() => getQuickLaunchPins());
+  const [quickPickerOpen, setQuickPickerOpen] = useState(false);
+  const [quickPickerInput, setQuickPickerInput] = useState('');
+
+  const handleAddQuickLaunch = useCallback((path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) return;
+    setQuickLaunchPinsState(prev => {
+      if (prev.includes(trimmed)) return prev;
+      const next = [...prev, trimmed].slice(0, 8);
+      setQuickLaunchPins(next);
+      return next;
+    });
+    setQuickPickerInput('');
+    setQuickPickerOpen(false);
+  }, []);
+
+  const handleRemoveQuickLaunch = useCallback((path: string) => {
+    setQuickLaunchPinsState(prev => {
+      const next = prev.filter(p => p !== path);
+      setQuickLaunchPins(next);
+      return next;
+    });
+  }, []);
+
   const [position] = useState(() => getTaskbarPosition());
   const [size] = useState(() => getTaskbarSize());
   const [autoHideEnabled] = useState(() => isTaskbarAutoHideEnabled());
@@ -247,6 +273,8 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         {windowGroups.map(({ path, group }) => {
           if (group.length === 1) {
             const w = group[0];
+            const titleBadgeMatch = w.title.match(/\((\d+)\)$/);
+            const titleBadgeCount = titleBadgeMatch ? parseInt(titleBadgeMatch[1], 10) : null;
             return (
               <ContextMenu
                 key={w.id}

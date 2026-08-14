@@ -14,6 +14,9 @@ import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/des
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import { hasBeenSeeded, markSeeded, getDefaultPinsForRole } from '../utils/defaultModulePins';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
+import { isDynamicWallpaperEnabled, getDynamicWallpaperDayId, getDynamicWallpaperNightId } from '../utils/dynamicWallpaperPreferences';
+import DesktopRecycleBin from '../components/desktop/DesktopRecycleBin';
+import { addDeletedIcon, restoreDeletedIcon } from '../utils/recycleBinPreferences';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import { DesktopSystemProvider } from '../context/DesktopSystemContext';
 import DesktopNightLightOverlay from '../components/desktop/DesktopNightLightOverlay';
@@ -387,6 +390,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   }, []);
 
   const handleUnpin = useCallback((path: string) => {
+    // Find the label for the icon before removing it so we can record it in the recycle bin.
+    const fn = allFunctions.find(f => f.path === path);
+    if (fn) addDeletedIcon({ path: fn.path, label: fn.label });
     setFavorites(prev => {
       const next = new Set(prev);
       next.delete(path);
@@ -394,7 +400,19 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       return next;
     });
     setLayout(prev => ({ ...prev, icons: prev.icons.filter(p => p.path !== path) }));
-  }, []);
+  }, [allFunctions]);
+
+  const handleRecycleBinRestore = useCallback((path: string) => {
+    restoreDeletedIcon(path);
+    const fn = allFunctions.find(f => f.path === path);
+    if (!fn) return;
+    setFavorites(prev => {
+      const next = new Set(prev);
+      next.add(path);
+      saveFavorites(next);
+      return next;
+    });
+  }, [allFunctions]);
 
   const handleCreateGroup = useCallback((memberPaths: string[], label: string) => {
     setLayout(prev => {
@@ -599,6 +617,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <ReopenLastClosedBridge />
               <WindowLayer />
               <DesktopWindowSwitcher />
+              {/* Recycle Bin — always-visible in bottom-right of desktop area */}
+              <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 10 }}>
+                <DesktopRecycleBin onRestore={handleRecycleBinRestore} />
+              </div>
             </DesktopWallpaper>
           </div>
         </ContextMenu>

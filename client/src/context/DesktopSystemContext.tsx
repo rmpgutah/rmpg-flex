@@ -229,9 +229,9 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
 
   return (
     <DesktopSystemContext.Provider value={{
-      nightLightOn, nightLightIntensity, dndOn, brightness, activeCall, welfareTimer,
+      nightLightOn, nightLightIntensity, dndOn, focusAssist, brightness, activeCall, welfareTimer,
       updateAvailable, clipboardHistory, unitStatus, radioChannel, syncPending,
-      setNightLight, setDnd, setBrightness, startWelfareTimer, cancelWelfareTimer,
+      setNightLight, setDnd, setFocusAssist, setBrightness, startWelfareTimer, cancelWelfareTimer,
       dismissUpdate, addClipboardEntry, setUnitStatus, setRadioChannel,
     }}>
       {children}
