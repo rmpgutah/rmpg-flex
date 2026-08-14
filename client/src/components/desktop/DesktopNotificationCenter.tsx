@@ -5,6 +5,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import { getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
+import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
 
 interface Notification {
   id: number;
@@ -61,6 +62,9 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
   function refreshHistory() {
     setHistoryNotifs(getNotificationHistory());
   }
+
+  const sysCtx = useOptionalDesktopSystem();
+  const focusAssist = sysCtx?.focusAssist ?? 'off';
 
   const taskbarSize = getTaskbarSize();
   const taskbarPos = getTaskbarPosition();
@@ -166,6 +170,13 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
         ))}
       </div>
 
+      {/* Focus Assist banner */}
+      {focusAssist !== 'off' && (
+        <div style={{ padding: '4px 12px', background: 'rgba(var(--rmpg-700-rgb,30 60 95),0.4)', fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-subtle)' }}>
+          FOCUS ASSIST: {focusAssist === 'priority' ? 'PRIORITY ONLY' : 'ALARMS ONLY'} — some notifications suppressed
+        </div>
+      )}
+
       {/* Notification list */}
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {loading ? (
@@ -177,7 +188,14 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
               {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
             </div>
           </div>
-        ) : notifs.map(n => {
+        ) : notifs.filter(n => {
+  if (focusAssist === 'off') return true;
+  if (focusAssist === 'alarms-only') {
+    return n.priority === 'critical' || n.type.includes('welfare') || n.type.includes('panic');
+  }
+  // priority mode: only critical and high
+  return n.priority === 'critical' || n.priority === 'high';
+}).map(n => {
           const Icon = notifIcon(n.type);
           const prioColor = PRIORITY_COLOR[n.priority] ?? PRIORITY_COLOR.info;
           const isUnread = !n.is_read;

@@ -91,9 +91,9 @@ jobs:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    # Was 5, but this suite took 4m27s on PR #2998 — under 35s of headroom on a
-    # required check. One slow runner would have failed a green PR.
-    timeout-minutes: 15
+    # Was 5, bumped to 15 on PR #2998. Bumped to 25 on PR #3528 — 100 new
+    # desktop component files pushed cold Vite SSR transform past the 15min cap.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -103,6 +103,8 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   client-build:
     name: Client build

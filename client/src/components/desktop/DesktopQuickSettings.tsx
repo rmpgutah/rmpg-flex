@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap } from 'lucide-react';
-import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
+import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap, Focus } from 'lucide-react';
+import { useOptionalDesktopSystem, type FocusAssistLevel } from '../../context/DesktopSystemContext';
 
 const VOLUME_KEY = 'rmpg_desktop_volume';
 
@@ -35,7 +35,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
   }, [open]);
 
   const ctx = useOptionalDesktopSystem();
-  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
+  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, focusAssist = 'off', brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setFocusAssist = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
 
   return (
     <div
@@ -74,6 +74,31 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
           >
             <span style={{ position: 'absolute', top: 2, left: dndOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--text-primary)', transition: 'left 0.1s' }} />
           </button>
+        </div>
+
+        {/* Focus Assist */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Focus className="w-3.5 h-3.5" style={{ color: focusAssist !== 'off' ? 'var(--brand-400)' : 'var(--text-secondary)' }} />
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Focus Assist</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['off', 'priority', 'alarms-only'] as FocusAssistLevel[]).map(level => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setFocusAssist(level)}
+                style={{
+                  flex: 1, fontSize: 8, padding: '3px 0', borderRadius: 2, border: '1px solid var(--border-subtle)', cursor: 'pointer',
+                  background: focusAssist === level ? 'var(--brand-400)' : 'var(--surface-base)',
+                  color: focusAssist === level ? '#fff' : 'var(--text-secondary)',
+                  fontWeight: focusAssist === level ? 700 : 400,
+                }}
+              >
+                {level === 'off' ? 'Off' : level === 'priority' ? 'Priority' : 'Alarms'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Wi-Fi status */}

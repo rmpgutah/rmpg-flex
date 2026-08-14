@@ -12,6 +12,11 @@ export const ALL_WIDGET_IDS = [
   'shift-timer', 'pinned-call-ticker', 'mini-map',
   'weather', 'radio-channel', 'roll-call', 'incident-timer', 'gps-trail', 'shift-handoff',
   'panic', 'warrant-count', 'body-cam', 'message-count',
+  'bolo-ticker', 'hot-zones', 'dispatch-queue', 'unit-proximity',
+  'plate-lookup', 'address-lookup', 'shift-perf', 'radio-log',
+  'active-warrants-count', 'officer-safety-flags', 'call-escalation',
+  'evidence-coc', 'mutual-aid-status',
+  'network-status', 'vpn-status', 'ip-info',
 ] as const;
 
 export const V1_DEFAULT_ON_IDS: readonly string[] = ['clock', 'ops-summary', 'notifications', 'quick-access'];

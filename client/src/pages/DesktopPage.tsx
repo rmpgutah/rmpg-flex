@@ -14,6 +14,9 @@ import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/des
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
 import { hasBeenSeeded, markSeeded, getDefaultPinsForRole } from '../utils/defaultModulePins';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
+import { isDynamicWallpaperEnabled, getDynamicWallpaperDayId, getDynamicWallpaperNightId } from '../utils/dynamicWallpaperPreferences';
+import DesktopRecycleBin from '../components/desktop/DesktopRecycleBin';
+import { addDeletedIcon, restoreDeletedIcon } from '../utils/recycleBinPreferences';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import { DesktopSystemProvider } from '../context/DesktopSystemContext';
 import DesktopNightLightOverlay from '../components/desktop/DesktopNightLightOverlay';
@@ -52,7 +55,19 @@ import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPr
 import DesktopCommandPalette from '../components/desktop/DesktopCommandPalette';
 import DesktopCallTicker from '../components/desktop/DesktopCallTicker';
 import DesktopCalculator from '../components/desktop/apps/DesktopCalculator';
+import DesktopTimer from '../components/desktop/apps/DesktopTimer';
+import DesktopUnitConverter from '../components/desktop/apps/DesktopUnitConverter';
+import DesktopEventViewer from '../components/desktop/apps/DesktopEventViewer';
+import DesktopFileManager from '../components/desktop/apps/DesktopFileManager';
+import DesktopColorPicker from '../components/desktop/apps/DesktopColorPicker';
 import DesktopRunDialog from '../components/desktop/DesktopRunDialog';
+import DesktopWidgetLibrary from '../components/desktop/DesktopWidgetLibrary';
+import { applyHighContrast, isHighContrastEnabled } from '../utils/highContrastPreference';
+import DesktopPerfMon from '../components/desktop/apps/DesktopPerfMon';
+import DesktopNetworkDiag from '../components/desktop/apps/DesktopNetworkDiag';
+import DesktopPrivacyScreen from '../components/desktop/DesktopPrivacyScreen';
+import { getStartupWindows } from '../utils/startupPreferences';
+import { setTextScale, getTextScale, setKeyboardNavEnabled, isKeyboardNavEnabled, setReducedMotion, isReducedMotion, applyCursorStyle } from '../utils/accessibilityPreferences';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -77,7 +92,9 @@ function WindowLayer() {
 
 const CAD_AUTO_OPEN_KEY = 'rmpg_cad_auto_opened';
 
-// Opens the Dispatch Console once per session on initial desktop load.
+// Opens startup windows once per session on initial desktop load.
+// Reads startup preferences so officers can configure which windows open on boot.
+// Falls back to Dispatch Console if the list is empty.
 // Must be inside DesktopWindowManagerProvider to access useDesktopWindows.
 function CadAutoOpen() {
   const { openWindow } = useDesktopWindows();
@@ -86,7 +103,14 @@ function CadAutoOpen() {
     sessionStorage.setItem(CAD_AUTO_OPEN_KEY, '1');
     // Small delay lets the desktop finish its first render before opening
     const t = setTimeout(() => {
-      openWindow('/dispatch', 'Dispatch Console', { width: 1200, height: 900 });
+      const windows = getStartupWindows().filter(w => w.enabled);
+      if (windows.length === 0) {
+        openWindow('/dispatch', 'Dispatch Console', { width: 1200, height: 900 });
+      } else {
+        for (const w of windows) {
+          openWindow(w.path, w.title, { width: w.width, height: w.height });
+        }
+      }
     }, 600);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,6 +153,22 @@ function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<Arra
     tileH: () => tileHorizontal(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
     tileV: () => tileVertical(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
   };
+  return null;
+}
+
+// Wires Ctrl+Shift+T → reopenLastClosed (must be inside DesktopWindowManagerProvider)
+function ReopenLastClosedBridge() {
+  const { reopenLastClosed } = useDesktopWindows();
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        reopenLastClosed();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [reopenLastClosed]);
   return null;
 }
 
@@ -270,8 +310,51 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(false);
+  const [converterOpen, setConverterOpen] = useState(false);
+  const [eventViewerOpen, setEventViewerOpen] = useState(false);
+  const [fileManagerOpen, setFileManagerOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [callTickerEnabled, setCallTickerEnabled] = useState(() => localStorage.getItem('rmpg_call_ticker') !== '0');
+  const [widgetLibraryOpen, setWidgetLibraryOpen] = useState(false);
+  const [perfmonOpen, setPerfmonOpen] = useState(false);
+  const [netdiagOpen, setNetdiagOpen] = useState(false);
+  const [privacyScreenActive, setPrivacyScreenActive] = useState(
+    () => localStorage.getItem('rmpg_privacy_screen') === '1'
+  );
   const isLocked = lockActive || manuallyLocked;
+
+  // Apply high contrast and accessibility preferences on mount
+  useEffect(() => {
+    applyHighContrast(isHighContrastEnabled());
+    setTextScale(getTextScale());
+    setKeyboardNavEnabled(isKeyboardNavEnabled());
+    setReducedMotion(isReducedMotion());
+    applyCursorStyle();
+  }, []);
+
+  // Log session events (login and unlock)
+  const hasLoggedLogin = useRef(false);
+  useEffect(() => {
+    if (!user || hasLoggedLogin.current) return;
+    hasLoggedLogin.current = true;
+    apiFetch('/errors', {
+      method: 'POST',
+      body: JSON.stringify({ severity: 'info', category: 'session', message: 'Session started', source: 'desktop' }),
+    }).catch(() => { /* non-blocking */ });
+  }, [user]);
+
+  const prevLockedRef = useRef(isLocked);
+  useEffect(() => {
+    const wasLocked = prevLockedRef.current;
+    prevLockedRef.current = isLocked;
+    if (wasLocked && !isLocked && user) {
+      apiFetch('/errors', {
+        method: 'POST',
+        body: JSON.stringify({ severity: 'info', category: 'session', message: 'Session unlocked', source: 'desktop' }),
+      }).catch(() => { /* non-blocking */ });
+    }
+  }, [isLocked, user]);
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
@@ -330,6 +413,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   }, []);
 
   const handleUnpin = useCallback((path: string) => {
+    // Find the label for the icon before removing it so we can record it in the recycle bin.
+    const fn = allFunctions.find(f => f.path === path);
+    if (fn) addDeletedIcon({ path: fn.path, label: fn.label });
     setFavorites(prev => {
       const next = new Set(prev);
       next.delete(path);
@@ -337,7 +423,19 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       return next;
     });
     setLayout(prev => ({ ...prev, icons: prev.icons.filter(p => p.path !== path) }));
-  }, []);
+  }, [allFunctions]);
+
+  const handleRecycleBinRestore = useCallback((path: string) => {
+    restoreDeletedIcon(path);
+    const fn = allFunctions.find(f => f.path === path);
+    if (!fn) return;
+    setFavorites(prev => {
+      const next = new Set(prev);
+      next.add(path);
+      saveFavorites(next);
+      return next;
+    });
+  }, [allFunctions]);
 
   const handleCreateGroup = useCallback((memberPaths: string[], label: string) => {
     setLayout(prev => {
@@ -439,6 +537,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setNotepadOpen(v => !v);
       }
+      // Meta+P — Privacy screen toggle
+      if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key === 'p') {
+        e.preventDefault();
+        setPrivacyScreenActive(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -451,6 +554,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       if (appKey === 'calc') setCalculatorOpen(true);
       if (appKey === 'notepad') setNotepadOpen(true);
       if (appKey === 'task-manager') setTaskManagerOpen(true);
+      if (appKey === 'timer') setTimerOpen(true);
+      if (appKey === 'converter') setConverterOpen(true);
+      if (appKey === 'event-viewer') setEventViewerOpen(true);
+      if (appKey === 'file-manager') setFileManagerOpen(true);
+      if (appKey === 'color-picker') setColorPickerOpen(true);
+      if (appKey === 'perfmon') setPerfmonOpen(true);
+      if (appKey === 'netdiag') setNetdiagOpen(true);
     }
     function onOpenRun() { setRunDialogOpen(true); }
     window.addEventListener('flexos:open-app', onOpenApp);
@@ -492,6 +602,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Tile Horizontally', onClick: () => arrangeRef.current?.tileH() },
             { label: 'Tile Vertically', onClick: () => arrangeRef.current?.tileV() },
             { label: '', onClick: () => {}, divider: true },
+            { label: 'Add Widget…', onClick: () => setWidgetLibraryOpen(true) },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'System Preferences…', onClick: () => setSysPrefOpen(true) },
             { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
@@ -510,7 +621,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           ]}
         >
           <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()] + STATUS_BAR_HEIGHT}px)`, overflow: 'hidden' }}>
-            <DesktopWallpaper wallpaperId={wallpaperId}>
+            <DesktopWallpaper
+              wallpaperId={wallpaperId}
+              dynamicWallpaper={isDynamicWallpaperEnabled() ? { dayWallpaperId: getDynamicWallpaperDayId() || wallpaperId, nightWallpaperId: getDynamicWallpaperNightId() || wallpaperId } : undefined}
+            >
               {!areIconsHidden() && (
                 pinnedIcons.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>
@@ -533,8 +647,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <WindowArrangeSync mountRef={arrangeRef} />
               <OpenWindowBridge mountRef={openWindowRef} />
               <CfsFocusBridge />
+              <ReopenLastClosedBridge />
               <WindowLayer />
               <DesktopWindowSwitcher />
+              {/* Recycle Bin — always-visible in bottom-right of desktop area */}
+              <div style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 10 }}>
+                <DesktopRecycleBin onRestore={handleRecycleBinRestore} />
+              </div>
             </DesktopWallpaper>
           </div>
         </ContextMenu>
@@ -563,6 +682,13 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           />
         )}
         {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
+        {timerOpen && <DesktopTimer onClose={() => setTimerOpen(false)} />}
+        {converterOpen && <DesktopUnitConverter onClose={() => setConverterOpen(false)} />}
+        {eventViewerOpen && <DesktopEventViewer onClose={() => setEventViewerOpen(false)} />}
+        {fileManagerOpen && <DesktopFileManager onClose={() => setFileManagerOpen(false)} />}
+        {colorPickerOpen && <DesktopColorPicker onClose={() => setColorPickerOpen(false)} />}
+        {perfmonOpen && <DesktopPerfMon onClose={() => setPerfmonOpen(false)} />}
+        {netdiagOpen && <DesktopNetworkDiag onClose={() => setNetdiagOpen(false)} />}
         {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
         {calculatorOpen && (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
@@ -572,6 +698,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
       <DesktopP1AlertOverlay />
+      {privacyScreenActive && <DesktopPrivacyScreen onClose={() => setPrivacyScreenActive(false)} />}
       <DesktopActiveCallBar taskbarHeightPx={taskbarH} />
       <DesktopUpdateBanner taskbarHeightPx={taskbarH} hasActiveCall={false} />
       </DesktopSystemProvider>
@@ -612,6 +739,14 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onResetToDefault={handleResetToDefault}
           onClose={() => setSysPrefOpen(false)}
           isAdmin={isAdmin}
+        />
+      )}
+      {widgetLibraryOpen && (
+        <DesktopWidgetLibrary
+          widgets={widgets}
+          onAdd={id => { handleToggleWidget(id, true); }}
+          onRemove={id => { handleToggleWidget(id, false); }}
+          onClose={() => setWidgetLibraryOpen(false)}
         />
       )}
       {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
