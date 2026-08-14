@@ -296,12 +296,12 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                   onClick={() => { setSelectedUser(u); setSwitchingUser(false); }}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-                    padding: '20px 12px', background: 'rgba(var(--rmpg-700-rgb,34 64 95),0.4)',
+                    padding: '20px 12px', background: 'rgba(var(--rmpg-800-rgb),0.4)',
                     border: '1px solid rgba(var(--accent-silver-400-rgb),0.12)',
                     cursor: 'pointer', transition: 'background 150ms',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-700-rgb,34 64 95),0.7)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-700-rgb,34 64 95),0.4)')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-800-rgb),0.7)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-800-rgb),0.4)')}
                 >
                   <div style={{
                     width: 56, height: 56, borderRadius: '50%',
@@ -340,7 +340,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         /* ── CREDENTIAL CARD ── */
         <div style={{
           position: 'relative', zIndex: 1, width: 360,
-          background: 'rgba(var(--rmpg-700-rgb,34 64 95),0.55)',
+          background: 'rgba(var(--rmpg-800-rgb),0.55)',
           border: '1px solid rgba(var(--accent-silver-400-rgb),0.15)',
           padding: '32px 28px',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
@@ -377,7 +377,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                 onClick={() => { setMode(m); setError(''); setPassword(''); setPin(''); setTimeout(() => inputRef.current?.focus(), 50); }}
                 style={{
                   flex: 1, padding: '6px 0', fontSize: 11, fontWeight: mode === m ? 600 : 400,
-                  background: mode === m ? 'rgba(var(--rmpg-500-rgb,62 116 168),0.25)' : 'transparent',
+                  background: mode === m ? 'rgba(var(--rmpg-700-rgb),0.25)' : 'transparent',
                   color: mode === m ? 'var(--text-primary)' : 'var(--text-secondary)',
                   border: 'none', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.08em',
                 }}
@@ -451,7 +451,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
             disabled={busy || isLockedOut || (mode === 'password' ? !password : pin.length < 4)}
             style={{
               width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600,
-              background: 'rgba(var(--rmpg-500-rgb,45 90 135),0.7)', border: '1px solid rgba(var(--accent-silver-400-rgb),0.25)',
+              background: 'rgba(var(--rmpg-700-rgb),0.7)', border: '1px solid rgba(var(--accent-silver-400-rgb),0.25)',
               color: 'var(--text-primary)', cursor: busy || isLockedOut ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               opacity: busy || isLockedOut ? 0.6 : 1,
