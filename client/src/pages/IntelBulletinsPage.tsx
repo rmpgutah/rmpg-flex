@@ -157,13 +157,13 @@ export default function IntelBulletinsPage() {
   }
 
   return (
-    <div className="p-4 space-y-4 bg-[#0a0a0a] min-h-screen">
+    <div className="p-4 space-y-4 bg-surface-base min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <PanelTitleBar title="INTELLIGENCE BULLETINS" icon={Shield} />
         <button
           onClick={openCreate}
-          className="flex items-center gap-1 px-3 py-1.5 bg-[#d4a017] text-black font-semibold text-xs rounded-sm hover:bg-[#b88914]"
+          className="flex items-center gap-1 px-3 py-1.5 bg-brand-600 text-white font-semibold text-xs rounded-sm hover:bg-brand-700"
         >
           <Plus className="w-3.5 h-3.5" /> New Bulletin
         </button>
@@ -175,9 +175,9 @@ export default function IntelBulletinsPage() {
           { label: 'Active BOLOs', value: stats.active_bolos, color: 'text-red-400' },
           { label: 'Active ATLs', value: stats.active_atls, color: 'text-orange-400' },
           { label: 'Crime Alerts', value: stats.crime_alerts, color: 'text-yellow-400' },
-          { label: 'Unacknowledged', value: stats.unacknowledged, color: 'text-[#d4a017]' },
+          { label: 'Unacknowledged', value: stats.unacknowledged, color: 'text-rmpg-100' },
         ].map((s) => (
-          <div key={s.label} className="bg-[#141414] border border-[#222222] rounded-sm p-3 text-center">
+          <div key={s.label} className="bg-surface-raised border border-border-default rounded-sm p-3 text-center">
             <div className={`text-xl font-mono font-bold ${s.color}`}>{s.value}</div>
             <div className="text-[10px] text-gray-400 uppercase tracking-wide">{s.label}</div>
           </div>
@@ -185,14 +185,14 @@ export default function IntelBulletinsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-2 bg-[#141414] border border-[#222222] rounded-sm p-2">
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1 rounded-sm">
+      <div className="flex flex-wrap items-center gap-2 bg-surface-raised border border-border-default rounded-sm p-2">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm">
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1 rounded-sm">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm">
           <option value="all">All Types</option>
           <option value="bolo">BOLO</option>
           <option value="atl">ATL</option>
@@ -200,7 +200,7 @@ export default function IntelBulletinsPage() {
           <option value="officer_safety">Officer Safety</option>
           <option value="community_alert">Community Alert</option>
         </select>
-        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1 rounded-sm">
+        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm">
           <option value="all">All Priority</option>
           <option value="critical">Critical</option>
           <option value="high">High</option>
@@ -214,7 +214,7 @@ export default function IntelBulletinsPage() {
             placeholder="Search bulletins..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1 rounded-sm flex-1"
+            className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm flex-1"
           />
         </div>
       </div>
@@ -228,7 +228,7 @@ export default function IntelBulletinsPage() {
         {bulletins.map((b) => (
           <div
             key={b.id}
-            className="bg-[#141414] border border-[#222222] rounded-sm p-3 hover:border-[#333333] cursor-pointer"
+            className="bg-surface-raised border border-border-default rounded-sm p-3 hover:border-border-strong cursor-pointer"
             onClick={() => setSelectedBulletin(b)}
           >
             <div className="flex items-start justify-between gap-3">
@@ -238,11 +238,11 @@ export default function IntelBulletinsPage() {
                     {formatEnumValue(b.priority)}
                   </span>
                   <span className="font-mono text-xs text-gray-400">{b.bulletin_number}</span>
-                  <span className="px-1.5 py-0.5 text-[9px] bg-[#222222] text-gray-300 rounded-sm uppercase">
+                  <span className="px-1.5 py-0.5 text-[9px] bg-surface-sunken text-gray-300 rounded-sm uppercase">
                     {typeLabels[b.type] || b.type}
                   </span>
                   {b.status !== 'active' && (
-                    <span className="px-1.5 py-0.5 text-[9px] bg-[#333333] text-gray-400 rounded-sm uppercase">{toDisplayLabel(b.status)}</span>
+                    <span className="px-1.5 py-0.5 text-[9px] bg-rmpg-800 text-gray-400 rounded-sm uppercase">{toDisplayLabel(b.status)}</span>
                   )}
                 </div>
                 <div className="text-sm text-gray-100 font-semibold mt-1 truncate">{b.title}</div>
@@ -266,7 +266,7 @@ export default function IntelBulletinsPage() {
                 {!b.acknowledged && (
                   <button
                     onClick={(e) => { e.stopPropagation(); handleAcknowledge(b.id); }}
-                    className="flex items-center gap-0.5 px-2 py-1 text-[10px] bg-[#d4a017] text-black font-semibold rounded-sm hover:bg-[#b88914]"
+                    className="flex items-center gap-0.5 px-2 py-1 text-[10px] bg-brand-600 text-white font-semibold rounded-sm hover:bg-brand-700"
                     title="Acknowledge"
                   >
                     <Check className="w-3 h-3" /> ACK
@@ -288,10 +288,10 @@ export default function IntelBulletinsPage() {
       {/* Detail Modal */}
       {selectedBulletin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setSelectedBulletin(null)}>
-          <div className="bg-[#141414] border border-[#222222] rounded-sm w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-[#222222]">
+          <div className="bg-surface-raised border border-border-default rounded-sm w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-border-default">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#d4a017]" />
+                <Shield className="w-4 h-4 text-brand-400" />
                 <span className="text-sm font-semibold text-gray-100">Bulletin Detail</span>
               </div>
               <button aria-label="Close" onClick={() => setSelectedBulletin(null)} className="text-gray-400 hover:text-gray-200">
@@ -304,7 +304,7 @@ export default function IntelBulletinsPage() {
                   {formatEnumValue(selectedBulletin.priority)}
                 </span>
                 <span className="font-mono text-gray-400">{selectedBulletin.bulletin_number}</span>
-                <span className="px-1.5 py-0.5 text-[9px] bg-[#222222] text-gray-300 rounded-sm uppercase">
+                <span className="px-1.5 py-0.5 text-[9px] bg-surface-sunken text-gray-300 rounded-sm uppercase">
                   {typeLabels[selectedBulletin.type]}
                 </span>
               </div>
@@ -322,16 +322,16 @@ export default function IntelBulletinsPage() {
               {selectedBulletin.location && (
                 <div><span className="text-gray-500">Location:</span> <span className="text-gray-200">{selectedBulletin.location}</span></div>
               )}
-              <div className="flex gap-4 pt-2 border-t border-[#222222] text-gray-500">
+              <div className="flex gap-4 pt-2 border-t border-border-default text-gray-500">
                 <span>Created: {parseTimestamp(selectedBulletin.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</span>
                 {selectedBulletin.expires_at && <span>Expires: {parseTimestamp(selectedBulletin.expires_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</span>}
               </div>
               <div className="flex gap-2 pt-2">
-                <button onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-[#222222] text-gray-200 text-xs rounded-sm hover:bg-[#333333]">
+                <button onClick={() => { openEdit(selectedBulletin); setSelectedBulletin(null); }} className="px-3 py-1 bg-surface-sunken text-gray-200 text-xs rounded-sm hover:bg-surface-sunken/80">
                   Edit
                 </button>
                 {!selectedBulletin.acknowledged && (
-                  <button onClick={() => { handleAcknowledge(selectedBulletin.id); setSelectedBulletin(null); }} className="px-3 py-1 bg-[#d4a017] text-black text-xs font-semibold rounded-sm hover:bg-[#b88914]">
+                  <button onClick={() => { handleAcknowledge(selectedBulletin.id); setSelectedBulletin(null); }} className="px-3 py-1 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700">
                     Acknowledge
                   </button>
                 )}
@@ -344,8 +344,8 @@ export default function IntelBulletinsPage() {
       {/* Create/Edit Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setShowCreateModal(false)}>
-          <div className="bg-[#141414] border border-[#222222] rounded-sm w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-3 border-b border-[#222222]">
+          <div className="bg-surface-raised border border-border-default rounded-sm w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-3 border-b border-border-default">
               <span className="text-sm font-semibold text-gray-100">
                 {editingBulletin ? 'Edit Bulletin' : 'New Intelligence Bulletin'}
               </span>
@@ -360,13 +360,13 @@ export default function IntelBulletinsPage() {
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] text-gray-400 uppercase mb-1">Type *</label>
-                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm">
+                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm">
                     <option value="bolo">BOLO</option>
                     <option value="atl">ATL</option>
                     <option value="crime_alert">Crime Alert</option>
@@ -376,7 +376,7 @@ export default function IntelBulletinsPage() {
                 </div>
                 <div>
                   <label className="block text-[10px] text-gray-400 uppercase mb-1">Priority *</label>
-                  <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm">
+                  <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm">
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
                     <option value="medium">Medium</option>
@@ -390,7 +390,7 @@ export default function IntelBulletinsPage() {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={4}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm resize-none"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm resize-none"
                 />
               </div>
               <div>
@@ -399,7 +399,7 @@ export default function IntelBulletinsPage() {
                   type="text"
                   value={form.suspect_name}
                   onChange={(e) => setForm({ ...form, suspect_name: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm"
                 />
               </div>
               <div>
@@ -408,7 +408,7 @@ export default function IntelBulletinsPage() {
                   value={form.suspect_description}
                   onChange={(e) => setForm({ ...form, suspect_description: e.target.value })}
                   rows={2}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm resize-none"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm resize-none"
                 />
               </div>
               <div>
@@ -417,7 +417,7 @@ export default function IntelBulletinsPage() {
                   type="text"
                   value={form.vehicle_description}
                   onChange={(e) => setForm({ ...form, vehicle_description: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm"
                 />
               </div>
               <div>
@@ -426,7 +426,7 @@ export default function IntelBulletinsPage() {
                   type="text"
                   value={form.location}
                   onChange={(e) => setForm({ ...form, location: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm"
                 />
               </div>
               <div>
@@ -435,17 +435,17 @@ export default function IntelBulletinsPage() {
                   type="datetime-local"
                   value={form.expires_at}
                   onChange={(e) => setForm({ ...form, expires_at: e.target.value })}
-                  className="w-full bg-[#0a0a0a] border border-[#222222] text-gray-200 text-xs px-2 py-1.5 rounded-sm"
+                  className="w-full bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1.5 rounded-sm"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#222222]">
-                <button onClick={() => setShowCreateModal(false)} className="px-3 py-1.5 bg-[#222222] text-gray-300 text-xs rounded-sm hover:bg-[#333333]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
+                <button onClick={() => setShowCreateModal(false)} className="px-3 py-1.5 bg-surface-sunken text-gray-300 text-xs rounded-sm hover:bg-surface-sunken/80">
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmit}
                   disabled={!form.title || !form.description}
-                  className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold rounded-sm hover:bg-[#b88914] disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-3 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-sm hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {editingBulletin ? 'Update Bulletin' : 'Create Bulletin'}
                 </button>

@@ -93,14 +93,14 @@ const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
 // Sender-stable colors for the per-message avatar circles. Picked from the
 // content-flavor palette (NOT the brand-gold token) — these communicate
 // "different person" the same way Slack/Gmail use a per-user hash. Index
-// 0 and 7 used to both be `#888888` (a copy/paste slip in the original
+// 0 and 7 used to both be neutral grey (a copy/paste slip in the original
 // 10-element array); the duplicate halved the effective hashing space for
 // every other color, so neutral grey appeared roughly twice as often as
-// any other shade. Replaced index 7 with `#3b82f6` (blue-500) so the
-// distribution is uniform across all 10 buckets.
+// any other shade. Replaced index 7 with blue-500 so the distribution is
+// uniform across all 10 buckets.
 const AVATAR_COLORS = [
-  '#888888', '#8b5cf6', '#22c55e', '#10b981', '#f59e0b',
-  '#ef4444', '#ec4899', '#3b82f6', '#14b8a6', '#f97316',
+  'rgb(136,136,136)', 'rgb(139,92,246)', 'rgb(34,197,94)', 'rgb(16,185,129)', 'rgb(245,158,11)',
+  'rgb(239,68,68)', 'rgb(236,72,153)', 'rgb(59,130,246)', 'rgb(20,184,166)', 'rgb(249,115,22)',
 ] as const;
 
 function avatarColorFor(senderKey: string): string {
@@ -783,16 +783,16 @@ function getReadingTheme(userId?: string | number | null): ReadingTheme {
 
 const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
   dark: `
-        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(192,208,224); background: rgb(12,12,12); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: rgb(136,136,136); text-decoration: underline; } a:hover { color: rgb(160,160,160); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(43,43,43); margin: 8px 0; padding: 4px 12px; color: rgb(136,153,170); }
+        pre { background: rgb(20,20,20); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(43,43,43); margin: 16px 0; }
   `,
   light: `
-        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #555555; text-decoration: underline; } a:hover { color: #1a1a1a; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #d8d8d8; margin: 8px 0; padding: 4px 12px; color: #555; }
-        pre { background: #f4f4f4; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(26,26,26); background: rgb(255,255,255); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: rgb(85,85,85); text-decoration: underline; } a:hover { color: rgb(26,26,26); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(216,216,216); margin: 8px 0; padding: 4px 12px; color: rgb(85,85,85); }
+        pre { background: rgb(244,244,244); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(221,221,221); margin: 16px 0; }
   `,
 };
 
@@ -833,14 +833,14 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
   style.textContent = `
-    body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
-    .header { border-bottom: 2px solid #888888; padding-bottom: 12px; margin-bottom: 16px; }
-    .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
-    .meta { font-size: 10pt; color: #555; margin: 2px 0; }
-    .meta strong { color: #333; min-width: 40px; display: inline-block; }
+    body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; color: rgb(26,26,26); margin: 40px; line-height: 1.6; }
+    .header { border-bottom: 2px solid rgb(136,136,136); padding-bottom: 12px; margin-bottom: 16px; }
+    .header h1 { font-size: 16pt; margin: 0 0 8px; color: rgb(26,26,26); }
+    .meta { font-size: 10pt; color: rgb(85,85,85); margin: 2px 0; }
+    .meta strong { color: rgb(51,51,51); min-width: 40px; display: inline-block; }
     .body-content { margin-top: 16px; }
-    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #999; }
-    @media print { body { margin: 20px; } a { color: #888888; text-decoration: none; } }
+    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid rgb(204,204,204); font-size: 9pt; color: rgb(153,153,153); }
+    @media print { body { margin: 20px; } a { color: rgb(136,136,136); text-decoration: none; } }
   `;
   doc.head.appendChild(style);
   doc.title = message.subject;
@@ -878,7 +878,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:rgb(26,26,26);margin:0;line-height:1.6;}a{color:rgb(136,136,136);}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid rgb(204,204,204);margin:8px 0;padding:4px 12px;color:rgb(102,102,102);}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -1434,7 +1434,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const ext = att.name.split('.').pop()?.toLowerCase() || '';
                 const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
                 const isPdf = ext === 'pdf';
-                const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
+                const fileColor = isImage ? 'rgb(34,197,94)' : isPdf ? 'rgb(239,68,68)' : 'rgb(139,92,246)';
                 return (
                   <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
@@ -1904,8 +1904,8 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
 // ============================================================
 
 const CATEGORY_PRESET_COLORS: Record<string, string> = {
-  preset0: '#ef4444', preset1: '#f97316', preset2: '#d4a017', preset3: '#22c55e', preset4: '#10b981',
-  preset5: '#14b8a6', preset6: '#8b5cf6', preset7: '#ec4899', preset8: '#888888', preset9: '#a16207',
+  preset0: 'rgb(239,68,68)', preset1: 'rgb(249,115,22)', preset2: 'rgb(212,160,23)', preset3: 'rgb(34,197,94)', preset4: 'rgb(16,185,129)',
+  preset5: 'rgb(20,184,166)', preset6: 'rgb(139,92,246)', preset7: 'rgb(236,72,153)', preset8: 'rgb(136,136,136)', preset9: 'rgb(161,98,7)',
 };
 
 function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
@@ -1954,7 +1954,7 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
           cats.map(cat => (
             <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || 'rgb(136,136,136)' }} />
               <span className="min-w-0 flex-1 text-left truncate">{cat.displayName}</span>
               {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
             </button>
@@ -3632,7 +3632,7 @@ export default function EmailPage() {
                       const isPdf = ext === 'pdf';
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
-                      const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
+                      const fileColor = isImage ? 'rgb(34,197,94)' : isPdf ? 'rgb(239,68,68)' : isDoc ? 'rgb(136,136,136)' : isSheet ? 'rgb(16,185,129)' : 'rgb(139,92,246)';
                       const viewable = isImage || isPdf;
                       return (
                         <div key={att.id}
