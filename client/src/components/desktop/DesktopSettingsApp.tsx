@@ -1,5 +1,13 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload } from 'lucide-react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload, Cpu, Wifi, Accessibility, Play, Trash2 } from 'lucide-react';
+import { getStartupWindows, setStartupWindows, type StartupWindow } from '../../utils/startupPreferences';
+import {
+  getTextScale, setTextScale,
+  isKeyboardNavEnabled, setKeyboardNavEnabled,
+  isReducedMotion, setReducedMotion,
+  getCursorSize, setCursorSize,
+  getCursorColor, setCursorColor,
+} from '../../utils/accessibilityPreferences';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
 import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID, CUSTOM_WALLPAPER_ID, setCustomWallpaperDataUrl, clearCustomWallpaper, CUSTOM_WALLPAPER_MAX_BYTES, isSlideshowEnabled, setSlideshowEnabled, getSlideshowIntervalMin, setSlideshowIntervalMin } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
@@ -45,6 +53,9 @@ const ALL_WIDGETS: { id: string; label: string }[] = [
   { id: 'warrant-count', label: 'Warrant Count' },
   { id: 'body-cam', label: 'Body Camera' },
   { id: 'message-count', label: 'Message Count' },
+  { id: 'network-status', label: 'Network Status' },
+  { id: 'vpn-status', label: 'VPN Status' },
+  { id: 'ip-info', label: 'IP Info' },
 ];
 
 const ICON_SIZES: Array<'small' | 'medium' | 'large'> = ['small', 'medium', 'large'];
@@ -62,6 +73,9 @@ const CATEGORIES = [
   { id: 'session-log', label: 'Session Log', icon: ClipboardList },
   { id: 'kiosk-mode', label: 'Kiosk Mode', icon: Monitor },
   { id: 'flexos', label: 'FlexOS', icon: Shield },
+  { id: 'device-health', label: 'Device Health', icon: Cpu },
+  { id: 'startup', label: 'Startup', icon: Play },
+  { id: 'accessibility', label: 'Accessibility', icon: Accessibility },
 ] as const;
 
 export type CategoryId = typeof CATEGORIES[number]['id'];
@@ -129,6 +143,69 @@ export default function DesktopSettingsApp({
   const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
   const [autoLockMinutes, setAutoLockMinutesState] = useState<number | null>(() => getAutoLockMinutes());
   const [highContrast, setHighContrastState] = useState(() => isHighContrastEnabled());
+  // Security — config snapshot
+  const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
+  const [restorePreview, setRestorePreview] = useState<Record<string, string> | null>(null);
+  const snapshotRestoreRef = useRef<HTMLInputElement>(null);
+  // Security — USB monitoring
+  const [usbMonitoringOn, setUsbMonitoringOn] = useState(() => localStorage.getItem('rmpg_usb_monitoring') === '1');
+  const [usbWhitelist, setUsbWhitelist] = useState(() => localStorage.getItem('rmpg_usb_whitelist') ?? '');
+  // Security — geo-fence
+  interface GeofenceConfig { enabled: boolean; lat: string; lng: string; radiusMiles: string }
+  const [geofence, setGeofence] = useState<GeofenceConfig>(() => {
+    try { return JSON.parse(localStorage.getItem('rmpg_geofence') ?? 'null') ?? { enabled: false, lat: '', lng: '', radiusMiles: '' }; }
+    catch { return { enabled: false, lat: '', lng: '', radiusMiles: '' }; }
+  });
+  const [geofenceResult, setGeofenceResult] = useState<string | null>(null);
+
+  // Device Health state
+  const [batteryInfo, setBatteryInfo] = useState<{ percent: number; charging: boolean } | null>(null);
+  const [tpmInfo, setTpmInfo] = useState<{ present: boolean; enabled: boolean; ready: boolean } | null>(null);
+  const [healthInterfaces, setHealthInterfaces] = useState<Array<{ name: string; ipv4?: string }> | null>(null);
+  const [healthLastPolled, setHealthLastPolled] = useState<Date | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  const refreshDeviceHealth = useCallback(() => {
+    setHealthLoading(true);
+    type ElectronAPI = {
+      sysBattery?: () => { percent: number; charging: boolean } | null;
+      sysTpmStatus?: () => { present: boolean; enabled: boolean; ready: boolean } | null;
+      sysNetworkInterfaces?: () => Array<{ name: string; ipv4?: string; status?: string }>;
+    };
+    const ea = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+    if (ea?.sysBattery) setBatteryInfo(ea.sysBattery() ?? null);
+    if (ea?.sysTpmStatus) setTpmInfo(ea.sysTpmStatus() ?? null);
+    if (ea?.sysNetworkInterfaces) {
+      setHealthInterfaces((ea.sysNetworkInterfaces() ?? []).map((i) => ({ name: i.name, ipv4: i.ipv4 })));
+    }
+    setHealthLastPolled(new Date());
+    setHealthLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeCategory === 'device-health') refreshDeviceHealth();
+  }, [activeCategory, refreshDeviceHealth]);
+
+  // Startup preferences state
+  const [startupWindows, setStartupWindowsState] = useState<StartupWindow[]>(() => getStartupWindows());
+  const [addingStartup, setAddingStartup] = useState(false);
+  const [newStartupPath, setNewStartupPath] = useState('');
+  const [newStartupTitle, setNewStartupTitle] = useState('');
+  const [newStartupW, setNewStartupW] = useState(1200);
+  const [newStartupH, setNewStartupH] = useState(900);
+
+  function saveStartupPrefs(windows: StartupWindow[]) {
+    setStartupWindows(windows);
+    setStartupWindowsState(windows);
+  }
+
+  // Accessibility state
+  const [textScale, setTextScaleState] = useState(() => getTextScale());
+  const [keyboardNav, setKeyboardNavState] = useState(() => isKeyboardNavEnabled());
+  const [reducedMotion, setReducedMotionState] = useState(() => isReducedMotion());
+  const [cursorSize, setCursorSizeState] = useState(() => getCursorSize());
+  const [cursorColor, setCursorColorState] = useState(() => getCursorColor());
+
   const [sessionLogs, setSessionLogs] = useState<SessionLogEntry[]>([]);
   const [sessionLogsLoading, setSessionLogsLoading] = useState(false);
   const [sessionLogFilter, setSessionLogFilter] = useState('');
@@ -233,6 +310,99 @@ export default function DesktopSettingsApp({
       setThemeImportMsg('Could not read theme file.');
     }
   }, [onWallpaperChange, onAccentChange]);
+
+  // --- Config Snapshot helpers ---
+  function takeConfigSnapshot() {
+    const keys: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('rmpg_')) {
+        keys[k] = localStorage.getItem(k) ?? '';
+      }
+    }
+    const payload = JSON.stringify({ timestamp: new Date().toISOString(), version: '1', keys }, null, 2);
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `flexos-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setSnapshotMsg('Snapshot downloaded.');
+    setTimeout(() => setSnapshotMsg(null), 3000);
+  }
+
+  function onSnapshotFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string ?? '{}');
+        if (parsed.version !== '1' || typeof parsed.keys !== 'object') {
+          setSnapshotMsg('Invalid snapshot file.');
+          return;
+        }
+        setRestorePreview(parsed.keys as Record<string, string>);
+      } catch {
+        setSnapshotMsg('Could not parse snapshot.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  function applySnapshot() {
+    if (!restorePreview) return;
+    for (const [k, v] of Object.entries(restorePreview)) {
+      localStorage.setItem(k, v);
+    }
+    setRestorePreview(null);
+    setSnapshotMsg('Snapshot applied. Some changes take effect on reload.');
+  }
+
+  // --- Geo-fence helpers ---
+  function haversineDistanceMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 3958.8;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function checkGeofencePosition() {
+    if (!navigator.geolocation) {
+      setGeofenceResult('Geolocation not available in this browser.');
+      return;
+    }
+    const centerLat = parseFloat(geofence.lat);
+    const centerLng = parseFloat(geofence.lng);
+    const radius = parseFloat(geofence.radiusMiles);
+    if (isNaN(centerLat) || isNaN(centerLng) || isNaN(radius)) {
+      setGeofenceResult('Enter valid lat, lng, and radius first.');
+      return;
+    }
+    setGeofenceResult('Checking…');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const dist = haversineDistanceMiles(pos.coords.latitude, pos.coords.longitude, centerLat, centerLng);
+        const inside = dist <= radius;
+        setGeofenceResult(inside
+          ? `Inside fence (${dist.toFixed(2)} mi from center)`
+          : `Outside fence (${dist.toFixed(2)} mi — would lock)`);
+      },
+      () => setGeofenceResult('Could not get position.'),
+      { timeout: 10000 }
+    );
+  }
+
+  function saveGeofence(patch: Partial<typeof geofence>) {
+    const next = { ...geofence, ...patch };
+    setGeofence(next);
+    localStorage.setItem('rmpg_geofence', JSON.stringify(next));
+  }
 
   function exportSessionLogCsv() {
     const rows = [['timestamp', 'event type', 'source', 'message'].join(',')];
@@ -750,7 +920,166 @@ export default function DesktopSettingsApp({
                 Screen locks after this period of inactivity.
               </p>
 
-              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Accessibility</div>
+              {/* Config Snapshot */}
+              <div className="text-[10px] font-semibold uppercase mt-4 mb-1" style={sectionLabelStyle()}>Config Snapshot</div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={takeConfigSnapshot}
+                  className="text-[10px] px-2 py-1"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)', background: 'var(--surface-sunken)', cursor: 'pointer', borderRadius: 2 }}
+                >
+                  Take Config Snapshot
+                </button>
+                <button
+                  type="button"
+                  onClick={() => snapshotRestoreRef.current?.click()}
+                  className="text-[10px] px-2 py-1"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)', background: 'var(--surface-sunken)', cursor: 'pointer', borderRadius: 2 }}
+                >
+                  Restore from Snapshot
+                </button>
+                <input ref={snapshotRestoreRef} type="file" accept=".json" style={{ display: 'none' }} onChange={onSnapshotFileChange} />
+              </div>
+              {snapshotMsg && <p className="text-[10px] mt-1" style={{ color: 'var(--sev-ok)' }}>{snapshotMsg}</p>}
+              {restorePreview && (
+                <div className="mt-2" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '6px 8px' }}>
+                  <p className="text-[10px] mb-1" style={{ color: 'var(--text-secondary)' }}>
+                    The following {Object.keys(restorePreview).length} key(s) will be applied:
+                  </p>
+                  <div style={{ maxHeight: 80, overflowY: 'auto' }}>
+                    {Object.keys(restorePreview).map(k => (
+                      <div key={k} className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>{k}</div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button type="button" onClick={applySnapshot} className="text-[10px] px-2 py-1" style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)', background: 'var(--surface-sunken)', cursor: 'pointer', borderRadius: 2 }}>Confirm</button>
+                    <button type="button" onClick={() => setRestorePreview(null)} className="text-[10px] px-2 py-1" style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)', background: 'none', cursor: 'pointer', borderRadius: 2 }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* USB Device Whitelist */}
+              <div className="text-[10px] font-semibold uppercase mt-4 mb-1" style={sectionLabelStyle()}>USB Device Whitelist</div>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                Log and alert when unlisted USB devices connect (requires desktop app).
+              </p>
+              <label className="flex items-center gap-2 text-[11px] mb-2" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Enable USB monitoring"
+                  checked={usbMonitoringOn}
+                  onChange={e => {
+                    const on = e.target.checked;
+                    setUsbMonitoringOn(on);
+                    localStorage.setItem('rmpg_usb_monitoring', on ? '1' : '0');
+                    const api = (window as { electronAPI?: { usbMonitoring?: (enabled: boolean) => void } }).electronAPI;
+                    api?.usbMonitoring?.(on);
+                  }}
+                />
+                Enable USB monitoring
+              </label>
+              {!(window as { electronAPI?: unknown }).electronAPI && (
+                <p className="text-[10px] mb-1" style={{ color: 'var(--sev-warn)' }}>Requires desktop app</p>
+              )}
+              <div className="text-[10px] mb-1" style={{ color: 'var(--text-secondary)' }}>Whitelist (VendorID:ProductID, one per line):</div>
+              <textarea
+                aria-label="USB whitelist"
+                value={usbWhitelist}
+                onChange={e => {
+                  setUsbWhitelist(e.target.value);
+                  localStorage.setItem('rmpg_usb_whitelist', e.target.value);
+                }}
+                rows={4}
+                className="text-[10px] font-mono px-2 py-1 w-full"
+                style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', resize: 'vertical', borderRadius: 2 }}
+                placeholder="e.g. 0951:1666"
+              />
+
+              {/* Privacy Screen */}
+              <div className="text-[10px] font-semibold uppercase mt-4 mb-1" style={sectionLabelStyle()}>Privacy Screen</div>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                Overlay dims the entire screen. Toggle with Win+P (Meta+P). Stored as rmpg_privacy_screen.
+              </p>
+              <label className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Enable privacy screen overlay"
+                  defaultChecked={localStorage.getItem('rmpg_privacy_screen') === '1'}
+                  onChange={e => {
+                    localStorage.setItem('rmpg_privacy_screen', e.target.checked ? '1' : '0');
+                  }}
+                />
+                Enable privacy overlay (Win+P to toggle)
+              </label>
+
+              {/* Geo-fence Auto-lock */}
+              <div className="text-[10px] font-semibold uppercase mt-4 mb-1" style={sectionLabelStyle()}>Geo-fence Lock</div>
+              <p className="text-[10px] mb-2" style={{ color: 'var(--text-muted)' }}>
+                Auto-lock requires Electron with geolocation permissions.
+              </p>
+              <label className="flex items-center gap-2 text-[11px] mb-2" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Enable geo-fence lock"
+                  checked={geofence.enabled}
+                  onChange={e => saveGeofence({ enabled: e.target.checked })}
+                />
+                Lock when outside geo-fence
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                <label className="flex flex-col gap-[2px]">
+                  <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Latitude</span>
+                  <input
+                    type="text"
+                    aria-label="Geo-fence latitude"
+                    value={geofence.lat}
+                    onChange={e => saveGeofence({ lat: e.target.value })}
+                    className="text-[10px] px-2 py-1"
+                    style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', width: 80, borderRadius: 2 }}
+                    placeholder="40.7608"
+                  />
+                </label>
+                <label className="flex flex-col gap-[2px]">
+                  <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Longitude</span>
+                  <input
+                    type="text"
+                    aria-label="Geo-fence longitude"
+                    value={geofence.lng}
+                    onChange={e => saveGeofence({ lng: e.target.value })}
+                    className="text-[10px] px-2 py-1"
+                    style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', width: 80, borderRadius: 2 }}
+                    placeholder="-111.8910"
+                  />
+                </label>
+                <label className="flex flex-col gap-[2px]">
+                  <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Radius (mi)</span>
+                  <input
+                    type="text"
+                    aria-label="Geo-fence radius in miles"
+                    value={geofence.radiusMiles}
+                    onChange={e => saveGeofence({ radiusMiles: e.target.value })}
+                    className="text-[10px] px-2 py-1"
+                    style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', width: 60, borderRadius: 2 }}
+                    placeholder="1.0"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={checkGeofencePosition}
+                className="text-[10px] px-2 py-1 mt-2"
+                style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)', background: 'var(--surface-sunken)', cursor: 'pointer', borderRadius: 2 }}
+              >
+                Check Position Now
+              </button>
+              {geofenceResult && (
+                <p className="text-[10px] mt-1" style={{ color: geofenceResult.includes('Inside') ? 'var(--sev-ok)' : 'var(--sev-warn)' }}>
+                  {geofenceResult}
+                </p>
+              )}
+
+              <div className="text-[10px] font-semibold uppercase mt-4 mb-1" style={sectionLabelStyle()}>Accessibility</div>
               <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
                 <input
                   type="checkbox"

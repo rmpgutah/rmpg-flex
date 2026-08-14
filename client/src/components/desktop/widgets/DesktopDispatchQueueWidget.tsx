@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface QueuedCall {
   id: number;
@@ -12,7 +13,7 @@ interface QueuedCall {
 
 function minutesWaiting(createdAt?: string): number {
   if (!createdAt) return 0;
-  const ms = Date.now() - new Date(createdAt).getTime();
+  const ms = Date.now() - parseTimestamp(createdAt).getTime();
   return Math.floor(ms / 60_000);
 }
 

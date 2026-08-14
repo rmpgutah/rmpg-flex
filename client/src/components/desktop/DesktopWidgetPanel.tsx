@@ -33,6 +33,9 @@ import DesktopOfficerSafetyWidget from './widgets/DesktopOfficerSafetyWidget';
 import DesktopCallEscalationWidget from './widgets/DesktopCallEscalationWidget';
 import DesktopEvidenceCoCWidget from './widgets/DesktopEvidenceCoCWidget';
 import DesktopMutualAidWidget from './widgets/DesktopMutualAidWidget';
+import DesktopNetworkStatusWidget from './widgets/DesktopNetworkStatusWidget';
+import DesktopVpnStatusWidget from './widgets/DesktopVpnStatusWidget';
+import DesktopIpInfoWidget from './widgets/DesktopIpInfoWidget';
 import DesktopStatusBoard from './DesktopStatusBoard';
 
 export interface DesktopWidgetPanelProps {
@@ -82,6 +85,9 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'call-escalation': DesktopCallEscalationWidget,
   'evidence-coc': DesktopEvidenceCoCWidget,
   'mutual-aid-status': DesktopMutualAidWidget,
+  'network-status': DesktopNetworkStatusWidget,
+  'vpn-status': DesktopVpnStatusWidget,
+  'ip-info': DesktopIpInfoWidget,
   'status-board': DesktopStatusBoard,
 };
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Clock, Search, Printer, FileText, Users, AlertCircle, Image, CheckCircle, StickyNote } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp, formatDateTime } from '../../../utils/dateUtils';
 
 interface CallInfo {
   id: number;
@@ -60,7 +61,7 @@ function buildTimelineFromCall(call: CallInfo): TimelineEvent[] {
   if (call.notes) {
     events.push({ type: 'note_added', timestamp: call.created_at ?? new Date().toISOString(), label: 'Note', detail: call.notes });
   }
-  return events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  return events.sort((a, b) => parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime());
 }
 
 interface Props {
@@ -195,7 +196,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
                 <span style={{ color: eventColor(evt.type) }}><EventIcon type={evt.type} /></span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>{evt.label}</span>
                 <span style={{ fontSize: 9, color: 'var(--text-secondary)', marginLeft: 'auto' }}>
-                  {new Date(evt.timestamp).toLocaleString()}
+                  {formatDateTime(evt.timestamp)}
                 </span>
               </div>
               {evt.detail && (

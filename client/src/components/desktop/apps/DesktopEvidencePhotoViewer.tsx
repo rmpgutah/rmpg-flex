@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Image, Search, X, ChevronLeft, ChevronRight, Download, MapPin } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../../hooks/useApi';
+import { formatDate, formatDateTime } from '../../../utils/dateUtils';
 
 interface FieldPhoto {
   id: number;
@@ -144,7 +145,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
               <PhotoThumb photo={p} resolveUrl={resolvePhotoUrl} />
               <div style={{ padding: '4px 6px' }}>
                 <div style={{ fontSize: 9, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{photoFilename(p)}</div>
-                {photoDate(p) && <div style={{ fontSize: 8, color: 'var(--text-secondary)' }}>{new Date(photoDate(p)!).toLocaleDateString()}</div>}
+                {photoDate(p) && <div style={{ fontSize: 8, color: 'var(--text-secondary)' }}>{formatDate(photoDate(p))}</div>}
               </div>
             </div>
           ))}
@@ -194,7 +195,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
           <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 20px', background: 'rgba(0,0,0,0.7)', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{photoFilename(currentPhoto)}</div>
-              {photoDate(currentPhoto) && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>{new Date(photoDate(currentPhoto)!).toLocaleString()}</div>}
+              {photoDate(currentPhoto) && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>{formatDateTime(photoDate(currentPhoto))}</div>}
             </div>
             {(currentPhoto.officer_name ?? currentPhoto.officer) && (
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>

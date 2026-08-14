@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface CfsCall {
   id: number | string;
@@ -71,7 +72,7 @@ export default function DesktopCallEscalationWidget() {
         const threshold = SLA_MS[pri] ?? SLA_MS[3];
         const created = c.created_at ?? c.incident_time;
         if (!created) continue;
-        const waitMs = ts - new Date(created).getTime();
+        const waitMs = ts - parseTimestamp(created).getTime();
         if (waitMs >= threshold) {
           result.push({
             id: c.id,

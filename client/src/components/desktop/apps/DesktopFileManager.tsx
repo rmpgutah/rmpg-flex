@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Folder, FolderOpen, File, RefreshCw, ExternalLink, Trash2 } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
+import { formatDateTime } from '../../../utils/dateUtils';
 
 const W = 620;
 const H = 480;
@@ -37,7 +38,7 @@ function fmtSize(bytes: number): string {
 
 function fmtDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return formatDateTime(iso);
   } catch {
     return iso;
   }

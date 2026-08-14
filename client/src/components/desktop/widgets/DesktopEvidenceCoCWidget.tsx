@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
+import { parseTimestamp, formatDate } from '../../../utils/dateUtils';
 
 interface EvidenceItem {
   id: number | string;
@@ -16,7 +17,7 @@ interface EvidenceItem {
 function isOverdue(item: EvidenceItem): boolean {
   const due = item.due_date;
   if (!due) return false;
-  return new Date(due).getTime() < Date.now();
+  return parseTimestamp(due).getTime() < Date.now();
 }
 
 function displayId(item: EvidenceItem): string {
@@ -33,7 +34,7 @@ function displayAction(item: EvidenceItem): string {
 
 function formatDue(item: EvidenceItem): string {
   if (!item.due_date) return '';
-  return new Date(item.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return formatDate(item.due_date);
 }
 
 export default function DesktopEvidenceCoCWidget() {

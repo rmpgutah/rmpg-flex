@@ -18,9 +18,15 @@ const KNOWN_COMMANDS: Record<string, () => void> = {
   'file manager':   () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'file-manager' })),
   colorpicker:      () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'color-picker' })),
   'color picker':   () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'color-picker' })),
-  dispatch:         () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'dispatch' })),
-  map:              () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'map' })),
-  mdt:              () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'mdt' })),
+  dispatch:             () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'dispatch' })),
+  map:                  () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'map' })),
+  mdt:                  () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'mdt' })),
+  perfmon:              () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'perfmon' })),
+  perf:                 () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'perfmon' })),
+  'performance monitor':() => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'perfmon' })),
+  network:              () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'netdiag' })),
+  netdiag:              () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'netdiag' })),
+  'network diagnostics':() => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'netdiag' })),
 };
 
 export default function DesktopRunDialog({ open, onClose }: { open: boolean; onClose: () => void }) {

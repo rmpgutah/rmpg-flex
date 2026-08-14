@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface RadioEntry {
   id: number;
@@ -12,7 +13,7 @@ interface RadioEntry {
 
 function formatTime(ts?: string): string {
   if (!ts) return '--:--';
-  const d = new Date(ts);
+  const d = parseTimestamp(ts);
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 

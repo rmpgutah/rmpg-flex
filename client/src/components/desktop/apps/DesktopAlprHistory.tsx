@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Camera, Download, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp, formatDateTime } from '../../../utils/dateUtils';
 
 interface AlprCapture {
   id: number;
@@ -21,7 +22,7 @@ type DateRange = 'today' | '7d' | '30d';
 function formatDateRange(range: DateRange): string {
   const now = new Date();
   if (range === 'today') {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // new-date-ok local wall-clock
     return start.toISOString();
   }
   const days = range === '7d' ? 7 : 30;
@@ -81,7 +82,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
 
   const since = formatDateRange(dateRange);
   const filtered = captures.filter(c => {
-    if (new Date(c.captured_at) < new Date(since)) return false;
+    if (parseTimestamp(c.captured_at) < parseTimestamp(since)) return false;
     if (stolenOnly && !c.is_stolen) return false;
     const conf = c.confidence != null ? c.confidence * 100 : 100;
     if (conf < minConfidence) return false;
@@ -181,7 +182,7 @@ export default function DesktopAlprHistory({ onClose: _onClose }: Props) {
                     <td style={{ ...td, color: 'var(--text-secondary)' }}>
                       {expanded === c.id ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td style={td}>{new Date(c.captured_at).toLocaleString()}</td>
+                    <td style={td}>{formatDateTime(c.captured_at)}</td>
                     <td style={{ ...td, fontWeight: 700, fontFamily: 'monospace' }}>{c.plate_number ?? '—'}</td>
                     <td style={td}>{[c.make, c.model].filter(Boolean).join(' ') || '—'}</td>
                     <td style={td}>{c.color ?? '—'}</td>

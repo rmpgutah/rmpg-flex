@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface ShiftCall {
   id: number;
@@ -27,7 +28,7 @@ function computeStats(calls: ShiftCall[]): ShiftStats {
   const responseTimes: number[] = [];
   for (const c of calls) {
     if (c.created_at && c.dispatched_at) {
-      const diff = new Date(c.dispatched_at).getTime() - new Date(c.created_at).getTime();
+      const diff = parseTimestamp(c.dispatched_at).getTime() - parseTimestamp(c.created_at).getTime();
       if (diff > 0) responseTimes.push(diff / 60_000);
     }
   }

@@ -63,6 +63,11 @@ import DesktopColorPicker from '../components/desktop/apps/DesktopColorPicker';
 import DesktopRunDialog from '../components/desktop/DesktopRunDialog';
 import DesktopWidgetLibrary from '../components/desktop/DesktopWidgetLibrary';
 import { applyHighContrast, isHighContrastEnabled } from '../utils/highContrastPreference';
+import DesktopPerfMon from '../components/desktop/apps/DesktopPerfMon';
+import DesktopNetworkDiag from '../components/desktop/apps/DesktopNetworkDiag';
+import DesktopPrivacyScreen from '../components/desktop/DesktopPrivacyScreen';
+import { getStartupWindows } from '../utils/startupPreferences';
+import { setTextScale, getTextScale, setKeyboardNavEnabled, isKeyboardNavEnabled, setReducedMotion, isReducedMotion, applyCursorStyle } from '../utils/accessibilityPreferences';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -87,7 +92,9 @@ function WindowLayer() {
 
 const CAD_AUTO_OPEN_KEY = 'rmpg_cad_auto_opened';
 
-// Opens the Dispatch Console once per session on initial desktop load.
+// Opens startup windows once per session on initial desktop load.
+// Reads startup preferences so officers can configure which windows open on boot.
+// Falls back to Dispatch Console if the list is empty.
 // Must be inside DesktopWindowManagerProvider to access useDesktopWindows.
 function CadAutoOpen() {
   const { openWindow } = useDesktopWindows();
@@ -96,7 +103,14 @@ function CadAutoOpen() {
     sessionStorage.setItem(CAD_AUTO_OPEN_KEY, '1');
     // Small delay lets the desktop finish its first render before opening
     const t = setTimeout(() => {
-      openWindow('/dispatch', 'Dispatch Console', { width: 1200, height: 900 });
+      const windows = getStartupWindows().filter(w => w.enabled);
+      if (windows.length === 0) {
+        openWindow('/dispatch', 'Dispatch Console', { width: 1200, height: 900 });
+      } else {
+        for (const w of windows) {
+          openWindow(w.path, w.title, { width: w.width, height: w.height });
+        }
+      }
     }, 600);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,11 +317,20 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [callTickerEnabled, setCallTickerEnabled] = useState(() => localStorage.getItem('rmpg_call_ticker') !== '0');
   const [widgetLibraryOpen, setWidgetLibraryOpen] = useState(false);
+  const [perfmonOpen, setPerfmonOpen] = useState(false);
+  const [netdiagOpen, setNetdiagOpen] = useState(false);
+  const [privacyScreenActive, setPrivacyScreenActive] = useState(
+    () => localStorage.getItem('rmpg_privacy_screen') === '1'
+  );
   const isLocked = lockActive || manuallyLocked;
 
-  // Apply high contrast preference on mount
+  // Apply high contrast and accessibility preferences on mount
   useEffect(() => {
     applyHighContrast(isHighContrastEnabled());
+    setTextScale(getTextScale());
+    setKeyboardNavEnabled(isKeyboardNavEnabled());
+    setReducedMotion(isReducedMotion());
+    applyCursorStyle();
   }, []);
 
   // Log session events (login and unlock)
@@ -514,6 +537,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         e.preventDefault();
         setNotepadOpen(v => !v);
       }
+      // Meta+P — Privacy screen toggle
+      if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key === 'p') {
+        e.preventDefault();
+        setPrivacyScreenActive(v => !v);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -531,6 +559,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       if (appKey === 'event-viewer') setEventViewerOpen(true);
       if (appKey === 'file-manager') setFileManagerOpen(true);
       if (appKey === 'color-picker') setColorPickerOpen(true);
+      if (appKey === 'perfmon') setPerfmonOpen(true);
+      if (appKey === 'netdiag') setNetdiagOpen(true);
     }
     function onOpenRun() { setRunDialogOpen(true); }
     window.addEventListener('flexos:open-app', onOpenApp);
@@ -657,6 +687,8 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         {eventViewerOpen && <DesktopEventViewer onClose={() => setEventViewerOpen(false)} />}
         {fileManagerOpen && <DesktopFileManager onClose={() => setFileManagerOpen(false)} />}
         {colorPickerOpen && <DesktopColorPicker onClose={() => setColorPickerOpen(false)} />}
+        {perfmonOpen && <DesktopPerfMon onClose={() => setPerfmonOpen(false)} />}
+        {netdiagOpen && <DesktopNetworkDiag onClose={() => setNetdiagOpen(false)} />}
         {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
         {calculatorOpen && (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
@@ -666,6 +698,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
       <DesktopP1AlertOverlay />
+      {privacyScreenActive && <DesktopPrivacyScreen onClose={() => setPrivacyScreenActive(false)} />}
       <DesktopActiveCallBar taskbarHeightPx={taskbarH} />
       <DesktopUpdateBanner taskbarHeightPx={taskbarH} hasActiveCall={false} />
       </DesktopSystemProvider>
