@@ -138,6 +138,7 @@ export class WebBrowserSessionDO {
 
         this.authenticated = true;
         await this.startBrowser();
+        this.send({ type: 'ready' });
       } catch {
         this.send(shapeErrorMessage('AUTH_FAILED'));
       }
@@ -183,6 +184,8 @@ export class WebBrowserSessionDO {
         await (this.page as any).goForward({ waitUntil: 'domcontentloaded', timeout: 15_000 });
         this.send({ type: 'url_changed', url: this.page.url() });
         this.page.title().then(t => this.send({ type: 'title_changed', title: t })).catch(() => {});
+        this.lastFrameHash = '';
+        this.captureFrame().catch(() => {});
       } catch { /* no forward */ } finally { this.send({ type: 'loading', loading: false }); }
       return;
     }

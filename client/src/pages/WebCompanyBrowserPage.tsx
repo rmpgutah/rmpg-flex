@@ -189,11 +189,7 @@ export default function WebCompanyBrowserPage() {
 
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: 'authenticate', token: localStorage.getItem(TOKEN_KEY) || '' }));
-          if (initialUrl && initialUrl !== 'about:blank') {
-            setTimeout(() => {
-              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'navigate', url: initialUrl }));
-            }, 500);
-          }
+          // navigate is sent after `ready` — not here — to avoid racing puppeteer.launch()
         };
 
         ws.onerror = () => updateTab(tabId, { error: 'Unable to start browser session, try again.', loading: false });
@@ -203,7 +199,13 @@ export default function WebCompanyBrowserPage() {
           let msg: any;
           try { msg = JSON.parse(ev.data); } catch { return; }
 
-          if (msg.type === 'frame') {
+          if (msg.type === 'ready') {
+            // Browser session is live — safe to navigate now
+            updateTab(tabId, { loading: false });
+            if (initialUrl && initialUrl !== 'about:blank' && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'navigate', url: initialUrl }));
+            }
+          } else if (msg.type === 'frame') {
             const data: string = msg.data;
             lastFrameRef.current.set(tabId, data);
             if (activeTabIdRef.current === tabId) {
