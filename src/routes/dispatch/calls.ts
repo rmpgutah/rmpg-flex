@@ -13,6 +13,7 @@ import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
+import { assignStackGroup } from '../../utils/stackSync';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -341,6 +342,15 @@ calls.post('/', async (c) => {
         } catch (extErr) {
           console.warn('run_card ext write failed (non-fatal):', extErr);
         }
+      }
+
+      // ── Stack group assignment ──
+      // Best-effort: never block call creation on a sync failure.
+      try {
+        await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+        await assignStackGroup(db, callId, String(location_address || ''));
+      } catch (stackErr) {
+        log.error('assignStackGroup failed on call create (non-fatal)', { callId }, stackErr);
       }
 
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
