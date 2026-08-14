@@ -83,13 +83,13 @@ export default function NewIntelReportPage() {
         {THREATS.map((t) => (
           <button key={t} onClick={() => setThreat(t)}
             className="px-2 py-1 text-[10px] uppercase rounded-[2px]"
-            style={{ background: threat === t ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: threat === t ? 'black' : 'var(--text-muted)' }}>{t}</button>
+            style={{ background: threat === t ? 'var(--rmpg-700)' : 'var(--surface-overlay)', color: threat === t ? 'var(--rmpg-50)' : 'var(--text-muted)' }}>{t}</button>
         ))}
       </div>
 
       <div className="flex gap-2 pt-1">
         <button disabled={busy} onClick={submit}
-          className="px-3 py-1 text-xs font-semibold" style={{ background: 'var(--accent-gold-300)', color: 'black', borderRadius: 2 }}>
+          className="px-3 py-1 text-xs font-semibold" style={{ background: 'var(--rmpg-600)', color: 'var(--text-primary)', borderRadius: 2 }}>
           {busy ? 'Submitting…' : 'Submit report'}
         </button>
         <button onClick={() => nav('/intel/reports')} className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }}>Cancel</button>

@@ -41,7 +41,7 @@ export default function IntelSourcesPage() {
         <select style={field} value={form.reliability_grade} onChange={(e) => setForm({ ...form, reliability_grade: e.target.value })}>
           {['A', 'B', 'C', 'D', 'E', 'F'].map((g) => <option key={g}>{g}</option>)}
         </select>
-        <button onClick={create} style={{ background: 'var(--accent-gold-300)', color: 'black', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}>+ ADD SOURCE</button>
+        <button onClick={create} style={{ background: 'var(--rmpg-600)', color: 'var(--text-primary)', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}>+ ADD SOURCE</button>
       </div>
 
       <div className="overflow-x-auto"><table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>

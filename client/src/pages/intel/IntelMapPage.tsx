@@ -104,7 +104,7 @@ export default function IntelMapPage() {
         <div className="flex gap-1 items-center">
           {DAYS_OPTS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
-              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-[color:var(--accent-gold-300)] text-[color:var(--accent-gold-300)]' : 'border-border-default text-fg-muted'}`}>
+              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-brand-400 text-brand-300' : 'border-border-default text-fg-muted'}`}>
               {d === 1 ? '24h' : `${d}d`}
             </button>
           ))}

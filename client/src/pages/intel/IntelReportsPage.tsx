@@ -11,7 +11,7 @@ interface ReportRow {
 
 const STATUSES = ['submitted', 'under_evaluation', 'graded', 'analyzed', 'disseminated', 'recalled', 'archived', 'rejected'];
 const THREAT_COLOR: Record<string, string> = {
-  critical: 'var(--sev-critical)', high: 'var(--sev-warn)', medium: 'var(--accent-gold-300)', low: 'var(--text-muted)',
+  critical: 'var(--sev-critical)', high: 'var(--sev-warn)', medium: 'var(--sev-warn)', low: 'var(--text-muted)',
 };
 
 export default function IntelReportsPage() {
@@ -38,7 +38,7 @@ export default function IntelReportsPage() {
         </h1>
         <button onClick={() => nav('/intel/reports/new')}
           className="px-3 py-1 text-xs font-semibold"
-          style={{ background: 'var(--accent-gold-300)', color: 'black', borderRadius: 2 }}>
+          style={{ background: 'var(--rmpg-600)', color: 'var(--text-primary)', borderRadius: 2 }}>
           + NEW REPORT
         </button>
       </div>
@@ -46,13 +46,13 @@ export default function IntelReportsPage() {
 
       <div className="flex gap-1 flex-wrap text-[10px]">
         <button onClick={() => setStatus('')}
-          className="px-2 py-1" style={{ background: status === '' ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: status === '' ? 'black' : 'var(--text-muted)', borderRadius: 2 }}>
+          className="px-2 py-1" style={{ background: status === '' ? 'var(--rmpg-700)' : 'var(--surface-overlay)', color: status === '' ? 'var(--rmpg-50)' : 'var(--text-muted)', borderRadius: 2 }}>
           ALL
         </button>
         {STATUSES.map((s) => (
           <button key={s} onClick={() => setStatus(s)}
             className="px-2 py-1 uppercase"
-            style={{ background: status === s ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: status === s ? 'black' : 'var(--text-muted)', borderRadius: 2 }}>
+            style={{ background: status === s ? 'var(--rmpg-700)' : 'var(--surface-overlay)', color: status === s ? 'var(--rmpg-50)' : 'var(--text-muted)', borderRadius: 2 }}>
             {toDisplayLabel(s)}
           </button>
         ))}

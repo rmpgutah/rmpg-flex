@@ -100,7 +100,7 @@ export default function IntelReportDetailPage() {
             <select style={field} value={grade.info_credibility} onChange={(e) => setGrade({ ...grade, info_credibility: Number(e.target.value) })}>{CRED.map((x) => <option key={x}>{x}</option>)}</select>
             <select style={field} value={grade.handling_code} onChange={(e) => setGrade({ ...grade, handling_code: e.target.value })}>{HANDLING.map((x) => <option key={x}>{x}</option>)}</select>
           </div>
-          <button onClick={() => act('/evaluate', grade)} style={btn('var(--accent-gold-300)')}>GRADE</button>
+          <button onClick={() => act('/evaluate', grade)} style={btn('var(--rmpg-600)', 'var(--text-primary)')}>GRADE</button>
         </div>
       )}
 
@@ -113,12 +113,12 @@ export default function IntelReportDetailPage() {
             value={analysis.assessment} onChange={(e) => setAnalysis({ ...analysis, assessment: e.target.value })} />
           <input placeholder="Criminal predicate (28 CFR retention justification)" style={field}
             value={analysis.criminal_predicate} onChange={(e) => setAnalysis({ ...analysis, criminal_predicate: e.target.value })} />
-          <button onClick={() => act('/analyze', analysis)} style={btn('var(--accent-gold-300)')}>SAVE ANALYSIS</button>
+          <button onClick={() => act('/analyze', analysis)} style={btn('var(--rmpg-600)', 'var(--text-primary)')}>SAVE ANALYSIS</button>
         </div>
       )}
 
       {r.status === 'analyzed' && (
-        <button onClick={() => act('/disseminate', {})} style={btn('var(--accent-gold-300)')}>DISSEMINATE</button>
+        <button onClick={() => act('/disseminate', {})} style={btn('var(--rmpg-600)', 'var(--text-primary)')}>DISSEMINATE</button>
       )}
 
       {r.status === 'disseminated' && (
@@ -128,7 +128,7 @@ export default function IntelReportDetailPage() {
             handling_code: r.handling_code, threat_level: r.threat_level,
             sanitized_narrative: r.sanitized_narrative, assessment: r.assessment,
             disseminated_at: r.disseminated_at, links: r.links || [],
-          })} style={btn('var(--surface-overlay)', 'var(--accent-gold-300)')}>EXPORT PDF</button>
+          })} style={btn('var(--surface-overlay)', 'var(--brand-400)')}>EXPORT PDF</button>
           {['H2', 'H3', 'H4'].includes(r.handling_code) && (
             <button onClick={() => {
               const recipient_label = prompt('Share with (agency / recipient):');
@@ -168,7 +168,7 @@ export default function IntelReportDetailPage() {
             onChange={(e) => setLinkDraft({ ...linkDraft, entity_id: e.target.value })} />
           <input placeholder="role" style={field} value={linkDraft.role}
             onChange={(e) => setLinkDraft({ ...linkDraft, role: e.target.value })} />
-          <button onClick={addLink} style={btn('var(--surface-overlay)', 'var(--accent-gold-300)')}>LINK</button>
+          <button onClick={addLink} style={btn('var(--surface-overlay)', 'var(--brand-400)')}>LINK</button>
         </div>
       </div>
 

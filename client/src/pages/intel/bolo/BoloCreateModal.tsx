@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { BoloCreate } from '../useBolos';
 
-const INPUT = 'w-full bg-surface-sunken border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200 focus:border-[color:var(--accent-gold-300)] outline-none';
+const INPUT = 'w-full bg-surface-sunken border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200 focus:border-brand-400 outline-none';
 const LABEL = 'font-mono text-[8px] tracking-widest text-fg-muted uppercase';
 
 export default function BoloCreateModal({ onClose, onCreate }: {
@@ -56,7 +56,7 @@ export default function BoloCreateModal({ onClose, onCreate }: {
         </div>
         <div className="px-4 py-3 border-t border-border-default flex justify-end gap-2">
           <button onClick={onClose} className="font-mono text-[9px] tracking-wide text-fg-muted border border-border-default rounded-[2px] px-3 py-[6px] uppercase">Cancel</button>
-          <button onClick={submit} className="font-mono text-[9px] tracking-wide text-black bg-[color:var(--accent-gold-300)] rounded-[2px] px-3 py-[6px] uppercase">Create BOLO</button>
+          <button onClick={submit} className="font-mono text-[9px] tracking-wide text-rmpg-50 bg-rmpg-600 rounded-[2px] px-3 py-[6px] uppercase">Create BOLO</button>
         </div>
       </div>
     </div>

@@ -71,9 +71,9 @@ export default function IntelContextPanel() {
         {selected && (
           <div className="ml-2 flex gap-1">
             <button onClick={() => setPanelMode('dossier')}
-              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'dossier' ? 'border-[color:var(--accent-gold-300)] text-[color:var(--accent-gold-300)]' : 'border-border-default text-rmpg-400'}`}>DOSSIER</button>
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'dossier' ? 'border-brand-400 text-brand-300' : 'border-border-default text-rmpg-400'}`}>DOSSIER</button>
             <button onClick={() => setPanelMode('graph')}
-              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'graph' ? 'border-[color:var(--accent-gold-300)] text-[color:var(--accent-gold-300)]' : 'border-border-default text-rmpg-400'}`}>GRAPH</button>
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'graph' ? 'border-brand-400 text-brand-300' : 'border-border-default text-rmpg-400'}`}>GRAPH</button>
           </div>
         )}
         <button aria-label="Collapse context panel" onClick={togglePanel} className="ml-auto text-rmpg-500 text-[12px]">⟨</button>
@@ -96,7 +96,7 @@ export default function IntelContextPanel() {
                 const { watched, toggle } = useWatchToggle('person', p.id, !!dossier.watched);
                 return (
                   <button onClick={toggle}
-                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-[color:var(--accent-gold-300)] text-[color:var(--accent-gold-300)]' : 'border-border-subtle text-fg-muted'}`}>
+                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-brand-400 text-brand-300' : 'border-border-subtle text-fg-muted'}`}>
                     {watched ? '★ Watching' : '☆ Watch'}
                   </button>
                 );
@@ -128,7 +128,7 @@ export default function IntelContextPanel() {
                       <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase mb-[6px]">Recent Timeline</div>
                       {(dossier.timeline || []).slice(0, 5).map((t, i) => (
                         <div key={i} className="flex gap-[7px] py-[3px]">
-                          <span className="w-[6px] h-[6px] rounded-full bg-[color:var(--accent-gold-300)] mt-[3px] shrink-0" />
+                          <span className="w-[6px] h-[6px] rounded-full bg-brand-600 mt-[3px] shrink-0" />
                           <div>
                             <div className="text-[10px] text-rmpg-300"><b className="text-rmpg-200">{formatEnumValue(t.kind)}</b> {t.label || t.description || ''}</div>
                             <div className="font-mono text-[8px] text-rmpg-500">{t.date || ''}</div>

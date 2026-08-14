@@ -16,10 +16,10 @@ export default function EscalationLeaderboardWidget(
           className="w-full flex items-center gap-2 py-[5px] border-b border-border-subtle last:border-b-0 text-left">
           <span className="w-[96px] truncate text-[11px] text-rmpg-100">{r.label}</span>
           <span className="flex-1 h-[7px] bg-surface-base rounded-[1px] overflow-hidden">
-            <span className="block h-full bg-gradient-to-r from-[#7a5a10] to-[#d4a017]"
+            <span className="block h-full bg-gradient-to-r from-amber-900 to-rmpg-600"
               style={{ width: `${Math.round((r.score / m) * 100)}%` }} />
           </span>
-          <span className="font-mono text-[9px] text-[#d4a017] w-[26px] text-right">{r.score}</span>
+          <span className="font-mono text-[9px] text-rmpg-100 w-[26px] text-right">{r.score}</span>
         </button>
       ))}
     </WidgetFrame>
