@@ -57,7 +57,8 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   }
   const obj = got.obj;
 
-  const mime = downloadMime(filename);
+  const basename = filename.includes('/') ? filename.split('/').pop()! : filename;
+  const mime = downloadMime(basename);
   const headers: Record<string, string> = {
     'Content-Type': mime,
     // Lets clients resume instead of starting a large download over.
@@ -71,8 +72,8 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   // Anything that is not plain text is a file to save, not something to render.
   // Without this a browser may display a .txt or, worse, sniff and render an
   // archive as a page.
-  if (!filename.endsWith('.txt')) {
-    headers['Content-Disposition'] = `attachment; filename="${filename}"`;
+  if (!basename.endsWith('.txt')) {
+    headers['Content-Disposition'] = `attachment; filename="${basename}"`;
   }
 
   if (range) {
