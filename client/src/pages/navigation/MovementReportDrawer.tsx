@@ -36,7 +36,7 @@ function fmtClock(t: number): string {
 const EVENT_META: Record<DrivingEvent['kind'], { label: string; icon: typeof TrendingUp; color: string }> = {
   accel: { label: 'Hard accel', icon: TrendingUp, color: 'var(--sev-warn)' },
   brake: { label: 'Hard brake', icon: TrendingDown, color: 'var(--sev-critical)' },
-  corner: { label: 'Hard corner', icon: CornerUpRight, color: '#8b5cf6' },
+  corner: { label: 'Hard corner', icon: CornerUpRight, color: 'rgb(139, 92, 246)' },
 };
 
 const SOURCE_LABEL: Record<MovementReport['speedSource'], string> = {
@@ -48,7 +48,7 @@ function Stat({ label, value, sub, accent }: { label: string; value: string; sub
     <div className="relative bg-surface-raised/50 border border-rmpg-800 px-2 py-1.5 overflow-hidden" style={{ borderRadius: 2 }}>
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01744 50%, transparent)' }} />
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
-      <div className="font-mono font-bold text-[15px] leading-tight mt-0.5 tabular-nums truncate" style={{ color: accent || '#d4d4d4' }}>{value}</div>
+      <div className="font-mono font-bold text-[15px] leading-tight mt-0.5 tabular-nums truncate" style={{ color: accent || 'var(--text-primary)' }}>{value}</div>
       {sub && <div className="text-[8px] text-rmpg-600 leading-none truncate">{sub}</div>}
     </div>
   );
@@ -109,11 +109,11 @@ function FrictionCircle({ report, liveLongG, liveLatG }: { report: MovementRepor
       {/* history dots */}
       {dots.map((s, i) => {
         const mag = Math.min(1, Math.hypot(s.longG, s.latG));
-        const col = mag > 0.55 ? 'var(--sev-critical)' : mag > 0.35 ? 'var(--sev-warn)' : '#6b7280';
+        const col = mag > 0.55 ? 'var(--sev-critical)' : mag > 0.35 ? 'var(--sev-warn)' : 'var(--text-muted)';
         return <circle key={i} cx={c + gToPx(s.latG)} cy={c - gToPx(s.longG)} r="1.4" fill={col} opacity="0.5" />;
       })}
       {/* live point */}
-      <circle cx={c + gToPx(liveLatG)} cy={c - gToPx(liveLongG)} r="3.5" fill="var(--brand-gold)" stroke="#0a0a0a" strokeWidth="1" />
+      <circle cx={c + gToPx(liveLatG)} cy={c - gToPx(liveLongG)} r="3.5" fill="var(--brand-gold)" stroke="black" strokeWidth="1" />
       <text x={c} y={11} textAnchor="middle" className="fill-rmpg-600" style={{ fontSize: 7, letterSpacing: 1 }}>ACCEL</text>
       <text x={c} y={size - 4} textAnchor="middle" className="fill-rmpg-600" style={{ fontSize: 7, letterSpacing: 1 }}>BRAKE</text>
       <text x={9} y={c - 3} textAnchor="start" className="fill-rmpg-700" style={{ fontSize: 7 }}>L</text>
@@ -281,7 +281,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
         {/* live speed + session */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="font-mono font-bold leading-none tabular-nums" style={{ fontSize: 40, color: liveMph != null ? 'var(--brand-gold)' : '#555' }}>
+            <span className="font-mono font-bold leading-none tabular-nums" style={{ fontSize: 40, color: liveMph != null ? 'var(--brand-gold)' : 'var(--text-muted)' }}>
               {liveMph != null ? liveMph : '--'}
             </span>
             <span className="text-[8px] uppercase tracking-widest text-rmpg-500">mph · live</span>
@@ -316,7 +316,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
           <div className="flex-1 grid grid-cols-1 gap-1.5">
             <Stat label="Peak accel" value={`${report.maxAccelG.toFixed(2)} g`} accent="var(--sev-warn)" />
             <Stat label="Peak brake" value={`${report.maxBrakeG.toFixed(2)} g`} accent="var(--sev-critical)" />
-            <Stat label="Peak cornering" value={`${report.maxLatG.toFixed(2)} g`} accent="#8b5cf6" />
+            <Stat label="Peak cornering" value={`${report.maxLatG.toFixed(2)} g`} accent="rgb(139, 92, 246)" />
           </div>
         </div>
 
@@ -359,7 +359,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
                     {/* severity pips */}
                     <span className="flex gap-0.5">
                       {[1, 2, 3].map((s) => (
-                        <span key={s} className="w-1 h-1 rounded-full" style={{ background: s <= e.severity ? meta.color : '#333' }} />
+                        <span key={s} className="w-1 h-1 rounded-full" style={{ background: s <= e.severity ? meta.color : 'var(--border-subtle)' }} />
                       ))}
                     </span>
                     <span className="ml-auto font-mono text-[9px] text-rmpg-400">{e.g.toFixed(2)} g</span>

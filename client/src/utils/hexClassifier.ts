@@ -96,6 +96,29 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // AdminRadioTab — COLOR_SWATCHES for <input type="color"> stored to API as hex.
   // AdminSkipTracerV2Tab — categorical identity colors per skip-tracer source.
   adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$/,
+  // Navigation module — tactical-dark and Mapbox-paint contexts:
+  //
+  // TripReplayMap.tsx — every hex literal is a Mapbox paint property
+  // (line-color, circle-color, circle-stroke-color). CSS vars blank the layer.
+  //
+  // NavigationPage.tsx — mixed: Mapbox paint hex throughout (route layer,
+  // crime heat, patrol breadcrumb, geofence corridor) plus tactical SVG
+  // values pinned to the night palette so the HUD never blinds a driver.
+  //
+  // HudInstruments.tsx — the always-dark nav overlay. Values like #1c1c1c /
+  // #3a3a3a / #f0d28a are intentionally pinned to the night palette (same
+  // .tactical-dark rationale as mapboxBasemap.ts). Re-theming them would
+  // make the HUD fight the map brightness.
+  //
+  // NavSettingsPanel.tsx — floats over the nav map with an explicit
+  // rgba(5,5,5,0.95) near-black background. Its segmented controls use
+  // #0a0a0a / #000 / #888 as tactical fixed values (same rationale).
+  //
+  // drivingScoreColor.ts / hudUnits.ts — return fixed operational-severity
+  // tier colors (green/amber/red) that the test suite asserts on by literal
+  // hex value. Changing to CSS vars would break those assertions, and the
+  // severity palette is fixed CAD semantics, not theme chrome.
+  navTacticalAndMapbox: /(^|\/)(TripReplayMap|NavigationPage|HudInstruments|NavSettingsPanel|drivingScoreColor|hudUnits)\.(tsx?|ts)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

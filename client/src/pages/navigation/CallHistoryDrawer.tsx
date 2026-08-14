@@ -44,11 +44,11 @@ interface RawCall {
   unit_call_signs?: string | null;
 }
 
-const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: '#888888' };
+const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: 'var(--text-muted)' };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: '#888888', open: '#888888', dispatched: 'var(--sev-warn)', enroute: 'var(--sev-warn)',
-  onscene: 'var(--sev-critical)', cleared: 'var(--sev-ok)', closed: '#6b7280', cancelled: '#6b7280', archived: '#4b5563',
+  pending: 'var(--text-muted)', open: 'var(--text-muted)', dispatched: 'var(--sev-warn)', enroute: 'var(--sev-warn)',
+  onscene: 'var(--sev-critical)', cleared: 'var(--sev-ok)', closed: 'var(--text-muted)', cancelled: 'var(--text-muted)', archived: 'var(--text-muted)',
 };
 
 const WINDOWS = [
@@ -214,9 +214,9 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border"
               style={{
                 borderRadius: 2,
-                color: winKey === w.key ? '#0a0a0a' : 'var(--text-secondary)',
+                color: winKey === w.key ? 'black' : 'var(--text-secondary)',
                 background: winKey === w.key ? 'var(--brand-gold)' : 'transparent',
-                borderColor: winKey === w.key ? 'var(--brand-gold)' : '#2e2e2e',
+                borderColor: winKey === w.key ? 'var(--brand-gold)' : 'var(--border-subtle)',
               }}
             >
               {w.label}
@@ -272,7 +272,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
             <div key={c.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5" style={{ borderRadius: 2 }}>
               {/* top line */}
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#888' }} />
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || 'var(--text-muted)' }} />
                 <span className="text-[11px] font-mono font-bold text-rmpg-100 shrink-0">{c.call_number}</span>
                 {allUnits && meaningful(c.unit_call_signs) && (
                   <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
@@ -280,7 +280,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                   </span>
                 )}
                 <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{toDisplayLabel(c.incident_type)}</span>
-                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: withAlpha(STATUS_COLOR[c.status] || '#888', '22') }}>{formatEnumValue(c.status)}</span>
+                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || 'var(--text-muted)', background: withAlpha(STATUS_COLOR[c.status] || 'var(--text-muted)', '22') }}>{formatEnumValue(c.status)}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
 
