@@ -84,6 +84,12 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // output document appearance (police form borders, letterhead, stamps), not
   // app chrome. components/ subdirectory stays in-scope (DOM-rendering React).
   documentWriterContent: /(^|\/)document-writer\/(?!components\/)/,
+  // Radio module constants — THEME_VARS defines the mini-theme palette (onyx/amber/nvg/
+  // contrast/cyan/magenta) that is applied as CSS custom properties via style.setProperty
+  // in RadioPage. Like mapboxBasemap.ts, the values here ARE the palette; using var()
+  // would be circular. STATUS_QUICKSET and COLOR_LABELS are operational status data
+  // values similar to AdminRadioTab's COLOR_SWATCHES.
+  radioThemePalette: /(^|\/)radio\/constants\.(ts)$/,
   // Admin config tabs whose hex literals are stored data values, not CSS chrome:
   // AdminMapSettingsTab — Mapbox paint color defaults (CSS vars blank vector layers).
   // AdminSystemTab — color picker defaults persisted to D1 (var() writes literal string).

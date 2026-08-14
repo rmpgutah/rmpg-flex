@@ -83,7 +83,7 @@ export const COLOR_LABELS: { id: string; color: string; label: string }[] = [
 ];
 
 export const THEME_VARS: Record<Theme, Record<string, string>> = {
-  onyx:     { '--rt-bg': '#0a0a0a', '--rt-panel': '#0d0d0d', '--rt-border': '#1f1f1f', '--rt-accent': '#d4a017', '--rt-text': '#fff',    '--rt-muted': '#888', '--rt-led-on': '#22c55e', '--rt-tx': '#ef4444', '--rt-crt': '#33ff33' },
+  onyx:     { '--rt-bg': '#0a0a0a', '--rt-panel': '#0d0d0d', '--rt-border': '#1f1f1f', '--rt-accent': '#d4a017', '--rt-text': '#ffffff', '--rt-muted': '#888888', '--rt-led-on': '#22c55e', '--rt-tx': '#ef4444', '--rt-crt': '#33ff33' },
   amber:    { '--rt-bg': '#0c0700', '--rt-panel': '#100a02', '--rt-border': '#3a2400', '--rt-accent': '#ffae33', '--rt-text': '#ffd9a3', '--rt-muted': '#a06a00', '--rt-led-on': '#ffae33', '--rt-tx': '#ff5050', '--rt-crt': '#ffae33' },
   nvg:      { '--rt-bg': '#000800', '--rt-panel': '#001a00', '--rt-border': '#0a3a0a', '--rt-accent': '#33ff33', '--rt-text': '#bbffbb', '--rt-muted': '#3a8a3a', '--rt-led-on': '#33ff33', '--rt-tx': '#ff3333', '--rt-crt': '#33ff33' },
   contrast: { '--rt-bg': '#000000', '--rt-panel': '#000000', '--rt-border': '#ffffff', '--rt-accent': '#ffff00', '--rt-text': '#ffffff', '--rt-muted': '#cccccc', '--rt-led-on': '#00ff00', '--rt-tx': '#ff0000', '--rt-crt': '#00ff00' },
