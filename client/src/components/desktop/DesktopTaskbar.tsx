@@ -17,6 +17,8 @@ import CalendarFlyout from './CalendarFlyout';
 import { SlidersHorizontal } from 'lucide-react';
 import { WorkspacePills } from './DesktopVirtualDesktops';
 import FlexOSAppDrawer from './FlexOSAppDrawer';
+import DesktopJumpList from './DesktopJumpList';
+import { TASKBAR_PINNED_ACTIONS } from '../../data/taskbarPinnedActions';
 
 export const TASKBAR_HEIGHT_PX: Record<TaskbarSize, number> = { small: 48, large: 56 };
 
@@ -160,6 +162,8 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
 
   const cycleIndexRef = useRef<Record<string, number>>({});
 
+  const [jumpList, setJumpList] = useState<{ appKey: string; appLabel: string; x: number; y: number; isRunning: boolean; closeWindowId?: string } | null>(null);
+
   const [position] = useState(() => getTaskbarPosition());
   const [size] = useState(() => getTaskbarSize());
   const [autoHideEnabled] = useState(() => isTaskbarAutoHideEnabled());
@@ -230,6 +234,10 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             key={fn.path}
             type="button"
             onClick={() => activateNavFunction(fn, { navigate, openWindow, currentUserRole: user?.role })}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setJumpList({ appKey: fn.path, appLabel: fn.label, x: e.clientX, y: e.clientY - 260, isRunning: false });
+            }}
             className="px-3 py-1 text-[11px] truncate"
             style={{ maxWidth: 160, background: 'transparent', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
           >
@@ -250,6 +258,10 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 <button
                   type="button"
                   onClick={() => focusWindow(w.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setJumpList({ appKey: w.path, appLabel: w.title, x: e.clientX, y: e.clientY - 260, isRunning: true, closeWindowId: w.id });
+                  }}
                   className="relative px-3 text-[11px] truncate"
                   style={{ maxWidth: 160, paddingTop: 2, paddingBottom: isAppPinned(w.path) ? 6 : 4, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
                 >
@@ -280,6 +292,11 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 type="button"
                 aria-label={`${group[0].title} (${group.length})`}
                 onClick={handleGroupClick}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  const idx = cycleIndexRef.current[path] ?? 0;
+                  setJumpList({ appKey: path, appLabel: group[0].title, x: e.clientX, y: e.clientY - 260, isRunning: true, closeWindowId: group[Math.min(idx, group.length - 1)].id });
+                }}
                 className="relative px-3 text-[11px] truncate"
                 style={{ maxWidth: 160, paddingTop: 2, paddingBottom: isAppPinned(path) ? 6 : 4, background: 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
               >
@@ -401,6 +418,21 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         onMouseEnter={scheduleShow}
         onMouseLeave={cancelShow}
         style={{ position: 'fixed', left: 0, right: 0, height: 4, zIndex: 999, ...(position === 'top' ? { top: 0 } : { bottom: 0 }) }}
+      />
+    )}
+    {jumpList && (
+      <DesktopJumpList
+        appKey={jumpList.appKey}
+        appLabel={jumpList.appLabel}
+        x={jumpList.x}
+        y={jumpList.y}
+        pinnedActions={TASKBAR_PINNED_ACTIONS[jumpList.appKey] ?? []}
+        isPinned={isAppPinned(jumpList.appKey)}
+        isRunning={jumpList.isRunning}
+        onPin={() => { pinApp(jumpList.appKey); setJumpList(null); forceRerender(n => n + 1); }}
+        onUnpin={() => { unpinApp(jumpList.appKey); setJumpList(null); forceRerender(n => n + 1); }}
+        onCloseWindow={jumpList.closeWindowId ? () => { closeWindow(jumpList.closeWindowId!); setJumpList(null); } : undefined}
+        onDismiss={() => setJumpList(null)}
       />
     )}
     </>
