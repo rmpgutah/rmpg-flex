@@ -391,8 +391,6 @@ function createSplashWindow() {
     alwaysOnTop: true,
     center: !isWin,
     skipTaskbar: true,
-    hasShadow: false,
-    thickFrame: false,
     backgroundColor: '#000000',
     webPreferences: hardenWebPreferencesDefaults({
       preload: splashPreloadPath,
@@ -417,7 +415,6 @@ function createSplashWindow() {
           var fallback = document.getElementById('boot-logo-fallback');
           if (img) { img.src = ${JSON.stringify(logoUri)}; img.style.display = ''; }
           if (fallback) { fallback.style.display = 'none'; }
-          document.documentElement.style.setProperty('--rmpg-logo-url', 'url(' + ${JSON.stringify(logoUri)} + ')');
         })();`
       ).catch(() => {});
     }
