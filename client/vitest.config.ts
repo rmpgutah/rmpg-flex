@@ -19,6 +19,12 @@ export default defineConfig({
     // one V8 heap (bounded by NODE_OPTIONS --max-old-space-size=4096 in CI).
     // Forks give each worker its own heap — N forks × heap-limit easily overflows
     // the 7 GB available on ubuntu-latest runners (confirmed OOM on PR #3528).
+    // isolate:false makes all test files in a thread share one module registry
+    // instead of loading a fresh copy per file. React, Tailwind, and shared
+    // utils load once rather than 590×, cutting peak RSS by ~60-70%.
+    // Risk: module-level side effects persist across files — setup.ts resets
+    // mocks+localStorage between files so this is safe here.
+    isolate: false,
     pool: 'threads',
     poolOptions: {
       threads: {
