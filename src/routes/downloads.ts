@@ -136,8 +136,9 @@ function verLt(a: string, b: string): boolean {
 
 export async function serveUpdatesYaml(bucket: R2Bucket, platform: 'win' | 'mac', c: any) {
   try {
-    const list = await bucket.list();
-    const manifestName = platform === 'win' ? 'latest.yml' : 'latest-mac.yml';
+    const list = await bucket.list({ prefix: 'updates/' });
+    // CI publishes manifests and installers under the updates/ prefix.
+    const manifestName = platform === 'win' ? 'updates/latest.yml' : 'updates/latest-mac.yml';
 
     const existing = list.objects.find((o: R2Object) => o.key === manifestName);
     if (existing) {
@@ -437,7 +438,7 @@ export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
 
 updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
 updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
-updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));
+updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, `updates/${c.req.param('filename')}`, c));
 
 // ─── /downloads/:filename — the actual file downloads ────────────────────────
 //
