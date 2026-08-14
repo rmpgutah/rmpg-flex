@@ -150,7 +150,7 @@ export default function QuickSearchCard() {
           {loading && (
             <span
               aria-label="Searching"
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-accent-gold-500 border-t-transparent rounded-full animate-spin"
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-accent-silver-400 border-t-transparent rounded-full animate-spin"
             />
           )}
         </div>

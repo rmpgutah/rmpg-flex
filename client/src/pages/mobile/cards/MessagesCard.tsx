@@ -171,7 +171,7 @@ export default function MessagesCard() {
             const preview = bodyText.length > 60 ? `${bodyText.slice(0, 60)}…` : bodyText;
             const rowClass = [
               'py-2 border-b border-border-default last:border-b-0 text-rmpg-100 text-xs',
-              isUnread ? 'border-l-2 border-l-accent-gold-500 pl-2' : '',
+              isUnread ? 'border-l-2 border-l-accent-silver-400 pl-2' : '',
             ].join(' ');
             return (
               <li key={m.id} className={rowClass} onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}>

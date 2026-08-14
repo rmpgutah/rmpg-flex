@@ -279,7 +279,7 @@ export default function ShiftCard() {
             <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
               {state.available_vehicles.map((v) => (
                 <button key={v.id} type="button" disabled={busy} onClick={() => promptStartingMileage(v)}
-                  className="flex items-center justify-between min-h-[44px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-accent-gold-500">
+                  className="flex items-center justify-between min-h-[44px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-accent-silver-400">
                   <span className="truncate">{vehicleLabel(v)}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</span>
                   {v.is_take_home ? <span className="text-[color:var(--field-label-color)] text-[9px] uppercase shrink-0">Take-home</span> : null}
                 </button>
@@ -318,7 +318,7 @@ export default function ShiftCard() {
         </button>
       ) : !picking ? (
         <button type="button" disabled={busy} onClick={onStartClick}
-          className={['w-full h-11 bg-surface-raised border border-accent-gold-500 text-[color:var(--field-label-color)] text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
+          className={['w-full h-11 bg-surface-raised border border-accent-silver-400 text-[color:var(--field-label-color)] text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
           Start Shift
         </button>
       ) : null}

@@ -467,7 +467,7 @@ export default function FieldCameraPage() {
             })}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
-              alprMode ? 'border-accent-gold-500 text-[color:var(--field-label-color)] bg-surface-sunken' : 'border-border-subtle text-fg-muted'
+              alprMode ? 'border-accent-silver-400 text-[color:var(--field-label-color)] bg-surface-sunken' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={alprMode}
           >
@@ -620,7 +620,7 @@ export default function FieldCameraPage() {
             ))}
             <button
               type="button" onClick={clearScan}
-              className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-accent-gold-500 text-[color:var(--field-label-color)] mt-1">
+              className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-accent-silver-400 text-[color:var(--field-label-color)] mt-1">
               Done
             </button>
           </div>
@@ -679,7 +679,7 @@ export default function FieldCameraPage() {
               className={`flex flex-col items-center gap-1 disabled:opacity-40 ${alprMode ? 'text-[color:var(--field-label-color)]' : 'text-green-400'}`}
               aria-label={alprMode ? 'Scan vehicles' : 'Save photo'}
             >
-              <span className={`w-16 h-16 border-2 bg-surface-base flex items-center justify-center ${alprMode ? 'border-accent-gold-500/60' : 'border-green-700/60'}`}>
+              <span className={`w-16 h-16 border-2 bg-surface-base flex items-center justify-center ${alprMode ? 'border-accent-silver-400/60' : 'border-green-700/60'}`}>
                 {uploading ? <Loader2 className="w-7 h-7 animate-spin" />
                   : alprMode ? <ScanLine className="w-7 h-7" /> : <Check className="w-7 h-7" />}
               </span>

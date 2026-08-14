@@ -223,7 +223,7 @@ export default function ActiveCallsCard() {
             aria-pressed={showDistance}
             className={[
               'h-8 px-2 text-[10px] uppercase tracking-widest border',
-              showDistance ? 'text-[color:var(--field-label-color)] border-accent-gold-500' : 'text-rmpg-400 border-border-default',
+              showDistance ? 'text-[color:var(--field-label-color)] border-accent-silver-400' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >
             {showDistance ? 'Distance ON' : 'Show Distance'}

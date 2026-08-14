@@ -238,7 +238,7 @@ export default function UnitStatusCard() {
               onClick={() => changeStatus(btn.backend)}
               className={[
                 'min-h-[44px] h-11 bg-surface-raised border text-xs uppercase tracking-widest',
-                active ? 'border-accent-gold-500 text-[color:var(--field-label-color)]' : 'border-border-default text-rmpg-300',
+                active ? 'border-accent-silver-400 text-[color:var(--field-label-color)]' : 'border-border-default text-rmpg-300',
                 busy ? 'opacity-50' : '',
               ].join(' ')}
             >
