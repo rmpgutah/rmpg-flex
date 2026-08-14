@@ -54,7 +54,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
             onClick={() => setNightLight(!nightLightOn)}
             style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: nightLightOn ? 'var(--sev-warn)' : 'var(--border-subtle)', position: 'relative' }}
           >
-            <span style={{ position: 'absolute', top: 2, left: nightLightOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.1s' }} />
+            <span style={{ position: 'absolute', top: 2, left: nightLightOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--text-primary)', transition: 'left 0.1s' }} />
           </button>
         </div>
         {nightLightOn && (
@@ -72,7 +72,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
             onClick={() => setDnd(!dndOn)}
             style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: dndOn ? 'var(--brand-400)' : 'var(--border-subtle)', position: 'relative' }}
           >
-            <span style={{ position: 'absolute', top: 2, left: dndOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.1s' }} />
+            <span style={{ position: 'absolute', top: 2, left: dndOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--text-primary)', transition: 'left 0.1s' }} />
           </button>
         </div>
 

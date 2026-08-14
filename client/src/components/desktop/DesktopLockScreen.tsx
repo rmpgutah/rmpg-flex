@@ -233,12 +233,12 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       {/* Subtle grid texture */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none',
-        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(195,204,214,0.04) 1px, transparent 0)',
+        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(var(--accent-silver-400-rgb),0.04) 1px, transparent 0)',
         backgroundSize: '32px 32px',
       }} />
 
       {/* Agency header */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 24px', borderBottom: '1px solid rgba(195,204,214,0.07)', background: 'rgba(0 0 0 / 0.2)' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 24px', borderBottom: '1px solid rgba(var(--accent-silver-400-rgb),0.07)', background: 'rgba(0 0 0 / 0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Shield style={{ width: 18, height: 18, color: 'var(--accent-silver-400)' }} />
           <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--accent-silver-300)', textTransform: 'uppercase' }}>
@@ -249,10 +249,10 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
 
       {/* Clock */}
       <div style={{ textAlign: 'center', marginBottom: 40, position: 'relative', zIndex: 1 }}>
-        <div style={{ fontSize: 76, fontWeight: 200, letterSpacing: '-0.02em', lineHeight: 1, color: 'rgba(240,244,249,0.95)', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 76, fontWeight: 200, letterSpacing: '-0.02em', lineHeight: 1, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {time}
         </div>
-        <div style={{ fontSize: 15, marginTop: 8, color: 'rgba(141,160,179,0.8)', letterSpacing: '0.08em' }}>
+        <div style={{ fontSize: 15, marginTop: 8, color: 'var(--text-secondary)', letterSpacing: '0.08em' }}>
           {date}
         </div>
       </div>
@@ -268,7 +268,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
           </div>
 
           {usersLoading && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(141,160,179,0.7)', fontSize: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 12 }}>
               <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} />
               Loading users…
             </div>
@@ -296,32 +296,32 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                   onClick={() => { setSelectedUser(u); setSwitchingUser(false); }}
                   style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-                    padding: '20px 12px', background: 'rgba(34,64,95,0.4)',
-                    border: '1px solid rgba(195,204,214,0.12)',
+                    padding: '20px 12px', background: 'rgba(var(--rmpg-800-rgb),0.4)',
+                    border: '1px solid rgba(var(--accent-silver-400-rgb),0.12)',
                     cursor: 'pointer', transition: 'background 150ms',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(34,64,95,0.7)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(34,64,95,0.4)')}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-800-rgb),0.7)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(var(--rmpg-800-rgb),0.4)')}
                 >
                   <div style={{
                     width: 56, height: 56, borderRadius: '50%',
                     background: avatarColor(u.username),
-                    border: '2px solid rgba(195,204,214,0.25)',
+                    border: '2px solid rgba(var(--accent-silver-400-rgb),0.25)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 20, fontWeight: 700, color: 'rgba(240,244,249,0.9)', letterSpacing: '0.05em',
+                    fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.05em',
                   }}>
                     {makeInitials(u)}
                   </div>
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(240,244,249,0.9)', lineHeight: 1.3 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3 }}>
                       {u.first_name} {u.last_name}
                     </div>
                     {u.badge_number && (
-                      <div style={{ fontSize: 10, color: 'rgba(141,160,179,0.8)', marginTop: 2 }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2 }}>
                         Badge {u.badge_number}
                       </div>
                     )}
-                    <div style={{ fontSize: 9, color: 'rgba(141,160,179,0.55)', marginTop: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                       {roleLabel(u.role)}
                     </div>
                   </div>
@@ -331,7 +331,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
           )}
 
           {!usersLoading && users.length === 0 && !usersError && (
-            <div style={{ fontSize: 12, color: 'rgba(141,160,179,0.6)', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
               No users found. Check network connection.
             </div>
           )}
@@ -340,8 +340,8 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
         /* ── CREDENTIAL CARD ── */
         <div style={{
           position: 'relative', zIndex: 1, width: 360,
-          background: 'rgba(34, 64, 95, 0.55)',
-          border: '1px solid rgba(195, 204, 214, 0.15)',
+          background: 'rgba(var(--rmpg-800-rgb),0.55)',
+          border: '1px solid rgba(var(--accent-silver-400-rgb),0.15)',
           padding: '32px 28px',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
           backdropFilter: 'blur(8px)',
@@ -350,26 +350,26 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
           <div style={{
             width: 64, height: 64, borderRadius: '50%',
             background: avatarColor(selectedUser!.username),
-            border: '2px solid rgba(195, 204, 214, 0.3)',
+            border: '2px solid rgba(var(--accent-silver-400-rgb),0.3)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22, fontWeight: 700, color: 'rgba(240,244,249,0.95)', letterSpacing: '0.05em',
+            fontSize: 22, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.05em',
           }}>
             {makeInitials(selectedUser!)}
           </div>
 
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(240,244,249,0.95)' }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>
               {selectedUser!.first_name} {selectedUser!.last_name}
             </div>
             {selectedUser!.badge_number && (
-              <div style={{ fontSize: 11, color: 'rgba(141,160,179,0.8)', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
                 Badge {selectedUser!.badge_number}
               </div>
             )}
           </div>
 
           {/* Mode switcher */}
-          <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(195,204,214,0.2)', width: '100%' }}>
+          <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(var(--accent-silver-400-rgb),0.2)', width: '100%' }}>
             {(['password', 'pin'] as const).map(m => (
               <button
                 key={m}
@@ -377,8 +377,8 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                 onClick={() => { setMode(m); setError(''); setPassword(''); setPin(''); setTimeout(() => inputRef.current?.focus(), 50); }}
                 style={{
                   flex: 1, padding: '6px 0', fontSize: 11, fontWeight: mode === m ? 600 : 400,
-                  background: mode === m ? 'rgba(62,116,168,0.25)' : 'transparent',
-                  color: mode === m ? 'rgba(240,244,249,0.95)' : 'rgba(141,160,179,0.8)',
+                  background: mode === m ? 'rgba(var(--rmpg-700-rgb),0.25)' : 'transparent',
+                  color: mode === m ? 'var(--text-primary)' : 'var(--text-secondary)',
                   border: 'none', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.08em',
                 }}
               >
@@ -401,16 +401,16 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                 autoComplete="current-password"
                 style={{
                   width: '100%', padding: '10px 40px 10px 12px', fontSize: 14,
-                  background: 'rgba(10, 20, 40, 0.5)',
-                  border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(195,204,214,0.2)',
-                  color: 'rgba(240,244,249,0.95)', outline: 'none', boxSizing: 'border-box',
+                  background: 'rgba(var(--surface-sunken-rgb,10 20 40),0.5)',
+                  border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(var(--accent-silver-400-rgb),0.2)',
+                  color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
                 }}
               />
               <button
                 type="button"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                 onClick={() => setShowPassword(v => !v)}
-                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'rgba(141,160,179,0.8)' }}
+                style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--text-secondary)' }}
               >
                 {showPassword ? <EyeOff style={{ width: 14, height: 14 }} /> : <Eye style={{ width: 14, height: 14 }} />}
               </button>
@@ -430,9 +430,9 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
               style={{
                 width: '100%', padding: '10px 12px', fontSize: 24, letterSpacing: '0.5em',
                 textAlign: 'center', fontVariantNumeric: 'tabular-nums',
-                background: 'rgba(10, 20, 40, 0.5)',
-                border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(195,204,214,0.2)',
-                color: 'rgba(240,244,249,0.95)', outline: 'none', boxSizing: 'border-box',
+                background: 'rgba(var(--surface-sunken-rgb,10 20 40),0.5)',
+                border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(var(--accent-silver-400-rgb),0.2)',
+                color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
               }}
             />
           )}
@@ -451,8 +451,8 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
             disabled={busy || isLockedOut || (mode === 'password' ? !password : pin.length < 4)}
             style={{
               width: '100%', padding: '10px 0', fontSize: 13, fontWeight: 600,
-              background: 'rgba(45, 90, 135, 0.7)', border: '1px solid rgba(195,204,214,0.25)',
-              color: 'rgba(240,244,249,0.95)', cursor: busy || isLockedOut ? 'not-allowed' : 'pointer',
+              background: 'rgba(var(--rmpg-700-rgb),0.7)', border: '1px solid rgba(var(--accent-silver-400-rgb),0.25)',
+              color: 'var(--text-primary)', cursor: busy || isLockedOut ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               opacity: busy || isLockedOut ? 0.6 : 1,
             }}
@@ -466,7 +466,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
             <button
               type="button"
               onClick={handleSwitchUser}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'rgba(141,160,179,0.7)', letterSpacing: '0.04em' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)', letterSpacing: '0.04em' }}
             >
               <ChevronLeft style={{ width: 11, height: 11 }} /> Switch user
             </button>
@@ -475,7 +475,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       )}
 
       {/* Footer */}
-      <div style={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(195,204,214,0.2)', letterSpacing: '0.06em' }}>
+      <div style={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(var(--accent-silver-400-rgb),0.2)', letterSpacing: '0.06em' }}>
         RMPG Flex — Secured Workstation
       </div>
     </div>

@@ -5,11 +5,32 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:;" />
   <title>Rocky Mountain Protective Group</title>
   <style>
+    :root {
+      --s-base:         #0d1722;
+      --s-raised:       #15212e;
+      --s-sunken:       #0a1018;
+      --s-overlay:      #142840;
+      --silver-300:     #e3e9f0;
+      --silver-400:     #cfd8e2;
+      --text-primary:   #f0f4f9;
+      --text-secondary: #a8bccf;
+      --text-muted:     #8fa3b8;
+      --text-dim:       #6a8ba8;
+      --text-hint:      #3e5e7e;
+      --sev-critical:   #ef4444;
+      --lock-bg:        linear-gradient(135deg, #142840 0%, #0d1722 60%, #0a1018 100%);
+      --lock-overlay:   rgba(10, 18, 32, 0.35);
+      --glow-color:     rgba(207, 216, 226, 0.18);
+      --border-subtle:  rgba(207, 216, 226, 0.08);
+      --border-moderate:rgba(207, 216, 226, 0.25);
+      --border-visible: rgba(207, 216, 226, 0.35);
+      --avatar-bg:      #2d4f6e;
+    }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: 100vw; height: 100vh; overflow: hidden; background: #000;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      color: #f0f4f9; -webkit-font-smoothing: antialiased; user-select: none;
+      color: var(--text-primary); -webkit-font-smoothing: antialiased; user-select: none;
     }
 
     /* ── Phase visibility ── */
@@ -20,12 +41,12 @@
 
     /* ── Phase 1: BOOT ── */
     #phase-boot { background: #000; gap: 28px; }
-    .boot-logo { width: 160px; height: 160px; object-fit: contain; filter: drop-shadow(0 0 24px rgba(195,204,214,0.18)); }
+    .boot-logo { width: 160px; height: 160px; object-fit: contain; filter: drop-shadow(0 0 24px var(--glow-color)); }
     .boot-logo-fallback { display: none; }
 
     /* Windows 11 spinning-dots: 5 dots in a 28px orbit, chase animation */
     .win-dots-ring { position: relative; width: 56px; height: 56px; animation: ringRotate 1.3s linear infinite; }
-    .win-dots-ring span { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #c3ccd6; top: 50%; left: 50%; margin: -2.5px 0 0 -2.5px; }
+    .win-dots-ring span { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--silver-400); top: 50%; left: 50%; margin: -2.5px 0 0 -2.5px; }
     .win-dots-ring span:nth-child(1) { transform: translateY(-28px); opacity: 0.15; }
     .win-dots-ring span:nth-child(2) { transform: rotate(72deg) translateY(-28px); opacity: 0.35; }
     .win-dots-ring span:nth-child(3) { transform: rotate(144deg) translateY(-28px); opacity: 0.55; }
@@ -33,31 +54,31 @@
     .win-dots-ring span:nth-child(5) { transform: rotate(288deg) translateY(-28px); opacity: 1.0; }
     @keyframes ringRotate { to { transform: rotate(360deg); } }
 
-    .org-label { font-size: 9px; letter-spacing: 5px; text-transform: uppercase; color: #8fa3b8; opacity: 0; animation: labelFadeIn 0.8s ease 1.5s forwards; }
+    .org-label { font-size: 9px; letter-spacing: 5px; text-transform: uppercase; color: var(--text-muted); opacity: 0; animation: labelFadeIn 0.8s ease 1.5s forwards; }
     @keyframes labelFadeIn { to { opacity: 1; } }
 
     /* ── Phase 2: LOCK ── */
-    #phase-lock { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 0; position: relative; }
-    #phase-lock::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
+    #phase-lock { background: var(--lock-bg); gap: 0; position: relative; }
+    #phase-lock::before { content: ''; position: absolute; inset: 0; background: var(--lock-overlay); pointer-events: none; z-index: 0; }
     #phase-lock > * { position: relative; z-index: 1; }
-    .lock-time { font-size: 72px; font-weight: 200; letter-spacing: -2px; color: #fff; line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
-    .lock-date { font-size: 14px; color: #a8bccf; margin-bottom: 44px; letter-spacing: 0.03em; }
+    .lock-time { font-size: 72px; font-weight: 200; letter-spacing: -2px; color: var(--text-primary); line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+    .lock-date { font-size: 14px; color: var(--text-secondary); margin-bottom: 44px; letter-spacing: 0.03em; }
     .user-card { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 24px; }
-    .avatar-wrap { width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: #2d4f6e; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: #c3ccd6; border: 2px solid rgba(195,204,214,0.25); flex-shrink: 0; }
+    .avatar-wrap { width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: var(--avatar-bg); display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: var(--silver-400); border: 2px solid var(--border-moderate); flex-shrink: 0; }
     .avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }
     .avatar-wrap img.hidden { display: none; }
-    .user-display-name { font-size: 18px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }
-    .user-sub { font-size: 10px; color: #6a8ba8; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
-    .pw-wrap { display: flex; align-items: center; border-bottom: 1px solid rgba(195,204,214,0.35); padding-bottom: 8px; width: 288px; gap: 4px; transition: border-color 0.2s; }
-    .pw-wrap:focus-within { border-color: #c3ccd6; }
-    .pw-input { flex: 1; background: transparent; border: none; outline: none; color: #f0f4f9; font-size: 14px; letter-spacing: 0.04em; font-family: inherit; }
-    .pw-input::placeholder { color: #3e5e7e; }
-    .pw-eye, .pw-submit { background: none; border: none; cursor: pointer; color: #8fa3b8; padding: 4px; display: flex; align-items: center; transition: color 0.15s; flex-shrink: 0; }
-    .pw-eye:hover, .pw-submit:hover { color: #f0f4f9; }
+    .user-display-name { font-size: 18px; font-weight: 300; color: var(--text-primary); letter-spacing: 0.02em; }
+    .user-sub { font-size: 10px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+    .pw-wrap { display: flex; align-items: center; border-bottom: 1px solid var(--border-visible); padding-bottom: 8px; width: 288px; gap: 4px; transition: border-color 0.2s; }
+    .pw-wrap:focus-within { border-color: var(--silver-400); }
+    .pw-input { flex: 1; background: transparent; border: none; outline: none; color: var(--text-primary); font-size: 14px; letter-spacing: 0.04em; font-family: inherit; }
+    .pw-input::placeholder { color: var(--text-hint); }
+    .pw-eye, .pw-submit { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 4px; display: flex; align-items: center; transition: color 0.15s; flex-shrink: 0; }
+    .pw-eye:hover, .pw-submit:hover { color: var(--text-primary); }
     .pw-submit { font-size: 18px; padding: 4px 6px; }
     .pw-submit:disabled { opacity: 0.4; cursor: default; }
-    .lock-error { font-size: 12px; color: #ef4444; margin-top: 10px; height: 16px; text-align: center; width: 288px; }
-    .lock-hint { font-size: 10px; color: #2e4a60; letter-spacing: 1px; margin-top: 28px; }
+    .lock-error { font-size: 12px; color: var(--sev-critical); margin-top: 10px; height: 16px; text-align: center; width: 288px; }
+    .lock-hint { font-size: 10px; color: var(--text-hint); letter-spacing: 1px; margin-top: 28px; }
 
     /* ── RMPG watermark behind lock/welcome content ── */
     #phase-lock::before, #phase-welcome::before {
@@ -84,7 +105,7 @@
       width: 560px;
       height: 560px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(195,204,214,0.18) 0%, transparent 68%);
+      background: radial-gradient(circle, var(--glow-color) 0%, transparent 68%);
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
@@ -94,11 +115,11 @@
     }
 
     /* ── Phase 3: WELCOME ── */
-    #phase-welcome { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 16px; position: relative; }
-    #phase-welcome::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
+    #phase-welcome { background: var(--lock-bg); gap: 16px; position: relative; }
+    #phase-welcome::before { content: ''; position: absolute; inset: 0; background: var(--lock-overlay); pointer-events: none; z-index: 0; }
     #phase-welcome > * { position: relative; z-index: 1; }
-    .welcome-greeting { font-size: 28px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }
-    .welcome-role { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: #c3ccd6; border: 1px solid rgba(195,204,214,0.35); border-radius: 2px; padding: 4px 14px; }
+    .welcome-greeting { font-size: 28px; font-weight: 300; color: var(--text-primary); letter-spacing: 0.02em; }
+    .welcome-role { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--silver-400); border: 1px solid var(--border-visible); border-radius: 2px; padding: 4px 14px; }
   </style>
 </head>
 <body>

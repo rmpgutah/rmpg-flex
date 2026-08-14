@@ -388,9 +388,9 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             letterSpacing: '0.06em',
             padding: '2px 5px',
             borderRadius: 2,
-            background: onDuty ? 'rgba(34,197,94,0.15)' : 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.12)',
+            background: onDuty ? 'rgba(var(--sev-ok-rgb),0.15)' : 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.12)',
             color: onDuty ? 'var(--sev-ok)' : 'var(--text-muted)',
-            border: `1px solid ${onDuty ? 'rgba(34,197,94,0.3)' : 'var(--border-subtle)'}`,
+            border: `1px solid ${onDuty ? 'rgba(var(--sev-ok-rgb),0.3)' : 'var(--border-subtle)'}`,
             whiteSpace: 'nowrap',
           }}>
             {onDuty ? 'ON DUTY' : 'OFF DUTY'}

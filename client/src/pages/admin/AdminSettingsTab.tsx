@@ -102,7 +102,7 @@ export default function AdminSettingsTab(_props: Props) {
   });
 
   if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw className="animate-spin text-accent-silver-500" size={20} /></div>;
-  if (error) return <div className="flex flex-col items-center justify-center py-20"><p className="text-[10px] text-[#fca5a5] mb-3">{error}</p><button onClick={load} className="btn-gold"><RefreshCw size={12} /> Retry</button></div>;
+  if (error) return <div className="flex flex-col items-center justify-center py-20"><p className="text-[10px] text-red-300 mb-3">{error}</p><button onClick={load} className="btn-gold"><RefreshCw size={12} /> Retry</button></div>;
 
   return (
     <div className="flex flex-col h-full">
@@ -187,7 +187,7 @@ export default function AdminSettingsTab(_props: Props) {
                       <div className="flex items-center gap-2">
                         <input id="ff-adminsettingstab-3"
                           type="color"
-                          value={editValues[setting.key] || '#000000'}
+                          value={editValues[setting.key] || ''}
                           onChange={e => updateValue(setting.key, e.target.value)}
                           className="w-8 h-8 bg-transparent border border-border-subtle cursor-pointer p-0"
                         />

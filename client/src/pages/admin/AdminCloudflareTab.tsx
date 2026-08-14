@@ -128,7 +128,7 @@ export default function AdminCloudflareTab({ setError }: Props) {
         <div className="px-3 py-1.5 border-b border-border-default text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">Credentials</div>
         <div className="p-3 space-y-2">
           <div>
-            <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {config?.token_set && <span className="text-[#7fb069]">· set ({config.token_mask})</span>}</label>
+            <label className="text-[8px] text-rmpg-500 uppercase font-mono">API Token {config?.token_set && <span className="text-green-500">· set ({config.token_mask})</span>}</label>
             <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={config?.token_set ? 'leave blank to keep current' : 'Cloudflare API token'} value={token} onChange={e => setToken(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
