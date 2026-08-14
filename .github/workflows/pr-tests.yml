@@ -103,6 +103,8 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
 
   client-build:
     name: Client build
