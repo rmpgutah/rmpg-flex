@@ -729,7 +729,14 @@ sv.get('/assignments/settings', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const row = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
-  return c.json({ data: row ?? { id: 1, approaching_hours: 48, diligence_gap_days: 3, unassigned_window_hours: 72, renotify_hours: 24, notify_supervisor_email: 1, digest_sender_user_id: null } });
+  return c.json({ data: row ?? {
+    id: 1, approaching_hours: 48, diligence_gap_days: 3,
+    unassigned_window_hours: 72, renotify_hours: 24,
+    notify_supervisor_email: 1, digest_sender_user_id: null,
+    mileage_rate: 0.67, business_hours_start: '08:00',
+    business_hours_end: '20:00', business_hours_days: '[1,2,3,4,5]',
+    auto_geocode_on_intake: 1, geocode_confidence_min: 0.6,
+  } });
 });
 
 sv.put('/assignments/settings', async (c) => {
@@ -740,19 +747,42 @@ sv.put('/assignments/settings', async (c) => {
   const user = c.get('user') as { id: number } | undefined;
   const cur = await queryFirst<any>(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1') ?? {};
   await execute(db,
-    `INSERT INTO serve_nudge_settings (id, approaching_hours, diligence_gap_days, unassigned_window_hours, renotify_hours, notify_supervisor_email, digest_sender_user_id, updated_by)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO serve_nudge_settings
+       (id, approaching_hours, diligence_gap_days, unassigned_window_hours,
+        renotify_hours, notify_supervisor_email, digest_sender_user_id,
+        mileage_rate, business_hours_start, business_hours_end,
+        business_hours_days, auto_geocode_on_intake, geocode_confidence_min,
+        updated_by)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
-       approaching_hours = excluded.approaching_hours, diligence_gap_days = excluded.diligence_gap_days,
-       unassigned_window_hours = excluded.unassigned_window_hours, renotify_hours = excluded.renotify_hours,
-       notify_supervisor_email = excluded.notify_supervisor_email, digest_sender_user_id = excluded.digest_sender_user_id,
-       updated_at = datetime('now'), updated_by = excluded.updated_by`,
+       approaching_hours = excluded.approaching_hours,
+       diligence_gap_days = excluded.diligence_gap_days,
+       unassigned_window_hours = excluded.unassigned_window_hours,
+       renotify_hours = excluded.renotify_hours,
+       notify_supervisor_email = excluded.notify_supervisor_email,
+       digest_sender_user_id = excluded.digest_sender_user_id,
+       mileage_rate = excluded.mileage_rate,
+       business_hours_start = excluded.business_hours_start,
+       business_hours_end = excluded.business_hours_end,
+       business_hours_days = excluded.business_hours_days,
+       auto_geocode_on_intake = excluded.auto_geocode_on_intake,
+       geocode_confidence_min = excluded.geocode_confidence_min,
+       updated_at = datetime('now'),
+       updated_by = excluded.updated_by`,
     b.approaching_hours ?? cur.approaching_hours ?? 48,
     b.diligence_gap_days ?? cur.diligence_gap_days ?? 3,
     b.unassigned_window_hours ?? cur.unassigned_window_hours ?? 72,
     b.renotify_hours ?? cur.renotify_hours ?? 24,
     b.notify_supervisor_email !== undefined ? (b.notify_supervisor_email ? 1 : 0) : (cur.notify_supervisor_email ?? 1),
     b.digest_sender_user_id !== undefined ? b.digest_sender_user_id : (cur.digest_sender_user_id ?? null),
+    b.mileage_rate ?? cur.mileage_rate ?? 0.67,
+    b.business_hours_start ?? cur.business_hours_start ?? '08:00',
+    b.business_hours_end ?? cur.business_hours_end ?? '20:00',
+    b.business_hours_days !== undefined
+      ? (Array.isArray(b.business_hours_days) ? JSON.stringify(b.business_hours_days) : b.business_hours_days)
+      : (cur.business_hours_days ?? '[1,2,3,4,5]'),
+    b.auto_geocode_on_intake !== undefined ? (b.auto_geocode_on_intake ? 1 : 0) : (cur.auto_geocode_on_intake ?? 1),
+    b.geocode_confidence_min ?? cur.geocode_confidence_min ?? 0.6,
     user?.id ?? null);
   await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'update', 'serve_nudge_settings', 1, ?)`, user?.id ?? null, JSON.stringify(b));
   const after = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
