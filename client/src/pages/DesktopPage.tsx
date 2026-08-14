@@ -591,7 +591,10 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           ]}
         >
           <div data-testid="desktop-surface" style={{ position: 'relative', width: '100%', height: `calc(100vh - ${TASKBAR_HEIGHT_PX[getTaskbarSize()] + STATUS_BAR_HEIGHT}px)`, overflow: 'hidden' }}>
-            <DesktopWallpaper wallpaperId={wallpaperId}>
+            <DesktopWallpaper
+              wallpaperId={wallpaperId}
+              dynamicWallpaper={isDynamicWallpaperEnabled() ? { dayWallpaperId: getDynamicWallpaperDayId() || wallpaperId, nightWallpaperId: getDynamicWallpaperNightId() || wallpaperId } : undefined}
+            >
               {!areIconsHidden() && (
                 pinnedIcons.length === 0 ? (
                   <div className="flex items-center justify-center h-full text-[11px]" style={{ color: 'var(--text-muted)' }}>

@@ -294,6 +294,14 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                   style={{ maxWidth: 160, paddingTop: 2, paddingBottom: isAppPinned(w.path) ? 6 : 4, background: w.minimized ? 'transparent' : 'rgba(var(--rmpg-500-rgb),0.15)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
                 >
                   {w.title}
+                  {titleBadgeCount !== null && titleBadgeCount > 0 && (
+                    <span
+                      className="absolute -top-1 -right-1 flex items-center justify-center font-bold text-white"
+                      style={{ minWidth: 16, height: 16, padding: '0 3px', fontSize: 8, borderRadius: '50%', background: 'var(--sev-critical)' }}
+                    >
+                      {titleBadgeCount > 99 ? '99+' : titleBadgeCount}
+                    </span>
+                  )}
                   {isAppPinned(w.path) && (
                     <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400))', display: 'block' }} />
                   )}
@@ -410,6 +418,61 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             </span>
           )}
         </button>
+        {/* Quick Launch strip */}
+        {quickLaunchPins.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, borderLeft: '1px solid var(--border-subtle)', paddingLeft: 6 }}>
+            {quickLaunchPins.map(path => {
+              const fn = catalog.find(f => f.path === path);
+              if (!fn) return null;
+              const Icon = fn.icon;
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  aria-label={fn.label}
+                  title={fn.label}
+                  onClick={() => activateNavFunction(fn, { navigate, openWindow, currentUserRole: user?.role })}
+                  onContextMenu={(e) => { e.preventDefault(); handleRemoveQuickLaunch(path); }}
+                  style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 2, flexShrink: 0 }}
+                >
+                  <Icon className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            aria-label="Add quick launch"
+            title="Add quick launch pin (right-click pin to remove)"
+            onClick={() => setQuickPickerOpen(v => !v)}
+            style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: '1px dashed var(--border-subtle)', cursor: 'pointer', borderRadius: 2, color: 'var(--text-muted)', fontSize: 14, flexShrink: 0 }}
+          >
+            +
+          </button>
+          {quickPickerOpen && (
+            <div style={{ position: 'absolute', bottom: '100%', right: 0, marginBottom: 4, background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 8, zIndex: 20000, width: 200 }}>
+              <div style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 6 }}>QUICK LAUNCH — ADD PIN</div>
+              <input
+                autoFocus
+                type="text"
+                value={quickPickerInput}
+                onChange={e => setQuickPickerInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddQuickLaunch(quickPickerInput); if (e.key === 'Escape') setQuickPickerOpen(false); }}
+                placeholder="Route path, e.g. /dispatch"
+                style={{ width: '100%', fontSize: 10, padding: '4px 6px', background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', boxSizing: 'border-box' }}
+              />
+              <button
+                type="button"
+                onClick={() => handleAddQuickLaunch(quickPickerInput)}
+                style={{ marginTop: 6, width: '100%', fontSize: 9, padding: '3px 0', background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 2, cursor: 'pointer', color: 'var(--text-primary)' }}
+              >
+                Add
+              </button>
+            </div>
+          )}
+        </div>
         <DesktopWelfareCountdown />
         <QuickSettingsButton />
         <DesktopSystemTray />
