@@ -167,8 +167,8 @@ export default function SecurityKeyManager() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Usb className="w-3.5 h-3.5" style={{ color: '#d97706' }} />
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+          <Usb className="w-3.5 h-3.5 text-amber-600" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
             Security Keys ({credentials.length})
           </span>
         </div>
@@ -176,12 +176,12 @@ export default function SecurityKeyManager() {
 
       {/* Feedback messages */}
       {error && (
-        <div className="text-[10px] px-2 py-1.5" style={{ color: '#fca5a5', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div className="text-[10px] px-2 py-1.5 text-red-300 bg-red-500/10 border border-red-500/20">
           {error}
         </div>
       )}
       {success && (
-        <div className="text-[10px] px-2 py-1.5" style={{ color: '#86efac', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}>
+        <div className="text-[10px] px-2 py-1.5 text-green-300 bg-green-500/10 border border-green-500/20">
           {success}
         </div>
       )}
@@ -195,7 +195,7 @@ export default function SecurityKeyManager() {
               className="flex items-center gap-3 px-3 py-2 panel-beveled"
               style={{ background:"var(--surface-sunken)" }}
             >
-              <div className="p-1.5 panel-inset" style={{ color: '#d97706', background: 'rgba(217,119,6,0.1)' }}>
+              <div className="p-1.5 panel-inset text-amber-600 bg-amber-600/10">
                 {cred.deviceType === 'multiDevice' ? (
                   <Fingerprint className="w-3.5 h-3.5" />
                 ) : (
@@ -218,7 +218,7 @@ export default function SecurityKeyManager() {
               </div>
 
               <div className="text-right flex-shrink-0">
-                <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
+                <div className="text-[9px] font-mono text-fg-muted">
                   Added {cred.createdAt ? parseTimestamp(cred.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
                 </div>
               </div>
@@ -226,8 +226,7 @@ export default function SecurityKeyManager() {
               <button type="button"
                 onClick={() => handleRevoke(cred.id)}
                 disabled={revoking === cred.id}
-                className="toolbar-btn flex items-center gap-1 text-[9px]"
-                style={{ color: revoking === cred.id ? 'var(--text-muted)' : '#ef4444' }}
+                className={`toolbar-btn flex items-center gap-1 text-[9px] ${revoking === cred.id ? 'text-fg-muted' : 'text-red-500'}`}
                 title="Remove key"
               >
                 <Trash2 className="w-3 h-3" />
@@ -288,8 +287,7 @@ export default function SecurityKeyManager() {
       ) : (
         <button type="button"
           onClick={() => setShowNameInput(true)}
-          className="toolbar-btn w-full h-8 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
-          style={{ color: '#d97706', borderColor: '#d97706' }}
+          className="toolbar-btn w-full h-8 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-600 border-amber-600"
         >
           <Plus className="w-3 h-3" />
           Register Security Key
