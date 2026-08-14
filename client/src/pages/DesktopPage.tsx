@@ -46,6 +46,7 @@ import DesktopClipboard from '../components/desktop/apps/DesktopClipboard';
 import DesktopSnippingTool from '../components/desktop/apps/DesktopSnippingTool';
 import DesktopCalendar from '../components/desktop/apps/DesktopCalendar';
 import DesktopNotepad from '../components/desktop/apps/DesktopNotepad';
+import DesktopEvidenceScratchPad from '../components/desktop/apps/DesktopEvidenceScratchPad';
 import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPreferences';
 import DesktopCommandPalette from '../components/desktop/DesktopCommandPalette';
 import DesktopCallTicker from '../components/desktop/DesktopCallTicker';
@@ -126,6 +127,21 @@ function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<Arra
     tileH: () => tileHorizontal(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
     tileV: () => tileVertical(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
   };
+  return null;
+}
+
+function CfsFocusBridge() {
+  const { windows, focusedId } = useDesktopWindows();
+  useEffect(() => {
+    if (!focusedId) return;
+    const win = windows.find(w => w.id === focusedId);
+    if (!win?.path) return;
+    const match = win.path.match(/[?&]call=([^&]+)/);
+    if (!match) return;
+    window.dispatchEvent(new CustomEvent('flexos-cfs-focused', {
+      detail: { callId: match[1], callNumber: match[1] },
+    }));
+  }, [focusedId, windows]);
   return null;
 }
 
@@ -232,6 +248,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [snippingOpen, setSnippingOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [notepadOpen, setNotepadOpen] = useState(false);
+  const [scratchPadOpen, setScratchPadOpen] = useState(false);
   const [sysPrefOpen, setSysPrefOpen] = useState(false);
   const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -446,6 +463,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
             { label: 'Clipboard History…', onClick: () => setClipboardOpen(true) },
             { label: 'Notepad…', onClick: () => setNotepadOpen(true) },
+            { label: 'Evidence Scratch Pad…', onClick: () => setScratchPadOpen(true) },
             { label: 'Schedule Calendar…', onClick: () => setCalendarOpen(true) },
             { label: 'Snipping Tool…', onClick: () => setSnippingOpen(true) },
             { label: 'System Info…', onClick: () => setSysDashboardOpen(true) },
@@ -480,6 +498,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} onOpenShortcutRef={() => setShortcutRefOpen(true)} onOpenCommandPalette={() => setCommandPaletteOpen(true)} onOpenCalculator={() => setCalculatorOpen(true)} />
               <WindowArrangeSync mountRef={arrangeRef} />
               <OpenWindowBridge mountRef={openWindowRef} />
+              <CfsFocusBridge />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -514,6 +533,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         {calculatorOpen && (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
         )}
+        {scratchPadOpen && <DesktopEvidenceScratchPad onClose={() => setScratchPadOpen(false)} />}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
