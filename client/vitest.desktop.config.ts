@@ -12,10 +12,5 @@ export default defineConfig({
       'src/components/desktop/**/*.test.tsx',
     ],
     testTimeout: 20_000,
-    poolOptions: {
-      forks: {
-        maxForks: 1,
-      },
-    },
   },
 });

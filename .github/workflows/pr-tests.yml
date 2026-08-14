@@ -87,14 +87,13 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx tsc --noEmit
 
-  # The 590-file client suite causes one fork process to accumulate >4 GB of
-  # module-cache entries and OOM the 7 GB ubuntu-latest runner near the end.
-  # --shard partitions the suite deterministically: 4 shards of ~150 files each
-  # stay well within the memory limit (OOM happened at 295 files in one fork).
-  # 4 shards instead of 3 breaks up heavy-test clusters that caused shard 2
-  # to hang at the 15-minute wall in the 3-shard layout.
+  # The 590-file client suite OOMs the 7 GB ubuntu-latest runner. Root cause:
+  # vitest holds jsdom environment references for all files in a shard until the
+  # shard completes (~28 MB/jsdom × N files). At N=147 that's ~4.1 GB, hitting
+  # the 4096 MB --max-old-space-size limit. 6 shards ≈ 98 files each →
+  # ~2.7 GB peak, comfortably within 7 GB.
   client-tests-1:
-    name: Client tests (shard 1/4)
+    name: Client tests (shard 1/6)
     needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -106,12 +105,12 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --shard=1/4
+      - run: cd client && npx vitest run --shard=1/6
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
   client-tests-2:
-    name: Client tests (shard 2/4)
+    name: Client tests (shard 2/6)
     needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -123,12 +122,12 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --shard=2/4
+      - run: cd client && npx vitest run --shard=2/6
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
   client-tests-3:
-    name: Client tests (shard 3/4)
+    name: Client tests (shard 3/6)
     needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -140,12 +139,12 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --shard=3/4
+      - run: cd client && npx vitest run --shard=3/6
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
   client-tests-4:
-    name: Client tests (shard 4/4)
+    name: Client tests (shard 4/6)
     needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -157,7 +156,41 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --shard=4/4
+      - run: cd client && npx vitest run --shard=4/6
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+  client-tests-5:
+    name: Client tests (shard 5/6)
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --shard=5/6
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+  client-tests-6:
+    name: Client tests (shard 6/6)
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --shard=6/6
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
