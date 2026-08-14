@@ -64,6 +64,12 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // these by sight — "SL2 is the gold one" — so recoloring changes district
   // identity on the map, not just its styling.
   categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels|geoLayers)\.ts$/,
+  // RouteBuilderPage feeds hex into Mapbox paint, marker DOM CSS, and popup HTML — CSS vars don't resolve there.
+  mapboxRouteBuilder: /(^|\/)RouteBuilderPage\.(tsx)$/,
+  // ForensicDashcamPlayer uses Canvas 2D API for evidence export — CSS vars don't resolve in canvas context.
+  forensicDashcamCanvas: /(^|\/)ForensicDashcamPlayer\.(tsx)$/,
+  // skipTracerPalette holds categorical identity colors per entity/engine type (same reason as connectionsGraphStyle).
+  skipTracerPalette: /(^|\/)skipTracerPalette\.(ts)$/,
   // DesktopSystemPreferences holds ACCENT_PRESETS — a fixed color-picker palette
   // whose hex values are stored in localStorage and written directly to a CSS
   // custom property via style.setProperty('--desktop-shell-accent', hex).
