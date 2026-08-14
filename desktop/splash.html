@@ -20,8 +20,8 @@
 
     /* ── Phase 1: BOOT ── */
     #phase-boot { background: #000; gap: 28px; }
-    .boot-logo { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 0 18px rgba(195,204,214,0.25)); }
-    .boot-logo-fallback { width: 88px; height: 88px; border: 2px solid #c3ccd6; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; letter-spacing: 2px; color: #c3ccd6; }
+    .boot-logo { width: 160px; height: 160px; object-fit: contain; filter: drop-shadow(0 0 24px rgba(195,204,214,0.18)); }
+    .boot-logo-fallback { display: none; }
 
     /* Windows 11 spinning-dots: 5 dots in a 28px orbit, chase animation */
     .win-dots-ring { position: relative; width: 56px; height: 56px; animation: ringRotate 1.3s linear infinite; }
@@ -37,7 +37,9 @@
     @keyframes labelFadeIn { to { opacity: 1; } }
 
     /* ── Phase 2: LOCK ── */
-    #phase-lock { background: radial-gradient(ellipse at 50% 38%, #2d4f6e 0%, #192e44 50%, #0b1928 100%); gap: 0; }
+    #phase-lock { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 0; }
+    #phase-lock::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
+    #phase-lock > * { position: relative; z-index: 1; }
     .lock-time { font-size: 72px; font-weight: 200; letter-spacing: -2px; color: #fff; line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
     .lock-date { font-size: 14px; color: #a8bccf; margin-bottom: 44px; letter-spacing: 0.03em; }
     .user-card { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 24px; }
@@ -58,7 +60,9 @@
     .lock-hint { font-size: 10px; color: #2e4a60; letter-spacing: 1px; margin-top: 28px; }
 
     /* ── Phase 3: WELCOME ── */
-    #phase-welcome { background: radial-gradient(ellipse at 50% 38%, #2d4f6e 0%, #192e44 50%, #0b1928 100%); gap: 16px; }
+    #phase-welcome { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 16px; }
+    #phase-welcome::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
+    #phase-welcome > * { position: relative; z-index: 1; }
     .welcome-greeting { font-size: 28px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }
     .welcome-role { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: #c3ccd6; border: 1px solid rgba(195,204,214,0.35); border-radius: 2px; padding: 4px 14px; }
   </style>
@@ -67,8 +71,8 @@
 
   <!-- ── Phase 1: BOOT ── -->
   <section id="phase-boot" class="phase active">
-    <img id="boot-logo" class="boot-logo" alt="Rocky Mountain Protective Group" draggable="false" style="display:none;" />
-    <div id="boot-logo-fallback" class="boot-logo-fallback">RMPG</div>
+    <img id="boot-logo" class="boot-logo" src="./assets/logo.png" alt="Rocky Mountain Protective Group" draggable="false" />
+    <div id="boot-logo-fallback" class="boot-logo-fallback" style="display:none;"></div>
     <div class="win-dots-ring">
       <span></span><span></span><span></span><span></span><span></span>
     </div>
