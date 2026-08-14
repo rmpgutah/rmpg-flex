@@ -452,7 +452,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
-  // On failure, persists points to localStorage so they survive page reloads.
+  // On failure, points stay in queueRef and IDB (written fire-and-forget on ingest).
   const isSendingRef = useRef(false);
   const sendBatch = useCallback(async () => {
     // Read-only consumer — never upload; drain the queue so it can't grow.
