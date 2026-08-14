@@ -358,10 +358,13 @@ async function purgeCachedShell() {
   }
 }
 
-// ── Background sync: flush unsynced GPS fixes on reconnect ───────────────
+// v1104: Automation firing drain — flushClientFirings() chained after GPS
+//        flush in the gps-flush sync event so offline automation firings are
+//        replayed to dispatch the moment the device reconnects.
+// ── Background sync: flush unsynced GPS fixes + automation firings ────────
 self.addEventListener('sync', (event) => {
   if (event.tag !== 'gps-flush') return;
-  event.waitUntil(flushGpsFixes());
+  event.waitUntil(flushGpsFixes().then(() => flushClientFirings()));
 });
 
 async function flushGpsFixes() {
@@ -421,6 +424,54 @@ async function flushGpsFixes() {
         tx.oncomplete = resolve;
       });
     }
+  }
+}
+
+async function flushClientFirings() {
+  let db;
+  try {
+    db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('rmpg-automation-firings', 1);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return; // IDB unavailable — nothing to flush
+  }
+
+  const firings = await new Promise((resolve) => {
+    const tx = db.transaction('queue', 'readonly');
+    const req = tx.objectStore('queue').index('synced').getAll(0);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve([]);
+  });
+
+  if (!firings || firings.length === 0) return;
+
+  let ok = false;
+  try {
+    const res = await fetch('/api/automation-rules/firings/client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firings }),
+      credentials: 'include',
+    });
+    ok = res.ok;
+  } catch {
+    throw new Error('Automation firing flush network failure — sync will retry');
+  }
+
+  if (ok) {
+    const ids = firings.map((f) => f.id);
+    await new Promise((resolve) => {
+      const tx = db.transaction('queue', 'readwrite');
+      const store = tx.objectStore('queue');
+      ids.forEach((id) => {
+        const req = store.get(id);
+        req.onsuccess = () => { if (req.result) store.put({ ...req.result, synced: 1 }); };
+      });
+      tx.oncomplete = resolve;
+    });
   }
 }
 

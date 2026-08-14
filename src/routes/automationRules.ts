@@ -3,6 +3,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { log } from '../utils/logger';
+import { emitAlert } from '../utils/alertHub';
 
 const ADMIN_ROLES = ['admin', 'manager', 'supervisor'] as const;
 const ALL_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
@@ -177,6 +178,80 @@ router.get('/firings', requireRole(...ADMIN_ROLES), async (c) => {
      ORDER BY arf.fired_at DESC LIMIT 500`,
   );
   return c.json({ firings: rows });
+});
+
+interface ClientFiringRecord {
+  rule_id: number;
+  rule_name: string;
+  trigger_type: string;
+  action_type: string;
+  trigger_lat: number;
+  trigger_lng: number;
+  fired_at: string;
+  context: Record<string, unknown>;
+}
+
+router.post('/firings/client', requireRole(...ALL_ROLES), async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ firings: ClientFiringRecord[] }>().catch(() => ({ firings: [] as ClientFiringRecord[] }));
+  const firings = Array.isArray(body.firings) ? body.firings : [];
+
+  if (firings.length === 0) {
+    return c.json({ inserted: 0 });
+  }
+
+  // Cap replay to 500 per call to avoid D1 timeout
+  const toInsert = firings.slice(0, 500);
+  let inserted = 0;
+
+  for (const f of toInsert) {
+    if (!f.rule_id || !f.fired_at) continue;
+
+    // Dedup: skip if this exact rule_id + user_id + fired_at combination already exists
+    const existing = await db.prepare(
+      `SELECT id FROM automation_rule_firings
+       WHERE rule_id = ? AND user_id = ? AND fired_at = ? LIMIT 1`,
+    ).bind(f.rule_id, userId, f.fired_at).first<{ id: number }>();
+    if (existing) continue;
+
+    try {
+      await db.prepare(
+        `INSERT INTO automation_rule_firings
+         (rule_id, user_id, trigger_lat, trigger_lng, context, fired_at, source)
+         VALUES (?, ?, ?, ?, ?, ?, 'client')`,
+      ).bind(
+        f.rule_id,
+        userId,
+        f.trigger_lat ?? null,
+        f.trigger_lng ?? null,
+        JSON.stringify(f.context ?? {}),
+        f.fired_at,
+      ).run();
+      inserted++;
+
+      // Fan out to dispatch and supervisors via AlertHubDO
+      c.executionCtx.waitUntil(
+        emitAlert(c.env, 'automation_alert', {
+          rule_id: f.rule_id,
+          rule_name: f.rule_name,
+          action_type: f.action_type,
+          trigger_type: f.trigger_type,
+          source: 'client_replay',
+          user_id: userId,
+          lat: f.trigger_lat,
+          lng: f.trigger_lng,
+          fired_at: f.fired_at,
+          message: `[Offline replay] ${f.rule_name}`,
+          severity: 'info',
+        }).catch(() => {}),
+      );
+    } catch (err) {
+      log.error('automationRules: client firing insert failed', { rule_id: f.rule_id, fired_at: f.fired_at }, err as Error);
+    }
+  }
+
+  return c.json({ inserted });
 });
 
 export default router;

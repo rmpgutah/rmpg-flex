@@ -3,6 +3,10 @@ import { apiFetch } from './useApi';
 import {
   writeFix, loadUnsynced, markSynced, pruneOld, migrateFromLocalStorage,
 } from '../utils/gpsStore';
+import {
+  queueClientFiring, loadUnsynced as loadUnsyncedFirings,
+  markFiringsSynced, pruneOldFirings,
+} from '../utils/automationFiringStore';
 import type { EvaluatorState, AutomationRule } from '../utils/automationEngine';
 
 // ============================================================
@@ -865,6 +869,17 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
               );
             }
           }
+          // Queue every firing (local or server) for offline replay on reconnect
+          queueClientFiring({
+            rule_id: action.rule.id,
+            rule_name: action.rule.name,
+            trigger_type: action.rule.trigger_type,
+            action_type: action.rule.action_type,
+            trigger_lat: fix.lat,
+            trigger_lng: fix.lng,
+            fired_at: new Date(fix.ts).toISOString(),
+            context: { speed: fix.speed, accuracy: fix.accuracy },
+          }).catch(() => {}); // fire-and-forget, never blocks eval
         }
       }).catch(() => {});
 
@@ -1417,6 +1432,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     migrateFromLocalStorage().catch(() => {});
     // Prune synced fixes older than 72h
     pruneOld().catch(() => {});
+    // Prune synced automation firings older than 72h
+    pruneOldFirings().catch(() => {});
 
     let started = false;
     const start = () => {
@@ -1514,11 +1531,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Online/offline listener ───────────────────────────────
   // Handle browser online/offline events (covers WiFi disconnect/reconnect)
   useEffect(() => {
+    const flushClientFirings = () => {
+      loadUnsyncedFirings().then((firings) => {
+        if (firings.length === 0) return;
+        apiFetch('/automation-rules/firings/client', {
+          method: 'POST',
+          body: JSON.stringify({ firings }),
+        }).then((res: any) => {
+          const inserted: number = res?.inserted ?? firings.length;
+          if (inserted >= 0) {
+            markFiringsSynced(firings.map((f) => (f as any).id)).catch(() => {});
+          }
+        }).catch(() => {
+          // Non-fatal — SW background sync covers the closed-tab case
+        });
+      }).catch(() => {});
+    };
+
     const handleOnline = () => {
       setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
       if (!isTracking) {
         startTracking();
       }
+      flushClientFirings();
     };
     const handleOffline = () => {
       setState((prev) => ({ ...prev, connectionType: 'none' }));
