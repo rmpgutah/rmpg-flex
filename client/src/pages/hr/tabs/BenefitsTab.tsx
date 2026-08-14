@@ -128,7 +128,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
       {showForm && isManager && (
         <div className="panel-beveled p-4 space-y-3">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

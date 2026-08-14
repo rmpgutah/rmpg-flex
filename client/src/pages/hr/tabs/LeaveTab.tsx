@@ -429,8 +429,7 @@ export default function LeaveTab() {
             <Clock size={14} className="text-amber-400" />
             Pending Approvals
             <span
-              className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold"
-              style={{ backgroundColor: '#f59e0b22', color: '#f59e0b' }}
+              className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold bg-amber-400/10 text-amber-400"
             >
               {pendingRequests.length}
             </span>
@@ -470,16 +469,14 @@ export default function LeaveTab() {
                   />
                   <button type="button"
                     onClick={() => handleApprove(req.id)}
-                    className="toolbar-btn flex items-center gap-1 text-xs"
-                    style={{ color: '#22c55e', borderColor: '#22c55e44' }}
+                    className="toolbar-btn flex items-center gap-1 text-xs text-green-500 border-green-500/25"
                   >
                     <Check size={12} />
                     Approve
                   </button>
                   <button type="button"
                     onClick={() => handleDeny(req.id)}
-                    className="toolbar-btn flex items-center gap-1 text-xs"
-                    style={{ color: '#ef4444', borderColor: '#ef444444' }}
+                    className="toolbar-btn flex items-center gap-1 text-xs text-red-500 border-red-500/25"
                   >
                     <X size={12} />
                     Deny
