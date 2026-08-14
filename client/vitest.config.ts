@@ -15,23 +15,5 @@ export default defineConfig({
     // test file re-shards the workers and unrelated pages start "failing".
     // A real hang still fails, just later.
     testTimeout: 20_000,
-    // vmForks creates child processes where each test file runs in a dedicated
-    // vm.Module context that is GC-able after the file completes.  Regular
-    // forks accumulate module entries in the process-global require cache so
-    // RSS grows monotonically across 570 files and OOMs near the end.  VM
-    // contexts release that pressure by letting old contexts be collected.
-    pool: 'vmForks',
-    poolOptions: {
-      vmForks: {
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
-    // Desktop component tests run in a separate CI job (client-tests-desktop).
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      'src/components/desktop/**',
-    ],
   },
 });
