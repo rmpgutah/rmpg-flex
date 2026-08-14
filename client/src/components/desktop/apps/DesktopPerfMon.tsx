@@ -118,7 +118,7 @@ export default function DesktopPerfMon({ onClose }: DesktopPerfMonProps) {
   function exportCsv() {
     const rows = ['timestamp,cpu,ram,net,disk'];
     for (const p of historyRef.current) {
-      rows.push(`${new Date(p.ts).toISOString()},${p.cpu.toFixed(1)},${p.ram.toFixed(1)},${p.net.toFixed(1)},${p.disk.toFixed(1)}`);
+      rows.push(`${new Date(p.ts).toISOString()},${p.cpu.toFixed(1)},${p.ram.toFixed(1)},${p.net.toFixed(1)},${p.disk.toFixed(1)}`); // new-date-ok epoch number from Date.now()
     }
     const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
