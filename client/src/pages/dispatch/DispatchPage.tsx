@@ -1449,6 +1449,37 @@ export default function DispatchPage() {
       addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
     });
 
+    // Smart automation rule fired — server (Task 5/6) or officer client
+    // (POST /api/automation-rules/firings/client) both call emitAlert which
+    // fans out here.  Severity mirrors the spec: notify_* → 'warning',
+    // trigger_welfare_check / change_unit_status → 'error'.
+    const unsubAutomation = subscribe('automation_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const actionType: string = data.action_type ?? '';
+      const source: string = data.source === 'officer' ? 'Officer' : 'System';
+      const label = toDisplayLabel(actionType) || actionType;
+
+      const isCritical =
+        actionType === 'trigger_welfare_check' ||
+        actionType === 'change_unit_status';
+      const severity = isCritical ? 'error' : 'warning';
+
+      // Build a compact details string from available context fields.
+      const parts: string[] = [];
+      if (data.trigger_lat != null && data.trigger_lng != null) {
+        parts.push(
+          `${Number(data.trigger_lat).toFixed(4)}, ${Number(data.trigger_lng).toFixed(4)}`,
+        );
+      }
+      const ctx = data.context ?? {};
+      if (ctx.speed != null) parts.push(`${ctx.speed} mph`);
+      if (ctx.call_id != null) parts.push(`Call #${ctx.call_id}`);
+      if (ctx.geofence_name) parts.push(ctx.geofence_name);
+
+      const detail = parts.length > 0 ? ` — ${parts.join(' | ')}` : '';
+      addToast(`[Auto / ${source}] ${label}${detail}`, severity, 8000);
+    });
+
     // [F5] Serve terminal alerts — fired by serve.ts logAttempt on served/failed.
     const unsubServeTerminal = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
@@ -1472,7 +1503,7 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); unsubServeTerminal(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); unsubAutomation(); unsubServeTerminal(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared

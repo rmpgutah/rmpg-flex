@@ -119,6 +119,7 @@ import accreditations from './routes/accreditations';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
 import analytics from './routes/analytics';
+import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
@@ -571,6 +572,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
   { prefix: '/api/analytics', router: analytics, auth: 'required',
     note: 'Imported but never mounted (dead code since import) — AnalyticsPage 404d on every /analytics/{health,query,events,alpr/*} call.' },
+  { prefix: '/api/automation-rules', router: automationRules, auth: 'required',
+    note: 'Smart automation rules CRUD: list/create/update/delete rules + GET /firings (admin/supervisor). Officers restricted to notify_officer action with safe triggers; admins manage global rules.' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',

@@ -51,6 +51,7 @@ import { isFleetioSyncStatusUnhealthy, type FleetioSyncStatus } from '../utils/f
 
 // Tab components
 import AdminSettingsTab from './admin/AdminSettingsTab';
+import AutomationsTab from './admin/AutomationsTab';
 import AdminUsersTab from './admin/AdminUsersTab';
 import AdminWalletIdTab from './admin/AdminWalletIdTab';
 import AdminClientsTab from './admin/AdminClientsTab';
@@ -261,7 +262,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning' | 'automations';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -288,7 +289,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning', 'automations'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -741,6 +742,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'automations', label: 'Smart Automations', icon: Zap },
         { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
     },
@@ -1278,6 +1280,8 @@ export default function AdminPage() {
         )}
 
         {activeTab === 'ocr_learning' && <TesseractTrainingPage />}
+
+        {activeTab === 'automations' && <AutomationsTab />}
 
         {activeTab === 'email' && (
           <AdminEmailTab

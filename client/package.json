@@ -116,6 +116,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.5.2",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.6",
     "jsdom": "^28.1.0",
     "postcss": "^8.5.25",

@@ -131,6 +131,7 @@ import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { useDeviceClass } from '../hooks/useDeviceClass';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 import { playUiNavigate } from '../utils/uiClickSounds';
+import { useToastSafe } from './ToastProvider';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -430,6 +431,13 @@ export default function Layout() {
   useDeviceClass();
 
   const gps = useGpsTracking();
+  const toast = useToastSafe();
+  useEffect(() => {
+    if (!gps.addToastRef) return;
+    gps.addToastRef.current = toast
+      ? (toast.addToast as (msg: string, type: string, duration?: number) => void)
+      : null;
+  }, [toast]); // eslint-disable-line react-hooks/exhaustive-deps
   const presence = usePresence();
 
   // ── Dispatch voice alerts + visual banner state ──
