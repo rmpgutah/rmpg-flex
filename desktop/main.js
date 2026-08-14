@@ -4245,6 +4245,50 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
   }
 });
 
+// ── System info: battery (Windows only) ──
+guardedHandle('system:get-battery', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync(
+      'wmic path Win32_Battery get EstimatedChargeRemaining,BatteryStatus /format:csv',
+      { timeout: 3000, encoding: 'utf8', windowsHide: true }
+    );
+    const lines = out.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
+    if (!lines.length) return null;
+    const parts = lines[0].trim().split(',');
+    // CSV columns: Node, EstimatedChargeRemaining, BatteryStatus
+    const pct = parseInt(parts[1], 10);
+    const status = parseInt(parts[2], 10); // 2 = AC/charging, 1 = discharging
+    return { percent: isNaN(pct) ? null : pct, charging: status === 2 };
+  } catch { return null; }
+});
+
+// ── System info: WiFi network (Windows only) ──
+guardedHandle('system:get-network', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync(
+      'netsh wlan show interfaces',
+      { timeout: 3000, encoding: 'utf8', windowsHide: true }
+    );
+    const ssidMatch = out.match(/^\s+SSID\s+:\s+(.+)/m);
+    const signalMatch = out.match(/^\s+Signal\s+:\s+(\d+)%/m);
+    return {
+      ssid: ssidMatch ? ssidMatch[1].trim() : null,
+      signal: signalMatch ? parseInt(signalMatch[1], 10) : null,
+    };
+  } catch { return null; }
+});
+
+// ── System: set app volume (placeholder — real OS volume requires nircmd) ──
+guardedHandle('system:set-volume', async (_event, _level) => {
+  // Controls in-app audio gain via the renderer's Web Audio context.
+  // True OS master volume requires an external tool (nircmd) — deferred.
+  return { ok: true };
+});
+
 // ─── Application Menu ───────────────────────────────────────
 function createMenu() {
   const isMac = process.platform === 'darwin';
