@@ -153,7 +153,7 @@ export default function BolosCard() {
   if (loading) {
     return (
       <section className="bg-surface-base border border-border-default p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
         <div className="h-[180px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
@@ -162,7 +162,7 @@ export default function BolosCard() {
   if (error) {
     return (
       <section className="bg-surface-base border border-border-default p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
           <button
@@ -179,7 +179,7 @@ export default function BolosCard() {
 
   return (
     <section className="bg-surface-base border border-border-default p-3">
-      <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
+      <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">BOLOS & ALERTS</h2>
 
       {feed.length === 0 ? (
         <p className="text-rmpg-500 text-xs italic">No active BOLOs or alerts.</p>

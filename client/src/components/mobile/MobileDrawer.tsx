@@ -308,8 +308,8 @@ export default function MobileDrawer({
             <div
               className="w-12 h-12 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
-                color: '#fff',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--text-muted))',
+                color: 'white',
                 border: '2px solid var(--border-strong)',
               }}
             >
@@ -385,7 +385,7 @@ export default function MobileDrawer({
                         background: isActive
                           ? 'rgba(212, 160, 23, 0.1)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#bbbbbb',
+                        color: isActive ? 'white' : 'var(--text-muted)',
                         borderLeft: isActive
                           ? '3px solid var(--brand-gold)'
                           : '3px solid transparent',
@@ -422,12 +422,12 @@ export default function MobileDrawer({
                 style={{
                   width: 16,
                   height: 16,
-                  color: gpsTracking ? '#22c55e' : '#505050',
+                  color: gpsTracking ? 'var(--sev-ok)' : 'var(--text-muted)',
                 }}
               />
               <span
                 className="text-xs font-mono font-bold"
-                style={{ color: gpsTracking ? '#22c55e' : '#505050' }}
+                style={{ color: gpsTracking ? 'var(--sev-ok)' : 'var(--text-muted)' }}
               >
                 GPS {gpsTracking ? 'ON' : 'OFF'}
               </span>
@@ -448,7 +448,7 @@ export default function MobileDrawer({
               />
               <span
                 className="text-xs font-mono font-bold"
-                style={{ color: isConnected ? '#22c55e' : '#ef4444' }}
+                style={{ color: isConnected ? 'var(--sev-ok)' : 'var(--sev-critical)' }}
               >
                 {isConnected ? 'ONLINE' : 'OFFLINE'}
               </span>
@@ -480,7 +480,7 @@ export default function MobileDrawer({
               minHeight: 48,
               background: 'rgba(220, 38, 38, 0.1)',
               border: '1px solid rgba(220, 38, 38, 0.3)',
-              color: '#ef4444',
+              color: 'var(--sev-critical)',
             }}
           >
             <LogOut style={{ width: 18, height: 18 }} />
