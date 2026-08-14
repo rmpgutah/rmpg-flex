@@ -26,6 +26,8 @@ export interface VehicleDetailResult {
   analyticsLoading: boolean;
   personnelData: FleetPersonnelData | null;
   personnelLoading: boolean;
+  gpsMileage: unknown;
+  gpsMileageLoading: boolean;
   activeTab: DetailTab;
   setActiveTab: (t: DetailTab) => void;
   fetchDetail: (id: string | number) => Promise<void>;
@@ -34,6 +36,8 @@ export interface VehicleDetailResult {
   fetchAssignments: (id: string | number) => Promise<void>;
   fetchPersonnel: (id: string | number) => Promise<void>;
   fetchVehicleAnalytics: (id: string | number, period?: string) => Promise<void>;
+  fetchGpsMileage: (days?: number) => Promise<void>;
+  syncGpsMileage: () => Promise<void>;
   clearDetail: () => void;
 }
 
@@ -82,6 +86,8 @@ export function useVehicleDetail(
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [personnelData, setPersonnelData] = useState<FleetPersonnelData | null>(null);
   const [personnelLoading, setPersonnelLoading] = useState(false);
+  const [gpsMileage, setGpsMileage] = useState<unknown>(null);
+  const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, DETAIL_TABS);
 
   // The reset-on-vehicle-change effect must not run on mount, or it
@@ -162,6 +168,36 @@ export function useVehicleDetail(
     finally { setPersonnelLoading(false); }
   }, [addToast]);
 
+  const fetchGpsMileage = useCallback(async (days = 30) => {
+    if (!selectedId) return;
+    setGpsMileageLoading(true);
+    try {
+      const data = await apiFetch<unknown>(`/fleet/${selectedId}/gps-mileage?days=${days}`);
+      setGpsMileage(data);
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code !== 'NO_UNIT_ASSIGNED') {
+        addToast('Failed to compute GPS mileage', 'error');
+      }
+    } finally { setGpsMileageLoading(false); }
+  }, [selectedId, addToast]);
+
+  const syncGpsMileage = useCallback(async () => {
+    const mileageData = gpsMileage as { total_miles?: number } | null;
+    if (!selectedId || !mileageData?.total_miles) return;
+    setGpsMileageLoading(true);
+    try {
+      const resp = await apiFetch<{ previous_mileage?: number; new_mileage?: number }>(`/fleet/${selectedId}/gps-mileage`, {
+        method: 'PUT',
+        body: JSON.stringify({ miles_delta: mileageData.total_miles }),
+      });
+      addToast(`Odometer updated: ${resp.previous_mileage?.toLocaleString()} → ${resp.new_mileage?.toLocaleString()}`, 'success');
+      await fetchDetail(selectedId);
+      setGpsMileage(null);
+    } catch (err: unknown) {
+      addToast((err as Error)?.message || 'Failed to sync mileage', 'error');
+    } finally { setGpsMileageLoading(false); }
+  }, [selectedId, gpsMileage, fetchDetail, addToast]);
+
   useEffect(() => {
     if (selectedId) fetchDetail(selectedId);
   }, [selectedId, fetchDetail]);
@@ -188,6 +224,7 @@ export function useVehicleDetail(
     setAssignments([]);
     setAnalytics(null);
     setPersonnelData(null);
+    setGpsMileage(null);
     onCostsResetRef.current();
   }, [selectedId, setActiveTab]);
 
@@ -225,8 +262,9 @@ export function useVehicleDetail(
   return {
     detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
     analytics, analyticsLoading, personnelData, personnelLoading,
+    gpsMileage, gpsMileageLoading,
     activeTab, setActiveTab,
     fetchDetail, fetchFuelLogs, fetchInspections, fetchAssignments,
-    fetchPersonnel, fetchVehicleAnalytics, clearDetail,
+    fetchPersonnel, fetchVehicleAnalytics, fetchGpsMileage, syncGpsMileage, clearDetail,
   };
 }
