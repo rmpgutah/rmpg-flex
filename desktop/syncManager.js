@@ -50,6 +50,12 @@ const PULL_INTERVALS = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
+  // Process Server — pulled on the same cadence as incidents so an officer's
+  // job list is fresh when they go offline mid-shift. serve_attempts is slower
+  // because it's an append-only log the officer consults but rarely edits in
+  // the field; 10 min covers any supervisor re-assignment.
+  serve_queue:        120_000,  // 2 min
+  serve_attempts:     600_000,  // 10 min
 };
 
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];

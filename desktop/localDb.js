@@ -83,6 +83,25 @@ function initLocalDb() {
     if (!/duplicate column/i.test(err.message)) throw err;
   }
 
+  // Reconcile serve_queue / serve_attempts for installations that predate the
+  // Process Server offline support. CREATE TABLE IF NOT EXISTS is a no-op on
+  // an existing table, so existing rows are untouched — only missing tables
+  // are created. is_dirty and local_id are also added idempotently via ALTER
+  // for any row that was previously pulled without them.
+  const serveReconcile = [
+    'ALTER TABLE serve_queue ADD COLUMN local_id TEXT',
+    'ALTER TABLE serve_queue ADD COLUMN server_id INTEGER',
+    'ALTER TABLE serve_queue ADD COLUMN is_dirty INTEGER DEFAULT 0',
+    'ALTER TABLE serve_attempts ADD COLUMN local_id TEXT',
+    'ALTER TABLE serve_attempts ADD COLUMN server_id INTEGER',
+    'ALTER TABLE serve_attempts ADD COLUMN is_dirty INTEGER DEFAULT 0',
+  ];
+  for (const stmt of serveReconcile) {
+    try { db.exec(stmt); } catch (err) {
+      if (!/duplicate column/i.test(err.message)) throw err;
+    }
+  }
+
   console.log('[LOCAL-DB] Ready');
   return db;
 }
@@ -272,6 +291,63 @@ function createMirrorTables() {
       stolen_status TEXT,
       created_at TEXT,
       updated_at TEXT
+    );
+
+    -- Serve Queue (read/write offline — officer's job list)
+    CREATE TABLE IF NOT EXISTS serve_queue (
+      id INTEGER PRIMARY KEY,
+      local_id TEXT UNIQUE,
+      server_id INTEGER,
+      officer_id INTEGER,
+      recipient_name TEXT,
+      recipient_address TEXT,
+      recipient_city TEXT,
+      recipient_state TEXT,
+      recipient_zip TEXT,
+      recipient_lat REAL,
+      recipient_lng REAL,
+      document_type TEXT,
+      case_number TEXT,
+      court_name TEXT,
+      jurisdiction TEXT,
+      client_name TEXT,
+      attorney_name TEXT,
+      priority TEXT NOT NULL DEFAULT 'normal',
+      time_window TEXT,
+      deadline TEXT,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      service_instructions TEXT,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      next_attempt_note TEXT,
+      is_dirty INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    -- Serve Attempts (append-only log; writes are queued for server sync)
+    CREATE TABLE IF NOT EXISTS serve_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      local_id TEXT UNIQUE,
+      server_id INTEGER,
+      serve_queue_id INTEGER NOT NULL,
+      attempt_number INTEGER NOT NULL DEFAULT 1,
+      attempt_at TEXT NOT NULL,
+      officer_id INTEGER,
+      result TEXT,
+      latitude REAL,
+      longitude REAL,
+      notes TEXT,
+      attempt_type TEXT,
+      photo_ids TEXT DEFAULT '[]',
+      signature_data TEXT,
+      planned_at TEXT,
+      window TEXT,
+      status TEXT DEFAULT 'attempted',
+      is_dirty INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
     );
 
     -- GPS Breadcrumbs (write-only locally, push to server)

@@ -118,6 +118,24 @@ const PULL_TABLES: Record<string, { columns: string; cursorCol: CursorCol }> = {
   // NOTE: this table needs a user-scoped WHERE clause, handled by the pull
   // handler's special-case below.
   automation_rules:   { columns: '*', cursorCol: 'updated_at' },
+  // Process Server — officer serve-job queue and attempt log.
+  // serve_queue has updated_at (migration 0033). Explicit column list
+  // keeps the 100-col SELECT cap safe (serve_queue is at 103 cols on live
+  // D1 — pulling * would silently 500 for everyone offline).
+  serve_queue: {
+    columns: [
+      'id', 'officer_id', 'recipient_name', 'recipient_address', 'recipient_city',
+      'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng',
+      'document_type', 'case_number', 'court_name', 'jurisdiction',
+      'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
+      'max_attempts', 'service_instructions', 'notes', 'status',
+      'attempt_count', 'sort_order', 'next_attempt_note',
+      'created_at', 'updated_at',
+    ].join(', '),
+    cursorCol: 'updated_at',
+  },
+  // serve_attempts uses created_at (append-only — no updated_at column).
+  serve_attempts: { columns: '*', cursorCol: 'created_at' },
 };
 
 const PULL_DEFAULT_LIMIT = 1000;
@@ -208,6 +226,9 @@ const ALLOWED_ENDPOINTS: Array<{ method: string; pattern: RegExp }> = [
   // Personnel time clock
   { method: 'POST', pattern: /^\/api\/personnel\/time\/clock-in$/ },
   { method: 'POST', pattern: /^\/api\/personnel\/time\/clock-out$/ },
+  // Process Server — officers log attempts while offline in the field
+  { method: 'POST', pattern: /^\/api\/process-server\/\d+\/attempt$/ },
+  { method: 'PUT',  pattern: /^\/api\/process-server\/\d+\/status$/ },
 ];
 
 function isAllowed(method: string, endpoint: string): boolean {
