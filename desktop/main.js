@@ -225,6 +225,10 @@ let kioskDeliberatelyReverting = false;
 let boundsSaveDebounceTimer = null;
 const BOUNDS_SAVE_DEBOUNCE_MS = 500;
 
+// Cached Windows account info for the startup lock screen.
+// undefined = not yet fetched; null = fetched but unavailable (non-win32 or error).
+let cachedWindowsAccountInfo = undefined;
+
 // Secondary (non-main) windows opened via 'window:open-secondary', keyed by
 // a server-generated UUID so the renderer never handles a raw BrowserWindow
 // reference. Entries are removed on the window's own 'closed' event so this
@@ -358,320 +362,52 @@ function getSplashLogoDataUri() {
 
 function createSplashWindow() {
   if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
+
+  const splashPreloadPath = resolveTrustedPreloadPath(
+    path.join(__dirname, 'splashPreload.js'),
+    path.join(__dirname, 'splashPreload.js')
+  );
+
+  // Full-screen on Windows (kiosk shell context); standard splash size elsewhere.
+  const isWin = process.platform === 'win32';
+  const { width: screenW, height: screenH } = isWin
+    ? screen.getPrimaryDisplay().bounds
+    : { width: 520, height: 400 };
+
   splashWindow = new BrowserWindow({
-    width: 480,
-    height: 380,
+    width: screenW,
+    height: screenH,
+    x: 0,
+    y: 0,
     frame: false,
-    transparent: true,
+    transparent: false,
     resizable: false,
     alwaysOnTop: true,
-    center: true,
+    center: !isWin,
     skipTaskbar: true,
-    webPreferences: hardenWebPreferencesDefaults(),
+    backgroundColor: '#000000',
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: splashPreloadPath,
+    }),
   });
 
-  const logoUri = getSplashLogoDataUri();
-  const logoMarkup = logoUri
-    ? `<img src="${logoUri}" alt="RMPG Flex" class="logo-img" draggable="false" />`
-    : `<div class="logo-fallback"><span>RMPG</span></div>`;
+  splashWindow.loadFile(SPLASH_PAGE_PATH).catch((err) => {
+    console.warn('[SPLASH] loadFile failed:', err && err.message);
+  });
 
-  const splashHTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: #e6e6e6;
-          height: 100vh;
-          overflow: hidden;
-          -webkit-app-region: drag;
-          position: relative;
-          /* Two-layer background: soft gold radial + charcoal base, framed */
-          background:
-            radial-gradient(ellipse at center, rgba(212,160,23,0.10) 0%, rgba(0,0,0,0) 65%),
-            linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
-          border: 1px solid #1a1a1a;
-          border-radius: 6px;
-          box-shadow:
-            inset 0 0 0 1px rgba(212,160,23,0.18),
-            0 0 0 1px rgba(0,0,0,0.5),
-            0 18px 40px rgba(0,0,0,0.6);
-        }
-        /* Subtle drifting grid */
-        body::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background:
-            linear-gradient(rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px,
-            linear-gradient(90deg, rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px;
-          mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-          -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-          pointer-events: none;
-          animation: grid-drift 22s linear infinite;
-        }
-        @keyframes grid-drift {
-          0%   { background-position: 0 0, 0 0; }
-          100% { background-position: 32px 32px, 32px 32px; }
-        }
-        /* HUD corner brackets */
-        .corner {
-          position: absolute;
-          width: 18px;
-          height: 18px;
-          pointer-events: none;
-          opacity: 0.85;
-          animation: corner-pulse 3.6s ease-in-out infinite;
-        }
-        .corner::before, .corner::after {
-          content: '';
-          position: absolute;
-          background: #d4a017;
-          box-shadow: 0 0 6px rgba(212,160,23,0.5);
-        }
-        .corner::before { top: 0; left: 0; width: 12px; height: 1.5px; }
-        .corner::after  { top: 0; left: 0; width: 1.5px; height: 12px; }
-        .corner.tl { top: 10px; left: 10px; }
-        .corner.tr { top: 10px; right: 10px; transform: scaleX(-1); }
-        .corner.bl { bottom: 10px; left: 10px; transform: scaleY(-1); }
-        .corner.br { bottom: 10px; right: 10px; transform: scale(-1); }
-        @keyframes corner-pulse {
-          0%, 100% { opacity: 0.55; }
-          50% { opacity: 1; }
-        }
-        /* Layout */
-        .stage {
-          position: relative;
-          z-index: 1;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 28px 24px 20px;
-        }
-        /* Logo block with rotating ring + pulse aura */
-        .logo-wrap {
-          position: relative;
-          width: 132px;
-          height: 132px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 18px;
-        }
-        .logo-wrap::before {
-          /* Pulse aura behind logo */
-          content: '';
-          position: absolute;
-          inset: -8px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(212,160,23,0.35) 0%, rgba(212,160,23,0) 65%);
-          filter: blur(4px);
-          animation: aura-pulse 2.6s ease-in-out infinite;
-        }
-        .logo-wrap::after {
-          /* Rotating gold arc ring */
-          content: '';
-          position: absolute;
-          inset: -2px;
-          border-radius: 50%;
-          background: conic-gradient(from 0deg,
-            rgba(212,160,23,0) 0deg,
-            rgba(212,160,23,0.05) 30deg,
-            rgba(212,160,23,0.95) 70deg,
-            rgba(212,160,23,0.05) 110deg,
-            rgba(212,160,23,0) 140deg,
-            rgba(212,160,23,0) 360deg);
-          mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
-          -webkit-mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
-          animation: ring-spin 2.8s linear infinite;
-        }
-        @keyframes aura-pulse {
-          0%, 100% { opacity: 0.5; transform: scale(0.95); }
-          50%      { opacity: 1;   transform: scale(1.08); }
-        }
-        @keyframes ring-spin {
-          to { transform: rotate(360deg); }
-        }
-        .logo-img {
-          position: relative;
-          z-index: 2;
-          width: 96px;
-          height: 96px;
-          object-fit: contain;
-          filter: drop-shadow(0 0 12px rgba(212,160,23,0.45));
-          animation: logo-float 6s ease-in-out infinite;
-        }
-        .logo-fallback {
-          position: relative;
-          z-index: 2;
-          width: 96px;
-          height: 96px;
-          border: 2px solid #d4a017;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .logo-fallback span {
-          font-size: 26px;
-          font-weight: 900;
-          letter-spacing: 2px;
-          color: #d4a017;
-        }
-        @keyframes logo-float {
-          0%, 100% { transform: translateY(0); }
-          50%      { transform: translateY(-3px); }
-        }
-        /* Title block */
-        h1 {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: 6px;
-          text-transform: uppercase;
-          color: #f0f0f0;
-          margin-bottom: 5px;
-          text-shadow: 0 0 12px rgba(212,160,23,0.25);
-        }
-        .subtitle {
-          font-size: 9px;
-          color: #888;
-          text-transform: uppercase;
-          letter-spacing: 4px;
-          margin-bottom: 20px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .subtitle::before, .subtitle::after {
-          content: '';
-          height: 1px;
-          width: 22px;
-          background: linear-gradient(90deg, transparent, #d4a017, transparent);
-        }
-        /* Indeterminate progress bar */
-        .progress-track {
-          position: relative;
-          width: 240px;
-          height: 3px;
-          background: rgba(212,160,23,0.10);
-          border-radius: 1px;
-          overflow: hidden;
-          margin-bottom: 14px;
-          box-shadow: inset 0 0 0 1px rgba(212,160,23,0.18);
-        }
-        .progress-bar {
-          position: absolute;
-          top: 0;
-          left: -40%;
-          width: 40%;
-          height: 100%;
-          background: linear-gradient(90deg,
-            rgba(212,160,23,0) 0%,
-            rgba(212,160,23,0.5) 35%,
-            rgba(212,160,23,1) 50%,
-            rgba(212,160,23,0.5) 65%,
-            rgba(212,160,23,0) 100%);
-          box-shadow: 0 0 8px rgba(212,160,23,0.6);
-          animation: progress-slide 1.6s ease-in-out infinite;
-        }
-        @keyframes progress-slide {
-          0%   { left: -40%; }
-          100% { left: 100%; }
-        }
-        /* Status line */
-        .status {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 9px;
-          color: #b8924a;
-          text-transform: uppercase;
-          letter-spacing: 2.5px;
-        }
-        .status .dot {
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
-          background: #d4a017;
-          box-shadow: 0 0 6px #d4a017;
-          animation: status-blink 1.6s ease-in-out infinite;
-        }
-        @keyframes status-blink {
-          0%, 100% { opacity: 0.3; }
-          50%      { opacity: 1; }
-        }
-        .status .ellipsis::after {
-          content: '';
-          display: inline-block;
-          width: 12px;
-          text-align: left;
-          animation: ellipsis 1.4s steps(4, end) infinite;
-        }
-        @keyframes ellipsis {
-          0%   { content: ''; }
-          25%  { content: '.'; }
-          50%  { content: '..'; }
-          75%  { content: '...'; }
-          100% { content: ''; }
-        }
-        /* Version badge bottom */
-        .version {
-          position: absolute;
-          bottom: 12px;
-          right: 14px;
-          font-size: 8px;
-          letter-spacing: 2px;
-          color: rgba(212,160,23,0.55);
-          text-transform: uppercase;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
-        .build-tag {
-          position: absolute;
-          bottom: 12px;
-          left: 14px;
-          font-size: 8px;
-          letter-spacing: 2px;
-          color: rgba(255,255,255,0.25);
-          text-transform: uppercase;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="corner tl"></div>
-      <div class="corner tr"></div>
-      <div class="corner bl"></div>
-      <div class="corner br"></div>
-
-      <div class="stage">
-        <div class="logo-wrap">
-          ${logoMarkup}
-        </div>
-        <h1>RMPG Flex</h1>
-        <p class="subtitle">CAD &middot; RMS Dispatch System</p>
-
-        <div class="progress-track">
-          <div class="progress-bar"></div>
-        </div>
-
-        <div class="status">
-          <span class="dot"></span>
-          <span>Establishing Secure Uplink<span class="ellipsis"></span></span>
-        </div>
-      </div>
-
-      <div class="build-tag">RMPG-PRIMARY</div>
-      <div class="version">v${app.getVersion ? app.getVersion() : '5.8.2'}</div>
-    </body>
-    </html>
-  `)}`;
-
-  splashWindow.loadURL(splashHTML).catch((err) => {
-    console.warn('[SPLASH] loadURL failed:', err && err.message);
+  // Inject the RMPG logo into the boot phase once the page is ready.
+  splashWindow.webContents.once('did-finish-load', () => {
+    const logoUri = getSplashLogoDataUri();
+    if (logoUri && splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.executeJavaScript(
+        `(function(){
+          var img = document.getElementById('boot-logo');
+          var fallback = document.getElementById('boot-logo-fallback');
+          if (img) { img.src = ${JSON.stringify(logoUri)}; img.style.display = ''; }
+          if (fallback) { fallback.style.display = 'none'; }
+        })();`
+      ).catch(() => {});
+    }
   });
 }
 
@@ -704,6 +440,75 @@ function startSplashTimeout(maxMs = 15000) {
       mainWindow.focus();
     }
   }, maxMs);
+}
+
+/**
+ * Reads the signed-in Windows account name and profile picture for display
+ * on the startup lock screen. Runs once at boot; result cached in
+ * cachedWindowsAccountInfo. Returns null on non-win32 or any error.
+ */
+async function getWindowsAccountInfo() {
+  if (cachedWindowsAccountInfo !== undefined) return cachedWindowsAccountInfo;
+  if (process.platform !== 'win32') {
+    cachedWindowsAccountInfo = null;
+    return null;
+  }
+
+  const { promisify } = require('util');
+  const execFileAsync = promisify(require('child_process').execFile);
+  const os = require('os');
+  const fsMod = require('fs');
+  const pathMod = require('path');
+
+  let name = os.userInfo().username;
+  let fullName = null;
+  let avatarDataUri = null;
+
+  // 1. Get full name from Get-LocalUser (3s timeout — WMI starts during boot)
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-LocalUser $env:USERNAME | Select-Object Name,FullName | ConvertTo-Json'],
+      { timeout: 3000, windowsHide: true }
+    );
+    const parsed = JSON.parse(stdout.trim());
+    if (parsed && typeof parsed.Name === 'string' && parsed.Name) name = parsed.Name;
+    if (parsed && typeof parsed.FullName === 'string' && parsed.FullName.trim()) {
+      fullName = parsed.FullName.trim();
+    }
+  } catch (err) {
+    console.warn('[ACCOUNT] Get-LocalUser failed:', err.message);
+  }
+
+  // 2. Find account picture — pick the largest PNG/JPG by file size
+  try {
+    const picDir = pathMod.join(
+      process.env.USERPROFILE || os.homedir(),
+      'AppData', 'Roaming', 'Microsoft', 'Windows', 'AccountPictures'
+    );
+    if (fsMod.existsSync(picDir)) {
+      const files = fsMod.readdirSync(picDir)
+        .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+        .map((f) => {
+          const full = pathMod.join(picDir, f);
+          return { full, size: fsMod.statSync(full).size };
+        })
+        .sort((a, b) => b.size - a.size);
+      if (files.length > 0) {
+        const best = files[0].full;
+        const ext = pathMod.extname(best).slice(1).toLowerCase();
+        const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/png';
+        const b64 = fsMod.readFileSync(best).toString('base64');
+        avatarDataUri = `data:${mime};base64,${b64}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[ACCOUNT] Avatar lookup failed:', err.message);
+  }
+
+  cachedWindowsAccountInfo = { name, fullName, avatarDataUri };
+  return cachedWindowsAccountInfo;
 }
 
 // ─── Server Connectivity Check ──────────────────────────────
@@ -2159,6 +1964,8 @@ const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minut
 // It gets the local-file guard instead, allow-listing exactly this one page.
 const KIOSK_ESCAPE_PAGE_PATH = path.join(__dirname, 'kioskEscape.html');
 const { guardedHandle: guardedLocalFileHandle } = createLocalFileIpcGuards(ipcMain, [KIOSK_ESCAPE_PAGE_PATH]);
+const SPLASH_PAGE_PATH = path.join(__dirname, 'splash.html');
+const { guardedOn: guardedSplashOn } = createLocalFileIpcGuards(ipcMain, [SPLASH_PAGE_PATH]);
 
 function openKioskEscapeWindow() {
   if (kioskEscapeWindow) { kioskEscapeWindow.focus(); return; }
