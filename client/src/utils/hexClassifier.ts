@@ -73,6 +73,25 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // used to assign a consistent avatar background per officer login name. These
   // are categorical identity values, not theme chrome.
   accentColorPicker: /(^|\/)DesktopSystemPreferences\.tsx$|(^|\/)DesktopLockScreen\.tsx$/,
+  // Document Writer generates HTML content that is inserted into a TipTap rich-
+  // text editor and later exported to standalone HTML, a print iframe, RTF, or
+  // .docx. In every one of those contexts CSS variables do not resolve — the
+  // print iframe is a fresh document with no app stylesheet, exported HTML/RTF
+  // are standalone files, and docx has its own color model. The hex values
+  // therefore define the visual appearance of the OUTPUT DOCUMENT (borders on
+  // police forms, gold letterhead line, redaction blocks, evidence stamps, etc.)
+  // rather than the app's UI chrome, and must remain literal — equivalent to
+  // the jsPDF/pdf-lib case above.
+  //
+  // DocumentWriterPage.tsx is covered by the same rule: its hex values are either
+  // (a) print iframe CSS that never runs in the app stylesheet context, or
+  // (b) pageBg/textColor variables that carry an inline comment explaining why
+  //     literals are required there ("This is a LITERAL on purpose").
+  //
+  // types.ts background default (#ffffff) and AppearanceDialog.tsx color-picker
+  // default (#ffffff) are document configuration values / input defaults, not
+  // theme colors.
+  documentWriterContent: /(^|\/)document-writer\/(?!components\/)/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

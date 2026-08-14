@@ -97,7 +97,7 @@ export default function Minimap({
         <div
           ref={holderRef}
           className="writer-content pointer-events-none origin-top-left"
-          style={{ width: pageW, transform: `scale(${scale})`, color: '#111', padding: '16px' }}
+          style={{ width: pageW, transform: `scale(${scale})`, color: 'var(--text-primary)', padding: '16px' }}
         />
         {/* Viewport indicator. */}
         <div
