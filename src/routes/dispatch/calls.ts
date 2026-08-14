@@ -13,7 +13,7 @@ import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
-import { assignStackGroup } from '../../utils/stackSync';
+import { assignStackGroup, leaveStackGroup, reassignStackGroup, syncToStack, type SyncFields } from '../../utils/stackSync';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
