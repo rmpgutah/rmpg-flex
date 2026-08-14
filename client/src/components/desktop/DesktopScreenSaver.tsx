@@ -113,17 +113,17 @@ export default function DesktopScreenSaver({ isActive, onDismiss }: DesktopScree
       >
         {/* Agency shield */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
-          <Shield style={{ width: 20, height: 20, color: 'rgba(195,204,214,0.4)' }} />
-          <span style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(195,204,214,0.4)', fontWeight: 600 }}>
+          <Shield style={{ width: 20, height: 20, color: 'rgba(var(--accent-silver-400-rgb),0.4)' }} />
+          <span style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(var(--accent-silver-400-rgb),0.4)', fontWeight: 600 }}>
             Rocky Mountain Protective Group
           </span>
         </div>
 
         {/* Clock */}
-        <div style={{ fontSize: 64, fontWeight: 200, letterSpacing: '-0.02em', lineHeight: 1, color: 'rgba(240,244,249,0.85)', fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 64, fontWeight: 200, letterSpacing: '-0.02em', lineHeight: 1, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {time}
         </div>
-        <div style={{ fontSize: 13, marginTop: 6, color: 'rgba(195,204,214,0.5)', letterSpacing: '0.06em' }}>
+        <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
           {date}
         </div>
 
@@ -159,11 +159,11 @@ export default function DesktopScreenSaver({ isActive, onDismiss }: DesktopScree
 function StatPill({ icon, label, value, critical }: { icon: React.ReactNode; label: string; value: number | string; critical?: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: critical ? 'rgba(239,68,68,0.7)' : 'rgba(195,204,214,0.4)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: critical ? 'rgba(var(--sev-critical-rgb),0.7)' : 'rgba(var(--accent-silver-400-rgb),0.4)' }}>
         {icon}
         <span style={{ fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</span>
       </div>
-      <span style={{ fontSize: 20, fontWeight: 200, color: critical ? 'rgba(239,68,68,0.8)' : 'rgba(240,244,249,0.5)', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontSize: 20, fontWeight: 200, color: critical ? 'rgba(var(--sev-critical-rgb),0.8)' : 'rgba(var(--accent-silver-400-rgb),0.5)', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </span>
     </div>
