@@ -187,6 +187,7 @@ import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import serveManagerRoutes from './routes/serveManagerRoutes';
 import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
+import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
@@ -321,6 +322,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // '/api/serve-receipt' matches neither.
   { prefix: '/api/serve-receipt', router: serveReceipt, auth: 'public',
     note: 'Token-authed recipient signature capture; token burned on signature. Migration 0207.' },
+  { prefix: '/api/verify', router: serveQrScan, auth: 'public',
+    note: 'QR code scan handler — subject-facing; logs scan, notifies assigned officer, no auth required. Migration 0247.' },
 
   // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
   // own CFS). Auth-gated like the rest of the app; /local reads our DB.

@@ -98,6 +98,7 @@ const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
 const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 const ServeReceiptPage = lazyRetry(() => import('./pages/mobile/ServeReceiptPage'));
+const VerifyNoticePage = lazyRetry(() => import('./pages/VerifyNoticePage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const DesktopPage = lazyRetry(() => import('./pages/DesktopPage'));
 const WebCompanyBrowserPage = lazyRetry(() => import('./pages/WebCompanyBrowserPage'));
@@ -553,6 +554,7 @@ function AppRoutes() {
               IS the credential and is burned on signature — the signer is a
               member of the public and will never have a session. */}
           <Route path="/m/serve-receipt/:token" element={<ServeReceiptPage />} />
+          <Route path="/verify" element={<VerifyNoticePage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
