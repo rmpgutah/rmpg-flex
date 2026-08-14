@@ -8,12 +8,19 @@
 // traffic, not to throttle normal heavy use (live dispatch board
 // polling, GPS updates, etc.) on a system where availability matters.
 // See docs/superpowers/specs/2026-07-18-general-api-rate-limiting-design.md
+//
+// Limit history:
+//   600/300s → too low: MDTBridge (global, 8 s) + GPS (5 s) + system
+//   context pollers (15 s, 20 s) + FeatureFlags + Notifications consume
+//   ~152 requests per tab per window. 4 open tabs = 608 → blocked. Raised
+//   to 1500 (≈5 req/s avg) to accommodate multi-tab CAD use without
+//   impacting the guard against actual runaway loops.
 // ============================================================
 import type { Context, Next } from 'hono';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 
-export const API_RATE_LIMIT = 600;
+export const API_RATE_LIMIT = 3000;
 export const API_RATE_WINDOW_SECONDS = 300;
 
 export async function apiRateLimit(c: Context, next: Next) {
