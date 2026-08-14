@@ -15,5 +15,16 @@ export default defineConfig({
     // test file re-shards the workers and unrelated pages start "failing".
     // A real hang still fails, just later.
     testTimeout: 20_000,
+    // Use worker_threads instead of child-process forks so the whole pool shares
+    // one V8 heap (bounded by NODE_OPTIONS --max-old-space-size=4096 in CI).
+    // Forks give each worker its own heap — N forks × heap-limit easily overflows
+    // the 7 GB available on ubuntu-latest runners (confirmed OOM on PR #3528).
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        maxThreads: 2,
+        minThreads: 1,
+      },
+    },
   },
 });
