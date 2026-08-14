@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { Search, ChevronDown, ChevronRight, Flag } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { formatDate } from '../../../utils/dateUtils';
 
 interface Warrant {
   id: number;
@@ -216,7 +217,7 @@ export default function DesktopWarrantSearch({ onClose: _onClose }: Props) {
                     </td>
                     <td style={{ ...td, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.charge ?? '—'}</td>
                     <td style={td}>{w.issuing_court ?? '—'}</td>
-                    <td style={td}>{w.issue_date ?? w.created_at?.slice(0, 10) ?? '—'}</td>
+                    <td style={td}>{formatDate(w.issue_date ?? w.created_at) || '—'}</td>
                   </tr>
                   {expanded === w.id && (
                     <tr>
