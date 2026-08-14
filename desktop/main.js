@@ -924,6 +924,7 @@ async function createMainWindow() {
     ...(useKioskChrome
       ? { kiosk: true, frame: false, fullscreen: true, autoHideMenuBar: true }
       : {
+          fullscreen: process.platform === 'win32',
           width: 1440,
           height: 900,
           ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
@@ -4457,6 +4458,16 @@ app.whenReady().then(async () => {
   appReady = true;
   console.log('[APP] Starting RMPG Flex...');
   console.log('[APP] Mode:', DEV_MODE ? 'development' : 'production');
+
+  // On Windows (non-kiosk), register as a startup app so FlexOS launches on every boot.
+  // This is set once and persists — the user can toggle it off via Settings > System.
+  if (process.platform === 'win32' && !DEV_MODE) {
+    const currentSettings = app.getLoginItemSettings();
+    if (!currentSettings.openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true });
+      console.log('[APP] Registered RMPG Flex as a Windows startup app');
+    }
+  }
   console.log('[APP] Platform:', process.platform, process.arch);
   console.log('[APP] Server:', REMOTE_SERVER_URL);
 

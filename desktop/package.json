@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.8.8",
+  "version": "5.8.9",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -34,6 +34,8 @@
       "kioskShell.js",
       "kioskEscapePreload.js",
       "kioskEscape.html",
+      "splashPreload.js",
+      "splash.html",
       "updater.js",
       "localDb.js",
       "connectivityMonitor.js",
