@@ -73,25 +73,17 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // used to assign a consistent avatar background per officer login name. These
   // are categorical identity values, not theme chrome.
   accentColorPicker: /(^|\/)DesktopSystemPreferences\.tsx$|(^|\/)DesktopLockScreen\.tsx$/,
-  // Document Writer generates HTML content that is inserted into a TipTap rich-
-  // text editor and later exported to standalone HTML, a print iframe, RTF, or
-  // .docx. In every one of those contexts CSS variables do not resolve — the
-  // print iframe is a fresh document with no app stylesheet, exported HTML/RTF
-  // are standalone files, and docx has its own color model. The hex values
-  // therefore define the visual appearance of the OUTPUT DOCUMENT (borders on
-  // police forms, gold letterhead line, redaction blocks, evidence stamps, etc.)
-  // rather than the app's UI chrome, and must remain literal — equivalent to
-  // the jsPDF/pdf-lib case above.
-  //
-  // DocumentWriterPage.tsx is covered by the same rule: its hex values are either
-  // (a) print iframe CSS that never runs in the app stylesheet context, or
-  // (b) pageBg/textColor variables that carry an inline comment explaining why
-  //     literals are required there ("This is a LITERAL on purpose").
-  //
-  // types.ts background default (#ffffff) and AppearanceDialog.tsx color-picker
-  // default (#ffffff) are document configuration values / input defaults, not
-  // theme colors.
+  // Document Writer generates HTML content exported to standalone HTML, print
+  // iframes, RTF, or .docx where CSS variables do not resolve. Hex defines the
+  // output document appearance (police form borders, letterhead, stamps), not
+  // app chrome. components/ subdirectory stays in-scope (DOM-rendering React).
   documentWriterContent: /(^|\/)document-writer\/(?!components\/)/,
+  // Admin config tabs whose hex literals are stored data values, not CSS chrome:
+  // AdminMapSettingsTab — Mapbox paint color defaults (CSS vars blank vector layers).
+  // AdminSystemTab — color picker defaults persisted to D1 (var() writes literal string).
+  // AdminRadioTab — COLOR_SWATCHES for <input type="color"> stored to API as hex.
+  // AdminSkipTracerV2Tab — categorical identity colors per skip-tracer source.
+  adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

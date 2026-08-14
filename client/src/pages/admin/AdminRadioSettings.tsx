@@ -219,7 +219,7 @@ export default function AdminRadioSettings() {
       </div>
 
       {error && (
-        <div className="bg-[#1a0a0a] border border-[#3d1414] text-red-400 text-xs px-3 py-2 rounded-sm">{error}</div>
+        <div className="bg-red-900/20 border border-red-700/40 text-red-400 text-xs px-3 py-2 rounded-sm">{error}</div>
       )}
 
       {/* ── AI Dispatcher ── */}
