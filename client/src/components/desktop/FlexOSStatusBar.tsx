@@ -42,7 +42,7 @@ function Metric({
         alignItems: 'center',
         gap: 5,
         padding: '0 10px',
-        borderRight: '1px solid rgba(195,204,214,0.08)',
+        borderRight: '1px solid rgba(var(--accent-silver-400-rgb),0.08)',
       }}
     >
       <Icon
@@ -113,10 +113,10 @@ export default function FlexOSStatusBar() {
         right: 0,
         height: STATUS_BAR_HEIGHT,
         ...positionStyle,
-        background: 'rgba(15,32,53,0.82)',
+        background: 'rgba(var(--surface-overlay-rgb),0.82)',
         backdropFilter: 'blur(6px)',
-        borderTop: taskbarPos === 'top' ? 'none' : '1px solid rgba(195,204,214,0.06)',
-        borderBottom: taskbarPos === 'top' ? '1px solid rgba(195,204,214,0.06)' : 'none',
+        borderTop: taskbarPos === 'top' ? 'none' : '1px solid rgba(var(--accent-silver-400-rgb),0.06)',
+        borderBottom: taskbarPos === 'top' ? '1px solid rgba(var(--accent-silver-400-rgb),0.06)' : 'none',
         display: 'flex',
         alignItems: 'center',
         zIndex: 990,
@@ -129,7 +129,7 @@ export default function FlexOSStatusBar() {
         alignItems: 'center',
         gap: 5,
         padding: '0 10px',
-        borderRight: '1px solid rgba(195,204,214,0.08)',
+        borderRight: '1px solid rgba(var(--accent-silver-400-rgb),0.08)',
       }}>
         <ShieldCheck style={{ width: 10, height: 10, color: 'var(--accent-silver-400)' }} />
         <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400)' }}>
