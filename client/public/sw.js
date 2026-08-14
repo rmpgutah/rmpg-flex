@@ -108,6 +108,9 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // v478: Spillman CAD console (P1 structural replica) — command line +
 //       three status grids on Dispatch, toggle key rmpg_dispatch_cad_board.
+// v1103: Background sync (gps-flush tag) — flushes unsynced IDB GPS fixes to
+//        /api/dispatch/gps in ≤500-fix chunks when the device reconnects,
+//        even if the RMPG Flex tab is closed. Replaces localStorage failover.
 // ============================================================
 
 // 'rmpg-flex-BUILD' is a placeholder — the stamp-sw-version plugin in
@@ -352,6 +355,72 @@ async function purgeCachedShell() {
     );
   } catch (e) {
     /* best effort — never let self-heal break the fetch path */
+  }
+}
+
+// ── Background sync: flush unsynced GPS fixes on reconnect ───────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag !== 'gps-flush') return;
+  event.waitUntil(flushGpsFixes());
+});
+
+async function flushGpsFixes() {
+  let db;
+  try {
+    db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('rmpg-gps', 1);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return; // IDB unavailable — nothing to flush
+  }
+
+  const fixes = await new Promise((resolve) => {
+    const tx = db.transaction('fixes', 'readonly');
+    const idx = tx.objectStore('fixes').index('synced');
+    const req = idx.getAll(0);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve([]);
+  });
+
+  if (!fixes || fixes.length === 0) return;
+
+  // Batch in chunks of 500 to stay within server limits
+  for (let i = 0; i < fixes.length; i += 500) {
+    const chunk = fixes.slice(i, i + 500);
+    const points = chunk.map((f) => ({
+      latitude: f.lat, longitude: f.lng,
+      accuracy: f.accuracy, heading: f.heading,
+      speed: f.speed, timestamp: new Date(f.ts).toISOString(),
+      source: f.source,
+    }));
+
+    let ok = false;
+    try {
+      const res = await fetch('/api/dispatch/gps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points }),
+        credentials: 'include',
+      });
+      ok = res.ok;
+    } catch {
+      throw new Error('GPS flush network failure — sync will retry');
+    }
+
+    if (ok) {
+      const ids = chunk.map((f) => f.id);
+      await new Promise((resolve) => {
+        const tx = db.transaction('fixes', 'readwrite');
+        const store = tx.objectStore('fixes');
+        ids.forEach((id) => {
+          const req = store.get(id);
+          req.onsuccess = () => { if (req.result) store.put({ ...req.result, synced: 1 }); };
+        });
+        tx.oncomplete = resolve;
+      });
+    }
   }
 }
 

@@ -533,6 +533,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           ...prev,
           error: errMsg,
         }));
+        if ('serviceWorker' in navigator && 'SyncManager' in window) {
+          navigator.serviceWorker.ready
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .then((reg) => (reg as any).sync.register('gps-flush'))
+            .catch(() => {});
+        }
       }
     } finally {
       isSendingRef.current = false;
