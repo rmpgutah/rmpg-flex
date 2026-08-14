@@ -91,8 +91,10 @@ jobs:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    # Was 5, bumped to 15 on PR #2998. Bumped to 25 on PR #3528 — 100 new
-    # desktop component files pushed cold Vite SSR transform past the 15min cap.
+    # Was 5, bumped to 15 on PR #2998. Bumped to 25 on PR #3528.
+    # Desktop component tests run in a SEPARATE job (client-tests-desktop) so
+    # the cumulative module cache across 590 files doesn't exhaust the 7 GB
+    # runner RAM — both jobs stay well within limits when split.
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
@@ -102,7 +104,24 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run
+      - run: cd client && npx vitest run --exclude 'src/components/desktop/**'
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+  client-tests-desktop:
+    name: Client tests (desktop)
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run 'src/components/desktop/**'
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
