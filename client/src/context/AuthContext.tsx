@@ -4,6 +4,7 @@ import { resetVoiceState } from '../utils/voiceAlerts';
 import { playStartupSound } from '../utils/startupSound';
 import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
 import { importWithRetry } from '../utils/importWithRetry';
+import { warmOfflineCache } from '../utils/offlineCacheWarm';
 
 export type LoginStep =
   | 'username'
@@ -245,8 +246,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // render optimistically (see initialOptimisticUser). Centralized here so all
   // login/refresh paths are covered; cleared on logout (setUser(null)).
   useEffect(() => {
-    if (user) writeCachedUser(user);
-    else { try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ } }
+    if (user) {
+      writeCachedUser(user);
+      // Pre-populate the SW API cache so all pages have stale data available
+      // if the device goes offline before the officer visits each page.
+      // Fire-and-forget — never blocks login, never retries on failure.
+      warmOfflineCache();
+    } else {
+      try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ }
+    }
+  }, [user]);
+
+  // Re-warm the SW API cache when the device reconnects so stale data
+  // refreshes automatically after an offline period.
+  useEffect(() => {
+    if (!user) return;
+    const handleOnline = () => warmOfflineCache();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
   }, [user]);
 
   // Best-effort device GPS attach, once per session — fires only through
