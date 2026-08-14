@@ -2191,7 +2191,11 @@ export type WSMessageType =
   // Speed tracking
   | 'speed:alert'
   | 'geofence:alert'
-  | 'officer_on_foot_overdue';
+  | 'officer_on_foot_overdue'
+  // Smart automation engine — fired by server or client-side rule evaluation.
+  // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
+  //            trigger_lat?, trigger_lng?, context? }
+  | 'automation_alert';
 
 export interface WSMessage {
   type: WSMessageType;
