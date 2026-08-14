@@ -12,6 +12,7 @@ import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { normalizeDesktopWidgets, serializeDesktopWidgets } from '../utils/normalizeDesktopWidgets';
 import { sortIconPositions, snapToGrid, nextAutoArrangeSlot } from '../utils/desktopLayoutOps';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden, setIconsHidden } from '../utils/desktopIconPreferences';
+import { hasBeenSeeded, markSeeded, getDefaultPinsForRole } from '../utils/defaultModulePins';
 import DesktopWallpaper from '../components/desktop/DesktopWallpaper';
 import { DesktopWindowManagerProvider, useDesktopWindows } from '../components/desktop/DesktopWindowManager';
 import { DesktopSystemProvider } from '../context/DesktopSystemContext';
@@ -210,6 +211,20 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
 
   const [, forceRerender] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
+
+  // Auto-pin role-appropriate defaults on first boot so the desktop is never empty.
+  useEffect(() => {
+    if (!user?.role || hasBeenSeeded()) return;
+    const defaults = getDefaultPinsForRole(user.role);
+    setFavorites(prev => {
+      const next = new Set(prev);
+      defaults.forEach(path => next.add(path));
+      saveFavorites(next);
+      return next;
+    });
+    markSeeded();
+  }, [user?.role]);
+
   const pinnedIcons: NavFunction[] = useMemo(
     () => allFunctions.filter(fn => favorites.has(fn.path)),
     [allFunctions, favorites],
