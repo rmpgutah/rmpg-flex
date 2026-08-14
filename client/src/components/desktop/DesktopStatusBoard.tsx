@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 interface UnitRow {
   id: number;
@@ -23,7 +24,7 @@ function statusLabel(s: string): string {
 
 function gpsAge(ts: string | undefined): string {
   if (!ts) return '—';
-  const ms = Date.now() - new Date(ts).getTime();
+  const ms = Date.now() - parseTimestamp(ts).getTime();
   const min = Math.floor(ms / 60000);
   if (min < 1) return '<1m';
   if (min < 60) return `${min}m`;
