@@ -17,12 +17,12 @@
 //   Escape     — cascade: close ConfirmDialog → cancel key capture
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import {
   Mic, Map as MapIcon, Volume2, Gauge, SlidersHorizontal,
   Play, RotateCcw, Radio, Crosshair, MapPin, RadioTower,
-  Monitor, CheckCircle2,
+  Monitor, CheckCircle2, Zap,
 } from 'lucide-react';
 import {
   playSound, resetToneMap, getSlotSound, setSlotSound,
@@ -54,6 +54,7 @@ import {
   LEGACY_FLAG_KEY, isBlueSilverForced, BLUE_SILVER_FLAG_KEY,
 } from '../utils/theme';
 import { useUserPreferences } from '../context/UserPreferencesContext';
+import AutomationRuleEditor from '../components/AutomationRuleEditor';
 import { importWithRetry } from '../utils/importWithRetry';
 
 // ─── Reusable controls ──────────────────────────────────────
@@ -215,12 +216,83 @@ const EVENT_LABELS: { cat: VoiceEventCategory; label: string; desc: string }[] =
 // drift and gives us a safe whitelist for the URL param.
 const SECTION_IDS = [
   'display', 'voice', 'alerts', 'tones', 'ptt',
-  'map', 'overlays', 'gps', 'markers',
+  'map', 'overlays', 'gps', 'markers', 'automations',
 ] as const;
 type SectionId = typeof SECTION_IDS[number];
 
 function isSectionId(v: string | null): v is SectionId {
   return v != null && (SECTION_IDS as readonly string[]).includes(v);
+}
+
+interface AutomationRule {
+  id: number;
+  name: string;
+  scope: 'global' | 'unit' | 'user';
+  trigger_type: string;
+  action_type: string;
+  enabled: number;
+}
+
+function MyAutomationsPanel() {
+  const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<AutomationRule | null>(null);
+
+  const fetchRules = useCallback(async () => {
+    const data = await apiFetch<{ rules: AutomationRule[] }>('/automation-rules').catch(() => null);
+    setRules((data?.rules ?? []).filter((r) => r.scope === 'user'));
+  }, []);
+
+  useEffect(() => { void fetchRules(); }, [fetchRules]);
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this rule?')) return;
+    await apiFetch(`/automation-rules/${id}`, { method: 'DELETE' }).catch(() => {});
+    void fetchRules();
+  };
+
+  if (creating || editing) {
+    return (
+      <AutomationRuleEditor
+        rule={editing ?? undefined}
+        adminMode={false}
+        onSaved={() => { setCreating(false); setEditing(null); void fetchRules(); }}
+        onCancel={() => { setCreating(false); setEditing(null); }}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] text-rmpg-500 px-3 pb-1">
+        Personal rules only fire for you. Set up proximity alerts or personal welfare reminders.
+      </p>
+      {rules.map((r) => (
+        <div key={r.id} className="flex items-center justify-between bg-surface-raised border border-surface-border px-3 py-[3px]" style={{ borderRadius: 2 }}>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.enabled ? 'bg-sev-ok' : 'bg-rmpg-600'}`} />
+            <span className="text-[11px] text-text-primary truncate">{r.name}</span>
+            <span className="text-[10px] text-rmpg-500 flex-shrink-0">
+              {r.trigger_type.replace(/_/g, ' ')} → {r.action_type.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <div className="flex gap-2 flex-shrink-0 pl-3">
+            <button onClick={() => setEditing(r)} className="text-[10px] text-rmpg-400 hover:text-text-primary">Edit</button>
+            <button onClick={() => void handleDelete(r.id)} className="text-[10px] text-rmpg-400 hover:text-sev-critical">Delete</button>
+          </div>
+        </div>
+      ))}
+      {rules.length === 0 && (
+        <p className="text-[10px] text-rmpg-600 px-3">No personal rules yet.</p>
+      )}
+      <button
+        onClick={() => setCreating(true)}
+        className="text-[11px] text-brand-400 hover:text-brand-300 px-3 pt-1 flex items-center gap-1"
+      >
+        + Add personal rule
+      </button>
+    </div>
+  );
 }
 
 export default function SettingsPage() {
@@ -838,6 +910,10 @@ export default function SettingsPage() {
           <p className="text-[10px] text-rmpg-500 px-1">
             Map changes apply live — to an open Map page and other tabs — no reload needed.
           </p>
+
+          <SectionCard id="automations" title="MY AUTOMATIONS" icon={Zap}>
+            <MyAutomationsPanel />
+          </SectionCard>
         </div>
       </div>
     </div>
