@@ -3,6 +3,7 @@ import { apiFetch } from './useApi';
 import {
   writeFix, loadUnsynced, markSynced, pruneOld, migrateFromLocalStorage,
 } from '../utils/gpsStore';
+import type { EvaluatorState, AutomationRule } from '../utils/automationEngine';
 
 // ============================================================
 // GPS Tracking Hook — 1-Second Breadcrumb Collection
@@ -407,6 +408,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const restartPendingRef = useRef(false);
   /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
   const gpsSourceRef = useRef<string>('browser');
+
+  // ─── Automation engine ───────────────────────────────────
+  // State persists across re-renders; never triggers React re-renders.
+  const evaluatorStateRef = useRef<EvaluatorState>({
+    lastFired: {},
+    lastFix: null,
+    lastMovedTs: Date.now(),
+    assignedCallLatLng: null,
+  });
+  const automationRulesRef = useRef<AutomationRule[]>([]);
+  // Bridge: the consuming component wires its addToast() in here so the hook
+  // can surface notifications without being inside a ToastProvider itself.
+  const addToastRef = useRef<((msg: string, type: string, duration?: number) => void) | null>(null);
   /** True once we've confirmed the host is a Toughbook (FZ-55) with a live
    *  internal GPS stream. Internal NMEA is PRIMARY; navigator.geolocation
    *  continues to run as a SECONDARY fallback for when GPS lock is lost
@@ -448,6 +462,14 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         console.warn('[useGpsTracking] Unit fetch failed (user may not have a unit assigned):', err);
       });
     return () => { cancelled = true; };
+  }, []);
+
+  // Load automation rules once on mount (lazy-import the engine for code-splitting).
+  useEffect(() => {
+    import('../utils/automationEngine').then(() => {}).catch(() => {});
+    apiFetch<{ rules: AutomationRule[] }>('/automation-rules')
+      .then((data) => { automationRulesRef.current = data?.rules ?? []; })
+      .catch(() => {});
   }, []);
 
   // ─── Batch send ───────────────────────────────────────────
@@ -814,6 +836,37 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         speed: point.speed,
         source: point.source,
       }).catch(() => { /* non-fatal */ });
+
+      // Evaluate automation rules (lazy import keeps initial bundle small).
+      import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
+        const fix = {
+          ts: new Date(point.timestamp).getTime(),
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
+          heading: point.heading,
+          speed: point.speed,
+          source: point.source,
+        };
+        updateMovementState(fix, evaluatorStateRef.current);
+        const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
+        for (const action of actions) {
+          if (action.localAction?.type === 'notify_officer') {
+            if (action.localAction.confirmCallback === 'mark_on_scene') {
+              addToastRef.current?.(
+                `${action.localAction.message} — tap to mark on scene`,
+                'info',
+                8000,
+              );
+            } else {
+              addToastRef.current?.(
+                action.localAction.message,
+                action.localAction.severity === 'critical' ? 'error' : 'info',
+              );
+            }
+          }
+        }
+      }).catch(() => {});
 
       // Opt-in exportable session track (separate from the upload queue, which
       // gets drained on every batch send).
@@ -1581,5 +1634,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     getCapturedTrack,
     clearCapturedTrack,
     exportTrack,
+    addToastRef,
   };
 }

@@ -26,6 +26,10 @@ export const useToast = () => {
   return context;
 };
 
+/** Like useToast but returns null instead of throwing when called outside ToastProvider.
+ *  Use only where the component may render before the provider is mounted. */
+export const useToastSafe = (): ToastContextValue | null => useContext(ToastContext) ?? null;
+
 const TOAST_CONFIG = {
   success: {
     bgClass: 'bg-[#0a1a0a]',
