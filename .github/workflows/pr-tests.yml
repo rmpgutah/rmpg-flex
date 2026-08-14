@@ -194,6 +194,28 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
+  # PDF test suite runs separately — jsPDF and pdf-lib have ~10 MB parsed ASTs
+  # each. When ~17 PDF test files cluster in one shard (by vitest's hash), their
+  # combined transform cache inflates past the 4 GB heap limit and OOMs the
+  # runner after all tests complete. Running them in their own job keeps the
+  # main shard cache lean (~64 files each instead of 97).
+  client-tests-pdf:
+    name: Client tests (PDF suite)
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --config vitest.pdf.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
   # Desktop component suite runs separately so its ~100 files don't skew
   # shard assignments for the main suite.
   client-tests-desktop:

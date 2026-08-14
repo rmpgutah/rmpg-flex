@@ -15,5 +15,25 @@ export default defineConfig({
     // test file re-shards the workers and unrelated pages start "failing".
     // A real hang still fails, just later.
     testTimeout: 20_000,
+    // Excluded sets run in their own dedicated CI jobs to prevent their heavy
+    // import chains (Mapbox, jsPDF, pdf-lib) from inflating the Vite transform
+    // cache in the parent vitest process past the 7 GB runner RAM limit.
+    // Keep these patterns in sync with vitest.desktop.config.ts and vitest.pdf.config.ts.
+    exclude: [
+      // → vitest.desktop.config.ts
+      'src/components/desktop/**',
+      // → vitest.pdf.config.ts
+      // jsPDF and pdf-lib are each ~10 MB parsed AST. 17 PDF tests per shard
+      // × those libraries = ~4 GB transform cache → OOM after tests complete.
+      'src/utils/pdf/**',
+      'src/lib/rmpg-pdf-engine/**',
+      'src/pages/pdf-editor/**',
+      'src/pages/document-writer/**',
+      'src/devtools/pdfGallery/**',
+      'src/**/*Pdf*.test.ts',
+      'src/**/*Pdf*.test.tsx',
+      'src/**/*pdf*.test.ts',
+      'src/**/*pdf*.test.tsx',
+    ],
   },
 });
