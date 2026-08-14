@@ -2185,6 +2185,7 @@ guardedHandle('os:return-to-windows', async (event, username, password) => {
       logSecurityAuditEvent('os:return-to-windows', 'error', { reason: 'registry_revert_failed', error: revert.error });
       return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Contact IT support for a manual registry revert.` };
     }
+    logSecurityAuditEvent('os:return-to-windows', 'success', { reason: 'registry_reverted', username });
     setConfig('kiosk_shell_enabled', false);
     setConfig('kiosk_boot_attempts', resetBootAttemptState());
     dialog.showMessageBoxSync({
