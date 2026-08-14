@@ -11,7 +11,7 @@ interface ReportRow {
 
 const STATUSES = ['submitted', 'under_evaluation', 'graded', 'analyzed', 'disseminated', 'recalled', 'archived', 'rejected'];
 const THREAT_COLOR: Record<string, string> = {
-  critical: 'var(--sev-critical)', high: 'var(--sev-warn)', medium: 'var(--sev-warn)', low: 'var(--text-muted)',
+  critical: 'var(--sev-critical)', high: 'var(--sev-warn)', medium: 'var(--sev-warn-soft)', low: 'var(--text-muted)',
 };
 
 export default function IntelReportsPage() {
@@ -79,7 +79,7 @@ export default function IntelReportsPage() {
                 {r.retention_status === 'due_review' && <span style={{ color: 'var(--sev-warn)' }}> ⚑</span>}</td>
               <td className="py-[2px]">{r.grade_label === 'UNGRADED' ? '—' : r.grade_label.split(' — ')[0]}</td>
               <td className="py-[2px]">{r.confidence || '—'}</td>
-              <td className="py-[2px] uppercase" style={{ color: THREAT_COLOR[r.threat_level] || '#888' }}>{formatEnumValue(r.threat_level)}</td>
+              <td className="py-[2px] uppercase" style={{ color: THREAT_COLOR[r.threat_level] || 'var(--text-muted)' }}>{formatEnumValue(r.threat_level)}</td>
             </tr>
           ))}
           {!rows.length && !loading && (
