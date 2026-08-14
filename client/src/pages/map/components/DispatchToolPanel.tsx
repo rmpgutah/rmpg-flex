@@ -284,7 +284,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   <button
                     type="button"
                     onClick={isochroneClear}
-                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-sev-critical transition-colors"
+                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[color:var(--sev-critical)] transition-colors"
                     style={{ background: 'var(--surface-base)', color: 'var(--text-muted)', borderRadius: 2 }}
                   >
                     Clear
