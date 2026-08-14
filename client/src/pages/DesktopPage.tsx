@@ -47,6 +47,9 @@ import DesktopSnippingTool from '../components/desktop/apps/DesktopSnippingTool'
 import DesktopCalendar from '../components/desktop/apps/DesktopCalendar';
 import DesktopNotepad from '../components/desktop/apps/DesktopNotepad';
 import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPreferences';
+import DesktopCommandPalette from '../components/desktop/DesktopCommandPalette';
+import DesktopCallTicker from '../components/desktop/DesktopCallTicker';
+import DesktopCalculator from '../components/desktop/apps/DesktopCalculator';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -90,7 +93,7 @@ function CadAutoOpen() {
 
 // Bridges keyboard shortcuts into the window manager + virtual desktop contexts.
 // Must be inside both DesktopWindowManagerProvider and VirtualDesktopProvider.
-function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef }: { onLock: () => void; onSettings: () => void; onOpenShortcutRef?: () => void }) {
+function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef, onOpenCommandPalette, onOpenCalculator }: { onLock: () => void; onSettings: () => void; onOpenShortcutRef?: () => void; onOpenCommandPalette?: () => void; onOpenCalculator?: () => void }) {
   const vd = useVirtualDesktop();
   const active = vd?.active ?? 0;
   const setActive = vd?.setActive;
@@ -101,8 +104,17 @@ function DesktopShortcutsInner({ onLock, onSettings, onOpenShortcutRef }: { onLo
       onPrevVirtualDesktop={() => setActive?.(active - 1)}
       onNextVirtualDesktop={() => setActive?.(active + 1)}
       onOpenShortcutRef={onOpenShortcutRef}
+      onOpenCommandPalette={onOpenCommandPalette}
+      onOpenCalculator={onOpenCalculator}
     />
   );
+}
+
+// Exposes openWindow from inside DesktopWindowManagerProvider via a ref.
+function OpenWindowBridge({ mountRef }: { mountRef: React.MutableRefObject<((path: string, title: string, size?: { width: number; height: number }) => boolean) | null> }) {
+  const { openWindow } = useDesktopWindows();
+  mountRef.current = openWindow;
+  return null;
 }
 
 type ArrangeHandles = { cascade: () => void; tileH: () => void; tileV: () => void };
@@ -125,8 +137,39 @@ function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<Arra
 // fetch is in flight. Otherwise the debounced save effect a few lines down
 // would silently PUT default-derived state back to the server on the user's
 // very next interaction, clobbering their real saved cross-device layout.
+// Draggable calculator floater — rendered inside DesktopWindowManagerProvider so
+// it can be stacked above windows via z-index without needing a full FloatingWindow.
+function CalculatorFloater({ onClose }: { onClose: () => void }) {
+  const [pos, setPos] = React.useState({ x: Math.max(0, window.innerWidth / 2 - 140), y: Math.max(0, window.innerHeight / 2 - 200) });
+  const dragRef = React.useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  function onMouseDown(e: React.MouseEvent) {
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return;
+      setPos({ x: dragRef.current.origX + ev.clientX - dragRef.current.startX, y: dragRef.current.origY + ev.clientY - dragRef.current.startY });
+    }
+    function onUp() { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  return (
+    <div style={{ position: 'fixed', left: pos.x, top: pos.y, width: 280, height: 400, zIndex: 12500, background: 'var(--surface-raised)', border: '1px solid var(--border-default)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
+      <div onMouseDown={onMouseDown} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', background: 'var(--surface-base)', borderBottom: '1px solid var(--border-subtle)', cursor: 'move', userSelect: 'none', flexShrink: 0 }}>
+        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)', flex: 1, letterSpacing: '0.04em' }}>Calculator</span>
+        <button type="button" onClick={onClose} aria-label="Close calculator" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}>×</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <DesktopCalculator />
+      </div>
+    </div>
+  );
+}
+
 function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: () => void }) {
   const arrangeRef = useRef<ArrangeHandles | null>(null);
+  const openWindowRef = useRef<((path: string, title: string, size?: { width: number; height: number }) => boolean) | null>(null);
   const { user, signOut } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -191,6 +234,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [sysPrefOpen, setSysPrefOpen] = useState(false);
   const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [callTickerEnabled, setCallTickerEnabled] = useState(() => localStorage.getItem('rmpg_call_ticker') !== '0');
   const isLocked = lockActive || manuallyLocked;
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
@@ -403,6 +449,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Schedule Calendar…', onClick: () => setCalendarOpen(true) },
             { label: 'Snipping Tool…', onClick: () => setSnippingOpen(true) },
             { label: 'System Info…', onClick: () => setSysDashboardOpen(true) },
+            { label: '', onClick: () => {}, divider: true },
+            { label: 'Command Palette…', onClick: () => setCommandPaletteOpen(true) },
+            { label: 'Calculator…', onClick: () => setCalculatorOpen(true) },
+            { label: callTickerEnabled ? 'Hide Call Ticker' : 'Show Call Ticker', onClick: () => setCallTickerEnabled(v => { localStorage.setItem('rmpg_call_ticker', v ? '0' : '1'); return !v; }) },
+            { label: '', onClick: () => {}, divider: true },
             { label: 'Lock Screen', onClick: () => setManuallyLocked(true) },
           ]}
         >
@@ -426,19 +477,23 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               ))}
               <DesktopWidgetPanel widgets={widgets} catalog={allFunctions} onMoveWidget={handleMoveWidget} onAdjustWidget={handleAdjustWidget} />
               <CadAutoOpen />
-              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} onOpenShortcutRef={() => setShortcutRefOpen(true)} />
+              <DesktopShortcutsInner onLock={() => setManuallyLocked(true)} onSettings={() => setWidgetSettingsOpen(true)} onOpenShortcutRef={() => setShortcutRefOpen(true)} onOpenCommandPalette={() => setCommandPaletteOpen(true)} onOpenCalculator={() => setCalculatorOpen(true)} />
               <WindowArrangeSync mountRef={arrangeRef} />
+              <OpenWindowBridge mountRef={openWindowRef} />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
           </div>
         </ContextMenu>
+        {callTickerEnabled && <DesktopCallTicker onOpenCall={(id) => openWindowRef.current?.(`/dispatch?call=${id}`, 'Dispatch')} />}
         <DesktopTaskbar
           icons={pinnedIcons}
           catalog={allFunctions}
           onLock={() => setManuallyLocked(true)}
           onToggleNotifCenter={() => setNotifCenterOpen(v => !v)}
           onPowerMenu={() => setPowerMenuOpen(true)}
+          onOpenCommandPalette={() => setCommandPaletteOpen(true)}
+          onNewCall={() => setCommandPaletteOpen(true)}
         />
         <FlexOSStatusBar />
         {widgetSettingsOpen && (
@@ -456,6 +511,9 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         )}
         {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
         {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
+        {calculatorOpen && (
+          <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
+        )}
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
@@ -471,6 +529,17 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onClose={() => setPowerMenuOpen(false)}
           onLock={() => setManuallyLocked(true)}
           onSignOut={() => signOut().catch(() => {})}
+        />
+      )}
+      {commandPaletteOpen && (
+        <DesktopCommandPalette
+          allFunctions={allFunctions}
+          onNavigate={(path) => {
+            const fn = allFunctions.find(f => f.path === path);
+            openWindowRef.current?.(path, fn?.label ?? 'Module');
+            setCommandPaletteOpen(false);
+          }}
+          onClose={() => setCommandPaletteOpen(false)}
         />
       )}
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
