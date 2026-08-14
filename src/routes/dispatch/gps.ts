@@ -14,6 +14,7 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcastAll } from '../ws';
 import { rateLimitAllow } from '../../utils/rateLimit';
 import { requireRole } from '../../middleware/auth';
+import { evaluateServerRules, loadRulesForUser } from '../../utils/automationEngine';
 
 const gps = new Hono<Env>();
 
@@ -435,6 +436,7 @@ gps.post('/', async (c) => {
     // Trip engine: feed every fix through applyTripEvent so the pure engine
     // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
     // live GPS writes are what OPEN and append them.
+    const incomingFixes: IncomingFix[] = [];
     if (unitId) {
       // prev = the PREVIOUS fix in this batch (null on the first). Threading it
       // lets the engine's distance-from-prev open check actually see movement;
@@ -456,6 +458,7 @@ gps.post('/', async (c) => {
         const parsed = pt.timestamp ? Date.parse(pt.timestamp) : NaN;
         const ts = Number.isFinite(parsed) ? parsed : Date.now();
         const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
+        incomingFixes.push(fix);
         const event: TripEvent = { kind: 'gps', fix };
         try {
           await applyTripEvent({
@@ -517,6 +520,17 @@ gps.post('/', async (c) => {
         at: new Date().toISOString(),
       });
     } catch { log.warn('[gps] live fan-out (emitAlert) failed', { unitId, callSign }); /* non-fatal */ }
+
+    // Smart automations — evaluate rules against this GPS batch
+    try {
+      const rules = await loadRulesForUser(db, userId, unitId ?? null);
+      if (rules.length > 0) {
+        await evaluateServerRules(db, c.env, c.executionCtx, userId, unitId ?? null, incomingFixes, rules);
+      }
+    } catch (err) {
+      log.error('[gps] automation evaluation failed', { userId }, err);
+      // non-fatal — never block the GPS response
+    }
 
     // Echo the resolved unit back so the client's useGpsTracking can populate
     // unitId/callSign without a separate GET /dispatch/gps/my-unit (which can
