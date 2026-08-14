@@ -16,6 +16,11 @@ import { exportSettings, importSettings } from '../../utils/settingsExportImport
 import { getClockFormat, setClockFormat, type ClockFormat } from '../../utils/clockPreference';
 import { isDesktopSoundEnabled, setDesktopSoundEnabled } from '../../utils/desktopSoundPreference';
 import { getDefaultWindowOpacity, setDefaultWindowOpacity } from '../../utils/windowOpacityPreference';
+import {
+  isDynamicWallpaperEnabled, setDynamicWallpaperEnabled,
+  getDynamicWallpaperDayId, setDynamicWallpaperDayId,
+  getDynamicWallpaperNightId, setDynamicWallpaperNightId,
+} from '../../utils/dynamicWallpaperPreferences';
 import DesktopKioskSettings from './DesktopKioskSettings';
 import FlexOSSettings from './FlexOSSettings';
 
@@ -50,6 +55,8 @@ const CATEGORIES = [
   { id: 'window-management', label: 'Window Management', icon: AppWindow },
   { id: 'taskbar', label: 'Taskbar', icon: PanelBottom },
   { id: 'layout-templates', label: 'Layout & Templates', icon: FolderKanban },
+  { id: 'security', label: 'Security', icon: Lock },
+  { id: 'session-log', label: 'Session Log', icon: ClipboardList },
   { id: 'kiosk-mode', label: 'Kiosk Mode', icon: Monitor },
   { id: 'flexos', label: 'FlexOS', icon: Shield },
 ] as const;
@@ -104,6 +111,13 @@ export default function DesktopSettingsApp({
   const [clockFormat, setClockFormatState] = useState<ClockFormat>(() => getClockFormat());
   const [soundEnabled, setSoundEnabledState] = useState(() => isDesktopSoundEnabled());
   const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
+  const [autoLockMinutes, setAutoLockMinutesState] = useState<number | null>(() => getAutoLockMinutes());
+  const [highContrast, setHighContrastState] = useState(() => isHighContrastEnabled());
+  const [sessionLogs, setSessionLogs] = useState<SessionLogEntry[]>([]);
+  const [sessionLogsLoading, setSessionLogsLoading] = useState(false);
+  const [sessionLogFilter, setSessionLogFilter] = useState('');
+  const themeImportRef = useRef<HTMLInputElement>(null);
+  const [themeImportMsg, setThemeImportMsg] = useState<string | null>(null);
   const [pos, setPos] = useState(() => ({
     x: Math.max(0, (window.innerWidth - DEFAULT_WIDTH) / 2),
     y: Math.max(0, (window.innerHeight - DEFAULT_HEIGHT) / 2),
@@ -133,6 +147,21 @@ export default function DesktopSettingsApp({
     window.addEventListener('pointerup', onUp);
   }, [size.width, size.height]);
 
+  // Load session logs when that tab is active
+  useEffect(() => {
+    if (activeCategory !== 'session-log') return;
+    setSessionLogsLoading(true);
+    apiFetch<unknown>('/errors?category=session&limit=200')
+      .then(res => {
+        const rows = ((res as { results?: SessionLogEntry[] })?.results
+          ?? (res as { data?: SessionLogEntry[] })?.data
+          ?? (Array.isArray(res) ? (res as SessionLogEntry[]) : []));
+        setSessionLogs(rows);
+      })
+      .catch(() => setSessionLogs([]))
+      .finally(() => setSessionLogsLoading(false));
+  }, [activeCategory]);
+
   const handleExport = useCallback(() => {
     const blob = new Blob([exportSettings()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -142,6 +171,66 @@ export default function DesktopSettingsApp({
     a.click();
     URL.revokeObjectURL(url);
   }, []);
+
+  const handleThemeExport = useCallback(() => {
+    const theme = {
+      flexos_theme_version: 1,
+      wallpaper_id: wallpaperId,
+      accent_id: accentId,
+      taskbar_size: getTaskbarSize(),
+      night_light_enabled: localStorage.getItem('rmpg_night_light_enabled') ?? null,
+      auto_hide_taskbar: isTaskbarAutoHideEnabled(),
+    };
+    const date = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(theme, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `flexos-theme-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [wallpaperId, accentId]);
+
+  const handleThemeImport = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const text = await file.text();
+      const obj = JSON.parse(text) as Record<string, unknown>;
+      if (obj.flexos_theme_version !== 1) {
+        setThemeImportMsg('Invalid theme file (unsupported version).');
+        return;
+      }
+      const changes: string[] = [];
+      if (obj.wallpaper_id && typeof obj.wallpaper_id === 'string') changes.push(`Wallpaper: ${obj.wallpaper_id}`);
+      if (obj.accent_id && typeof obj.accent_id === 'string') changes.push(`Accent: ${obj.accent_id}`);
+      if (obj.taskbar_size) changes.push(`Taskbar size: ${obj.taskbar_size}`);
+      if (!window.confirm(`This theme will change: ${changes.join(', ')}. Apply?`)) return;
+      if (obj.wallpaper_id && typeof obj.wallpaper_id === 'string') onWallpaperChange(obj.wallpaper_id);
+      if (obj.accent_id && typeof obj.accent_id === 'string') onAccentChange(obj.accent_id);
+      if (typeof obj.auto_hide_taskbar === 'boolean') { setTaskbarAutoHide(obj.auto_hide_taskbar); setAutoHideState(obj.auto_hide_taskbar); }
+      if (obj.taskbar_size === 'small' || obj.taskbar_size === 'large') { setTaskbarSize(obj.taskbar_size); setTaskbarSizeState(obj.taskbar_size); }
+      if (typeof obj.night_light_enabled === 'string') localStorage.setItem('rmpg_night_light_enabled', obj.night_light_enabled);
+      setThemeImportMsg('Theme applied.');
+    } catch {
+      setThemeImportMsg('Could not read theme file.');
+    }
+  }, [onWallpaperChange, onAccentChange]);
+
+  function exportSessionLogCsv() {
+    const rows = [['timestamp', 'event type', 'source', 'message'].join(',')];
+    for (const e of sessionLogs) {
+      rows.push([e.created_at, e.severity, e.source ?? '', `"${(e.message ?? '').replace(/"/g, '""')}"`].join(','));
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'session-log.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   function handleCustomWallpaperUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -571,6 +660,102 @@ export default function DesktopSettingsApp({
                 Saved widget layouts and per-role templates will be configured here.
                 Use the widget context menu on the desktop to rearrange and save your current layout.
               </div>
+            </div>
+          )}
+
+          {activeCategory === 'security' && (
+            <div>
+              <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Auto-lock After Inactivity</div>
+              <select
+                aria-label="Auto-lock timer"
+                className="bg-surface-sunken border border-border-subtle px-2 py-1 text-[11px] text-text-primary"
+                value={autoLockMinutes === null ? 'never' : String(autoLockMinutes)}
+                onChange={e => {
+                  const v = e.target.value === 'never' ? null : parseInt(e.target.value, 10);
+                  setAutoLockMinutes(v);
+                  setAutoLockMinutesState(v);
+                }}
+              >
+                <option value="never">Never</option>
+                <option value="1">1 minute</option>
+                <option value="5">5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+              </select>
+              <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                Screen locks after this period of inactivity.
+              </p>
+
+              <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Accessibility</div>
+              <label className="flex items-center gap-2 text-[11px] py-1" style={{ color: 'var(--text-primary)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="High contrast mode"
+                  checked={highContrast}
+                  onChange={e => {
+                    setHighContrastEnabled(e.target.checked);
+                    setHighContrastState(e.target.checked);
+                  }}
+                />
+                High Contrast Mode (black background, yellow text)
+              </label>
+            </div>
+          )}
+
+          {activeCategory === 'session-log' && isAdmin && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, height: '100%' }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  value={sessionLogFilter}
+                  onChange={e => setSessionLogFilter(e.target.value)}
+                  placeholder="Filter by message or type…"
+                  aria-label="Filter session log"
+                  className="flex-1 min-w-0 px-2 py-1 text-[11px] bg-surface-sunken border border-border-subtle text-text-primary focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={exportSessionLogCsv}
+                  className="flex items-center gap-1 text-[10px] px-2 py-1"
+                  style={{ border: '1px solid var(--border-default)', color: 'var(--text-primary)', flexShrink: 0 }}
+                >
+                  <Download style={{ width: 10, height: 10 }} /> Export CSV
+                </button>
+              </div>
+              {sessionLogsLoading ? (
+                <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Loading…</p>
+              ) : (
+                <div style={{ overflowY: 'auto', flex: 1, border: '1px solid var(--border-subtle)' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>
+                    <thead>
+                      <tr style={{ background: 'var(--surface-overlay)' }}>
+                        <th style={{ padding: '3px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-subtle)' }}>Timestamp</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '1px solid var(--border-subtle)' }}>Type</th>
+                        <th style={{ padding: '3px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '1px solid var(--border-subtle)' }}>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sessionLogs
+                        .filter(e => {
+                          if (!sessionLogFilter) return true;
+                          const q = sessionLogFilter.toLowerCase();
+                          return (e.message ?? '').toLowerCase().includes(q) || (e.severity ?? '').toLowerCase().includes(q);
+                        })
+                        .map(e => (
+                          <tr key={e.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                            <td style={{ padding: '2px 6px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{e.created_at}</td>
+                            <td style={{ padding: '2px 6px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{e.severity}</td>
+                            <td style={{ padding: '2px 6px', color: 'var(--text-primary)' }}>{e.message}</td>
+                          </tr>
+                        ))
+                      }
+                      {sessionLogs.length === 0 && (
+                        <tr><td colSpan={3} style={{ padding: '8px 6px', color: 'var(--text-muted)', textAlign: 'center' }}>No session events recorded.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

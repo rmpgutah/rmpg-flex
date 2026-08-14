@@ -20,6 +20,19 @@ import DesktopPanicWidget from './widgets/DesktopPanicWidget';
 import DesktopWarrantCountWidget from './widgets/DesktopWarrantCountWidget';
 import DesktopBodyCamWidget from './widgets/DesktopBodyCamWidget';
 import DesktopMessageCountWidget from './widgets/DesktopMessageCountWidget';
+import DesktopBoloTickerWidget from './widgets/DesktopBoloTickerWidget';
+import DesktopHotZonesWidget from './widgets/DesktopHotZonesWidget';
+import DesktopDispatchQueueWidget from './widgets/DesktopDispatchQueueWidget';
+import DesktopUnitProximityWidget from './widgets/DesktopUnitProximityWidget';
+import DesktopPlateLookupWidget from './widgets/DesktopPlateLookupWidget';
+import DesktopAddressLookupWidget from './widgets/DesktopAddressLookupWidget';
+import DesktopShiftPerfWidget from './widgets/DesktopShiftPerfWidget';
+import DesktopRadioLogWidget from './widgets/DesktopRadioLogWidget';
+import DesktopActiveWarrantsWidget from './widgets/DesktopActiveWarrantsWidget';
+import DesktopOfficerSafetyWidget from './widgets/DesktopOfficerSafetyWidget';
+import DesktopCallEscalationWidget from './widgets/DesktopCallEscalationWidget';
+import DesktopEvidenceCoCWidget from './widgets/DesktopEvidenceCoCWidget';
+import DesktopMutualAidWidget from './widgets/DesktopMutualAidWidget';
 import DesktopStatusBoard from './DesktopStatusBoard';
 
 export interface DesktopWidgetPanelProps {
@@ -56,6 +69,19 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'warrant-count': DesktopWarrantCountWidget,
   'body-cam': DesktopBodyCamWidget,
   'message-count': DesktopMessageCountWidget,
+  'bolo-ticker': DesktopBoloTickerWidget,
+  'hot-zones': DesktopHotZonesWidget,
+  'dispatch-queue': DesktopDispatchQueueWidget,
+  'unit-proximity': DesktopUnitProximityWidget,
+  'plate-lookup': DesktopPlateLookupWidget,
+  'address-lookup': DesktopAddressLookupWidget,
+  'shift-perf': DesktopShiftPerfWidget,
+  'radio-log': DesktopRadioLogWidget,
+  'active-warrants-count': DesktopActiveWarrantsWidget,
+  'officer-safety-flags': DesktopOfficerSafetyWidget,
+  'call-escalation': DesktopCallEscalationWidget,
+  'evidence-coc': DesktopEvidenceCoCWidget,
+  'mutual-aid-status': DesktopMutualAidWidget,
   'status-board': DesktopStatusBoard,
 };
 

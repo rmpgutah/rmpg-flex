@@ -18,6 +18,15 @@ export interface DesktopWindowState {
   opacity: number;
 }
 
+interface ClosedWindowRecord {
+  path: string;
+  title: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
 interface DesktopWindowManagerContextValue {
   windows: DesktopWindowState[];
   /** Returns true if the window was opened/focused, false if the cap was hit and the call was a no-op. */
@@ -44,10 +53,15 @@ interface DesktopWindowManagerContextValue {
   tileVertical: (desktopW?: number, desktopH?: number) => void;
   /** ID of the topmost (highest zIndex) non-minimized window, or null. */
   focusedId: string | null;
+  /** Recently closed windows (max 5), newest first. */
+  closedHistory: ClosedWindowRecord[];
+  /** Reopen the most recently closed window at its original position. */
+  reopenLastClosed: () => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
 const MAX_OPEN_WINDOWS = 10;
+const MAX_CLOSED_HISTORY = 5;
 const MIN_WINDOW_OPACITY = 0.3;
 const MAX_WINDOW_OPACITY = 1;
 
@@ -74,6 +88,7 @@ let nextZIndex = 100;
 
 export function DesktopWindowManagerProvider({ children }: { children: React.ReactNode }) {
   const [windows, setWindows] = useState<DesktopWindowState[]>(loadSession);
+  const [closedHistory, setClosedHistory] = useState<ClosedWindowRecord[]>([]);
   // Synchronous source of truth for openWindow's cap check and boolean return value.
   // React's setWindows(prev => ...) updater is NOT guaranteed to run synchronously when
   // multiple mutator calls happen inside the same event-handler batch (React 18 only
@@ -124,9 +139,39 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   const closeWindow = useCallback((id: string) => {
     const closing = windowsRef.current.find(w => w.id === id);
-    if (closing) saveWindowPosition(closing.path, { x: closing.x, y: closing.y, width: closing.width, height: closing.height });
+    if (closing) {
+      saveWindowPosition(closing.path, { x: closing.x, y: closing.y, width: closing.width, height: closing.height });
+      const record: ClosedWindowRecord = { path: closing.path, title: closing.title, width: closing.width, height: closing.height, x: closing.x, y: closing.y };
+      setClosedHistory(prev => [record, ...prev].slice(0, MAX_CLOSED_HISTORY));
+    }
     commit(windowsRef.current.filter(w => w.id !== id));
     playDesktopSound();
+  }, [commit]);
+
+  const reopenLastClosed = useCallback(() => {
+    setClosedHistory(prev => {
+      if (prev.length === 0) return prev;
+      const [top, ...rest] = prev;
+      // openWindow focuses the window if it's already open; otherwise creates it
+      const prev2 = windowsRef.current;
+      const existing = prev2.find(w => w.path === top.path);
+      if (existing) {
+        nextZIndex += 1;
+        commit(prev2.map(w => w.id === existing.id ? { ...w, minimized: false, zIndex: nextZIndex } : w));
+      } else if (prev2.length < MAX_OPEN_WINDOWS) {
+        nextZIndex += 1;
+        const win: DesktopWindowState = {
+          id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          path: top.path, title: top.title,
+          x: top.x, y: top.y, width: top.width, height: top.height,
+          zIndex: nextZIndex, minimized: false, maximized: false,
+          alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
+        };
+        commit([...prev2, win]);
+        playDesktopSound();
+      }
+      return rest;
+    });
   }, [commit]);
 
   const focusWindow = useCallback((id: string) => {
@@ -229,7 +274,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, focusedId }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, focusedId, closedHistory, reopenLastClosed }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

@@ -52,7 +52,14 @@ import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPr
 import DesktopCommandPalette from '../components/desktop/DesktopCommandPalette';
 import DesktopCallTicker from '../components/desktop/DesktopCallTicker';
 import DesktopCalculator from '../components/desktop/apps/DesktopCalculator';
+import DesktopTimer from '../components/desktop/apps/DesktopTimer';
+import DesktopUnitConverter from '../components/desktop/apps/DesktopUnitConverter';
+import DesktopEventViewer from '../components/desktop/apps/DesktopEventViewer';
+import DesktopFileManager from '../components/desktop/apps/DesktopFileManager';
+import DesktopColorPicker from '../components/desktop/apps/DesktopColorPicker';
 import DesktopRunDialog from '../components/desktop/DesktopRunDialog';
+import DesktopWidgetLibrary from '../components/desktop/DesktopWidgetLibrary';
+import { applyHighContrast, isHighContrastEnabled } from '../utils/highContrastPreference';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -129,6 +136,22 @@ function WindowArrangeSync({ mountRef }: { mountRef: React.MutableRefObject<Arra
     tileH: () => tileHorizontal(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
     tileV: () => tileVertical(window.innerWidth, window.innerHeight - TASKBAR_HEIGHT_PX[getTaskbarSize()]),
   };
+  return null;
+}
+
+// Wires Ctrl+Shift+T → reopenLastClosed (must be inside DesktopWindowManagerProvider)
+function ReopenLastClosedBridge() {
+  const { reopenLastClosed } = useDesktopWindows();
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+        e.preventDefault();
+        reopenLastClosed();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [reopenLastClosed]);
   return null;
 }
 
@@ -270,8 +293,42 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const [timerOpen, setTimerOpen] = useState(false);
+  const [converterOpen, setConverterOpen] = useState(false);
+  const [eventViewerOpen, setEventViewerOpen] = useState(false);
+  const [fileManagerOpen, setFileManagerOpen] = useState(false);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [callTickerEnabled, setCallTickerEnabled] = useState(() => localStorage.getItem('rmpg_call_ticker') !== '0');
+  const [widgetLibraryOpen, setWidgetLibraryOpen] = useState(false);
   const isLocked = lockActive || manuallyLocked;
+
+  // Apply high contrast preference on mount
+  useEffect(() => {
+    applyHighContrast(isHighContrastEnabled());
+  }, []);
+
+  // Log session events (login and unlock)
+  const hasLoggedLogin = useRef(false);
+  useEffect(() => {
+    if (!user || hasLoggedLogin.current) return;
+    hasLoggedLogin.current = true;
+    apiFetch('/errors', {
+      method: 'POST',
+      body: JSON.stringify({ severity: 'info', category: 'session', message: 'Session started', source: 'desktop' }),
+    }).catch(() => { /* non-blocking */ });
+  }, [user]);
+
+  const prevLockedRef = useRef(isLocked);
+  useEffect(() => {
+    const wasLocked = prevLockedRef.current;
+    prevLockedRef.current = isLocked;
+    if (wasLocked && !isLocked && user) {
+      apiFetch('/errors', {
+        method: 'POST',
+        body: JSON.stringify({ severity: 'info', category: 'session', message: 'Session unlocked', source: 'desktop' }),
+      }).catch(() => { /* non-blocking */ });
+    }
+  }, [isLocked, user]);
   // `useDesktopNotes` takes a plain initial array (not a lazy initializer), so
   // the parse happens eagerly here — cheap for a small JSON blob, and this
   // component only mounts once real prefs have resolved (see the comment
@@ -451,6 +508,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
       if (appKey === 'calc') setCalculatorOpen(true);
       if (appKey === 'notepad') setNotepadOpen(true);
       if (appKey === 'task-manager') setTaskManagerOpen(true);
+      if (appKey === 'timer') setTimerOpen(true);
+      if (appKey === 'converter') setConverterOpen(true);
+      if (appKey === 'event-viewer') setEventViewerOpen(true);
+      if (appKey === 'file-manager') setFileManagerOpen(true);
+      if (appKey === 'color-picker') setColorPickerOpen(true);
     }
     function onOpenRun() { setRunDialogOpen(true); }
     window.addEventListener('flexos:open-app', onOpenApp);
@@ -492,6 +554,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
             { label: 'Tile Horizontally', onClick: () => arrangeRef.current?.tileH() },
             { label: 'Tile Vertically', onClick: () => arrangeRef.current?.tileV() },
             { label: '', onClick: () => {}, divider: true },
+            { label: 'Add Widget…', onClick: () => setWidgetLibraryOpen(true) },
             { label: 'FlexOS Settings…', onClick: () => setWidgetSettingsOpen(true) },
             { label: 'System Preferences…', onClick: () => setSysPrefOpen(true) },
             { label: 'Task Manager…', onClick: () => setTaskManagerOpen(true) },
@@ -533,6 +596,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
               <WindowArrangeSync mountRef={arrangeRef} />
               <OpenWindowBridge mountRef={openWindowRef} />
               <CfsFocusBridge />
+              <ReopenLastClosedBridge />
               <WindowLayer />
               <DesktopWindowSwitcher />
             </DesktopWallpaper>
@@ -563,6 +627,11 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           />
         )}
         {taskManagerOpen && <DesktopTaskManager onClose={() => setTaskManagerOpen(false)} />}
+        {timerOpen && <DesktopTimer onClose={() => setTimerOpen(false)} />}
+        {converterOpen && <DesktopUnitConverter onClose={() => setConverterOpen(false)} />}
+        {eventViewerOpen && <DesktopEventViewer onClose={() => setEventViewerOpen(false)} />}
+        {fileManagerOpen && <DesktopFileManager onClose={() => setFileManagerOpen(false)} />}
+        {colorPickerOpen && <DesktopColorPicker onClose={() => setColorPickerOpen(false)} />}
         {notepadOpen && <DesktopNotepad onClose={() => setNotepadOpen(false)} />}
         {calculatorOpen && (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
@@ -612,6 +681,14 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onResetToDefault={handleResetToDefault}
           onClose={() => setSysPrefOpen(false)}
           isAdmin={isAdmin}
+        />
+      )}
+      {widgetLibraryOpen && (
+        <DesktopWidgetLibrary
+          widgets={widgets}
+          onAdd={id => { handleToggleWidget(id, true); }}
+          onRemove={id => { handleToggleWidget(id, false); }}
+          onClose={() => setWidgetLibraryOpen(false)}
         />
       )}
       {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}

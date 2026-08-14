@@ -9,10 +9,12 @@ export interface ActiveCall {
 }
 
 export interface WelfareTimer { endsAt: number; intervalMinutes: number; }
+export type FocusAssistLevel = 'off' | 'priority' | 'alarms-only';
 
 export interface DesktopSystemState {
   nightLightOn: boolean; nightLightIntensity: number;
   dndOn: boolean; brightness: number;
+  focusAssist: FocusAssistLevel;
   activeCall: ActiveCall | null; welfareTimer: WelfareTimer | null;
   updateAvailable: string | null; clipboardHistory: string[];
   unitStatus: string; radioChannel: string; syncPending: number;
@@ -22,6 +24,7 @@ interface DesktopSystemActions {
   setNightLight: (on: boolean, intensity?: number) => void;
   setDnd: (on: boolean) => void;
   setBrightness: (value: number) => void;
+  setFocusAssist: (level: FocusAssistLevel) => void;
   startWelfareTimer: (minutes: number) => void;
   cancelWelfareTimer: () => void;
   dismissUpdate: () => void;
@@ -32,6 +35,7 @@ interface DesktopSystemActions {
 
 const NIGHT_KEY = 'rmpg_night_light';
 const DND_KEY = 'rmpg_dnd';
+const FOCUS_ASSIST_KEY = 'rmpg_focus_assist';
 const BRIGHTNESS_KEY = 'rmpg_brightness';
 const RADIO_KEY = 'rmpg_radio_channel';
 const WELFARE_KEY = 'rmpg_welfare_timer';
@@ -73,6 +77,11 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
     return isNaN(v) ? 40 : v;
   });
   const [dndOn, setDndOnState] = useState(() => localStorage.getItem(DND_KEY) === '1');
+  const [focusAssist, setFocusAssistState] = useState<FocusAssistLevel>(() => {
+    const stored = localStorage.getItem(FOCUS_ASSIST_KEY);
+    if (stored === 'priority' || stored === 'alarms-only') return stored;
+    return 'off';
+  });
   const [brightness, setBrightnessState] = useState(() => {
     const v = parseInt(localStorage.getItem(BRIGHTNESS_KEY) ?? '80', 10);
     return isNaN(v) ? 80 : v;
@@ -166,6 +175,11 @@ export function DesktopSystemProvider({ children }: { children: React.ReactNode 
   const setDnd = useCallback((on: boolean) => {
     setDndOnState(on);
     localStorage.setItem(DND_KEY, on ? '1' : '0');
+  }, []);
+
+  const setFocusAssist = useCallback((level: FocusAssistLevel) => {
+    setFocusAssistState(level);
+    localStorage.setItem(FOCUS_ASSIST_KEY, level);
   }, []);
 
   const setBrightness = useCallback((value: number) => {
