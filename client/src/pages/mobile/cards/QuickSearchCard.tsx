@@ -132,7 +132,7 @@ export default function QuickSearchCard() {
 
   return (
     <section className="bg-surface-base border border-border-default p-3">
-      <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">
+      <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">
         QUICK SEARCH
       </h2>
 
@@ -150,13 +150,13 @@ export default function QuickSearchCard() {
           {loading && (
             <span
               aria-label="Searching"
-              className="absolute right-2 top-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-[#d4a017] border-t-transparent rounded-full animate-spin"
+              className="absolute right-2 top-1/2 -translate-y-1/2 inline-block w-4 h-4 border-2 border-accent-gold-500 border-t-transparent rounded-full animate-spin"
             />
           )}
         </div>
         <button
           type="submit"
-          className="h-11 px-4 bg-surface-raised border border-border-default text-[#d4a017] text-xs uppercase tracking-widest"
+          className="h-11 px-4 bg-surface-raised border border-border-default text-[color:var(--field-label-color)] text-xs uppercase tracking-widest"
         >
           Search
         </button>
@@ -168,7 +168,7 @@ export default function QuickSearchCard() {
           <button
             type="button"
             onClick={() => submittedQuery && runSearch(submittedQuery)}
-            className="h-11 px-3 bg-surface-raised border border-border-default text-[#d4a017] text-[10px] uppercase tracking-widest"
+            className="h-11 px-3 bg-surface-raised border border-border-default text-[color:var(--field-label-color)] text-[10px] uppercase tracking-widest"
           >
             Retry
           </button>
@@ -193,7 +193,7 @@ export default function QuickSearchCard() {
                   onContextMenu={(e) => openMenu(e, buildResultMenu(r))}
                   className="py-2 border-b border-border-default text-rmpg-100 text-xs w-full text-left flex items-center"
                 >
-                  <span className="bg-surface-sunken border border-border-default text-[#d4a017] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">
+                  <span className="bg-surface-sunken border border-border-default text-[color:var(--field-label-color)] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">
                     {type}
                   </span>
                   <span className="flex-1 min-w-0">

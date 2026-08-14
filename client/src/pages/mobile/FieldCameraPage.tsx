@@ -87,10 +87,10 @@ export function stampOverlay(
   // is legible at any capture resolution.
   const bandH = Math.max(34, Math.round(h * 0.045));
   const fontPx = Math.max(13, Math.round(bandH * 0.42));
-  ctx.fillStyle = 'rgba(0,0,0,0.62)';
+  ctx.fillStyle = 'rgb(0 0 0 / 0.62)';
   ctx.fillRect(0, h - bandH, w, bandH);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = 'white';
   ctx.font = `${fontPx}px monospace`;
   ctx.textBaseline = 'middle';
   const pad = Math.round(bandH * 0.35);
@@ -102,7 +102,7 @@ export function stampOverlay(
   if (opts.gps) {
     const gpsText = `${opts.gps.lat.toFixed(6)}, ${opts.gps.lng.toFixed(6)} (±${Math.round(opts.gps.accuracy)}m)`;
     const tw = ctx.measureText(gpsText).width;
-    ctx.fillStyle = '#d4a017';
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--panel-header-color').trim() || 'goldenrod';
     ctx.fillText(gpsText, w - tw - pad, midY);
   }
 
@@ -439,16 +439,16 @@ export default function FieldCameraPage() {
           // Audit caught (2026-06-21): on-scene officer touch surface — Back
           // was effectively ~32px; gloved finger on a moving phone routinely
           // mis-taps. Bumped to 44px minimum per WCAG 2.5.5 target size.
-          className="flex items-center gap-1 text-[#888] text-xs font-bold uppercase tracking-wider p-2 -ml-2 min-w-[44px] min-h-[44px]"
+          className="flex items-center gap-1 text-fg-muted text-xs font-bold uppercase tracking-wider p-2 -ml-2 min-w-[44px] min-h-[44px]"
           aria-label="Back"
         >
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[#d4a017]">Field Camera</span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[color:var(--panel-header-color)]">Field Camera</span>
         <button
           type="button"
           onClick={() => setFacing((f) => (f === 'environment' ? 'user' : 'environment'))}
-          className="text-[#888] p-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
+          className="text-fg-muted p-2 -mr-2 min-w-[44px] min-h-[44px] flex items-center justify-center"
           aria-label="Flip camera"
         >
           <RefreshCw className="w-4 h-4" />
@@ -456,7 +456,7 @@ export default function FieldCameraPage() {
       </div>
 
       {/* ── Mode bar — ALPR toggle + Patrol Scan + call context ── */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-surface-overlay border-b border-[#141414]">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-surface-overlay border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -467,7 +467,7 @@ export default function FieldCameraPage() {
             })}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
-              alprMode ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-subtle text-[#888]'
+              alprMode ? 'border-accent-gold-500 text-[color:var(--field-label-color)] bg-surface-sunken' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={alprMode}
           >
@@ -482,7 +482,7 @@ export default function FieldCameraPage() {
             })}
             disabled={patrolRunning}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border disabled:opacity-40 ${
-              idScanMode ? 'border-brand-400 text-brand-400 bg-surface-sunken' : 'border-border-subtle text-[#888]'
+              idScanMode ? 'border-brand-400 text-brand-400 bg-surface-sunken' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={idScanMode}
           >
@@ -492,7 +492,7 @@ export default function FieldCameraPage() {
             type="button"
             onClick={() => (patrolRunning ? patrol.stop() : patrol.start())}
             className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase tracking-wider border ${
-              patrolRunning ? 'border-red-600 text-red-300 bg-red-950 animate-pulse' : 'border-border-subtle text-[#888]'
+              patrolRunning ? 'border-red-600 text-red-300 bg-red-950 animate-pulse' : 'border-border-subtle text-fg-muted'
             }`}
             aria-pressed={patrolRunning}
           >
@@ -500,7 +500,7 @@ export default function FieldCameraPage() {
           </button>
         </div>
         {callId && !patrolRunning && (
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-fg-muted">
             Call #{callId}
           </span>
         )}
@@ -528,7 +528,7 @@ export default function FieldCameraPage() {
         )}
         {/* Patrol Scan: live read log along the bottom */}
         {patrolRunning && patrol.log.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-[#161616] safe-pb safe-px">
+          <div className="absolute bottom-0 left-0 right-0 z-10 max-h-[42%] overflow-y-auto bg-black/80 border-t border-border-default divide-y divide-border-subtle safe-pb safe-px">
             {patrol.log.map((e) => (
               <div
                 key={e.key}
@@ -537,7 +537,7 @@ export default function FieldCameraPage() {
                 <span className={`text-sm tracking-[0.12em] font-semibold ${e.critical ? 'text-red-300' : 'text-rmpg-100'}`}>
                   {e.plate}
                 </span>
-                <span className="text-[10px] text-[#888] min-w-0 truncate ml-2 flex-1 text-right flex items-center justify-end gap-1">
+                <span className="text-[10px] text-fg-muted min-w-0 truncate ml-2 flex-1 text-right flex items-center justify-end gap-1">
                   {e.vehicle}
                   {e.confidence != null && <TrustBadge trust={{ trustScore: e.confidence, readCount: 1, basis: 'patrol scan' }} />}
                   {e.critical ? ' · ⚠ HIT' : ''}
@@ -551,17 +551,17 @@ export default function FieldCameraPage() {
           <div className="absolute inset-0 z-10 bg-black/92 overflow-y-auto p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)] flex items-center gap-1">
                   <Car className="w-4 h-4" /> {scan.vehicle_count} vehicle(s)
                   {callId ? ` · linked to call #${callId}` : ''}
                 </span>
                 {scan.enrich_status === 'pending' && (
-                  <span className="text-[10px] text-[#888] flex items-center gap-1">
+                  <span className="text-[10px] text-fg-muted flex items-center gap-1">
                     <Loader2 className="w-3 h-3 animate-spin" /> Identifying…
                   </span>
                 )}
               </div>
-              <button type="button" onClick={clearScan} className="text-[#888] p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
+              <button type="button" onClick={clearScan} className="text-fg-muted p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -578,7 +578,7 @@ export default function FieldCameraPage() {
               </div>
             )}
             {(scan.vehicle_count ?? 0) === 0 && (
-              <div className="text-[11px] text-[#888] px-1 py-2">
+              <div className="text-[11px] text-fg-muted px-1 py-2">
                 No readable plate found. The photo was still saved to the call.
               </div>
             )}
@@ -586,11 +586,11 @@ export default function FieldCameraPage() {
               <div key={v.vehicle_record_id ?? i} className="border border-border-default bg-surface-sunken p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-lg tracking-[0.15em] text-rmpg-100 font-semibold">{v.plate || '—'}</span>
-                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-border-subtle text-[#888]">
+                  <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 border border-border-subtle text-fg-muted">
                     {v.vehicle_record_created ? 'NEW RECORD' : 'LINKED'}
                   </span>
                 </div>
-                <div className="text-[11px] text-[#888] mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <div className="text-[11px] text-fg-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <span>{[v.color, v.year, v.make, v.model].filter(Boolean).join(' ') || v.vehicle_type || '—'}</span>
                   {v.confidence != null && <TrustBadge trust={{ trustScore: v.confidence, readCount: 1, basis: 'single read' }} />}
                 </div>
@@ -602,10 +602,10 @@ export default function FieldCameraPage() {
                           {v.condition}
                         </span>
                       )}
-                      {v.damage_summary && <span className="text-[10px] text-[#aaa]">{v.damage_summary}</span>}
+                      {v.damage_summary && <span className="text-[10px] text-fg-muted">{v.damage_summary}</span>}
                     </div>
                     {v.damage_areas && v.damage_areas.length > 0 && (
-                      <ul className="text-[10px] text-[#888] pl-3 list-disc">
+                      <ul className="text-[10px] text-fg-muted pl-3 list-disc">
                         {v.damage_areas.map((d, di) => (
                           <li key={di}>{[d.severity, d.panel, d.type].filter(Boolean).join(' ')}</li>
                         ))}
@@ -620,7 +620,7 @@ export default function FieldCameraPage() {
             ))}
             <button
               type="button" onClick={clearScan}
-              className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-[#d4a017] text-[#d4a017] mt-1">
+              className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-accent-gold-500 text-[color:var(--field-label-color)] mt-1">
               Done
             </button>
           </div>
@@ -634,7 +634,7 @@ export default function FieldCameraPage() {
             {/* HUD — mirrors what the stamp will burn in */}
             <div className="absolute top-0 left-0 right-0 px-3 py-2 flex items-start justify-between pointer-events-none safe-pt safe-px">
               <div className="bg-black/55 px-2 py-1 font-mono text-[11px] text-rmpg-100">{clock}</div>
-              <div className={`bg-black/55 px-2 py-1 font-mono text-[11px] flex items-center gap-1 ${gps ? 'text-[#d4a017]' : 'text-red-400'}`}>
+              <div className={`bg-black/55 px-2 py-1 font-mono text-[11px] flex items-center gap-1 ${gps ? 'text-[color:var(--field-label-color)]' : 'text-red-400'}`}>
                 <MapPin className="w-3 h-3" />
                 {gps ? `±${Math.round(gps.accuracy)}m` : 'NO GPS'}
               </div>
@@ -647,7 +647,7 @@ export default function FieldCameraPage() {
             {cameraError && (
               <div className="absolute inset-0 flex items-center justify-center p-6">
                 <div className="bg-surface-base border border-border-default p-4 text-center text-xs text-rmpg-300 max-w-xs">
-                  <Camera className="w-6 h-6 mx-auto mb-2 text-[#888]" />
+                  <Camera className="w-6 h-6 mx-auto mb-2 text-fg-muted" />
                   {cameraError}
                 </div>
               </div>
@@ -676,10 +676,10 @@ export default function FieldCameraPage() {
               type="button"
               onClick={upload}
               disabled={uploading || !!scan}
-              className={`flex flex-col items-center gap-1 disabled:opacity-40 ${alprMode ? 'text-[#d4a017]' : 'text-green-400'}`}
+              className={`flex flex-col items-center gap-1 disabled:opacity-40 ${alprMode ? 'text-[color:var(--field-label-color)]' : 'text-green-400'}`}
               aria-label={alprMode ? 'Scan vehicles' : 'Save photo'}
             >
-              <span className={`w-16 h-16 border-2 bg-surface-base flex items-center justify-center ${alprMode ? 'border-[#d4a017]/60' : 'border-green-700/60'}`}>
+              <span className={`w-16 h-16 border-2 bg-surface-base flex items-center justify-center ${alprMode ? 'border-accent-gold-500/60' : 'border-green-700/60'}`}>
                 {uploading ? <Loader2 className="w-7 h-7 animate-spin" />
                   : alprMode ? <ScanLine className="w-7 h-7" /> : <Check className="w-7 h-7" />}
               </span>
@@ -710,7 +710,7 @@ export default function FieldCameraPage() {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center gap-1 text-[#888]"
+              className="flex flex-col items-center gap-1 text-fg-muted"
               aria-label="Use native camera app"
             >
               <span className="w-12 h-12 border border-border-subtle bg-surface-base flex items-center justify-center">
@@ -762,7 +762,7 @@ export default function FieldCameraPage() {
               <IdCard className="w-4 h-4" /> {idScanResult.parsed.last_name}, {idScanResult.parsed.first_name}
               {idScanResult.personCreated ? ' · NEW RECORD' : ' · LINKED'}
             </span>
-            <button type="button" onClick={clearIdScan} className="text-[#888] p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
+            <button type="button" onClick={clearIdScan} className="text-fg-muted p-1 min-w-[44px] min-h-[44px] flex items-center justify-center" aria-label="Done">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -801,7 +801,7 @@ export default function FieldCameraPage() {
           </button>
           <button
             type="button" onClick={clearIdScan}
-            className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-border-subtle text-[#888]">
+            className="w-full py-2 text-xs font-bold uppercase tracking-wider border border-border-subtle text-fg-muted">
             Scan Another
           </button>
         </div>

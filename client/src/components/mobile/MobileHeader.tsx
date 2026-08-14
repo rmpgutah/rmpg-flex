@@ -110,8 +110,8 @@ export default function MobileHeader({
             <div
               className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
-                color: '#fff',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--text-muted))',
+                color: 'white',
                 border: '2px solid var(--border-strong)',
               }}
             >

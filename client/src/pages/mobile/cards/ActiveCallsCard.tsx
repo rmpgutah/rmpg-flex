@@ -186,7 +186,7 @@ export default function ActiveCallsCard() {
   if (loading) {
     return (
       <section className="bg-surface-base border border-border-default p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
         <div className="h-[200px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
@@ -195,7 +195,7 @@ export default function ActiveCallsCard() {
   if (error) {
     return (
       <section className="bg-surface-base border border-border-default p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">ACTIVE CALLS</h2>
         <div className="flex items-center justify-between gap-2">
           <span className="text-amber-400 text-xs">{error}</span>
           <button
@@ -213,7 +213,7 @@ export default function ActiveCallsCard() {
   return (
     <section className="bg-surface-base border border-border-default p-3">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">ACTIVE CALLS</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest">ACTIVE CALLS</h2>
         {geoStatus === 'denied' ? (
           <span className="text-rmpg-500 text-[10px] italic">Enable Location in Settings</span>
         ) : (
@@ -223,7 +223,7 @@ export default function ActiveCallsCard() {
             aria-pressed={showDistance}
             className={[
               'h-8 px-2 text-[10px] uppercase tracking-widest border',
-              showDistance ? 'text-[#d4a017] border-[#d4a017]' : 'text-rmpg-400 border-border-default',
+              showDistance ? 'text-[color:var(--field-label-color)] border-accent-gold-500' : 'text-rmpg-400 border-border-default',
             ].join(' ')}
           >
             {showDistance ? 'Distance ON' : 'Show Distance'}
@@ -256,7 +256,7 @@ export default function ActiveCallsCard() {
                   className="flex-1 min-w-0 min-h-[44px] py-2 text-rmpg-100 text-xs flex items-center justify-between gap-2 text-left"
                 >
                   <span className="flex-1 min-w-0 truncate">
-                    <span className="font-mono text-[#d4a017]">{c.call_number || `#${c.id}`}</span>
+                    <span className="font-mono text-[color:var(--field-label-color)]">{c.call_number || `#${c.id}`}</span>
                     {c.incident_type ? <span className="text-rmpg-300"> · {c.incident_type}</span> : null}
                     {addr ? <span className="text-rmpg-500"> · {addr}</span> : null}
                   </span>
@@ -267,7 +267,7 @@ export default function ActiveCallsCard() {
                 <button
                   type="button"
                   onClick={() => scanForCall(c)}
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-[#888] hover:text-[#d4a017] shrink-0"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-fg-muted hover:text-[color:var(--field-label-color)] shrink-0"
                   aria-label={`Scan vehicles on call ${c.call_number || c.id}`}
                   title="Scan vehicles (ALPR)"
                 >
