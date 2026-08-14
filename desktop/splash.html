@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Rocky Mountain Protective Group</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw; height: 100vh; overflow: hidden; background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #f0f4f9; -webkit-font-smoothing: antialiased; user-select: none;
+    }
+
+    /* ── Phase visibility ── */
+    .phase { display: none; width: 100%; height: 100%; position: absolute; inset: 0; flex-direction: column; align-items: center; justify-content: center; }
+    .phase.active { display: flex; }
+    @keyframes fadeOut { to { opacity: 0; } }
+    .fading { animation: fadeOut 0.4s ease forwards; }
+
+    /* ── Phase 1: BOOT ── */
+    #phase-boot { background: #000; gap: 28px; }
+    .boot-logo { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 0 18px rgba(195,204,214,0.25)); }
+    .boot-logo-fallback { width: 88px; height: 88px; border: 2px solid #c3ccd6; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 900; letter-spacing: 2px; color: #c3ccd6; }
+
+    /* Windows 11 spinning-dots: 5 dots in a 28px orbit, chase animation */
+    .win-dots-ring { position: relative; width: 56px; height: 56px; animation: ringRotate 1.3s linear infinite; }
+    .win-dots-ring span { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #c3ccd6; top: 50%; left: 50%; margin: -2.5px 0 0 -2.5px; }
+    .win-dots-ring span:nth-child(1) { transform: translateY(-28px); opacity: 0.15; }
+    .win-dots-ring span:nth-child(2) { transform: rotate(72deg) translateY(-28px); opacity: 0.35; }
+    .win-dots-ring span:nth-child(3) { transform: rotate(144deg) translateY(-28px); opacity: 0.55; }
+    .win-dots-ring span:nth-child(4) { transform: rotate(216deg) translateY(-28px); opacity: 0.78; }
+    .win-dots-ring span:nth-child(5) { transform: rotate(288deg) translateY(-28px); opacity: 1.0; }
+    @keyframes ringRotate { to { transform: rotate(360deg); } }
+
+    .org-label { font-size: 9px; letter-spacing: 5px; text-transform: uppercase; color: #8fa3b8; opacity: 0; animation: labelFadeIn 0.8s ease 1.5s forwards; }
+    @keyframes labelFadeIn { to { opacity: 1; } }
+
+    /* ── Phase 2: LOCK ── */
+    #phase-lock { background: radial-gradient(ellipse at 50% 38%, #2d4f6e 0%, #192e44 50%, #0b1928 100%); gap: 0; }
+    .lock-time { font-size: 72px; font-weight: 200; letter-spacing: -2px; color: #fff; line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+    .lock-date { font-size: 14px; color: #a8bccf; margin-bottom: 44px; letter-spacing: 0.03em; }
+    .user-card { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .avatar-wrap { width: 72px; height: 72px; border-radius: 50%; overflow: hidden; background: #2d4f6e; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; color: #c3ccd6; border: 2px solid rgba(195,204,214,0.25); flex-shrink: 0; }
+    .avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }
+    .avatar-wrap img.hidden { display: none; }
+    .user-display-name { font-size: 18px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }
+    .user-sub { font-size: 10px; color: #6a8ba8; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+    .pw-wrap { display: flex; align-items: center; border-bottom: 1px solid rgba(195,204,214,0.35); padding-bottom: 8px; width: 288px; gap: 4px; transition: border-color 0.2s; }
+    .pw-wrap:focus-within { border-color: #c3ccd6; }
+    .pw-input { flex: 1; background: transparent; border: none; outline: none; color: #f0f4f9; font-size: 14px; letter-spacing: 0.04em; font-family: inherit; }
+    .pw-input::placeholder { color: #3e5e7e; }
+    .pw-eye, .pw-submit { background: none; border: none; cursor: pointer; color: #8fa3b8; padding: 4px; display: flex; align-items: center; transition: color 0.15s; flex-shrink: 0; }
+    .pw-eye:hover, .pw-submit:hover { color: #f0f4f9; }
+    .pw-submit { font-size: 18px; padding: 4px 6px; }
+    .pw-submit:disabled { opacity: 0.4; cursor: default; }
+    .lock-error { font-size: 12px; color: #ef4444; margin-top: 10px; height: 16px; text-align: center; width: 288px; }
+    .lock-hint { font-size: 10px; color: #2e4a60; letter-spacing: 1px; margin-top: 28px; }
+
+    /* ── Phase 3: WELCOME ── */
+    #phase-welcome { background: radial-gradient(ellipse at 50% 38%, #2d4f6e 0%, #192e44 50%, #0b1928 100%); gap: 16px; }
+    .welcome-greeting { font-size: 28px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }
+    .welcome-role { font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: #c3ccd6; border: 1px solid rgba(195,204,214,0.35); border-radius: 2px; padding: 4px 14px; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Phase 1: BOOT ── -->
+  <section id="phase-boot" class="phase active">
+    <img id="boot-logo" class="boot-logo" alt="Rocky Mountain Protective Group" draggable="false" style="display:none;" />
+    <div id="boot-logo-fallback" class="boot-logo-fallback">RMPG</div>
+    <div class="win-dots-ring">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="org-label">Rocky Mountain Protective Group</div>
+  </section>
+
+  <!-- ── Phase 2: LOCK ── -->
+  <section id="phase-lock" class="phase">
+    <div class="lock-time" id="lock-time">--:--</div>
+    <div class="lock-date" id="lock-date"></div>
+    <div class="user-card">
+      <div class="avatar-wrap" id="avatar-wrap">
+        <img id="avatar-img" alt="Profile" class="hidden" />
+        <span id="avatar-initials"></span>
+      </div>
+      <div class="user-display-name" id="user-display-name" data-login-name="">RMPG Flex</div>
+      <div class="user-sub">Rocky Mountain Protective Group</div>
+    </div>
+    <div class="pw-wrap">
+      <input class="pw-input" id="pw-input" type="password" placeholder="Password" autocomplete="current-password" />
+      <button type="button" class="pw-eye" id="pw-eye" tabindex="-1" aria-label="Show password" title="Show password">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button type="button" class="pw-submit" id="pw-submit" aria-label="Sign in">&#8594;</button>
+    </div>
+    <div class="lock-error" id="lock-error"></div>
+    <div class="lock-hint">Press Ctrl+Alt+Shift+F12 for emergency access</div>
+  </section>
+
+  <!-- ── Phase 3: WELCOME ── -->
+  <section id="phase-welcome" class="phase">
+    <div class="welcome-greeting" id="welcome-greeting">Welcome</div>
+    <div class="welcome-role" id="welcome-role"></div>
+  </section>
+
+  <script>
+    'use strict';
+
+    // ── Phase transitions ──
+    function showPhase(id) {
+      document.querySelectorAll('.phase').forEach(function(el) { el.classList.remove('active'); });
+      var el = document.getElementById(id);
+      if (el) el.classList.add('active');
+    }
+
+    // ── Clock ──
+    var DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    function updateClock() {
+      var now = new Date();
+      var h = now.getHours(), m = now.getMinutes();
+      document.getElementById('lock-time').textContent = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+      document.getElementById('lock-date').textContent = DAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate();
+    }
+    var clockInterval = null;
+
+    // ── Auth ──
+    var submitting = false;
+    function doSubmit() {
+      if (submitting) return;
+      var pw = document.getElementById('pw-input').value.trim();
+      if (!pw) return;
+      var username = document.getElementById('user-display-name').dataset.loginName || document.getElementById('user-display-name').textContent;
+      submitting = true;
+      document.getElementById('lock-error').textContent = '';
+      document.getElementById('pw-submit').disabled = true;
+      window.splashBridge.sendAuth(username, pw);
+    }
+    document.getElementById('pw-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') doSubmit(); });
+    document.getElementById('pw-submit').addEventListener('click', doSubmit);
+    document.getElementById('pw-eye').addEventListener('click', function() {
+      var inp = document.getElementById('pw-input');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+      inp.focus();
+    });
+
+    // ── Phase event handler ──
+    window.splashBridge.onPhase(function(evt) {
+      var phase = evt.phase;
+      var data = evt.data || {};
+
+      if (phase === 'lock') {
+        // Populate time/date
+        updateClock();
+        if (!clockInterval) clockInterval = setInterval(updateClock, 30000);
+
+        // Populate account card
+        var displayName = data.fullName || data.name || 'RMPG Flex';
+        var loginName = data.name || displayName;
+        var nameEl = document.getElementById('user-display-name');
+        nameEl.textContent = displayName;
+        nameEl.dataset.loginName = loginName;
+
+        var initials = displayName.split(' ').filter(function(w){ return w.length > 0; }).slice(0, 2).map(function(w){ return w[0].toUpperCase(); }).join('');
+        document.getElementById('avatar-initials').textContent = initials || 'RG';
+
+        if (data.avatarDataUri) {
+          var img = document.getElementById('avatar-img');
+          img.src = data.avatarDataUri;
+          img.classList.remove('hidden');
+          document.getElementById('avatar-initials').style.display = 'none';
+        }
+
+        showPhase('phase-lock');
+        setTimeout(function() { document.getElementById('pw-input').focus(); }, 200);
+      }
+
+      if (phase === 'welcome') {
+        var h = new Date().getHours();
+        var period = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+        var firstName = (data.officerName || '').split(' ')[0] || 'Officer';
+        document.getElementById('welcome-greeting').textContent = 'Good ' + period + ', ' + firstName;
+        document.getElementById('welcome-role').textContent = (data.role || '').toUpperCase();
+        showPhase('phase-welcome');
+        // Fade out then signal main to close
+        setTimeout(function() {
+          document.getElementById('phase-welcome').classList.add('fading');
+        }, 2500);
+      }
+    });
+
+    // ── Auth result handler ──
+    window.splashBridge.onAuthResult(function(result) {
+      submitting = false;
+      document.getElementById('pw-submit').disabled = false;
+      if (!result.ok) {
+        document.getElementById('lock-error').textContent = result.error || 'Incorrect password';
+        document.getElementById('pw-input').value = '';
+        document.getElementById('pw-input').focus();
+      }
+      // On success, main sends splash:phase welcome — no action needed here.
+    });
+  </script>
+</body>
+</html>
