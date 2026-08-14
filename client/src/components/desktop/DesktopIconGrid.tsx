@@ -321,11 +321,11 @@ export default function DesktopIconGrid({
                   background: isSelected ? `rgba(${WIN_BLUE},0.15)` : hoveredPath === fn.path ? 'rgba(255,255,255,0.08)' : 'transparent',
                   borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Icon style={{ width: 14, height: 14, color: isSelected ? `rgb(${WIN_BLUE})` : 'var(--text-secondary)', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.7))' }} />
+                  <Icon style={{ width: 14, height: 14, color: isSelected ? `rgb(${WIN_BLUE})` : 'var(--text-secondary)', filter: 'drop-shadow(0 1px 2px rgba(0 0 0 / 0.7))' }} />
                   {badge > 0 && (
                     <span style={{
                       position: 'absolute', top: -4, right: -4,
-                      background: 'var(--sev-critical, #ef4444)', color: '#fff',
+                      background: 'var(--sev-critical)', color: '#fff',
                       fontSize: 8, fontWeight: 700, lineHeight: 1,
                       padding: '1px 3px', borderRadius: 6, minWidth: 12, textAlign: 'center',
                     }}>
@@ -382,7 +382,7 @@ export default function DesktopIconGrid({
           >
             <span style={{
               position: 'absolute', top: -18, left: 4, fontSize: 10, fontWeight: 600,
-              color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+              color: '#fff', textShadow: '0 1px 3px rgba(0 0 0 / 0.9)',
               pointerEvents: 'auto',
             }}>
               {group.label}
@@ -478,7 +478,7 @@ export default function DesktopIconGrid({
                     width: Math.round(ICON_SIZE * 0.6),
                     height: Math.round(ICON_SIZE * 0.6),
                     color: isSelected ? '#fff' : 'var(--text-secondary)',
-                    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))',
+                    filter: 'drop-shadow(0 2px 4px rgba(0 0 0 / 0.8))',
                     transition: 'color 0.1s',
                   }}
                 />
@@ -486,10 +486,10 @@ export default function DesktopIconGrid({
                 {badge > 0 && (
                   <span style={{
                     position: 'absolute', top: -4, right: -4,
-                    background: 'var(--sev-critical, #ef4444)', color: '#fff',
+                    background: 'var(--sev-critical)', color: '#fff',
                     fontSize: 9, fontWeight: 700, lineHeight: 1,
                     padding: '2px 4px', borderRadius: 8, minWidth: 14, textAlign: 'center',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                    boxShadow: '0 1px 3px rgba(0 0 0 / 0.6)',
                     pointerEvents: 'none',
                   }}>
                     {badge > 99 ? '99+' : badge}
@@ -524,7 +524,7 @@ export default function DesktopIconGrid({
                   fontSize: 10,
                   lineHeight: '1.3',
                   color: '#fff',
-                  textShadow: '0 1px 3px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.6)',
+                  textShadow: '0 1px 3px rgba(0 0 0 / 0.95), 0 0 6px rgba(0 0 0 / 0.6)',
                   background: labelBg,
                   borderRadius: 2,
                   padding: isSelected ? '0 3px' : 0,
@@ -578,7 +578,7 @@ export default function DesktopIconGrid({
             flexDirection: 'column',
             alignItems: 'center',
             gap: 4,
-            filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))',
+            filter: 'drop-shadow(0 4px 8px rgba(0 0 0 / 0.5))',
           }}
         >
           <div style={{
@@ -589,7 +589,7 @@ export default function DesktopIconGrid({
           }} />
           <span style={{
             fontSize: 10, color: '#fff',
-            textShadow: '0 1px 3px rgba(0,0,0,0.95)',
+            textShadow: '0 1px 3px rgba(0 0 0 / 0.95)',
             maxWidth: ghost.iconSize + 16,
             overflow: 'hidden',
             textOverflow: 'ellipsis',

@@ -198,7 +198,7 @@ export default function DesktopSettingsApp({
       style={{
         position: 'fixed', left: pos.x, top: pos.y, width: size.width, height: size.height,
         background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', flexDirection: 'column',
+        boxShadow: '0 8px 24px rgba(0 0 0 / 0.4)', zIndex: 2000, display: 'flex', flexDirection: 'column',
       }}
     >
       <div

@@ -91,8 +91,8 @@ export default function FlexOSAbout() {
 
   const Row = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))' }}>
-      <span style={{ fontSize: 11, color: 'var(--text-muted, #8da0b3)' }}>{label}</span>
-      <span style={{ fontSize: 11, color: 'var(--text-primary, #f0f4f9)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
     </div>
   );
 
@@ -110,13 +110,13 @@ export default function FlexOSAbout() {
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-          <Shield style={{ width: 28, height: 28, color: 'var(--accent-silver-300, #d4dde6)' }} />
+          <Shield style={{ width: 28, height: 28, color: 'var(--accent-silver-300)' }} />
         </div>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary, #f0f4f9)', letterSpacing: '-0.01em' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
             FlexOS
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted, #8da0b3)', marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
             Rocky Mountain Protective Group — Proprietary Operating System
           </div>
         </div>
@@ -125,7 +125,7 @@ export default function FlexOSAbout() {
       {/* Officer info */}
       {officer && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--field-label-color, #d9bd72)', marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--field-label-color)', marginBottom: 8 }}>
             Session
           </div>
           <Row label="Officer" value={officer.full_name ?? officer.name ?? '—'} />
@@ -137,7 +137,7 @@ export default function FlexOSAbout() {
 
       {/* Version info */}
       <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--field-label-color, #d9bd72)', marginBottom: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--field-label-color)', marginBottom: 8 }}>
           Version
         </div>
         <Row label="FlexOS" value={`v${FLEXOS_VERSION}`} />
@@ -151,7 +151,7 @@ export default function FlexOSAbout() {
       {/* System info (only in desktop) */}
       {sysInfo && (
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', marginBottom: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400)', marginBottom: 8 }}>
             Hardware
           </div>
           <Row label="Hostname" value={sysInfo.hostname || '—'} />
@@ -178,13 +178,13 @@ export default function FlexOSAbout() {
             borderRadius: 2, cursor: 'pointer', color: 'var(--text-primary)',
           }}
         >
-          {copied ? <Check size={12} style={{ color: 'var(--sev-ok, #22c55e)' }} /> : <Copy size={12} />}
+          {copied ? <Check size={12} style={{ color: 'var(--sev-ok)' }} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy diagnostic info'}
         </button>
       </div>
 
       {/* Legal */}
-      <div style={{ fontSize: 10, color: 'var(--text-muted, #8da0b3)', lineHeight: 1.6, borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.1))', paddingTop: 14 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.6, borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.1))', paddingTop: 14 }}>
         © {new Date().getFullYear()} Rocky Mountain Protective Group, LLC. All rights reserved.{/* new-date-ok */}
         <br />
         FlexOS is a proprietary software platform licensed exclusively to Rocky Mountain Protective Group.

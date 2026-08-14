@@ -94,7 +94,7 @@ export function WorkspacePills() {
             fontWeight: active === i ? 700 : 400,
             letterSpacing: '0.08em',
             background: active === i ? 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.35)' : 'transparent',
-            color: active === i ? 'var(--text-primary, #f0f4f9)' : 'var(--text-muted, #8da0b3)',
+            color: active === i ? 'var(--text-primary)' : 'var(--text-muted)',
             border: active === i ? '1px solid rgba(var(--rmpg-400-rgb, 80 140 200), 0.5)' : '1px solid transparent',
             cursor: 'pointer',
             userSelect: 'none',

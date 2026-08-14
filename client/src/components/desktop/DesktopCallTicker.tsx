@@ -10,10 +10,10 @@ interface TickerCall {
 
 function priorityColor(p: number | string | undefined): string {
   const n = Number(p);
-  if (n === 1) return 'var(--sev-critical, #ef4444)';
-  if (n === 2) return 'var(--sev-high, #f97316)';
-  if (n === 3) return 'var(--sev-medium, #f59e0b)';
-  return 'var(--text-primary, #f0f4f9)';
+  if (n === 1) return 'var(--sev-critical)';
+  if (n === 2) return 'var(--sev-high)';
+  if (n === 3) return 'var(--sev-warn)';
+  return 'var(--text-primary)';
 }
 
 const SCROLL_PX_PER_S = 60;
@@ -77,7 +77,7 @@ export default function DesktopCallTicker({ onOpenCall }: DesktopCallTickerProps
 
   return (
     <div
-      style={{ height: 22, background: 'var(--surface-base, #22405f)', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', overflow: 'hidden', position: 'relative', flexShrink: 0 }}
+      style={{ height: 22, background: 'var(--surface-base)', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', overflow: 'hidden', position: 'relative', flexShrink: 0 }}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       aria-label="Active calls ticker"
@@ -104,7 +104,7 @@ export default function DesktopCallTicker({ onOpenCall }: DesktopCallTickerProps
             <span style={{ fontSize: 10, fontWeight: 600, color: priorityColor(c.priority) }}>
               {c.incident_type?.replace(/_/g, ' ') ?? 'Call'}
             </span>
-            <span style={{ fontSize: 10, color: 'var(--text-secondary, #adbccc)' }}>
+            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
               — {c.location_address}
             </span>
           </button>

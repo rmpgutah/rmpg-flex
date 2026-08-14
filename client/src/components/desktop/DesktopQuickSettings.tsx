@@ -47,12 +47,12 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Night Light */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Moon className="w-3.5 h-3.5" style={{ color: nightLightOn ? 'var(--sev-warn, #f59e0b)' : 'var(--text-secondary)' }} />
+          <Moon className="w-3.5 h-3.5" style={{ color: nightLightOn ? 'var(--sev-warn)' : 'var(--text-secondary)' }} />
           <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Night Light</span>
           <button
             type="button"
             onClick={() => setNightLight(!nightLightOn)}
-            style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: nightLightOn ? 'var(--sev-warn, #f59e0b)' : 'var(--border-subtle)', position: 'relative' }}
+            style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: nightLightOn ? 'var(--sev-warn)' : 'var(--border-subtle)', position: 'relative' }}
           >
             <span style={{ position: 'absolute', top: 2, left: nightLightOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.1s' }} />
           </button>
@@ -78,7 +78,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
 
         {/* Wi-Fi status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
+          <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)' }} />
           <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {network?.ssid ?? (navigator.onLine ? 'Connected' : 'Offline')}
           </span>
@@ -112,8 +112,8 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
         {/* Sync pending */}
         {syncPending > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <RefreshCw className="w-3.5 h-3.5" style={{ color: 'var(--sev-warn, #f59e0b)', animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 10, color: 'var(--sev-warn, #f59e0b)' }}>{syncPending} record{syncPending !== 1 ? 's' : ''} pending sync</span>
+            <RefreshCw className="w-3.5 h-3.5" style={{ color: 'var(--sev-warn)', animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: 10, color: 'var(--sev-warn)' }}>{syncPending} record{syncPending !== 1 ? 's' : ''} pending sync</span>
           </div>
         )}
 
@@ -135,14 +135,14 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
           <div style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 4 }}>BATTERY</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {battery?.charging
-              ? <Zap className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)', flexShrink: 0 }} />
+              ? <Zap className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)', flexShrink: 0 }} />
               : <BatteryMedium className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
             }
             <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>
               {battery?.percent != null ? `${battery.percent}%` : '—'}
             </span>
             {battery?.charging && (
-              <span style={{ fontSize: 9, color: 'var(--sev-ok, #22c55e)' }}>Charging</span>
+              <span style={{ fontSize: 9, color: 'var(--sev-ok)' }}>Charging</span>
             )}
           </div>
         </div>

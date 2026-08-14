@@ -136,7 +136,7 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 19999 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0 0 0 / 0.55)', zIndex: 19999 }}
       />
       {/* Panel */}
       <div
@@ -147,9 +147,9 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
           transform: 'translateX(-50%)',
           width: 560,
           maxWidth: 'calc(100vw - 32px)',
-          background: 'var(--surface-raised, #1a3352)',
+          background: 'var(--surface-raised)',
           border: '1px solid var(--border-default, rgba(195,204,214,0.15))',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.7)',
+          boxShadow: '0 24px 60px rgba(0 0 0 / 0.7)',
           zIndex: 20000,
           display: 'flex',
           flexDirection: 'column',
@@ -159,38 +159,38 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
       >
         {/* Search input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.08))' }}>
-          <Search style={{ width: 14, height: 14, color: 'var(--text-muted, #8da0b3)', flexShrink: 0 }} />
+          <Search style={{ width: 14, height: 14, color: 'var(--text-muted)', flexShrink: 0 }} />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="Search modules, calls, persons, units, warrants…"
-            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 13, color: 'var(--text-primary, #f0f4f9)' }}
+            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', fontSize: 13, color: 'var(--text-primary)' }}
           />
           {loading && (
             <div style={{ width: 12, height: 12, border: '2px solid var(--border-subtle)', borderTopColor: 'var(--brand-400)', borderRadius: '50%', animation: 'spin 0.6s linear infinite', flexShrink: 0 }} />
           )}
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }} aria-label="Close command palette">
-            <X style={{ width: 12, height: 12, color: 'var(--text-muted, #8da0b3)' }} />
+            <X style={{ width: 12, height: 12, color: 'var(--text-muted)' }} />
           </button>
         </div>
 
         {/* Results */}
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {query && allResults.length === 0 && !loading && (
-            <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--text-muted, #8da0b3)', textAlign: 'center' }}>
+            <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
               No results for &ldquo;{query}&rdquo;
             </div>
           )}
           {!query && (
-            <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--text-muted, #8da0b3)', textAlign: 'center' }}>
+            <div style={{ padding: '20px 14px', fontSize: 11, color: 'var(--text-muted)', textAlign: 'center' }}>
               Start typing to search modules, calls, persons, units, or warrants
             </div>
           )}
           {groups.map(group => (
             <div key={group.type}>
-              <div style={{ padding: '6px 14px 2px', fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--field-label-color, #c3a849)', textTransform: 'uppercase' }}>
+              <div style={{ padding: '6px 14px 2px', fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--field-label-color)', textTransform: 'uppercase' }}>
                 {TYPE_LABELS[group.type]}
               </div>
               {group.items.map(item => {
@@ -214,21 +214,21 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
                       textAlign: 'left',
                     }}
                   >
-                    <span style={{ color: 'var(--text-secondary, #adbccc)', flexShrink: 0 }}>
+                    <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
                       {TYPE_ICONS[item.type]}
                     </span>
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-primary, #f0f4f9)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-primary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {item.primary}
                       </span>
                       {item.secondary && (
-                        <span style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {item.secondary}
                         </span>
                       )}
                     </span>
                     {isSelected && (
-                      <span style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', flexShrink: 0 }}>↵</span>
+                      <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>↵</span>
                     )}
                   </button>
                 );
@@ -238,7 +238,7 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
         </div>
 
         {/* Footer hint */}
-        <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-muted, #8da0b3)' }}>
+        <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))', display: 'flex', gap: 14, fontSize: 9, color: 'var(--text-muted)' }}>
           <span><kbd style={{ fontFamily: 'monospace' }}>↑↓</kbd> navigate</span>
           <span><kbd style={{ fontFamily: 'monospace' }}>↵</kbd> open</span>
           <span><kbd style={{ fontFamily: 'monospace' }}>Esc</kbd> dismiss</span>

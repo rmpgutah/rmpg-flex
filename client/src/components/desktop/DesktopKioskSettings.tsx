@@ -77,7 +77,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Monitor style={{ width: 14, height: 14, color: 'var(--accent-silver-400, #c3ccd6)' }} />
+        <Monitor style={{ width: 14, height: 14, color: 'var(--accent-silver-400)' }} />
         <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
           Kiosk Mode
         </span>
@@ -95,12 +95,12 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
         gap: 12,
       }}>
         {state.enabled
-          ? <ShieldCheck style={{ width: 18, height: 18, color: 'var(--accent-silver-400, #c3ccd6)', flexShrink: 0 }} />
+          ? <ShieldCheck style={{ width: 18, height: 18, color: 'var(--accent-silver-400)', flexShrink: 0 }} />
           : <ShieldOff style={{ width: 18, height: 18, color: 'var(--text-muted)', flexShrink: 0 }} />
         }
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
-            Kiosk Mode is <span style={{ color: state.enabled ? 'var(--accent-silver-400, #c3ccd6)' : 'var(--text-muted)' }}>
+            Kiosk Mode is <span style={{ color: state.enabled ? 'var(--accent-silver-400)' : 'var(--text-muted)' }}>
               {state.enabled ? 'Enabled' : 'Disabled'}
             </span>
           </div>
@@ -140,8 +140,8 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
           alignItems: 'center',
           gap: 8,
         }}>
-          <AlertTriangle style={{ width: 11, height: 11, color: 'var(--sev-critical, #ef4444)', flexShrink: 0 }} />
-          <span style={{ fontSize: 9, color: 'var(--sev-critical, #ef4444)' }}>{error}</span>
+          <AlertTriangle style={{ width: 11, height: 11, color: 'var(--sev-critical)', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, color: 'var(--sev-critical)' }}>{error}</span>
         </div>
       )}
 
@@ -156,7 +156,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
           gap: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <AlertTriangle style={{ width: 13, height: 13, color: 'var(--sev-critical, #ef4444)', flexShrink: 0, marginTop: 1 }} />
+            <AlertTriangle style={{ width: 13, height: 13, color: 'var(--sev-critical)', flexShrink: 0, marginTop: 1 }} />
             <p style={{ fontSize: 10, color: 'var(--text-primary)', lineHeight: 1.6, margin: 0 }}>
               {confirming === 'enable'
                 ? 'This machine will restart and boot directly into FlexOS. Windows Explorer will not load until Kiosk Mode is disabled.'
@@ -211,7 +211,7 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
               fontSize: 10,
               fontWeight: 600,
               background: state.enabled ? 'rgba(239,68,68,0.1)' : 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.15)',
-              color: state.enabled ? 'var(--sev-critical, #ef4444)' : 'var(--accent-silver-300, #d4dde6)',
+              color: state.enabled ? 'var(--sev-critical)' : 'var(--accent-silver-300)',
               border: `1px solid ${state.enabled ? 'rgba(239,68,68,0.25)' : 'rgba(195,204,214,0.12)'}`,
               cursor: 'pointer',
               letterSpacing: '0.04em',

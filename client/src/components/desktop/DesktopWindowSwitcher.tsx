@@ -83,7 +83,7 @@ export default function DesktopWindowSwitcher() {
       style={{
         position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
         display: 'flex', gap: 8, padding: 12, background: 'var(--surface-raised)',
-        border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: WINDOW_SWITCHER_ZINDEX,
+        border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.5)', zIndex: WINDOW_SWITCHER_ZINDEX,
       }}
     >
       {mruWindows.map((w, i) => {

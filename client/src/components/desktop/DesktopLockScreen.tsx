@@ -45,7 +45,7 @@ function roleLabel(role: string): string {
 }
 
 // Deterministic avatar color per username — picks from navy/slate palette, never red/green.
-const AVATAR_PALETTE = ['#2d5a8c', '#3e74a8', '#1e4a72', '#4a6fa5', '#25527a', '#365e8c', '#2a4f7c'];
+const AVATAR_PALETTE = ['var(--surface-overlay)', 'var(--rmpg-700)', 'var(--surface-sunken)', 'var(--rmpg-800)', 'var(--surface-overlay)', 'var(--surface-raised)', 'var(--surface-overlay)'];
 function avatarColor(username: string): string {
   let h = 0;
   for (let i = 0; i < username.length; i++) h = (h * 31 + username.charCodeAt(i)) >>> 0;
@@ -224,7 +224,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       aria-modal
       style={{
         position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'linear-gradient(160deg, #0d1f35 0%, #1a3352 60%, #0a1628 100%)',
+        background: 'linear-gradient(160deg, var(--surface-sunken) 0%, var(--surface-raised) 60%, var(--surface-overlay) 100%)',
         backdropFilter: 'blur(20px)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         fontFamily: 'inherit', overflow: 'hidden',
@@ -238,10 +238,10 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       }} />
 
       {/* Agency header */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 24px', borderBottom: '1px solid rgba(195,204,214,0.07)', background: 'rgba(0,0,0,0.2)' }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 24px', borderBottom: '1px solid rgba(195,204,214,0.07)', background: 'rgba(0 0 0 / 0.2)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Shield style={{ width: 18, height: 18, color: 'var(--accent-silver-400, #c3ccd6)' }} />
-          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--accent-silver-300, #d4dde6)', textTransform: 'uppercase' }}>
+          <Shield style={{ width: 18, height: 18, color: 'var(--accent-silver-400)' }} />
+          <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--accent-silver-300)', textTransform: 'uppercase' }}>
             {AGENCY_SHORT} — {AGENCY_NAME}
           </span>
         </div>
@@ -261,8 +261,8 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
       {showPicker ? (
         <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 640, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, padding: '0 24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Users style={{ width: 14, height: 14, color: 'var(--accent-silver-400, #c3ccd6)' }} />
-            <span style={{ fontSize: 12, color: 'var(--accent-silver-400, #c3ccd6)', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 600 }}>
+            <Users style={{ width: 14, height: 14, color: 'var(--accent-silver-400)' }} />
+            <span style={{ fontSize: 12, color: 'var(--accent-silver-400)', letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 600 }}>
               Select Account
             </span>
           </div>
@@ -275,7 +275,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
           )}
 
           {usersError && (
-            <div style={{ color: 'var(--sev-critical, #ef4444)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ color: 'var(--sev-critical)', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
               {usersError}
               <button type="button" onClick={loadUsers} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'var(--accent-silver-400)' }}>
                 <RefreshCw style={{ width: 12, height: 12 }} />
@@ -402,7 +402,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                 style={{
                   width: '100%', padding: '10px 40px 10px 12px', fontSize: 14,
                   background: 'rgba(10, 20, 40, 0.5)',
-                  border: error ? '1px solid var(--sev-critical, #ef4444)' : '1px solid rgba(195,204,214,0.2)',
+                  border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(195,204,214,0.2)',
                   color: 'rgba(240,244,249,0.95)', outline: 'none', boxSizing: 'border-box',
                 }}
               />
@@ -431,7 +431,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
                 width: '100%', padding: '10px 12px', fontSize: 24, letterSpacing: '0.5em',
                 textAlign: 'center', fontVariantNumeric: 'tabular-nums',
                 background: 'rgba(10, 20, 40, 0.5)',
-                border: error ? '1px solid var(--sev-critical, #ef4444)' : '1px solid rgba(195,204,214,0.2)',
+                border: error ? '1px solid var(--sev-critical)' : '1px solid rgba(195,204,214,0.2)',
                 color: 'rgba(240,244,249,0.95)', outline: 'none', boxSizing: 'border-box',
               }}
             />
@@ -439,7 +439,7 @@ export default function DesktopLockScreen({ isLocked, onUnlock }: DesktopLockScr
 
           {/* Error */}
           {error && (
-            <div style={{ width: '100%', fontSize: 11, color: 'var(--sev-critical, #ef4444)', textAlign: 'center' }}>
+            <div style={{ width: '100%', fontSize: 11, color: 'var(--sev-critical)', textAlign: 'center' }}>
               {isLockedOut ? `Locked out — ${lockoutSecsLeft}s remaining` : error}
             </div>
           )}

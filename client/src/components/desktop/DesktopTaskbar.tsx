@@ -267,7 +267,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 >
                   {w.title}
                   {isAppPinned(w.path) && (
-                    <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400, #5b8ab5))', display: 'block' }} />
+                    <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400))', display: 'block' }} />
                   )}
                 </button>
               </ContextMenu>
@@ -310,7 +310,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
                 {isAppPinned(path) && (
                   <span style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 2 }}>
                     {Array.from({ length: Math.min(group.length, 3) }, (_, i) => (
-                      <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400, #5b8ab5))', display: 'block' }} />
+                      <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--desktop-shell-accent, var(--rmpg-400))', display: 'block' }} />
                     ))}
                   </span>
                 )}
@@ -351,7 +351,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
             style={{ border: '1px solid var(--border-subtle)' }}
             title="New call"
           >
-            <Plus className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
+            <Plus className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)' }} />
           </button>
         )}
         {onLock && (
