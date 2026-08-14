@@ -235,12 +235,15 @@ interface AutomationRule {
 
 function MyAutomationsPanel() {
   const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [globalRules, setGlobalRules] = useState<AutomationRule[]>([]);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<AutomationRule | null>(null);
 
   const fetchRules = useCallback(async () => {
     const data = await apiFetch<{ rules: AutomationRule[] }>('/automation-rules').catch(() => null);
-    setRules((data?.rules ?? []).filter((r) => r.scope === 'user'));
+    const all = data?.rules ?? [];
+    setGlobalRules(all.filter((r) => r.scope === 'global'));
+    setRules(all.filter((r) => r.scope === 'user'));
   }, []);
 
   useEffect(() => { void fetchRules(); }, [fetchRules]);
@@ -263,34 +266,71 @@ function MyAutomationsPanel() {
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] text-rmpg-500 px-3 pb-1">
-        Personal rules only fire for you. Set up proximity alerts or personal welfare reminders.
-      </p>
-      {rules.map((r) => (
-        <div key={r.id} className="flex items-center justify-between bg-surface-raised border border-surface-border px-3 py-[3px]" style={{ borderRadius: 2 }}>
-          <div className="flex items-center gap-2 min-w-0">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.enabled ? 'bg-sev-ok' : 'bg-rmpg-600'}`} />
-            <span className="text-[11px] text-text-primary truncate">{r.name}</span>
-            <span className="text-[10px] text-rmpg-500 flex-shrink-0">
-              {r.trigger_type.replace(/_/g, ' ')} → {r.action_type.replace(/_/g, ' ')}
-            </span>
-          </div>
-          <div className="flex gap-2 flex-shrink-0 pl-3">
-            <button onClick={() => setEditing(r)} className="text-[10px] text-rmpg-400 hover:text-text-primary">Edit</button>
-            <button onClick={() => void handleDelete(r.id)} className="text-[10px] text-rmpg-400 hover:text-sev-critical">Delete</button>
-          </div>
+    <div className="space-y-4">
+      {/* System rules — read-only, scope='global' */}
+      <div className="space-y-1">
+        <div className="px-3 pb-1">
+          <p className="text-[10px] font-semibold text-fg-secondary uppercase tracking-wide">System rules</p>
+          <p className="text-[10px] text-fg-muted">Applied to all officers by dispatch</p>
         </div>
-      ))}
-      {rules.length === 0 && (
-        <p className="text-[10px] text-rmpg-600 px-3">No personal rules yet.</p>
-      )}
-      <button
-        onClick={() => setCreating(true)}
-        className="text-[11px] text-brand-400 hover:text-brand-300 px-3 pt-1 flex items-center gap-1"
-      >
-        + Add personal rule
-      </button>
+        {globalRules.length === 0 ? (
+          <p className="text-[10px] text-fg-muted px-3">No system rules configured.</p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="text-left border-b border-surface-border">
+                <th className="font-semibold text-[9px] text-fg-muted py-[3px] px-3 uppercase">Name</th>
+                <th className="font-semibold text-[9px] text-fg-muted py-[3px] px-2 uppercase">Trigger</th>
+                <th className="font-semibold text-[9px] text-fg-muted py-[3px] px-2 uppercase">Action</th>
+                <th className="font-semibold text-[9px] text-fg-muted py-[3px] px-2 uppercase">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {globalRules.map((r) => (
+                <tr key={r.id} className="border-b border-surface-border last:border-0">
+                  <td className="text-[11px] text-text-primary py-[2px] px-3 truncate max-w-[140px]">{r.name}</td>
+                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{r.trigger_type.replace(/_/g, ' ')}</td>
+                  <td className="text-[11px] text-fg-secondary py-[2px] px-2">{r.action_type.replace(/_/g, ' ')}</td>
+                  <td className="py-[2px] px-2">
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${r.enabled ? 'bg-sev-ok' : 'bg-surface-border'}`} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* My rules — editable, scope='user' */}
+      <div className="space-y-2">
+        <p className="text-[10px] text-rmpg-500 px-3 pb-1">
+          Personal rules only fire for you. Set up proximity alerts or personal welfare reminders.
+        </p>
+        {rules.map((r) => (
+          <div key={r.id} className="flex items-center justify-between bg-surface-raised border border-surface-border px-3 py-[3px]" style={{ borderRadius: 2 }}>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.enabled ? 'bg-sev-ok' : 'bg-rmpg-600'}`} />
+              <span className="text-[11px] text-text-primary truncate">{r.name}</span>
+              <span className="text-[10px] text-rmpg-500 flex-shrink-0">
+                {r.trigger_type.replace(/_/g, ' ')} → {r.action_type.replace(/_/g, ' ')}
+              </span>
+            </div>
+            <div className="flex gap-2 flex-shrink-0 pl-3">
+              <button onClick={() => setEditing(r)} className="text-[10px] text-rmpg-400 hover:text-text-primary">Edit</button>
+              <button onClick={() => void handleDelete(r.id)} className="text-[10px] text-rmpg-400 hover:text-sev-critical">Delete</button>
+            </div>
+          </div>
+        ))}
+        {rules.length === 0 && (
+          <p className="text-[10px] text-rmpg-600 px-3">No personal rules yet.</p>
+        )}
+        <button
+          onClick={() => setCreating(true)}
+          className="text-[11px] text-brand-400 hover:text-brand-300 px-3 pt-1 flex items-center gap-1"
+        >
+          + Add personal rule
+        </button>
+      </div>
     </div>
   );
 }
