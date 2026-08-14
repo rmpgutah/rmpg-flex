@@ -148,7 +148,7 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
 ];
 
 const READINESS_COLOR: Record<string, string> = {
-  ready: '#22c55e', attention: '#f59e0b', unavailable: '#6b7280',
+  ready: 'var(--sev-ok)', attention: 'var(--sev-warn)', unavailable: 'var(--text-muted)',
 };
 
 const chartTooltipStyle = {
@@ -303,7 +303,7 @@ export default function FleetDashboardPage() {
     let hasPoints = false;
     mapRows.filter((r) => r.lat != null && r.lng != null).forEach((r) => {
       const el = document.createElement('div');
-      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid #0b1826;background:${READINESS_COLOR[r.readiness] || '#6b7280'};cursor:pointer;box-shadow:0 0 4px rgba(0,0,0,0.6);`;
+      el.style.cssText = `width:14px;height:14px;border-radius:50%;border:2px solid var(--surface-sunken);background:${READINESS_COLOR[r.readiness] || 'var(--text-muted)'};cursor:pointer;box-shadow:0 0 4px rgb(0 0 0 / 0.6);`;
       el.title = `${r.vehicle_number} — ${toDisplayLabel(r.readiness)}`;
       el.addEventListener('click', () => openDossier(r.id));
       const marker = new mapboxgl.Marker({ element: el }).setLngLat([r.lng!, r.lat!]).addTo(map);

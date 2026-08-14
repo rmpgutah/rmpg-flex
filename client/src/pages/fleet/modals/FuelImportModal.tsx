@@ -169,9 +169,8 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
   };
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60"
       role="dialog" aria-modal="true" aria-labelledby={titleId}
-      style={{ background: 'rgba(0,0,0,0.6)' }}
       onClick={phase === 'committing' ? undefined : handleClose}>
       <div className="panel-beveled w-[900px] max-w-full mx-4 max-h-[90vh] flex flex-col bg-surface-raised"
         onClick={(e) => e.stopPropagation()}>

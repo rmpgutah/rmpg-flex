@@ -197,8 +197,8 @@ export default function FleetVehicleListPanel({
                       className="h-full transition-all duration-500"
                       style={{
                         width: `${Math.min(100, (v.current_mileage / UTILIZATION_LIFETIME_MILES) * 100)}%`,
-                        background: v.current_mileage < 75000 ? '#22c55e'
-                          : v.current_mileage < 120000 ? '#f59e0b' : '#ef4444',
+                        background: v.current_mileage < 75000 ? 'var(--sev-ok)'
+                          : v.current_mileage < 120000 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                       }}
                     />
                   </div>

@@ -82,7 +82,7 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
         <polyline
           points={points.join(' ')}
           fill="none"
-          stroke="#888888"
+          stroke="var(--text-muted)"
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -91,7 +91,7 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
         {values.map((v, i) => {
           const x = padding + (i / (values.length - 1)) * usableW;
           const y = padding + usableH - ((v - min) / range) * usableH;
-          const color = v > 20 ? '#4ade80' : v >= 15 ? '#fbbf24' : '#f87171';
+          const color = v > 20 ? 'var(--sev-ok)' : v >= 15 ? 'var(--sev-warn-soft)' : 'var(--sev-critical-soft)';
           return <circle key={i} cx={x} cy={y} r="2" fill={color} />;
         })}
       </svg>

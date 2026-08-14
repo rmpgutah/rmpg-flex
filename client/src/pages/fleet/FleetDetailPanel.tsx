@@ -51,8 +51,8 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
   out_of_service: 'Out of Service', retired: 'Retired',
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
-  in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: 'var(--text-muted)',
+  in_service: 'var(--sev-ok)', maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)', retired: 'var(--text-muted)',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
