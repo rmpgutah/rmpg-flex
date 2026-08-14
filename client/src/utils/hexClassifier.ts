@@ -96,6 +96,13 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // AdminRadioTab — COLOR_SWATCHES for <input type="color"> stored to API as hex.
   // AdminSkipTracerV2Tab — categorical identity colors per skip-tracer source.
   adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$|(^|\/)hrConstants\.(ts)$/,
+  // EmailPage has three categories of load-bearing color that cannot be tokens:
+  // (1) CSS injected into isolated srcdoc iframe documents — var() cannot resolve
+  //     inside an iframe's isolated document; literal values are required.
+  // (2) Print stylesheet strings injected as string literals — same isolation issue.
+  // (3) CATEGORY_PRESET_COLORS — user-assignable categorical identity colors stored
+  //     as data values, not theme chrome (analogous to connectionsGraphStyle).
+  emailIframePrintData: /(^|\/)EmailPage\.(tsx)$/,
   // Navigation module — tactical-dark and Mapbox-paint contexts:
   //
   // TripReplayMap.tsx — every hex literal is a Mapbox paint property
