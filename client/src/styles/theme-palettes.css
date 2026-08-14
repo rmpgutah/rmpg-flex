@@ -359,6 +359,7 @@ html.theme-light {
   --toolbar-nav-active: #d6d3c8;
   --bevel-highlight: #c3cdd8;
   --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -474,6 +475,7 @@ html.theme-legacy-black {
   --toolbar-nav-active: rgba(0, 0, 0, 0.38);
   --bevel-highlight: #3a3a3a;
   --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
@@ -655,6 +657,7 @@ html.theme-blue-silver {
   --toolbar-nav-active: #142840;
   --bevel-highlight: #46688c;
   --titlebar-gradient: linear-gradient(180deg, #2c4f74 0%, #22405f 50%, #2c4f74 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */

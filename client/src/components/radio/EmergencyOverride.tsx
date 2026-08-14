@@ -108,7 +108,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
           <div
             className="flex items-center justify-center gap-1.5 py-1.5 px-2 mb-2 rounded-[2px]"
             style={{
-              background: 'repeating-linear-gradient(45deg, #991b1b, #991b1b 8px, #7f1d1d 8px, #7f1d1d 16px)',
+              background: `repeating-linear-gradient(45deg, rgb(var(--sev-critical-rgb) / 0.8), rgb(var(--sev-critical-rgb) / 0.8) 8px, rgb(var(--sev-critical-rgb) / 0.55) 8px, rgb(var(--sev-critical-rgb) / 0.55) 16px)`,
             }}
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -141,7 +141,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
               onTouchEnd={endHold}
               className="w-full py-3 rounded-[2px] cursor-pointer select-none relative overflow-hidden"
               style={{
-                background: 'repeating-linear-gradient(45deg, #991b1b, #991b1b 8px, #7f1d1d 8px, #7f1d1d 16px)',
+                background: `repeating-linear-gradient(45deg, rgb(var(--sev-critical-rgb) / 0.8), rgb(var(--sev-critical-rgb) / 0.8) 8px, rgb(var(--sev-critical-rgb) / 0.55) 8px, rgb(var(--sev-critical-rgb) / 0.55) 16px)`,
                 boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
                 border: '1px solid var(--surface-sunken)',
               }}
