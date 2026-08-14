@@ -37,7 +37,7 @@
     @keyframes labelFadeIn { to { opacity: 1; } }
 
     /* ── Phase 2: LOCK ── */
-    #phase-lock { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 0; }
+    #phase-lock { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 0; position: relative; }
     #phase-lock::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
     #phase-lock > * { position: relative; z-index: 1; }
     .lock-time { font-size: 72px; font-weight: 200; letter-spacing: -2px; color: #fff; line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
@@ -59,8 +59,42 @@
     .lock-error { font-size: 12px; color: #ef4444; margin-top: 10px; height: 16px; text-align: center; width: 288px; }
     .lock-hint { font-size: 10px; color: #2e4a60; letter-spacing: 1px; margin-top: 28px; }
 
+    /* ── RMPG watermark behind lock/welcome content ── */
+    #phase-lock::before, #phase-welcome::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: var(--rmpg-logo-url, none);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 320px auto;
+      opacity: 0.045;
+      pointer-events: none;
+    }
+
+    /* ── Radial glow pulse behind the lock card ── */
+    @keyframes lockPulse {
+      0%   { transform: translate(-50%, -50%) scale(1);    opacity: 0.06; }
+      50%  { transform: translate(-50%, -50%) scale(1.1);  opacity: 0.11; }
+      100% { transform: translate(-50%, -50%) scale(1);    opacity: 0.06; }
+    }
+    #phase-lock::after {
+      content: '';
+      position: absolute;
+      width: 560px;
+      height: 560px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(195,204,214,0.18) 0%, transparent 68%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation: lockPulse 4.5s ease-in-out infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
     /* ── Phase 3: WELCOME ── */
-    #phase-welcome { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 16px; }
+    #phase-welcome { background: #0b1928 url('./assets/login-bg.jpg') center center / cover no-repeat; gap: 16px; position: relative; }
     #phase-welcome::before { content: ''; position: absolute; inset: 0; background: rgba(11,25,40,0.38); pointer-events: none; z-index: 0; }
     #phase-welcome > * { position: relative; z-index: 1; }
     .welcome-greeting { font-size: 28px; font-weight: 300; color: #f0f4f9; letter-spacing: 0.02em; }

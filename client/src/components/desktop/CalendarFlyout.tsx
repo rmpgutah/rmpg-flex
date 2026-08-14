@@ -5,6 +5,19 @@ const DAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
+const TIME_ZONES = [
+  { label: 'Mountain', tz: 'America/Denver' },
+  { label: 'Pacific',  tz: 'America/Los_Angeles' },
+  { label: 'Eastern',  tz: 'America/New_York' },
+  { label: 'UTC',      tz: 'UTC' },
+] as const;
+
+function fmtZoneTime(tz: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date()); // new-date-ok — current time for world clock display
+}
+
 export default function CalendarFlyout({ anchorRef, onClose }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -13,7 +26,14 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selected, setSelected] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+
+  // Refresh world times every 30 s
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -138,6 +158,20 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
           {MONTH_NAMES[month]} {selected}, {year}
         </div>
       )}
+
+      {/* World times — refreshes every 30 s via tick */}
+      {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+      <div data-tick={tick} style={{ borderTop: '1px solid var(--border-subtle)', marginTop: 8, paddingTop: 6, paddingBottom: 4, paddingLeft: 4, paddingRight: 4 }}>
+        <p style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5, color: 'var(--field-label-color)' }}>
+          World Times
+        </p>
+        {TIME_ZONES.map(({ label, tz }) => (
+          <div key={tz} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</span>
+            <span style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>{fmtZoneTime(tz)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

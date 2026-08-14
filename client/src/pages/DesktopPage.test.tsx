@@ -44,12 +44,17 @@ vi.mock('../utils/featureFlags', () => ({
 import { saveFavorites } from '../utils/navFavorites';
 import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { isAutoArrangeEnabled, setAutoArrangeEnabled, areIconsHidden } from '../utils/desktopIconPreferences';
+import { markSeeded } from '../utils/defaultModulePins';
 import DesktopPage from './DesktopPage';
 
 describe('DesktopPage', () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    // Pre-mark the desktop as seeded so auto-pin defaults don't fire during
+    // tests that are exercising other behaviors (empty-state, sticky notes, etc.).
+    // The seeding feature itself is unit-tested in defaultModulePins.test.ts.
+    markSeeded();
     apiFetchMock.mockClear();
     apiFetchMock.mockResolvedValue({});
     mockUseUserPreferences.mockReset();
@@ -300,7 +305,7 @@ describe('DesktopPage — auto-arrange fills gaps for newly-pinned icons', () =>
 });
 
 describe('DesktopPage — hidden icons layer', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => { localStorage.clear(); markSeeded(); });
 
   it('hides the icon grid (and empty-state message) but not sticky notes when icons are hidden', async () => {
     saveFavorites(new Set(['/dispatch']));

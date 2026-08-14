@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, X } from 'lucide-react';
 import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
-import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID } from '../../data/desktopWallpapers';
+import { DESKTOP_WALLPAPERS, DEFAULT_WALLPAPER_ID, CUSTOM_WALLPAPER_ID, setCustomWallpaperDataUrl, clearCustomWallpaper, CUSTOM_WALLPAPER_MAX_BYTES, isSlideshowEnabled, setSlideshowEnabled, getSlideshowIntervalMin, setSlideshowIntervalMin } from '../../data/desktopWallpapers';
 import { DESKTOP_ACCENTS, DEFAULT_ACCENT_ID } from '../../data/desktopAccents';
 import { SETTINGS_SEARCH_INDEX } from '../../data/settingsSearchIndex';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
@@ -97,6 +97,10 @@ export default function DesktopSettingsApp({
   const [taskbarPosition, setTaskbarPositionState] = useState<TaskbarPosition>(() => getTaskbarPosition());
   const [taskbarSize, setTaskbarSizeState] = useState<TaskbarSize>(() => getTaskbarSize());
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [customWallpaperError, setCustomWallpaperError] = useState<string | null>(null);
+  const [slideshow, setSlideshowState] = useState(() => isSlideshowEnabled());
+  const [slideshowInterval, setSlideshowIntervalState] = useState(() => getSlideshowIntervalMin());
   const [clockFormat, setClockFormatState] = useState<ClockFormat>(() => getClockFormat());
   const [soundEnabled, setSoundEnabledState] = useState(() => isDesktopSoundEnabled());
   const [windowOpacity, setWindowOpacityState] = useState(() => getDefaultWindowOpacity());
@@ -138,6 +142,25 @@ export default function DesktopSettingsApp({
     a.click();
     URL.revokeObjectURL(url);
   }, []);
+
+  function handleCustomWallpaperUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > CUSTOM_WALLPAPER_MAX_BYTES) {
+      setCustomWallpaperError('Image too large (max 4 MB). Please compress it first.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      setCustomWallpaperDataUrl(dataUrl);
+      onWallpaperChange(CUSTOM_WALLPAPER_ID);
+      setCustomWallpaperError(null);
+    };
+    reader.readAsDataURL(file);
+    // reset input so same file can be picked again
+    e.target.value = '';
+  }
 
   const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -234,6 +257,63 @@ export default function DesktopSettingsApp({
                     style={{ width: 24, height: 24, background: w.background, border: wallpaperId === w.id ? '2px solid var(--brand-400)' : '1px solid var(--border-default)' }}
                   />
                 ))}
+              </div>
+
+              {/* Custom wallpaper upload */}
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <button
+                  className="px-3 py-1.5 text-[11px] bg-surface-raised border border-border-subtle rounded-sm hover:bg-surface-hover text-text-primary transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Upload Image
+                </button>
+                {wallpaperId === CUSTOM_WALLPAPER_ID && (
+                  <button
+                    className="px-3 py-1.5 text-[11px] bg-surface-raised border border-border-subtle rounded-sm hover:bg-surface-hover text-text-secondary transition-colors"
+                    onClick={() => { clearCustomWallpaper(); onWallpaperChange('blue-silver-default'); }}
+                  >
+                    Remove
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleCustomWallpaperUpload}
+                />
+              </div>
+              {customWallpaperError && (
+                <p className="text-[11px] text-red-400 mt-1">{customWallpaperError}</p>
+              )}
+
+              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={slideshow}
+                    onChange={e => { setSlideshowEnabled(e.target.checked); setSlideshowState(e.target.checked); }}
+                    className="accent-rmpg-400"
+                  />
+                  <span className="text-[11px] text-text-primary">Wallpaper slideshow</span>
+                </label>
+                {slideshow && (
+                  <select
+                    className="bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-[11px] text-text-primary"
+                    value={slideshowInterval}
+                    onChange={e => {
+                      const v = Number(e.target.value);
+                      setSlideshowIntervalMin(v);
+                      setSlideshowIntervalState(v);
+                    }}
+                  >
+                    <option value={1}>1 min</option>
+                    <option value={5}>5 min</option>
+                    <option value={10}>10 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={60}>1 hour</option>
+                  </select>
+                )}
               </div>
 
               <div className="text-[10px] font-semibold uppercase mt-3 mb-1" style={sectionLabelStyle()}>Accent Color</div>
