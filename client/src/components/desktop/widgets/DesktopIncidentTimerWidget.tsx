@@ -29,7 +29,7 @@ export default function DesktopIncidentTimerWidget() {
 
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
-  const color = mins >= 30 ? 'var(--sev-critical, #ef4444)' : mins >= 15 ? 'var(--sev-warn, #f59e0b)' : 'var(--sev-ok, #22c55e)';
+  const color = mins >= 30 ? 'var(--sev-critical)' : mins >= 15 ? 'var(--sev-warn)' : 'var(--sev-ok)';
 
   return (
     <div style={{ padding: 8 }}>

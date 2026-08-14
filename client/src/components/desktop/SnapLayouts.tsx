@@ -75,7 +75,7 @@ export default function SnapLayouts({ taskbarH, onSnap, onDismiss }: SnapLayouts
         transform: 'translateX(-50%)',
         background: 'var(--surface-raised)',
         border: '1px solid var(--border-strong)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        boxShadow: '0 8px 24px var(--window-shadow)',
         borderRadius: 2,
         padding: 8,
         display: 'grid',

@@ -55,12 +55,17 @@ export default function DesktopSnippingTool({ onClose }: DesktopSnippingToolProp
         canvas.width = rect.w;
         canvas.height = rect.h;
         const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#1a2a3a';
+        // Canvas API requires resolved color strings — read CSS variables at draw time.
+        const cs = getComputedStyle(document.documentElement);
+        const canvasBg = cs.getPropertyValue('--surface-raised').trim();
+        const canvasStroke = cs.getPropertyValue('--brand-blue').trim();
+        const canvasText = cs.getPropertyValue('--text-secondary').trim();
+        ctx.fillStyle = canvasBg;
         ctx.fillRect(0, 0, rect.w, rect.h);
-        ctx.strokeStyle = '#4a9eff';
+        ctx.strokeStyle = canvasStroke;
         ctx.lineWidth = 2;
         ctx.strokeRect(1, 1, rect.w - 2, rect.h - 2);
-        ctx.fillStyle = '#aab8c8';
+        ctx.fillStyle = canvasText;
         ctx.font = '12px monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`Snip (${rect.w}×${rect.h})`, rect.w / 2, rect.h / 2 - 8);
@@ -148,13 +153,13 @@ export default function DesktopSnippingTool({ onClose }: DesktopSnippingToolProp
       {mode === 'selecting' && (
         <div
           ref={overlayRef}
-          style={{ position: 'fixed', inset: 0, zIndex: 30000, background: 'rgba(0,0,0,0.45)', cursor: 'crosshair' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 30000, background: 'var(--window-shadow)', cursor: 'crosshair' }}
         >
           <div
             ref={selRef}
-            style={{ position: 'fixed', border: '2px solid #4a9eff', background: 'rgba(74,158,255,0.08)', display: 'none', pointerEvents: 'none' }}
+            style={{ position: 'fixed', border: '2px solid var(--brand-blue)', background: 'rgba(74,158,255,0.08)', display: 'none', pointerEvents: 'none' }}
           />
-          <div style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '4px 16px', borderRadius: 2, fontSize: 12 }}>
+          <div style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', background: 'var(--modal-scrim)', color: 'var(--text-primary)', padding: '4px 16px', borderRadius: 2, fontSize: 12 }}>
             Drag to select area &nbsp; <kbd style={{ opacity: 0.7 }}>Esc</kbd> to cancel
           </div>
         </div>
@@ -164,7 +169,7 @@ export default function DesktopSnippingTool({ onClose }: DesktopSnippingToolProp
       <div style={{
         position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
         background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-        borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+        borderRadius: 2, boxShadow: '0 8px 32px var(--window-shadow)', zIndex: 20100,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         {/* Title bar */}

@@ -178,16 +178,16 @@ export default function DesktopCalculator() {
   const BTN: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 500,
-    border: '1px solid var(--border-subtle, rgba(195,204,214,0.1))',
+    border: '1px solid var(--border-subtle)',
     borderRadius: 2,
     cursor: 'pointer',
     padding: '10px 0',
-    background: 'var(--surface-base, #22405f)',
-    color: 'var(--text-primary, #f0f4f9)',
+    background: 'var(--surface-base)',
+    color: 'var(--text-primary)',
     transition: 'background 100ms',
   };
-  const OPBTN: React.CSSProperties = { ...BTN, background: 'var(--surface-sunken, #0f2035)', color: 'var(--brand-400, #5b8ab5)' };
-  const EQBTN: React.CSSProperties = { ...BTN, background: 'var(--brand-600, #1e4d7a)', color: '#fff', fontWeight: 700 };
+  const OPBTN: React.CSSProperties = { ...BTN, background: 'var(--surface-sunken)', color: 'var(--brand-400)' };
+  const EQBTN: React.CSSProperties = { ...BTN, background: 'var(--brand-600)', color: 'var(--text-primary)', fontWeight: 700 };
 
   const rows = [
     ['C', '±', '%', '÷'],
@@ -198,7 +198,7 @@ export default function DesktopCalculator() {
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-raised, #1a3352)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-raised)' }}>
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
         {(['calc', 'convert'] as const).map(t => (
