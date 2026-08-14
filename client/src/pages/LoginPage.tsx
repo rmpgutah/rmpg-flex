@@ -594,19 +594,14 @@ export default function LoginPage() {
         style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div
-          style={{
-            background: 'linear-gradient(180deg, #1a0000 0%, #0d0000 100%)',
-            border: '1px solid #991b1b',
-            borderTop: '2px solid #ef4444',
-          }}
-          className="p-2 sm:p-2.5 text-center"
+          className="p-2 sm:p-2.5 text-center bg-gradient-to-b from-red-950/90 to-red-950/50 border border-red-800 border-t-2 border-t-red-500"
         >
           <div className="flex items-center justify-center gap-1.5 mb-1">
-            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
-            <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.2em]" style={{ color: '#ef4444' }}>Warning</span>
-            <div className="w-1 h-1 rounded-full animate-pulse" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }} />
+            <div className="w-1 h-1 rounded-full animate-pulse bg-red-500" style={{ boxShadow: '0 0 4px var(--sev-critical)' }} />
+            <span className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.2em] text-red-500">Warning</span>
+            <div className="w-1 h-1 rounded-full animate-pulse bg-red-500" style={{ boxShadow: '0 0 4px var(--sev-critical)' }} />
           </div>
-          <p className="text-[8px] sm:text-[9px] leading-relaxed font-medium" style={{ color: '#ef7a7a' }}>
+          <p className="text-[8px] sm:text-[9px] leading-relaxed font-medium text-red-400">
             RESTRICTED INTERNAL SYSTEM &mdash; AUTHORIZED USERS ONLY.
             ALL ACTIVITY IS MONITORED AND RECORDED. UNAUTHORIZED ACCESS IS PROHIBITED.
           </p>
@@ -659,8 +654,8 @@ export default function LoginPage() {
             <div className="ml-auto flex items-center gap-1">
               {pending2FA && (
                 <div className="flex items-center gap-1 mr-2" role="status">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#4ade80' }} aria-hidden="true" />
-                  <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400" aria-hidden="true" />
+                  <span className="text-[8px] uppercase tracking-wide text-green-400">Password OK</span>
                 </div>
               )}
               <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderBottom: '1px solid var(--border-subtle)' }} aria-hidden="true">_</div>
@@ -671,12 +666,11 @@ export default function LoginPage() {
           <div className="p-4 sm:p-5">
             {/* URL `?error=...` banner — dismisses on Esc or close */}
             {urlError && !forgotPwActive && (
-              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="alert" aria-live="polite" style={{
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in border border-red-900" role="alert" aria-live="polite" style={{
                 background: 'rgba(220, 38, 38, 0.10)',
-                border: '1px solid #7f1d1d',
               }}>
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
-                <p className="text-xs flex-1" style={{ color: '#ef7a7a' }}>{urlError}</p>
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" aria-hidden="true" />
+                <p className="text-xs flex-1 text-red-400">{urlError}</p>
                 <button
                   type="button"
                   onClick={() => setUrlError(null)}
@@ -690,12 +684,11 @@ export default function LoginPage() {
 
             {/* `?reset=1` success flash — comes from ResetPasswordPage */}
             {resetSuccess && !forgotPwActive && (
-              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="status" aria-live="polite" style={{
+              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in border border-green-800" role="status" aria-live="polite" style={{
                 background: 'rgba(34, 197, 94, 0.08)',
-                border: '1px solid #166534',
               }}>
-                <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} aria-hidden="true" />
-                <p className="text-xs flex-1" style={{ color: '#86efac' }}>
+                <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 text-green-500" aria-hidden="true" />
+                <p className="text-xs flex-1 text-green-300">
                   Password reset complete. Sign in with your new password.
                 </p>
                 <button
@@ -711,9 +704,9 @@ export default function LoginPage() {
 
             {/* Last login info banner */}
             {lastLoginInfo && (
-              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #166534' }}>
-                <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} />
-                <p className="text-xs" style={{ color: '#86efac' }}>
+              <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in border border-green-800" style={{ background: 'rgba(34, 197, 94, 0.08)' }}>
+                <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0 text-green-500" />
+                <p className="text-xs text-green-300">
                   Last login: {(() => {
                     const d = parseTimestamp(lastLoginInfo.time);
                     const now = new Date();
@@ -730,18 +723,20 @@ export default function LoginPage() {
 
             {/* Error message */}
             {error && (
-              <div className="flex items-center gap-2 p-2.5 mb-4 animate-fade-in" role="alert" aria-live="assertive" style={{
-                background: error.includes('locked') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(220, 38, 38, 0.15)',
-                border: error.includes('locked') ? '1px solid #ef4444' : '1px solid #991b1b',
-              }}>
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
+              <div
+                className={`flex items-center gap-2 p-2.5 mb-4 animate-fade-in ${error.includes('locked') ? 'border border-red-500' : 'border border-red-800'}`}
+                role="alert"
+                aria-live="assertive"
+                style={{ background: error.includes('locked') ? 'rgba(239, 68, 68, 0.2)' : 'rgba(220, 38, 38, 0.15)' }}
+              >
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" aria-hidden="true" />
                 <div>
-                  <p className="text-xs" style={{ color: '#ef7a7a' }}>{error}</p>
+                  <p className="text-xs text-red-400">{error}</p>
                   {error.includes('attempt') && (
-                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>Too many failed attempts will lock your account.</p>
+                    <p className="text-[10px] mt-0.5 text-red-400">Too many failed attempts will lock your account.</p>
                   )}
                   {(error.includes('Invalid verification') || error.includes('invalid verification')) && pending2FA && (
-                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>
+                    <p className="text-[10px] mt-0.5 text-red-400">
                       Tip: Wait for a fresh code in your authenticator app and ensure your device clock is accurate.
                     </p>
                   )}
@@ -818,9 +813,7 @@ export default function LoginPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                                              className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500"
-                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
+                                              className="absolute right-0 top-1/2 -translate-y-1/2 transition-colors flex items-center justify-center w-11 h-11 text-rmpg-500 hover:text-rmpg-200"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                         tabIndex={0}
                       >
@@ -921,7 +914,7 @@ export default function LoginPage() {
                     name="trust-device"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
-                    className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    className="w-4 h-4 rounded-sm cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                     style={{ accentColor: 'var(--rmpg-400)' }}
                     aria-label="Trust this device for 30 days"
                   />
@@ -949,7 +942,7 @@ export default function LoginPage() {
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
                       disabled={loginBusy}
                                             className="flex items-center gap-1 text-[10px] uppercase tracking-wide font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm px-1 py-0.5 text-rmpg-500"
-                      onMouseEnter={(e) => { e.currentTarget.style.color = '#d97706'; }}
+                      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--sev-warn)'; }}
                       onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
                       aria-label="Verify with YubiKey security key"
                     >
@@ -1129,7 +1122,7 @@ export default function LoginPage() {
 
                 {qrCodeUri && (
                   <div className="flex justify-center">
-                    <div className="p-2.5 shadow-lg" style={{ background: '#ffffff', borderRadius: '2px' }}>
+                    <div className="p-2.5 shadow-lg bg-white" style={{ borderRadius: '2px' }}>
                       <img src={qrCodeUri} alt="Scan this QR code with your authenticator app to set up two-factor authentication" className="w-44 h-44" draggable={false} />
                     </div>
                   </div>
@@ -1301,9 +1294,9 @@ export default function LoginPage() {
               <div className="space-y-3">
                 {/* Error */}
                 {forgotError && (
-                  <div className="flex items-center gap-2 p-2.5 mb-2 animate-fade-in" role="alert" style={{ background: 'rgba(220, 38, 38, 0.15)', border: '1px solid #991b1b' }}>
-                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
-                    <p className="text-xs" style={{ color: '#ef7a7a' }}>{forgotError}</p>
+                  <div className="flex items-center gap-2 p-2.5 mb-2 animate-fade-in border border-red-800" role="alert" style={{ background: 'rgba(220, 38, 38, 0.15)' }}>
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-red-500" aria-hidden="true" />
+                    <p className="text-xs text-red-400">{forgotError}</p>
                   </div>
                 )}
 
@@ -1502,7 +1495,7 @@ export default function LoginPage() {
                 {/* Step: Success */}
                 {forgotPwStep === 'success' && (
                   <div className="text-center space-y-3 py-2">
-                    <CheckCircle className="w-10 h-10 mx-auto" style={{ color: '#22c55e' }} />
+                    <CheckCircle className="w-10 h-10 mx-auto text-green-500" />
                     <p className="text-[10px] uppercase tracking-wide font-bold text-rmpg-400">
                       Password Reset Complete
                     </p>
@@ -1562,8 +1555,8 @@ export default function LoginPage() {
                 <div className="flex items-center justify-between py-[3px]">
                   <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">Server</span>
                   <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e', boxShadow: '0 0 3px #22c55e' }} />
-                    <span className="text-[9px] font-mono" style={{ color: '#4ade80' }}>Online</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" style={{ boxShadow: '0 0 3px var(--sev-ok)' }} />
+                    <span className="text-[9px] font-mono text-green-400">Online</span>
                   </div>
                 </div>
               </div>
@@ -1584,8 +1577,8 @@ export default function LoginPage() {
                 <div className="flex items-center justify-between py-[3px]">
                   <span className="text-[8px] uppercase tracking-wider font-bold text-rmpg-500">Connection</span>
                   <div className="flex items-center gap-1">
-                    <Wifi className="w-2.5 h-2.5" style={{ color: device.online ? '#4ade80' : '#ef4444' }} />
-                    <span className="text-[9px] font-mono" style={{ color: device.online ? '#4ade80' : '#ef4444' }}>
+                    <Wifi className={`w-2.5 h-2.5 ${device.online ? 'text-green-400' : 'text-red-500'}`} />
+                    <span className={`text-[9px] font-mono ${device.online ? 'text-green-400' : 'text-red-500'}`}>
                       {device.online ? 'Online' : 'Offline'}
                     </span>
                   </div>
