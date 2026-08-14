@@ -12,10 +12,10 @@ interface UnitRow {
 }
 
 function statusColor(s: string): string {
-  if (s === 'available') return 'var(--sev-ok, #22c55e)';
-  if (s === 'busy' || s === 'on-call' || s === 'traffic-stop') return 'var(--sev-warn, #f59e0b)';
-  if (s === 'out-of-service') return 'var(--text-muted, #6b7280)';
-  return 'var(--text-secondary, #adbccc)';
+  if (s === 'available') return 'var(--sev-ok)';
+  if (s === 'busy' || s === 'on-call' || s === 'traffic-stop') return 'var(--sev-warn)';
+  if (s === 'out-of-service') return 'var(--text-muted)';
+  return 'var(--text-secondary)';
 }
 
 function statusLabel(s: string): string {

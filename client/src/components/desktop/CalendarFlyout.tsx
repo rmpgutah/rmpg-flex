@@ -81,7 +81,7 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
         width: 280,
         background: 'var(--surface-raised)',
         border: '1px solid var(--border-default)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        boxShadow: '0 8px 24px rgba(0 0 0 / 0.5)',
         zIndex: 99990,
         padding: 12,
         userSelect: 'none',
@@ -128,7 +128,7 @@ export default function CalendarFlyout({ anchorRef, onClose }: {
                 fontSize: 10,
                 padding: '3px 0',
                 background: isToday
-                  ? 'var(--desktop-shell-accent, #3e74a8)'
+                  ? 'var(--desktop-shell-accent)'
                   : isSel
                     ? 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.25)'
                     : 'transparent',

@@ -3,10 +3,10 @@ import { Radio } from 'lucide-react';
 import { useDesktopSystem } from '../../context/DesktopSystemContext';
 
 const PRIORITY_COLORS: Record<number, string> = {
-  1: 'var(--sev-critical, #ef4444)',
-  2: 'var(--sev-high, #f97316)',
-  3: 'var(--sev-warn, #f59e0b)',
-  4: 'var(--sev-ok, #22c55e)',
+  1: 'var(--sev-critical)',
+  2: 'var(--sev-high)',
+  3: 'var(--sev-warn)',
+  4: 'var(--sev-ok)',
 };
 
 interface Props { taskbarHeightPx: number; }

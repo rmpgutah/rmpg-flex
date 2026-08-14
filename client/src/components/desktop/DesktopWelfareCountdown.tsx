@@ -23,10 +23,10 @@ export default function DesktopWelfareCountdown() {
   const color = remaining === null
     ? 'var(--text-secondary)'
     : isOverdue
-    ? 'var(--sev-critical, #ef4444)'
+    ? 'var(--sev-critical)'
     : remaining < 120000
-    ? 'var(--sev-warn, #f59e0b)'
-    : 'var(--sev-ok, #22c55e)';
+    ? 'var(--sev-warn)'
+    : 'var(--sev-ok)';
 
   if (!welfareTimer && !showPicker) {
     return (

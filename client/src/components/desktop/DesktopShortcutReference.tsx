@@ -74,7 +74,7 @@ export default function DesktopShortcutReference({ onClose }: Props) {
         flexDirection: 'column',
         background: 'var(--surface-raised)',
         border: '1px solid var(--border-strong)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        boxShadow: '0 8px 32px rgba(0 0 0 / 0.6)',
         zIndex: ALWAYS_ON_TOP_ZINDEX_OFFSET + 2500,
         borderRadius: 2,
       }}

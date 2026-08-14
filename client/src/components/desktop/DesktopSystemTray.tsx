@@ -195,15 +195,15 @@ function useTrayPolling() {
 }
 
 function BatteryIcon({ battery }: { battery: BatteryStatus }) {
-  if (battery.charging) return <BatteryCharging className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />;
-  if (battery.percent <= 15) return <BatteryLow className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical, #ef4444)' }} />;
-  return <Battery className="w-3.5 h-3.5" style={{ color: battery.percent > 30 ? 'var(--text-secondary, #adbccc)' : 'var(--sev-high, #f97316)' }} />;
+  if (battery.charging) return <BatteryCharging className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)' }} />;
+  if (battery.percent <= 15) return <BatteryLow className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical)' }} />;
+  return <Battery className="w-3.5 h-3.5" style={{ color: battery.percent > 30 ? 'var(--text-secondary)' : 'var(--sev-high)' }} />;
 }
 
 function GpsAccuracyColor(ft: number): string {
-  if (ft <= 30) return 'var(--sev-ok, #22c55e)';
-  if (ft <= 100) return 'var(--sev-warn, #f59e0b)';
-  return 'var(--sev-critical, #ef4444)';
+  if (ft <= 30) return 'var(--sev-ok)';
+  if (ft <= 100) return 'var(--sev-warn)';
+  return 'var(--sev-critical)';
 }
 
 function ConnectivityPanel({ detail, onClose }: {
@@ -225,7 +225,7 @@ function ConnectivityPanel({ detail, onClose }: {
     <div ref={ref} style={{
       position: 'absolute', bottom: '100%', right: 0, marginBottom: 6,
       width: 240, background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 99990, padding: 12,
+      boxShadow: '0 8px 24px rgba(0 0 0 / 0.5)', zIndex: 99990, padding: 12,
     }}>
       <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 8 }}>API CONNECTIVITY</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -288,8 +288,8 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
           title={`${syncPending} item${syncPending !== 1 ? 's' : ''} queued for sync`}
           style={{ display: 'flex', alignItems: 'center', gap: 2, cursor: 'default' }}
         >
-          <RefreshCw className="w-3 h-3 animate-spin" style={{ color: 'var(--sev-medium, #f59e0b)' }} />
-          <span style={{ fontSize: 9, color: 'var(--sev-medium, #f59e0b)', fontVariantNumeric: 'tabular-nums' }}>{syncPending}</span>
+          <RefreshCw className="w-3 h-3 animate-spin" style={{ color: 'var(--sev-warn)' }} />
+          <span style={{ fontSize: 9, color: 'var(--sev-warn)', fontVariantNumeric: 'tabular-nums' }}>{syncPending}</span>
         </div>
       )}
 
@@ -328,9 +328,9 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
         >
           <Cpu
             className="w-3 h-3"
-            style={{ color: cpuPercent >= 90 ? 'var(--sev-critical, #ef4444)' : 'var(--sev-medium, #f59e0b)' }}
+            style={{ color: cpuPercent >= 90 ? 'var(--sev-critical)' : 'var(--sev-warn)' }}
           />
-          <span style={{ fontSize: 9, color: cpuPercent >= 90 ? 'var(--sev-critical, #ef4444)' : 'var(--sev-medium, #f59e0b)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 9, color: cpuPercent >= 90 ? 'var(--sev-critical)' : 'var(--sev-warn)', fontVariantNumeric: 'tabular-nums' }}>
             {cpuPercent}%
           </span>
         </div>
@@ -346,11 +346,11 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
           aria-label={connectivity === 'online' ? 'Online' : connectivity === 'degraded' ? 'Network degraded' : 'Offline'}
         >
           {connectivity === 'online' ? (
-            <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary, #adbccc)' }} />
+            <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
           ) : connectivity === 'degraded' ? (
-            <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-medium, #f59e0b)' }} />
+            <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-warn)' }} />
           ) : (
-            <WifiOff className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical, #ef4444)' }} />
+            <WifiOff className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical)' }} />
           )}
         </button>
         {connPanelOpen && (
@@ -365,7 +365,7 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
           title={`Battery: ${battery.percent}%${battery.charging ? ' (charging)' : ''}`}
         >
           <BatteryIcon battery={battery} />
-          <span style={{ fontSize: 9, color: battery.percent <= 15 ? 'var(--sev-critical, #ef4444)' : 'var(--text-secondary, #adbccc)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 9, color: battery.percent <= 15 ? 'var(--sev-critical)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
             {battery.percent}%
           </span>
         </div>
@@ -389,7 +389,7 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             padding: '2px 5px',
             borderRadius: 2,
             background: onDuty ? 'rgba(34,197,94,0.15)' : 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.12)',
-            color: onDuty ? 'var(--sev-ok, #22c55e)' : 'var(--text-muted, #8da0b3)',
+            color: onDuty ? 'var(--sev-ok)' : 'var(--text-muted)',
             border: `1px solid ${onDuty ? 'rgba(34,197,94,0.3)' : 'var(--border-subtle)'}`,
             whiteSpace: 'nowrap',
           }}>
