@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
+import {
+  writeFix, loadUnsynced, markSynced, pruneOld, migrateFromLocalStorage,
+} from '../utils/gpsStore';
 
 // ============================================================
 // GPS Tracking Hook — 1-Second Breadcrumb Collection
@@ -228,47 +231,6 @@ function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number):
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
     Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-// ─── localStorage GPS Failover Queue ─────────────────────
-const LS_GPS_QUEUE_KEY = 'rmpg_gps_failover_queue';
-// Accountability requirement: never silently drop fixes over a normal field
-// outage. At the ~5s accepted cadence, 2000 fixes ≈ 2.8 h offline (was 100 ≈
-// 8 min). ~2000 × ~120 B JSON ≈ 240 KB, well within the 5 MB localStorage budget.
-// (A truly unbounded buffer would need IndexedDB — tracked as a follow-up.)
-const LS_MAX_QUEUED_POINTS = 2000;
-
-function loadFailoverQueue(): QueuedPoint[] {
-  try {
-    const raw = localStorage.getItem(LS_GPS_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.slice(-LS_MAX_QUEUED_POINTS) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFailoverQueue(points: QueuedPoint[]): void {
-  try {
-    // Overflow drops the OLDEST fixes (keep newest). Surface it rather than
-    // dropping silently, so a sustained outage that exceeds the buffer is
-    // visible in logs instead of being invisible data loss.
-    if (points.length > LS_MAX_QUEUED_POINTS) {
-      console.warn(`[gps] failover queue overflow — dropping ${points.length - LS_MAX_QUEUED_POINTS} oldest fix(es) (buffer cap ${LS_MAX_QUEUED_POINTS})`);
-    }
-    localStorage.setItem(LS_GPS_QUEUE_KEY, JSON.stringify(points.slice(-LS_MAX_QUEUED_POINTS)));
-  } catch {
-    // localStorage full or unavailable — degrade gracefully
-  }
-}
-
-function clearFailoverQueue(): void {
-  try {
-    localStorage.removeItem(LS_GPS_QUEUE_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 /** How long (ms) without a position callback before heartbeat restarts watchPosition */
@@ -500,27 +462,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSendingRef.current = true;
 
     try {
-      // Merge any previously failed points from localStorage with the live
-      // queue, deduping by (timestamp, lat, lng). The failover queue and the
-      // in-memory queue can hold the SAME breadcrumb after a failed send (the
-      // catch below persists `allPoints` to localStorage AND re-queues the
-      // in-memory points), so a naive concat would re-insert duplicates on
-      // reconnect — compounding the double-insert this audit (GPS-3) fixes.
-      const failoverPoints = loadFailoverQueue();
+      // Snapshot the in-memory queue. IDB (gpsStore) already durably holds
+      // every accepted fix written via writeFix, so there is no separate
+      // localStorage failover queue to merge here.
       const currentPoints = [...queueRef.current]; // snapshot copy, not reference
-      const seen = new Set<string>();
-      const dedupeKey = (p: QueuedPoint) => `${p.timestamp}|${p.lat}|${p.lng}`;
-      const allPoints: QueuedPoint[] = [];
-      for (const p of [...failoverPoints, ...currentPoints]) {
-        const k = dedupeKey(p);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        allPoints.push(p);
-      }
+      const allPoints = currentPoints;
       if (allPoints.length === 0) {
-        // Nothing to send — but stale failover entries may linger if every
-        // point was a duplicate already covered in-memory. Leave them; the
-        // catch path owns failover persistence.
         return;
       }
 
@@ -541,8 +488,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (result && typeof result === 'object' && (result as { error?: unknown }).error) {
           throw new Error(`GPS upload reported error: ${String((result as { error?: unknown }).error)}`);
         }
-        // Success — clear the failover queue
-        clearFailoverQueue();
+        // Success — mark the sent fixes as synced in IDB
+        loadUnsynced().then((fixes) => {
+          const sentTs = new Set(allPoints.map((p) => new Date(p.timestamp).getTime()));
+          const toMark = fixes.filter((f) => sentTs.has(f.ts)).map((f) => f.id);
+          if (toMark.length > 0) markSynced(toMark).catch(() => {});
+        }).catch(() => {});
         // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)
         const needsUnitFetch = !unitIdRef.current;
         // Adopt the unit straight from the (non-stubbed) write response. The GET
@@ -575,9 +526,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
         console.warn(`[GPS] Batch send failed (${allPoints.length} pts):`, errMsg);
-        // Re-enqueue failed points in front of any new arrivals
+        // Re-enqueue failed points in front of any new arrivals.
+        // IDB already holds every fix via writeFix — no separate failover save needed.
         queueRef.current = [...currentPoints, ...queueRef.current];
-        saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
         setState((prev) => ({
           ...prev,
           error: errMsg,
@@ -847,6 +798,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
       }
       queueRef.current.push(point);
+      // Persist to IDB for offline durability — fire-and-forget, non-fatal
+      writeFix({
+        ts: new Date(point.timestamp).getTime(),
+        lat: point.lat,
+        lng: point.lng,
+        accuracy: point.accuracy,
+        heading: point.heading,
+        speed: point.speed,
+        source: point.source,
+      }).catch(() => { /* non-fatal */ });
 
       // Opt-in exportable session track (separate from the upload queue, which
       // gets drained on every batch send).
@@ -1089,6 +1050,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
         }
         queueRef.current.push(point);
+        // Persist to IDB for offline durability — fire-and-forget, non-fatal
+        writeFix({
+          ts: new Date(point.timestamp).getTime(),
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
+          heading: point.heading,
+          speed: point.speed,
+          source: point.source,
+        }).catch(() => { /* non-fatal */ });
 
         // ── Exportable session track (PARITY FIX) ──
         // `capturedCount` drives the HUD's "Track N pts" readout and the
@@ -1383,6 +1354,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     // a prior unmount and silently disables `setState` guards.
     mountedRef.current = true;
 
+    // One-time migration from old localStorage queue
+    migrateFromLocalStorage().catch(() => {});
+    // Prune synced fixes older than 72h
+    pruneOld().catch(() => {});
+
     let started = false;
     const start = () => {
       if (started) return;
@@ -1425,40 +1401,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   }, [isTracking, startTracking]);
 
   // ─── Durable flush on background / page close ───────────────
-  // On a real tab close, hard refresh, or the OS backgrounding the app, React's
-  // unmount cleanup is unreliable and the in-memory upload queue (up to one 5s
-  // interval of fixes) would be silently lost. `pagehide` fires reliably; persist
-  // the in-memory queue into the localStorage failover queue (synchronous, so it
-  // completes before the page is frozen/killed). Those fixes then upload on the
-  // next session. We persist (not beacon-send) to avoid duplicate breadcrumbs —
-  // the server has no fix-level dedup, so a beacon that partially succeeds plus
-  // the failover re-send would double-write and inflate trip distance. Dedupe
-  // against the existing failover so a tab-switch → resume can't double-queue
-  // (sendBatch also dedupes failover+queue on resume). Accountability: the fix is
-  // durably stored either way — never dropped.
-  useEffect(() => {
-    const persistQueue = () => {
-      try {
-        const pending = queueRef.current;
-        if (!pending.length) return;
-        const seen = new Set<string>();
-        const merged = [...loadFailoverQueue(), ...pending].filter((p) => {
-          const k = `${p.timestamp}|${p.lat}|${p.lng}`;
-          if (seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        });
-        saveFailoverQueue(merged);
-      } catch { /* never block unload */ }
-    };
-    const onVisHidden = () => { if (document.visibilityState === 'hidden') persistQueue(); };
-    window.addEventListener('pagehide', persistQueue);
-    document.addEventListener('visibilitychange', onVisHidden);
-    return () => {
-      window.removeEventListener('pagehide', persistQueue);
-      document.removeEventListener('visibilitychange', onVisHidden);
-    };
-  }, []);
+  // Every accepted fix is written to IDB (gpsStore) via writeFix at the moment
+  // it is accepted, so no additional localStorage persistence is needed on
+  // pagehide. The IDB store is durable across page reloads; unsynced fixes will
+  // be marked synced by the next session's sendBatch success path.
+  // (The old localStorage failover queue was removed — replaced by IDB.)
 
   // ─── Network change listener ────────────────────────────────
   // When the device switches between WiFi ↔ cellular (e.g., entering/leaving
