@@ -95,7 +95,7 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // AdminSystemTab — color picker defaults persisted to D1 (var() writes literal string).
   // AdminRadioTab — COLOR_SWATCHES for <input type="color"> stored to API as hex.
   // AdminSkipTracerV2Tab — categorical identity colors per skip-tracer source.
-  adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$/,
+  adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$|(^|\/)hrConstants\.(ts)$/,
   // Navigation module — tactical-dark and Mapbox-paint contexts:
   //
   // TripReplayMap.tsx — every hex literal is a Mapbox paint property
