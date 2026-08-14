@@ -3,6 +3,7 @@ import { Zap, Plus, Trash2, Edit2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import AutomationRuleEditor from '../../components/AutomationRuleEditor';
+import { formatDateTime } from '../../utils/dateUtils';
 
 interface Rule {
   id: number;
@@ -299,7 +300,7 @@ export default function AutomationsTab() {
                 <tr key={f.id} className="border-t border-surface-border">
                   <td className="py-[2px] px-2 text-text-primary">{f.rule_name}</td>
                   <td className="py-[2px] px-2 text-text-secondary">{f.officer_name}</td>
-                  <td className="py-[2px] px-2 text-text-muted">{new Date(f.fired_at).toLocaleString()}</td>
+                  <td className="py-[2px] px-2 text-text-muted">{formatDateTime(f.fired_at)}</td>
                   <td className="py-[2px] px-2">
                     <span className={`text-[9px] font-semibold ${f.source === 'client' ? 'text-brand-400' : 'text-accent-silver-400'}`}>
                       {f.source.toUpperCase()}

@@ -516,7 +516,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         }
         // Success — mark the sent fixes as synced in IDB
         loadUnsynced().then((fixes) => {
-          const sentTs = new Set(allPoints.map((p) => new Date(p.timestamp).getTime()));
+          const sentTs = new Set(allPoints.map((p) => new Date(p.timestamp).getTime())); // new-date-ok — p.timestamp is epoch ms from IDB
           const toMark = fixes.filter((f) => sentTs.has(f.ts)).map((f) => f.id);
           if (toMark.length > 0) markSynced(toMark).catch(() => {});
         }).catch(() => {});
@@ -832,7 +832,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       queueRef.current.push(point);
       // Persist to IDB for offline durability — fire-and-forget, non-fatal
       writeFix({
-        ts: new Date(point.timestamp).getTime(),
+        ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
         lat: point.lat,
         lng: point.lng,
         accuracy: point.accuracy,
@@ -844,7 +844,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       // Evaluate automation rules (lazy import keeps initial bundle small).
       import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
         const fix = {
-          ts: new Date(point.timestamp).getTime(),
+          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
           lat: point.lat,
           lng: point.lng,
           accuracy: point.accuracy,
@@ -877,7 +877,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             action_type: action.rule.action_type,
             trigger_lat: fix.lat,
             trigger_lng: fix.lng,
-            fired_at: new Date(fix.ts).toISOString(),
+            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
             context: { speed: fix.speed, accuracy: fix.accuracy },
           }).catch(() => {}); // fire-and-forget, never blocks eval
         }
@@ -1126,7 +1126,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         queueRef.current.push(point);
         // Persist to IDB for offline durability — fire-and-forget, non-fatal
         writeFix({
-          ts: new Date(point.timestamp).getTime(),
+          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
           lat: point.lat,
           lng: point.lng,
           accuracy: point.accuracy,

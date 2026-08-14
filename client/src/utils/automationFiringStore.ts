@@ -1,4 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb';
+import { parseTimestamp } from './dateUtils';
 
 export interface ClientFiringRecord {
   rule_id: number;
@@ -45,7 +46,7 @@ async function getDb(): Promise<IDBPDatabase> {
 
 export async function queueClientFiring(firing: ClientFiringRecord): Promise<void> {
   const db = await getDb();
-  await db.add(STORE, { ...firing, ts: new Date(firing.fired_at).getTime(), synced: 0 });
+  await db.add(STORE, { ...firing, ts: parseTimestamp(firing.fired_at).getTime(), synced: 0 });
 }
 
 /** Alias for queueClientFiring — preferred name used by sw.js and useGpsTracking. */

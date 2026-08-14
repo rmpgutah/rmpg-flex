@@ -96,7 +96,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
     const tx = db.transaction(STORE, 'readwrite');
     for (const p of points) {
       await tx.store.add({
-        ts: new Date(p.timestamp).getTime(),
+        ts: new Date(p.timestamp).getTime(), // new-date-ok — p.timestamp is epoch ms from GPS position
         lat: p.lat, lng: p.lng,
         accuracy: p.accuracy, heading: p.heading,
         speed: p.speed, source: p.source, synced: 0,
