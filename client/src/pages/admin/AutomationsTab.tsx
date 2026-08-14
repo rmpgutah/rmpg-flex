@@ -172,6 +172,8 @@ export default function AutomationsTab() {
             dedup_window_ms: editing.dedup_window_ms,
             evaluate_client: !!editing.evaluate_client,
             evaluate_server: !!editing.evaluate_server,
+            trigger_config: (() => { try { return JSON.parse(editing.trigger_config || '{}'); } catch { return {}; } })(),
+            action_config: (() => { try { return JSON.parse(editing.action_config || '{}'); } catch { return {}; } })(),
           } : undefined}
           adminMode
           onSaved={() => { setCreating(false); setEditing(null); fetchRules(); }}
@@ -216,9 +218,9 @@ export default function AutomationsTab() {
             <thead className="bg-surface-raised">
               <tr>
                 {['Name', 'Trigger', 'Action', 'Scope', 'Eval', 'On'].map((h) => (
-                  <th key={h} className="text-left py-[3px] px-2 font-semibold text-[color:var(--panel-header-color)]">{h}</th>
+                  <th key={h} className="text-left py-[3px] px-2 text-[9px] font-semibold text-[color:var(--panel-header-color)]">{h}</th>
                 ))}
-                <th className="py-[3px] px-2" />
+                <th className="py-[3px] px-2 text-[9px]" />
               </tr>
             </thead>
             <tbody>
@@ -282,7 +284,7 @@ export default function AutomationsTab() {
             <thead className="bg-surface-raised">
               <tr>
                 {['Rule', 'Officer', 'Fired at', 'Source', 'Location'].map((h) => (
-                  <th key={h} className="text-left py-[3px] px-2 font-semibold text-[color:var(--panel-header-color)]">{h}</th>
+                  <th key={h} className="text-left py-[3px] px-2 text-[9px] font-semibold text-[color:var(--panel-header-color)]">{h}</th>
                 ))}
               </tr>
             </thead>
