@@ -431,7 +431,7 @@ async function flushClientFirings() {
   let db;
   try {
     db = await new Promise((resolve, reject) => {
-      const req = indexedDB.open('rmpg-automation-firings', 1);
+      const req = indexedDB.open('rmpg-automations', 1);
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -440,8 +440,8 @@ async function flushClientFirings() {
   }
 
   const firings = await new Promise((resolve) => {
-    const tx = db.transaction('queue', 'readonly');
-    const req = tx.objectStore('queue').index('synced').getAll(0);
+    const tx = db.transaction('firings', 'readonly');
+    const req = tx.objectStore('firings').index('synced').getAll(0);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => resolve([]);
   });
@@ -464,8 +464,8 @@ async function flushClientFirings() {
   if (ok) {
     const ids = firings.map((f) => f.id);
     await new Promise((resolve) => {
-      const tx = db.transaction('queue', 'readwrite');
-      const store = tx.objectStore('queue');
+      const tx = db.transaction('firings', 'readwrite');
+      const store = tx.objectStore('firings');
       ids.forEach((id) => {
         const req = store.get(id);
         req.onsuccess = () => { if (req.result) store.put({ ...req.result, synced: 1 }); };

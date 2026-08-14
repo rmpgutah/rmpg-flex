@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  queueClientFiring, loadUnsynced, markFiringsSynced, pruneOldFirings,
+  queueClientFiring, writeFiring, loadUnsynced, markFiringsSynced, pruneOldFirings,
   _resetDbForTests, type ClientFiringRecord,
 } from '../automationFiringStore';
 
@@ -29,7 +29,17 @@ const firing2: ClientFiringRecord = {
 
 beforeEach(async () => {
   _resetDbForTests();
-  indexedDB.deleteDatabase('rmpg-automation-firings');
+  indexedDB.deleteDatabase('rmpg-automations');
+});
+
+describe('writeFiring (alias for queueClientFiring)', () => {
+  it('stores a firing via the writeFiring alias', async () => {
+    await writeFiring(firing1);
+    const rows = await loadUnsynced();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rule_id).toBe(1);
+    expect(rows[0].synced).toBe(0);
+  });
 });
 
 describe('queueClientFiring / loadUnsynced', () => {

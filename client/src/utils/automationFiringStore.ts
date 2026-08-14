@@ -16,8 +16,8 @@ interface StoredFiring extends ClientFiringRecord {
   synced: 0 | 1;
 }
 
-const DB_NAME = 'rmpg-automation-firings';
-const STORE = 'queue';
+const DB_NAME = 'rmpg-automations';
+const STORE = 'firings';
 const PRUNE_AGE_MS = 72 * 60 * 60 * 1000;
 
 let _db: IDBPDatabase | null = null;
@@ -35,7 +35,7 @@ async function getDb(): Promise<IDBPDatabase> {
     _db = await openDB(DB_NAME, 1, {
       upgrade(db) {
         const store = db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
-        store.createIndex('fired_at', 'fired_at');
+        store.createIndex('ts', 'ts');
         store.createIndex('synced', 'synced');
       },
     });
@@ -45,8 +45,11 @@ async function getDb(): Promise<IDBPDatabase> {
 
 export async function queueClientFiring(firing: ClientFiringRecord): Promise<void> {
   const db = await getDb();
-  await db.add(STORE, { ...firing, synced: 0 });
+  await db.add(STORE, { ...firing, ts: new Date(firing.fired_at).getTime(), synced: 0 });
 }
+
+/** Alias for queueClientFiring — preferred name used by sw.js and useGpsTracking. */
+export const writeFiring = queueClientFiring;
 
 export async function loadUnsynced(): Promise<StoredFiring[]> {
   const db = await getDb();
@@ -68,9 +71,9 @@ export async function markFiringsSynced(ids: number[]): Promise<void> {
 
 export async function pruneOldFirings(): Promise<void> {
   const db = await getDb();
-  const cutoff = new Date(Date.now() - PRUNE_AGE_MS).toISOString();
+  const cutoff = Date.now() - PRUNE_AGE_MS;
   const tx = db.transaction(STORE, 'readwrite');
-  const index = tx.store.index('fired_at');
+  const index = tx.store.index('ts');
   let cursor = await index.openCursor(IDBKeyRange.upperBound(cutoff));
   while (cursor) {
     if ((cursor.value as StoredFiring).synced === 1) await cursor.delete();

@@ -198,7 +198,7 @@ router.post('/firings/client', requireRole(...ALL_ROLES), async (c) => {
   const firings = Array.isArray(body.firings) ? body.firings : [];
 
   if (firings.length === 0) {
-    return c.json({ inserted: 0 });
+    return c.json({ ok: true, count: 0 });
   }
 
   // Cap replay to 500 per call to avoid D1 timeout
@@ -251,7 +251,7 @@ router.post('/firings/client', requireRole(...ALL_ROLES), async (c) => {
     }
   }
 
-  return c.json({ inserted });
+  return c.json({ ok: true, count: inserted });
 });
 
 export default router;
