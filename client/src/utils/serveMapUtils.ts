@@ -1,6 +1,7 @@
 import mapboxgl from 'mapbox-gl';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapboxSafeLayer';
 import { escapeHtml } from './sanitize';
+import { parseTimestamp } from './dateUtils';
 
 export const SERVE_PRIORITY_COLOR: Record<string, string> = {
   urgent: '#ef4444',
@@ -27,7 +28,7 @@ export interface ServeMapEntry {
 export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: boolean }): HTMLElement {
   const color = SERVE_PRIORITY_COLOR[job.priority] ?? SERVE_PRIORITY_COLOR.routine;
   const hoursLeft = job.deadline
-    ? (new Date(job.deadline).getTime() - Date.now()) / 3_600_000
+    ? (parseTimestamp(job.deadline).getTime() - Date.now()) / 3_600_000
     : null;
   const hasUrgencyRing = hoursLeft !== null && hoursLeft < 72;
   const ringColor = hoursLeft !== null && hoursLeft < 24 ? '#ef4444' : '#f59e0b';
@@ -90,7 +91,7 @@ export function buildServeClusterEl(count: number, dominantPriority: string): HT
 
 export function serveJobPopupHTML(job: ServeMapEntry, opts?: { showAddToRoute?: boolean }): string {
   const esc = (s: string | null | undefined) => escapeHtml(s ?? '');
-  const isOverdue = job.deadline ? new Date(job.deadline) < new Date() : false;
+  const isOverdue = job.deadline ? parseTimestamp(job.deadline) < new Date() : false;
   const deadlineStr = job.deadline
     ? new Date(job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) // new-date-ok — ISO from server
     : null;
