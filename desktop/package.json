@@ -48,7 +48,11 @@
       "windowManager.js",
       "crashRecovery.js",
       "originalCatalog.json",
-      "security"
+      "security",
+      "splash.html",
+      "splashPreload.js",
+      "assets/login-bg.jpg",
+      "assets/logo.png"
     ],
     "extraResources": [
       {
