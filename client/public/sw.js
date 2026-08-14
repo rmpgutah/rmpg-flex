@@ -1,8 +1,18 @@
 // ============================================================
 // RMPG Flex — Service Worker
-// Provides offline caching for static assets while always
-// fetching API data fresh from the network.
+// Provides offline caching for static assets and API GET responses.
+// API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1103: Offline data layer. API GET responses are now cached in a stable
+//        'rmpg-api-data' cache (network-first, stale fallback). Pages load
+//        with last-seen data when offline instead of going blank. Auth,
+//        health, WebSocket, and offline-sync endpoints are excluded from
+//        caching. A separate 250-entry eviction cap applies to the API
+//        cache so it does not grow unbounded. The rmpg-api-data cache
+//        survives app deployments (only the versioned rmpg-flex-* caches
+//        are pruned on activate). Write-queue flush (SYNC_PUSH_REQUESTED)
+//        now wired from the SW background-sync event to the page's
+//        processQueue() via the message channel.
 // v1101: Console-error sweep. (1) Warrants: clicking a national-scraper row
 //        no longer fires /warrants/<scraped-id> (synthetic string ids 400 on
 //        the server's numeric guard) — the detail pane, single-warrant PDF and
@@ -120,6 +130,13 @@
 // (incidents: SW v321 2026-05-24, and v563 2026-07-01).
 const CACHE_NAME = 'rmpg-flex-BUILD';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
+// Separate stable cache for API GET responses so it survives app deployments.
+// Named without the build SHA so it persists across updates.
+const API_CACHE_NAME = 'rmpg-api-data';
+const MAX_API_CACHE_ENTRIES = 250;
+// API endpoints whose responses change too rapidly or are security-sensitive
+// to serve stale. All others are cached network-first.
+const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline'];
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -186,8 +203,9 @@ async function trimCache(cacheName, maxEntries) {
 // Safari private-browsing storage restrictions) from surfacing as unhandled
 // promise rejections in the SW console.
 function cachePut(cacheName, request, response) {
+  var limit = cacheName === API_CACHE_NAME ? MAX_API_CACHE_ENTRIES : MAX_CACHE_ENTRIES;
   caches.open(cacheName)
-    .then((cache) => cache.put(request, response).then(() => trimCache(cacheName, MAX_CACHE_ENTRIES)))
+    .then((cache) => cache.put(request, response).then(() => trimCache(cacheName, limit)))
     .catch(() => {});
 }
 
@@ -279,7 +297,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      const oldKeys = keys.filter((k) => k !== CACHE_NAME);
+      // Keep the current main cache + the immediately previous rmpg-flex-* cache
+      // (protects in-flight chunk requests from concurrent deploy). Also keep
+      // the stable API data cache unconditionally — it survives every deploy.
+      const oldKeys = keys.filter((k) => k !== CACHE_NAME && k !== API_CACHE_NAME);
       const rmpgKeys = oldKeys
         .filter((k) => k.startsWith('rmpg-flex-'))
         .sort();
@@ -484,7 +505,39 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Never cache API calls, WebSocket, POST requests, or external map tiles
+  // API GET caching — network-first with stale fallback for same-origin GET
+  // /api/* requests that are not on the no-cache list. Responses are stored in
+  // the stable API_CACHE_NAME cache (survives app deploys). When the network
+  // fails, the last successful response is served so pages show stale data
+  // instead of going blank. A 503 JSON stub is served as a last resort.
+  if (
+    url.origin === self.location.origin &&
+    event.request.method === 'GET' &&
+    url.pathname.startsWith('/api') &&
+    !API_NO_CACHE.some((prefix) => url.pathname.startsWith(prefix))
+  ) {
+    event.respondWith(
+      fetchWithRetry(event.request)
+        .then((response) => {
+          if (response.ok) {
+            cachePut(API_CACHE_NAME, event.request, response.clone());
+          }
+          return response;
+        })
+        .catch(() =>
+          cacheMatch(event.request).then((cached) =>
+            cached || new Response(
+              JSON.stringify({ error: 'offline', data: null }),
+              { status: 503, headers: { 'Content-Type': 'application/json' } }
+            )
+          )
+        )
+    );
+    return;
+  }
+
+  // Never cache WebSocket, non-GET requests, or external origins.
+  // Auth / health / offline endpoints above are also passed through (API_NO_CACHE).
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/ws') ||
