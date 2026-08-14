@@ -91,7 +91,7 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // types.ts background default (#ffffff) and AppearanceDialog.tsx color-picker
   // default (#ffffff) are document configuration values / input defaults, not
   // theme colors.
-  documentWriterContent: /(^|\/)document-writer\//,
+  documentWriterContent: /(^|\/)document-writer\/(?!components\/)/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
