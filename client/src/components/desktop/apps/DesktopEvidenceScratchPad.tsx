@@ -89,7 +89,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
       style={{
         position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
         background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-        borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 14000,
+        borderRadius: 2, boxShadow: '0 8px 32px var(--window-shadow)', zIndex: 14000,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}
     >
@@ -103,7 +103,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
           Evidence Scratch Pad
         </span>
         {saving && <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>Saving…</span>}
-        {!saving && savedAt && <span style={{ fontSize: 9, color: 'var(--sev-ok, #22c55e)' }}>Saved {savedAt}</span>}
+        {!saving && savedAt && <span style={{ fontSize: 9, color: 'var(--sev-ok)' }}>Saved {savedAt}</span>}
         <button aria-label="Close Evidence Scratch Pad" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
           <X size={14} />
         </button>
@@ -111,7 +111,7 @@ export default function DesktopEvidenceScratchPad({ onClose, initialCallId }: De
 
       {/* Linked call header */}
       <div style={{ padding: '6px 10px', background: 'var(--surface-base)', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <Link size={11} style={{ color: linkedCall ? 'var(--sev-ok, #22c55e)' : 'var(--text-muted)', flexShrink: 0 }} />
+        <Link size={11} style={{ color: linkedCall ? 'var(--sev-ok)' : 'var(--text-muted)', flexShrink: 0 }} />
         {linkedCall ? (
           <span style={{ fontSize: 11, color: 'var(--text-primary)' }}>
             Linked to call <strong>#{linkedCall.call_number ?? linkedCall.id}</strong>

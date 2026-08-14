@@ -213,6 +213,8 @@ html.theme-dark,
   --desktop-shell-raised-start: #15212e; --desktop-shell-raised-end: #1d2d3f;
   --desktop-shell-border: #2a3a4d; --desktop-shell-accent: #5a85b8;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #8fa3b8; --desktop-shell-icon: #8fa3b8;
 
   /* Module-bar (F-key nav) + panel bevel/titlebar — NIGHT.
@@ -338,6 +340,8 @@ html.theme-light {
   --desktop-shell-raised-start: #ece9dd; --desktop-shell-raised-end: #d6d3c8;
   --desktop-shell-border: #9a958a; --desktop-shell-accent: #2e4a66;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.15);
+  --window-shadow: rgba(0, 0, 0, 0.2);
+  --modal-scrim: rgba(0, 0, 0, 0.4);
   --desktop-shell-subtle-text: #555555; --desktop-shell-icon: #555555;
 
   --toolbar-nav-text: #555555;
@@ -448,6 +452,8 @@ html.theme-legacy-black {
   --desktop-shell-raised-start: #050505; --desktop-shell-raised-end: #111111;
   --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
 
   --toolbar-nav-text: #9a9a9a;
@@ -624,6 +630,8 @@ html.theme-blue-silver {
   --desktop-shell-raised-start: #1a3350; --desktop-shell-raised-end: #2c4f74;
   --desktop-shell-border: #46688c; --desktop-shell-accent: #5a9ae0;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #91a3ba; --desktop-shell-icon: #91a3ba;
 
   /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so

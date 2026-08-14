@@ -56,8 +56,8 @@ function uptime(seconds?: number): string {
 }
 
 function HealthBar({ percent, danger = 80, warn = 60 }: { percent: number | null; danger?: number; warn?: number }) {
-  if (percent === null) return <span style={{ fontSize: 10, color: 'var(--text-muted, #8da0b3)' }}>—</span>;
-  const color = percent >= danger ? 'var(--sev-critical, #ef4444)' : percent >= warn ? 'var(--sev-warn, #f59e0b)' : 'var(--accent-silver-400, #c3ccd6)';
+  if (percent === null) return <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>—</span>;
+  const color = percent >= danger ? 'var(--sev-critical)' : percent >= warn ? 'var(--sev-warn)' : 'var(--accent-silver-400)';
   const clamped = Math.min(100, Math.max(0, percent));
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -74,10 +74,10 @@ function HealthBar({ percent, danger = 80, warn = 60 }: { percent: number | null
 function Row({ icon: Icon, label, value, children }: { icon: React.ElementType; label: string; value?: string | null; children?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderBottom: '1px solid rgba(195,204,214,0.04)' }}>
-      <Icon style={{ width: 12, height: 12, color: 'var(--text-muted, #8da0b3)', flexShrink: 0 }} />
-      <span style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', letterSpacing: '0.06em', textTransform: 'uppercase', width: 90, flexShrink: 0 }}>{label}</span>
+      <Icon style={{ width: 12, height: 12, color: 'var(--text-muted)', flexShrink: 0 }} />
+      <span style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', width: 90, flexShrink: 0 }}>{label}</span>
       {children ?? (
-        <span style={{ fontSize: 10, color: 'var(--text-primary, #f0f4f9)', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontSize: 10, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {value ?? '—'}
         </span>
       )}
@@ -143,24 +143,24 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'var(--modal-scrim)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={onClose}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: 460, maxHeight: '85vh', background: 'var(--surface-raised, #1a3352)', border: '1px solid rgba(195,204,214,0.1)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: 460, maxHeight: '85vh', background: 'var(--surface-raised)', border: '1px solid rgba(195,204,214,0.1)', boxShadow: '0 24px 64px var(--modal-scrim)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
       >
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--surface-base, #22405f)', borderBottom: '1px solid rgba(195,204,214,0.08)', flexShrink: 0 }}>
-          <Shield style={{ width: 16, height: 16, color: 'var(--accent-silver-400, #c3ccd6)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: 'var(--surface-base)', borderBottom: '1px solid rgba(195,204,214,0.08)', flexShrink: 0 }}>
+          <Shield style={{ width: 16, height: 16, color: 'var(--accent-silver-400)' }} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary, #f0f4f9)' }}>FlexOS</div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', letterSpacing: '0.06em', marginTop: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>FlexOS</div>
+            <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', marginTop: 1 }}>
               ROCKY MOUNTAIN PROTECTIVE GROUP — SYSTEM DASHBOARD
             </div>
           </div>
           <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-            <X style={{ width: 14, height: 14, color: 'var(--text-muted, #8da0b3)' }} />
+            <X style={{ width: 14, height: 14, color: 'var(--text-muted)' }} />
           </button>
         </div>
 
@@ -168,17 +168,17 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
           {/* Version block */}
           <div style={{ padding: '10px 12px', background: 'rgba(195,204,214,0.04)', border: '1px solid rgba(195,204,214,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary, #f0f4f9)' }}>FlexOS {FLEXOS_VERSION}</div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', marginTop: 2 }}>RMPG Flex {appVersion ?? RMPG_FLEX_VERSION}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>FlexOS {FLEXOS_VERSION}</div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>RMPG Flex {appVersion ?? RMPG_FLEX_VERSION}</div>
             </div>
-            <div style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', fontWeight: 700 }}>
+            <div style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400)', fontWeight: 700 }}>
               Licensed
             </div>
           </div>
 
           {/* Session */}
           <section>
-            <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', marginBottom: 8, fontWeight: 600 }}>Session</div>
+            <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400)', marginBottom: 8, fontWeight: 600 }}>Session</div>
             <Row icon={User} label="Officer" value={user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.username : '—'} />
             <Row icon={Shield} label="Role" value={user?.role ?? '—'} />
             <Row icon={Clock} label="Session Start" value={sessionStart.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })} />
@@ -190,19 +190,19 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
           {/* Hardware */}
           {hasHardware && (
             <section>
-              <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', marginBottom: 8, fontWeight: 600 }}>Hardware</div>
+              <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400)', marginBottom: 8, fontWeight: 600 }}>Hardware</div>
               <Row icon={Activity} label="Hostname" value={sysInfo!.hostname ?? '—'} />
               <Row icon={Activity} label="Platform" value={`${sysInfo!.platform ?? '—'} / ${sysInfo!.arch ?? '—'}`} />
               <Row icon={Cpu} label="CPU" value={`${sysInfo!.cpu_count ?? '—'} cores`} />
               <Row icon={Activity} label="Uptime" value={uptime(sysInfo!.uptime_seconds)} />
               <Row icon={MemoryStick} label="Memory">
                 <HealthBar percent={memUsedPct} danger={85} warn={65} />
-                <span style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)', marginLeft: 8, whiteSpace: 'nowrap' }}>
                   {totalMb > 0 ? `${Math.round(totalMb / 1024)} GB` : '—'}
                 </span>
               </Row>
               <Row icon={HardDrive} label="Disk Free">
-                <span style={{ fontSize: 10, color: diskFreeGb != null && diskFreeGb < 5 ? 'var(--sev-critical, #ef4444)' : 'var(--text-primary, #f0f4f9)' }}>
+                <span style={{ fontSize: 10, color: diskFreeGb != null && diskFreeGb < 5 ? 'var(--sev-critical)' : 'var(--text-primary)' }}>
                   {diskFreeGb != null ? `${safeFixed(diskFreeGb, 1)} GB` : '—'}
                 </span>
               </Row>
@@ -212,7 +212,7 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
           {/* Network */}
           {networks.length > 0 && (
             <section>
-              <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)', marginBottom: 8, fontWeight: 600 }}>Network</div>
+              <div style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent-silver-400)', marginBottom: 8, fontWeight: 600 }}>Network</div>
               {networks.map((n, i) => (
                 <Row key={i} icon={Wifi} label={n.name ?? `Interface ${i + 1}`} value={n.address ?? '—'} />
               ))}
@@ -220,14 +220,14 @@ export default function FlexOSSystemDashboard({ onClose }: FlexOSSystemDashboard
           )}
 
           {!hasHardware && (
-            <div style={{ fontSize: 10, color: 'var(--text-muted, #8da0b3)', textAlign: 'center', padding: '8px 0' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', padding: '8px 0' }}>
               Hardware info available in the FlexOS desktop app
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(195,204,214,0.06)', fontSize: 8, color: 'var(--text-muted, #8da0b3)', letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ padding: '8px 16px', borderTop: '1px solid rgba(195,204,214,0.06)', fontSize: 8, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
           <span>© {new Date().getFullYear() /* new-date-ok */} Rocky Mountain Protective Group</span>
           <span>Press Esc to close</span>
         </div>

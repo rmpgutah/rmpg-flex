@@ -325,7 +325,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
       />
     )}
     <div
-      style={{ ...style, background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+      style={{ ...style, background: 'var(--surface-raised)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px var(--desktop-shell-accent-shadow)' }}
       onPointerDown={(e) => {
         // Guard against the outer div's pointerdown firing before a title-bar button's
         // click (native pointerdown-before-click ordering). Without this, focusWindow's
@@ -341,7 +341,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
         onDoubleClick={onTitleBarDoubleClick}
         onContextMenu={e => { e.preventDefault(); setSysMenu({ x: e.clientX, y: e.clientY }); }}
         className="flex items-center justify-between px-2 select-none cursor-move"
-        style={{ height: isFullscreen ? 0 : TITLE_BAR_HEIGHT, overflow: 'hidden', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', boxShadow: shaking ? '0 0 0 2px var(--accent-silver-400, #8fa0b3), 0 0 14px 4px rgba(143,160,179,0.45)' : undefined, transition: 'box-shadow 0.3s ease' }}
+        style={{ height: isFullscreen ? 0 : TITLE_BAR_HEIGHT, overflow: 'hidden', background: 'var(--surface-overlay)', borderBottom: '1px solid var(--border-subtle)', boxShadow: shaking ? '0 0 0 2px var(--accent-silver-400), 0 0 14px 4px rgba(143,160,179,0.45)' : undefined, transition: 'box-shadow 0.3s ease' }}
       >
         <span className="text-[11px] font-medium truncate" style={{ color: 'var(--text-primary)' }}>{win.title}</span>
         <div className="flex items-center gap-1">
@@ -406,7 +406,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
           style={{
             position: 'fixed', left: sysMenu.x, top: sysMenu.y,
             background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: effectiveZIndex + 100,
+            boxShadow: '0 8px 24px var(--window-shadow)', zIndex: effectiveZIndex + 100,
             minWidth: 180, padding: '4px 0',
           }}
         >
@@ -431,7 +431,7 @@ export default function FloatingWindow({ win }: FloatingWindowProps) {
                   display: 'block', width: '100%', textAlign: 'left',
                   padding: '5px 16px', fontSize: 11, background: 'none', border: 'none',
                   cursor: item.disabled ? 'default' : 'pointer',
-                  color: item.disabled ? 'var(--text-muted)' : item.danger ? 'var(--sev-critical, #ef4444)' : 'var(--text-primary)',
+                  color: item.disabled ? 'var(--text-muted)' : item.danger ? 'var(--sev-critical)' : 'var(--text-primary)',
                 }}
                 onMouseEnter={e => { if (!item.disabled) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-500-rgb),0.2)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}

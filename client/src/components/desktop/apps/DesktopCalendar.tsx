@@ -77,7 +77,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
           style={{
             padding: '4px 6px', minHeight: 52, borderRadius: 2, cursor: 'pointer',
             background: isSel ? 'var(--surface-sunken)' : 'var(--surface-base)',
-            border: `1px solid ${isSel ? 'var(--desktop-shell-accent, var(--accent-silver-400))' : isToday ? 'var(--accent-silver-400, #8899aa)' : 'var(--border-default)'}`,
+            border: `1px solid ${isSel ? 'var(--desktop-shell-accent, var(--accent-silver-400))' : isToday ? 'var(--accent-silver-400)' : 'var(--border-default)'}`,
             position: 'relative',
           }}
         >
@@ -102,7 +102,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
         <div key={i} onClick={() => setSelected(selected === iso ? null : iso)} style={{
           flex: 1, minHeight: 280, padding: 6, borderRadius: 2, cursor: 'pointer',
           background: selected === iso ? 'var(--surface-sunken)' : 'var(--surface-base)',
-          border: `1px solid ${isToday ? 'var(--accent-silver-400, #8899aa)' : 'var(--border-default)'}`,
+          border: `1px solid ${isToday ? 'var(--accent-silver-400)' : 'var(--border-default)'}`,
         }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: isToday ? 700 : 400, marginBottom: 4 }}>
             {DAY_NAMES[d.getDay()]} {d.getDate()}
@@ -122,7 +122,7 @@ export default function DesktopCalendar({ onClose }: DesktopCalendarProps) {
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px var(--window-shadow)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}

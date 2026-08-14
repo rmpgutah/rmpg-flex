@@ -64,6 +64,15 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // these by sight — "SL2 is the gold one" — so recoloring changes district
   // identity on the map, not just its styling.
   categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels)\.ts$/,
+  // DesktopSystemPreferences holds ACCENT_PRESETS — a fixed color-picker palette
+  // whose hex values are stored in localStorage and written directly to a CSS
+  // custom property via style.setProperty('--desktop-shell-accent', hex).
+  // Replacing them with var() names would break the color picker entirely since
+  // setProperty expects a resolved color string, not a CSS function call.
+  // DesktopLockScreen holds AVATAR_PALETTE — a fixed set of identity colors
+  // used to assign a consistent avatar background per officer login name. These
+  // are categorical identity values, not theme chrome.
+  accentColorPicker: /(^|\/)DesktopSystemPreferences\.tsx$|(^|\/)DesktopLockScreen\.tsx$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

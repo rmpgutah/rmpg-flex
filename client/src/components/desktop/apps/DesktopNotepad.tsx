@@ -78,7 +78,7 @@ export default function DesktopNotepad({ onClose }: DesktopNotepadProps) {
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px var(--window-shadow)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}
@@ -103,7 +103,7 @@ export default function DesktopNotepad({ onClose }: DesktopNotepadProps) {
         <button aria-label="Copy all text" onClick={copyAll} style={btnStyle()}>
           <Copy size={10} /> Copy
         </button>
-        <button aria-label="Clear note" onClick={clearAll} style={btnStyle('var(--sev-critical, #ef4444)')}>
+        <button aria-label="Clear note" onClick={clearAll} style={btnStyle('var(--sev-critical)')}>
           <Trash2 size={10} /> Clear
         </button>
         {cfsWindow && (

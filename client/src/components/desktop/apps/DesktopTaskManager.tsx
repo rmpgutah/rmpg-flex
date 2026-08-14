@@ -71,7 +71,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
     background: 'var(--surface-raised)',
     border: '1px solid var(--border-default)',
     borderRadius: 2,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+    boxShadow: '0 8px 32px var(--window-shadow)',
     zIndex: 20100,
     display: 'flex',
     flexDirection: 'column',
@@ -149,7 +149,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                       <button
                         aria-label={`Close ${w.title}`}
                         onClick={() => closeWindow(w.id)}
-                        style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer', color: 'var(--sev-critical, #ef4444)' }}
+                        style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--border-default)', borderRadius: 2, cursor: 'pointer', color: 'var(--sev-critical)' }}
                       >×</button>
                     </td>
                   </tr>
@@ -185,7 +185,7 @@ export default function DesktopTaskManager({ onClose }: DesktopTaskManagerProps)
                         <button
                           aria-label={`Force sign out ${s.username}`}
                           onClick={() => handleForceSignOut(s.id)}
-                          style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--sev-critical, #ef4444)', borderRadius: 2, cursor: 'pointer', color: 'var(--sev-critical, #ef4444)' }}
+                          style={{ fontSize: 10, padding: '2px 8px', background: 'none', border: '1px solid var(--sev-critical)', borderRadius: 2, cursor: 'pointer', color: 'var(--sev-critical)' }}
                         >Force sign out</button>
                       )}
                     </td>

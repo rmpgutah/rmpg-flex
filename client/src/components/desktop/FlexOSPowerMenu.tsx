@@ -33,7 +33,7 @@ export default function FlexOSPowerMenu({ onClose, onLock, onSignOut }: FlexOSPo
         position: 'fixed',
         inset: 0,
         zIndex: 9995, // above desktop, below lock screen
-        background: 'rgba(0,0,0,0.75)',
+        background: 'var(--modal-scrim)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -55,8 +55,8 @@ export default function FlexOSPowerMenu({ onClose, onLock, onSignOut }: FlexOSPo
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 32 }}>
-          <Shield style={{ width: 16, height: 16, color: 'var(--accent-silver-400, #c3ccd6)' }} />
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary, #f0f4f9)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          <Shield style={{ width: 16, height: 16, color: 'var(--accent-silver-400)' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             FlexOS
           </span>
         </div>
@@ -79,7 +79,7 @@ export default function FlexOSPowerMenu({ onClose, onLock, onSignOut }: FlexOSPo
             gap: 6,
             padding: '6px 16px',
             fontSize: 10,
-            color: 'var(--text-muted, #8da0b3)',
+            color: 'var(--text-muted)',
             background: 'none',
             border: 'none',
             cursor: 'pointer',
@@ -114,10 +114,10 @@ function PowerButton({ icon: Icon, label, sublabel, onClick }: { icon: React.Ele
       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.4)'; }}
       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.7)'; }}
     >
-      <Icon style={{ width: 18, height: 18, color: 'var(--accent-silver-300, #d4dde6)', flexShrink: 0 }} />
+      <Icon style={{ width: 18, height: 18, color: 'var(--accent-silver-300)', flexShrink: 0 }} />
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary, #f0f4f9)' }}>{label}</div>
-        <div style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', marginTop: 2, letterSpacing: '0.04em' }}>{sublabel}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2, letterSpacing: '0.04em' }}>{sublabel}</div>
       </div>
     </button>
   );

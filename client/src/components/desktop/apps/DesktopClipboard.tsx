@@ -76,7 +76,7 @@ export default function DesktopClipboard({ onClose }: DesktopClipboardProps) {
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px var(--window-shadow)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}
@@ -98,7 +98,7 @@ export default function DesktopClipboard({ onClose }: DesktopClipboardProps) {
           <button
             aria-label="Clear all clipboard history"
             onClick={clearAll}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sev-critical, #ef4444)', padding: '2px 4px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sev-critical)', padding: '2px 4px' }}
           >
             <Trash2 size={10} /> Clear all
           </button>
