@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import {
   addConfidentialWatermark,
   addReportHeader,
@@ -1264,15 +1265,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // default forced a page break the real content did not need -- the content
   // fit with room to spare and still landed on sheet two.
   //
-  // SIG_ROW_H was 11 here while the comment at the call site below (and this
-  // one) documented 9 -- the value drifted from its own stated intent at
-  // some point and nobody re-measured. On an unsigned notice (the common
-  // case -- these go out before the recipient ever signs anything) that
-  // extra 2mm reads as a visibly oversized blank gap between the
-  // certification sentence and the signature line, which looks unfinished
-  // on a document meant to stand as a court-facing record. Restored to 9 to
-  // match the documented design and tighten that gap.
-  const SIG_ROW_H = 9;
+  // 18mm gives a wet-signature line with room to write; 9mm was too tight
+  // for a real pen signature on a PJ-700 thermal print.
+  const SIG_ROW_H = 18;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
   y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
@@ -1340,6 +1335,33 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     footerCiteWidth / 2, y + 1.5, { align: 'center' },
   );
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+  // ── Subject-facing QR code ──
+  // Placed in the lower-left corner so the recipient can scan it immediately
+  // without hunting for a URL. Encodes the agency verification URL with the
+  // job reference so the subject can confirm the notice is genuine and reach
+  // the right person without dialling a number.
+  try {
+    const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+    });
+    const QR_SIZE = 22; // mm
+    const qrX = getRailX();
+    const pageH = doc.internal.pageSize.getHeight();
+    // Place above the footer band (FOOTER_HEIGHT = 8mm) with a 2mm gap.
+    const qrY = pageH - 8 - 2 - QR_SIZE;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('Scan to verify', qrX + QR_SIZE / 2, qrY + QR_SIZE + 2.5, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  } catch {
+    // QR generation is best-effort; a failure never blocks the notice.
+  }
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
