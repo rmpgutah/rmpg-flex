@@ -114,7 +114,7 @@ export default function MapRosterDock({
               <div className="px-3 py-6 text-center text-rmpg-500 text-xs">No units available</div>
             )}
             {units.map((unit) => {
-              const color = UNIT_STATUS_COLORS[unit.status as keyof typeof UNIT_STATUS_COLORS] || '#888888';
+              const color = UNIT_STATUS_COLORS[unit.status as keyof typeof UNIT_STATUS_COLORS] || 'var(--text-muted)';
               const hasGps = unit.latitude != null && unit.longitude != null;
               return (
                 <button

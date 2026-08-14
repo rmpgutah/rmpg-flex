@@ -57,7 +57,7 @@ export default function MultiStopRoutePanel({
           ? { top: 56, left: 8, right: 8 }
           : { top: 64, right: 16, width: 300 }),
         borderRadius: 2,
-        boxShadow: '0 8px 28px rgba(0,0,0,0.55)',
+        boxShadow: '0 8px 28px rgb(0 0 0 / 0.55)',
       }}
     >
       {/* Header */}
