@@ -258,6 +258,11 @@ contextBridge.exposeInMainWorld('electron', {
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 
+  // ─── System Quick-Settings ──────────────────────────────
+  getBattery: () => ipcRenderer.invoke('system:get-battery'),
+  getNetwork: () => ipcRenderer.invoke('system:get-network'),
+  setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the
   // main process can cache the session (auth_token, refresh_token,

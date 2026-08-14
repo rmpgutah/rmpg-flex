@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap } from 'lucide-react';
 import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
 
 const VOLUME_KEY = 'rmpg_desktop_volume';
@@ -17,13 +17,22 @@ function applyVolume(pct: number) {
 
 const UNIT_STATUSES = ['available', 'busy', 'on-call', 'traffic-stop', 'out-of-service'];
 
-export default function DesktopQuickSettings({ onClose }: { onClose: () => void }) {
+export default function DesktopQuickSettings({ onClose, open }: { onClose: () => void; open?: boolean }) {
   const [volume, setVolume] = useState(getStoredVolume);
+  const [battery, setBattery] = useState<{ percent: number | null; charging: boolean } | null>(null);
+  const [network, setNetwork] = useState<{ ssid: string | null; signal: number | null } | null>(null);
 
   const handleVolume = useCallback((v: number) => {
     setVolume(v);
     applyVolume(v);
   }, []);
+
+  useEffect(() => {
+    if (open === false) return;
+    const w = window as Window & { electron?: { getBattery?: () => Promise<unknown>; getNetwork?: () => Promise<unknown> } };
+    w.electron?.getBattery?.().then(b => setBattery(b as typeof battery)).catch(() => {});
+    w.electron?.getNetwork?.().then(n => setNetwork(n as typeof network)).catch(() => {});
+  }, [open]);
 
   const ctx = useOptionalDesktopSystem();
   const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
@@ -70,8 +79,12 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
         {/* Wi-Fi status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
-          <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Wi-Fi</span>
-          <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{navigator.onLine ? 'Connected' : 'Offline'}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {network?.ssid ?? (navigator.onLine ? 'Connected' : 'Offline')}
+          </span>
+          {network?.signal != null && (
+            <span style={{ fontSize: 9, color: 'var(--text-secondary)', flexShrink: 0 }}>{network.signal}%</span>
+          )}
         </div>
 
         {/* Volume */}
@@ -116,6 +129,22 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
               <option key={s} value={s}>{s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
             ))}
           </select>
+        </div>
+        {/* Battery */}
+        <div>
+          <div style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 4 }}>BATTERY</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {battery?.charging
+              ? <Zap className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)', flexShrink: 0 }} />
+              : <BatteryMedium className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            }
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>
+              {battery?.percent != null ? `${battery.percent}%` : '—'}
+            </span>
+            {battery?.charging && (
+              <span style={{ fontSize: 9, color: 'var(--sev-ok, #22c55e)' }}>Charging</span>
+            )}
+          </div>
         </div>
       </div>
 
