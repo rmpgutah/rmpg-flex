@@ -207,6 +207,9 @@ html.theme-dark,
      text-[color:var(--panel-header-color)] and an undefined var silently drops
      the color entirely. */
   --panel-header-color: #d4a017;
+  /* accent-gold-300: the lighter AA-passing gold used for CTA button backgrounds
+     and active-state borders. Must be in all four blocks. Night = full gold. */
+  --accent-gold-300: #d4a017; --accent-gold-300-rgb: 212 160 23;
   --surface-panel: #15212e; --surface-panel-alt: #101a26; --surface-hover: #1a2736;
   --info-text: #c3d0de; --info-bg: rgba(90, 133, 184, 0.12); --info-border: rgba(90, 133, 184, 0.24);
   --desktop-shell-start: #0d1722; --desktop-shell-end: #15212e;
@@ -334,6 +337,8 @@ html.theme-light {
   --accent-active: var(--brand-blue);
   --field-label-color: #936c0a;
   --panel-header-color: #936c0a;
+  /* Day theme: warm amber gold for CTA buttons/active states on light surfaces. */
+  --accent-gold-300: #b8860b; --accent-gold-300-rgb: 184 134 11;
   --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
   --info-text: #2e4a66; --info-bg: rgba(46, 74, 102, 0.10); --info-border: rgba(46, 74, 102, 0.22);
   --desktop-shell-start: #d6d3c8; --desktop-shell-end: #c9c5b8;
@@ -446,6 +451,8 @@ html.theme-legacy-black {
   --accent-active: var(--accent-silver-400);
   --field-label-color: #d4a017;
   --panel-header-color: #d4a017;
+  /* Legacy black: same gold value as night. */
+  --accent-gold-300: #d4a017; --accent-gold-300-rgb: 212 160 23;
   --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
   --info-text: #d0d0d0; --info-bg: rgba(150, 150, 150, 0.12); --info-border: rgba(150, 150, 150, 0.24);
   --desktop-shell-start: #000000; --desktop-shell-end: #0e0e0e;

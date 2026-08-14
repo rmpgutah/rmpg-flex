@@ -8,8 +8,8 @@ import { safeDateStr } from '../../../utils/dateUtils';
 // are alert semantics (officer-safety), not theme decoration, and live as
 // the same hex across every alert surface in the system.
 const PRIORITY_TAG: Record<string, string> = {
-  P1: 'bg-[#3a0d0a] text-red-400 border-red-700/50',
-  P2: 'bg-[#3a2a08] text-amber-300 border-amber-700/50',
+  P1: 'bg-red-950/80 text-red-400 border-red-700/50',
+  P2: 'bg-amber-950/80 text-amber-300 border-amber-700/50',
   P3: 'bg-surface-raised text-rmpg-400 border-border-subtle',
 };
 

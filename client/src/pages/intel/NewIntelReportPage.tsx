@@ -58,20 +58,20 @@ export default function NewIntelReportPage() {
 
   return (
     <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--text-primary)' }}>
-      <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>NEW INTELLIGENCE REPORT</h1>
-      {err && <div style={{ color: '#ef4444', fontSize: 11 }}>{err}</div>}
+      <h1 className="text-sm font-semibold tracking-wide" style={{ color: 'var(--panel-header-color)' }}>NEW INTELLIGENCE REPORT</h1>
+      {err && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{err}</div>}
 
-      <label className="block text-[10px] text-[#888] uppercase tracking-wider">Title
+      <label className="block text-[10px] text-fg-muted uppercase tracking-wider">Title
         <input aria-label="title" value={title} onChange={(e) => setTitle(e.target.value)}
           className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
-      <label className="block text-[10px] text-[#888] uppercase tracking-wider">Raw narrative
+      <label className="block text-[10px] text-fg-muted uppercase tracking-wider">Raw narrative
         <textarea aria-label="narrative" value={narrative} onChange={(e) => setNarrative(e.target.value)} rows={8}
           className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200" />
       </label>
 
-      <label className="block text-[10px] text-[#888] uppercase tracking-wider">Source type
+      <label className="block text-[10px] text-fg-muted uppercase tracking-wider">Source type
         <select aria-label="source type" value={sourceType} onChange={(e) => setSourceType(e.target.value)}
           className="mt-1 w-full bg-surface-overlay border border-border-default rounded-[2px] px-2 py-[6px] text-[12px] text-rmpg-200">
           {SOURCE_TYPES.map((s) => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
@@ -79,20 +79,20 @@ export default function NewIntelReportPage() {
       </label>
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-[#888] uppercase tracking-wider">Threat</span>
+        <span className="text-[10px] text-fg-muted uppercase tracking-wider">Threat</span>
         {THREATS.map((t) => (
           <button key={t} onClick={() => setThreat(t)}
             className="px-2 py-1 text-[10px] uppercase rounded-[2px]"
-            style={{ background: threat === t ? '#d4a017' : 'var(--surface-overlay)', color: threat === t ? '#000' : '#888' }}>{t}</button>
+            style={{ background: threat === t ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: threat === t ? 'black' : 'var(--text-muted)' }}>{t}</button>
         ))}
       </div>
 
       <div className="flex gap-2 pt-1">
         <button disabled={busy} onClick={submit}
-          className="px-3 py-1 text-xs font-semibold" style={{ background: '#d4a017', color: '#000', borderRadius: 2 }}>
+          className="px-3 py-1 text-xs font-semibold" style={{ background: 'var(--accent-gold-300)', color: 'black', borderRadius: 2 }}>
           {busy ? 'Submitting…' : 'Submit report'}
         </button>
-        <button onClick={() => nav('/intel/reports')} className="px-3 py-1 text-xs" style={{ color: '#888' }}>Cancel</button>
+        <button onClick={() => nav('/intel/reports')} className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }}>Cancel</button>
       </div>
     </div>
   );

@@ -11,7 +11,7 @@ interface ReportRow {
 
 const STATUSES = ['submitted', 'under_evaluation', 'graded', 'analyzed', 'disseminated', 'recalled', 'archived', 'rejected'];
 const THREAT_COLOR: Record<string, string> = {
-  critical: '#ef4444', high: '#f59e0b', medium: '#d4a017', low: '#888888',
+  critical: 'var(--sev-critical)', high: 'var(--sev-warn)', medium: 'var(--accent-gold-300)', low: 'var(--text-muted)',
 };
 
 export default function IntelReportsPage() {
@@ -33,26 +33,26 @@ export default function IntelReportsPage() {
   return (
     <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--text-primary)' }}>
       <div className="flex items-center justify-between">
-        <h1 className="text-sm font-semibold tracking-wide" style={{ color: '#d4a017' }}>
+        <h1 className="text-sm font-semibold tracking-wide" style={{ color: 'var(--panel-header-color)' }}>
           INTELLIGENCE PRODUCTS
         </h1>
         <button onClick={() => nav('/intel/reports/new')}
           className="px-3 py-1 text-xs font-semibold"
-          style={{ background: '#d4a017', color: '#000', borderRadius: 2 }}>
+          style={{ background: 'var(--accent-gold-300)', color: 'black', borderRadius: 2 }}>
           + NEW REPORT
         </button>
       </div>
-      {err && <div style={{ color: '#ef4444', fontSize: 11 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{err}</div>}
 
       <div className="flex gap-1 flex-wrap text-[10px]">
         <button onClick={() => setStatus('')}
-          className="px-2 py-1" style={{ background: status === '' ? '#d4a017' : 'var(--surface-overlay)', color: status === '' ? '#000' : '#888', borderRadius: 2 }}>
+          className="px-2 py-1" style={{ background: status === '' ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: status === '' ? 'black' : 'var(--text-muted)', borderRadius: 2 }}>
           ALL
         </button>
         {STATUSES.map((s) => (
           <button key={s} onClick={() => setStatus(s)}
             className="px-2 py-1 uppercase"
-            style={{ background: status === s ? '#d4a017' : 'var(--surface-overlay)', color: status === s ? '#000' : '#888', borderRadius: 2 }}>
+            style={{ background: status === s ? 'var(--accent-gold-300)' : 'var(--surface-overlay)', color: status === s ? 'black' : 'var(--text-muted)', borderRadius: 2 }}>
             {toDisplayLabel(s)}
           </button>
         ))}
@@ -60,7 +60,7 @@ export default function IntelReportsPage() {
 
       <div className="overflow-x-auto"><table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ color: '#888', textAlign: 'left' }}>
+          <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
             <th className="py-[3px] font-semibold text-[9px]">NUMBER</th>
             <th className="py-[3px] font-semibold text-[9px]">TITLE</th>
             <th className="py-[3px] font-semibold text-[9px]">STATUS</th>
@@ -73,10 +73,10 @@ export default function IntelReportsPage() {
           {rows.map((r) => (
             <tr key={r.id} onClick={() => nav(`/intel/reports/${r.id}`)}
               style={{ cursor: 'pointer', borderTop: '1px solid var(--border-subtle)' }}>
-              <td className="py-[2px]" style={{ color: '#d4a017' }}>{r.report_number}</td>
+              <td className="py-[2px]" style={{ color: 'var(--panel-header-color)' }}>{r.report_number}</td>
               <td className="py-[2px]">{r.title}</td>
               <td className="py-[2px] uppercase">{toDisplayLabel(r.status)}
-                {r.retention_status === 'due_review' && <span style={{ color: '#f59e0b' }}> ⚑</span>}</td>
+                {r.retention_status === 'due_review' && <span style={{ color: 'var(--sev-warn)' }}> ⚑</span>}</td>
               <td className="py-[2px]">{r.grade_label === 'UNGRADED' ? '—' : r.grade_label.split(' — ')[0]}</td>
               <td className="py-[2px]">{r.confidence || '—'}</td>
               <td className="py-[2px] uppercase" style={{ color: THREAT_COLOR[r.threat_level] || '#888' }}>{formatEnumValue(r.threat_level)}</td>
