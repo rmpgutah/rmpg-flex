@@ -20,7 +20,7 @@ const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutpu
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
-const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse } = require('./kioskShell');
+const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse, validateFlexOsLoginResponse } = require('./kioskShell');
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const fs = require('fs');
 
@@ -1003,9 +1003,14 @@ async function createMainWindow() {
 
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
-    closeSplash();
-    mainWindow.show();
-    mainWindow.focus();
+    // In kiosk shell mode the splash drives show/focus via the splash:auth flow.
+    // Do not close the splash here — it must stay up for the lock screen.
+    // In all other contexts (dev, non-kiosk Windows, macOS) close and show directly.
+    if (!isKioskShell) {
+      closeSplash();
+      mainWindow.show();
+      mainWindow.focus();
+    }
     if (useKioskChrome) setConfig('kiosk_boot_attempts', resetBootAttemptState());
   });
 
@@ -1766,6 +1771,16 @@ function suppressWindowsShellProcesses() {
   // If it somehow is running (e.g. a GPO or startup item launched it), including
   // it here is safe because the FlexOS shell relaunch guard keeps the session
   // alive regardless.
+  // NEVER add these to the targets list — they are Microsoft background services
+  // that must remain active in kiosk shell mode for Rocky Mountain Protective Group
+  // operations. Killing them causes device security failures, sync loss, or a BSOD:
+  //   OneDrive.exe               — file sync
+  //   SecurityHealthSystray.exe  — Windows Security / Defender
+  //   WmiPrvSE.exe               — WMI provider host (battery, hardware queries need this)
+  //   MicrosoftEdgeUpdate.exe    — Edge update service
+  //   lsass.exe                  — credential & authentication store
+  //   winlogon.exe               — session manager (killing = kernel panic / BSOD)
+  //   svchost.exe                — hosts Entra/Azure AD, Windows Update, and 100+ services
   const targets = [
     'StartMenuExperienceHost.exe',
     'ShellExperienceHost.exe',
@@ -2052,6 +2067,74 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
   }
 });
+
+// ── Startup lock screen authentication ──────────────────────
+// Forwards FlexOS credentials from the splash lock screen to /api/auth/login.
+// Uses guardedSplashOn (file:// sender guard) not guardedOn (remote-origin guard)
+// because splash.html is loaded via loadFile(), giving it a file:// sender URL.
+guardedSplashOn('splash:auth', async (event, payload) => {
+  const username = (payload && typeof payload.username === 'string') ? payload.username.trim() : '';
+  const password = (payload && typeof payload.password === 'string') ? payload.password : '';
+
+  const sendResult = (data) => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:auth-result', data);
+    }
+  };
+
+  if (!username || !password) {
+    sendResult({ ok: false, error: 'Username and password are required' });
+    return;
+  }
+
+  if (!isAllowedApiHost(KIOSK_ESCAPE_API_BASE, [KIOSK_ESCAPE_API_HOSTNAME].filter(Boolean))) {
+    sendResult({ ok: false, error: 'Auth endpoint not configured' });
+    return;
+  }
+
+  try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    const response = await withRequestTimeout(
+      fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS
+    );
+    const rawJson = await response.text();
+    const validated = validateFlexOsLoginResponse(rawJson);
+
+    sendResult(validated.ok
+      ? { ok: true, officer: validated.officer }
+      : { ok: false, error: validated.error }
+    );
+
+    if (validated.ok) {
+      // Persist the last-used FlexOS username for future lock screen pre-fill.
+      try { setConfig('last_flexos_username', username); } catch (_) {}
+      // Transition splash to Phase 3 (welcome), then close after animation.
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash:phase', {
+          phase: 'welcome',
+          data: { officerName: validated.officer.name, role: validated.officer.role },
+        });
+        // Phase 3 animates for 2.5s + 400ms fade. Close splash and show main after 3.1s.
+        setTimeout(() => {
+          closeSplash();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }, 3100);
+      }
+    }
+  } catch (err) {
+    console.error('[SPLASH:AUTH] Login request failed:', err.message);
+    sendResult({ ok: false, error: 'Unable to reach server — check network connection' });
+  }
+});
+
 guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
 guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
   const validation = validateGlobalShortcutAccelerator(accelerator);
@@ -4369,6 +4452,25 @@ app.whenReady().then(async () => {
     // seed the monitor as "offline" just because the NIC wasn't ready yet.
     const isKioskContext = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
     const connectivityPromise = checkServerConnectivity({ kioskShell: isKioskContext });
+
+    // Kick off Windows account lookup in parallel with connectivity check.
+    // Both must resolve (+ 3s minimum) before the lock screen shows.
+    const accountInfoPromise = getWindowsAccountInfo();
+    const minBootPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // After DB init, we know if this is a kiosk shell session.
+    // Drive phase transitions only in kiosk shell mode.
+    Promise.all([accountInfoPromise, minBootPromise]).then(([accountInfo]) => {
+      const isKioskForSplash = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+      if (isKioskForSplash && splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash:phase', {
+          phase: 'lock',
+          data: accountInfo || { name: getConfig('last_flexos_username') || 'Officer', fullName: null, avatarDataUri: null },
+        });
+      }
+    }).catch((err) => {
+      console.warn('[SPLASH] Phase 1→2 transition error:', err && err.message);
+    });
 
     // Lifted out of the `if (DEV_MODE)` block below (rather than left as a
     // block-scoped const inside it) so the Task 10 self-test further down
