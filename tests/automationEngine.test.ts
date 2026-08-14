@@ -60,9 +60,7 @@ describe('evaluateServerRules', () => {
       bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue(recentFiring), run: vi.fn().mockResolvedValue({}) }),
     });
     await evaluateServerRules(mockDb, mockEnv, mockCtx, 1, null, [makeFix({ speed: 45 })], [rule]);
-    // waitUntil only called for the dedup INSERT, not for the action
-    const calls = mockCtx.waitUntil.mock.calls;
-    expect(calls.length).toBeLessThan(2);
+    expect(mockCtx.waitUntil).not.toHaveBeenCalled();
   });
 
   it('skips disabled rules', async () => {

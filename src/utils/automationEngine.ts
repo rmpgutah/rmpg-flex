@@ -209,11 +209,14 @@ export async function evaluateServerRules(
       try {
         const duped = await isDuped(db, rule.id, userId, rule.dedup_window_ms);
         if (duped) continue;
-        await insertFiring(db, rule.id, userId, unitId, fix, {
-          trigger_type: rule.trigger_type,
-          speed: fix.speed,
-        });
-        await fireAction(db, env, ctx, rule, fix, userId, unitId);
+        ctx.waitUntil(
+          insertFiring(db, rule.id, userId, unitId, fix, {
+            trigger_type: rule.trigger_type,
+            speed: fix.speed,
+          })
+            .then(() => fireAction(db, env, ctx, rule, fix, userId, unitId))
+            .catch((err) => log.error('[automation] firing failed', { rule_id: rule.id }, err)),
+        );
       } catch (err) {
         log.error('[automation] rule evaluation error', { rule_id: rule.id, userId }, err);
       }
