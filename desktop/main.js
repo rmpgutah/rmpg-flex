@@ -1563,6 +1563,52 @@ guardedHandle('sys:restart', () => {
   app.exit();
 });
 
+guardedHandle('os:shutdown', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Shut Down',
+    message: 'Shut down this computer?',
+    detail: 'The computer will shut down in 5 seconds. To cancel, run: shutdown /a',
+    buttons: ['Shut Down', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (response !== 0) return { ok: false, error: 'cancelled' };
+  try {
+    await execFileAsync('shutdown.exe', ['/s', '/t', '5'], { windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('os:restart', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Restart',
+    message: 'Restart this computer?',
+    detail: 'The computer will restart in 5 seconds. To cancel, run: shutdown /a',
+    buttons: ['Restart', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (response !== 0) return { ok: false, error: 'cancelled' };
+  try {
+    await execFileAsync('shutdown.exe', ['/r', '/t', '5'], { windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // ─── File & Data Export/Import ──────────────────────────────
 guardedHandle('fs:save-dialog', async (event, opts) => {
   const result = await dialog.showSaveDialog(mainWindow, buildSaveDialogOptions(opts || {}));
@@ -1991,6 +2037,7 @@ guardedHandle('device:kiosk-shell-state', () => {
 let kioskEscapeWindow = null;
 const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minute
 const splashAuthRateLimiter = createRateLimiter(5, 60_000);  // 5 attempts/minute
+const returnToWindowsRateLimiter = createRateLimiter(5, 60_000);
 
 // kioskEscape.html is loaded with loadFile(), so its frame URL is
 // file:///…/kioskEscape.html — host "" — which the remote-origin guard
@@ -2085,6 +2132,70 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     return { ok: true };
   } catch (err) {
     logSecurityAuditEvent('kiosk:attempt-escape', 'error', { error: err.message });
+    return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+  }
+});
+
+// Renderer-initiated kiosk revert (from FlexOSPowerMenu) — counterpart to
+// kiosk:attempt-escape (which is called from the kioskEscape.html file://
+// window). Uses guardedHandle (trusted remote origin) not guardedLocalFileHandle.
+guardedHandle('os:return-to-windows', async (event, username, password) => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  if (getConfig('kiosk_shell_enabled') !== true) return { ok: false, error: 'not_in_kiosk_mode' };
+
+  const rateCheck = returnToWindowsRateLimiter.checkRateLimit('os:return-to-windows');
+  if (!rateCheck.ok) {
+    logSecurityAuditEvent('os:return-to-windows', 'denied', { reason: 'rate_limited' });
+    return rateCheck;
+  }
+
+  const shapeCheck = validateKioskEscapeCredentials(username, password);
+  if (!shapeCheck.ok) return shapeCheck;
+
+  try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    if (!isAllowedApiHost(loginUrl, [KIOSK_ESCAPE_API_HOSTNAME])) {
+      logSecurityAuditEvent('os:return-to-windows', 'error', { reason: 'host_not_allowlisted' });
+      return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+    }
+    const result = await withRequestTimeout(
+      new Promise((resolve, reject) => {
+        const request = net.request({ method: 'POST', url: loginUrl });
+        request.setHeader('Content-Type', 'application/json');
+        let body = '';
+        request.on('response', (response) => {
+          response.on('data', (chunk) => { body += chunk.toString(); });
+          response.on('end', () => resolve(body));
+        });
+        request.on('error', reject);
+        request.write(JSON.stringify({ username, password }));
+        request.end();
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+      setTimeout
+    );
+    const validation = validateEscapeLoginResponse(result);
+    logSecurityAuditEvent('os:return-to-windows', validation.ok ? 'success' : 'denied', { username });
+    if (!validation.ok) return validation;
+
+    kioskDeliberatelyReverting = true;
+    const revert = await deleteHkcuShell();
+    if (!revert.ok) {
+      kioskDeliberatelyReverting = false;
+      logSecurityAuditEvent('os:return-to-windows', 'error', { reason: 'registry_revert_failed', error: revert.error });
+      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Contact IT support for a manual registry revert.` };
+    }
+    logSecurityAuditEvent('os:return-to-windows', 'success', { reason: 'registry_reverted', username });
+    setConfig('kiosk_shell_enabled', false);
+    setConfig('kiosk_boot_attempts', resetBootAttemptState());
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'Kiosk Mode Disabled',
+      message: 'Kiosk Mode has been disabled. Restart the computer to return to the normal Windows desktop.',
+    });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('os:return-to-windows', 'error', { error: err.message });
     return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
   }
 });

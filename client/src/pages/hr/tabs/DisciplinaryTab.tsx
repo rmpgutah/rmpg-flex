@@ -536,7 +536,7 @@ function RecordCard({
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const isComm = rec.type === 'commendation';
-  const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
+  const borderColor = isComm ? 'var(--sev-warn)' : (SEVERITY_COLORS[rec.severity] ?? 'var(--text-muted)');
   const sBadge = statusBadge(rec.status);
   const fuStatus = followUpStatus(rec.follow_up_date);
 
@@ -657,7 +657,7 @@ function TimelineView({ records }: { records: DisciplinaryRecord[] }) {
 
       {records.map(rec => {
         const isComm = rec.type === 'commendation';
-        const color = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
+        const color = isComm ? 'var(--sev-warn)' : (SEVERITY_COLORS[rec.severity] ?? 'var(--text-muted)');
 
         return (
           <div key={rec.id} className="relative flex gap-3">
