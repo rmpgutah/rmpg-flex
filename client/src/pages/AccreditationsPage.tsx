@@ -229,13 +229,13 @@ export default function AccreditationsPage() {
             placeholder="Search officer, type, issuing body…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-200 placeholder-gray-600 focus:border-[#d4a017] focus:outline-none"
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-100 placeholder-rmpg-500 focus:border-accent-silver-400 focus:outline-none"
           />
         </div>
         <select
           value={officerFilter}
           onChange={e => setOfficerFilter(e.target.value)}
-          className="bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 focus:border-[#d4a017] focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 focus:border-accent-silver-400 focus:outline-none"
         >
           <option value="">All Officers</option>
           {officers.map(o => (
@@ -245,7 +245,7 @@ export default function AccreditationsPage() {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 focus:border-[#d4a017] focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 focus:border-accent-silver-400 focus:outline-none"
         >
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(s => (
@@ -255,7 +255,7 @@ export default function AccreditationsPage() {
         <select
           value={expiringFilter}
           onChange={e => setExpiringFilter(e.target.value)}
-          className="bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 focus:border-[#d4a017] focus:outline-none"
+          className="bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 focus:border-accent-silver-400 focus:outline-none"
         >
           {EXPIRY_DAYS_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>Expiring: {o.label}</option>
@@ -264,14 +264,14 @@ export default function AccreditationsPage() {
         <button
           onClick={checkReminders}
           disabled={checkingReminders}
-          className="px-3 py-1.5 text-xs text-gray-300 bg-[#141414] border border-[#222] rounded-sm hover:bg-[#1a1a1a] flex items-center gap-1 disabled:opacity-50"
+          className="px-3 py-1.5 text-xs text-rmpg-200 bg-surface-sunken border border-rmpg-700 rounded-sm hover:bg-surface-raised flex items-center gap-1 disabled:opacity-50"
         >
           {checkingReminders ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bell className="w-3 h-3" />}
           Check Reminders
         </button>
         <button
           onClick={() => { setShowForm(true); setForm(EMPTY_FORM); }}
-          className="px-3 py-1.5 text-xs text-black bg-[#d4a017] rounded-sm hover:bg-[#b8891a] flex items-center gap-1"
+          className="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-sm hover:bg-brand-700 flex items-center gap-1"
         >
           <Plus className="w-3 h-3" /> Add Accreditation
         </button>
@@ -283,10 +283,10 @@ export default function AccreditationsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState icon={Shield} title="No accreditations found" />
       ) : (
-        <div className="overflow-x-auto border border-[#222] rounded-sm">
+        <div className="overflow-x-auto border border-rmpg-700 rounded-sm">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="bg-[#141414] border-b border-[#222] text-gray-400 font-semibold text-[9px] uppercase tracking-wider">
+              <tr className="bg-surface-sunken border-b border-rmpg-700 text-rmpg-300 font-semibold text-[9px] uppercase tracking-wider">
                 <th className="text-left px-2 py-[3px]">Officer</th>
                 <th className="text-left px-2 py-[3px]">Type</th>
                 <th className="text-left px-2 py-[3px]">Issuing Body</th>
@@ -301,12 +301,12 @@ export default function AccreditationsPage() {
               {filtered.map(r => (
                 <tr
                   key={r.id}
-                  className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors ${rowHighlight(r)}`}
+                  className={`border-b border-rmpg-800 hover:bg-surface-raised transition-colors ${rowHighlight(r)}`}
                 >
                   <td className="px-2 py-[2px] text-gray-300">{r.officer_name} <span className="text-gray-600">({r.badge_number})</span></td>
                   <td className="px-2 py-[2px] text-gray-300">{formatEnumValue(r.type)}</td>
                   <td className="px-2 py-[2px] text-gray-400">{r.issuing_body}</td>
-                  <td className="px-2 py-[2px] text-[#d4a017] font-mono">{r.certificate_number}</td>
+                  <td className="px-2 py-[2px] [color:var(--field-label-color)] font-mono">{r.certificate_number}</td>
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.issued_date)}</td>
                   <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.expiration_date)}</td>
                   <td className="px-2 py-[2px]">
@@ -325,9 +325,9 @@ export default function AccreditationsPage() {
       {/* Add Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4">
-          <div className="bg-[#0a0a0a] border border-[#222] rounded-sm w-full max-w-lg shadow-lg my-auto">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222] bg-gradient-to-r from-[#1a1a1a] to-[#242424]">
-              <span className="text-[#d4a017] text-xs font-semibold">ADD ACCREDITATION</span>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg shadow-lg my-auto">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-raised">
+              <span className="[color:var(--panel-header-color)] text-xs font-semibold">ADD ACCREDITATION</span>
               <IconButton aria-label="Close form" onClick={() => setShowForm(false)}>
                 <X className="w-4 h-4" />
               </IconButton>
@@ -339,7 +339,7 @@ export default function AccreditationsPage() {
                 <select
                   value={form.officer_id}
                   onChange={e => updateForm('officer_id', e.target.value)}
-                  className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                 >
                   <option value="">— Select Officer —</option>
                   {officers.map(o => (
@@ -354,7 +354,7 @@ export default function AccreditationsPage() {
                     value={form.type}
                     onChange={e => updateForm('type', e.target.value)}
                     placeholder="e.g. POST Certification"
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -363,7 +363,7 @@ export default function AccreditationsPage() {
                     value={form.issuing_body}
                     onChange={e => updateForm('issuing_body', e.target.value)}
                     placeholder="e.g. Utah POST"
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                   />
                 </div>
               </div>
@@ -372,7 +372,7 @@ export default function AccreditationsPage() {
                 <input
                   value={form.certificate_number}
                   onChange={e => updateForm('certificate_number', e.target.value)}
-                  className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -382,7 +382,7 @@ export default function AccreditationsPage() {
                     type="date"
                     value={form.issued_date}
                     onChange={e => updateForm('issued_date', e.target.value)}
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -391,7 +391,7 @@ export default function AccreditationsPage() {
                     type="date"
                     value={form.expiration_date}
                     onChange={e => updateForm('expiration_date', e.target.value)}
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none"
                   />
                 </div>
               </div>
@@ -401,21 +401,21 @@ export default function AccreditationsPage() {
                   value={form.notes}
                   onChange={e => updateForm('notes', e.target.value)}
                   rows={2}
-                  className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none resize-none"
+                  className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm text-xs text-rmpg-200 px-2 py-1.5 mt-1 focus:border-accent-silver-400 focus:outline-none resize-none"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowForm(false)}
-                  className="px-3 py-1.5 text-xs text-gray-400 bg-[#141414] border border-[#222] rounded-sm hover:bg-[#1a1a1a]"
+                  className="px-3 py-1.5 text-xs text-rmpg-300 bg-surface-sunken border border-rmpg-700 rounded-sm hover:bg-surface-raised"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleAdd}
                   disabled={saving}
-                  className="px-3 py-1.5 text-xs text-black bg-[#d4a017] rounded-sm hover:bg-[#b8891a] disabled:opacity-50 flex items-center gap-1"
+                  className="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-sm hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1"
                 >
                   {saving && <Loader2 className="w-3 h-3 animate-spin" />}
                   <Save className="w-3 h-3" /> Save
