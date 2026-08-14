@@ -51,7 +51,7 @@ export default function CategoryPage({ title, icon, authorizationBanner, tools, 
       <div className={`bg-surface-base border p-3 flex items-start gap-3 ${
         banner.kind === 'critical' ? 'border-[#b33]/40' : 'border-border-default'
       }`}>
-        <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${banner.kind === 'critical' ? 'text-[#ff8888]' : 'text-[#d4a017]'}`} />
+        <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${banner.kind === 'critical' ? 'text-red-400' : 'text-[#d4a017]'}`} />
         <div className="text-[11px] text-rmpg-300 leading-relaxed">{banner.text}</div>
       </div>
 

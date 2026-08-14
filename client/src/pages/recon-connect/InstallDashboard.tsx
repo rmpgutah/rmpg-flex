@@ -71,7 +71,7 @@ export default function InstallDashboard() {
               <span
                 key={b}
                 className={`text-[9px] font-mono px-1.5 py-0.5 border ${
-                  installed[b] ? 'text-[#7fd38a] border-[#2e7d32]/50' : 'text-rmpg-500 border-rmpg-700'
+                  installed[b] ? 'text-green-400 border-green-800/50' : 'text-rmpg-500 border-rmpg-700'
                 }`}
                 title={installed[b] ? 'Installed' : 'Not installed'}
               >
@@ -96,7 +96,7 @@ export default function InstallDashboard() {
           ) : (
             recent.map((r, i) => (
               <div key={i} className="px-2 py-1.5 text-[10px] font-mono flex items-baseline gap-2">
-                <span className={r.exit === 0 ? 'text-[#7fd38a]' : 'text-[#ff8888]'}>
+                <span className={r.exit === 0 ? 'text-green-400' : 'text-red-400'}>
                   {r.exit === 0 ? '✓' : '✗'}
                 </span>
                 <span className="text-[#d4a017]">{r.toolId}</span>

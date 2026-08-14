@@ -1332,7 +1332,7 @@ export default function ServeRoutePlanner({
                 <select id="ff-serverouteplanner-0"
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-surface-sunken border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-[color:var(--accent-silver-400)] focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                 >
                   {officers.map(o => (<option key={o.id} value={o.id}>{o.name}</option>))}
                 </select>

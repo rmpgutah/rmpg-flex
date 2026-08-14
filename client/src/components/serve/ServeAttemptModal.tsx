@@ -495,7 +495,7 @@ export default function ServeAttemptModal({
             {gps.loading ? (
               <div className="flex flex-col items-center gap-3 py-8 text-rmpg-400">
                 <div className="relative">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#888888]" />
+                  <Loader2 className="w-8 h-8 animate-spin text-[color:var(--accent-silver-400)]" />
                   <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500" />
                 </div>
                 <span className="text-sm">Acquiring GPS position...</span>
@@ -551,7 +551,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Confirm Location
               </button>
@@ -636,7 +636,7 @@ export default function ServeAttemptModal({
                       value={customReason}
                       onChange={(e) => setCustomReason(e.target.value.slice(0, 60))}
                       placeholder="e.g., business closed for the day"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                 )}
@@ -655,7 +655,7 @@ export default function ServeAttemptModal({
                         type="date"
                         value={nextAttemptDate}
                         onChange={(e) => setNextAttemptDate(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                     <div>
@@ -665,7 +665,7 @@ export default function ServeAttemptModal({
                         type="time"
                         value={nextAttemptStart}
                         onChange={(e) => setNextAttemptStart(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                     <div>
@@ -675,7 +675,7 @@ export default function ServeAttemptModal({
                         type="time"
                         value={nextAttemptEnd}
                         onChange={(e) => setNextAttemptEnd(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                   </div>
@@ -692,7 +692,7 @@ export default function ServeAttemptModal({
                       }}
                       placeholder="Auto-builds from the picker — or type your own"
                       rows={2}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] resize-none"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] resize-none"
                     />
                   </div>
                 </fieldset>
@@ -720,7 +720,7 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={goBack}
-                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Back
               </button>
@@ -730,7 +730,7 @@ export default function ServeAttemptModal({
                   !attemptType
                   || (attemptType === 'failed' && !dispositionCode && !failedReason)
                 }
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 {isFailedPath ? 'Continue' : 'Next'}
               </button>
@@ -798,7 +798,7 @@ export default function ServeAttemptModal({
                     <select id="ff-serveattemptmodal-2"
                       value={ageRange}
                       onChange={(e) => setAgeRange(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {AGE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -809,7 +809,7 @@ export default function ServeAttemptModal({
                     <select id="ff-serveattemptmodal-3"
                       value={hairColor}
                       onChange={(e) => setHairColor(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {HAIR_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -822,7 +822,7 @@ export default function ServeAttemptModal({
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
                       placeholder="e.g., 5'10"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                   <div>
@@ -832,7 +832,7 @@ export default function ServeAttemptModal({
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
                       placeholder="e.g., 180 lbs"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                 </div>
@@ -843,7 +843,7 @@ export default function ServeAttemptModal({
                     value={clothing}
                     onChange={(e) => setClothing(e.target.value)}
                     placeholder="Describe clothing worn"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                   />
                 </div>
               </fieldset>
@@ -862,7 +862,7 @@ export default function ServeAttemptModal({
                     value={personServedName}
                     onChange={(e) => setPersonServedName(e.target.value)}
                     placeholder="Full name of person served"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     required
                   />
                 </div>
@@ -871,7 +871,7 @@ export default function ServeAttemptModal({
                   <select id="ff-serveattemptmodal-8"
                     value={relationship}
                     onChange={(e) => setRelationship(e.target.value)}
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                   >
                     <option value="">Select...</option>
                     {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -886,14 +886,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={goBack}
-                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={goNext}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Next
               </button>
@@ -964,7 +964,7 @@ export default function ServeAttemptModal({
                 )}
                 <button type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                  className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
                 >
                   Close
                 </button>
@@ -1107,7 +1107,7 @@ export default function ServeAttemptModal({
                 <div className="flex justify-between pt-2">
                   <button type="button"
                     onClick={goBack}
-                    className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                    className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
                   >
                     Back
                   </button>
@@ -1142,7 +1142,7 @@ export default function ServeAttemptModal({
           </h2>
           <button type="button"
             onClick={guardedClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
@@ -1202,7 +1202,7 @@ function NotesField({
         rows={3}
         className={`w-full bg-rmpg-800 border rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:ring-1 transition-colors resize-none ${
           over ? 'border-red-600 focus:border-red-500 focus:ring-red-500/40'
-            : 'border-rmpg-600 focus:border-[#888888] focus:ring-[#888888]/40'
+            : 'border-rmpg-600 focus:border-[color:var(--accent-silver-400)] focus:ring-[color:var(--accent-silver-400)]/40'
         }`}
       />
     </div>

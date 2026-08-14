@@ -119,7 +119,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                   <div className="text-rmpg-200 text-xs font-semibold">{tool.title}</div>
                   <div className="text-[#888] text-[10px] leading-snug line-clamp-2">{tool.description}</div>
                 </div>
-                {isRunning && <span className="text-[9px] font-mono text-[#7fd38a] uppercase tracking-wider border border-[#2e7d32] px-1.5 py-0.5">RUNNING</span>}
+                {isRunning && <span className="text-[9px] font-mono text-green-400 uppercase tracking-wider border border-green-800 px-1.5 py-0.5">RUNNING</span>}
               </button>
               {isOpen && (
                 <div className="mt-2 space-y-2 pl-5">
@@ -149,7 +149,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                           onClick={() => run(tool, 'run', i)}
                           disabled={Boolean(running)}
                           title={cmd}
-                          className="px-2 py-1 bg-[#d4a017] text-black text-[10px] font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1"
+                          className="px-2 py-1 bg-[color:var(--accent-silver-500)] text-rmpg-50 text-[10px] font-semibold hover:bg-[color:var(--accent-silver-400)] disabled:opacity-40 flex items-center gap-1"
                         >
                           <Play className="w-3 h-3" /> Run {tool.run.length > 1 ? `[${i + 1}]` : ''}
                         </button>
@@ -165,7 +165,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                     {isRunning && (
                       <button
                         onClick={stop}
-                        className="px-2 py-1 bg-surface-raised border border-[#b33] text-[#ff8888] text-[10px] hover:bg-[#2a1414] flex items-center gap-1"
+                        className="px-2 py-1 bg-surface-raised border border-[#b33] text-red-400 text-[10px] hover:bg-red-950 flex items-center gap-1"
                       >
                         <Square className="w-3 h-3" /> Stop
                       </button>
@@ -187,7 +187,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                     >
                       {lines.map((line, i) => (
                         <span key={i} className={
-                          line.kind === 'stderr' ? 'text-[#ff8888]' :
+                          line.kind === 'stderr' ? 'text-red-400' :
                           line.kind === 'meta'   ? 'text-[#d4a017]' :
                                                    'text-rmpg-200'
                         }>{line.text}</span>

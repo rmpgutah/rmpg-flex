@@ -480,7 +480,7 @@ export default function ServeReceiptActions({
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(true); setStep('intake'); }}
         className={compact
-          ? 'flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-fg-secondary hover:bg-surface-sunken/30 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50'
+          ? 'flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-fg-secondary hover:bg-surface-sunken/30 transition-colors focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50'
           : 'flex items-center gap-1.5 px-2 py-1.5 rounded-[2px] border border-rmpg-700 text-[11px] font-bold text-fg-secondary hover:bg-surface-sunken'}
         title="Acknowledgement of Service"
         aria-label={`Acknowledgement of service for ${job.recipient_name || `job ${job.id}`}`}
