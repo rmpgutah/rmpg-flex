@@ -124,7 +124,7 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
               title="Mapillary street view"
               src={viewerUrl}
               className="w-full"
-              style={{ border: 0, borderRadius: 2, height: 'min(620px, 70vh)', background: '#000' }}
+              style={{ border: 0, borderRadius: 2, height: 'min(620px, 70vh)', background: 'var(--surface-overlay)' }}
               allow="fullscreen"
               loading="lazy"
             />
@@ -136,7 +136,7 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
                     src={perspectiveUrl}
                     alt="Street-level oblique perspective"
                     className="w-full block"
-                    style={{ borderRadius: 2, border: '1px solid #2e2e2e' }}
+                    style={{ borderRadius: 2, border: '1px solid var(--border-subtle)' }}
                   />
                 ) : (
                   <div className="text-[11px] text-rmpg-500 p-8 text-center">Imagery token not ready — retry shortly.</div>
@@ -174,7 +174,7 @@ export default function StreetViewLightbox({ target, onClose }: Props) {
               </div>
               {aerialUrl && (
                 <div>
-                  <img src={aerialUrl} alt="Aerial" className="w-full block" style={{ borderRadius: 2, border: '1px solid #2e2e2e' }} />
+                  <img src={aerialUrl} alt="Aerial" className="w-full block" style={{ borderRadius: 2, border: '1px solid var(--border-subtle)' }} />
                   <div className="text-[8px] text-rmpg-600 uppercase tracking-wide mt-0.5">Aerial · Satellite (top-down context)</div>
                 </div>
               )}

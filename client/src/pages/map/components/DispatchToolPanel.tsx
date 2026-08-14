@@ -82,7 +82,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
   return (
     <div
       className={`flex flex-col ${className}`}
-      style={{ background:"var(--surface-sunken)", border: '1px solid #222222', borderRadius: 2, maxHeight: 'calc(100vh - 200px)' }}
+      style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-subtle)', borderRadius: 2, maxHeight: 'calc(100vh - 200px)' }}
     >
       <PanelTitleBar title="DISPATCH TOOLS" icon={Gauge} statusLed="green" ledPulse />
 
@@ -97,8 +97,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
             onClick={() => setActiveTab(tab.id)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
             style={{
-              borderBottom: activeTab === tab.id ? '2px solid #d4a017' : '2px solid transparent',
-              color: activeTab === tab.id ? '#d4a017' : 'var(--text-muted)',
+              borderBottom: activeTab === tab.id ? '2px solid var(--panel-header-color)' : '2px solid transparent',
+              color: activeTab === tab.id ? 'var(--panel-header-color)' : 'var(--text-muted)',
               background: activeTab === tab.id ? 'var(--surface-base)' : 'transparent',
             }}
           >
@@ -125,8 +125,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
               <button
                 type="submit"
                 disabled={geocodeLoading || !query.trim()}
-                className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
-                style={{ background: 'var(--surface-base)', color: '#d4a017', borderRadius: 2 }}
+                className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[color:var(--panel-header-color)] disabled:opacity-40 transition-colors"
+                style={{ background: 'var(--surface-base)', color: 'var(--panel-header-color)', borderRadius: 2 }}
               >
                 {geocodeLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Go'}
               </button>
@@ -159,7 +159,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
         {activeTab === 'matrix' && (
           <div className="p-2.5 space-y-2">
             {matrixResults.loading && (
-              <div className="flex items-center gap-2 text-[11px] text-[#888888]">
+              <div className="flex items-center gap-2 text-[11px] text-muted">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Computing nearest units...
               </div>
@@ -170,7 +170,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 <div className="flex justify-between items-center mb-1.5">
                   <span
                     className="text-[10px] font-semibold uppercase tracking-wider"
-                    style={{ color: '#888888' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     Distance to Call
                   </span>
@@ -189,14 +189,14 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     key={`${eta.unitId}-${eta.callId}`}
                     className="flex items-center gap-2 px-2 py-1.5"
                     style={{
-                      background: i === 0 ? '#1a1a0d' : '#0a0a0a',
-                      border: i === 0 ? '1px solid #d4a017' : '1px solid #1a1a1a',
+                      background: i === 0 ? 'var(--surface-sunken)' : 'var(--surface-overlay)',
+                      border: i === 0 ? '1px solid var(--panel-header-color)' : '1px solid var(--border-subtle)',
                       borderRadius: 2,
                     }}
                   >
                     <span
                       className="text-[10px] font-bold min-w-[28px] text-center"
-                      style={{ color: i === 0 ? '#d4a017' : '#555555' }}
+                      style={{ color: i === 0 ? 'var(--panel-header-color)' : 'var(--text-muted)' }}
                     >
                       #{i + 1}
                     </span>
@@ -209,7 +209,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-[12px] font-bold" style={{ color: '#d4a017' }}>
+                      <div className="text-[12px] font-bold" style={{ color: 'var(--panel-header-color)' }}>
                         {eta.etaText}
                       </div>
                       <div className="text-[9px] text-rmpg-500">{eta.distanceText}</div>
@@ -261,9 +261,9 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                     className="px-2 py-0.5 text-[9px] font-semibold border transition-colors"
                     style={{
                       borderRadius: 2,
-                      borderColor: isoMinutes.includes(min) ? '#d4a017' : '#3a3a3a',
-                      color: isoMinutes.includes(min) ? '#d4a017' : 'var(--text-muted)',
-                      background: isoMinutes.includes(min) ? '#1a1a0d' : '#0a0a0a',
+                      borderColor: isoMinutes.includes(min) ? 'var(--panel-header-color)' : 'var(--border-subtle)',
+                      color: isoMinutes.includes(min) ? 'var(--panel-header-color)' : 'var(--text-muted)',
+                      background: isoMinutes.includes(min) ? 'var(--surface-sunken)' : 'var(--surface-overlay)',
                     }}
                   >
                     {min}m
@@ -275,8 +275,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 <button
                   type="submit"
                   disabled={isochroneResult.loading}
-                  className="flex-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#d4a017] disabled:opacity-40 transition-colors"
-                  style={{ background: 'var(--surface-base)', color: '#d4a017', borderRadius: 2 }}
+                  className="flex-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[color:var(--panel-header-color)] disabled:opacity-40 transition-colors"
+                  style={{ background: 'var(--surface-base)', color: 'var(--panel-header-color)', borderRadius: 2 }}
                 >
                   {isochroneResult.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin mx-auto" /> : 'Generate'}
                 </button>
@@ -284,8 +284,8 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   <button
                     type="button"
                     onClick={isochroneClear}
-                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-[#f03c3c] transition-colors"
-                    style={{ background: 'var(--surface-base)', color: '#888888', borderRadius: 2 }}
+                    className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider border border-border-subtle hover:border-sev-critical transition-colors"
+                    style={{ background: 'var(--surface-base)', color: 'var(--text-muted)', borderRadius: 2 }}
                   >
                     Clear
                   </button>
@@ -299,13 +299,13 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   Coverage Rings
                 </div>
                 {isochroneResult.contours.map((c, i) => (
-                  <div key={i} className="flex items-center gap-1.5 text-[10px] text-[#888888]">
+                  <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted">
                     <span
                       className="w-3 h-3 shrink-0 border"
                       style={{
                         borderRadius: 1,
                         background: c.minutes <= 5 ? 'rgba(100,210,100,0.25)' : c.minutes <= 10 ? 'rgba(240,180,40,0.25)' : 'rgba(240,60,60,0.2)',
-                        borderColor: c.minutes <= 5 ? '#64d264' : c.minutes <= 10 ? '#f0b428' : '#f03c3c',
+                        borderColor: c.minutes <= 5 ? 'var(--sev-ok)' : c.minutes <= 10 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                       }}
                     />
                     <span className="font-semibold text-rmpg-200">{c.minutes} min</span>
@@ -321,7 +321,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
         {activeTab === 'tilequery' && (
           <div className="p-2.5 space-y-2">
             {tilequeryLoading && (
-              <div className="flex items-center gap-2 text-[11px] text-[#888888]">
+              <div className="flex items-center gap-2 text-[11px] text-muted">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 Identifying location...
               </div>
@@ -366,7 +366,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                 )}
 
                 <div className="flex justify-between items-center px-2 py-1 text-[9px]"
-                  style={{ background: 'var(--surface-overlay)', borderRadius: 2, color: '#444444' }}>
+                  style={{ background: 'var(--surface-overlay)', borderRadius: 2, color: 'var(--text-muted)' }}>
                   <span>{String(tilequeryResult.location[0]).substring(0, 8)}</span>
                   <span>{String(tilequeryResult.location[1]).substring(0, 8)}</span>
                 </div>

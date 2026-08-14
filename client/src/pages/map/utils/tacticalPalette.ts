@@ -29,3 +29,16 @@ export const TACTICAL_TEXT_PRIMARY = '#e6edf5';
 // name, when you need the more de-emphasized (dimmer) of the two options —
 // that's TACTICAL_TEXT_MUTED, not this one.
 export const TACTICAL_TEXT_DIM = '#c3d0de';
+// Tactical info blue — resolves --sev-info (#60a5fa) for use in Mapbox popup
+// HTML and marker DOM elements where CSS variables cannot be used.
+export const TACTICAL_INFO = '#3b82f6';
+// Tactical near-white — resolves --text-primary for Mapbox paint (line/circle
+// strokes on the GPS trail layer) where CSS variables are unsupported.
+export const TACTICAL_TEXT_NEAR_WHITE = '#f0f4f9';
+// Tactical silver — resolves --accent-silver-500 for Mapbox marker chrome.
+export const TACTICAL_SILVER = '#c3ccd6';
+// Tactical error red — resolves --sev-critical (#ef4444) for error popups
+// and inline HTML elements where CSS variables cannot be used.
+export const TACTICAL_ERROR = '#f87171';
+// Isochrone ring colors for Mapbox fill/line paint (5 min = green, 10 = amber, 15 = red).
+export const ISOCHRONE_COLORS = ['#22c55e', '#f59e0b', '#ef4444'] as const;

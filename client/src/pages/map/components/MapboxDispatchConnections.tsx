@@ -155,22 +155,22 @@ export default function MapboxDispatchConnections({
     <div
       className="mt-2 px-3 py-2"
       style={{
-        borderTop: '1px solid #22222230',
-        borderBottom: '1px solid #22222230',
-        background: '#0a0a0a',
+        borderTop: '1px solid var(--border-subtle)',
+        borderBottom: '1px solid var(--border-subtle)',
+        background: 'var(--surface-overlay)',
       }}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: '#60a5fa' }}>
+        <span className="text-[9px] font-black uppercase tracking-wider" style={{ color: 'var(--sev-info)' }}>
           Mapbox Dispatch APIs
         </span>
         <span
           className="text-[8px] font-bold uppercase px-1.5 py-0.5"
           style={{
             borderRadius: 2,
-            color: connected ? '#22c55e' : '#f59e0b',
-            border: `1px solid ${connected ? '#22c55e40' : '#f59e0b40'}`,
-            background: connected ? '#22c55e12' : '#f59e0b12',
+            color: connected ? 'var(--sev-ok)' : 'var(--sev-warn)',
+            border: `1px solid ${connected ? 'rgb(var(--sev-ok-rgb) / 0.25)' : 'rgb(var(--sev-warn-rgb) / 0.25)'}`,
+            background: connected ? 'rgb(var(--sev-ok-rgb) / 0.07)' : 'rgb(var(--sev-warn-rgb) / 0.07)',
           }}
         >
           {connected ? 'Connected' : 'Token Required'}
@@ -190,22 +190,22 @@ export default function MapboxDispatchConnections({
               key={feature.key}
               className="flex items-center justify-between gap-2"
               style={{
-                border: '1px solid #1f293720',
+                border: '1px solid var(--border-subtle)',
                 borderRadius: 2,
-                background: '#050505',
+                background: 'var(--surface-overlay)',
                 padding: '6px 8px',
               }}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <Icon className="w-3 h-3 shrink-0" style={{ color: active ? '#60a5fa' : '#6b7280' }} />
+                <Icon className="w-3 h-3 shrink-0" style={{ color: active ? 'var(--sev-info)' : 'var(--text-muted)' }} />
                 <div className="min-w-0">
-                  <div className="text-[9px] font-bold" style={{ color: '#d1d5db' }}>{feature.label}</div>
-                  <div className="text-[8px] truncate" style={{ color: '#6b7280' }}>{feature.note}</div>
+                  <div className="text-[9px] font-bold" style={{ color: 'var(--text-secondary)' }}>{feature.label}</div>
+                  <div className="text-[8px] truncate" style={{ color: 'var(--text-muted)' }}>{feature.note}</div>
                 </div>
               </div>
               <span
                 className="text-[8px] font-bold uppercase shrink-0"
-                style={{ color: active ? '#22c55e' : '#6b7280' }}
+                style={{ color: active ? 'var(--sev-ok)' : 'var(--text-muted)' }}
               >
                 {active ? 'Live' : 'Standby'}
               </span>
@@ -224,9 +224,9 @@ export default function MapboxDispatchConnections({
             className="text-left px-2 py-1.5 transition-colors"
             style={{
               borderRadius: 2,
-              border: '1px solid #1d4ed840',
-              background: button.enabled ? '#0f172a' : '#111827',
-              color: button.enabled ? '#bfdbfe' : '#6b7280',
+              border: '1px solid var(--border-subtle)',
+              background: button.enabled ? 'var(--surface-sunken)' : 'var(--surface-overlay)',
+              color: button.enabled ? 'var(--text-primary)' : 'var(--text-muted)',
               opacity: busyAction === button.key ? 0.7 : 1,
             }}
           >
@@ -241,9 +241,9 @@ export default function MapboxDispatchConnections({
         className="mt-2 text-[8px] leading-4"
         style={{
           borderRadius: 2,
-          border: '1px solid #1f2937',
-          background: '#030712',
-          color: '#93c5fd',
+          border: '1px solid var(--border-subtle)',
+          background: 'var(--surface-overlay)',
+          color: 'var(--sev-info)',
           padding: '6px 8px',
           wordBreak: 'break-word',
         }}

@@ -64,9 +64,9 @@ interface Props {
 
 function SourceBadge({ source }: { source: string }) {
   const map: Record<string, { icon: LucideIcon; color: string; label: string }> = {
-    gps: { icon: Satellite, color: '#22c55e', label: 'GPS' },
-    wifi: { icon: Wifi, color: '#d4a017', label: 'WiFi' },
-    ip: { icon: Globe, color: '#ef4444', label: 'IP' },
+    gps: { icon: Satellite, color: 'var(--sev-ok)', label: 'GPS' },
+    wifi: { icon: Wifi, color: 'var(--sev-warn)', label: 'WiFi' },
+    ip: { icon: Globe, color: 'var(--sev-critical)', label: 'IP' },
     unknown: { icon: Globe, color: 'var(--text-muted)', label: '—' },
   };
   const s = map[source] || map.unknown;
@@ -79,10 +79,10 @@ function SourceBadge({ source }: { source: string }) {
 }
 
 const CONGESTION: Record<CongestionLevel, { color: string; label: string }> = {
-  low: { color: '#22c55e', label: 'CLEAR' },
-  moderate: { color: '#d4a017', label: 'MODERATE' },
-  heavy: { color: '#f97316', label: 'HEAVY' },
-  severe: { color: '#ef4444', label: 'SEVERE' },
+  low: { color: 'var(--sev-ok)', label: 'CLEAR' },
+  moderate: { color: 'var(--sev-warn)', label: 'MODERATE' },
+  heavy: { color: 'var(--sev-high)', label: 'HEAVY' },
+  severe: { color: 'var(--sev-critical)', label: 'SEVERE' },
   unknown: { color: 'var(--text-muted)', label: '—' },
 };
 
@@ -162,7 +162,7 @@ export default function GpsHud({ gps, nav, onExport, onClear, onClose }: Props) 
             <Navigation2
               className="absolute inset-0 m-auto w-8 h-8 text-brand-400"
               style={{ transform: `rotate(${dir ?? 0}deg)`, transition: 'transform 0.3s ease-out' }}
-              fill={dir != null ? '#d4a017' : 'none'}
+              fill={dir != null ? 'var(--field-label-color)' : 'none'}
             />
             <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold text-brand-300 bg-surface-deep px-1">
               {dir != null ? compassCardinal(dir) : '—'}
