@@ -595,7 +595,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                     {h.exit === 0 ? '✓' : '✗'}
                   </span>
                   {' '}
-                  <span className="text-[color:var(--text-muted)]">{new Date(h.ts).toLocaleString()}</span>
+                  <span className="text-[color:var(--text-muted)]">{new Date(h.ts).toLocaleString()/* new-date-ok epoch number from Date.now() */}</span>
                   {Object.entries(h.args).filter(([, v]) => v).map(([k, v]) => (
                     <span key={k} className="text-rmpg-200 ml-2">{k}={v}</span>
                   ))}
