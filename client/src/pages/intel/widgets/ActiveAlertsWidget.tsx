@@ -4,8 +4,8 @@ import { toDisplayLabel } from '../../../utils/formatters';
 
 type Row = IntelOverview['alerts'][number];
 const TAG: Record<string, string> = {
-  warrant: 'bg-[#3a0d0a] text-[#ff6b5e]', officer_safety: 'bg-[#3a2a08] text-[#f0c050]',
-  gang: 'bg-[#2a0d3a] text-[#c07ff0]', bolo: 'bg-[#3a0d0a] text-[#ff6b5e]',
+  warrant: 'bg-red-950/80 text-red-400', officer_safety: 'bg-amber-950/80 text-amber-300',
+  gang: 'bg-purple-950/80 text-purple-400', bolo: 'bg-red-950/80 text-red-400',
 };
 
 export default function ActiveAlertsWidget(

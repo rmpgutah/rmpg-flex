@@ -175,7 +175,7 @@ export default function IntelSearch() {
         <div className="flex gap-1 flex-wrap">
           {saved.slice(0, 6).map((s) => (
             <button key={`s${s.id}`} onClick={() => setRaw(s.query_text)}
-              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-[#3a2a08] text-brand-400">★ {s.name}</button>
+              className="font-mono text-[9px] px-2 py-[3px] rounded-[2px] border border-amber-950/80 text-brand-400">★ {s.name}</button>
           ))}
           {recent.slice(0, 6).map((r, i) => (
             <button key={`r${i}`} onClick={() => setRaw(r.query_text)}

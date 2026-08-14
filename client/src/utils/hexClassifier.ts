@@ -63,7 +63,7 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // (SL1-SL6, DV1-DV3, WB1-WB2, UC1-UC3) plus fallback ramps. Operators learn
   // these by sight — "SL2 is the gold one" — so recoloring changes district
   // identity on the map, not just its styling.
-  categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels)\.ts$/,
+  categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels|geoLayers)\.ts$/,
   // DesktopSystemPreferences holds ACCENT_PRESETS — a fixed color-picker palette
   // whose hex values are stored in localStorage and written directly to a CSS
   // custom property via style.setProperty('--desktop-shell-accent', hex).

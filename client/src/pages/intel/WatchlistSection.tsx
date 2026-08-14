@@ -12,10 +12,10 @@ export default function WatchlistSection() {
   useEffect(() => { apiFetch<Watch[]>('/intel/watchlist').then((r) => setRows(Array.isArray(r) ? r : [])).catch(() => setRows([])); }, []);
   return (
     <div className="p-3 space-y-2">
-      <div className="font-mono text-[10px] tracking-widest text-[#888] uppercase">Watchlist ({rows.length})</div>
+      <div className="font-mono text-[10px] tracking-widest text-fg-muted uppercase">Watchlist ({rows.length})</div>
       {rows.length === 0 && (
         <div className="border border-border-default bg-surface-overlay rounded-[2px] px-3 py-6 text-center">
-          <div className="text-[#10b981] text-[18px] leading-none mb-1">✓</div>
+          <div className="text-emerald-500 text-[18px] leading-none mb-1">✓</div>
           <div className="text-[11px] text-rmpg-400">All clear — no active watches</div>
           <div className="text-[9px] text-rmpg-500 mt-1">Flag a person or vehicle from search to monitor it here.</div>
         </div>

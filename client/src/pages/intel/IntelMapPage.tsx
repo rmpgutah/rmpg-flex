@@ -95,16 +95,16 @@ export default function IntelMapPage() {
 
   const toggle = (k: string) => setActive((a) => ({ ...a, [k]: !a[k] }));
 
-  if (err) return <div className="p-4 text-[11px] text-[#ff6b5e]">{err}</div>;
+  if (err) return <div className="p-4 text-[11px] text-red-400">{err}</div>;
 
   return (
     <div className="relative h-full w-full">
       <div ref={ref} className="absolute inset-0" />
-      <div className="absolute top-2 left-2 z-10 bg-[#000000cc] border border-border-default rounded-[2px] p-2 space-y-2">
+      <div className="absolute top-2 left-2 z-10 bg-black/80 border border-border-default rounded-[2px] p-2 space-y-2">
         <div className="flex gap-1 items-center">
           {DAYS_OPTS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
-              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#888]'}`}>
+              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-brand-400 text-brand-300' : 'border-border-default text-fg-muted'}`}>
               {d === 1 ? '24h' : `${d}d`}
             </button>
           ))}
