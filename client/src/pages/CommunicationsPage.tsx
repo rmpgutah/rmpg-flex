@@ -541,7 +541,17 @@ export default function CommunicationsPage() {
     else if (activePanel === 'bolos') fetchBolos({ silent: true });
     else if (activePanel === 'activity') fetchActivity({ silent: true });
   }, [activePanel, fetchMessages, fetchBolos, fetchActivity]);
-  useLiveSync('dispatch', silentRefreshComms);
+  // Subscribe to the 'comms' WS module (server broadcasts data_changed {module:'comms'}
+  // after every send/emergency-broadcast). This is best-effort; the poll below is the
+  // guaranteed freshness path for clients in different isolates.
+  useLiveSync('comms', silentRefreshComms);
+
+  // Polling fallback — ensures cross-device freshness even when WS misses (per-isolate)
+  useEffect(() => {
+    const POLL_MS = 15_000;
+    const timer = setInterval(silentRefreshComms, POLL_MS);
+    return () => clearInterval(timer);
+  }, [silentRefreshComms]);
 
   // ============================================================
   // Actions

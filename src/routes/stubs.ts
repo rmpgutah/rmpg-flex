@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { encryptBrowserData, decryptBrowserData } from '../utils/companyBrowserCrypto';
 import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { broadcastAll } from './ws';
 
 const stubs = new Hono<Env>();
 
@@ -211,6 +212,8 @@ stubs.post('/messages', async (c) => {
         .bind(String(newId), newId).run();
     }
     const created = await db.prepare('SELECT * FROM messages WHERE id = ?').bind(newId).first();
+    // Notify all connected clients so the inbox refreshes in real time.
+    try { broadcastAll('data_changed', { module: 'comms', entity: 'messages', id: newId, channel }); } catch { /* non-fatal */ }
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /comms/messages failed:', err);
@@ -343,7 +346,9 @@ stubs.post('/emergency-broadcast', async (c) => {
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, created_at)
        VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now'))`
     ).bind(userId, text, body.subject || 'EMERGENCY BROADCAST').run();
-    return c.json({ success: true, broadcast_id: result.meta.last_row_id });
+    const broadcastId = result.meta.last_row_id as number;
+    try { broadcastAll('data_changed', { module: 'comms', entity: 'messages', id: broadcastId, channel: 'broadcast' }); } catch { /* non-fatal */ }
+    return c.json({ success: true, broadcast_id: broadcastId });
   } catch (err) {
     console.error('POST /comms/emergency-broadcast failed:', err);
     return c.json({ error: 'Broadcast failed' }, 500);
