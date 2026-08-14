@@ -153,7 +153,7 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
               padding: '6px 0',
               fontSize: 10,
               fontWeight: filter === f ? 600 : 400,
-              background: filter === f ? 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.2)' : 'transparent',
+              background: filter === f ? 'rgba(var(--surface-hover-rgb, 62 116 168), 0.2)' : 'transparent',
               color: filter === f ? 'var(--text-primary, #f0f4f9)' : 'var(--text-muted, #8da0b3)',
               border: 'none',
               cursor: 'pointer',
@@ -278,7 +278,7 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
                             <button
                               key={a.label}
                               type="button"
-                              style={{ fontSize: 10, padding: '2px 8px', background: 'var(--rmpg-600, #2e5a8a)', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: 2 }}
+                              style={{ fontSize: 10, padding: '2px 8px', background: 'var(--surface-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', cursor: 'pointer', borderRadius: 2 }}
                               onClick={() => window.dispatchEvent(new CustomEvent('flexos:navigate', { detail: a.route }))}
                             >
                               {a.label}
