@@ -15,5 +15,14 @@ export default defineConfig({
     // test file re-shards the workers and unrelated pages start "failing".
     // A real hang still fails, just later.
     testTimeout: 20_000,
+    // Desktop component tests run in a separate CI job (client-tests-desktop)
+    // to prevent the 590-file suite from exhausting the 7 GB ubuntu-latest RAM.
+    // The module cache grows monotonically across all files and crashes near
+    // the end even with pool tuning — splitting keeps each job well within limits.
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'src/components/desktop/**',
+    ],
   },
 });
