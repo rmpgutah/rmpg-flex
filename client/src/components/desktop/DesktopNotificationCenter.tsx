@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Bell, CheckCheck, AlertTriangle, Info, Shield, Car } from 'lucide-react';
+import { getNotificationHistory, markAllRead as markLocalAllRead, clearCategory, type StoredNotification } from '../../utils/notificationHistory';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
@@ -55,6 +56,11 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'unread'>('unread');
+  const [historyNotifs, setHistoryNotifs] = useState<StoredNotification[]>(() => getNotificationHistory());
+
+  function refreshHistory() {
+    setHistoryNotifs(getNotificationHistory());
+  }
 
   const taskbarSize = getTaskbarSize();
   const taskbarPos = getTaskbarPosition();
@@ -211,6 +217,82 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
             </div>
           );
         })}
+        {/* Grouped local notification history */}
+        {(() => {
+          const CATEGORY_LABELS: Record<string, string> = {
+            dispatch: 'Dispatch', warrant: 'Warrants', fleet: 'Fleet',
+            system: 'System', welfare: 'Welfare',
+          };
+          const grouped = historyNotifs.reduce((acc, n) => {
+            if (!acc[n.category]) acc[n.category] = [];
+            acc[n.category].push(n);
+            return acc;
+          }, {} as Record<string, StoredNotification[]>);
+
+          if (Object.keys(grouped).length === 0) return null;
+
+          return (
+            <div style={{ borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.1))', marginTop: 4, paddingTop: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px' }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--field-label-color)' }}>
+                  History
+                </span>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 9, color: 'var(--text-muted, #8da0b3)', padding: 0 }}
+                  onClick={() => { markLocalAllRead(); refreshHistory(); }}
+                >
+                  Mark all read
+                </button>
+              </div>
+              {Object.entries(grouped).map(([cat, items]) => (
+                <div key={cat} style={{ marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))' }}>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-secondary, #adbccc)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 9, color: 'var(--text-muted, #8da0b3)', padding: 0 }}
+                      onClick={() => { clearCategory(cat as StoredNotification['category']); refreshHistory(); }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {items.slice(0, 3).map(n => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: '8px 14px',
+                        borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))',
+                        background: !n.read ? 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.25)' : 'transparent',
+                      }}
+                    >
+                      <p style={{ fontSize: 11, fontWeight: n.read ? 400 : 600, color: 'var(--text-primary, #f0f4f9)', margin: 0 }}>{n.title}</p>
+                      {n.body && (
+                        <p style={{ fontSize: 10, color: 'var(--text-secondary, #adbccc)', marginTop: 2, lineHeight: 1.4, margin: '2px 0 0' }}>{n.body}</p>
+                      )}
+                      {n.actions && n.actions.length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                          {n.actions.map(a => (
+                            <button
+                              key={a.label}
+                              type="button"
+                              style={{ fontSize: 10, padding: '2px 8px', background: 'var(--rmpg-600, #2e5a8a)', color: '#fff', border: 'none', cursor: 'pointer', borderRadius: 2 }}
+                              onClick={() => window.dispatchEvent(new CustomEvent('flexos:navigate', { detail: a.route }))}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
