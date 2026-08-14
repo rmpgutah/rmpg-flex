@@ -1025,6 +1025,10 @@ async function createMainWindow() {
   // self-revert, an unavailable escape accelerator — also silently opted out
   // of relaunch-on-close, i.e. exited and left the session with no shell.
   isRunningAsKioskShell = isKioskShell;
+  // Terminate Windows 11 shell host processes so the Start Menu, Win key, and
+  // Windows taskbar cannot appear over FlexOS when it is running as the shell.
+  // Fire-and-forget — startup must not block waiting for taskkill to finish.
+  if (isKioskShell) suppressWindowsShellProcesses();
   let kioskBootState = null;
   let kioskRevertSucceeded = false;
   if (isKioskShell) {
@@ -1610,21 +1614,60 @@ guardedHandle('sys:battery', async () => {
   }
 
   if (process.platform === 'win32') {
-    try {
-      const { stdout } = await execFileAsync(
-        'powershell.exe',
-        ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
-        { timeout: 3000 }
-      );
-      const raw = parseWindowsBatteryOutput(stdout);
-      if (!raw) return null;
-      // parseWindowsBatteryOutput returns { overallPercent, charging, batteries };
-      // normalize to { percent, charging } to match the client BatteryStatus interface.
-      return { percent: raw.overallPercent, charging: raw.charging };
-    } catch (err) {
-      console.error('[SYS:BATTERY] Get-CimInstance Win32_Battery failed:', err.message);
-      return null;
+    // When running as the Windows shell (Winlogon), WMI (winmgmt) may not be
+    // ready yet at boot — use a longer timeout and retry before falling back.
+    const isShellContext = getConfig('kiosk_shell_enabled') === true;
+    const cimTimeout = isShellContext ? 8000 : 3000;
+    const maxAttempts = isShellContext ? 2 : 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const { stdout } = await execFileAsync(
+          'powershell.exe',
+          ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
+          { timeout: cimTimeout }
+        );
+        const raw = parseWindowsBatteryOutput(stdout.trim());
+        if (raw) {
+          return { percent: raw.overallPercent, charging: raw.charging };
+        }
+      } catch (err) {
+        console.warn(`[SYS:BATTERY] CimInstance attempt ${attempt}/${maxAttempts} failed:`, err.message);
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
+
+    // Fallback: WMIC uses DCOM instead of CIM-XML and is available earlier at boot.
+    try {
+      const { stdout: wmicOut } = await execFileAsync(
+        'wmic',
+        ['path', 'Win32_Battery', 'get', 'EstimatedChargeRemaining,BatteryStatus', '/format:csv'],
+        { timeout: 5000, windowsHide: true }
+      );
+      const lines = wmicOut.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      // CSV layout: Node,BatteryStatus,EstimatedChargeRemaining (header is always first)
+      if (lines.length >= 2) {
+        const headers = lines[0].split(',').map((h) => h.trim());
+        const percentIdx = headers.indexOf('EstimatedChargeRemaining');
+        const statusIdx = headers.indexOf('BatteryStatus');
+        let totalPercent = 0, charging = false, count = 0;
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map((v) => v.trim());
+          const pct = parseInt(cols[percentIdx], 10);
+          const status = parseInt(cols[statusIdx], 10);
+          if (!isNaN(pct)) { totalPercent += pct; charging = charging || (status === 2); count++; }
+        }
+        if (count > 0) {
+          return { percent: Math.round(totalPercent / count), charging };
+        }
+      }
+    } catch (wmicErr) {
+      console.warn('[SYS:BATTERY] WMIC fallback failed:', wmicErr.message);
+    }
+
+    return null;
   }
 
   return null;
@@ -1897,6 +1940,53 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
  * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
  * been run on real Windows; verify manually before shipping.
  */
+// ─── Windows shell process suppression ───────────────────────
+// When FlexOS is the Winlogon shell, explorer.exe is not running, but Windows
+// 11 starts dedicated host processes for the Start Menu and shell chrome even
+// without explorer: StartMenuExperienceHost.exe, ShellExperienceHost.exe, and
+// SearchHost.exe. These respond to the Win key independently and surface the
+// Start Menu over the top of any fullscreen window. Terminating them prevents
+// Windows UI from bleeding through while FlexOS is the active shell.
+//
+// This is ONLY called when isKioskShell is true — i.e. FlexOS was launched as
+// the HKCU Winlogon Shell replacement. It must never run in a normal session
+// where explorer.exe is the shell, because killing those processes there would
+// damage the user's desktop session.
+function suppressWindowsShellProcesses() {
+  if (process.platform !== 'win32') return;
+  const { execFile } = require('child_process');
+  // Windows 11 decomposes the Start Menu into these separate host processes.
+  // explorer.exe itself is intentionally omitted: when FlexOS IS the Winlogon
+  // shell, explorer.exe was never started by Windows — there is nothing to kill.
+  // If it somehow is running (e.g. a GPO or startup item launched it), including
+  // it here is safe because the FlexOS shell relaunch guard keeps the session
+  // alive regardless.
+  const targets = [
+    'StartMenuExperienceHost.exe',
+    'ShellExperienceHost.exe',
+    'SearchHost.exe',
+    'explorer.exe',
+  ];
+  for (const proc of targets) {
+    execFile(
+      'taskkill',
+      ['/F', '/IM', proc],
+      { windowsHide: true },
+      (err, _stdout, stderr) => {
+        const msg = (err && err.message) || stderr || '';
+        // "not found" / "no tasks" means the process wasn't running — expected.
+        if (!msg || /not found|no tasks/i.test(msg)) {
+          console.log(`[SHELL] ${proc}: not running (ok)`);
+        } else if (err) {
+          console.warn(`[SHELL] taskkill ${proc}:`, msg.trim());
+        } else {
+          console.log(`[SHELL] Suppressed: ${proc}`);
+        }
+      }
+    );
+  }
+}
+
 // ─── HKCU Winlogon Shell registry helpers ─────────────────────
 // The Shell value is written to HKCU (per-user) rather than HKLM
 // (machine-wide). Per-user has two advantages over the old HKLM approach:
