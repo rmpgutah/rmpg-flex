@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -45,6 +45,8 @@ function QuickSettingsButton() {
 }
 
 export interface DesktopTaskbarProps {
+  onOpenCommandPalette?: () => void;
+  onNewCall?: () => void;
   icons: NavFunction[];
   catalog: NavFunction[];
   onLock?: () => void;
@@ -52,7 +54,7 @@ export interface DesktopTaskbarProps {
   onPowerMenu?: () => void;
 }
 
-export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter, onPowerMenu }: DesktopTaskbarProps) {
+export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCenter, onPowerMenu, onOpenCommandPalette, onNewCall }: DesktopTaskbarProps) {
   const { windows, focusWindow, openWindow, minimizeAll, restoreAll, closeWindow } = useDesktopWindows();
   const [autoMinimizedIds, setAutoMinimizedIds] = useState<string[]>([]);
   const [, forceRerender] = useState(0);
@@ -310,6 +312,30 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
         >
           <Monitor className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
         </button>
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            aria-label="Command palette (Ctrl+P)"
+            onClick={onOpenCommandPalette}
+            className="p-1.5 hover:bg-surface-hover"
+            style={{ border: '1px solid var(--border-subtle)' }}
+            title="Command palette (Ctrl+P)"
+          >
+            <Search className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)' }} />
+          </button>
+        )}
+        {onNewCall && (
+          <button
+            type="button"
+            aria-label="New call"
+            onClick={onNewCall}
+            className="p-1.5 hover:bg-surface-hover"
+            style={{ border: '1px solid var(--border-subtle)' }}
+            title="New call"
+          >
+            <Plus className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
+          </button>
+        )}
         {onLock && (
           <button
             type="button"

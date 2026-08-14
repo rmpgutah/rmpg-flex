@@ -956,7 +956,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           const popupBody = `<div style="font-size:11px;padding:4px 6px;"><strong>${escapeHtml(job.recipient_name ?? 'Unknown')}</strong><br/>${escapeHtml(job.status)} · ${escapeHtml(job.priority)}</div>`;
           const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
             .setHTML(popupBody);
-          const marker = new mapboxgl.Marker({ element: el })
+          const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
             .setLngLat([lng, lat])
             .setPopup(popup)
             .addTo(map);
@@ -1029,7 +1029,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         applyUnitMarkerState(existing.getElement(), unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
       } else {
         const el = buildUnitMarkerEl(unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
           .setLngLat([unit.longitude, unit.latitude])
           .setPopup(
             new mapboxgl.Popup({ offset: 18, closeButton: false, className: 'mapbox-popup-dark' })
@@ -1107,7 +1107,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
           .setHTML(buildCallPopupHtml(call, isQueued, Date.now(), assignedUnitInfo));
         bindAddToRoutePopup(popup);
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
           .setLngLat([call.longitude, call.latitude])
           .setPopup(popup)
           .addTo(map);
@@ -1233,7 +1233,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       speedEl.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
       el.appendChild(speedEl);
 
-      selfMarkerRef.current = new mapboxgl.Marker({ element: el })
+      selfMarkerRef.current = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
         .setLngLat([gps.longitude, gps.latitude])
         .addTo(map);
     }

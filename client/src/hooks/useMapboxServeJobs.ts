@@ -1,155 +1,60 @@
 // Process Server Job Overlay — active serve_queue items with a geocoded
 // recipient address, shown on the main Dispatch/Map module.
-// Fetches /api/serve/active-routes (src/routes/serve.ts) and renders as
-// priority-colored circles, mirroring useMapboxRepeatAddresses.ts's
-// self-contained fetch/render/clear shape so it slots into the same
-// layerRegistry/useLayerBindings toggle system as every other overlay.
-//
-// Before this hook, Process Server jobs were only visible on the dedicated
-// ServeIntakeMap.tsx component — never on the main Map/Dispatch view — so a
-// dispatcher watching the live map had no way to see pending serves at all.
-import { useCallback, useState, useRef } from 'react';
+// Fetches /api/process-server/active-routes and renders as priority-colored
+// circles using the shared serveMapUtils layer helpers.
+import { useCallback, useState, useRef, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
-import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
-import { escapeHtml } from '../utils/sanitize';
-import { formatDateTime } from '../utils/dateUtils';
+import {
+  addServeJobLayer, removeServeJobLayer, serveJobPopupHTML,
+  type ServeMapEntry,
+} from '../utils/serveMapUtils';
 
-// Matches the serve_queue row shape returned by GET /serve/active-routes.
-export interface ServeMapJob {
-  id: number;
-  status: string;
-  priority: string;
-  recipient_name: string | null;
-  recipient_address: string | null;
-  recipient_lat: number | null;
-  recipient_lng: number | null;
-  case_number: string | null;
-  client_name: string | null;
-  document_type: string | null;
-  deadline: string | null;
-}
-
-// Same ordinal priority palette ServeIntakeMap.tsx uses for the dedicated
-// Process Server map, so a job reads the same color on either surface.
-const SERVE_PRIORITY_COLOR: Record<string, string> = {
-  urgent: '#ef4444',
-  rush: '#f97316',
-  normal: '#3b82f6',
-  routine: '#6b7280',
-};
+// Re-export so consumers that imported ServeMapJob from this module keep working.
+export type { ServeMapEntry as ServeMapJob };
 
 const SOURCE_ID = 'rmpg-serve-jobs-source';
-const CIRCLE_LAYER_ID = 'rmpg-serve-jobs-circle';
-const LABEL_LAYER_ID = 'rmpg-serve-jobs-label';
+const CIRCLE_LAYER_ID = `${SOURCE_ID}-circle`;
 
 export function useMapboxServeJobs(map: mapboxgl.Map | null) {
-  const [jobs, setJobs] = useState<ServeMapJob[]>([]);
+  const [jobs, setJobs] = useState<ServeMapEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  // Track click handler so it can be removed before a new one is added,
+  // preventing duplicate listeners from accumulating on re-renders.
+  const clickHandlerRef = useRef<((e: mapboxgl.MapLayerMouseEvent) => void) | null>(null);
 
   const clearFromMap = useCallback(() => {
     if (!map) return;
     popupRef.current?.remove();
     popupRef.current = null;
-    try {
-      if (hasLayer(map, LABEL_LAYER_ID)) safeRemoveLayer(map, LABEL_LAYER_ID);
-      if (hasLayer(map, CIRCLE_LAYER_ID)) safeRemoveLayer(map, CIRCLE_LAYER_ID);
-      if (hasSource(map, SOURCE_ID)) safeRemoveSource(map, SOURCE_ID);
-    } catch { /* ignore */ }
+    if (clickHandlerRef.current) {
+      try { map.off('click', CIRCLE_LAYER_ID, clickHandlerRef.current); } catch { /* ignore */ }
+      clickHandlerRef.current = null;
+    }
+    removeServeJobLayer(map, SOURCE_ID);
   }, [map]);
 
-  const renderOnMap = useCallback((rows: ServeMapJob[], m: mapboxgl.Map) => {
+  const renderOnMap = useCallback((rows: ServeMapEntry[], m: mapboxgl.Map) => {
     clearFromMap();
+    addServeJobLayer(m, rows, SOURCE_ID);
 
-    const features: GeoJSON.Feature[] = rows
-      .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
-      .map((j) => ({
-        type: 'Feature',
-        properties: {
-          id: j.id,
-          recipient_name: j.recipient_name,
-          recipient_address: j.recipient_address,
-          case_number: j.case_number,
-          client_name: j.client_name,
-          document_type: j.document_type,
-          deadline: j.deadline,
-          status: j.status,
-          color: SERVE_PRIORITY_COLOR[j.priority] ?? SERVE_PRIORITY_COLOR.routine,
-        },
-        geometry: { type: 'Point', coordinates: [j.recipient_lng as number, j.recipient_lat as number] },
-      }));
-
-    m.addSource(SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-    });
-
-    m.addLayer({
-      id: CIRCLE_LAYER_ID,
-      type: 'circle',
-      source: SOURCE_ID,
-      paint: {
-        'circle-radius': 7,
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.85,
-        'circle-stroke-color': '#0d1520',
-        'circle-stroke-width': 2,
-      },
-    });
-
-    m.addLayer({
-      id: LABEL_LAYER_ID,
-      type: 'symbol',
-      source: SOURCE_ID,
-      minzoom: 12,
-      layout: {
-        'text-field': ['coalesce', ['get', 'case_number'], ''],
-        'text-size': 9,
-        'text-offset': [0, 1.3],
-        'text-anchor': 'top',
-        'text-font': ['DIN Pro Medium', 'Arial Unicode MS Bold'],
-      },
-      paint: {
-        'text-color': '#f0f4f9',
-        'text-halo-color': '#0a0a0a',
-        'text-halo-width': 1.5,
-      },
-    });
-
-    m.on('click', CIRCLE_LAYER_ID, (e) => {
+    const clickHandler = (e: mapboxgl.MapLayerMouseEvent) => {
       const f = e.features?.[0];
       if (!f || f.geometry.type !== 'Point') return;
-      const p = f.properties || {};
+      const jobId = f.properties?.id as number;
+      const job = rows.find(j => j.id === jobId);
+      if (!job) return;
       popupRef.current?.remove();
-      const popup = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
+      popupRef.current = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
         .setLngLat(f.geometry.coordinates as [number, number])
-        .setHTML(buildDetailPopupHtml(escapeHtml(p.recipient_name || 'Serve Job'), [
-          ['Case #', p.case_number],
-          ['Client', p.client_name],
-          ['Document', p.document_type],
-          ['Address', p.recipient_address],
-          ['Status', p.status],
-          ['Deadline', p.deadline ? formatDateTime(p.deadline) : null],
-        ]) + `<button data-action="open-serve-job" data-job-id="${p.id}" style="margin-top:6px;width:100%;font:10px monospace;font-weight:700;color:#f59e0b;background:transparent;border:1px solid #f59e0b;padding:3px 6px;border-radius:2px;cursor:pointer;">OPEN JOB</button>`)
+        .setHTML(serveJobPopupHTML(job, { showAddToRoute: true }))
         .addTo(m);
-      // Read-only until now — a dispatcher could see a pending serve job on
-      // the Map module but had no way to act on it. Deep-links to the same
-      // /serve?job_id= convention ServePage.tsx already documents (used
-      // elsewhere for auto-expanding a job's card on the Queue tab).
-      const onOpen = () => {
-        const popupEl = popup.getElement();
-        const btn = popupEl?.querySelector<HTMLButtonElement>('[data-action="open-serve-job"]');
-        btn?.addEventListener('click', () => {
-          window.open(`/serve?job_id=${encodeURIComponent(String(p.id))}`, '_blank', 'noopener');
-        });
-      };
-      popup.once('open', onOpen);
-      popupRef.current = popup;
-    });
+    };
+    clickHandlerRef.current = clickHandler;
+    m.on('click', CIRCLE_LAYER_ID, clickHandler);
     m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
     m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
   }, [clearFromMap]);
@@ -159,8 +64,8 @@ export function useMapboxServeJobs(map: mapboxgl.Map | null) {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<{ jobs: ServeMapJob[] }>('/serve/active-routes');
-      const rows = data?.jobs || [];
+      const data = await apiFetch<{ jobs: ServeMapEntry[] }>('/process-server/active-routes');
+      const rows = data?.jobs ?? [];
       setJobs(rows);
       whenStyleReady(map, () => { renderOnMap(rows, map); });
     } catch (err: any) {
@@ -170,6 +75,17 @@ export function useMapboxServeJobs(map: mapboxgl.Map | null) {
       setLoading(false);
     }
   }, [map, renderOnMap]);
+
+  // Poll every 60 seconds to keep the overlay current without a full page reload.
+  useEffect(() => {
+    if (!map) return;
+    fetchJobs();
+    const id = setInterval(fetchJobs, 60_000);
+    return () => {
+      clearInterval(id);
+      clearFromMap();
+    };
+  }, [map]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { jobs, loading, error, fetchJobs, clear: clearFromMap };
 }

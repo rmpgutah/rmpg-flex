@@ -14,6 +14,8 @@ interface DesktopKeyboardShortcutsProps {
   onPrevVirtualDesktop: () => void;
   onNextVirtualDesktop: () => void;
   onOpenShortcutRef?: () => void;
+  onOpenCommandPalette?: () => void;
+  onOpenCalculator?: () => void;
 }
 
 export default function DesktopKeyboardShortcuts({
@@ -22,6 +24,8 @@ export default function DesktopKeyboardShortcuts({
   onPrevVirtualDesktop,
   onNextVirtualDesktop,
   onOpenShortcutRef,
+  onOpenCommandPalette,
+  onOpenCalculator,
 }: DesktopKeyboardShortcutsProps) {
   const { minimizeAll, restoreAll, focusedId, windows, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical } = useDesktopWindows();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
@@ -152,6 +156,19 @@ export default function DesktopKeyboardShortcuts({
         return;
       }
 
+      // Ctrl+P — Command palette
+      if (e.ctrlKey && !e.metaKey && e.key === 'p') {
+        e.preventDefault();
+        onOpenCommandPalette?.();
+        return;
+      }
+
+      // Win+C — Calculator
+      if ((e.metaKey || (e.ctrlKey && e.shiftKey)) && e.key.toLowerCase() === 'c' && !e.altKey) {
+        // Don't steal Ctrl+C (copy) — only fire on Meta+C or Ctrl+Shift+C
+        if (e.metaKey) { e.preventDefault(); onOpenCalculator?.(); return; }
+      }
+
       // Win+/ — Open keyboard shortcut reference
       if (meta && key === '/') {
         e.preventDefault();
@@ -171,7 +188,7 @@ export default function DesktopKeyboardShortcuts({
 
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onOpenShortcutRef, taskbarH]);
+  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onOpenShortcutRef, onOpenCommandPalette, onOpenCalculator, taskbarH]);
 
   return null;
 }

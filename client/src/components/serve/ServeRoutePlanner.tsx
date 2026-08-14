@@ -67,6 +67,7 @@ interface ServeRoutePlannerProps {
    */
   preselectedJobIds?: Set<number>;
   onVerifyAddress?: (jobId: number) => void;
+  mileageRate?: number;
 }
 
 interface StopItem {
@@ -74,8 +75,6 @@ interface StopItem {
   selected: boolean;
   order: number;
 }
-
-const IRS_MILEAGE_RATE = 0.67;
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
 
@@ -377,8 +376,9 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
-  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress,
+  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress, mileageRate,
 }: ServeRoutePlannerProps) {
+  const IRS_MILEAGE_RATE = mileageRate ?? 0.67;
   const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
   // All non-terminal jobs appear in the list. Un-geocoded ones are visible but
   // unselectable so officers can see what's missing from their route and why.
