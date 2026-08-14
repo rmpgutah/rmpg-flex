@@ -46,7 +46,7 @@ const SOURCE_LABEL: Record<MovementReport['speedSource'], string> = {
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
     <div className="relative bg-surface-raised/50 border border-rmpg-800 px-2 py-1.5 overflow-hidden" style={{ borderRadius: 2 }}>
-      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01744 50%, transparent)' }} />
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-silver-400-rgb), 0.27) 50%, transparent)' }} />
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
       <div className="font-mono font-bold text-[15px] leading-tight mt-0.5 tabular-nums truncate" style={{ color: accent || 'var(--text-primary)' }}>{value}</div>
       {sub && <div className="text-[8px] text-rmpg-600 leading-none truncate">{sub}</div>}
@@ -268,7 +268,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
     >
       {/* header */}
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">
-        <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
+        <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(var(--accent-silver-400-rgb), 0.40), transparent)' }} />
         <Activity className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Movement Report</span>
         <span className="flex items-center gap-1 text-[8px] uppercase text-rmpg-500">
