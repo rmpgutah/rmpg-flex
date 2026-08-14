@@ -45,7 +45,7 @@ function roleLabel(role: string): string {
 }
 
 // Deterministic avatar color per username — picks from navy/slate palette, never red/green.
-const AVATAR_PALETTE = ['var(--surface-overlay)', 'var(--rmpg-700)', 'var(--surface-sunken)', 'var(--rmpg-800)', 'var(--surface-overlay)', 'var(--surface-raised)', 'var(--surface-overlay)'];
+const AVATAR_PALETTE = ['#2d5a8c', '#3e74a8', '#1e4a72', '#4a6fa5', '#25527a', '#365e8c', '#2a4f7c'];
 function avatarColor(username: string): string {
   let h = 0;
   for (let i = 0; i < username.length; i++) h = (h * 31 + username.charCodeAt(i)) >>> 0;
