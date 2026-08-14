@@ -21,6 +21,7 @@ import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { withAlpha } from '../../utils/withAlpha';
+import { INPUT_BADGE_COLORS, CATEGORY_COLORS, ENGINE_COLORS, SECTION_COLORS, STATS_COLORS, categoryColor, sourceColor } from '../../utils/skipTracerPalette';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -245,38 +246,6 @@ function detectInputType(q: string): InputType {
   return 'Name';
 }
 
-const INPUT_BADGE_COLORS: Record<InputType, string> = {
-  Name: '#aaaaaa',
-  Phone: '#f59e0b',
-  Email: '#f472b6',
-  Address: '#34d399',
-};
-
-// ─── Source category colors ──────────────────────────────────
-
-const CATEGORY_COLORS: Record<string, string> = {
-  people: '#888888',
-  court: '#22c55e',
-  property: '#f59e0b',
-  business: '#8b5cf6',
-  osint: '#a855f7',
-  registry: '#ef4444',
-};
-
-function categoryColor(category: string): string {
-  return CATEGORY_COLORS[category] || 'var(--text-muted)';
-}
-
-function sourceColor(source: string): string {
-  const lower = source.toLowerCase();
-  if (lower.includes('court') || lower.includes('criminal') || lower.includes('arrest')) return CATEGORY_COLORS.court;
-  if (lower.includes('property') || lower.includes('assessor')) return CATEGORY_COLORS.property;
-  if (lower.includes('osint') || lower.includes('social') || lower.includes('username')) return CATEGORY_COLORS.osint;
-  if (lower.includes('ofac') || lower.includes('registry') || lower.includes('sex') || lower.includes('fbi') || lower.includes('nsopw')) return CATEGORY_COLORS.registry;
-  if (lower.includes('business') || lower.includes('corporate') || lower.includes('dopl') || lower.includes('fcc')) return CATEGORY_COLORS.business;
-  return CATEGORY_COLORS.people;
-}
-
 // ─── Clipboard helper ────────────────────────────────────────
 
 function useCopyToClipboard() {
@@ -376,7 +345,7 @@ function SkeletonCard() {
 
 function ConfidenceBadge({ score }: { score: number }) {
   const pct = Math.round(score * 100);
-  const color = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+  const color = pct >= 80 ? 'var(--sev-ok)' : pct >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)';
   return (
     <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm" style={{ color, backgroundColor: withAlpha(color, '15') }}>
       {pct}%
@@ -857,7 +826,7 @@ export default function SkipTracerV2Page() {
             onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-colors whitespace-nowrap ${
               isActive
-                ? 'border-[#888888] text-rmpg-400 bg-surface-raised'
+                ? 'border-rmpg-500 text-rmpg-400 bg-surface-raised'
                 : 'border-transparent text-rmpg-500 hover:text-rmpg-400 hover:bg-surface-raised/50'
             }`}
           >
@@ -898,7 +867,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
               placeholder="Name, phone, email, or address..."
-              className="w-full pl-8 pr-24 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
+              className="w-full pl-8 pr-24 py-2 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-rmpg-500 font-mono"
             />
             {query.trim() && (
               <>
@@ -916,7 +885,7 @@ export default function SkipTracerV2Page() {
             <button type="button"
               onClick={() => handleSearch()}
               disabled={loading || (!query.trim() && !Object.values(advancedFields).some(v => v.trim()))}
-              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
             >
               {loading ? <Loader2 size={12} className="animate-spin" /> : 'GO'}
             </button>
@@ -924,7 +893,7 @@ export default function SkipTracerV2Page() {
           <button type="button"
             onClick={() => setBatchOpen(!batchOpen)}
             className={`px-2 py-2 rounded-sm text-[10px] font-bold transition-colors flex items-center gap-1 ${
-              batchOpen ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-raised text-rmpg-400 hover:text-rmpg-100 hover:bg-surface-overlay border border-border-subtle'
+              batchOpen ? 'bg-rmpg-500 text-rmpg-100' : 'bg-surface-raised text-rmpg-400 hover:text-rmpg-100 hover:bg-surface-overlay border border-border-subtle'
             }`}
             title="Batch search multiple names"
           >
@@ -936,9 +905,9 @@ export default function SkipTracerV2Page() {
         <div className="flex items-center gap-1 mt-1">
           <span className="text-[8px] font-bold text-rmpg-500 uppercase tracking-wider mr-1">Engine:</span>
           {([
-            { id: 'microbilt' as const, label: 'MicroBilt', desc: 'Primary — Full background + SSN trace', color: '#22c55e' },
-            { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Secondary — Basic skip trace', color: '#f59e0b' },
-            { id: 'all' as const, label: 'All Sources', desc: 'Query all enabled engines', color: '#8b5cf6' },
+            { id: 'microbilt' as const, label: 'MicroBilt', desc: 'Primary — Full background + SSN trace', color: ENGINE_COLORS.microbilt },
+            { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Secondary — Basic skip trace', color: ENGINE_COLORS.rapidapi },
+            { id: 'all' as const, label: 'All Sources', desc: 'Query all enabled engines', color: ENGINE_COLORS.all },
           ]).map(eng => (
             <button
               key={eng.id}
@@ -966,7 +935,7 @@ export default function SkipTracerV2Page() {
               onChange={e => setBatchText(e.target.value)}
               placeholder={"John Smith\nJane Doe\nBob Johnson"}
               rows={5}
-              className="w-full px-2 py-1.5 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
+              className="w-full px-2 py-1.5 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-fg-muted focus:outline-none focus:border-rmpg-500 resize-y"
             />
             <div className="flex items-center justify-between">
               <span className="text-[9px] text-rmpg-500 font-mono">
@@ -975,7 +944,7 @@ export default function SkipTracerV2Page() {
               <button type="button"
                 onClick={handleBatchSearch}
                 disabled={loading || !batchText.trim()}
-                className="px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
               >
                 {batchProgress ? (
                   <>
@@ -1021,7 +990,7 @@ export default function SkipTracerV2Page() {
                   type="text"
                   value={advancedFields[field.key] || ''}
                   onChange={e => setAdvancedFields(prev => ({ ...prev, [field.key]: e.target.value }))}
-                  className="w-full px-2 py-1 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono focus:outline-none focus:border-[#888888]"
+                  className="w-full px-2 py-1 bg-surface-raised border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono focus:outline-none focus:border-rmpg-500"
                 />
               </div>
             ))}
@@ -1068,7 +1037,7 @@ export default function SkipTracerV2Page() {
                 key={s.name}
                 title={`${s.displayName || s.name} — ${s.healthy ? 'OK' : s.enabled ? 'Error' : 'Disabled'}`}
                 className="w-2 h-2 rounded-full flex-shrink-0 cursor-help"
-                style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#444444' }}
+                style={{ backgroundColor: s.healthy ? 'var(--sev-ok)' : s.enabled ? 'var(--sev-warn)' : 'var(--surface-overlay)' }}
               />
             ))}
           </div>
@@ -1098,7 +1067,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   key={ex}
                   onClick={() => setQuery(ex)}
-                  className="text-[9px] text-[#888888] hover:text-rmpg-400 bg-[#888888]/10 px-2 py-0.5 rounded-sm"
+                  className="text-[9px] text-fg-muted hover:text-rmpg-400 bg-rmpg-500/10 px-2 py-0.5 rounded-sm"
                 >
                   {ex}
                 </button>
@@ -1135,7 +1104,7 @@ export default function SkipTracerV2Page() {
               onContextMenu={(e) => openMenu(e, buildProfileMenu(profile))}
               className={`w-full text-left p-2.5 border rounded-sm transition-all ${
                 isSelected
-                  ? 'border-[#888888] bg-[#888888]/15 shadow-lg shadow-[#888888]/10'
+                  ? 'border-rmpg-500 bg-rmpg-500/15 shadow-lg shadow-rmpg-500/10'
                   : 'border-border-subtle bg-surface-raised hover:bg-surface-overlay hover:border-rmpg-700'
               }`}
             >
@@ -1153,7 +1122,7 @@ export default function SkipTracerV2Page() {
                     {dataPoints > 0 && <span className="text-rmpg-500">{dataPoints} data points</span>}
                   </div>
                 </div>
-                {isSelected && <ArrowRight size={14} className="text-[#888888] flex-shrink-0 mt-0.5" />}
+                {isSelected && <ArrowRight size={14} className="text-fg-muted flex-shrink-0 mt-0.5" />}
               </div>
               {profile.sources.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -1203,8 +1172,8 @@ export default function SkipTracerV2Page() {
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-[#888888]/20 border border-[#888888]/30 flex items-center justify-center flex-shrink-0">
-                    <User size={20} className="text-[#888888]" />
+                  <div className="w-12 h-12 rounded-full bg-rmpg-500/20 border border-rmpg-500/30 flex items-center justify-center flex-shrink-0">
+                    <User size={20} className="text-fg-muted" />
                   </div>
                   <div>
                     <h2 className="text-[18px] font-bold text-rmpg-100 leading-tight">{getDisplayName(selected)}</h2>
@@ -1240,7 +1209,7 @@ export default function SkipTracerV2Page() {
                     onClick={() => setLinkDropdownOpen(!linkDropdownOpen)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[10px] font-bold transition-colors border ${
                       linkDropdownOpen
-                        ? 'bg-[#888888] text-rmpg-100 border-[#888888]'
+                        ? 'bg-rmpg-500 text-rmpg-100 border-rmpg-500'
                         : 'bg-surface-sunken text-rmpg-400 hover:text-rmpg-100 border-border-subtle hover:bg-surface-overlay'
                     }`}
                   >
@@ -1257,7 +1226,7 @@ export default function SkipTracerV2Page() {
                             key={t}
                             onClick={() => setLinkType(t)}
                             className={`flex-1 text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-sm transition-colors ${
-                              linkType === t ? 'bg-[#888888] text-rmpg-100' : 'bg-surface-sunken text-rmpg-500 hover:text-rmpg-100'
+                              linkType === t ? 'bg-rmpg-500 text-rmpg-100' : 'bg-surface-sunken text-rmpg-500 hover:text-rmpg-100'
                             }`}
                           >
                             {t}
@@ -1269,13 +1238,13 @@ export default function SkipTracerV2Page() {
                         value={linkValue}
                         onChange={e => setLinkValue(e.target.value)}
                         placeholder={linkType === 'incident' ? 'Incident number...' : 'Case number...'}
-                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888]"
+                        className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-fg-muted focus:outline-none focus:border-rmpg-500"
                         onKeyDown={e => e.key === 'Enter' && handleLinkDossier()}
                       />
                       <button type="button"
                         onClick={handleLinkDossier}
                         disabled={linkSaving || !linkValue.trim()}
-                        className="w-full px-2 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center justify-center gap-1.5"
+                        className="w-full px-2 py-1.5 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-40 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors flex items-center justify-center gap-1.5"
                       >
                         {linkSaving ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
                         Link
@@ -1287,7 +1256,7 @@ export default function SkipTracerV2Page() {
                 <button type="button"
                   onClick={handleSaveDossier}
                   disabled={saving}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-50 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-50 rounded-sm text-[10px] font-bold text-rmpg-100 transition-colors"
                 >
                   {saving ? <Loader2 size={12} className="animate-spin" /> : saveSuccess ? <CheckCircle2 size={12} /> : <Save size={12} />}
                   {saveSuccess ? 'Saved!' : 'Save Dossier'}
@@ -1310,7 +1279,7 @@ export default function SkipTracerV2Page() {
                   onChange={e => handleNotesChange(e.target.value, activeDossierId)}
                   placeholder="Add investigative notes..."
                   rows={3}
-                  className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-[#525252] focus:outline-none focus:border-[#888888] resize-y"
+                  className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-fg-muted focus:outline-none focus:border-rmpg-500 resize-y"
                 />
               </div>
             )}
@@ -1319,10 +1288,10 @@ export default function SkipTracerV2Page() {
           {/* Summary bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { label: 'Addresses', count: selected.addresses?.length || 0, icon: MapPin, color: '#f59e0b' },
-              { label: 'Phones', count: selected.phones?.length || 0, icon: Phone, color: '#888888' },
-              { label: 'Court', count: selected.courtRecords?.length || 0, icon: Scale, color: '#22c55e' },
-              { label: 'Sources', count: selected.sources.length, icon: Database, color: '#a855f7' },
+              { label: 'Addresses', count: selected.addresses?.length || 0, icon: MapPin, color: SECTION_COLORS.addresses },
+              { label: 'Phones', count: selected.phones?.length || 0, icon: Phone, color: SECTION_COLORS.phones },
+              { label: 'Court', count: selected.courtRecords?.length || 0, icon: Scale, color: SECTION_COLORS.court },
+              { label: 'Sources', count: selected.sources.length, icon: Database, color: SECTION_COLORS.sources },
             ].map(item => {
               const I = item.icon;
               return (
@@ -1385,7 +1354,7 @@ export default function SkipTracerV2Page() {
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1">
                           {fullAddr && (
-                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="p-0.5 rounded-sm hover:bg-white/10 text-[#f59e0b] hover:text-[#fbbf24] transition-colors" title="Open in Maps">
+                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="p-0.5 rounded-sm hover:bg-white/10 text-amber-400 hover:text-amber-300 transition-colors" title="Open in Maps">
                               <MapPinned size={12} />
                             </a>
                           )}
@@ -1416,7 +1385,7 @@ export default function SkipTracerV2Page() {
                     <td className="px-2 py-1.5"><SourceBadge source={p.source} /></td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-1">
-                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#888888] hover:text-rmpg-400 transition-colors" title="Call">
+                        <a href={`tel:${p.number.replace(/\D/g, '')}`} className="p-0.5 rounded-sm hover:bg-white/10 text-fg-muted hover:text-rmpg-400 transition-colors" title="Call">
                           <PhoneCall size={12} />
                         </a>
                         <CopyBtn value={p.number} label={`phone-${i}`} copied={copied} copy={copy} />
@@ -1443,7 +1412,7 @@ export default function SkipTracerV2Page() {
                         <SourceBadge source={e.source} />
                         {emailAddr && (
                           <>
-                            <a href={`mailto:${emailAddr}`} className="p-0.5 rounded-sm hover:bg-white/10 text-[#f472b6] hover:text-[#f9a8d4] transition-colors" title="Send email">
+                            <a href={`mailto:${emailAddr}`} className="p-0.5 rounded-sm hover:bg-white/10 text-pink-400 hover:text-pink-300 transition-colors" title="Send email">
                               <ExternalLink size={11} />
                             </a>
                             <CopyBtn value={emailAddr} label={`email-${i}`} copied={copied} copy={copy} />
@@ -1732,7 +1701,7 @@ export default function SkipTracerV2Page() {
     <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
-          <Bookmark size={16} className="text-[#888888]" /> Saved Dossiers
+          <Bookmark size={16} className="text-fg-muted" /> Saved Dossiers
         </h2>
         <IconButton onClick={loadDossiers} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh dossiers"><RefreshCw size={14} /></IconButton>
       </div>
@@ -1745,7 +1714,7 @@ export default function SkipTracerV2Page() {
           onChange={e => setDossierSearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && loadDossiers()}
           placeholder="Search saved dossiers..." aria-label="Search saved dossiers..."
-          className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-[#525252] focus:outline-none focus:border-[#888888] font-mono"
+          className="w-full pl-8 pr-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[12px] text-rmpg-100 placeholder-fg-muted focus:outline-none focus:border-rmpg-500 font-mono"
         />
       </div>
 
@@ -1786,7 +1755,7 @@ export default function SkipTracerV2Page() {
     <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
-          <History size={16} className="text-[#888888]" /> Search History
+          <History size={16} className="text-fg-muted" /> Search History
         </h2>
         <IconButton onClick={loadHistory} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh history"><RefreshCw size={14} /></IconButton>
       </div>
@@ -1845,7 +1814,7 @@ export default function SkipTracerV2Page() {
     <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
-          <Database size={16} className="text-[#888888]" /> Data Sources ({sources.length})
+          <Database size={16} className="text-fg-muted" /> Data Sources ({sources.length})
         </h2>
         <IconButton onClick={loadSources} disabled={sourcesLoading} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh sources">
           <RefreshCw size={14} className={sourcesLoading ? 'animate-spin' : ''} />
@@ -1869,7 +1838,7 @@ export default function SkipTracerV2Page() {
               <div className="flex items-center gap-2">
                 <span
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: s.healthy ? '#22c55e' : s.enabled ? '#f59e0b' : '#444444' }}
+                  style={{ backgroundColor: s.healthy ? 'var(--sev-ok)' : s.enabled ? 'var(--sev-warn)' : 'var(--surface-overlay)' }}
                 />
                 <div>
                   <div className="text-[11px] font-bold text-rmpg-100">{s.displayName || s.name}</div>
@@ -1904,7 +1873,7 @@ export default function SkipTracerV2Page() {
     <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-surface-raised">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-[14px] font-bold text-rmpg-100 flex items-center gap-2">
-          <BarChart3 size={16} className="text-[#888888]" /> Usage Statistics
+          <BarChart3 size={16} className="text-fg-muted" /> Usage Statistics
         </h2>
         <IconButton onClick={loadStats} disabled={statsLoading} className="text-rmpg-500 hover:text-rmpg-100 p-1" aria-label="Refresh stats">
           <RefreshCw size={14} className={statsLoading ? 'animate-spin' : ''} />
@@ -1919,9 +1888,9 @@ export default function SkipTracerV2Page() {
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: 'Today', value: stats.totalSearches.today, color: '#888888' },
-              { label: 'This Week', value: stats.totalSearches.week, color: '#22c55e' },
-              { label: 'All Time', value: stats.totalSearches.allTime, color: '#a855f7' },
+              { label: 'Today', value: stats.totalSearches.today, color: STATS_COLORS.today },
+              { label: 'This Week', value: stats.totalSearches.week, color: STATS_COLORS.week },
+              { label: 'All Time', value: stats.totalSearches.allTime, color: STATS_COLORS.allTime },
             ].map(item => (
               <div key={item.label} className="border border-border-subtle rounded-sm bg-surface-sunken p-4 text-center">
                 <div className="text-[24px] font-bold font-mono" style={{ color: item.color }}>{item.value}</div>
@@ -1932,7 +1901,7 @@ export default function SkipTracerV2Page() {
 
           <div className="border border-border-subtle rounded-sm bg-surface-sunken p-4 text-center">
             <div className="text-[9px] text-rmpg-500 uppercase tracking-wider mb-1">Total API Cost</div>
-            <div className="text-[20px] font-bold text-[#f59e0b] font-mono">${stats.totalCost.toFixed(2)}</div>
+            <div className="text-[20px] font-bold font-mono" style={{ color: STATS_COLORS.cost }}>${stats.totalCost.toFixed(2)}</div>
           </div>
 
           {stats.topSources.length > 0 && (
@@ -1948,7 +1917,7 @@ export default function SkipTracerV2Page() {
                     <div key={s.name} className="flex items-center gap-2">
                       <span className="text-[9px] text-rmpg-500 w-4 text-right font-mono">{i + 1}</span>
                       <div className="flex-1 h-5 bg-surface-sunken rounded-sm overflow-hidden relative">
-                        <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, backgroundColor: '#888888' }} />
+                        <div className="h-full rounded-sm transition-all" style={{ width: `${pct}%`, backgroundColor: STATS_COLORS.bar }} />
                         <span className="absolute left-2 top-0.5 text-[10px] text-rmpg-100 font-mono">{s.name}</span>
                       </div>
                       <span className="text-[10px] text-rmpg-400 font-mono w-8 text-right">{s.count}</span>

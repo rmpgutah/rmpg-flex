@@ -74,11 +74,11 @@ function exportTripCsv(trip: NavTrip): void {
 }
 
 const STATUS_COLOR: Record<NavTripStatus, string> = {
-  pending: '#f59e0b',
-  active: '#22c55e',
-  paused: '#38bdf8',
-  completed: '#3b82f6',
-  cancelled: '#6b7280',
+  pending: 'var(--sev-warn)',
+  active: 'var(--sev-ok)',
+  paused: 'var(--sev-info)',
+  completed: 'var(--sev-info)',
+  cancelled: 'var(--text-muted)',
 };
 
 const STATUS_LABEL: Record<NavTripStatus, string> = {
@@ -471,7 +471,7 @@ export default function NavPage() {
           style={{
             position: 'absolute',
             inset: 0,
-            background: '#000',
+            background: 'black',
             opacity: (1 - getEffectiveBrightness(prefs)) * 0.6,
             pointerEvents: 'none',
             zIndex: 50,
@@ -488,7 +488,7 @@ export default function NavPage() {
 
       {/* GPS Status Bar */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-subtle text-[10px] font-mono" style={{ background:"var(--surface-sunken)" }}>
-        <span style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>
+        <span style={{ color: gps.isTracking ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>
           {gps.isTracking ? 'GPS ON' : 'GPS OFF'}
         </span>
         {gps.latitude && gps.longitude && (
@@ -500,9 +500,9 @@ export default function NavPage() {
           <span className="text-rmpg-500">+-{Math.round(gps.accuracy)}m</span>
         )}
         {gps.unitCallSign ? (
-          <span style={{ color: '#d4a017' }}>{gps.unitCallSign} - ON DUTY</span>
+          <span style={{ color: 'var(--field-label-color)' }}>{gps.unitCallSign} - ON DUTY</span>
         ) : hasTakeHome ? (
-          <span style={{ color: '#22c55e' }}>TAKE-HOME - TRACKING ACTIVE</span>
+          <span style={{ color: 'var(--sev-ok)' }}>TAKE-HOME - TRACKING ACTIVE</span>
         ) : gps.isTracking ? (
           <span className="text-rmpg-500">GPS ONLY - Set take-home vehicle to log trips</span>
         ) : null}
@@ -510,9 +510,9 @@ export default function NavPage() {
           {/* #75 Offline / stale-fix status chip */}
           {(() => {
             const map = {
-              fresh: { label: 'LIVE', color: '#22c55e', border: '#1a3a1a', Icon: Satellite },
-              stale: { label: 'STALE', color: '#f59e0b', border: '#3a2e0a', Icon: Satellite },
-              offline: { label: 'OFFLINE', color: '#ef4444', border: '#3a1a1a', Icon: WifiOff },
+              fresh: { label: 'LIVE', color: 'var(--sev-ok)', border: 'rgb(var(--sev-ok-rgb) / 0.35)', Icon: Satellite },
+              stale: { label: 'STALE', color: 'var(--sev-warn)', border: 'rgb(var(--sev-warn-rgb) / 0.35)', Icon: Satellite },
+              offline: { label: 'OFFLINE', color: 'var(--sev-critical)', border: 'rgb(var(--sev-critical-rgb) / 0.35)', Icon: WifiOff },
             } as const;
             const m = map[freshness];
             return (
@@ -531,12 +531,12 @@ export default function NavPage() {
             aria-label="Favorite destinations"
             aria-expanded={favoritesOpen}
             onClick={() => setFavoritesOpen((o) => !o)}
-            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold-300"
             style={{
               width: 24, height: 22,
-              borderColor: favoritesOpen ? '#d4a017' : '#222',
-              color: favoritesOpen ? '#d4a017' : 'var(--text-secondary)',
-              background: favoritesOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
+              borderColor: favoritesOpen ? 'var(--field-label-color)' : 'var(--border-default)',
+              color: favoritesOpen ? 'var(--field-label-color)' : 'var(--text-secondary)',
+              background: favoritesOpen ? 'color-mix(in srgb, var(--field-label-color) 10%, transparent)' : 'transparent',
             }}
             title="Favorite destinations"
           >
@@ -548,12 +548,12 @@ export default function NavPage() {
             aria-label="Navigation settings"
             aria-expanded={settingsOpen}
             onClick={() => setSettingsOpen((o) => !o)}
-            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold-300"
             style={{
               width: 24, height: 22,
-              borderColor: settingsOpen ? '#d4a017' : '#222',
-              color: settingsOpen ? '#d4a017' : 'var(--text-secondary)',
-              background: settingsOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
+              borderColor: settingsOpen ? 'var(--field-label-color)' : 'var(--border-default)',
+              color: settingsOpen ? 'var(--field-label-color)' : 'var(--text-secondary)',
+              background: settingsOpen ? 'color-mix(in srgb, var(--field-label-color) 10%, transparent)' : 'transparent',
             }}
             title="Navigation settings"
           >
@@ -562,7 +562,7 @@ export default function NavPage() {
           <Link
             to="/navigation"
             className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-subtle hover:border-strong transition-colors"
-            style={{ color: '#d4a017' }}
+            style={{ color: 'var(--field-label-color)' }}
             title="Open full drive view with chase cam and turn-by-turn"
           >
             <ExternalLink size={10} /> Drive Mode
@@ -606,7 +606,7 @@ export default function NavPage() {
                     aria-label="Save pin as favorite"
                     onClick={() => handleSavePinAsFavorite(lastPin)}
                     className="flex items-center gap-1 hover:underline"
-                    style={{ color: '#d4a017' }}
+                    style={{ color: 'var(--field-label-color)' }}
                   >
                     <Star size={9} /> Save
                   </button>
@@ -632,12 +632,12 @@ export default function NavPage() {
                 aria-pressed={active}
                 aria-label={`Toggle ${label} layer`}
                 onClick={() => toggleLayer(key)}
-                className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+                className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold-300"
                 style={{
                   minHeight: 22,
-                  borderColor: active ? '#d4a017' : '#222',
-                  background: active ? '#d4a017' : 'transparent',
-                  color: active ? '#000' : 'var(--text-secondary)',
+                  borderColor: active ? 'var(--field-label-color)' : 'var(--border-default)',
+                  background: active ? 'var(--field-label-color)' : 'transparent',
+                  color: active ? 'black' : 'var(--text-secondary)',
                 }}
               >
                 {label}
@@ -655,8 +655,8 @@ export default function NavPage() {
             onClick={() => setTab(t)}
             className="px-4 py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors"
             style={{
-              color: tab === t ? '#d4a017' : 'var(--text-secondary)',
-              borderBottom: tab === t ? '2px solid #d4a017' : '2px solid transparent',
+              color: tab === t ? 'var(--field-label-color)' : 'var(--text-secondary)',
+              borderBottom: tab === t ? '2px solid var(--field-label-color)' : '2px solid transparent',
             }}
           >
             {t === 'current' ? 'Current Trip' : 'Trip History'}
@@ -698,8 +698,8 @@ export default function NavPage() {
           className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 px-6 text-center"
           style={{ background: 'rgba(5,5,5,0.92)', backdropFilter: 'blur(2px)' }}
         >
-          <Satellite size={36} className={pulseClass} style={{ color: '#d4a017' }} />
-          <div className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+          <Satellite size={36} className={pulseClass} style={{ color: 'var(--field-label-color)' }} />
+          <div className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
             Acquiring GPS fix...
           </div>
           <div className="flex items-center gap-2 text-[10px] font-mono">
@@ -828,24 +828,24 @@ function FavoritesPanel({
         borderTop: '1px solid var(--border-default)',
         borderTopLeftRadius: 2,
         borderTopRightRadius: 2,
-        boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
+        boxShadow: '0 -8px 24px rgb(0 0 0 / 0.6)',
         maxHeight: '80vh',
         overflowY: 'auto',
         backdropFilter: 'blur(4px)',
       }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
           Favorite Destinations
         </span>
         <button
           type="button"
           aria-label="Close favorite destinations"
           onClick={onClose}
-          className="flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+          className="flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-gold-300"
           style={{
             width: 36, height: 36, borderRadius: 2,
-            background: 'var(--surface-base)', border: '1px solid var(--border-default)', color: '#888',
+            background: 'var(--surface-base)', border: '1px solid var(--border-default)', color: 'var(--text-muted)',
           }}
         >
           &times;
@@ -883,7 +883,7 @@ function FavoritesPanel({
           onClick={onSaveCurrentPosition}
           disabled={!canSaveCurrentPosition}
           className="w-full py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
+          style={{ background: 'var(--surface-base)', color: 'var(--field-label-color)', border: '1px solid var(--border-subtle)' }}
         >
           <Star size={11} /> Save Current Position
         </button>
@@ -913,7 +913,7 @@ function FavoritesPanel({
                 <Link
                   to={getNavigateHref(fav)}
                   className="flex items-center gap-1 px-1.5 py-1 rounded-sm border border-subtle text-[9px] font-mono uppercase tracking-wider hover:border-strong transition-colors"
-                  style={{ color: '#d4a017' }}
+                  style={{ color: 'var(--field-label-color)' }}
                   title={`Navigate to ${fav.label}`}
                 >
                   <Compass size={10} /> Go
@@ -963,7 +963,7 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
     <div className="rounded-sm border border-subtle p-3" style={{ background: 'var(--surface-raised)' }}>
       <PanelTitleBar title="DRIVING SCORE" icon={Gauge} />
       <div className="flex items-center gap-3 mt-2">
-        <div className="font-mono font-bold text-[20px] tabular-nums shrink-0" style={{ color: avg >= 85 ? '#22c55e' : avg >= 60 ? '#f59e0b' : '#ef4444' }}>
+        <div className="font-mono font-bold text-[20px] tabular-nums shrink-0" style={{ color: avg >= 85 ? 'var(--sev-ok)' : avg >= 60 ? 'var(--sev-warn)' : 'var(--sev-critical)' }}>
           {avg}
         </div>
         <div className="text-[9px] uppercase tracking-wider text-rmpg-500 shrink-0">
@@ -978,12 +978,12 @@ function DrivingScoreTrend({ trend }: { trend: (HarshCounts & { id: number; star
             <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H }} aria-hidden="true">
               <defs>
                 <linearGradient id="score-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#d4a017" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#d4a017" stopOpacity="0.02" />
+                  <stop offset="0%" stopColor="var(--field-label-color)" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="var(--field-label-color)" stopOpacity="0.02" />
                 </linearGradient>
               </defs>
               <polyline points={path.area} fill="url(#score-fill)" stroke="none" />
-              <polyline points={path.line} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              <polyline points={path.line} fill="none" stroke="var(--field-label-color)" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
               {chrono.map((t, i) => {
                 const cx = n < 2 ? 0 : (i / (n - 1)) * W;
                 const cy = H - Math.min(H, (scores[i] / 100) * H);
@@ -1190,7 +1190,7 @@ function CurrentTripPanel({
       minute: '2-digit',
       hour12: prefs.clock === '12h',
     });
-    const color = etaSeconds <= 60 ? '#ef4444' : etaSeconds <= 300 ? '#f59e0b' : '#d4a017';
+    const color = etaSeconds <= 60 ? 'var(--sev-critical)' : etaSeconds <= 300 ? 'var(--sev-warn)' : 'var(--field-label-color)';
     return { countdown: fmtCountdown(etaSeconds), clock, color };
   }, [etaSeconds, prefs.clock]);
 
@@ -1198,11 +1198,11 @@ function CurrentTripPanel({
     return (
       <div className="space-y-3">
         {/* Active Trip Card */}
-        <div className="rounded-sm border border-subtle p-3" style={{ background: trip.status === 'active' ? '#0a2a0a' : '#1a1a0a' }}>
+        <div className="rounded-sm border border-subtle p-3" style={{ background: trip.status === 'active' ? 'rgb(var(--sev-ok-rgb) / 0.06)' : 'rgb(var(--sev-warn-rgb) / 0.06)' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
-              <span className="text-[11px] font-semibold uppercase" style={{ color: '#d4a017' }}>
+              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] || 'var(--text-muted)' }} />
+              <span className="text-[11px] font-semibold uppercase" style={{ color: 'var(--panel-header-color)' }}>
                 {STATUS_LABEL[trip.status] || trip.status} TRIP
               </span>
             </div>
@@ -1214,19 +1214,19 @@ function CurrentTripPanel({
           {/* Live stats */}
           <div className="grid grid-cols-3 gap-3 mb-3">
             <div className="text-center">
-              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#22c55e' }}>
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: 'var(--sev-ok)' }}>
                 {trip.status === 'active' ? formatDuration(elapsed) : '--'}
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Duration</div>
             </div>
             <div className="text-center">
-              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#d4a017' }}>
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: 'var(--field-label-color)' }}>
                 {formatDistance(trip.distance_miles)}
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Distance</div>
             </div>
             <div className="text-center">
-              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#ef4444' }}>
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: 'var(--sev-critical)' }}>
                 {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)}` : '--'}
                 <span className="text-[10px] ml-0.5 text-rmpg-400">mph</span>
               </div>
@@ -1268,7 +1268,7 @@ function CurrentTripPanel({
             {trip.vehicle_number && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Vehicle</span>
-                <span style={{ color: '#d4a017' }}>
+                <span style={{ color: 'var(--field-label-color)' }}>
                   {trip.vehicle_number} - {trip.make} {trip.model}
                 </span>
               </div>
@@ -1276,7 +1276,7 @@ function CurrentTripPanel({
             {trip.unit_call_sign && (
               <div className="flex justify-between">
                 <span className="text-rmpg-500">Unit</span>
-                <span style={{ color: '#d4a017' }}>{trip.unit_call_sign}</span>
+                <span style={{ color: 'var(--field-label-color)' }}>{trip.unit_call_sign}</span>
               </div>
             )}
             {trip.route_points && Array.isArray(trip.route_points) && (
@@ -1292,7 +1292,7 @@ function CurrentTripPanel({
         <button
           onClick={onEnd}
           className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
-          style={{ background: '#ef4444', color: '#fff' }}
+          style={{ background: 'var(--sev-critical)', color: 'var(--text-primary)' }}
         >
           <Square size={14} /> End Trip
         </button>
@@ -1301,7 +1301,7 @@ function CurrentTripPanel({
           <Link
             to="/navigation"
             className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-            style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
+            style={{ background: 'var(--surface-base)', color: 'var(--field-label-color)', border: '1px solid var(--border-subtle)' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
@@ -1324,16 +1324,16 @@ function CurrentTripPanel({
       <div className="rounded-sm border border-subtle p-3" style={{ background:"var(--surface-sunken)" }}>
         <div className="flex items-center gap-2 mb-2">
           {gps.isTracking ? (
-            <CheckCircle size={14} style={{ color: '#22c55e' }} />
+            <CheckCircle size={14} style={{ color: 'var(--sev-ok)' }} />
           ) : (
-            <AlertTriangle size={14} style={{ color: '#ef4444' }} />
+            <AlertTriangle size={14} style={{ color: 'var(--sev-critical)' }} />
           )}
-          <span className="text-[11px] font-semibold uppercase" style={{ color: '#d4a017' }}>Status</span>
+          <span className="text-[11px] font-semibold uppercase" style={{ color: 'var(--panel-header-color)' }}>Status</span>
         </div>
         <div className="space-y-1 text-[10px] font-mono">
           <div className="flex justify-between">
             <span className="text-rmpg-500">GPS</span>
-            <span style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>
+            <span style={{ color: gps.isTracking ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>
               {gps.isTracking ? 'Tracking' : 'Acquiring...'}
             </span>
           </div>
@@ -1359,7 +1359,7 @@ function CurrentTripPanel({
           )}
           <div className="flex justify-between">
             <span className="text-rmpg-500">Vehicle</span>
-            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : 'var(--text-secondary)') }}>
+            <span style={{ color: gps.unitCallSign ? 'var(--field-label-color)' : (hasTakeHome ? 'var(--sev-ok)' : 'var(--text-secondary)') }}>
               {gps.unitCallSign
                 ? `${gps.unitCallSign} (on duty)`
                 : hasTakeHome
@@ -1369,7 +1369,7 @@ function CurrentTripPanel({
           </div>
           <div className="flex justify-between">
             <span className="text-rmpg-500">Detection</span>
-            <span style={{ color: detection.movementConfirmed ? '#22c55e' : '#f59e0b' }}>
+            <span style={{ color: detection.movementConfirmed ? 'var(--sev-ok)' : 'var(--sev-warn)' }}>
               {detection.movementConfirmed ? 'Movement confirmed' : 'Monitoring...'}
             </span>
           </div>
@@ -1381,14 +1381,14 @@ function CurrentTripPanel({
         onClick={onStart}
         disabled={!gps.latitude || (!gps.unitCallSign && !hasTakeHome)}
         className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{ background: '#d4a017', color: '#000' }}
+        style={{ background: 'var(--field-label-color)', color: 'black' }}
       >
         <Play size={16} /> Start Trip Now
       </button>
 
       {!gps.isTracking && (
-        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: '#1a0a0a' }}>
-          <p className="text-[10px]" style={{ color: '#ef4444' }}>
+        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.06)' }}>
+          <p className="text-[10px]" style={{ color: 'var(--sev-critical)' }}>
             GPS not tracking - waiting for position fix.
           </p>
         </div>
@@ -1407,7 +1407,7 @@ function CurrentTripPanel({
         <Link
           to="/navigation"
           className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
-          style={{ background: 'var(--surface-base)', color: '#d4a017', border: '1px solid var(--border-subtle)' }}
+          style={{ background: 'var(--surface-base)', color: 'var(--field-label-color)', border: '1px solid var(--border-subtle)' }}
         >
           <Compass size={11} /> Drive Mode
         </Link>
@@ -1423,8 +1423,8 @@ function CurrentTripPanel({
       {/* Hint card */}
       <div className="rounded-sm border border-subtle p-2.5" style={{ background:"var(--surface-sunken)" }}>
         <div className="flex items-center gap-1.5 mb-1.5">
-          <Footprints size={10} style={{ color: '#d4a017' }} />
-          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+          <Footprints size={10} style={{ color: 'var(--panel-header-color)' }} />
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
             How detection works
           </span>
         </div>
@@ -1454,7 +1454,7 @@ function HistoryPanel({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 size={20} className="animate-spin" style={{ color: '#d4a017' }} />
+        <Loader2 size={20} className="animate-spin" style={{ color: 'var(--field-label-color)' }} />
       </div>
     );
   }
@@ -1468,7 +1468,7 @@ function HistoryPanel({
             <button
               onClick={onDownloadAll}
               className="flex items-center gap-1 text-[10px] transition-colors px-1.5 py-0.5 border border-subtle rounded-sm"
-              style={{ color: '#d4a017' }}
+              style={{ color: 'var(--field-label-color)' }}
               title="Download PDF report of all trips"
             >
               <FileText size={11} /> PDF Report
@@ -1500,11 +1500,11 @@ function HistoryPanel({
           >
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || 'var(--text-muted)' }} />
                 <span className="text-[11px] font-semibold text-rmpg-300">
                   {formatDistance(trip.distance_miles)}
                 </span>
-                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
+                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || 'var(--text-muted)' }}>
                   {STATUS_LABEL[trip.status] || trip.status}
                 </span>
               </div>
@@ -1531,7 +1531,7 @@ function HistoryPanel({
             {trip.vehicle_number && (
               <div className="mt-1.5 text-[9px] font-mono flex justify-between">
                 <span className="text-rmpg-500">Vehicle</span>
-                <span style={{ color: '#d4a017' }}>
+                <span style={{ color: 'var(--field-label-color)' }}>
                   {trip.vehicle_number} - {trip.make} {trip.model}
                 </span>
               </div>
@@ -1550,7 +1550,7 @@ function HistoryPanel({
                 <button
                   onClick={() => onDownloadTrip(trip)}
                   className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
-                  style={{ color: '#d4a017' }}
+                  style={{ color: 'var(--field-label-color)' }}
                   title="Download this trip as a PDF report"
                 >
                   <Download size={9} /> Trip PDF
