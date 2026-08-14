@@ -302,7 +302,7 @@ export default function AutomationsTab() {
                   <td className="py-[2px] px-2 text-text-secondary">{f.officer_name}</td>
                   <td className="py-[2px] px-2 text-text-muted">{formatDateTime(f.fired_at)}</td>
                   <td className="py-[2px] px-2">
-                    <span className={`text-[9px] font-semibold ${f.source === 'client' ? 'text-brand-400' : 'text-accent-silver-400'}`}>
+                    <span className="text-[9px] font-semibold text-fg-muted">
                       {f.source.toUpperCase()}
                     </span>
                   </td>

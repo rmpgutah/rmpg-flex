@@ -72,7 +72,7 @@ function ToggleRow({ label, description, checked, onChange }: {
     >
       <span className="min-w-0">
         <span className="block text-[11px] text-rmpg-100">{label}</span>
-        {description && <span className="block text-[10px] text-rmpg-400 mt-0.5">{description}</span>}
+        {description && <span className="block text-[10px] text-fg-muted mt-0.5">{description}</span>}
       </span>
       <span
         className="shrink-0 w-9 h-5 flex items-center px-0.5 transition-colors"
@@ -99,7 +99,7 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
     <div className="px-3 py-2 border-b border-border-default">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[11px] text-rmpg-100">{label}</span>
-        <span className="text-[10px] font-mono text-brand-400">{format(value)}</span>
+        <span className="text-[10px] font-mono text-fg-muted">{format(value)}</span>
       </div>
       <input
         type="range"
@@ -149,7 +149,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
     <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default">
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] text-rmpg-100 truncate">{label}</span>
-        <span className="block text-[9px] text-rmpg-500 truncate">{desc}</span>
+        <span className="block text-[9px] text-fg-muted truncate">{desc}</span>
       </span>
       <select
         value={value}
@@ -169,7 +169,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
       <button
         type="button"
         onClick={() => playSound(value)}
-        className="shrink-0 p-1.5 border border-border-default text-rmpg-400 hover:text-brand-400 transition-colors"
+        className="shrink-0 p-1.5 border border-border-default text-fg-muted hover:text-text-primary transition-colors"
         style={{ borderRadius: 2 }}
         aria-label={`Preview ${label} sound`}
       >
@@ -303,7 +303,7 @@ function MyAutomationsPanel() {
 
       {/* My rules — editable, scope='user' */}
       <div className="space-y-2">
-        <p className="text-[10px] text-rmpg-500 px-3 pb-1">
+        <p className="text-[10px] text-fg-muted px-3 pb-1">
           Personal rules only fire for you. Set up proximity alerts or personal welfare reminders.
         </p>
         {rules.map((r) => (
@@ -311,22 +311,22 @@ function MyAutomationsPanel() {
             <div className="flex items-center gap-2 min-w-0">
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${r.enabled ? 'bg-sev-ok' : 'bg-rmpg-600'}`} />
               <span className="text-[11px] text-text-primary truncate">{r.name}</span>
-              <span className="text-[10px] text-rmpg-500 flex-shrink-0">
+              <span className="text-[10px] text-fg-muted flex-shrink-0">
                 {r.trigger_type.replace(/_/g, ' ')} → {r.action_type.replace(/_/g, ' ')}
               </span>
             </div>
             <div className="flex gap-2 flex-shrink-0 pl-3">
-              <button onClick={() => setEditing(r)} className="text-[10px] text-rmpg-400 hover:text-text-primary">Edit</button>
-              <button onClick={() => void handleDelete(r.id)} className="text-[10px] text-rmpg-400 hover:text-sev-critical">Delete</button>
+              <button onClick={() => setEditing(r)} className="text-[10px] text-fg-muted hover:text-text-primary">Edit</button>
+              <button onClick={() => void handleDelete(r.id)} className="text-[10px] text-fg-muted hover:text-sev-critical">Delete</button>
             </div>
           </div>
         ))}
         {rules.length === 0 && (
-          <p className="text-[10px] text-rmpg-600 px-3">No personal rules yet.</p>
+          <p className="text-[10px] text-fg-muted px-3">No personal rules yet.</p>
         )}
         <button
           onClick={() => setCreating(true)}
-          className="text-[11px] text-brand-400 hover:text-brand-300 px-3 pt-1 flex items-center gap-1"
+          className="text-[11px] text-fg-muted hover:text-text-primary px-3 pt-1 flex items-center gap-1"
         >
           + Add personal rule
         </button>
@@ -766,7 +766,7 @@ export default function SettingsPage() {
               onChange={(v) => { setMinTier(v); localStorage.setItem(MIN_TIER_KEY, v); }}
             />
             <div className="px-3 pt-2 pb-1">
-              <span className="text-[10px] uppercase tracking-wide text-rmpg-500 flex items-center gap-1">
+              <span className="text-[10px] uppercase tracking-wide text-fg-muted flex items-center gap-1">
                 <Radio className="w-3 h-3" /> Announce these events
               </span>
             </div>
@@ -783,7 +783,7 @@ export default function SettingsPage() {
 
           <SectionCard id="tones" title="SOUND PROFILE — MOTOROLA TONES" icon={RadioTower}>
             <div className="px-3 pt-2 pb-1">
-              <span className="block text-[10px] text-rmpg-400">
+              <span className="block text-[10px] text-fg-muted">
                 Assign a Motorola tone to each dispatch function. Changes apply everywhere instantly.
                 Preview with <Play className="inline w-2.5 h-2.5 -mt-0.5" /> (respects the master Sound toggle).
               </span>
@@ -805,7 +805,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setConfirmResetTones(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-fg-muted hover:text-text-primary transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset to Motorola defaults
@@ -823,7 +823,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2 border-b border-border-default flex items-center justify-between gap-3">
               <span className="min-w-0">
                 <span className="block text-[11px] text-rmpg-100">PTT key</span>
-                <span className="block text-[10px] text-rmpg-400 mt-0.5">
+                <span className="block text-[10px] text-fg-muted mt-0.5">
                   {capturingKey ? 'Press any key to bind, or Esc to cancel' : 'Press to bind any key'}
                 </span>
               </span>
@@ -846,7 +846,7 @@ export default function SettingsPage() {
             <div className="px-3 py-2 border-b border-border-default">
               <span className="block text-[11px] text-rmpg-100 mb-1.5">Transmit channel</span>
               {pttChannelsLoading ? (
-                <p className="text-[10px] text-rmpg-500 py-1">Loading channels…</p>
+                <p className="text-[10px] text-fg-muted py-1">Loading channels…</p>
               ) : (
                 <select
                   value={ptt.channelId == null ? '' : String(ptt.channelId)}
@@ -864,9 +864,9 @@ export default function SettingsPage() {
                 </select>
               )}
             </div>
-            <p className="px-3 py-2 text-[10px] text-rmpg-500">
+            <p className="px-3 py-2 text-[10px] text-fg-muted">
               Every transmission is relayed to everyone on the channel and recorded to
-              <span className="text-rmpg-400"> Radio → Recordings</span> automatically. An on-air
+              <span className="text-fg-muted"> Radio → Recordings</span> automatically. An on-air
               indicator appears bottom-right while keyed.
             </p>
           </SectionCard>
@@ -890,7 +890,7 @@ export default function SettingsPage() {
               </select>
             </div>
             <div className="px-3 pt-2 pb-1">
-              <span className="text-[10px] uppercase tracking-wide text-rmpg-500">Base layers shown on load</span>
+              <span className="text-[10px] uppercase tracking-wide text-fg-muted">Base layers shown on load</span>
             </div>
             <ToggleRow label="Units" checked={mapPrefs.layers.units}
               onChange={(v) => patchMap({ layers: { ...mapPrefs.layers, units: v } })} />
@@ -939,7 +939,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => setConfirmResetMap(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-rmpg-400 hover:text-rmpg-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-[10px] uppercase tracking-wide border border-border-default text-fg-muted hover:text-text-primary transition-colors"
                 style={{ borderRadius: 2 }}
               >
                 <RotateCcw className="w-3 h-3" /> Reset map settings
@@ -947,7 +947,7 @@ export default function SettingsPage() {
             </div>
           </SectionCard>
 
-          <p className="text-[10px] text-rmpg-500 px-1">
+          <p className="text-[10px] text-fg-muted px-1">
             Map changes apply live — to an open Map page and other tabs — no reload needed.
           </p>
 
