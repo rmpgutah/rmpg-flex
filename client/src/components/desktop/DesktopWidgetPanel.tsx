@@ -20,6 +20,7 @@ import DesktopPanicWidget from './widgets/DesktopPanicWidget';
 import DesktopWarrantCountWidget from './widgets/DesktopWarrantCountWidget';
 import DesktopBodyCamWidget from './widgets/DesktopBodyCamWidget';
 import DesktopMessageCountWidget from './widgets/DesktopMessageCountWidget';
+import DesktopStatusBoard from './DesktopStatusBoard';
 
 export interface DesktopWidgetPanelProps {
   widgets: DesktopWidgetState[];
@@ -55,6 +56,7 @@ const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
   'warrant-count': DesktopWarrantCountWidget,
   'body-cam': DesktopBodyCamWidget,
   'message-count': DesktopMessageCountWidget,
+  'status-board': DesktopStatusBoard,
 };
 
 function clampOpacity(v: number): number {
