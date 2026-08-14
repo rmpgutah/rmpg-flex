@@ -113,6 +113,11 @@ const PULL_TABLES: Record<string, { columns: string; cursorCol: CursorCol }> = {
   patrol_checkpoints: { columns: '*', cursorCol: 'created_at' },
   trespass_orders:    { columns: '*', cursorCol: 'updated_at' },
   warrants:           { columns: '*', cursorCol: 'created_at' },
+  // automation_rules: user sees global rules + their own user-scoped rules.
+  // The `columns` star is safe — no sensitive data in automation_rules.
+  // NOTE: this table needs a user-scoped WHERE clause, handled by the pull
+  // handler's special-case below.
+  automation_rules:   { columns: '*', cursorCol: 'updated_at' },
 };
 
 const PULL_DEFAULT_LIMIT = 1000;
@@ -137,6 +142,29 @@ offline.post('/sync/pull', async (c) => {
   const limit = Math.max(1, Math.min(PULL_MAX_LIMIT, Math.floor(requested)));
 
   const db = getDb(c.env);
+
+  // automation_rules: filter to global + this user's own rules
+  if (table === 'automation_rules') {
+    const userId = c.get('userId');
+    const userSql = since
+      ? `SELECT ${spec.columns} FROM automation_rules
+         WHERE (scope = 'global' OR (scope = 'user' AND scope_id = ?))
+           AND updated_at > ?
+         ORDER BY updated_at ASC LIMIT ?`
+      : `SELECT ${spec.columns} FROM automation_rules
+         WHERE (scope = 'global' OR (scope = 'user' AND scope_id = ?))
+         ORDER BY updated_at ASC LIMIT ?`;
+    try {
+      const rows = since
+        ? await query(db, userSql, userId, since, limit)
+        : await query(db, userSql, userId, limit);
+      return c.json({ rows, fullReplace: since === null });
+    } catch (err) {
+      log.error('POST /sync/pull automation_rules failed', {}, err);
+      return c.json({ error: 'Query failed' }, 500);
+    }
+  }
+
   // table + cursorCol come from the allowlist, never user input —
   // safe to interpolate. `since` + `limit` are bound.
   const sql = since
