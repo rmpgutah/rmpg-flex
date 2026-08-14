@@ -129,8 +129,8 @@
     var submitting = false;
     function doSubmit() {
       if (submitting) return;
-      var pw = document.getElementById('pw-input').value.trim();
-      if (!pw) return;
+      var pw = document.getElementById('pw-input').value;
+      if (!pw.trim()) return;
       var username = document.getElementById('user-display-name').dataset.loginName || document.getElementById('user-display-name').textContent;
       submitting = true;
       document.getElementById('lock-error').textContent = '';
@@ -153,7 +153,7 @@
       if (phase === 'lock') {
         // Populate time/date
         updateClock();
-        if (!clockInterval) clockInterval = setInterval(updateClock, 30000);
+        if (!clockInterval) clockInterval = setInterval(updateClock, 10000);
 
         // Populate account card
         var displayName = data.fullName || data.name || 'RMPG Flex';

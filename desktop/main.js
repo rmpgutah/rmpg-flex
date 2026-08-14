@@ -229,6 +229,12 @@ const BOUNDS_SAVE_DEBOUNCE_MS = 500;
 // undefined = not yet fetched; null = fetched but unavailable (non-win32 or error).
 let cachedWindowsAccountInfo = undefined;
 
+// Tracks whether the splash window's did-finish-load has fired.
+// The Promise.all phase transition may resolve before the page finishes
+// loading; this flag lets the transition queue itself until the page is ready.
+let splashLoaded = false;
+let splashPhasePending = null;
+
 // Secondary (non-main) windows opened via 'window:open-secondary', keyed by
 // a server-generated UUID so the renderer never handles a raw BrowserWindow
 // reference. Entries are removed on the window's own 'closed' event so this
@@ -396,7 +402,11 @@ function createSplashWindow() {
   });
 
   // Inject the RMPG logo into the boot phase once the page is ready.
+  // Also flush any phase message that was queued before did-finish-load fired.
+  splashLoaded = false;
+  splashPhasePending = null;
   splashWindow.webContents.once('did-finish-load', () => {
+    splashLoaded = true;
     const logoUri = getSplashLogoDataUri();
     if (logoUri && splashWindow && !splashWindow.isDestroyed()) {
       splashWindow.webContents.executeJavaScript(
@@ -407,6 +417,11 @@ function createSplashWindow() {
           if (fallback) { fallback.style.display = 'none'; }
         })();`
       ).catch(() => {});
+    }
+    // Deliver any phase message that was queued before this event fired.
+    if (splashPhasePending && splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:phase', splashPhasePending);
+      splashPhasePending = null;
     }
   });
 }
@@ -1778,6 +1793,7 @@ function suppressWindowsShellProcesses() {
   //   SecurityHealthSystray.exe  — Windows Security / Defender
   //   WmiPrvSE.exe               — WMI provider host (battery, hardware queries need this)
   //   MicrosoftEdgeUpdate.exe    — Edge update service
+  //   WinStore.App.exe           — Microsoft Store
   //   lsass.exe                  — credential & authentication store
   //   winlogon.exe               — session manager (killing = kernel panic / BSOD)
   //   svchost.exe                — hosts Entra/Azure AD, Windows Update, and 100+ services
@@ -1970,6 +1986,7 @@ guardedHandle('device:kiosk-shell-state', () => {
 // it must keep working even if the main window's renderer is dead.
 let kioskEscapeWindow = null;
 const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minute
+const splashAuthRateLimiter = createRateLimiter(5, 60_000);  // 5 attempts/minute
 
 // kioskEscape.html is loaded with loadFile(), so its frame URL is
 // file:///…/kioskEscape.html — host "" — which the remote-origin guard
@@ -2073,6 +2090,14 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
 // Uses guardedSplashOn (file:// sender guard) not guardedOn (remote-origin guard)
 // because splash.html is loaded via loadFile(), giving it a file:// sender URL.
 guardedSplashOn('splash:auth', async (event, payload) => {
+  const rateCheck = splashAuthRateLimiter.checkRateLimit('splash:auth');
+  if (!rateCheck.ok) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:auth-result', { ok: false, error: 'Too many attempts — please wait before trying again.' });
+    }
+    return;
+  }
+
   const username = (payload && typeof payload.username === 'string') ? payload.username.trim() : '';
   const password = (payload && typeof payload.password === 'string') ? payload.password : '';
 
@@ -2111,7 +2136,13 @@ guardedSplashOn('splash:auth', async (event, payload) => {
     );
 
     if (validated.ok) {
-      // Persist the last-used FlexOS username for future lock screen pre-fill.
+      // Persist the session token and last-used FlexOS username.
+      try {
+        const parsedResponse = JSON.parse(rawJson);
+        if (parsedResponse && parsedResponse.token) {
+          setConfig('last_session_token', parsedResponse.token);
+        }
+      } catch (_) {}
       try { setConfig('last_flexos_username', username); } catch (_) {}
       // Transition splash to Phase 3 (welcome), then close after animation.
       if (splashWindow && !splashWindow.isDestroyed()) {
@@ -4463,10 +4494,16 @@ app.whenReady().then(async () => {
     Promise.all([accountInfoPromise, minBootPromise]).then(([accountInfo]) => {
       const isKioskForSplash = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
       if (isKioskForSplash && splashWindow && !splashWindow.isDestroyed()) {
-        splashWindow.webContents.send('splash:phase', {
+        const phaseMsg = {
           phase: 'lock',
           data: accountInfo || { name: getConfig('last_flexos_username') || 'Officer', fullName: null, avatarDataUri: null },
-        });
+        };
+        if (splashLoaded) {
+          splashWindow.webContents.send('splash:phase', phaseMsg);
+        } else {
+          // Page hasn't finished loading yet — queue for delivery in did-finish-load.
+          splashPhasePending = phaseMsg;
+        }
       }
     }).catch((err) => {
       console.warn('[SPLASH] Phase 1→2 transition error:', err && err.message);
