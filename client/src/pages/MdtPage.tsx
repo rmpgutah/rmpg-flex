@@ -986,7 +986,7 @@ export default function MdtPage() {
                   style={{
                     background: bolos[boloIndex % bolos.length].priority === 'high' ? 'var(--sev-critical)' :
                                 bolos[boloIndex % bolos.length].priority === 'medium' ? 'var(--sev-warn)' : 'var(--sev-ok)',
-                    color: '#000',
+                    color: 'var(--surface-base)',
                   }}
                 >
                   {(bolos[boloIndex % bolos.length].priority || 'INFO').toUpperCase()}
@@ -1013,7 +1013,7 @@ export default function MdtPage() {
             <span className="text-[9px] font-bold [color:var(--panel-header-color)] uppercase tracking-wider">10-Code Quick Reference</span>
             <div className="flex items-center gap-2">
               <div className="relative">
-                <Search style={{ width: 9, height: 9, position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: '#666' }} />
+                <Search style={{ width: 9, height: 9, position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input
                   type="text"
                   value={codeFilter}
@@ -1298,7 +1298,7 @@ export default function MdtPage() {
                         <StatusBadge status={call.status} type="call_status" size="sm" />
                         <span
                           className="text-[8px] font-black px-1 rounded-sm"
-                          style={{ background: prioColor(call.priority), color: '#fff' }}
+                          style={{ background: prioColor(call.priority), color: 'var(--surface-base)' }}
                         >
                           {formatEnumValue(call.priority)}
                         </span>
@@ -1660,7 +1660,7 @@ export default function MdtPage() {
             {myUnit?.call_sign || '---'}
           </span>
           {myUnit && (
-            <span className="text-[8px] font-mono uppercase" style={{ color: UNIT_STATUSES.find(s => s.status === myUnit.status)?.color || '#666' }}>
+            <span className="text-[8px] font-mono uppercase" style={{ color: UNIT_STATUSES.find(s => s.status === myUnit.status)?.color || 'var(--text-muted)' }}>
               {toDisplayLabel(myUnit.status)}
             </span>
           )}
