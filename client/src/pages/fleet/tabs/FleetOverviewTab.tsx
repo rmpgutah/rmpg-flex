@@ -26,9 +26,9 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
 };
 
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
-  in_service: '#22c55e',
-  maintenance: '#f59e0b',
-  out_of_service: '#ef4444',
+  in_service: 'var(--sev-ok)',
+  maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)',
   retired: 'var(--text-muted)',
 };
 
@@ -51,9 +51,9 @@ function parseEquipment(eq: unknown): string[] {
 }
 
 const TYPE_BORDER_COLOR: Record<string, string> = {
-  oil_change: '#888888', tire_rotation: '#22c55e',
-  brake_service: '#ef4444', inspection: '#22c55e',
-  repair: '#f59e0b', other: 'var(--text-muted)',
+  oil_change: 'var(--text-muted)', tire_rotation: 'var(--sev-ok)',
+  brake_service: 'var(--sev-critical)', inspection: 'var(--sev-ok)',
+  repair: 'var(--sev-warn)', other: 'var(--text-muted)',
 };
 
 interface Props {
@@ -143,8 +143,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         {/* Fuel efficiency gauge */}
         {fuelEfficiency?.avg_mpg != null && (
           <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-            <Fuel className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }} />
-            <div className="text-sm font-bold font-mono" style={{ color: fuelEfficiency.avg_mpg > 20 ? '#22c55e' : fuelEfficiency.avg_mpg > 12 ? '#f59e0b' : '#ef4444' }}>{fuelEfficiency.avg_mpg.toFixed(1)}</div>
+            <Fuel className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: fuelEfficiency.avg_mpg > 20 ? 'var(--sev-ok)' : fuelEfficiency.avg_mpg > 12 ? 'var(--sev-warn)' : 'var(--sev-critical)' }} />
+            <div className="text-sm font-bold font-mono" style={{ color: fuelEfficiency.avg_mpg > 20 ? 'var(--sev-ok)' : fuelEfficiency.avg_mpg > 12 ? 'var(--sev-warn)' : 'var(--sev-critical)' }}>{fuelEfficiency.avg_mpg.toFixed(1)}</div>
             <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
           </div>
         )}
@@ -167,9 +167,9 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         </div>
         <div className={`panel-beveled p-2.5 text-center ${
           getExpiryStatus(detail.next_service_due) === 'expired' ? 'border-amber-700/50' : ''
-        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? '#1a1400' : 'var(--surface-sunken)' }}>
-          <Clock className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }} />
-          <div className="text-[10px] font-bold font-mono" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? '#f59e0b' : '#22c55e' }}>
+        }`} style={{ background: getExpiryStatus(detail.next_service_due) === 'expired' ? 'rgb(var(--sev-warn-rgb) / 0.1)' : 'var(--surface-sunken)' }}>
+          <Clock className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? 'var(--sev-warn)' : 'var(--sev-ok)' }} />
+          <div className="text-[10px] font-bold font-mono" style={{ color: getExpiryStatus(detail.next_service_due) === 'expired' ? 'var(--sev-warn)' : 'var(--sev-ok)' }}>
             {formatMilitary(detail.next_service_due)}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Next Due</div>
@@ -187,7 +187,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           : null;
         if (lastSvcMileage != null && detail.current_mileage != null) {
           const diff = detail.current_mileage - lastSvcMileage;
-          const color = diff > 5000 ? '#ef4444' : diff > 3000 ? '#f59e0b' : '#22c55e';
+          const color = diff > 5000 ? 'var(--sev-critical)' : diff > 3000 ? 'var(--sev-warn)' : 'var(--sev-ok)';
           return (
             <div className="panel-beveled p-2 bg-surface-sunken flex items-center gap-2">
               <Gauge className="w-3.5 h-3.5" style={{ color }} />
@@ -272,8 +272,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                     className="h-full transition-all duration-500"
                     style={{
                       width: `${expiryProgress(detail.registration_expiry)}%`,
-                      background: expiryProgress(detail.registration_expiry) > 30 ? '#22c55e'
-                        : expiryProgress(detail.registration_expiry) > 10 ? '#f59e0b' : '#ef4444',
+                      background: expiryProgress(detail.registration_expiry) > 30 ? 'var(--sev-ok)'
+                        : expiryProgress(detail.registration_expiry) > 10 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                     }}
                   />
                 </div>
@@ -311,8 +311,8 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                     className="h-full transition-all duration-500"
                     style={{
                       width: `${expiryProgress(detail.insurance_expiry)}%`,
-                      background: expiryProgress(detail.insurance_expiry) > 30 ? '#22c55e'
-                        : expiryProgress(detail.insurance_expiry) > 10 ? '#f59e0b' : '#ef4444',
+                      background: expiryProgress(detail.insurance_expiry) > 30 ? 'var(--sev-ok)'
+                        : expiryProgress(detail.insurance_expiry) > 10 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                     }}
                   />
                 </div>
@@ -478,7 +478,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
           </div>
         ) : (
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, #888888 0%, #2e2e2e 30%, #2e2e2e 70%, transparent 100%)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(180deg, var(--text-muted) 0%, var(--surface-base) 30%, var(--surface-base) 70%, transparent 100%)' }} />
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {

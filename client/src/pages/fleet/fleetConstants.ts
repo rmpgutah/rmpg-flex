@@ -5,8 +5,8 @@
 import type { FleetVehicleStatus } from '../../types';
 
 export const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
-  in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: '#6b7280',
+  in_service: 'var(--sev-ok)', maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)', retired: 'var(--text-muted)',
 };
 
 export const STATUS_LABEL: Record<FleetVehicleStatus, string> = {

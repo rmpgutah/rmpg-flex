@@ -127,22 +127,22 @@ export default function FleetReportsPage() {
   return (
     <div className="flex flex-col h-full bg-surface-base text-white">
       <PanelTitleBar title="FLEET DAILY REPORTS" icon={Calendar}>
-        <span className="text-[11px] text-[#888]">{totalReports} reports archived</span>
-        <IconButton onClick={loadReports} aria-label="Refresh reports list" className="p-1 hover:bg-[#222]">
+        <span className="text-[11px] text-fg-muted">{totalReports} reports archived</span>
+        <IconButton onClick={loadReports} aria-label="Refresh reports list" className="p-1 hover:bg-surface-sunken">
           <RefreshCw className="w-4 h-4" />
         </IconButton>
-        <IconButton onClick={() => navigate('/fleet')} aria-label="Back to Fleet" className="p-1 hover:bg-[#222]">
+        <IconButton onClick={() => navigate('/fleet')} aria-label="Back to Fleet" className="p-1 hover:bg-surface-sunken">
           <ArrowLeft className="w-4 h-4" />
         </IconButton>
       </PanelTitleBar>
 
       <div className="flex-1 overflow-auto p-4">
         {loading && months.length === 0 && (
-          <div className="text-center text-[#888] py-8">Loading reports…</div>
+          <div className="text-center text-fg-muted py-8">Loading reports…</div>
         )}
 
         {!loading && months.length === 0 && (
-          <div className="text-center text-[#888] py-8">
+          <div className="text-center text-fg-muted py-8">
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <div>No daily reports yet.</div>
             <div className="text-[11px] mt-1">Reports generate automatically at 00:05 MT each night.</div>
@@ -153,31 +153,31 @@ export default function FleetReportsPage() {
           {months.map(({ month, days }) => {
             const expanded = expandedMonths.has(month);
             return (
-              <div key={month} className="border border-[#222] bg-surface-raised" style={{ borderRadius: 2 }}>
+              <div key={month} className="border border-[color:var(--border-subtle)] bg-surface-raised" style={{ borderRadius: 2 }}>
                 <button
                   type="button"
                   onClick={() => toggleMonth(month)}
-                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-[#1a1a1a] text-left"
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-surface-base text-left"
                 >
                   <div className="flex items-center gap-2">
                     {expanded ? <FolderOpen className="w-4 h-4 text-accent-silver-400" /> : <Folder className="w-4 h-4 text-accent-silver-400" />}
                     <span className="font-semibold text-sm">{formatMonthLabel(month)}</span>
                   </div>
-                  <span className="text-[11px] text-[#888]">{days.length} {days.length === 1 ? 'day' : 'days'}</span>
+                  <span className="text-[11px] text-fg-muted">{days.length} {days.length === 1 ? 'day' : 'days'}</span>
                 </button>
 
                 {expanded && (
-                  <div className="border-t border-[#222]">
+                  <div className="border-t border-[color:var(--border-subtle)]">
                     {days.map(d => (
                       <div
                         key={d.filename}
-                        className="flex items-center justify-between px-3 py-[6px] border-b border-[#1a1a1a] last:border-b-0 hover:bg-[#141414]"
+                        className="flex items-center justify-between px-3 py-[6px] border-b border-[color:var(--border-subtle)] last:border-b-0 hover:bg-surface-sunken"
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <FileText className="w-4 h-4 text-[#888] flex-shrink-0" />
+                          <FileText className="w-4 h-4 text-fg-muted flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="text-[12px] font-medium truncate">{formatDayLabel(d.date)}</div>
-                            <div className="text-[10px] text-[#666] font-mono truncate">
+                            <div className="text-[10px] text-fg-secondary font-mono truncate">
                               {d.date} · {formatSize(d.size)}
                             </div>
                           </div>
@@ -186,7 +186,7 @@ export default function FleetReportsPage() {
                           <IconButton
                             onClick={() => openReport(d.filename)}
                             aria-label={`Open report for ${d.date}`}
-                            className="p-1 hover:bg-[#222]"
+                            className="p-1 hover:bg-surface-sunken"
                             title="Open PDF"
                           >
                             <Download className="w-4 h-4 text-accent-silver-400" />

@@ -72,7 +72,7 @@ export default function FleetStatsBar({
         <div className="flex items-center gap-1.5" title="Vehicles Needing Service">
           {needsService > 0 ? <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> : <CheckCircle className="w-3.5 h-3.5 text-green-400" />}
           <span className="text-rmpg-400">Service:</span>
-          <span className="font-bold" style={{ color: needsService > 0 ? '#f59e0b' : '#22c55e' }}>{needsService}</span>
+          <span className="font-bold" style={{ color: needsService > 0 ? 'var(--sev-warn)' : 'var(--sev-ok)' }}>{needsService}</span>
         </div>
         <div className="flex items-center gap-1.5" title="Monthly Costs (Maintenance + Fuel)">
           <DollarSign className="w-3.5 h-3.5 text-rmpg-400" />
@@ -82,9 +82,9 @@ export default function FleetStatsBar({
           </span>
         </div>
         <div className="flex items-center gap-1.5" title="Inspections Failing">
-          <CheckCircle className="w-3.5 h-3.5" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }} />
+          <CheckCircle className="w-3.5 h-3.5" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? 'var(--sev-critical)' : 'var(--sev-ok)' }} />
           <span className="text-rmpg-400">Insp:</span>
-          <span className="font-bold" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? '#ef4444' : '#22c55e' }}>
+          <span className="font-bold" style={{ color: (fleetAnalytics?.fleet_summary?.inspections_failing || 0) > 0 ? 'var(--sev-critical)' : 'var(--sev-ok)' }}>
             {fleetAnalytics?.fleet_summary?.inspections_failing ?? '-'}
           </span>
         </div>
