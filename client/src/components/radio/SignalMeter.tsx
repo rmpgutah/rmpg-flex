@@ -10,9 +10,9 @@ interface SignalMeterProps {
 const TOTAL_BARS = 12;
 
 function barColor(index: number): string {
-  if (index < 6) return '#22c55e';  // green
-  if (index < 9) return '#d4a017';  // amber
-  return '#dc2626';                  // red
+  if (index < 6) return 'var(--sev-ok)';      // green — signal OK
+  if (index < 9) return 'var(--sev-warn)';    // amber — marginal signal
+  return 'var(--sev-critical)';               // red — weak/poor signal
 }
 
 export default function SignalMeter({
@@ -25,7 +25,7 @@ export default function SignalMeter({
 }: SignalMeterProps) {
   return (
     <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
-      <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
+      <div className="text-[9px] font-semibold text-fg-muted uppercase tracking-[0.5px] mb-1.5">
         SIGNAL STRENGTH
       </div>
 
@@ -49,7 +49,7 @@ export default function SignalMeter({
           );
         })}
         {/* dBm readout next to bars */}
-        <span className="ml-2 font-mono text-[10px] font-bold text-[#888888] self-center">
+        <span className="ml-2 font-mono text-[10px] font-bold text-fg-muted self-center">
           {dbm} dBm
         </span>
       </div>
@@ -57,16 +57,16 @@ export default function SignalMeter({
       {/* Numeric stats */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
         <div className="font-mono text-[8px] text-fg-muted">
-          Latency: <span className="text-[#888888]">{latencyMs}ms</span>
+          Latency: <span className="text-fg-muted">{latencyMs}ms</span>
         </div>
         <div className="font-mono text-[8px] text-fg-muted">
-          Loss: <span className="text-[#888888]">{packetLoss}%</span>
+          Loss: <span className="text-fg-muted">{packetLoss}%</span>
         </div>
         <div className="font-mono text-[8px] text-fg-muted">
-          TX: <span className="text-[#888888]">{throughputUp} B/s</span>
+          TX: <span className="text-fg-muted">{throughputUp} B/s</span>
         </div>
         <div className="font-mono text-[8px] text-fg-muted">
-          RX: <span className="text-[#888888]">{throughputDown} B/s</span>
+          RX: <span className="text-fg-muted">{throughputDown} B/s</span>
         </div>
       </div>
     </div>

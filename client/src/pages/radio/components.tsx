@@ -18,8 +18,8 @@ export function Banner({ icon, color, bg, children }: { icon: React.ReactNode; c
 }
 
 export function ToolbarBtn({ children, onClick, active, danger, title }: { children: React.ReactNode; onClick: () => void; active?: boolean; danger?: boolean; title?: string }) {
-  const fg = danger ? '#ef4444' : active ? 'var(--rt-accent)' : 'var(--rt-muted)';
-  const bg = active ? 'rgba(212,160,23,0.10)' : 'transparent';
+  const fg = danger ? 'var(--rt-tx)' : active ? 'var(--rt-accent)' : 'var(--rt-muted)';
+  const bg = active ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent';
   return (
     <button type="button" onClick={onClick} title={title}
       className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-bold tracking-wider"
@@ -36,7 +36,7 @@ export function MiniToggle({ children, onClick, active, title }: { children: Rea
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.1)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent',
       }}>
       {children}
     </button>
@@ -50,7 +50,7 @@ export function ModeToggle({ active, onClick, icon, label }: { active: boolean; 
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.08)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.08)' : 'transparent',
       }}>
       {icon} {label}
     </button>
@@ -64,7 +64,7 @@ export function FilterChip({ children, onClick, active, icon }: { children: Reac
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.08)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.08)' : 'transparent',
       }}>
       {icon}{children}
     </button>
@@ -102,7 +102,7 @@ export function EmptyConsole({ isConnected, channels }: { isConnected: boolean; 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-4 text-center">
       <div className="w-24 h-24 flex items-center justify-center"
-        style={{ background: 'radial-gradient(circle at 30% 30%, #1a1a1a 0%, #0a0a0a 70%)', border: '3px solid var(--rt-border)', boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.6)', borderRadius: '50%' }}>
+        style={{ background: 'radial-gradient(circle at 30% 30%, var(--rt-panel) 0%, var(--rt-bg) 70%)', border: '3px solid var(--rt-border)', boxShadow: 'inset 0 4px 12px rgb(0 0 0 / 0.6)', borderRadius: '50%' }}>
         <Antenna style={{ width: 36, height: 36, color: 'var(--text-muted)' }} />
       </div>
       <div>
@@ -112,7 +112,7 @@ export function EmptyConsole({ isConnected, channels }: { isConnected: boolean; 
         </div>
       </div>
       {!isConnected && (
-        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono text-red-400" style={{ border: '1px solid #7f1d1d', background: 'rgba(127,29,29,0.15)' }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono text-red-400 border border-red-900" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.15)' }}>
           <WifiOff style={{ width: 12, height: 12 }} />
           DISCONNECTED — Radio service unavailable
         </div>
@@ -139,7 +139,7 @@ export function Sparkline({ values, highlight }: { values: number[]; highlight?:
         const isNow = i === highlight;
         return (
           <div key={i} className="spark-bar flex-1" title={`${i.toString().padStart(2, '0')}:00 — ${v} tx`}
-            style={{ height: `${h}%`, background: isNow ? 'var(--rt-accent)' : v === 0 ? 'var(--surface-raised)' : '#2a8a2a', boxShadow: isNow ? '0 0 4px var(--rt-accent)' : 'none' }} />
+            style={{ height: `${h}%`, background: isNow ? 'var(--rt-accent)' : v === 0 ? 'var(--surface-raised)' : 'var(--rt-led-on)', boxShadow: isNow ? '0 0 4px var(--rt-accent)' : 'none' }} />
         );
       })}
     </div>
@@ -155,10 +155,9 @@ export function Heatmap({ rows }: { rows: number[][] }) {
         <Fragment key={dayIdx}>
           <div className="text-[7px] font-mono flex items-center justify-center" style={{ color: 'var(--rt-muted)' }}>{labels[dayIdx]}</div>
           {row.map((v, hour) => {
-            const intensity = v / max;
-            const bg = v === 0 ? '#101010' : `rgba(212,160,23,${0.15 + intensity * 0.85})`;
+            const alpha = v === 0 ? 0 : 0.15 + (v / max) * 0.85;
             return <div key={hour} title={`${labels[dayIdx]} ${hour.toString().padStart(2, '0')}:00 — ${v} tx`}
-              style={{ background: bg, height: 8 }} />;
+              style={{ background: 'var(--rt-accent)', opacity: alpha, height: 8 }} />;
           })}
         </Fragment>
       ))}
