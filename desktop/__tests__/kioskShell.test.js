@@ -9,6 +9,7 @@ const {
   shouldSelfRevert,
   resetBootAttemptState,
   validateEscapeLoginResponse,
+  validateFlexOsLoginResponse,
 } = require('../kioskShell');
 
 test('buildShellRegistryValue: wraps the exe path in quotes for the Shell value', () => {
@@ -88,6 +89,45 @@ test('validateEscapeLoginResponse: rejects malformed JSON without throwing', () 
   const result = validateEscapeLoginResponse('not json');
   assert.equal(result.ok, false);
   assert.match(result.error, /invalid response/);
+});
+
+test('validateFlexOsLoginResponse: accepts officer role with valid token', () => {
+  const body = JSON.stringify({ token: 'tok', user: { name: 'Jane Smith', role: 'officer' } });
+  assert.deepEqual(validateFlexOsLoginResponse(body), { ok: true, officer: { name: 'Jane Smith', role: 'officer' } });
+});
+
+test('validateFlexOsLoginResponse: accepts admin role with valid token', () => {
+  const body = JSON.stringify({ token: 'tok', user: { name: 'Bob', role: 'admin' } });
+  assert.deepEqual(validateFlexOsLoginResponse(body), { ok: true, officer: { name: 'Bob', role: 'admin' } });
+});
+
+test('validateFlexOsLoginResponse: accepts dispatcher role with valid token', () => {
+  const body = JSON.stringify({ token: 'tok', user: { name: 'Sue', role: 'dispatcher' } });
+  assert.deepEqual(validateFlexOsLoginResponse(body), { ok: true, officer: { name: 'Sue', role: 'dispatcher' } });
+});
+
+test('validateFlexOsLoginResponse: rejects server error string', () => {
+  const result = validateFlexOsLoginResponse(JSON.stringify({ error: 'Invalid credentials' }));
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error, 'Invalid credentials');
+});
+
+test('validateFlexOsLoginResponse: rejects malformed JSON without throwing', () => {
+  const result = validateFlexOsLoginResponse('not json at all');
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error, 'invalid response from server');
+});
+
+test('validateFlexOsLoginResponse: rejects requires2FA response', () => {
+  const result = validateFlexOsLoginResponse(JSON.stringify({ requires2FA: true }));
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.error.length > 0);
+});
+
+test('validateFlexOsLoginResponse: rejects response missing token', () => {
+  const result = validateFlexOsLoginResponse(JSON.stringify({ user: { name: 'X', role: 'officer' } }));
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error, 'invalid response from server');
 });
 
 // ─── Escape accelerator selection ─────────────────────────────

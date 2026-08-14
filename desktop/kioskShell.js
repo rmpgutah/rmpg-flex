@@ -162,6 +162,34 @@ function validateEscapeLoginResponse(rawJson) {
   return { ok: true, role };
 }
 
+/**
+ * Validates a startup lock screen /api/auth/login response.
+ * Accepts any role — unlike validateEscapeLoginResponse, which restricts
+ * to admin/manager. This is officer sign-in at boot, not the kiosk escape hatch.
+ * Returns { ok: true, officer: { name, role } } or { ok: false, error }.
+ * Never throws.
+ */
+function validateFlexOsLoginResponse(rawJson) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return { ok: false, error: 'invalid response from server' };
+  }
+  if (parsed && parsed.requires2FA) {
+    return { ok: false, error: 'This account requires 2FA — use the in-app login once the desktop loads.' };
+  }
+  if (parsed && typeof parsed.error === 'string') {
+    return { ok: false, error: parsed.error };
+  }
+  if (!parsed || typeof parsed.token !== 'string' || !parsed.token) {
+    return { ok: false, error: 'invalid response from server' };
+  }
+  const name = (parsed.user && typeof parsed.user.name === 'string') ? parsed.user.name : '';
+  const role = (parsed.user && typeof parsed.user.role === 'string') ? parsed.user.role : '';
+  return { ok: true, officer: { name, role } };
+}
+
 module.exports = {
   buildShellRegistryValue,
   MAX_BOOT_FAILURES,
@@ -173,4 +201,5 @@ module.exports = {
   shouldUseKioskChrome,
   shouldRelaunchOnAllWindowsClosed,
   validateEscapeLoginResponse,
+  validateFlexOsLoginResponse,
 };
