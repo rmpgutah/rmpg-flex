@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
-import { apiRateLimit } from '../src/middleware/rateLimit';
+import { apiRateLimit, API_RATE_LIMIT } from '../src/middleware/rateLimit';
 
 function appWithUserId(userId: number | undefined) {
   const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { userId?: number } }>();
@@ -44,7 +44,7 @@ describe('apiRateLimit middleware', () => {
   it('blocks with 429 once the count has reached the limit', async () => {
     const userId = 1002;
     const windowStart = currentWindowStart(300);
-    await env.KV.put(`rl:api:user:${userId}:${windowStart}`, '600', { expirationTtl: 600 });
+    await env.KV.put(`rl:api:user:${userId}:${windowStart}`, String(API_RATE_LIMIT), { expirationTtl: 600 });
 
     const app = appWithUserId(userId);
     const res = await app.request('/probe', {}, env as unknown as Record<string, unknown>);
