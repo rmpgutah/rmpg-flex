@@ -21,7 +21,7 @@ export default function MobileHomePage() {
   return (
     <div className="min-h-[100dvh] bg-surface-sunken text-rmpg-100 safe-px safe-pb no-overscroll">
       <header className="safe-pt py-3 border-b border-border-default">
-        <h1 className="text-[#d4a017] text-xs font-bold tracking-widest text-center">
+        <h1 className="text-[color:var(--panel-header-color)] text-xs font-bold tracking-widest text-center">
           RMPG FLEX · MOBILE
         </h1>
       </header>

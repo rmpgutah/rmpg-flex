@@ -133,7 +133,7 @@ export default function MobileDetailView({
       className="fixed inset-0 z-50"
       style={{
         // Dim backdrop based on swipe distance
-        background: `rgba(0,0,0,${0.5 * (1 - swipeX / (window.innerWidth || 1))})`,
+        background: `rgb(0 0 0 / ${0.5 * (1 - swipeX / (window.innerWidth || 1))})`,
         transition: isSwiping ? 'none' : 'background 0.3s ease',
         pointerEvents: open ? 'auto' : 'none',
       }}
@@ -165,7 +165,7 @@ export default function MobileDetailView({
           <div
             className="absolute top-0 left-0 right-0 h-[2px]"
             style={{
-              background: 'linear-gradient(90deg, #1a1a1a, #888888, #1a1a1a)',
+              background: 'linear-gradient(90deg, var(--surface-raised), var(--text-muted), var(--surface-raised))',
               zIndex: 1,
             }}
           />
@@ -218,7 +218,7 @@ export default function MobileDetailView({
                     style={{
                       background: 'var(--surface-base)',
                       border: '1px solid var(--border-default)',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                      boxShadow: '0 8px 24px rgb(0 0 0 / 0.6)',
                     }}
                   >
                     {actions.map((action, i) => {
@@ -232,7 +232,7 @@ export default function MobileDetailView({
                           }}
                           className="flex items-center gap-2 w-full px-4 py-3 text-left text-sm font-mono hover:bg-rmpg-700 transition-colors"
                           style={{
-                            color: action.danger ? '#ef4444' : '#aaaaaa',
+                            color: action.danger ? 'var(--sev-critical)' : 'var(--text-muted)',
                             minHeight: 44,
                           }}
                         >

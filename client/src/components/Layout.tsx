@@ -132,6 +132,7 @@ import { useDeviceClass } from '../hooks/useDeviceClass';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 import { playUiNavigate } from '../utils/uiClickSounds';
 import { useToastSafe } from './ToastProvider';
+import { onNetworkChange, getNetworkStatus } from '../utils/networkStatus';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -550,7 +551,12 @@ export default function Layout() {
 
   // ── Feature 21: Password expiry warning ──
   const [showPasswordExpiryWarning, setShowPasswordExpiryWarning] = useState(false);
+  const [isOffline, setIsOffline] = useState(!getNetworkStatus());
   const [passwordExpiryDays, setPasswordExpiryDays] = useState(0);
+
+  useEffect(() => {
+    return onNetworkChange((online) => setIsOffline(!online));
+  }, []);
 
   useEffect(() => {
     if (!user?.last_password_change && !user?.passwordChangedAt) return;
@@ -1758,6 +1764,18 @@ export default function Layout() {
         >
           {/* Officer-facing admin broadcasts (Admin → Announcements) */}
           <AnnouncementBanner />
+
+          {/* Offline indicator — shown when the device loses network.
+              Pages still render with stale SW-cached data; this tells
+              officers the data may not be current. */}
+          {isOffline && (
+            <div className="bg-rmpg-900/80 border-b border-rmpg-700/60 px-4 py-1 flex items-center gap-2" role="status" aria-live="polite">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+              <span className="text-[11px] text-rmpg-200 font-medium tracking-wide">
+                OFFLINE — displaying cached data
+              </span>
+            </div>
+          )}
 
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (

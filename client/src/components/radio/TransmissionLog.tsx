@@ -24,10 +24,10 @@ function formatTime(): string {
 }
 
 const TYPE_COLORS: Record<LogEntry['type'], string> = {
-  dispatch: '#d4a017',
-  unit: '#cccccc',
-  emergency: '#dc2626',
-  system: '#f59e0b',
+  dispatch: 'var(--accent-silver-300)',   // dispatch entries — silver chrome
+  unit: 'var(--text-muted)',              // normal unit traffic — muted text
+  emergency: 'var(--sev-critical)',       // emergency — severity red
+  system: 'var(--sev-warn)',              // system notices — operational amber
 };
 
 const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionLog(_props, ref) {
@@ -132,7 +132,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
 
   return (
     <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
-      <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
+      <div className="text-[9px] font-semibold text-fg-muted uppercase tracking-[0.5px] mb-1.5">
         TX LOG
       </div>
 

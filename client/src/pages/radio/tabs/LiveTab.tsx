@@ -394,7 +394,7 @@ function PttBar({ channelSelected, voice }: {
   }
 
   const receiving = !!voice.activeSpeaker && !voice.transmitting;
-  const dot = voice.transmitting ? 'var(--rt-tx)' : receiving ? '#22c55e' : voice.connected ? 'var(--rt-accent)' : 'var(--rt-muted)';
+  const dot = voice.transmitting ? 'var(--rt-tx)' : receiving ? 'var(--rt-led-on)' : voice.connected ? 'var(--rt-accent)' : 'var(--rt-muted)';
   const status = !voice.supported ? 'MIC UNSUPPORTED'
     : !voice.connected ? 'CONNECTING…'
     : voice.transmitting ? 'ON AIR'
@@ -424,7 +424,7 @@ function PttBar({ channelSelected, voice }: {
         className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono font-bold tracking-wider uppercase select-none"
         style={{
           border: `1px solid ${voice.transmitting ? 'var(--rt-tx)' : 'var(--rt-border)'}`,
-          color: voice.transmitting ? '#000' : disabled ? 'var(--rt-muted)' : 'var(--rt-text)',
+          color: voice.transmitting ? 'black' : disabled ? 'var(--rt-muted)' : 'var(--rt-text)',
           background: voice.transmitting ? 'var(--rt-tx)' : 'transparent',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,

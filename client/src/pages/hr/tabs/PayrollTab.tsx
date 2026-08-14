@@ -91,11 +91,11 @@ interface OvertimeRequest {
 type SubTab = 'periods' | 'rates' | 'entries' | 'overtime' | 'leave';
 
 const STATUS_COLORS: Record<string, string> = {
-  open: '#888888',
-  processing: '#f59e0b',
-  closed: '#22c55e',
+  open: 'var(--text-muted)',
+  processing: 'var(--sev-warn)',
+  closed: 'var(--sev-ok)',
   draft: 'var(--text-muted)',
-  approved: '#22c55e',
+  approved: 'var(--sev-ok)',
 };
 
 function formatCurrency(amount: number): string {
@@ -1051,7 +1051,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                             {lb.pto_pending.toFixed(1)}h
                           </span>
                           <div className="w-full h-1 bg-surface-sunken rounded-full mt-0.5 overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e' }} />
+                            <div className={`h-full rounded-full ${pctUsed > 80 ? 'bg-red-500' : pctUsed > 50 ? 'bg-amber-400' : 'bg-green-500'}`} style={{ width: `${Math.min(100, pctUsed)}%` }} />
                           </div>
                         </td>
                         <td className="py-2 px-3 text-right text-rmpg-300">{lb.sick_used.toFixed(1)}h</td>

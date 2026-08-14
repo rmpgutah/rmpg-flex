@@ -64,6 +64,12 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // these by sight — "SL2 is the gold one" — so recoloring changes district
   // identity on the map, not just its styling.
   categoricalPalette: /(^|\/)(connectionsGraphStyle|geographyLabels|geoLayers)\.ts$/,
+  // RouteBuilderPage feeds hex into Mapbox paint, marker DOM CSS, and popup HTML — CSS vars don't resolve there.
+  mapboxRouteBuilder: /(^|\/)RouteBuilderPage\.(tsx)$/,
+  // ForensicDashcamPlayer uses Canvas 2D API for evidence export — CSS vars don't resolve in canvas context.
+  forensicDashcamCanvas: /(^|\/)ForensicDashcamPlayer\.(tsx)$/,
+  // skipTracerPalette holds categorical identity colors per entity/engine type (same reason as connectionsGraphStyle).
+  skipTracerPalette: /(^|\/)skipTracerPalette\.(ts)$/,
   // DesktopSystemPreferences holds ACCENT_PRESETS — a fixed color-picker palette
   // whose hex values are stored in localStorage and written directly to a CSS
   // custom property via style.setProperty('--desktop-shell-accent', hex).
@@ -78,12 +84,48 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // output document appearance (police form borders, letterhead, stamps), not
   // app chrome. components/ subdirectory stays in-scope (DOM-rendering React).
   documentWriterContent: /(^|\/)document-writer\/(?!components\/)/,
+  // Radio module constants — THEME_VARS defines the mini-theme palette (onyx/amber/nvg/
+  // contrast/cyan/magenta) that is applied as CSS custom properties via style.setProperty
+  // in RadioPage. Like mapboxBasemap.ts, the values here ARE the palette; using var()
+  // would be circular. STATUS_QUICKSET and COLOR_LABELS are operational status data
+  // values similar to AdminRadioTab's COLOR_SWATCHES.
+  radioThemePalette: /(^|\/)radio\/constants\.(ts)$/,
   // Admin config tabs whose hex literals are stored data values, not CSS chrome:
   // AdminMapSettingsTab — Mapbox paint color defaults (CSS vars blank vector layers).
   // AdminSystemTab — color picker defaults persisted to D1 (var() writes literal string).
   // AdminRadioTab — COLOR_SWATCHES for <input type="color"> stored to API as hex.
   // AdminSkipTracerV2Tab — categorical identity colors per skip-tracer source.
-  adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$/,
+  adminDataColorValues: /(^|\/)Admin(MapSettings|System|Radio|SkipTracerV2)Tab\.(tsx)$|(^|\/)hrConstants\.(ts)$/,
+  // EmailPage has three categories of load-bearing color that cannot be tokens:
+  // (1) CSS injected into isolated srcdoc iframe documents — var() cannot resolve
+  //     inside an iframe's isolated document; literal values are required.
+  // (2) Print stylesheet strings injected as string literals — same isolation issue.
+  // (3) CATEGORY_PRESET_COLORS — user-assignable categorical identity colors stored
+  //     as data values, not theme chrome (analogous to connectionsGraphStyle).
+  emailIframePrintData: /(^|\/)EmailPage\.(tsx)$/,
+  // Navigation module — tactical-dark and Mapbox-paint contexts:
+  //
+  // TripReplayMap.tsx — every hex literal is a Mapbox paint property
+  // (line-color, circle-color, circle-stroke-color). CSS vars blank the layer.
+  //
+  // NavigationPage.tsx — mixed: Mapbox paint hex throughout (route layer,
+  // crime heat, patrol breadcrumb, geofence corridor) plus tactical SVG
+  // values pinned to the night palette so the HUD never blinds a driver.
+  //
+  // HudInstruments.tsx — the always-dark nav overlay. Values like #1c1c1c /
+  // #3a3a3a / #f0d28a are intentionally pinned to the night palette (same
+  // .tactical-dark rationale as mapboxBasemap.ts). Re-theming them would
+  // make the HUD fight the map brightness.
+  //
+  // NavSettingsPanel.tsx — floats over the nav map with an explicit
+  // rgba(5,5,5,0.95) near-black background. Its segmented controls use
+  // #0a0a0a / #000 / #888 as tactical fixed values (same rationale).
+  //
+  // drivingScoreColor.ts / hudUnits.ts — return fixed operational-severity
+  // tier colors (green/amber/red) that the test suite asserts on by literal
+  // hex value. Changing to CSS vars would break those assertions, and the
+  // severity palette is fixed CAD semantics, not theme chrome.
+  navTacticalAndMapbox: /(^|\/)(TripReplayMap|NavigationPage|HudInstruments|NavSettingsPanel|drivingScoreColor|hudUnits)\.(tsx?|ts)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

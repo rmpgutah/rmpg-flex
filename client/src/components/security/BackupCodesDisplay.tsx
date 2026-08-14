@@ -53,12 +53,9 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
   return (
     <div className="space-y-4">
       {/* Warning banner */}
-      <div
-        className="flex items-start gap-2 p-3"
-        style={{ background: 'rgba(212, 160, 23, 0.12)', border: '1px solid rgba(212, 160, 23, 0.4)' }}
-      >
-        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#d4a017' }} />
-        <div className="text-[10px] leading-relaxed" style={{ color: '#e8b820' }}>
+      <div className="flex items-start gap-2 p-3 bg-amber-400/10 border border-amber-400/40">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+        <div className="text-[10px] leading-relaxed text-amber-400">
           <strong>Save these codes now.</strong> They will not be shown again. Each code can only be used once
           to log in if you lose access to your authenticator app.
         </div>
@@ -112,7 +109,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
             onChange={(e) => setAcknowledged(e.target.checked)}
             className="accent-brand-500"
           />
-          <span className="text-[10px]" style={{ color: '#888888' }}>
+          <span className="text-[10px] text-fg-muted">
             I have saved my backup codes in a secure location
           </span>
         </label>
