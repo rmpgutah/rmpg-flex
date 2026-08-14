@@ -114,6 +114,9 @@ router.put('/:id', requireRole(...ALL_ROLES), async (c) => {
   if (!isAdmin && body.action_type && !OFFICER_ALLOWED_ACTIONS.includes(body.action_type)) {
     return c.json({ error: 'Officers may only use notify_officer action' }, 403);
   }
+  if (!isAdmin && body.trigger_type && !OFFICER_ALLOWED_TRIGGERS.includes(body.trigger_type)) {
+    return c.json({ error: 'Trigger type not permitted for officer rules' }, 403);
+  }
 
   await db.prepare(
     `UPDATE automation_rules SET
@@ -143,7 +146,7 @@ router.put('/:id', requireRole(...ALL_ROLES), async (c) => {
   return c.json({ success: true });
 });
 
-router.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
+router.delete('/:id', requireRole(...ALL_ROLES), async (c) => {
   const db = getDb(c.env);
   const userId = c.get('userId') as number;
   const role = (c.get('user') as { role: string } | undefined)?.role ?? '';
