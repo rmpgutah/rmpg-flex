@@ -146,6 +146,7 @@ html.theme-dark,
   --accent-silver-300: #e3e9f0; --accent-silver-300-rgb: 227 233 240;
   --accent-silver-400: #cfd8e2; --accent-silver-400-rgb: 207 216 226;
   --accent-silver-500: #bfcad7; --accent-silver-500-rgb: 191 202 215;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
   --accent-silver-600: #9caab9; --accent-silver-600-rgb: 156 170 185;
   --accent-silver-700: #828fa0; --accent-silver-700-rgb: 130 143 160;
 
@@ -295,6 +296,7 @@ html.theme-light {
   --accent-silver-300: #515c68; --accent-silver-300-rgb: 81 92 104;
   --accent-silver-400: #4a5561; --accent-silver-400-rgb: 74 85 97;
   --accent-silver-500: #3f4954; --accent-silver-500-rgb: 63 73 84;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
   --accent-silver-600: #343d46; --accent-silver-600-rgb: 52 61 70;
   --accent-silver-700: #293038; --accent-silver-700-rgb: 41 48 56;
 
@@ -414,6 +416,7 @@ html.theme-legacy-black {
   --accent-silver-300: #e8e8e8; --accent-silver-300-rgb: 232 232 232;
   --accent-silver-400: #d4d4d4; --accent-silver-400-rgb: 212 212 212;
   --accent-silver-500: #c4c4c4; --accent-silver-500-rgb: 196 196 196;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
   --accent-silver-600: #a1a1a1; --accent-silver-600-rgb: 161 161 161;
   --accent-silver-700: #7d7d7d; --accent-silver-700-rgb: 125 125 125;
 
@@ -761,4 +764,26 @@ html.theme-blue-silver {
   .public-form img {
     max-width: 100% !important;
   }
+}
+
+/* ============================================================
+   Accessibility overrides
+   Applied via html.keyboard-nav and html.reduced-motion classes
+   stamped by accessibilityPreferences.ts on boot and settings change.
+   ============================================================ */
+
+html.keyboard-nav *:focus {
+  outline: 2px solid var(--sev-warn) !important;
+  outline-offset: 2px !important;
+}
+html.keyboard-nav *:focus:not(:focus-visible) {
+  outline: none !important;
+}
+
+html.reduced-motion *,
+html.reduced-motion *::before,
+html.reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }

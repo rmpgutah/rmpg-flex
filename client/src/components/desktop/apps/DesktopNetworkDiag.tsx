@@ -234,7 +234,7 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
                 type="button"
                 onClick={() => { void runPing(); }}
                 disabled={pingRunning}
-                style={{ padding: '3px 12px', fontSize: 11, background: pingRunning ? 'var(--surface-sunken)' : 'var(--rmpg-600, #2563eb)', color: pingRunning ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 2, cursor: pingRunning ? 'not-allowed' : 'pointer' }}
+                style={{ padding: '3px 12px', fontSize: 11, background: pingRunning ? 'var(--surface-sunken)' : 'var(--accent-silver-400)', color: pingRunning ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 2, cursor: pingRunning ? 'not-allowed' : 'pointer' }}
               >
                 {pingRunning ? 'Pinging…' : 'Ping'}
               </button>
@@ -285,7 +285,7 @@ export default function DesktopNetworkDiag({ onClose }: DesktopNetworkDiagProps)
               type="button"
               onClick={() => { void runSpeedTest(); }}
               disabled={speedRunning}
-              style={{ alignSelf: 'flex-start', padding: '5px 16px', fontSize: 12, background: speedRunning ? 'var(--surface-sunken)' : 'var(--rmpg-600, #2563eb)', color: speedRunning ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 2, cursor: speedRunning ? 'not-allowed' : 'pointer' }}
+              style={{ alignSelf: 'flex-start', padding: '5px 16px', fontSize: 12, background: speedRunning ? 'var(--surface-sunken)' : 'var(--accent-silver-400)', color: speedRunning ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 2, cursor: speedRunning ? 'not-allowed' : 'pointer' }}
             >
               {speedRunning ? 'Running…' : 'Run Speed Test'}
             </button>

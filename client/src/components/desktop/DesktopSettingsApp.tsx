@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload, Cpu, Wifi, Accessibility, Play, Trash2 } from 'lucide-react';
+import { Sliders, LayoutGrid, AppWindow, FolderKanban, PanelBottom, Monitor, Shield, Lock, ClipboardList, X, Download, Upload, Cpu, Accessibility, Play, Trash2 } from 'lucide-react';
 import { getStartupWindows, setStartupWindows, type StartupWindow } from '../../utils/startupPreferences';
 import {
   getTextScale, setTextScale,
@@ -517,7 +517,7 @@ export default function DesktopSettingsApp({
               type="button"
               onClick={() => { setActiveCategory(cat.id); setSearchQuery(''); }}
               className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-[11px]"
-              style={{ background: activeCategory === cat.id ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+              style={{ background: activeCategory === cat.id ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
             >
               <cat.icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-secondary)' }} />
               {cat.label}
@@ -655,7 +655,7 @@ export default function DesktopSettingsApp({
                     key={fmt} type="button"
                     onClick={() => { setClockFormat(fmt); setClockFormatState(fmt); }}
                     className="text-[10px] px-2 py-0.5"
-                    style={{ border: '1px solid var(--border-default)', background: clockFormat === fmt ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: clockFormat === fmt ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {fmt === '12h' ? '12-hour' : '24-hour'}
                   </button>
@@ -731,7 +731,7 @@ export default function DesktopSettingsApp({
                   <button
                     key={s} type="button" onClick={() => onIconSizeChange(s)}
                     className="text-[10px] px-2 py-0.5"
-                    style={{ border: '1px solid var(--border-default)', background: iconSize === s ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: iconSize === s ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {ICON_SIZE_LABELS[s]}
                   </button>
@@ -744,7 +744,7 @@ export default function DesktopSettingsApp({
                   <button
                     key={mode} type="button" onClick={() => onViewModeChange(mode)}
                     className="text-[10px] px-2 py-0.5 capitalize"
-                    style={{ border: '1px solid var(--border-default)', background: viewMode === mode ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: viewMode === mode ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {mode === 'grid' ? 'Grid' : 'List'}
                   </button>
@@ -757,7 +757,7 @@ export default function DesktopSettingsApp({
                   <button
                     key={mode} type="button" onClick={() => onSortModeChange(mode)}
                     className="text-[10px] px-2 py-0.5"
-                    style={{ border: '1px solid var(--border-default)', background: sortMode === mode ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: sortMode === mode ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {SORT_LABELS[mode]}
                   </button>
@@ -847,7 +847,7 @@ export default function DesktopSettingsApp({
                     key={position} type="button"
                     onClick={() => { setTaskbarPosition(position); setTaskbarPositionState(position); }}
                     className="text-[10px] px-2 py-0.5 capitalize"
-                    style={{ border: '1px solid var(--border-default)', background: taskbarPosition === position ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: taskbarPosition === position ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {position === 'bottom' ? 'Bottom' : 'Top'}
                   </button>
@@ -861,7 +861,7 @@ export default function DesktopSettingsApp({
                     key={size} type="button"
                     onClick={() => { setTaskbarSize(size); setTaskbarSizeState(size); }}
                     className="text-[10px] px-2 py-0.5 capitalize"
-                    style={{ border: '1px solid var(--border-default)', background: taskbarSize === size ? 'rgba(var(--rmpg-500-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
+                    style={{ border: '1px solid var(--border-default)', background: taskbarSize === size ? 'rgba(var(--accent-silver-400-rgb),0.15)' : 'transparent', color: 'var(--text-primary)' }}
                   >
                     {size === 'small' ? 'Small' : 'Large'}
                   </button>
@@ -1157,6 +1157,330 @@ export default function DesktopSettingsApp({
 
           {activeCategory === 'flexos' && (
             <FlexOSSettings />
+          )}
+
+          {activeCategory === 'device-health' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={refreshDeviceHealth}
+                  disabled={healthLoading}
+                  style={{ padding: '3px 10px', fontSize: 11, background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', borderRadius: 2, color: 'var(--text-primary)', cursor: healthLoading ? 'not-allowed' : 'pointer' }}
+                >
+                  {healthLoading ? 'Refreshing…' : 'Refresh All'}
+                </button>
+                {healthLastPolled && (
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                    Last polled: {healthLastPolled.toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+
+              {/* Battery */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Battery</div>
+                {!(window as unknown as { electronAPI?: { sysBattery?: unknown } }).electronAPI?.sysBattery ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Battery info requires the desktop app.</p>
+                ) : batteryInfo ? (
+                  <div style={{ fontSize: 12, color: 'var(--text-primary)', display: 'flex', gap: 12 }}>
+                    <span style={{ color: batteryInfo.percent > 20 ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>
+                      {batteryInfo.percent}%
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{batteryInfo.charging ? 'Charging' : 'On Battery'}</span>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Battery data unavailable.</p>
+                )}
+              </div>
+
+              {/* TPM */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>TPM</div>
+                {!(window as unknown as { electronAPI?: { sysTpmStatus?: unknown } }).electronAPI?.sysTpmStatus ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>TPM status requires the desktop app.</p>
+                ) : tpmInfo ? (
+                  <div style={{ display: 'flex', gap: 12, fontSize: 11 }}>
+                    {(['present', 'enabled', 'ready'] as const).map(k => (
+                      <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-primary)' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: tpmInfo[k] ? 'var(--sev-ok)' : 'var(--sev-critical)', display: 'inline-block' }} />
+                        {k.charAt(0).toUpperCase() + k.slice(1)}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>TPM data unavailable.</p>
+                )}
+              </div>
+
+              {/* GPS */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>GPS</div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>GPS status requires the desktop app.</p>
+              </div>
+
+              {/* Network */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Network Interfaces</div>
+                {!(window as unknown as { electronAPI?: { sysNetworkInterfaces?: unknown } }).electronAPI?.sysNetworkInterfaces ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Interface list requires the desktop app.</p>
+                ) : !healthInterfaces ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Press Refresh All to load.</p>
+                ) : healthInterfaces.length === 0 ? (
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>No active interfaces found.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {healthInterfaces.map((iface, i) => (
+                      <div key={i} style={{ fontSize: 11, color: 'var(--text-primary)', display: 'flex', gap: 10 }}>
+                        <span style={{ color: 'var(--text-secondary)', minWidth: 80 }}>{iface.name}</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{iface.ipv4 ?? '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeCategory === 'startup' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="text-[10px] font-semibold uppercase mb-1" style={sectionLabelStyle()}>Startup Windows</div>
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>
+                These windows open automatically when you log in. Disable or remove entries to change startup behavior.
+                The default is Dispatch Console if this list is empty.
+              </p>
+
+              <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 2, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--surface-overlay)' }}>
+                      {['Path', 'Title', 'Size', 'Enabled', ''].map(h => (
+                        <th key={h} style={{ padding: '3px 6px', textAlign: 'left', color: 'var(--text-secondary)', fontSize: 9, fontWeight: 600, borderBottom: '1px solid var(--border-subtle)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {startupWindows.map((w, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{w.path}</td>
+                        <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-primary)' }}>{w.title}</td>
+                        <td style={{ padding: '2px 6px', fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{w.width} × {w.height}</td>
+                        <td style={{ padding: '2px 6px' }}>
+                          <input
+                            type="checkbox"
+                            checked={w.enabled}
+                            aria-label={`Enable ${w.title}`}
+                            onChange={e => {
+                              const updated = startupWindows.map((sw, si) => si === i ? { ...sw, enabled: e.target.checked } : sw);
+                              saveStartupPrefs(updated);
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '2px 6px' }}>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${w.title}`}
+                            onClick={() => saveStartupPrefs(startupWindows.filter((_, si) => si !== i))}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
+                          >
+                            <Trash2 size={10} style={{ color: 'var(--sev-critical)' }} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {startupWindows.length === 0 && (
+                      <tr>
+                        <td colSpan={5} style={{ padding: '8px 6px', fontSize: 10, color: 'var(--text-muted)', textAlign: 'center' }}>
+                          No custom startup windows — falls back to Dispatch Console.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {!addingStartup ? (
+                <button
+                  type="button"
+                  onClick={() => setAddingStartup(true)}
+                  style={{ alignSelf: 'flex-start', padding: '3px 10px', fontSize: 11, background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', borderRadius: 2, color: 'var(--text-primary)', cursor: 'pointer' }}
+                >
+                  + Add
+                </button>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, background: 'var(--surface-sunken)', border: '1px solid var(--border-default)', borderRadius: 2 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <input
+                      placeholder="Path (e.g. /dispatch)"
+                      value={newStartupPath}
+                      onChange={e => setNewStartupPath(e.target.value)}
+                      style={{ flex: 2, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 6px', fontSize: 11, color: 'var(--text-primary)', outline: 'none', minWidth: 120 }}
+                    />
+                    <input
+                      placeholder="Title"
+                      value={newStartupTitle}
+                      onChange={e => setNewStartupTitle(e.target.value)}
+                      style={{ flex: 2, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 6px', fontSize: 11, color: 'var(--text-primary)', outline: 'none', minWidth: 100 }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="W"
+                      value={newStartupW}
+                      onChange={e => setNewStartupW(Number(e.target.value))}
+                      style={{ width: 60, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 6px', fontSize: 11, color: 'var(--text-primary)', outline: 'none' }}
+                    />
+                    <input
+                      type="number"
+                      placeholder="H"
+                      value={newStartupH}
+                      onChange={e => setNewStartupH(Number(e.target.value))}
+                      style={{ width: 60, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: '3px 6px', fontSize: 11, color: 'var(--text-primary)', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newStartupPath.trim() || !newStartupTitle.trim()) return;
+                        const entry: StartupWindow = { path: newStartupPath.trim(), title: newStartupTitle.trim(), width: newStartupW || 1200, height: newStartupH || 900, enabled: true };
+                        saveStartupPrefs([...startupWindows, entry]);
+                        setAddingStartup(false);
+                        setNewStartupPath('');
+                        setNewStartupTitle('');
+                        setNewStartupW(1200);
+                        setNewStartupH(900);
+                      }}
+                      style={{ padding: '3px 10px', fontSize: 11, background: 'var(--accent-silver-400)', border: 'none', borderRadius: 2, color: '#fff', cursor: 'pointer' }}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddingStartup(false)}
+                      style={{ padding: '3px 10px', fontSize: 11, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeCategory === 'accessibility' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* Text Scale */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-2" style={sectionLabelStyle()}>Text Size</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[100, 115, 130, 150].map(scale => (
+                    <button
+                      key={scale}
+                      type="button"
+                      onClick={() => { setTextScale(scale); setTextScaleState(scale); }}
+                      style={{
+                        padding: '4px 10px', fontSize: 11,
+                        background: textScale === scale ? 'var(--accent-silver-400)' : 'var(--surface-sunken)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 2,
+                        color: textScale === scale ? '#fff' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {scale}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Keyboard Navigation */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={keyboardNav}
+                    onChange={e => { setKeyboardNavEnabled(e.target.checked); setKeyboardNavState(e.target.checked); }}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', display: 'block' }}>Keyboard Navigation</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Show visible focus rings for keyboard navigation</span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Reduce Motion */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={reducedMotion}
+                    onChange={e => { setReducedMotion(e.target.checked); setReducedMotionState(e.target.checked); }}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', display: 'block' }}>Reduce Motion</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Minimize animations and transitions</span>
+                  </span>
+                </label>
+              </div>
+
+              {/* Cursor Size */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-2" style={sectionLabelStyle()}>Cursor Size</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[{ size: 16, label: 'Normal' }, { size: 32, label: 'Large' }, { size: 48, label: 'X-Large' }].map(opt => (
+                    <button
+                      key={opt.size}
+                      type="button"
+                      onClick={() => { setCursorSize(opt.size); setCursorSizeState(opt.size); }}
+                      style={{
+                        padding: '4px 10px', fontSize: 11,
+                        background: cursorSize === opt.size ? 'var(--accent-silver-400)' : 'var(--surface-sunken)',
+                        border: '1px solid var(--border-default)',
+                        borderRadius: 2,
+                        color: cursorSize === opt.size ? '#fff' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cursor Color */}
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-2" style={sectionLabelStyle()}>Cursor Color</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { name: 'silver', display: 'var(--accent-silver-400)', label: 'Silver (default)' },
+                    { name: 'white', display: '#ffffff', label: 'White' },
+                    { name: 'yellow', display: '#fde047', label: 'Yellow' },
+                    { name: 'red', display: 'var(--sev-critical)', label: 'Red' },
+                  ].map(opt => (
+                    <button
+                      key={opt.name}
+                      type="button"
+                      aria-label={opt.label}
+                      onClick={() => { setCursorColor(opt.name); setCursorColorState(opt.name); }}
+                      style={{
+                        width: 28, height: 28,
+                        borderRadius: 2,
+                        background: opt.display,
+                        border: cursorColor === opt.name ? '3px solid var(--rmpg-400)' : '2px solid var(--border-default)',
+                        cursor: 'pointer',
+                        title: opt.label,
+                      } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+                <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Custom cursors apply to the browser window. Reload if the cursor does not update.
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>
