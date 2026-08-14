@@ -202,6 +202,7 @@ html.theme-dark,
   --rt-muted: var(--text-muted);
   --rt-accent: var(--accent-active);
   --rt-tx: var(--sev-critical);
+  --rt-led-on: var(--sev-ok);  /* active LED / transmitting indicator — semantically "signal OK" */
   --field-label-color: #d4a017;
   /* Panel/section headers share the field-label accent in this theme, as they
      did historically. Must be defined in EVERY theme block: components consume

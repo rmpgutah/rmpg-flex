@@ -66,7 +66,7 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
                   style={{
                     border: `1px solid ${theme === t ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
                     color: theme === t ? 'var(--rt-accent)' : 'var(--rt-muted)',
-                    background: theme === t ? 'rgba(212,160,23,0.10)' : 'transparent',
+                    background: theme === t ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent',
                   }}>{t}</button>
               ))}
             </div>

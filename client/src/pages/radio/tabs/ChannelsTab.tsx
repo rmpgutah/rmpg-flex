@@ -151,7 +151,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
             return (
               <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
                 onContextMenu={(e) => openMenu(e, buildChannelMenu(c))}
-                style={{ background: isSelected ? 'rgba(212,160,23,0.10)' : 'transparent', opacity: isArchived ? 0.5 : 1 }}>
+                style={{ background: isSelected ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent', opacity: isArchived ? 0.5 : 1 }}>
                 <MiniToggle onClick={() => toggleFav(c.id)} active={isFav} title="Favorite">
                   <Star className="w-3 h-3" />
                 </MiniToggle>

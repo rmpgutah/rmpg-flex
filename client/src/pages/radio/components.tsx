@@ -19,7 +19,7 @@ export function Banner({ icon, color, bg, children }: { icon: React.ReactNode; c
 
 export function ToolbarBtn({ children, onClick, active, danger, title }: { children: React.ReactNode; onClick: () => void; active?: boolean; danger?: boolean; title?: string }) {
   const fg = danger ? 'var(--rt-tx)' : active ? 'var(--rt-accent)' : 'var(--rt-muted)';
-  const bg = active ? 'rgba(212,160,23,0.10)' : 'transparent';
+  const bg = active ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent';
   return (
     <button type="button" onClick={onClick} title={title}
       className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-bold tracking-wider"
@@ -36,7 +36,7 @@ export function MiniToggle({ children, onClick, active, title }: { children: Rea
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.1)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.10)' : 'transparent',
       }}>
       {children}
     </button>
@@ -50,7 +50,7 @@ export function ModeToggle({ active, onClick, icon, label }: { active: boolean; 
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.08)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.08)' : 'transparent',
       }}>
       {icon} {label}
     </button>
@@ -64,7 +64,7 @@ export function FilterChip({ children, onClick, active, icon }: { children: Reac
       style={{
         border: `1px solid ${active ? 'var(--rt-accent)' : 'var(--rt-border)'}`,
         color: active ? 'var(--rt-accent)' : 'var(--rt-muted)',
-        background: active ? 'rgba(212,160,23,0.08)' : 'transparent',
+        background: active ? 'rgba(var(--accent-silver-400-rgb), 0.08)' : 'transparent',
       }}>
       {icon}{children}
     </button>
@@ -112,7 +112,7 @@ export function EmptyConsole({ isConnected, channels }: { isConnected: boolean; 
         </div>
       </div>
       {!isConnected && (
-        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono text-red-400 border border-red-900" style={{ background: 'rgba(127,29,29,0.15)' }}>
+        <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono text-red-400 border border-red-900" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.15)' }}>
           <WifiOff style={{ width: 12, height: 12 }} />
           DISCONNECTED — Radio service unavailable
         </div>
