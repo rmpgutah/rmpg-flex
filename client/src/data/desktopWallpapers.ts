@@ -60,3 +60,22 @@ export function clearCustomWallpaper(): void {
 export function getWallpaper(id: string): WallpaperPreset {
   return DESKTOP_WALLPAPERS.find(w => w.id === id) ?? DESKTOP_WALLPAPERS[0];
 }
+
+const SLIDESHOW_KEY = 'rmpg_desktop_wallpaper_slideshow';
+const SLIDESHOW_INTERVAL_KEY = 'rmpg_desktop_wallpaper_slideshow_interval_min';
+
+export function isSlideshowEnabled(): boolean {
+  return localStorage.getItem(SLIDESHOW_KEY) === '1';
+}
+
+export function setSlideshowEnabled(on: boolean): void {
+  localStorage.setItem(SLIDESHOW_KEY, on ? '1' : '0');
+}
+
+export function getSlideshowIntervalMin(): number {
+  return parseInt(localStorage.getItem(SLIDESHOW_INTERVAL_KEY) || '5', 10);
+}
+
+export function setSlideshowIntervalMin(min: number): void {
+  localStorage.setItem(SLIDESHOW_INTERVAL_KEY, String(min));
+}
