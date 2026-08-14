@@ -51,6 +51,7 @@ import DesktopSystemPreferences from '../components/desktop/apps/DesktopSystemPr
 import DesktopCommandPalette from '../components/desktop/DesktopCommandPalette';
 import DesktopCallTicker from '../components/desktop/DesktopCallTicker';
 import DesktopCalculator from '../components/desktop/apps/DesktopCalculator';
+import DesktopRunDialog from '../components/desktop/DesktopRunDialog';
 
 const GRID_COLS = 6;
 const CELL_W = 96;
@@ -252,6 +253,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
   const [sysPrefOpen, setSysPrefOpen] = useState(false);
   const [shortcutRefOpen, setShortcutRefOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [callTickerEnabled, setCallTickerEnabled] = useState(() => localStorage.getItem('rmpg_call_ticker') !== '0');
   const isLocked = lockActive || manuallyLocked;
@@ -427,6 +429,23 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Bridge custom events from Run dialog and other event-dispatching surfaces
+  useEffect(() => {
+    function onOpenApp(e: Event) {
+      const appKey = (e as CustomEvent<string>).detail;
+      if (appKey === 'calc') setCalculatorOpen(true);
+      if (appKey === 'notepad') setNotepadOpen(true);
+      if (appKey === 'task-manager') setTaskManagerOpen(true);
+    }
+    function onOpenRun() { setRunDialogOpen(true); }
+    window.addEventListener('flexos:open-app', onOpenApp);
+    window.addEventListener('open-run-dialog', onOpenRun);
+    return () => {
+      window.removeEventListener('flexos:open-app', onOpenApp);
+      window.removeEventListener('open-run-dialog', onOpenRun);
+    };
+  }, []);
+
   const accentStyle = useMemo(() => {
     const accent = getAccent(accentId);
     return { '--desktop-shell-accent': accent.accent, '--desktop-shell-accent-shadow': accent.shadow } as React.CSSProperties;
@@ -562,6 +581,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           onClose={() => setCommandPaletteOpen(false)}
         />
       )}
+      <DesktopRunDialog open={runDialogOpen} onClose={() => setRunDialogOpen(false)} />
       {sysDashboardOpen && <FlexOSSystemDashboard onClose={() => setSysDashboardOpen(false)} />}
       {clipboardOpen && <DesktopClipboard onClose={() => setClipboardOpen(false)} />}
       {snippingOpen && <DesktopSnippingTool onClose={() => setSnippingOpen(false)} />}

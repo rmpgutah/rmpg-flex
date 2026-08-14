@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -217,6 +217,7 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
               { key: 'clock', label: onDuty ? 'Clock Out' : 'Clock In', icon: ClockIcon, onClick: handleClockToggle },
               { key: 'new-call', label: 'New Call', icon: Radio, onClick: () => navigate('/dispatch?newCall=1') },
               { key: 'new-incident', label: 'New Incident', icon: FileWarning, onClick: () => navigate('/incidents?newIncident=1') },
+              { key: 'calc', label: 'Calculator', icon: SquareSigma, onClick: () => window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'calc' })) },
             ]}
           />
         )}

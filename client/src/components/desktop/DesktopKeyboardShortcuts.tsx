@@ -163,6 +163,13 @@ export default function DesktopKeyboardShortcuts({
         return;
       }
 
+      // Ctrl+R — Run dialog (Windows-style Win+R equivalent)
+      if (ctrl && !meta && !shift && !alt && key === 'r') {
+        e.preventDefault();
+        window.dispatchEvent(new Event('open-run-dialog'));
+        return;
+      }
+
       // Win+C — Calculator
       if ((e.metaKey || (e.ctrlKey && e.shiftKey)) && e.key.toLowerCase() === 'c' && !e.altKey) {
         // Don't steal Ctrl+C (copy) — only fire on Meta+C or Ctrl+Shift+C
