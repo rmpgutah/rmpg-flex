@@ -35,7 +35,7 @@ function makeStubs() {
   // Simulate prepare returning different statement shapes:
   db.prepare = (sql) => {
     if (sql.includes('INSERT') || sql.includes('UPDATE') || sql.includes('REPLACE')) {
-      return { run: (id, enc) => store.set(id, enc) };
+      return { run: (id, enc) => enc !== undefined ? store.set(id, enc) : store.delete(id) };
     }
     if (sql.includes('SELECT')) {
       return { get: (id) => store.has(id) ? { face_embedding: store.get(id) } : null };

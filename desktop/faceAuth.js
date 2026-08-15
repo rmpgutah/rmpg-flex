@@ -49,7 +49,7 @@ function createFaceAuth({ db, safeStorage }) {
     const encrypted = safeStorage.isEncryptionAvailable()
       ? safeStorage.encryptString(json).toString('base64')
       : Buffer.from(json).toString('base64'); // fallback: base64 only (no OS-level encryption)
-    db.prepare('REPLACE INTO users (id, face_embedding) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET face_embedding=excluded.face_embedding')
+    db.prepare('INSERT INTO users (id, face_embedding) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET face_embedding=excluded.face_embedding')
       .run(userId, encrypted);
   }
 
