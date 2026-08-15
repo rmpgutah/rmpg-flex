@@ -76,7 +76,7 @@ export default function AdminSettingsTab(_props: Props) {
       await loadSystemSettings();
       addToast('Settings saved', 'success');
     } catch (err) { addToast('Failed to save settings', 'error'); }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [editValues, addToast]);
 
   const resetAll = useCallback(async () => {
@@ -87,7 +87,7 @@ export default function AdminSettingsTab(_props: Props) {
       addToast('Settings reset to defaults', 'success');
       load();
     } catch (err) { addToast('Failed to reset settings', 'error'); }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [addToast, load]);
 
   const filteredSettings = Object.entries(settings).filter(([cat]) => {

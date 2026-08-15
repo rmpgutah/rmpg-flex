@@ -517,7 +517,7 @@ export default function SkipTracerV2Page() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch { /* silent */ }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [selected]);
 
   // ─── Export PDF ────────────────────────────────────────────
@@ -726,7 +726,7 @@ export default function SkipTracerV2Page() {
         await handleExportPdf(dossierId);
       }
     } catch { /* silent */ }
-    setExporting(false);
+    finally { setExporting(false); }
   }, [selected, handleExportPdf]);
 
   // ─── Timeline builder ───────────────────────────────────
