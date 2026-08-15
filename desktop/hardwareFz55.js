@@ -42,7 +42,15 @@ function parseWindowsBatteryOutput(rawJsonString) {
     : 0;
   const charging = batteries.some((b) => b.charging);
 
-  return { batteries, overallPercent, charging };
+  const WMI_UNKNOWN_RUNTIME = 71582788;
+  const validRuntimes = entries
+    .map((e) => e.EstimatedRunTime)
+    .filter((v) => typeof v === 'number' && v !== WMI_UNKNOWN_RUNTIME);
+  const minutesRemaining = validRuntimes.length > 0
+    ? Math.round(validRuntimes.reduce((s, v) => s + v, 0) / validRuntimes.length)
+    : null;
+
+  return { batteries, overallPercent, charging, minutesRemaining };
 }
 
 /**
@@ -233,8 +241,27 @@ function parseWindowsWwanSignalOutput(text) {
   return { rssi, bars };
 }
 
+/**
+ * Parses a raw HID report buffer from an Axon Body camera.
+ * Report layout (Axon Body 3/4 USB HID power device profile):
+ *   Byte 0: Report ID (0x01)
+ *   Byte 1: Flags — bit 0 = recording active
+ *   Byte 2: Battery percentage (0–100)
+ * Returns safe defaults for any buffer shorter than 3 bytes or null input.
+ */
+function parseBodyCamHidReport(reportBuffer) {
+  if (!reportBuffer || reportBuffer.length < 3) return { recording: false, batteryPct: null };
+  const flags = reportBuffer[1];
+  const batteryRaw = reportBuffer[2];
+  return {
+    recording: Boolean(flags & 0x01),
+    batteryPct: batteryRaw >= 0 && batteryRaw <= 100 ? batteryRaw : null,
+  };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
+  parseBodyCamHidReport,
   parseWindowsDockOutput,
   parseWindowsWwanOutput,
   parseWindowsTpmOutput,

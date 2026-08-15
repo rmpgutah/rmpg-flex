@@ -6,6 +6,8 @@ const {
   parseWindowsSmartCardOutput,
   parseWindowsFingerprintOutput,
   parseWindowsWwanSignalOutput,
+  parseWindowsBatteryOutput,
+  parseBodyCamHidReport,
 } = require('../hardwareFz55');
 
 // ── Thermal ──────────────────────────────────────────────────
@@ -99,4 +101,50 @@ test('parseWindowsWwanSignalOutput: returns 0 bars on empty output', () => {
 test('parseWindowsWwanSignalOutput: returns 0 bars on null input', () => {
   const result = parseWindowsWwanSignalOutput(null);
   assert.equal(result.bars, 0);
+});
+
+// ── Battery minutesRemaining ──────────────────────────────────
+test('parseWindowsBatteryOutput: includes minutesRemaining from EstimatedRunTime', () => {
+  const raw = JSON.stringify([
+    { EstimatedChargeRemaining: 87, BatteryStatus: 1, EstimatedRunTime: 192 },
+    { EstimatedChargeRemaining: 91, BatteryStatus: 1, EstimatedRunTime: 210 },
+  ]);
+  const result = parseWindowsBatteryOutput(raw);
+  assert.ok(result);
+  // minutesRemaining is the average of both bays' EstimatedRunTime
+  assert.equal(result.minutesRemaining, 201);
+});
+
+test('parseWindowsBatteryOutput: minutesRemaining is null when EstimatedRunTime absent', () => {
+  const raw = JSON.stringify([{ EstimatedChargeRemaining: 80, BatteryStatus: 1 }]);
+  const result = parseWindowsBatteryOutput(raw);
+  assert.equal(result.minutesRemaining, null);
+});
+
+test('parseWindowsBatteryOutput: minutesRemaining is null when WMI returns 71582788 (unknown)', () => {
+  // WMI returns 71582788 when runtime is unknown (charge cycle calculating)
+  const raw = JSON.stringify([{ EstimatedChargeRemaining: 50, BatteryStatus: 2, EstimatedRunTime: 71582788 }]);
+  const result = parseWindowsBatteryOutput(raw);
+  assert.equal(result.minutesRemaining, null);
+});
+
+// ── Body cam HID ──────────────────────────────────────────────
+test('parseBodyCamHidReport: parses Axon Body 4 HID report — recording + battery', () => {
+  // Byte 0: report ID (0x01), Byte 1: flags (bit 0 = recording), Byte 2: battery %
+  const buf = Buffer.from([0x01, 0x01, 0x59]); // recording=true, battery=89%
+  const result = parseBodyCamHidReport(buf);
+  assert.equal(result.recording, true);
+  assert.equal(result.batteryPct, 89);
+});
+
+test('parseBodyCamHidReport: not recording', () => {
+  const buf = Buffer.from([0x01, 0x00, 0x46]); // recording=false, battery=70%
+  const result = parseBodyCamHidReport(buf);
+  assert.equal(result.recording, false);
+  assert.equal(result.batteryPct, 70);
+});
+
+test('parseBodyCamHidReport: returns safe default on null/short buffer', () => {
+  assert.deepEqual(parseBodyCamHidReport(null), { recording: false, batteryPct: null });
+  assert.deepEqual(parseBodyCamHidReport(Buffer.alloc(1)), { recording: false, batteryPct: null });
 });

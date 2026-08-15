@@ -11,6 +11,7 @@ test('parseWindowsBatteryOutput: single battery, discharging', () => {
     batteries: [{ percent: 76, charging: false }],
     overallPercent: 76,
     charging: false,
+    minutesRemaining: null,
   });
 });
 
@@ -20,6 +21,7 @@ test('parseWindowsBatteryOutput: single battery, charging (AC)', () => {
     batteries: [{ percent: 40, charging: true }],
     overallPercent: 40,
     charging: true,
+    minutesRemaining: null,
   });
 });
 
@@ -35,6 +37,7 @@ test('parseWindowsBatteryOutput: dual hot-swap bays, both discharging', () => {
     ],
     overallPercent: 70,
     charging: false,
+    minutesRemaining: null,
   });
 });
 
