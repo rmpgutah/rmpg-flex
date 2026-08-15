@@ -1225,7 +1225,7 @@ async function createMainWindow() {
       const result = classifyKeystrokeBurst(barcodeBuffer);
       resetBarcodeBuffer();
       if (result.isScan) {
-        mainWindow.webContents.send('hardware:barcode-scanned', result.payload);
+        mainWindow.webContents.send('hardware:barcode-scan', { payload: result.payload, source: 'xpak' });
       }
     }
   });
@@ -4120,6 +4120,37 @@ guardedHandle('app:force-refresh', async () => {
 
 let internalGpsReader = null;
 
+// ── Geofence engine ──────────────────────────────────────────
+let _geofenceZones = []; // [{ id, lat, lng, radiusM, label }]
+let _activeZoneIds = new Set(); // currently inside zones
+
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function checkGeofences(latitude, longitude) {
+  for (const zone of _geofenceZones) {
+    const dist = haversineM(latitude, longitude, zone.lat, zone.lng);
+    const inside = dist <= zone.radiusM;
+    const wasInside = _activeZoneIds.has(zone.id);
+    if (inside && !wasInside) {
+      _activeZoneIds.add(zone.id);
+      mainWindow?.webContents.send('geo:geofence-enter', { zoneId: zone.id, label: zone.label });
+    } else if (!inside && wasInside) {
+      _activeZoneIds.delete(zone.id);
+      mainWindow?.webContents.send('geo:geofence-exit', { zoneId: zone.id, label: zone.label });
+    }
+  }
+}
+
 /**
  * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
  *
@@ -4219,6 +4250,7 @@ guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('geo:internal-gps-update', pos);
     }
+    if (!pos.estimated) checkGeofences(pos.latitude, pos.longitude);
   });
   internalGpsReader.on('error', (err) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -4238,6 +4270,17 @@ guardedHandle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
+});
+
+// ── Geofence zone loader (called by renderer after server sync) ──
+guardedHandle('geo:set-geofence-zones', (_event, zones) => {
+  if (!Array.isArray(zones)) return { ok: false };
+  _geofenceZones = zones.filter(
+    (z) => z && typeof z.id !== 'undefined' &&
+    Number.isFinite(z.lat) && Number.isFinite(z.lng) && Number.isFinite(z.radiusM)
+  );
+  _activeZoneIds = new Set(); // reset membership on zone reload
+  return { ok: true, count: _geofenceZones.length };
 });
 
 // ─── Power management (keep navigation alive off-screen) ─────
@@ -4645,11 +4688,51 @@ guardedHandle('system:get-network', async () => {
   } catch { return null; }
 });
 
-// ── System: set app volume (placeholder — real OS volume requires nircmd) ──
-guardedHandle('system:set-volume', async (_event, _level) => {
-  // Controls in-app audio gain via the renderer's Web Audio context.
-  // True OS master volume requires an external tool (nircmd) — deferred.
-  return { ok: true };
+// ── System: set OS master volume ──────────────────────────────
+guardedHandle('system:set-volume', async (_event, level) => {
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    if (process.platform === 'win32') {
+      // nircmd setsysvolume takes 0–65535
+      const nircmdPath = path.join(
+        process.resourcesPath || path.join(__dirname, 'vendor'),
+        'nircmd.exe'
+      );
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)(nircmdPath, ['setsysvolume', String(Math.round(clamped / 100 * 65535))], { timeout: 2000 });
+    } else if (process.platform === 'darwin') {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)('osascript', ['-e', `set volume output volume ${clamped}`], { timeout: 2000 });
+    } else {
+      return { ok: false, reason: 'unsupported_platform' };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYSTEM:SET-VOLUME]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── Device: set display brightness (Windows only — WMI) ───────
+guardedHandle('device:set-brightness', async (_event, level) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(0, ${clamped})`],
+      { timeout: 3000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[DEVICE:SET-BRIGHTNESS]', err.message);
+    return { ok: false, reason: err.message };
+  }
 });
 
 // ─── Application Menu ───────────────────────────────────────
