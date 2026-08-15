@@ -156,6 +156,83 @@ function classifyKeystrokeBurst(records) {
   return { isScan: true, payload: payloadRecords.map((r) => r.char).join('') };
 }
 
+/**
+ * Parses `Get-WmiObject -Namespace root/WMI -Class MSAcpi_ThermalZoneTemperature
+ * | Select-Object CurrentTemperature | ConvertTo-Json`.
+ * WMI returns CurrentTemperature in tenths of Kelvin.
+ * Formula: (tenthsK / 10 - 273.15) * 9/5 + 32  →  °F
+ */
+function parseWindowsThermalOutput(rawJsonString) {
+  if (!rawJsonString) return null;
+  let parsed;
+  try { parsed = JSON.parse(rawJsonString); } catch { return null; }
+  const entries = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+    (e) => e && typeof e.CurrentTemperature === 'number'
+  );
+  if (entries.length === 0) return null;
+  const zones = entries.map((e) => ({
+    tempF: Math.round(((e.CurrentTemperature / 10 - 273.15) * 9) / 5 + 32),
+  }));
+  return { zones, maxTempF: Math.max(...zones.map((z) => z.tempF)) };
+}
+
+/**
+ * Parses `Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status, ATR
+ * | ConvertTo-Json`. Returns reader presence and whether a card is currently inserted
+ * (card insertion is indicated by a non-empty ATR field).
+ */
+function parseWindowsSmartCardOutput(rawJsonString) {
+  const safe = { present: false, cardInserted: false, atr: null };
+  if (!rawJsonString) return safe;
+  let parsed;
+  try { parsed = JSON.parse(rawJsonString); } catch { return safe; }
+  const entries = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+    (e) => e && typeof e === 'object'
+  );
+  if (entries.length === 0) return safe;
+  const okEntry = entries.find((e) => e.Status === 'OK');
+  if (!okEntry) return safe;
+  const atr = (okEntry.ATR && String(okEntry.ATR).trim()) || null;
+  return { present: true, cardInserted: Boolean(atr), atr };
+}
+
+/**
+ * Parses `Get-PnpDevice -Class Biometric | Select-Object FriendlyName, Status
+ * | ConvertTo-Json`. Detects fingerprint reader presence and readiness.
+ */
+function parseWindowsFingerprintOutput(rawJsonString) {
+  const safe = { present: false, ready: false };
+  if (!rawJsonString) return safe;
+  let parsed;
+  try { parsed = JSON.parse(rawJsonString); } catch { return safe; }
+  const entries = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+    (e) => e && typeof e === 'object'
+  );
+  if (entries.length === 0) return safe;
+  const present = entries.some((e) => e.Status === 'OK' || e.Status === 'Error');
+  const ready = entries.some((e) => e.Status === 'OK');
+  return { present, ready };
+}
+
+/**
+ * Parses `netsh mbn show signal interface=*` text output.
+ * Extracts RSSI (dBm) and maps to a 0–5 bar scale.
+ * RSSI mapping (LTE typical): > -65 → 5, >= -75 → 4, >= -85 → 3, >= -95 → 2, >= -105 → 1, else 0
+ */
+function parseWindowsWwanSignalOutput(text) {
+  if (!text) return { rssi: null, bars: 0 };
+  const rssiMatch = text.match(/RSSI\s*:\s*(-?\d+)/i);
+  if (!rssiMatch) return { rssi: null, bars: 0 };
+  const rssi = parseInt(rssiMatch[1], 10);
+  let bars = 0;
+  if (rssi > -65) bars = 5;
+  else if (rssi >= -75) bars = 4;
+  else if (rssi >= -85) bars = 3;
+  else if (rssi >= -95) bars = 2;
+  else if (rssi >= -105) bars = 1;
+  return { rssi, bars };
+}
+
 module.exports = {
   parseWindowsBatteryOutput,
   parseWindowsDockOutput,
@@ -163,4 +240,8 @@ module.exports = {
   parseWindowsTpmOutput,
   filterPrintableKeydown,
   classifyKeystrokeBurst,
+  parseWindowsThermalOutput,
+  parseWindowsSmartCardOutput,
+  parseWindowsFingerprintOutput,
+  parseWindowsWwanSignalOutput,
 };
