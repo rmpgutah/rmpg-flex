@@ -10,26 +10,26 @@ import {
 // Minimal D1-shaped stub. Each method records calls and returns configurable rows.
 function makeDb(rows: Record<string, unknown>[][] = []) {
   let callIndex = 0;
-  return {
+  const executions: { sql: string; bindings: unknown[] }[] = [];
+  const stub = {
     _rows: rows,
-    _executions: [] as { sql: string; bindings: unknown[] }[],
+    _executions: executions,
     prepare(sql: string) {
-      const db = this;
       return {
         bind(...bindings: unknown[]) {
           return {
             async first<T>() {
-              const result = (db._rows[callIndex++] ?? [])[0] ?? null;
-              db._executions.push({ sql, bindings });
+              const result = (rows[callIndex++] ?? [])[0] ?? null;
+              executions.push({ sql, bindings });
               return result as T | null;
             },
             async all<T>() {
-              const result = db._rows[callIndex++] ?? [];
-              db._executions.push({ sql, bindings });
+              const result = rows[callIndex++] ?? [];
+              executions.push({ sql, bindings });
               return { results: result as T[] };
             },
             async run() {
-              db._executions.push({ sql, bindings });
+              executions.push({ sql, bindings });
               callIndex++;
               return { meta: { changes: 1 } };
             },
@@ -37,7 +37,8 @@ function makeDb(rows: Record<string, unknown>[][] = []) {
         },
       };
     },
-  } as unknown as D1Database;
+  };
+  return stub as unknown as D1Database;
 }
 
 describe('assignStackGroup', () => {

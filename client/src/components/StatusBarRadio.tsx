@@ -30,7 +30,7 @@ function StatusBarRadio() {
   };
 
   const iconColor =
-    radioState === 'tx' ? '#dc2626' : radioState === 'rx' ? '#22c55e' : '#888888';
+    radioState === 'tx' ? 'var(--sev-critical)' : radioState === 'rx' ? 'var(--sev-ok)' : 'var(--text-muted)';
 
   const truncatedChannel = channelName.length > 15 ? channelName.slice(0, 14) + '\u2026' : channelName;
 

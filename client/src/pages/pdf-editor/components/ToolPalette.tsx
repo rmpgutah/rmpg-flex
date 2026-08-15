@@ -62,7 +62,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
             onClick={() => onTool(t.id)}
             aria-label={t.label}
             title={t.label}
-            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
+            className={`p-1.5 rounded-sm transition-colors ${active ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'text-fg-muted hover:text-rmpg-100 hover:bg-rmpg-700/50'}`}
           >
             <Icon className="w-4 h-4" />
           </IconButton>
@@ -88,7 +88,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
               onClick={() => onColor(c)}
               aria-label={`Use color ${c}`}
               title={c}
-              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? 'border-[#d4a017]' : 'border-border-subtle'}`}
+              className={`w-3.5 h-3.5 rounded-sm border ${color.toLowerCase() === c ? '[border-color:var(--field-label-color)]' : 'border-border-subtle'}`}
               style={{ background: c }}
             />
           ))}
@@ -100,10 +100,10 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
           max={12}
           value={strokeWidth}
           onChange={e => onStrokeWidth(parseInt(e.target.value, 10))}
-          className="w-7 mt-1 accent-[#d4a017]"
+          className="w-7 mt-1 [accent-color:var(--field-label-color)]"
           title={`Stroke ${strokeWidth}px`}
         />
-        <span className="text-[8px] text-rmpg-500">{strokeWidth}px</span>
+        <span className="text-[8px] text-fg-muted">{strokeWidth}px</span>
       </div>
     </div>
   );

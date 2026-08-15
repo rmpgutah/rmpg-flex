@@ -59,7 +59,7 @@ function formatCoord(value: number, posDir: string, negDir: string): string {
 
 const LINE_BASE: React.CSSProperties = {
   fontFamily: 'Consolas, "Courier New", monospace',
-  background: 'rgba(0,0,0,0.65)',
+  background: 'rgba(0 0 0 / 0.65)',
   padding: '3px 8px',
   whiteSpace: 'nowrap',
   lineHeight: 1.4,
@@ -131,13 +131,13 @@ function BodyCamHud({
     }}>
       {/* Top-left block */}
       <div style={{ position: 'absolute', top: 8, left: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0 0 0 / 0.70)', padding: '4px 10px' }}>
           {agency}
         </span>
         <span style={{ ...LINE_BASE, fontSize: 11, color: '#fff' }}>
           BWC | OFC. {(officerName || 'UNKNOWN').toUpperCase()}{badge} | CAM{cam}
         </span>
-        <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+        <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0 0 0 / 0.70)', padding: '4px 10px' }}>
           --/--/---- --:--:--H
         </span>
         <span style={{ ...LINE_BASE, fontSize: 10.5, color: '#00ff00' }}>
@@ -153,7 +153,7 @@ function BodyCamHud({
 
       {/* Bottom-right: Battery / Storage */}
       <div style={{ position: 'absolute', bottom: 8, right: 10 }}>
-        <span style={{ ...LINE_BASE, fontSize: 9, color: '#00ff00', background: 'rgba(0,0,0,0.55)' }}>
+        <span style={{ ...LINE_BASE, fontSize: 9, color: '#00ff00', background: 'rgba(0 0 0 / 0.55)' }}>
           BAT: {bat}% | STR: {stor.toFixed(1)} GB
         </span>
       </div>
@@ -199,18 +199,18 @@ function DashCamHud({
     }}>
       {/* Top-left block */}
       <div style={{ position: 'absolute', top: 8, left: 10, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+        <span style={{ ...LINE_BASE, fontSize: 16, color: '#fff', background: 'rgba(0 0 0 / 0.70)', padding: '4px 10px' }}>
           {agency}
         </span>
         <span style={{ ...LINE_BASE, fontSize: 11, color: '#fff' }}>
           {camId} | UNIT{unit} | VEH{veh}
         </span>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 0 }}>
-          <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 17, color: '#fff', background: 'rgba(0,0,0,0.70)', padding: '4px 10px' }}>
+          <span ref={timestampRef as React.LegacyRef<HTMLSpanElement>} style={{ ...LINE_BASE, fontSize: 17, color: '#fff', background: 'rgba(0 0 0 / 0.70)', padding: '4px 10px' }}>
             --/--/---- --:--:--H
           </span>
           {speed && (
-            <span style={{ ...LINE_BASE, fontSize: 13, color: '#00ff00', background: 'rgba(0,0,0,0.70)', padding: '4px 8px' }}>
+            <span style={{ ...LINE_BASE, fontSize: 13, color: '#00ff00', background: 'rgba(0 0 0 / 0.70)', padding: '4px 8px' }}>
               {speed.replace(' | ', '')}
             </span>
           )}
@@ -245,7 +245,7 @@ function RecIndicator() {
         ...LINE_BASE,
         fontSize: 11,
         color: '#ff0000',
-        background: 'rgba(0,0,0,0.50)',
+        background: 'rgba(0 0 0 / 0.50)',
         animation: 'hud-rec-blink 1s step-end infinite',
       }}>
         * REC

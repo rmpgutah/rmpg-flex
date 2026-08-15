@@ -426,7 +426,7 @@ export default function ScreenCapturePage() {
           fontSize: 11, padding: '4px 10px', borderRadius: 2,
           background: statusType === 'ok' ? 'var(--sev-ok-bg, rgba(34,197,94,0.12))' :
             statusType === 'err' ? 'rgba(239,68,68,0.12)' : 'var(--surface-raised)',
-          color: statusType === 'ok' ? 'var(--sev-ok, #22c55e)' :
+          color: statusType === 'ok' ? 'var(--sev-ok, var(--sev-ok))' :
             statusType === 'err' ? 'var(--sev-critical)' : 'var(--text-secondary)',
           border: '1px solid',
           borderColor: statusType === 'ok' ? 'rgba(34,197,94,0.3)' :
@@ -507,8 +507,8 @@ export default function ScreenCapturePage() {
                     style={{
                       fontSize: 11, padding: '2px 6px', borderRadius: 2,
                       border: '1px solid var(--accent-silver-400)',
-                      background: 'rgba(0,0,0,0.75)',
-                      color: '#ffffff',
+                      background: 'rgba(0 0 0 / 0.75)',
+                      color: 'var(--text-primary)',
                       outline: 'none',
                       minWidth: 100,
                     }}
@@ -517,8 +517,8 @@ export default function ScreenCapturePage() {
                   <div
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
-                      background: 'rgba(0,0,0,0.72)',
-                      color: '#ffffff',
+                      background: 'rgba(0 0 0 / 0.72)',
+                      color: 'var(--text-primary)',
                       fontSize: 11,
                       padding: '2px 6px',
                       borderRadius: 2,
@@ -549,7 +549,7 @@ export default function ScreenCapturePage() {
                   top: `${box.y}%`,
                   width: `${box.width}%`,
                   height: `${box.height}%`,
-                  border: '2px solid #ef4444',
+                  border: '2px solid var(--sev-critical)',
                   borderRadius: 1,
                   pointerEvents: 'none',
                   zIndex: 9,
@@ -561,7 +561,7 @@ export default function ScreenCapturePage() {
                     position: 'absolute', top: -10, right: -10,
                     width: 16, height: 16,
                     borderRadius: '50%',
-                    background: '#ef4444',
+                    background: 'var(--sev-critical)',
                     color: '#fff',
                     border: 'none',
                     fontSize: 10,
@@ -585,7 +585,7 @@ export default function ScreenCapturePage() {
                   top: `${activeBox.y}%`,
                   width: `${activeBox.width}%`,
                   height: `${activeBox.height}%`,
-                  border: '2px dashed #ef4444',
+                  border: '2px dashed var(--sev-critical)',
                   borderRadius: 1,
                   pointerEvents: 'none',
                   zIndex: 11,
@@ -601,7 +601,7 @@ export default function ScreenCapturePage() {
                 left: 8,
                 fontSize: 10,
                 padding: '2px 6px',
-                background: 'rgba(0,0,0,0.6)',
+                background: 'rgba(0 0 0 / 0.6)',
                 color: 'rgba(255,255,255,0.85)',
                 borderRadius: 1,
                 pointerEvents: 'none',

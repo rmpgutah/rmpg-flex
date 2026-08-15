@@ -1456,8 +1456,8 @@ export default function DesktopSettingsApp({
                 <div style={{ display: 'flex', gap: 8 }}>
                   {[
                     { name: 'silver', display: 'var(--accent-silver-400)', label: 'Silver (default)' },
-                    { name: 'white', display: '#ffffff', label: 'White' },
-                    { name: 'yellow', display: '#fde047', label: 'Yellow' },
+                    { name: 'white', display: 'white', label: 'White' },
+                    { name: 'yellow', display: 'var(--sev-caution)', label: 'Yellow' },
                     { name: 'red', display: 'var(--sev-critical)', label: 'Red' },
                   ].map(opt => (
                     <button

@@ -16,9 +16,9 @@ interface AnomalyAlert {
 }
 
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-  critical: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.5)', text: '#ef4444', icon: '#ef4444' },
-  high: { bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.5)', text: '#f97316', icon: '#f97316' },
-  medium: { bg: 'rgba(234,179,8,0.12)', border: 'rgba(234,179,8,0.5)', text: '#eab308', icon: '#eab308' },
+  critical: { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.5)', text: 'var(--sev-critical)', icon: 'var(--sev-critical)' },
+  high: { bg: 'rgba(249,115,22,0.12)', border: 'rgba(249,115,22,0.5)', text: 'var(--sev-high)', icon: 'var(--sev-high)' },
+  medium: { bg: 'rgba(234,179,8,0.12)', border: 'rgba(234,179,8,0.5)', text: 'var(--sev-warn)', icon: 'var(--sev-warn)' },
 };
 
 const ALERT_TYPE_ICONS: Record<string, typeof AlertTriangle> = {

@@ -545,7 +545,7 @@ export default function ServeIntakePage() {
         // transparent-background scanned PDF would render its transparent
         // regions as black and tank Vision-OCR contrast/recognition. Mirrors
         // the engine backend's pre-render fill (rmpg-pdf-engine/backends/pdfjs.ts).
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvas, canvasContext: ctx, viewport } as any).promise;
         const blob = await new Promise<Blob | null>((res) =>
@@ -906,11 +906,12 @@ export default function ServeIntakePage() {
       // A user-initiated cancel isn't an error — reset quietly without the
       // red banner. Everything else surfaces its message.
       if (!err?.aborted) setError(err?.message || 'Failed to process documents');
+    } finally {
+      uploadXhrRef.current = null;
+      setProcessing(false);
+      setUploadPhase('idle');
+      setUploadStat(null);
     }
-    uploadXhrRef.current = null;
-    setProcessing(false);
-    setUploadPhase('idle');
-    setUploadStat(null);
   }, [files, editOverrides, detectedDefendants, selectedDefendants, selectedClientId]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —

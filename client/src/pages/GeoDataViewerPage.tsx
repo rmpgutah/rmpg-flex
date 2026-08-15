@@ -57,7 +57,7 @@ const LAYERS: LayerMeta[] = [
     file: '/geojson/state_boundary.geojson',
     icon: Globe,
     description: 'Utah state outline (derived from county union)',
-    color: '#d4a017',
+    color: 'var(--field-label-color)',
   },
   {
     id: 'county',

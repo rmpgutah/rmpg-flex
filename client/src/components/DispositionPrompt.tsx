@@ -81,14 +81,14 @@ function DispositionPrompt({
       aria-live="polite"
       style={{
         background: 'rgba(180, 130, 0, 0.12)',
-        border: '1px solid #b48200',
+        border: '1px solid var(--sev-warn)',
         padding: '8px 10px',
         marginTop: 6,
       }}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <AlertTriangle style={{ width: 12, height: 12, color: '#f59e0b' }} />
+          <AlertTriangle style={{ width: 12, height: 12, color: 'var(--sev-warn)' }} />
           <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
             Clear {callNumber} — Select Disposition
           </span>
@@ -152,9 +152,9 @@ function DispositionPrompt({
           disabled={!selected}
           className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
           style={{
-            background: selected ? '#16a34a' : 'var(--border-subtle)',
+            background: selected ? 'var(--sev-ok)' : 'var(--border-subtle)',
             color: selected ? '#fff' : 'var(--text-muted)',
-            border: `1px solid ${selected ? '#16a34a' : 'var(--border-default)'}`,
+            border: `1px solid ${selected ? 'var(--sev-ok)' : 'var(--border-default)'}`,
             cursor: selected ? 'pointer' : 'not-allowed',
             opacity: selected ? 1 : 0.6,
           }}
@@ -172,7 +172,7 @@ function DispositionPrompt({
           onChange={(e) => setCreateIncident(e.target.checked)}
           className="w-3 h-3 accent-brand-500"
         />
-        <FileText style={{ width: 10, height: 10, color: createIncident ? '#aaaaaa' : 'var(--text-muted)' }} />
+        <FileText style={{ width: 10, height: 10, color: createIncident ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
         <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-fg-muted group-hover:text-rmpg-300'}`}>
           Create Incident Report from this call
         </span>

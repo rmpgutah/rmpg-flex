@@ -139,7 +139,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
   return (
     <div className="fixed inset-0 z-[70] bg-black/95 flex flex-col tactical-dark" role="dialog" aria-label="Redaction studio">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default shrink-0">
-        <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider text-[#d4a017]">
+        <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wider [color:var(--panel-header-color)]">
           <ShieldOff className="w-4 h-4" /> REDACTION STUDIO — {source === 'bodycam' ? 'BODYCAM VIDEO' : 'EVENT'} #{eventId}
         </span>
         <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close redaction studio"><X className="w-5 h-5" /></button>
@@ -163,7 +163,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
         </div>
 
         <div className="border-l border-border-default overflow-auto p-3 space-y-3 text-[11px] text-rmpg-200">
-          <button onClick={runScan} disabled={scan.busy} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] disabled:opacity-60">
+          <button onClick={runScan} disabled={scan.busy} className="w-full flex items-center justify-center gap-1.5 px-2 py-2 border [border-color:var(--field-label-color)] [color:var(--panel-header-color)] hover:bg-[#1a1400] disabled:opacity-60">
             {scan.busy ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning… {Math.round(scan.frac * 100)}%</> : <><ScanSearch className="w-3.5 h-3.5" /> Auto-detect plates + faces</>}
           </button>
 
@@ -206,7 +206,7 @@ export default function RedactionStudio({ eventId, streamUrl, stampLines, onClos
               <span>Strength</span>
               <input type="range" min={4} max={40} value={strength} onChange={(e) => { const v = Number(e.target.value); setStrength(v); setRegions((rs) => rs.map((r) => ({ ...r, strength: v }))); }} />
             </div>
-            <button onClick={addManual} className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 border border-border-default hover:border-[#d4a017]"><Square className="w-3.5 h-3.5" /> Add manual box (at playhead)</button>
+            <button onClick={addManual} className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 border border-border-default hover:[border-color:var(--field-label-color)]"><Square className="w-3.5 h-3.5" /> Add manual box (at playhead)</button>
           </div>
 
           <div className="border-t border-border-default pt-2 max-h-40 overflow-auto space-y-1">

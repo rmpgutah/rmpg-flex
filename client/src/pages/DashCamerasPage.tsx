@@ -257,16 +257,18 @@ export default function DashCamerasPage() {
     const path = opts?.force
       ? `/fleet/dashcam-videos/${vidId}?force=true`
       : `/fleet/dashcam-videos/${vidId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     if (selectedVideo?.id === vidId) setSelectedVideo(null);
     setVideoToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await fetchVideos(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }

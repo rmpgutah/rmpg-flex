@@ -187,7 +187,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
       <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90vh] flex flex-col">
         <header className="flex justify-between items-center px-4 py-2 border-b border-border-default">
-          <h2 className="text-[#d4a017] font-bold">
+          <h2 className="[color:var(--panel-header-color)] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}
           </h2>
           <button onClick={onClose} className="text-rmpg-400" aria-label="Close">✕</button>
@@ -247,7 +247,7 @@ function EditorSection<T extends Record<string, any>>({
 }: { section: SchemaSection<T>; data: T; onChange: (d: T) => void }) {
   return (
     <section className="mb-4">
-      <h3 className="text-[#d4a017] font-bold text-sm mb-2">{section.title}</h3>
+      <h3 className="[color:var(--panel-header-color)] font-bold text-sm mb-2">{section.title}</h3>
       {section.fields.map((f, i) => (
         <EditorField key={i} field={f} data={data} onChange={onChange} />
       ))}
@@ -386,7 +386,7 @@ function TableEditor<T extends Record<string, any>>({
           <button
             type="button"
             onClick={addRow}
-            className="text-[#d4a017] hover:underline"
+            className="[color:var(--panel-header-color)] hover:underline"
             aria-label={`Add row to ${field.label}`}
           >
             + Add row

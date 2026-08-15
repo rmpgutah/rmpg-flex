@@ -210,7 +210,7 @@ export default function ServeBulkActions({
       <div
         role="toolbar"
         aria-label="Bulk actions for selected serve jobs"
-        className="fixed bottom-0 left-0 right-0 z-40 bg-surface-raised border-t border-border-default shadow-[0_-2px_12px_rgba(0,0,0,0.35)] px-3 py-2 flex items-center gap-2 flex-wrap"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-surface-raised border-t border-border-default shadow-[0_-2px_12px_rgba(0 0 0 / 0.35)] px-3 py-2 flex items-center gap-2 flex-wrap"
       >
         {/* Selection count badge */}
         <span

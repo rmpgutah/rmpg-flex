@@ -2157,7 +2157,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-soft)',
                   warrant: 'var(--sev-critical)',
                   citation: 'var(--sev-warn)',
-                  arrest: 'var(--pink-400, #ec4899)',
+                  arrest: 'var(--pink-400, var(--sev-high))',
                 };
                 const typeColorRgb: Record<string, string> = {
                   incident: 'var(--spm-text-muted-rgb)',

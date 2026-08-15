@@ -44,7 +44,7 @@ export default function ManeuverArrow({
   type,
   modifier,
   size = 26,
-  color = '#d4a017',
+  color = 'var(--panel-header-color)',
 }: ManeuverArrowProps) {
   const special =
     type === 'arrive' ? 'arrive'
@@ -69,7 +69,7 @@ export default function ManeuverArrow({
         background: 'var(--surface-base)',
         border: '1px solid var(--border-default)',
         borderRadius: 2,
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.5)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 2px rgba(0 0 0 / 0.5)',
         flexShrink: 0,
       }}
     >
@@ -100,7 +100,7 @@ export default function ManeuverArrow({
             <path
               d="M12 3 L19 19 L12 15 L5 19 Z"
               fill={color}
-              stroke="#000000"
+              stroke="var(--surface-deep)"
               strokeWidth="0.85"
               strokeLinejoin="round"
             />

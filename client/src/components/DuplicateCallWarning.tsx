@@ -55,13 +55,13 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
       className="animate-fade-in"
       style={{
         background: 'rgba(180, 130, 0, 0.12)',
-        border: '1px solid #b48200',
+        border: '1px solid var(--sev-warn)',
         padding: '6px 8px',
         marginTop: 4,
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
-        <AlertTriangle style={{ width: 11, height: 11, color: '#f59e0b' }} />
+        <AlertTriangle style={{ width: 11, height: 11, color: 'var(--sev-warn)' }} />
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
           Possible Duplicate — {duplicates.length} Active Call{duplicates.length !== 1 ? 's' : ''} at This Address
         </span>

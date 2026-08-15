@@ -346,21 +346,25 @@ export default function FlexCamFootagePage() {
       bEl.pause();
       bEl.src = url;
       setLoading(true);
-      const outcome = await new Promise<'ready' | 'error' | 'timeout'>((resolve) => {
-        if (bEl.readyState >= 2) { resolve('ready'); return; }
-        let timer: number | undefined;
-        const cleanup = () => {
-          bEl.removeEventListener('canplay', onCanplay);
-          bEl.removeEventListener('error', onErr);
-          if (timer !== undefined) window.clearTimeout(timer);
-        };
-        const onCanplay = () => { cleanup(); resolve('ready'); };
-        const onErr = () => { cleanup(); resolve('error'); };
-        bEl.addEventListener('canplay', onCanplay);
-        bEl.addEventListener('error', onErr);
-        timer = window.setTimeout(() => { cleanup(); resolve('timeout'); }, 15_000);
-      });
-      setLoading(false);
+      let outcome: 'ready' | 'error' | 'timeout';
+      try {
+        outcome = await new Promise<'ready' | 'error' | 'timeout'>((resolve) => {
+          if (bEl.readyState >= 2) { resolve('ready'); return; }
+          let timer: number | undefined;
+          const cleanup = () => {
+            bEl.removeEventListener('canplay', onCanplay);
+            bEl.removeEventListener('error', onErr);
+            if (timer !== undefined) window.clearTimeout(timer);
+          };
+          const onCanplay = () => { cleanup(); resolve('ready'); };
+          const onErr = () => { cleanup(); resolve('error'); };
+          bEl.addEventListener('canplay', onCanplay);
+          bEl.addEventListener('error', onErr);
+          timer = window.setTimeout(() => { cleanup(); resolve('timeout'); }, 15_000);
+        });
+      } finally {
+        setLoading(false);
+      }
       if (myGen !== genRef.current) return; // stale — newer call won
       if (outcome !== 'ready') {
         setPlaybackErr(outcome === 'timeout'
@@ -500,7 +504,7 @@ export default function FlexCamFootagePage() {
     const pad   = Math.round(W * 0.012);
 
     // ── Top bar ──
-    ctx.fillStyle = 'rgba(0,0,0,0.84)';
+    ctx.fillStyle = 'rgba(0 0 0 / 0.84)';
     ctx.fillRect(0, 0, W, barH * 2);
     ctx.textBaseline = 'top';
 
@@ -531,7 +535,7 @@ export default function FlexCamFootagePage() {
     ctx.fillText(unit, W - pad, Math.round(barH * 0.18) + fs + 2);
 
     // ── Bottom bar ──
-    ctx.fillStyle = 'rgba(0,0,0,0.84)';
+    ctx.fillStyle = 'rgba(0 0 0 / 0.84)';
     ctx.fillRect(0, H - barH * 2, W, barH * 2);
     ctx.textBaseline = 'middle';
     const midY = H - barH;
@@ -586,7 +590,7 @@ export default function FlexCamFootagePage() {
       { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
     // Timestamp badge bottom-left
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = 'rgba(0 0 0 / 0.5)';
     const stampW = ctx.measureText(tsStr).width + 16;
     ctx.fillRect(pad, H - pad - fs * 2.2 - fs * 1.4, stampW, fs * 1.4);
     ctx.font = `${fs}px monospace`;
@@ -638,7 +642,7 @@ export default function FlexCamFootagePage() {
         ];
         const fs = Math.max(14, Math.round(H * 0.022));
         const stripH = fs * (lines.length + 0.6) + 12;
-        ctx.fillStyle = 'rgba(0,0,0,0.76)';
+        ctx.fillStyle = 'rgba(0 0 0 / 0.76)';
         ctx.fillRect(0, H - stripH, W, stripH);
         ctx.textBaseline = 'top';
         lines.forEach((line, i) => {
@@ -836,7 +840,7 @@ export default function FlexCamFootagePage() {
           {sc.label}
         </div>
         {!!data.request.evidence_locked && (
-          <div className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#d4a017]/10 text-[#d4a017] border border-[#d4a017]/40 flex-shrink-0">
+          <div className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-[#d4a017]/10 [color:var(--panel-header-color)] border [border-color:var(--field-label-color)]/40 flex-shrink-0">
             <Lock className="w-2.5 h-2.5" />
             {data.request.evidence_number ?? 'EVIDENCE'}
           </div>
@@ -877,7 +881,7 @@ export default function FlexCamFootagePage() {
           <div className="absolute inset-0 pointer-events-none select-none font-mono" style={{ zIndex: 20 }}>
             {/* Top bar */}
             <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3"
-              style={{ background: 'rgba(0,0,0,0.84)', borderBottom: '1px solid rgba(255,255,255,0.07)', paddingTop: 5, paddingBottom: 5 }}>
+              style={{ background: 'rgba(0 0 0 / 0.84)', borderBottom: '1px solid rgba(255,255,255,0.07)', paddingTop: 5, paddingBottom: 5 }}>
               <div className="flex flex-col leading-tight">
                 <span className="text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: '#fbbf24' }}>
                   ROCKY MTN PROTECTIVE GROUP
@@ -899,7 +903,7 @@ export default function FlexCamFootagePage() {
                 {playing ? (
                   <div className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#ef4444' }} />
-                    <span className="text-[9px] font-bold tracking-widest" style={{ color: '#ef4444' }}>REC</span>
+                    <span className="text-[9px] font-bold tracking-widest" style={{ color: 'var(--sev-critical)' }}>REC</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
@@ -912,7 +916,7 @@ export default function FlexCamFootagePage() {
 
             {/* Bottom bar */}
             <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3"
-              style={{ background: 'rgba(0,0,0,0.84)', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 5, paddingBottom: 5 }}>
+              style={{ background: 'rgba(0 0 0 / 0.84)', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 5, paddingBottom: 5 }}>
               <span className="text-[9px] tracking-widest tabular-nums" style={{ color: 'rgba(255,255,255,0.75)' }}>
                 {new Date(data.request.from_ts + posMs).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: '2-digit', day: '2-digit', year: 'numeric' })}
               </span>
@@ -953,7 +957,7 @@ export default function FlexCamFootagePage() {
                 </span>
               )}
               {rate !== 1 && (
-                <span className="text-[8px] font-mono font-bold text-[#d4a017] bg-black/60 px-1 py-0.5">
+                <span className="text-[8px] font-mono font-bold [color:var(--panel-header-color)] bg-black/60 px-1 py-0.5">
                   {rate.toFixed(2)}×
                 </span>
               )}
@@ -970,7 +974,7 @@ export default function FlexCamFootagePage() {
             </div>
             {!!data.request.evidence_locked && (
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-[#d4a017]/10 font-bold font-mono tracking-[0.3em] uppercase"
+                <span className="[color:var(--panel-header-color)]/10 font-bold font-mono tracking-[0.3em] uppercase"
                   style={{ fontSize: 'clamp(18px,5vw,56px)', transform: 'rotate(-18deg)', whiteSpace: 'nowrap' }}>
                   {data.request.evidence_number ?? 'EVIDENCE'}
                 </span>
@@ -985,7 +989,7 @@ export default function FlexCamFootagePage() {
             onClick={() => setOverlayMode((m) => m === 'classic' ? 'minimal' : m === 'minimal' ? 'none' : 'classic')}
             title={overlayMode === 'classic' ? 'Classic overlay → switch to Minimal' : overlayMode === 'minimal' ? 'Minimal overlay → switch to Off' : 'No overlay → switch to Classic'}
             className={`p-1.5 bg-black/50 transition-colors text-[8px] font-mono font-bold tracking-widest uppercase leading-none flex items-center gap-1 ${
-              overlayMode === 'classic' ? 'text-[#fbbf24]/80 hover:text-[#fbbf24]' :
+              overlayMode === 'classic' ? 'text-amber-300/80 hover:text-amber-300' :
               overlayMode === 'minimal' ? 'text-white/40 hover:text-white/70' :
               'text-white/15 hover:text-white/40'
             }`}>
@@ -1078,7 +1082,7 @@ export default function FlexCamFootagePage() {
             title="Cycle playback speed (< / >)"
             className={`px-2 py-1.5 text-[9px] font-mono font-bold border transition-colors ${
               rate !== 1
-                ? 'border-[#d4a017]/60 text-[#d4a017] bg-[#d4a017]/10 hover:bg-[#d4a017]/20'
+                ? '[border-color:var(--field-label-color)]/60 [color:var(--panel-header-color)] bg-[#d4a017]/10 hover:bg-[#d4a017]/20'
                 : 'border-border-default text-rmpg-500 hover:text-brand-400 hover:border-brand-600'}`}>
             {rate.toFixed(2)}×
           </button>
@@ -1250,7 +1254,7 @@ export default function FlexCamFootagePage() {
             <span className={repairMsg.startsWith('✓') ? 'text-emerald-400' : 'text-amber-400'}>{repairMsg}</span>
           )}
           {burnMsg && (
-            <span className={burnMsg.startsWith('✓') ? 'text-emerald-400' : burnMsg.startsWith('⚠') ? 'text-amber-400' : 'text-[#fbbf24]'}>
+            <span className={burnMsg.startsWith('✓') ? 'text-emerald-400' : burnMsg.startsWith('⚠') ? 'text-amber-400' : 'text-amber-300'}>
               {burnMsg}
             </span>
           )}

@@ -3465,7 +3465,7 @@ function GraphsPanel() {
   const [formTitle, setFormTitle] = useState('');
   const [formChartType, setFormChartType] = useState('bar');
   const [formLabels, setFormLabels] = useState('');
-  const [formDatasets, setFormDatasets] = useState<GraphDataset[]>([{ label: 'Series 1', data: '', color: '#f97316' }]);
+  const [formDatasets, setFormDatasets] = useState<GraphDataset[]>([{ label: 'Series 1', data: '', color: 'var(--sev-high)' }]);
 
   const load = useCallback(async () => {
     try {
@@ -3481,7 +3481,7 @@ function GraphsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const addDataset = () => {
-    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#888888' }]);
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: 'var(--text-muted)' }]);
   };
 
   const removeDataset = (idx: number) => {
@@ -3511,7 +3511,7 @@ function GraphsPanel() {
       addToast('Graph created', 'success');
       setShowForm(false);
       setFormTitle(''); setFormLabels(''); setFormChartType('bar');
-      setFormDatasets([{ label: 'Series 1', data: '', color: '#f97316' }]);
+      setFormDatasets([{ label: 'Series 1', data: '', color: 'var(--sev-high)' }]);
       load();
     } catch {
       addToast('Failed to create graph', 'error');
@@ -10418,8 +10418,7 @@ function SupportBotPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/support-bots');
       setBots(data || []);
-    } catch { addToast('Failed to load support bots', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load support bots', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadBots(); }, [loadBots]);
@@ -10539,8 +10538,7 @@ function TrendCronPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/trend-crons');
       setCrons(data || []);
-    } catch { addToast('Failed to load trend crons', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load trend crons', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadCrons(); }, [loadCrons]);
@@ -10641,8 +10639,7 @@ function SiteMigratorPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/migrations');
       setMigrations(data || []);
-    } catch { addToast('Failed to load migrations', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load migrations', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadMigrations(); }, [loadMigrations]);
@@ -10741,8 +10738,7 @@ function CodeRepoPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/code-repos');
       setRepos(data || []);
-    } catch { addToast('Failed to load code repos', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load code repos', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadRepos(); }, [loadRepos]);

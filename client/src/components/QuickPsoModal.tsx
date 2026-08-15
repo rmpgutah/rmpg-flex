@@ -194,7 +194,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                     update('client_id', '');
                   }
                 }}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               >
                 <option value="">-- Select Client --</option>
                 {(() => {
@@ -231,7 +231,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               className="select-dark"
               value={formData.pso_service_type}
               onChange={(e) => update('pso_service_type', e.target.value)}
-              style={{ borderColor: '#6b21a8' }}
+              style={{ borderColor: 'var(--sev-special)' }}
             >
               {PSO_SERVICE_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -306,7 +306,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 placeholder="Client contact"
                 value={formData.pso_requestor_name}
                 onChange={(e) => update('pso_requestor_name', e.target.value)}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               />
             </div>
             <div>
@@ -317,7 +317,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 placeholder="(801) 555-0100"
                 value={formData.pso_requestor_phone}
                 onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               />
             </div>
           </div>
@@ -331,7 +331,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               placeholder="PSO contract #"
               value={formData.contract_id}
               onChange={(e) => update('contract_id', e.target.value)}
-              style={{ borderColor: '#6b21a8' }}
+              style={{ borderColor: 'var(--sev-special)' }}
             />
           </div>
 
@@ -412,11 +412,11 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 disabled={isSubmitting || !formData.location}
                 className="toolbar-btn"
                 style={{
-                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-                  borderColor: '#7c3aed',
+                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+                  borderColor: 'var(--sev-special)',
                   borderBottomColor: 'var(--surface-overlay)',
                   borderRightColor: 'var(--surface-overlay)',
-                  color: '#ffffff',
+                  color: 'white',
                   opacity: !formData.location ? 0.5 : 1,
                 }}
               >

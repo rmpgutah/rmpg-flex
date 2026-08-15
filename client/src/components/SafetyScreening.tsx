@@ -174,7 +174,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
           >
             {/* 76: Person name with monospace styling for consistent readout */}
           <div className="flex items-center gap-1.5">
-              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? '#ef4444' : '#f59e0b' }} aria-hidden="true" />
+              <User style={{ width: 10, height: 10, color: item.warrants.length > 0 ? 'var(--sev-critical)' : 'var(--sev-warn)' }} aria-hidden="true" />
               <span className="text-[11px] font-bold text-rmpg-100 font-mono tracking-tight">
                 {item.person.last_name}, {item.person.first_name}
               </span>
@@ -217,7 +217,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
               {/* Warrants */}
               {item.warrants.map((w) => (
                 <div key={w.id} className="flex items-start gap-1.5 text-[10px]">
-                  <Scale style={{ width: 10, height: 10, color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
+                  <Scale style={{ width: 10, height: 10, color: 'var(--sev-critical)', flexShrink: 0, marginTop: 1 }} />
                   <div>
                     <span className="text-red-400 font-bold uppercase">{toDisplayLabel(w.offense_level || '')}</span>
                     <span className="text-rmpg-300 ml-1">{w.charge_description}</span>
@@ -251,7 +251,7 @@ export default function SafetyScreening({ callerName, subjectDescription }: Safe
       {/* Direct warrant hits (not linked to a person record) */}
       {result.directWarrantHits.map((w) => (
         <div key={w.id} className="safety-warrant-direct">
-          <Scale style={{ width: 10, height: 10, color: '#ef4444' }} />
+          <Scale style={{ width: 10, height: 10, color: 'var(--sev-critical)' }} />
           <span className="text-[10px] text-red-400 font-bold uppercase">{w.offense_level} WARRANT</span>
           <span className="text-[10px] text-rmpg-100">
             {w.subject_last_name}, {w.subject_first_name}

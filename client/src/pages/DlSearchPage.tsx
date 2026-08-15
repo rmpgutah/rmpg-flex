@@ -640,8 +640,9 @@ export default function DlSearchPage() {
       setResults([]);
       setSource('ERROR');
       fromDeepLinkRef.current = false;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [firstName, lastName, dlNumber, state, dob, addToast]);
 
   // Apply pending deep-link once handleSearch is stable. One-shot — clears
@@ -1141,23 +1142,23 @@ export default function DlSearchPage() {
                 </div>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#222222] rounded-sm p-3 bg-[#050505] space-y-2 w-full max-w-xs">
+              <div className="border border-rmpg-900 rounded-sm p-3 bg-surface-deep space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
-                  <CreditCard size={14} className="text-[#d4a017]" />
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
+                  <CreditCard size={14} className="[color:var(--panel-header-color)]" />
+                  <span className="text-[10px] font-bold text-accent-silver-300 uppercase tracking-wider">Scan Driver's License</span>
                 </div>
-                <p className="text-[10px] text-[#666666]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <p className="text-[10px] text-fg-muted">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-rmpg-600 hover:bg-brand-700 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
                   >
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
                   </button>
-                  <span className="text-[9px] text-[#666666]">JPG, PNG, or camera capture</span>
+                  <span className="text-[9px] text-fg-muted">JPG, PNG, or camera capture</span>
                 </div>
               </div>
             </div>

@@ -150,7 +150,7 @@ export default function DesktopPerfMon({ onClose }: DesktopPerfMonProps) {
         background: 'var(--surface-raised)',
         border: '1px solid var(--border-default)',
         borderRadius: 2,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+        boxShadow: '0 8px 32px rgba(0 0 0 / 0.45)',
         zIndex: 20200,
         display: 'flex',
         flexDirection: 'column',

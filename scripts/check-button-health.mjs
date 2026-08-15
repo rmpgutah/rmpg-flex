@@ -122,7 +122,7 @@ function chainHandlerResets(body, name, reset) {
 const violations = [];
 const add = (cls, file, line, detail) => violations.push({ cls, file: rel(file), line, detail });
 
-const ACTION_FLAG = /^(Saving|Busy|Submitting|Deleting|Uploading|Running|Processing|Sending|Generating|Importing|Exporting|Working|Pending)/;
+const ACTION_FLAG = /^(Loading|IsLoading|Saving|Busy|Submitting|Deleting|Uploading|Running|Processing|Sending|Generating|Importing|Exporting|Working|Pending)/;
 
 for (const file of files) {
   const src = blankComments(readFileSync(file, 'utf8'));

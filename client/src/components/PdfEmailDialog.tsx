@@ -18,7 +18,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
   return (
     <div className="fixed inset-0 z-[60] bg-black/60 flex items-start justify-center overflow-y-auto p-4">
       <div className="bg-surface-base border border-rmpg-700 w-[480px] p-4 my-auto">
-        <h3 className="text-[#d4a017] font-bold text-sm mb-3">Email PDF</h3>
+        <h3 className="[color:var(--panel-header-color)] font-bold text-sm mb-3">Email PDF</h3>
         <label className="block mb-2 text-xs">
           <span className="block text-rmpg-400 uppercase mb-1">To (comma-separated)</span>
           <input id="ff-pdfemaildialog-0"

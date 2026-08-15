@@ -10,11 +10,11 @@ function TrashIcon({ full }: { full: boolean }) {
   return (
     <svg viewBox="0 0 32 32" width={36} height={36} xmlns="http://www.w3.org/2000/svg" aria-hidden>
       {/* Lid */}
-      <rect x={6} y={4} width={20} height={3} rx={1} fill="var(--accent-silver-400, #8fa0b3)" />
+      <rect x={6} y={4} width={20} height={3} rx={1} fill="var(--accent-silver-400)" />
       {/* Handle */}
-      <rect x={13} y={2} width={6} height={3} rx={1} fill="var(--accent-silver-400, #8fa0b3)" />
+      <rect x={13} y={2} width={6} height={3} rx={1} fill="var(--accent-silver-400)" />
       {/* Body */}
-      <rect x={8} y={8} width={16} height={20} rx={2} fill="var(--surface-raised)" stroke="var(--accent-silver-400, #8fa0b3)" strokeWidth={1.5} />
+      <rect x={8} y={8} width={16} height={20} rx={2} fill="var(--surface-raised)" stroke="var(--accent-silver-400)" strokeWidth={1.5} />
       {/* Lines indicating trash content */}
       {full && (
         <>
@@ -107,7 +107,7 @@ export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps)
           style={{
             position: 'fixed', left: contextMenu.x, top: contextMenu.y,
             background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 20000, minWidth: 160, padding: '4px 0',
+            boxShadow: '0 8px 24px rgba(0 0 0 / 0.5)', zIndex: 20000, minWidth: 160, padding: '4px 0',
           }}
           onMouseDown={e => e.stopPropagation()}
         >
@@ -123,7 +123,7 @@ export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps)
             type="button"
             disabled={!full}
             onClick={handleEmpty}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 16px', fontSize: 11, background: 'none', border: 'none', cursor: full ? 'pointer' : 'default', color: full ? 'var(--sev-critical, #ef4444)' : 'var(--text-muted)' }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 16px', fontSize: 11, background: 'none', border: 'none', cursor: full ? 'pointer' : 'default', color: full ? 'var(--sev-critical)' : 'var(--text-muted)' }}
           >
             Empty Recycle Bin
           </button>
@@ -136,7 +136,7 @@ export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps)
           style={{
             position: 'absolute', bottom: '110%', left: '50%', transform: 'translateX(-50%)',
             background: 'var(--surface-raised)', border: '1px solid var(--border-strong)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 20000, minWidth: 220, padding: '8px 0',
+            boxShadow: '0 8px 24px rgba(0 0 0 / 0.5)', zIndex: 20000, minWidth: 220, padding: '8px 0',
           }}
           onMouseDown={e => e.stopPropagation()}
         >
@@ -168,7 +168,7 @@ export default function DesktopRecycleBin({ onRestore }: DesktopRecycleBinProps)
               <button
                 type="button"
                 onClick={handleEmpty}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 12px', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sev-critical, #ef4444)' }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 12px', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--sev-critical)' }}
               >
                 Empty Recycle Bin
               </button>

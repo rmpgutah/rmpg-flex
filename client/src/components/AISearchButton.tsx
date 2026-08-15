@@ -56,7 +56,7 @@ export default function AISearchButton({ query, searchType, onFiltersExtracted }
         className="flex items-center gap-1 px-2 py-1.5 text-[9px] font-semibold rounded-sm border transition-colors shrink-0"
         style={aiUnavailable
           ? { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: 'var(--text-muted)', cursor: 'not-allowed' }
-          : { background: '#7c3aed15', borderColor: '#7c3aed40', color: '#a78bfa', cursor: isLoading ? 'wait' : 'pointer' }
+          : { background: 'rgba(var(--sev-special-rgb), 0.08)', borderColor: 'rgba(var(--sev-special-rgb), 0.25)', color: 'var(--sev-special)', cursor: isLoading ? 'wait' : 'pointer' }
         }
         title={aiUnavailable ? 'AI service is unavailable' : !query?.trim() ? 'Type a search query first' : 'Use AI to parse your search into structured filters'}
       >

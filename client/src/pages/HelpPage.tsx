@@ -589,7 +589,7 @@ export default function HelpPage() {
           {/* ── Search bar ──────────────────────────────── */}
           <div
             className="flex items-center gap-2 px-3 py-2"
-            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid #d4a017' }}
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid var(--field-label-color)' }}
           >
             <Search className="w-4 h-4 text-rmpg-300 shrink-0" />
             <input

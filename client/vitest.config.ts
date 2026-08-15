@@ -8,6 +8,19 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts', 'tests/**/*.test.tsx'],
+    // threads pool: each worker thread transforms lazily (on-demand) rather than
+    // the parent pre-transforming all shard files eagerly. This prevents the
+    // ~6 GB transform-cache accumulation in the parent that caused GC thrash after
+    // all tests completed under pool:'forks'. maxThreads:2 limits concurrency so
+    // the shared V8 heap stays within the 6144 MB ceiling on the 7 GB CI runner.
+    // Same fix applied to vitest.desktop.config.ts (commit 6b8f775e49).
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        minThreads: 1,
+        maxThreads: 2,
+      },
+    },
     // Vitest's 5s default is too tight here. Rendering a heavy page under jsdom
     // (MdtPage, the document-writer action suite) can exceed it purely from
     // parallel-worker contention — these files pass comfortably in isolation
@@ -34,6 +47,24 @@ export default defineConfig({
       'src/**/*Pdf*.test.tsx',
       'src/**/*pdf*.test.ts',
       'src/**/*pdf*.test.tsx',
+      // → vitest.maps.config.ts
+      // mapbox-gl has a large parsed AST; map tests cluster in one shard via
+      // vitest's hash-based assignment, inflating the transform cache past the
+      // 6144 MB ceiling — GC thrashes 18-24 min after tests complete, then
+      // OOMs or times out. Isolated here to keep the main shards cache-lean.
+      'src/**/*[Mm]ap*.test.ts',
+      'src/**/*[Mm]ap*.test.tsx',
+      'src/**/*mapbox*.test.ts',
+      'src/**/*mapbox*.test.tsx',
+      'src/**/*[Mm]apbox*.test.ts',
+      'src/**/*[Mm]apbox*.test.tsx',
+      'src/hooks/__tests__/useCachedBasemap.test.ts',
+      'src/hooks/__tests__/useMapGeofenceAlerts.test.ts',
+      'src/hooks/__tests__/useMapTraffic.test.ts',
+      'src/hooks/__tests__/useVectorTileLayers.labels.test.ts',
+      'src/hooks/__tests__/useVectorTileLayers.osm.test.ts',
+      'src/hooks/__tests__/weatherAlertFeatures.test.ts',
+      'src/hooks/__tests__/mapInfoPanelWeather.test.ts',
     ],
   },
 });

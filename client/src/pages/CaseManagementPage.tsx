@@ -340,7 +340,7 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
   // Timeline / chart colors routed through semantic --sev-* tokens so the
   // dots re-color cleanly across night / day / legacy. The `case` entry maps
   // to --sev-special (purple) which is a shade-shift from the previous
-  // #8b5cf6 (tailwind violet-500) but stays semantically distinct.
+  // var(--sev-special) (tailwind violet-500) but stays semantically distinct.
   const typeColors: Record<string, string> = {
     incident: 'var(--spm-text-muted)',
     case: 'var(--sev-special)',

@@ -898,7 +898,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
         // nav bar. The remaining 23px layout shift this strip causes when it
         // appears is a separate (cosmetic) misclick hazard, still open.
         <div
-          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-[#1a1a1a] bg-[#080808] text-[9px] uppercase font-semibold tracking-wide pointer-events-none"
+          className="flex items-center gap-2 px-2 py-1 mb-1.5 border border-surface-base bg-surface-deep text-[9px] uppercase font-semibold tracking-wide pointer-events-none"
           title={pollStatus.error_message ?? undefined}
         >
           {pollStatus.status === 'running' ? (
@@ -939,7 +939,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
             list the full width until a row is actually selected. */}
         <div className={`${props.isMobile ? (selectedWarrant ? 'hidden' : 'flex-1') : (selectedWarrant ? 'w-[55%]' : 'w-full')} flex flex-col ${!props.isMobile && selectedWarrant ? 'border-r border-rmpg-600' : ''}`}>
           {/* Filters (thin bar) */}
-          <div className={`flex ${props.isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-[#1a1a1a] bg-[#080808]`}>
+          <div className={`flex ${props.isMobile ? 'flex-col gap-1' : 'items-center gap-1.5'} px-2 py-1 border-b border-surface-base bg-surface-deep`}>
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
               <input id="ff-warrantslisttab-0"
@@ -1313,7 +1313,7 @@ const WarrantsListTab = forwardRef<WarrantsListTabHandle, WarrantsListTabProps>(
 
           {/* Pagination (thin) */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-2 py-[2px] border-t border-[#1a1a1a] bg-[#080808]">
+            <div className="flex items-center justify-between px-2 py-[2px] border-t border-surface-base bg-surface-deep">
               <span className={`${props.isMobile ? 'text-xs' : 'text-[9px]'} text-rmpg-500 font-mono tabular-nums`}>
                 {page}/{totalPages} &middot; {totalCount}
               </span>

@@ -25,8 +25,8 @@ export default function AssignTab() {
     await assign(picked, Number(target)); setPicked([]); await loadBoard();
   };
   // Row tint encodes deadline severity, so it must use the severity tokens —
-  // not gold. Gold is reserved for field labels and panel headers, and at
-  // #d4a017 it is nearly indistinguishable from --sev-warn anyway, so a
+  // not gold. Gold is reserved for field labels and panel headers, and
+  // the gold accent is nearly indistinguishable from --sev-warn anyway, so a
   // decorative gold row read as a real 'due soon' warning.
   const color = (j: BoardJob) => j.attention.includes('deadline_passed')
     ? 'var(--sev-critical)'

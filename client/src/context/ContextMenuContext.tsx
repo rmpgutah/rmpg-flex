@@ -172,7 +172,7 @@ function MenuLevel({ items, onCloseAll, onCloseLevel, autoFocus }: MenuLevelProp
       style={{
         background: 'var(--surface-base)',
         border: '1px solid var(--border-default)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset',
+        boxShadow: '0 8px 24px rgba(0 0 0 / 0.6), 0 0 1px rgba(255,255,255,0.05) inset',
         WebkitBackdropFilter: 'blur(8px)',
         backdropFilter: 'blur(8px)',
       }}

@@ -69,7 +69,7 @@ export default function FindDialog({ open, onClose, currentPage, onJumpTo }: Pro
             else if (e.key === 'Escape') onClose();
           }}
           placeholder="Find in document…"
-          className="flex-1 bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+          className="flex-1 bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]" />
         <span className="text-[10px] text-rmpg-500 min-w-[60px] text-right">
           {matchCount === 0 ? (query ? 'no match' : '') : `${active + 1} / ${matchCount}`}
         </span>
