@@ -371,4 +371,16 @@ contextBridge.exposeInMainWorld('electron', {
   faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
   faceClear: (userId) => ipcRenderer.invoke('face:clear', { userId }),
   faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
+
+  // ─── Camera QR / Barcode Scanner ─────────────────────────────
+  // Starts / stops the off-screen camera scanner window.
+  // Decoded results arrive via onBarcodeScan (hardware:barcode-scan event)
+  // with the same { payload, source } shape as the xPAK hardware scanner.
+  cameraScanStart: () => ipcRenderer.invoke('device:camera-scan-start'),
+  cameraScanStop: () => ipcRenderer.invoke('device:camera-scan-stop'),
+  onBarcodeScan: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('hardware:barcode-scan', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
+  },
 });

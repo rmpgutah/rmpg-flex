@@ -17,6 +17,7 @@ const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinS
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
 const { createFaceAuth, euclideanDistance } = require('./faceAuth');
+const { CameraScanner } = require('./cameraScanner');
 const {
   parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
   parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
@@ -200,6 +201,7 @@ let tray = null;
 let isQuitting = false;
 let appReady = false;
 let faceAuth = null; // initialized after localDb is ready
+let cameraScanner = null;
 
 // Rolling-window crash-recovery timestamps for the main window's renderer
 // and GPU-process crashes — see crashRecovery.js. Kept at module scope
@@ -4700,6 +4702,18 @@ guardedHandle('face:enrollment-status', (_event, { userId }) => {
   if (!faceAuth) return { enrolled: false };
   const embedding = faceAuth.getEmbedding(userId);
   return { enrolled: embedding !== null };
+});
+
+// ── Camera QR / Barcode Scanner ──
+guardedHandle('device:camera-scan-start', () => {
+  if (!cameraScanner) cameraScanner = new CameraScanner();
+  const started = cameraScanner.start(mainWindow, BrowserWindow);
+  return { ok: started };
+});
+
+guardedHandle('device:camera-scan-stop', () => {
+  cameraScanner?.stop();
+  return { ok: true };
 });
 
 // ── System info: battery (Windows only) ──
