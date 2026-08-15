@@ -132,7 +132,7 @@
   },
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
-    "@vladmandic/face-api": "^3.4.0",
+    "@vladmandic/face-api": "^1.7.15",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
     "jsqr": "^1.4.0",
