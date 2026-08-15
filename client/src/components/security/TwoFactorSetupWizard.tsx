@@ -50,8 +50,9 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       setStep('scan');
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const confirmSetup = async () => {
@@ -77,8 +78,9 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
     } catch (err: any) {
       setError(err.message);
       setVerifyCode('');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const copyManualKey = async () => {

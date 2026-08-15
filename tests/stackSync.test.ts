@@ -10,27 +10,26 @@ import {
 // Minimal D1-shaped stub. Each method records calls and returns configurable rows.
 function makeDb(rows: Record<string, unknown>[][] = []) {
   let callIndex = 0;
-  // Use a named variable so closures can access _rows/_executions with correct types
-  // (TypeScript infers `this` as {} inside nested object literals, losing those props).
+  const executions: { sql: string; bindings: unknown[] }[] = [];
   const stub = {
     _rows: rows,
-    _executions: [] as { sql: string; bindings: unknown[] }[],
+    _executions: executions,
     prepare(sql: string) {
       return {
         bind(...bindings: unknown[]) {
           return {
             async first<T>() {
-              const result = (stub._rows[callIndex++] ?? [])[0] ?? null;
-              stub._executions.push({ sql, bindings });
+              const result = (rows[callIndex++] ?? [])[0] ?? null;
+              executions.push({ sql, bindings });
               return result as T | null;
             },
             async all<T>() {
-              const result = stub._rows[callIndex++] ?? [];
-              stub._executions.push({ sql, bindings });
+              const result = rows[callIndex++] ?? [];
+              executions.push({ sql, bindings });
               return { results: result as T[] };
             },
             async run() {
-              stub._executions.push({ sql, bindings });
+              executions.push({ sql, bindings });
               callIndex++;
               return { meta: { changes: 1 } };
             },

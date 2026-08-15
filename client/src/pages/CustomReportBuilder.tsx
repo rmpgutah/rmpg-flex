@@ -190,8 +190,9 @@ export default function CustomReportBuilder() {
     } catch (err: any) {
       setError(err?.message || 'Query failed');
       addToast('Failed to run report query', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [source, selectedCols, filters, sortBy, sortDir, limit, addToast]);
 
   const exportCsv = () => {

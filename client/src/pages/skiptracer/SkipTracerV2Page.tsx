@@ -517,7 +517,7 @@ export default function SkipTracerV2Page() {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch { /* silent */ }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [selected]);
 
   // ─── Export PDF ────────────────────────────────────────────
@@ -594,38 +594,41 @@ export default function SkipTracerV2Page() {
     let totalCost = 0;
     let totalDuration = 0;
 
-    const promises = names.map(async (name, idx) => {
-      try {
-        const params = new URLSearchParams();
-        params.set('q', name);
-        if (selectedCategories.size > 0) {
-          params.set('categories', Array.from(selectedCategories).join(','));
-        }
-        params.set('engine', searchEngine);
-        const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
-        if (data.profiles) allProfiles.push(...data.profiles);
-        data.sourcesQueried.forEach(s => allSourcesQueried.add(s));
-        data.sourcesResponded.forEach(s => allSourcesResponded.add(s));
-        totalCost += data.totalCost || 0;
-        totalDuration = Math.max(totalDuration, data.durationMs || 0);
-      } catch { /* silent */ }
-      setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1 } : null);
-    });
+    try {
+      const promises = names.map(async (name, idx) => {
+        try {
+          const params = new URLSearchParams();
+          params.set('q', name);
+          if (selectedCategories.size > 0) {
+            params.set('categories', Array.from(selectedCategories).join(','));
+          }
+          params.set('engine', searchEngine);
+          const data = await apiFetch<SearchResult>(`/skiptracer-v2/search?${params.toString()}`);
+          if (data.profiles) allProfiles.push(...data.profiles);
+          data.sourcesQueried.forEach(s => allSourcesQueried.add(s));
+          data.sourcesResponded.forEach(s => allSourcesResponded.add(s));
+          totalCost += data.totalCost || 0;
+          totalDuration = Math.max(totalDuration, data.durationMs || 0);
+        } catch { /* silent */ }
+        setBatchProgress(prev => prev ? { ...prev, done: prev.done + 1 } : null);
+      });
 
-    await Promise.all(promises);
+      await Promise.all(promises);
 
-    setBatchResults(allProfiles);
-    setResult({
-      profiles: allProfiles,
-      sourcesQueried: Array.from(allSourcesQueried),
-      sourcesResponded: Array.from(allSourcesResponded),
-      totalResults: allProfiles.length,
-      totalCost,
-      durationMs: totalDuration,
-    });
-    setBatchProgress(null);
-    setLoading(false);
-    setBatchOpen(false);
+      setBatchResults(allProfiles);
+      setResult({
+        profiles: allProfiles,
+        sourcesQueried: Array.from(allSourcesQueried),
+        sourcesResponded: Array.from(allSourcesResponded),
+        totalResults: allProfiles.length,
+        totalCost,
+        durationMs: totalDuration,
+      });
+      setBatchProgress(null);
+    } finally {
+      setLoading(false);
+      setBatchOpen(false);
+    }
   }, [batchText]);
 
   // ─── Source Category Filters ─────────────────────────────
@@ -723,7 +726,7 @@ export default function SkipTracerV2Page() {
         await handleExportPdf(dossierId);
       }
     } catch { /* silent */ }
-    setExporting(false);
+    finally { setExporting(false); }
   }, [selected, handleExportPdf]);
 
   // ─── Timeline builder ───────────────────────────────────
