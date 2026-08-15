@@ -191,7 +191,7 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#888888' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
+            background: isDragging ? 'var(--border-default)' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
             borderTop: '1px solid var(--border-strong)',
             borderBottom: '1px solid var(--border-subtle)',
             transition: isDragging ? 'none' : 'background 0.15s ease',

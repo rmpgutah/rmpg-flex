@@ -234,7 +234,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
         width: collapsed ? 56 : 220,
-        background: 'linear-gradient(180deg, #121212 0%, #0c0c0c 100%)',
+        background: 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-deep) 100%)',
         borderRight: '1px solid var(--border-default)',
       }}
     >
@@ -271,8 +271,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
                     background: active ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                    color: active ? '#ffffff' : '#888888',
-                    borderLeft: active ? '3px solid #888888' : '3px solid transparent',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    borderLeft: active ? '3px solid var(--border-default)' : '3px solid transparent',
                   }}
                   aria-label={item.label}
                   title={collapsed ? item.label : undefined}
@@ -282,7 +282,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#aaaaaa' : 'var(--text-muted)',
+                      color: active ? 'var(--text-secondary)' : 'var(--text-muted)',
                       transition: 'color 0.1s',
                     }}
                   />
@@ -302,7 +302,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       style={{
                         background: 'var(--surface-base)',
                         border: '1px solid var(--border-default)',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        boxShadow: '0 4px 12px rgba(0 0 0 / 0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
                       }}

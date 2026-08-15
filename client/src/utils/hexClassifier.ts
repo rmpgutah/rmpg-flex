@@ -322,6 +322,18 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // DashCamDetailPage: setPaintProperty line-color for dashcam route segment coloring.
   // PatrolPage: addLayer circle-color / line-color for patrol trail rendering.
   mixedMapboxReactComponents: /(^|\/)(ConnectionsMapPanel|ForensicTrackMap|GeoDataMapView|SightingsMap|DashCamDetailPage|PatrolPage)\.(tsx)$/,
+  // RedactionStudio defines KIND_COLOR — a categorical identity palette per redaction kind
+  // (plate=cyan, face=pink, person=lime, manual=gold). Each kind must be visually distinct in
+  // the video overlay; re-theming would collapse those distinctions. Same rationale as
+  // connectionsGraphStyle.ts categorical exclusion.
+  redactionStudioCategorical: /(^|\/)RedactionStudio\.(tsx)$/,
+  // SignaturePad uses Canvas 2D API (ctx.strokeStyle / ctx.fillStyle) for signature rendering.
+  // CSS variables cannot resolve in a canvas 2D context.
+  signaturePadCanvas: /(^|\/)SignaturePad\.(tsx)$/,
+  // ContextMenu renders with explicit dark surface colors (#141414, #1e1e1e, #2a2a2a) pinned to
+  // the tactical-dark palette — same rationale as NavSettingsPanel. The context menu appears
+  // over any surface including map tiles and video, so it must always be near-black.
+  contextMenuTactical: /(^|\/)ContextMenu\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

@@ -48,7 +48,7 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
   const mins = Math.floor((Date.now() - parseTimestamp(unit.last_status_change).getTime()) / 60000);
   if (mins < 1) return null;
   const t = STATUS_DWELL_THRESHOLDS[unit.status];
-  const color = t ? (mins >= t.red ? '#ef4444' : mins >= t.amber ? '#f59e0b' : '#888888') : '#888888';
+  const color = t ? (mins >= t.red ? 'var(--sev-critical)' : mins >= t.amber ? 'var(--sev-warn)' : 'var(--text-secondary)') : 'var(--text-secondary)';
   return { mins, color };
 }
 
@@ -239,7 +239,7 @@ export default React.memo(function UnitStatusBoard({
               onClick={() => onUnitClick?.(unit)}
               onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
               className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''} ${isEmergency(unit) ? 'animate-emergency-blink' : ''}`}
-              style={isEmergency(unit) ? { background: 'rgba(220,38,38,0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
+              style={isEmergency(unit) ? { background: 'rgba(var(--sev-critical-rgb) / 0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
             >
               <td>
                 <div className="flex items-center gap-2">
@@ -250,7 +250,7 @@ export default React.memo(function UnitStatusBoard({
                   {isEmergency(unit) && (
                     <span
                       className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-rmpg-100 animate-emergency-blink"
-                      style={{ background: '#dc2626', letterSpacing: '1px' }}
+                      style={{ background: 'var(--sev-critical)', letterSpacing: '1px' }}
                       title="EMERGENCY — active panic activation"
                     >
                       <AlertTriangle className="w-2.5 h-2.5" /> EMER
@@ -319,7 +319,7 @@ export default React.memo(function UnitStatusBoard({
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
-                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : 'var(--text-muted)';
+                          const color = mins > 10 ? 'var(--sev-critical)' : mins > 5 ? 'var(--sev-warn)' : 'var(--text-muted)';
                           return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>
