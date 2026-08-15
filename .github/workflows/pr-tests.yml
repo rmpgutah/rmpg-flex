@@ -91,7 +91,7 @@ jobs:
   # the parent vitest process accumulates Vite transform-cache entries for every
   # file in a shard; heavy library imports (Mapbox, large page trees) can push
   # this past 4 GB even after PDF tests are isolated. 8 shards ≈ 41 files each,
-  # comfortably within the 4096 MB per-process ceiling.
+  # comfortably within the 6144 MB per-process ceiling (runner has 7 GB).
   client-tests-1:
     name: Client tests (shard 1/8)
     needs: [client-typecheck]
@@ -107,7 +107,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=1/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-2:
     name: Client tests (shard 2/8)
@@ -124,7 +124,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=2/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-3:
     name: Client tests (shard 3/8)
@@ -141,7 +141,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=3/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-4:
     name: Client tests (shard 4/8)
@@ -158,7 +158,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=4/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-5:
     name: Client tests (shard 5/8)
@@ -175,7 +175,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=5/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-6:
     name: Client tests (shard 6/8)
@@ -192,7 +192,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=6/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-7:
     name: Client tests (shard 7/8)
@@ -209,7 +209,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=7/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-tests-8:
     name: Client tests (shard 8/8)
@@ -226,7 +226,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --shard=8/8
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   # Desktop component suite runs separately so its ~100 files don't skew
   # shard assignments for the main suite.
@@ -245,7 +245,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.desktop.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   # PDF test suite runs separately — jsPDF and pdf-lib have ~10 MB parsed ASTs
   # each. When ~17 PDF test files cluster in one shard (by vitest's hash), their
@@ -267,7 +267,7 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run --config vitest.pdf.config.ts
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
 
   client-build:
     name: Client build
