@@ -272,23 +272,23 @@ auth.post('/login', async (c) => {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
     }
 
-    // Brute-force throttle: generous per-IP window (shared NAT at HQ means
-    // many legit users behind one IP) + a tighter per-username window so a
-    // distributed credential-stuffing run still hits a wall. Counts every
-    // attempt, success included — fine at these limits; KV fails open.
+    // Brute-force throttle: per-username only. A per-IP bucket was tried but
+    // removed — all HQ officers share one corporate NAT IP, so the IP bucket
+    // is a shared resource that drains on shift-change concurrent logins and
+    // blocks everyone behind that IP simultaneously. The per-username window
+    // (30 attempts / 5 min) is the correct anti-credential-stuffing lever:
+    // it lets a user retry freely while still walling off a distributed run
+    // targeting a specific account. KV fails open so a KV outage never
+    // locks officers out.
     //
     // Limit history:
-    //   ip:30/300s, user:10/300s → too low: shift-change NAT exhaustion (multiple
-    //   officers logging in concurrently) + SPA retries on session expiry burned
-    //   through both buckets, producing 429s for legitimate logins. Raised
-    //   2026-08-15 to ip:100/300s (~20 req/min avg) and user:30/300s.
+    //   ip:30/300s + user:10/300s (original) → 429s on shift-change NAT exhaustion
+    //   ip:100/300s + user:30/300s (2026-08-15) → still blocks shared NAT
+    //   ip bucket removed + user:30/300s (2026-08-15) → correct scope
     const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
-    const [ipOk, userOk] = await Promise.all([
-      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 100, 300),
-      rateLimitAllow(c.env.KV, `login:user:${uname}`, 30, 300),
-    ]);
-    if (!ipOk || !userOk) {
+    const userOk = await rateLimitAllow(c.env.KV, `login:user:${uname}`, 30, 300);
+    if (!userOk) {
       await recordLoginAttempt(c, getDb(c.env), username, ip, false, 'rate_limited');
       return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
