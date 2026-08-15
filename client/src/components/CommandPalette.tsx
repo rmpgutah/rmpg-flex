@@ -178,12 +178,12 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
     >
       <div
         className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-xl mx-4 animate-dropdown-appear overflow-hidden"
-        style={{ borderTop: '2px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }}
+        style={{ borderTop: '2px solid var(--field-label-color)', boxShadow: '0 16px 48px rgba(0 0 0 / 0.6), 0 4px 16px rgba(0 0 0 / 0.4)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
-          <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#d4a017' }} />
+          <Search className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--field-label-color)' }} />
           <input id="ff-commandpalette-0"
             ref={inputRef}
             value={query}
@@ -234,10 +234,10 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                     className="w-full flex items-center gap-3 px-4 py-2 text-left border-l-2 transition-colors duration-100"
                     style={{
                       background: isActive ? 'rgba(212,160,23,0.12)' : 'transparent',
-                      borderLeftColor: isActive ? '#d4a017' : 'transparent',
+                      borderLeftColor: isActive ? 'var(--field-label-color)' : 'transparent',
                     }}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? '#e8b820' : '#888888' }} />
+                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? 'var(--field-label-color)' : 'var(--text-secondary)' }} />
                     <span className="flex flex-col min-w-0 flex-1">
                       <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--text-secondary)' }}>{it.label}</span>
                       {it.sublabel && <span className="min-w-0 text-[10px] text-fg-muted truncate">{it.sublabel}</span>}
@@ -245,7 +245,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                     {it.badge && (
                       <span className="text-[9px] font-mono text-fg-muted ml-auto flex-shrink-0">{it.badge}</span>
                     )}
-                    {isActive && <CornerDownLeft className="w-3 h-3 flex-shrink-0" style={{ color: '#d4a017' }} aria-hidden="true" />}
+                    {isActive && <CornerDownLeft className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--field-label-color)' }} aria-hidden="true" />}
                   </button>
                 );
               });

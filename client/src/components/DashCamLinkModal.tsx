@@ -109,7 +109,7 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
       >
         {/* Title bar */}
         <div className="panel-title-bar flex items-center gap-2">
-          <Link2 className="w-3 h-3" style={{ color: '#888888' }} />
+          <Link2 className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
           <span>LINK VIDEO TO RECORDS</span>
           <button type="button"
             onClick={onClose}

@@ -154,7 +154,7 @@ function CountdownTab() {
       <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
         {!running ? (
           <button onClick={start} disabled={totalInputSecs === 0 && remaining === null}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '5px 14px', background: 'var(--brand-600, #1e4d7a)', color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '5px 14px', background: 'var(--brand-600)', color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer' }}>
             <Play size={12} /> Start
           </button>
         ) : (
@@ -248,7 +248,7 @@ function StopwatchTab() {
       {/* Controls */}
       <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
         {!running ? (
-          <button onClick={start} style={{ ...btnBase, background: 'var(--brand-600, #1e4d7a)', color: '#fff', border: 'none' }}>
+          <button onClick={start} style={{ ...btnBase, background: 'var(--brand-600)', color: '#fff', border: 'none' }}>
             <Play size={12} /> Start
           </button>
         ) : (
@@ -299,7 +299,7 @@ export default function DesktopTimer({ onClose }: DesktopTimerProps) {
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px rgba(0 0 0 / 0.45)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}

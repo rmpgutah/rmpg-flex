@@ -171,7 +171,7 @@ export default function ArrestPicker({
       {open && (filtered.length > 0 || loading || error || query.trim().length > 0) && (
         <div className="absolute left-0 right-0 mt-1 bg-surface-base border border-border-default panel-beveled z-30 max-h-[260px] overflow-y-auto scrollbar-dark" style={{ borderRadius: 2 }}>
           {loading && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading bookings…</div>}
-          {error && <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>}
+          {error && <div className="px-3 py-2 text-[11px] text-[color:var(--sev-critical)]">{error}</div>}
           {!loading && !error && filtered.length === 0 && <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>}
           {filtered.map((a, i) => {
             const selected = value === a.id;
@@ -182,11 +182,11 @@ export default function ArrestPicker({
             return (
               <button key={a.id} type="button" onClick={() => select(a)}
                 {...optionProps(i, selected)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
-                style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}>
-                <Gavel className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                className={`w-full text-left px-3 py-2 border-b border-border-default  flex items-start gap-2 ${selected ? 'bg-surface-deep' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
+                style={{ borderLeft: selected ? '2px solid var(--field-label-color)' : '2px solid transparent' }}>
+                <Gavel className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : '#666' }} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-mono font-semibold text-[#d4a017]">{formatLabel(a)}</div>
+                  <div className="text-[11px] font-mono font-semibold text-[color:var(--field-label-color)]">{formatLabel(a)}</div>
                   {sub && <div className="text-[10px] text-rmpg-400 mt-0.5 truncate">{sub}</div>}
                   {a.status && a.status !== 'booked' && <div className="text-[9px] text-amber-400 mt-0.5">{a.status.toUpperCase()}</div>}
                 </div>

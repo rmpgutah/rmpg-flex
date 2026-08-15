@@ -44,7 +44,7 @@ export interface DispositionGroup {
 // Semantic color tokens (kept on-theme: green/gray/amber/red, zero blue).
 const C_OK = '#44ff00';     // resolved / served / positive outcome
 const C_NEUTRAL = '#888888'; // informational / no-action
-const C_ENF = '#d4a017';    // enforcement / warning (brand gold)
+const C_ENF = '#d9bd72';    // enforcement / warning (brand gold)
 const C_NEG = '#ef4444';    // negative / failed / unable
 
 // PSO category tone → DispositionDef color

@@ -363,7 +363,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             background: 'var(--surface-overlay)',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 12px 40px rgba(0 0 0 / 0.65), 0 4px 16px rgba(0 0 0 / 0.3)',
             borderTop: '2px solid var(--border-strong)',
           }}
         >

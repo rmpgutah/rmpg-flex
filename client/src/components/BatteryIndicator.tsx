@@ -65,10 +65,10 @@ export function useBattery(): BatteryState {
 }
 
 function getBatteryColor(level: number, charging: boolean): string {
-  if (charging) return '#22c55e';
-  if (level >= 50) return '#22c55e';
-  if (level >= 20) return '#f59e0b';
-  return '#ef4444';
+  if (charging) return 'var(--sev-ok)';
+  if (level >= 50) return 'var(--sev-ok)';
+  if (level >= 20) return 'var(--sev-warn)';
+  return 'var(--sev-critical)';
 }
 
 function getBatteryIcon(level: number, charging: boolean): string {

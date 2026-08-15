@@ -148,7 +148,7 @@ export default function FlexOSPowerMenu({ onClose, onLock, onSignOut }: FlexOSPo
           />
 
           {rtw.error && (
-            <p style={{ fontSize: 11, color: 'var(--sev-critical, #ef4444)', marginBottom: 8, width: '100%' }}>
+            <p style={{ fontSize: 11, color: 'var(--sev-critical)', marginBottom: 8, width: '100%' }}>
               {rtw.error}
             </p>
           )}

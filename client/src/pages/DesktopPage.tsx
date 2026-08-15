@@ -213,7 +213,7 @@ function CalculatorFloater({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div style={{ position: 'fixed', left: pos.x, top: pos.y, width: 280, height: 400, zIndex: 12500, background: 'var(--surface-raised)', border: '1px solid var(--border-default)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
+    <div style={{ position: 'fixed', left: pos.x, top: pos.y, width: 280, height: 400, zIndex: 12500, background: 'var(--surface-raised)', border: '1px solid var(--border-default)', boxShadow: '0 8px 32px rgba(0 0 0 / 0.6)', display: 'flex', flexDirection: 'column', borderRadius: 2 }}>
       <div onMouseDown={onMouseDown} style={{ display: 'flex', alignItems: 'center', padding: '5px 8px', background: 'var(--surface-base)', borderBottom: '1px solid var(--border-subtle)', cursor: 'move', userSelect: 'none', flexShrink: 0 }}>
         <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)', flex: 1, letterSpacing: '0.04em' }}>Calculator</span>
         <button type="button" onClick={onClose} aria-label="Close calculator" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', fontSize: 14, lineHeight: 1 }}>×</button>

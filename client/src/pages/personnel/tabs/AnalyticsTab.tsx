@@ -23,7 +23,7 @@ interface Props {
 const AXIS_TICK = { fill: 'var(--text-muted)', fontSize: 9 };
 const GRID_STROKE = 'var(--border-subtle)';
 const BRAND_500 = 'var(--text-muted)';
-const OVERTIME_COLOR = '#f59e0b';
+const OVERTIME_COLOR = 'var(--sev-warn)';
 
 export default function AnalyticsTab({ analytics, loading }: Props) {
   if (loading || !analytics) {
@@ -179,7 +179,7 @@ export default function AnalyticsTab({ analytics, loading }: Props) {
                   cy="60"
                   r="50"
                   fill="none"
-                  stroke={complianceRate >= 90 ? '#22c55e' : complianceRate >= 70 ? '#f59e0b' : '#ef4444'}
+                  stroke={complianceRate >= 90 ? 'var(--sev-ok)' : complianceRate >= 70 ? 'var(--sev-warn)' : 'var(--sev-critical)'}
                   strokeWidth="10"
                   strokeDasharray={`${(complianceRate / 100) * 314.16} 314.16`}
                   strokeLinecap="round"

@@ -77,9 +77,9 @@ export function computeSlaStatus(input: SlaInput): SlaStatus {
 /** Badge presentation for an SLA state (label + theme color, no blue). */
 export function slaBadge(state: SlaState): { label: string; color: string } | null {
   switch (state) {
-    case 'overdue': return { label: 'OVERDUE', color: '#ef4444' };
-    case 'due_soon': return { label: 'DUE SOON', color: '#f59e0b' };
-    case 'on_track': return { label: 'ON TRACK', color: '#22c55e' };
+    case 'overdue': return { label: 'OVERDUE', color: 'var(--sev-critical)' };
+    case 'due_soon': return { label: 'DUE SOON', color: 'var(--sev-warn)' };
+    case 'on_track': return { label: 'ON TRACK', color: 'var(--sev-ok)' };
     default: return null;
   }
 }

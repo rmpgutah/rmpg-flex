@@ -62,7 +62,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
           map.addLayer({ id: 'gps-track', type: 'line', source: 'gps-track', paint: { 'line-color': CYAN, 'line-width': 3, 'line-opacity': 0.85 } });
         }
         for (const p of points) {
-          const el = buildDotMarker({ color: '#ef4444', size: 10 });
+          const el = buildDotMarker({ color: 'var(--sev-critical)', size: 10 });
           const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
           markersRef.current.push(m);
         }
@@ -133,7 +133,7 @@ export default function ConnectionsMapPanel({ nodeType, nodeEntityId, dateFrom, 
             map.addLayer({ id: 'gps-track', type: 'line', source: 'gps-track', paint: { 'line-color': CYAN, 'line-width': 3, 'line-opacity': 0.85 } });
           }
           for (const p of points) {
-            const el = buildDotMarker({ color: '#ef4444', size: 10 });
+            const el = buildDotMarker({ color: 'var(--sev-critical)', size: 10 });
             const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
             markersRef.current.push(m);
           }

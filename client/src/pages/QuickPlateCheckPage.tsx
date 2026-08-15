@@ -159,11 +159,11 @@ export default function QuickPlateCheckPage() {
   const regStatus = result?.registration_status?.toLowerCase() ?? '';
   const regColor =
     regStatus === 'valid'
-      ? 'var(--sev-ok, #22c55e)'
+      ? 'var(--sev-ok, var(--sev-ok))'
       : regStatus === 'expired'
-      ? 'var(--sev-warn, #f59e0b)'
+      ? 'var(--sev-warn, var(--sev-warn))'
       : regStatus === 'suspended'
-      ? 'var(--sev-critical, #ef4444)'
+      ? 'var(--sev-critical, var(--sev-critical))'
       : 'var(--text-secondary)';
 
   return (

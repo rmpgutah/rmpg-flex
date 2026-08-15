@@ -35,10 +35,10 @@ export const PHONETIC_LAPD: Record<string, string> = {
 };
 
 export const STATUS_QUICKSET = [
-  { code: '10-8',  label: 'IN SVC',    color: '#22c55e' },
-  { code: '10-7',  label: 'OUT SVC',   color: '#ef4444' },
-  { code: '10-19', label: 'STATION',   color: '#888888' },
-  { code: '10-23', label: 'STAND BY',  color: '#f59e0b' },
+  { code: '10-8',  label: 'IN SVC',    color: 'var(--sev-ok)' },
+  { code: '10-7',  label: 'OUT SVC',   color: 'var(--sev-critical)' },
+  { code: '10-19', label: 'STATION',   color: 'var(--text-muted)' },
+  { code: '10-23', label: 'STAND BY',  color: 'var(--sev-warn)' },
   { code: '10-76', label: 'EN ROUTE',  color: '#3b82f6' },
   { code: '10-97', label: 'ON SCENE',  color: '#a855f7' },
 ];
@@ -76,9 +76,9 @@ export const DURATION_FILTERS = [
 export const DEFAULT_PAGE_TEMPLATES = ['STAND BY', 'CODE 4', 'GO AHEAD', 'COPY', 'NEED BACKUP', 'CLEAR'];
 
 export const COLOR_LABELS: { id: string; color: string; label: string }[] = [
-  { id: 'red',    color: '#ef4444', label: 'PRIORITY' },
-  { id: 'amber',  color: '#f59e0b', label: 'REVIEW' },
-  { id: 'green',  color: '#22c55e', label: 'RESOLVED' },
+  { id: 'red',    color: 'var(--sev-critical)', label: 'PRIORITY' },
+  { id: 'amber',  color: 'var(--sev-warn)', label: 'REVIEW' },
+  { id: 'green',  color: 'var(--sev-ok)', label: 'RESOLVED' },
   { id: 'blue',   color: '#3b82f6', label: 'INFO' },
 ];
 

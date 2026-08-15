@@ -523,7 +523,7 @@ export default function CompanyBrowserPage() {
 
         {/* Action buttons */}
         <button type="button" aria-label={isBookmarked ? 'Remove bookmark (Ctrl+D)' : 'Add bookmark (Ctrl+D)'} title={isBookmarked ? 'Remove bookmark' : 'Add bookmark'} onClick={toggleBookmark} style={navBtn(false)}>
-          <Star style={{ width: 13, height: 13, fill: isBookmarked ? 'currentColor' : 'none', color: isBookmarked ? 'var(--accent-gold-300, #d9bd72)' : 'var(--text-secondary)' }} />
+          <Star style={{ width: 13, height: 13, fill: isBookmarked ? 'currentColor' : 'none', color: isBookmarked ? 'var(--accent-gold-300)' : 'var(--text-secondary)' }} />
         </button>
         <button type="button" aria-label="Copy URL" title="Copy URL" onClick={copyUrl} style={navBtn(false)}>
           <Copy style={{ width: 12, height: 12 }} />
@@ -572,7 +572,7 @@ export default function CompanyBrowserPage() {
               onClick={() => navigateTo(b.url)}
               style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: 'var(--text-primary)', whiteSpace: 'nowrap', maxWidth: 140 }}
             >
-              <Star style={{ width: 9, height: 9, fill: 'currentColor', color: 'var(--accent-gold-300, #d9bd72)', flexShrink: 0 }} />
+              <Star style={{ width: 9, height: 9, fill: 'currentColor', color: 'var(--accent-gold-300)', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title || b.url}</span>
             </button>
           ))}
@@ -621,7 +621,7 @@ export default function CompanyBrowserPage() {
       {/* ── Progress bar ───────────────────────────────────────────────────── */}
       {activeTab.loading && (
         <div style={{ height: 2, background: 'rgba(195,204,214,0.1)', position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', left: '-50%', width: '50%', height: '100%', background: 'var(--accent-silver-400, #c3ccd6)', animation: 'cbrowserSlide 1.2s linear infinite' }} />
+          <div style={{ position: 'absolute', left: '-50%', width: '50%', height: '100%', background: 'var(--accent-silver-400)', animation: 'cbrowserSlide 1.2s linear infinite' }} />
           <style>{`@keyframes cbrowserSlide { from { left: -50% } to { left: 150% } }`}</style>
         </div>
       )}
@@ -760,8 +760,8 @@ export default function CompanyBrowserPage() {
 
       {/* ── Ownership notice ────────────────────────────────────────────────── */}
       {showOwnershipNotice && (
-        <div role="dialog" aria-modal aria-label="Company Browser notice" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}>
-          <div style={{ background: 'var(--surface-raised)', border: '1px solid rgba(195,204,214,0.15)', padding: 28, maxWidth: 440, textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div role="dialog" aria-modal aria-label="Company Browser notice" style={{ position: 'absolute', inset: 0, background: 'rgba(0 0 0 / 0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20 }}>
+          <div style={{ background: 'var(--surface-raised)', border: '1px solid rgba(195,204,214,0.15)', padding: 28, maxWidth: 440, textAlign: 'center', boxShadow: '0 24px 64px rgba(0 0 0 / 0.7)' }}>
             <Shield style={{ width: 28, height: 28, color: 'var(--accent-silver-400)', margin: '0 auto 12px' }} />
             <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.7, margin: '0 0 16px' }}>
               Company Browser is proprietary software owned by <strong>Rocky Mountain Protective Group, LLC</strong>.
@@ -804,7 +804,7 @@ function TabChip({ tab, active, pinned, onSelect, onClose, onPin, onMute, onDupl
         </button>
       )}
       {ctx && (
-        <div onClick={e => e.stopPropagation()} onMouseLeave={() => setCtx(false)} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: 160 }}>
+        <div onClick={e => e.stopPropagation()} onMouseLeave={() => setCtx(false)} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.4)', minWidth: 160 }}>
           {[
             { label: tab.pinned ? 'Unpin Tab' : 'Pin Tab', action: onPin },
             { label: tab.muted ? 'Unmute Tab' : 'Mute Tab', action: onMute },
@@ -853,7 +853,7 @@ function navBtn(active: boolean): React.CSSProperties {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: 4, background: active ? 'rgba(195,204,214,0.1)' : 'none',
     border: 'none', cursor: 'pointer',
-    color: active ? 'var(--accent-silver-400, #c3ccd6)' : 'var(--text-secondary)',
+    color: active ? 'var(--accent-silver-400)' : 'var(--text-secondary)',
   };
 }
 

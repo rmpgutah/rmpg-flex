@@ -93,13 +93,13 @@ export function computeAccuracyRingGeometry(gpsAccuracyMeters: number): { pixelR
 }
 
 const HAZARD_FLAGS: { key: string; label: string; color: string }[] = [
-  { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: '#ef4444' },
-  { key: 'weapons_involved',       label: 'WEAPONS',        color: '#ef4444' },
-  { key: 'felony_in_progress',     label: 'FELONY',         color: '#f97316' },
-  { key: 'domestic_violence',      label: 'DV',             color: '#f59e0b' },
-  { key: 'hazmat',                 label: 'HAZMAT',         color: '#f59e0b' },
+  { key: 'officer_safety_caution', label: 'OFFICER SAFETY', color: 'var(--sev-critical)' },
+  { key: 'weapons_involved',       label: 'WEAPONS',        color: 'var(--sev-critical)' },
+  { key: 'felony_in_progress',     label: 'FELONY',         color: 'var(--sev-high)' },
+  { key: 'domestic_violence',      label: 'DV',             color: 'var(--sev-warn)' },
+  { key: 'hazmat',                 label: 'HAZMAT',         color: 'var(--sev-warn)' },
   { key: 'mental_health_crisis',   label: 'MH CRISIS',     color: '#a855f7' },
-  { key: 'gang_related',           label: 'GANG',           color: '#ef4444' },
+  { key: 'gang_related',           label: 'GANG',           color: 'var(--sev-critical)' },
 ];
 
 export { HAZARD_FLAGS };
@@ -168,7 +168,7 @@ export function buildUnitMarkerEl(unit: Unit, enRoute?: EnRouteEta | null): HTML
   inner.style.cssText = `
     display:flex;flex-direction:column;align-items:center;gap:2px;
     position:relative;
-    filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+    filter:drop-shadow(0 2px 4px rgba(0 0 0 / 0.6));
     opacity:${staleness === 'lost' ? 0.45 : staleness === 'stale' ? 0.7 : 1};
     transition:transform ${MARKER_TRANSITION_MS}ms linear;
   `;

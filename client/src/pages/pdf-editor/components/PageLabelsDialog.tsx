@@ -20,7 +20,7 @@ const STYLES: Array<{ value: PageLabelRule['style']; label: string }> = [
   { value: 'Alpha', label: 'A, B, C' },
 ];
 
-const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]';
 
 /** Configure custom page-label rules (prefix + numbering style per page range).
  *  Drives the {label} token in the page-number footer. */
@@ -45,7 +45,7 @@ export default function PageLabelsDialog({ open, pageCount, rules, onClose, onAp
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div className="bg-surface-base border border-border-default rounded-[2px] w-[460px] max-h-[86vh] overflow-y-auto p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
+          <div className="text-[11px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold inline-flex items-center gap-1.5">
             <Hash className="w-3.5 h-3.5" /> Page labels
           </div>
           <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>

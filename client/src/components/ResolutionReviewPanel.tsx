@@ -27,8 +27,8 @@ export default function ResolutionReviewPanel() {
 
   if (!suggestions.length) return null;
   return (
-    <div className="bg-surface-base border border-[#d4a017]">
-      <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">
+    <div className="bg-surface-base border border-[var(--field-label-color)]">
+      <div className="px-2 py-[3px] text-[9px] font-semibold text-[var(--field-label-color)] border-b border-border-default">
         POSSIBLE DUPLICATE PERSONS ({suggestions.length})
       </div>
       {suggestions.map((s) => {
@@ -39,9 +39,9 @@ export default function ResolutionReviewPanel() {
             <span className="flex-1">
               {s.a_first} {s.a_last} {s.a_dob ? `(${s.a_dob})` : ''} ↔ {s.b_first} {s.b_last} {s.b_dob ? `(${s.b_dob})` : ''}
             </span>
-            <span className="text-[9px] text-[#888888]">{reasons.map((r) => r.rule).join(', ')} · {(s.score * 100).toFixed(0)}%</span>
-            <button onClick={() => decide(s.id, 'confirm')} className="text-[9px] text-[#d4a017] border border-border-default px-2 py-[1px]">SAME PERSON</button>
-            <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-[#888888] border border-border-default px-2 py-[1px]">DIFFERENT</button>
+            <span className="text-[9px] text-[var(--text-secondary)]">{reasons.map((r) => r.rule).join(', ')} · {(s.score * 100).toFixed(0)}%</span>
+            <button onClick={() => decide(s.id, 'confirm')} className="text-[9px] text-[var(--field-label-color)] border border-border-default px-2 py-[1px]">SAME PERSON</button>
+            <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-[var(--text-secondary)] border border-border-default px-2 py-[1px]">DIFFERENT</button>
           </div>
         );
       })}

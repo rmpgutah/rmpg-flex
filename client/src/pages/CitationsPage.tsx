@@ -1440,7 +1440,7 @@ export default function CitationsPage() {
                 {c.court_date && (() => {
                   const daysUntil = Math.ceil((parseTimestamp(c.court_date).getTime() - Date.now()) / 86400000);
                   // Semantic severity tokens — re-themes between day/night
-                  // automatically (was raw #ef4444 / #f97316 / #eab308 / #22c55e).
+                  // automatically (uses semantic sev-* tokens, not raw hex).
                   const cdColor = daysUntil < 0
                     ? 'rgb(var(--sev-critical-rgb))'
                     : daysUntil <= 7

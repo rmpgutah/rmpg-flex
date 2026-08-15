@@ -3,7 +3,7 @@ import { Timer } from 'lucide-react';
 
 type Phase = 'focus' | 'short-break' | 'long-break';
 const PHASE_DURATIONS: Record<Phase, number> = { focus: 25, 'short-break': 5, 'long-break': 15 };
-const PHASE_COLORS: Record<Phase, string> = { focus: 'var(--brand-400)', 'short-break': 'var(--sev-ok, #22c55e)', 'long-break': 'var(--sev-warn, #f59e0b)' };
+const PHASE_COLORS: Record<Phase, string> = { focus: 'var(--brand-400)', 'short-break': 'var(--sev-ok, var(--sev-ok))', 'long-break': 'var(--sev-warn, var(--sev-warn))' };
 const PHASE_LABELS: Record<Phase, string> = { focus: 'DEEP FOCUS', 'short-break': 'SHORT BREAK', 'long-break': 'LONG BREAK' };
 
 export default function FocusTimerPage() {

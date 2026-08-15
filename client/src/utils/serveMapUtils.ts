@@ -39,7 +39,7 @@ export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: bo
     'position:relative', 'width:28px', 'height:28px', 'border-radius:50%',
     'border:2px solid rgba(255,255,255,0.8)',
     'display:flex', 'align-items:center', 'justify-content:center',
-    'font-size:13px', 'box-shadow:0 2px 6px rgba(0,0,0,0.4)', 'cursor:pointer',
+    'font-size:13px', 'box-shadow:0 2px 6px rgba(0 0 0 / 0.4)', 'cursor:pointer',
   ].join(';');
   el.style.background = color;
   el.textContent = isBusiness ? '🏢' : '👤';
@@ -47,7 +47,7 @@ export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: bo
 
   if (opts?.selected) {
     el.style.border = '3px solid #22c55e';
-    el.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.4), 0 2px 6px rgba(0,0,0,0.4)';
+    el.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.4), 0 2px 6px rgba(0 0 0 / 0.4)';
   }
 
   if (hasUrgencyRing) {
@@ -82,7 +82,7 @@ export function buildServeClusterEl(count: number, dominantPriority: string): HT
     'border:2px solid rgba(255,255,255,0.6)',
     'display:flex', 'align-items:center', 'justify-content:center',
     'color:#fff', 'font-weight:700', 'font-size:12px', 'font-family:monospace',
-    'box-shadow:0 2px 8px rgba(0,0,0,0.5)', 'cursor:pointer',
+    'box-shadow:0 2px 8px rgba(0 0 0 / 0.5)', 'cursor:pointer',
   ].join(';');
   el.style.background = color;
   el.textContent = count > 99 ? '99+' : String(count);

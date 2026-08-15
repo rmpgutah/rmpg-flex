@@ -28,7 +28,7 @@
 // - Distinct empty states: filter-cleared "no invoices yet" vs
 //   filter-applied "no matches" with a Clear-filters button.
 // - Theme tokens replace the two hardcoded delete-modal hex
-//   values (#991b1b / #f87171) — ConfirmDialog already uses
+//   values (var(--sev-critical) / var(--sev-critical-soft)) — ConfirmDialog already uses
 //   the rmpg/red theme tokens.
 // ============================================================
 

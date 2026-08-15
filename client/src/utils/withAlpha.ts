@@ -34,7 +34,7 @@
  *     named colors.
  *
  * `color-mix(in srgb, C P%, transparent)` is EXACTLY C at alpha P/100, not a
- * visual approximation: `transparent` is `rgba(0,0,0,0)` and srgb mixing
+ * visual approximation: `transparent` is `rgba(0 0 0 / 0)` and srgb mixing
  * premultiplies alpha, so the transparent side contributes zero weight to the
  * color channels and only pulls the result's alpha down to P.
  *

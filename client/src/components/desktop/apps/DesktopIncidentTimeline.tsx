@@ -183,7 +183,7 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
               <div style={{
                 width: 12, height: 12, borderRadius: '50%', marginTop: 1,
                 background: eventColor(evt.type),
-                boxShadow: `0 0 0 3px rgba(0,0,0,0.2)`,
+                boxShadow: `0 0 0 3px rgba(0 0 0 / 0.2)`,
                 flexShrink: 0,
               }} />
               {i < events.length - 1 && (

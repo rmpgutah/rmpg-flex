@@ -22,8 +22,8 @@ import type { OfficerWithStatus } from '../utils/personnelMappers';
 
 // Brand-aligned role colors (zero-blue Spillman palette)
 export const ROLE_HEX: Record<string, string> = {
-  admin: '#ef4444', manager: '#a855f7', supervisor: '#f59e0b',
-  officer: '#22c55e', dispatcher: '#888888', contract_manager: '#22c55e',
+  admin: 'var(--sev-critical)', manager: 'var(--stat-accent-purple)', supervisor: 'var(--sev-warn)',
+  officer: 'var(--sev-ok)', dispatcher: 'var(--text-secondary)', contract_manager: 'var(--sev-ok)',
 };
 
 export const ChartTooltip = ({ active, payload }: any) => {
@@ -45,9 +45,9 @@ export function CredentialComplianceCard({ credentials }: { credentials: Credent
   const credCompliance = credentials.length > 0 ? Math.round((validCreds / credentials.length) * 100) : 100;
 
   const credPieData = useMemo(() => [
-    { name: 'Valid', value: validCreds, color: '#22c55e' },
-    { name: 'Expiring', value: expiringCreds, color: '#f59e0b' },
-    { name: 'Expired', value: expiredCreds, color: '#ef4444' },
+    { name: 'Valid', value: validCreds, color: 'var(--sev-ok)' },
+    { name: 'Expiring', value: expiringCreds, color: 'var(--sev-warn)' },
+    { name: 'Expired', value: expiredCreds, color: 'var(--sev-critical)' },
   ].filter(d => d.value > 0), [validCreds, expiringCreds, expiredCreds]);
 
   return (
@@ -152,8 +152,8 @@ export function TrainingStatusCard({ training }: { training: TrainingRecord[] })
   const pendingTraining = training.length - completedTraining - overdueTraining;
 
   const trainingBarData = useMemo(() => [
-    { name: 'Completed', value: completedTraining, fill: '#22c55e' },
-    { name: 'Overdue', value: overdueTraining, fill: '#ef4444' },
+    { name: 'Completed', value: completedTraining, fill: 'var(--sev-ok)' },
+    { name: 'Overdue', value: overdueTraining, fill: 'var(--sev-critical)' },
     { name: 'Pending', value: Math.max(0, pendingTraining), fill: 'var(--text-muted)' },
   ], [completedTraining, overdueTraining, pendingTraining]);
 

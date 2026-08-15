@@ -17,8 +17,8 @@
 //   - "N" shortcut opens a New Template (skipped when typing in
 //     an input/textarea/select)
 //   - Cmd/Ctrl+Enter saves the edit modal
-//   - Theme-token sweep (no more hardcoded #888888 / #991b1b /
-//     #f87171 — the inline delete modal that hardcoded those colors
+//   - Theme-token sweep (no more hardcoded var(--text-secondary) / var(--sev-critical) /
+//     var(--sev-critical-soft) — the inline delete modal that hardcoded those colors
 //     is gone)
 // ============================================================
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';

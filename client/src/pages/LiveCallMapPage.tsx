@@ -227,7 +227,7 @@ function CallRow({ call, expanded, onToggle, onOpenMap, now: _now }: CallRowProp
 
           <div className="pt-1">
             <button
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[color:var(--surface-sunken)] hover:bg-[color:var(--brand-700,#1a3a5c)] text-[color:var(--text-primary)] rounded-[2px] text-[10px] font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[color:var(--surface-sunken)] hover:bg-[color:var(--brand-700)] text-[color:var(--text-primary)] rounded-[2px] text-[10px] font-semibold transition-colors"
               onClick={onOpenMap}
             >
               <MapPin size={11} />
@@ -379,7 +379,7 @@ export default function LiveCallMapPage() {
               onClick={() => setFilter(f)}
               className={`px-2 py-1 rounded-[2px] font-semibold transition-colors ${
                 filter === f
-                  ? 'bg-[color:var(--brand-600,#1e4d7b)] text-[color:var(--text-primary)]'
+                  ? 'bg-[color:var(--brand-600)] text-[color:var(--text-primary)]'
                   : 'bg-[color:var(--surface-sunken)] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
               }`}
             >
@@ -397,7 +397,7 @@ export default function LiveCallMapPage() {
               onClick={() => setSort(s)}
               className={`px-2 py-1 rounded-[2px] font-semibold transition-colors ${
                 sort === s
-                  ? 'bg-[color:var(--brand-600,#1e4d7b)] text-[color:var(--text-primary)]'
+                  ? 'bg-[color:var(--brand-600)] text-[color:var(--text-primary)]'
                   : 'bg-[color:var(--surface-sunken)] text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
               }`}
             >

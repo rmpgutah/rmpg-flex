@@ -32,13 +32,13 @@ export interface CaseTask {
 interface UserLite { id: number; full_name: string }
 
 const PRIORITY_COLOR: Record<string, string> = {
-  urgent: '#ef4444', high: '#f59e0b', normal: '#888888', low: '#5a5a5a',
+  urgent: 'var(--sev-critical)', high: 'var(--sev-warn)', normal: 'var(--text-secondary)', low: 'var(--text-muted)',
 };
 const STATUS_LABEL: Record<string, string> = {
   open: 'Open', in_progress: 'In Progress', done: 'Done', canceled: 'Canceled',
 };
 const STATUS_COLOR: Record<string, string> = {
-  open: '#888888', in_progress: '#f59e0b', done: '#22c55e', canceled: '#5a5a5a',
+  open: 'var(--text-secondary)', in_progress: 'var(--sev-warn)', done: 'var(--sev-ok)', canceled: 'var(--text-muted)',
 };
 
 /** Pure: a task is overdue with a past due date and still actionable. */
@@ -50,7 +50,7 @@ export function isTaskOverdue(dueDate?: string | null, status?: string): boolean
 }
 
 function StatusPill({ status }: { status: string }) {
-  const color = STATUS_COLOR[status] || '#888888';
+  const color = STATUS_COLOR[status] || 'var(--text-secondary)';
   return (
     <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border" style={{ color, borderColor: withAlpha(color, '66') }}>
       {STATUS_LABEL[status] || status}

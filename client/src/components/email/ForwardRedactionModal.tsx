@@ -37,12 +37,12 @@ export default function ForwardRedactionModal({ open, preview, onConfirm, onCanc
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="bg-[#141414] border border-[#d4a017] max-w-2xl w-full p-4 space-y-3 my-auto">
-        <div className="text-[#d4a017] text-sm font-semibold">
+      <div className="bg-surface-deep border [border-color:var(--field-label-color)] max-w-2xl w-full p-4 space-y-3 my-auto">
+        <div className="[color:var(--panel-header-color)] text-sm font-semibold">
           EXTERNAL FORWARD — REVIEW REDACTIONS
         </div>
         <div className="text-xs text-gray-400">
-          {preview.diff.length} item(s) flagged: <span className="font-mono text-[#d4a017]">{uniqueTypes.join(', ')}</span>
+          {preview.diff.length} item(s) flagged: <span className="font-mono [color:var(--panel-header-color)]">{uniqueTypes.join(', ')}</span>
         </div>
         <div className="text-[11px] text-gray-500">
           The body below has been auto-redacted. Edit if needed, then confirm.
@@ -62,7 +62,7 @@ export default function ForwardRedactionModal({ open, preview, onConfirm, onCanc
           </button>
           <button
             onClick={() => onConfirm(edited)}
-            className="px-3 py-1 border border-[#d4a017] text-[#d4a017] text-xs"
+            className="px-3 py-1 border [border-color:var(--field-label-color)] [color:var(--panel-header-color)] text-xs"
           >
             CONFIRM &amp; SEND
           </button>

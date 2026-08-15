@@ -149,15 +149,15 @@ export default function AndroidUpdateChecker() {
   return (
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.85)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0 0 0 / 0.85)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}
     >
       <div
         className="mx-4 w-full max-w-sm"
         style={{
           background: 'linear-gradient(180deg, var(--surface-base) 0%, var(--surface-sunken) 100%)',
           border: '1px solid var(--border-default)',
-          borderTop: '3px solid #888888',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+          borderTop: '3px solid var(--border-default)',
+          boxShadow: '0 20px 60px rgba(0 0 0 / 0.8)',
         }}
       >
         {/* Header */}
@@ -215,10 +215,10 @@ export default function AndroidUpdateChecker() {
             style={{
               background: downloading
                 ? 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)'
-                : 'linear-gradient(180deg, #888888 0%, #333333 100%)',
-              color: downloading ? '#888888' : '#fff',
+                : 'linear-gradient(180deg, var(--brand-600) 0%, var(--rmpg-800) 100%)',
+              color: downloading ? 'var(--text-secondary)' : '#fff',
               border: '1px solid',
-              borderColor: downloading ? 'var(--border-default)' : '#d41515',
+              borderColor: downloading ? 'var(--border-default)' : 'var(--sev-critical)',
             }}
           >
             {downloading ? (

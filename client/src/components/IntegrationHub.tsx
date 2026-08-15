@@ -32,9 +32,9 @@ const HEALTH_LED: Record<string, string> = {
 };
 
 const HEALTH_LABEL: Record<string, { text: string; color: string }> = {
-  healthy: { text: 'ONLINE', color: '#22c55e' },
-  degraded: { text: 'DEGRADED', color: '#f59e0b' },
-  error: { text: 'ERROR', color: '#ef4444' },
+  healthy: { text: 'ONLINE', color: 'var(--sev-ok)' },
+  degraded: { text: 'DEGRADED', color: 'var(--sev-warn)' },
+  error: { text: 'ERROR', color: 'var(--sev-critical)' },
   unconfigured: { text: 'NOT CONFIGURED', color: 'var(--text-muted)' },
 };
 
@@ -169,10 +169,10 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                               style={{
                                 color:
                                   intg.uptimePercent >= 90
-                                    ? '#22c55e'
+                                    ? 'var(--sev-ok)'
                                     : intg.uptimePercent >= 70
-                                      ? '#f59e0b'
-                                      : '#ef4444',
+                                      ? 'var(--sev-warn)'
+                                      : 'var(--sev-critical)',
                               }}
                             >
                               {intg.uptimePercent}%
@@ -185,10 +185,10 @@ export default function IntegrationHub({ onSetupClick }: IntegrationHubProps) {
                                 width: `${intg.uptimePercent}%`,
                                 backgroundColor:
                                   intg.uptimePercent >= 90
-                                    ? '#22c55e'
+                                    ? 'var(--sev-ok)'
                                     : intg.uptimePercent >= 70
-                                      ? '#f59e0b'
-                                      : '#ef4444',
+                                      ? 'var(--sev-warn)'
+                                      : 'var(--sev-critical)',
                               }}
                             />
                           </div>

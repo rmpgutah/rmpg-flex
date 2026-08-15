@@ -110,8 +110,8 @@ function buildServeJobMarkerElement(job: ServeJob, selected: boolean): HTMLEleme
   const el = document.createElement('div');
   const border = selected ? '3px solid #22c55e' : '2px solid #fff';
   const boxShadow = risk
-    ? '0 1px 4px rgba(0,0,0,0.4), 0 0 0 3px rgba(239,68,68,0.6)'
-    : '0 1px 4px rgba(0,0,0,0.4)';
+    ? '0 1px 4px rgba(0 0 0 / 0.4), 0 0 0 3px rgba(239,68,68,0.6)'
+    : '0 1px 4px rgba(0 0 0 / 0.4)';
   el.style.cssText = `position:relative;width:12px;height:12px;border-radius:50%;background:${color};border:${border};box-shadow:${boxShadow};cursor:pointer;`;
 
   if (tier === 'critical' || tier === 'warning') {

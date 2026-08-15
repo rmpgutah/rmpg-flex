@@ -15,7 +15,7 @@ interface RecordFieldProps {
   icon?: React.ElementType;
   /** Render value in monospace (IDs, numbers, plates). */
   mono?: boolean;
-  /** Tint the value (e.g. '#e8b820' for aliases). Defaults to primary text. */
+  /** Tint the value using a CSS color string (e.g. for aliases). Defaults to primary text. */
   valueColor?: string;
   /** Click value to copy to clipboard. */
   copyable?: boolean;

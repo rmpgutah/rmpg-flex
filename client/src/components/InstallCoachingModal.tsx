@@ -22,7 +22,7 @@ export function InstallCoachingModal() {
   return (
     <div className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 safe-pb">
       <div className="w-full max-w-md bg-surface-base border-t border-border-default p-4 rounded-t-sm">
-        <h2 className="text-[#d4a017] text-sm font-bold tracking-widest mb-2">
+        <h2 className="[color:var(--panel-header-color)] text-sm font-bold tracking-widest mb-2">
           INSTALL RMPG FLEX
         </h2>
         <p className="text-rmpg-100 text-sm mb-3">
@@ -30,8 +30,8 @@ export function InstallCoachingModal() {
         </p>
         <ol className="text-rmpg-300 text-xs space-y-1 mb-4 list-decimal list-inside">
           <li>Tap the Share icon at the bottom of Safari.</li>
-          <li>Scroll and tap <span className="text-[#d4a017]">Add to Home Screen</span>.</li>
-          <li>Tap <span className="text-[#d4a017]">Add</span> in the top-right.</li>
+          <li>Scroll and tap <span className="[color:var(--panel-header-color)]">Add to Home Screen</span>.</li>
+          <li>Tap <span className="[color:var(--panel-header-color)]">Add</span> in the top-right.</li>
         </ol>
         <button
           type="button"
