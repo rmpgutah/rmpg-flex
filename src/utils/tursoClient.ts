@@ -12,12 +12,9 @@ export function createTursoClient(env: {
   return createClient({ url: env.TURSO_URL, authToken: env.TURSO_AUTH_TOKEN });
 }
 
-export function initTursoSingleton(env: {
-  TURSO_URL?: string;
-  TURSO_AUTH_TOKEN?: string;
-}): void {
+export function initTursoSingleton(env: Record<string, unknown>): void {
   if (_singleton !== null) return;
-  _singleton = createTursoClient(env);
+  _singleton = createTursoClient(env as { TURSO_URL?: string; TURSO_AUTH_TOKEN?: string });
 }
 
 export function getTursoClient(): Client | null {
