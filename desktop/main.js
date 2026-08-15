@@ -16,7 +16,7 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { createFaceAuth, euclideanDistance } = require('./faceAuth');
+const { createFaceAuth } = require('./faceAuth');
 const { CameraScanner } = require('./cameraScanner');
 const {
   parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
@@ -1679,7 +1679,7 @@ guardedHandle('device:smartcard-status', async () => {
     const { stdout } = await execFileAsync(
       'powershell.exe',
       ['-NoProfile', '-Command',
-        'Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status | ConvertTo-Json'],
+        'Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status, ATR | ConvertTo-Json'],
       { timeout: 3000 }
     );
     return parseWindowsSmartCardOutput(stdout);
@@ -4660,7 +4660,7 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
 // (runs in renderer — has canvas + camera access), sends averaged embedding here.
 guardedHandle('face:enroll', (_event, { userId, embedding }) => {
   if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
-  if (!userId || !Array.isArray(embedding)) return { ok: false, error: 'invalid_params' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, error: 'invalid_params' };
   try {
     faceAuth.storeEmbedding(userId, new Float32Array(embedding));
     logSecurityAuditEvent('face:enroll', 'success', { targetUserId: userId });
@@ -4674,7 +4674,7 @@ guardedHandle('face:enroll', (_event, { userId, embedding }) => {
 // Verify: renderer sends a live embedding (extracted by face-api.js in renderer).
 guardedHandle('face:verify', (_event, { userId, embedding }) => {
   if (!faceAuth) return { ok: false, reason: 'face_auth_unavailable' };
-  if (!userId || !Array.isArray(embedding)) return { ok: false, reason: 'invalid_params' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, reason: 'invalid_params' };
   try {
     const result = faceAuth.verify(userId, new Float32Array(embedding));
     logSecurityAuditEvent('face:verify', result.match ? 'success' : 'denied', {

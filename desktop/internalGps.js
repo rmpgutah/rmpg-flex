@@ -308,6 +308,8 @@ class InternalGps extends EventEmitter {
         this.pending.accuracy = r.accuracy;
         this.pending.sats = r.sats;
         updated = true;
+      } else if (this._lastFixAt && (Date.now() - this._lastFixAt) > 2000 && !this._drTimer) {
+        this._startDeadReckoning();
       }
     } else if (sentence === 'RMC') {
       const r = parseRMC(fields);
