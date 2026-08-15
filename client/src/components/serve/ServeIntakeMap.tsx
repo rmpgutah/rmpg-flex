@@ -587,7 +587,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
             <span className="inline-block w-3 h-3 rounded-full bg-gray-500" /> Routine
           </span>
           <span className="flex items-center gap-1 ml-2">
-            <span className="inline-block w-3 h-3 rounded-full bg-[#d4a017]" /> Has notation
+            <span className="inline-block w-3 h-3 rounded-full bg-brand-600" /> Has notation
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -762,7 +762,7 @@ function buildPopupHtml(item: QueueMapItem): string {
     : '—';
 
   const noteBlock = item.location_note_id
-    ? `<div style="margin-top:6px;padding:4px 6px;background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.4);border-radius:2px;font-size:10px;color:#d4a017;">
+    ? `<div style="margin-top:6px;padding:4px 6px;background:rgba(212,160,23,0.12);border:1px solid rgba(212,160,23,0.4);border-radius:2px;font-size:10px;color:#d9bd72;">
         ⚠ RECORDED NOTATION: ${escapeHtml(item.location_note_text) || 'See system record'}
        </div>`
     : '';
@@ -791,7 +791,7 @@ function buildPopupHtml(item: QueueMapItem): string {
         <button data-action="open" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.5);border-radius:2px;color:#93c5fd;font-size:10px;cursor:pointer;font-family:monospace;">
           Open Record
         </button>
-        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d4a017;font-size:10px;cursor:pointer;font-family:monospace;">
+        <button data-action="note" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(212,160,23,0.15);border:1px solid rgba(212,160,23,0.4);border-radius:2px;color:#d9bd72;font-size:10px;cursor:pointer;font-family:monospace;">
           ${item.location_note_id ? 'View Notation' : 'Add Notation'}
         </button>
         <button data-action="trail" data-item-id="${item.id}" style="flex:1;padding:3px 6px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:2px;color:#cbd5e1;font-size:10px;cursor:pointer;font-family:monospace;">

@@ -22,10 +22,10 @@ function FormField({ label, required = false, hint, children, className = '' }: 
     <div className={className}>
       <label
         className="block mb-1 text-[9px] font-semibold uppercase tracking-wide"
-        style={{ color: 'var(--text-muted, #8a8a8a)', letterSpacing: '0.04em' }}
+        style={{ color: 'var(--text-muted)', letterSpacing: '0.04em' }}
       >
         {label}
-        {required && <span className="ml-0.5" style={{ color: '#f87171' }}>*</span>}
+        {required && <span className="ml-0.5" style={{ color: 'var(--sev-critical)' }}>*</span>}
       </label>
       {children}
       {hint && <p className="mt-0.5 text-[9px] text-fg-muted leading-snug">{hint}</p>}

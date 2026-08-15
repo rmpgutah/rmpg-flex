@@ -130,7 +130,7 @@ const ASSIGNED_STROKE_OPACITY = 0.8;
 const ASSIGNED_STROKE_WEIGHT = 2;
 
 const MUNI_COLORS = [
-  '#22c55e', '#d4a017', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
   '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#facc15', '#e11d48',
   '#84cc16', '#fb923c', '#d946ef', '#fde047', '#eab308', '#fbbf24',
 ];

@@ -9145,8 +9145,8 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-[#888888]', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
-    Go: 'bg-[#aaaaaa]', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
+    TypeScript: 'bg-rmpg-500', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    Go: 'bg-rmpg-300', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
   return (
@@ -9412,7 +9412,7 @@ function SkillGenPanel() {
 function SdksPanel() {
   const sdks = [
     { name: 'Python', pkg: 'firecrawl-py', version: '1.5.0', stars: 79, repo: 'https://github.com/mendableai/firecrawl-py', color: 'bg-green-400' },
-    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-[#aaaaaa]' },
+    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-rmpg-300' },
     { name: 'Java', pkg: 'java-sdk', version: '0.9.0', stars: 16, repo: 'https://github.com/mendableai/firecrawl-java-sdk', color: 'bg-red-400' },
     { name: 'JavaScript', pkg: 'firecrawl-js', version: '1.5.0', stars: 100, repo: 'https://github.com/mendableai/firecrawl-js', color: 'bg-yellow-400' },
     { name: 'CLI', pkg: 'firecrawl-cli', version: '1.3.0', stars: 231, repo: 'https://github.com/mendableai/firecrawl-cli', color: 'bg-purple-400' },
@@ -10205,9 +10205,9 @@ function LeadGenPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-3">
-        <Users size={16} className="text-[#888888]" />
+        <Users size={16} className="text-fg-muted" />
         <h3 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-rmpg-400 font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-rmpg-500/20 text-rmpg-400 font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -10233,13 +10233,13 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100 placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100 placeholder-rmpg-600 font-mono focus:outline-none focus:border-border-strong"
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
+          className="px-4 py-2 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -10464,7 +10464,7 @@ function SupportBotPanel() {
 
   return (
     <div className="space-y-3">
-      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-[#888888]" />
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-rmpg-500" />
 
       {/* Create Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">

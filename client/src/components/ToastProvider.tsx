@@ -32,36 +32,36 @@ export const useToastSafe = (): ToastContextValue | null => useContext(ToastCont
 
 const TOAST_CONFIG = {
   success: {
-    bgClass: 'bg-[#0a1a0a]',
-    borderClass: 'border-[#2a5a2a]',
-    textClass: 'text-[#86efac]',
-    progressClass: 'bg-[#4ade80]',
+    bgClass: 'bg-surface-sunken',
+    borderClass: 'border-[color:var(--sev-ok)]/30',
+    textClass: '[color:var(--sev-ok-soft)]',
+    progressClass: 'bg-[color:var(--sev-ok)]',
     icon: CheckCircle,
-    leftAccent: 'border-l-[3px] border-l-[#4ade80]',
+    leftAccent: 'border-l-[3px] border-l-[color:var(--sev-ok)]',
   },
   error: {
-    bgClass: 'bg-[#1a0a0a]',
-    borderClass: 'border-[#5a2a2a]',
-    textClass: 'text-[#fca5a5]',
-    progressClass: 'bg-[#f87171]',
+    bgClass: 'bg-surface-sunken',
+    borderClass: 'border-[color:var(--sev-critical)]/30',
+    textClass: '[color:var(--sev-critical-soft)]',
+    progressClass: 'bg-[color:var(--sev-critical-soft)]',
     icon: XCircle,
-    leftAccent: 'border-l-[3px] border-l-[#f87171]',
+    leftAccent: 'border-l-[3px] border-l-[color:var(--sev-critical-soft)]',
   },
   warning: {
-    bgClass: 'bg-[#1a1200]',
-    borderClass: 'border-[#5a3a1a]',
-    textClass: 'text-[#fcd34d]',
-    progressClass: 'bg-[#fbbf24]',
+    bgClass: 'bg-surface-sunken',
+    borderClass: 'border-[color:var(--sev-warn)]/30',
+    textClass: '[color:var(--sev-warn-soft)]',
+    progressClass: 'bg-[color:var(--sev-warn-soft)]',
     icon: AlertTriangle,
-    leftAccent: 'border-l-[3px] border-l-[#fbbf24]',
+    leftAccent: 'border-l-[3px] border-l-[color:var(--sev-warn-soft)]',
   },
   info: {
     bgClass: 'bg-surface-sunken',
     borderClass: 'border-border-subtle',
-    textClass: 'text-[#d4a017]',
-    progressClass: 'bg-[#d4a017]',
+    textClass: '[color:var(--field-label-color)]',
+    progressClass: 'bg-[color:var(--field-label-color)]',
     icon: Info,
-    leftAccent: 'border-l-[3px] border-l-[#d4a017]',
+    leftAccent: 'border-l-[3px] border-l-[color:var(--field-label-color)]',
   },
 };
 
@@ -124,7 +124,7 @@ const ToastItem = ({ toast, onDismiss }: ToastItemProps) => {
       `}
       style={{
         animation: isExiting ? 'none' : 'slideIn 0.3s ease-out',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+        boxShadow: '0 8px 24px rgba(0 0 0 / 0.6)',
       }}
     >
       <div className="flex items-start gap-3 p-3">

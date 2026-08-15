@@ -58,7 +58,7 @@ export function buildCallMarkerEl(label: string, priority?: string): HTMLElement
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;
-    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));cursor:pointer;
+    filter:drop-shadow(0 2px 6px rgba(var(--surface-overlay-rgb) / 0.8));cursor:pointer;
   `;
 
   const tag = document.createElement('div');
@@ -84,18 +84,18 @@ export function buildCallMarkerEl(label: string, priority?: string): HTMLElement
 
 /** Build a fixed-orientation photo-icon unit marker: vehicle photo + status ring + call-sign label. Never rotates. */
 function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
-  const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
+  const color = UNIT_STATUS_HEX[status || 'available'] || 'var(--text-muted)';
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;gap:2px;
-    filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));cursor:pointer;
+    filter:drop-shadow(0 1px 4px rgba(var(--surface-overlay-rgb) / 0.7));cursor:pointer;
   `;
 
   const photoFrame = document.createElement('div');
   photoFrame.style.cssText = `
     width:40px;height:40px;border-radius:4px;overflow:hidden;
     border:3px solid ${color};box-shadow:0 0 6px ${withAlpha(color, '80')};
-    background:#0a0a0a;
+    background:var(--surface-overlay);
   `;
   const img = document.createElement('img');
   img.src = '/icons/unit-vehicle.png';
@@ -110,7 +110,7 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
 
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:#0a0a0a;color:${color};font-size:8px;font-weight:900;
+    background:var(--surface-overlay);color:${color};font-size:8px;font-weight:900;
     padding:1px 5px;border:1.2px solid ${color};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     border-radius:1px;
@@ -122,12 +122,12 @@ function buildUnitMarkerEl(callSign: string, status?: UnitStatus): HTMLElement {
 }
 
 // NOTE: this file used to define a local steel-blue theming helper that
-// recolored 'background' to #0d1722 and 'water' to #0a1420. It ran on the map's
+// recolored 'background' and 'water' to near-black values. It ran on the map's
 // 'load' event — i.e. AFTER applyRmpgBasemap() had already run on 'style.load' —
 // so it silently overwrote two colors of the shared MAP_PALETTE with its own
-// near-black values (canonical: land #22405f, water #142840). The result was a
-// dispatch mini-map noticeably darker than the Map module showing the same
-// city. Deleted rather than reconciled: applyRmpgBasemap already sets
+// near-black values (see MAP_PALETTE in utils/mapboxBasemap.ts for canonical colors).
+// The result was a dispatch mini-map noticeably darker than the Map module showing
+// the same city. Deleted rather than reconciled: applyRmpgBasemap already sets
 // background and water, plus the gold arterials, silver roads and label ramp
 // that the local helper never touched. MAP_PALETTE in utils/mapboxBasemap.ts is
 // the single source of map color truth.
@@ -347,7 +347,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   }, [call, assignedUnits, loaded]);
 
   return (
-    <div className={`relative bg-[#0a0a0a] border border-[#222] overflow-hidden ${fullHeight ? 'h-full' : 'h-[180px]'}`}>
+    <div className={`relative bg-surface-overlay border border-border-default overflow-hidden ${fullHeight ? 'h-full' : 'h-[180px]'}`}>
       {/* Map container */}
       <div ref={containerRef} className="absolute inset-0" />
 
@@ -356,8 +356,8 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           used to live here to fake a steel-blue basemap.
 
           It predated applyRmpgBasemap/MAP_PALETTE, which now produce that look
-          natively and with MEASURED contrast (navy land #22405f, gold arterials
-          #b8912f at 3.63:1, label gold #d9bd72 at 4.63:1). Running a hue-rotate
+          natively and with MEASURED contrast (see MAP_PALETTE in mapboxBasemap.ts
+          for the canonical navy/gold/silver values). Running a hue-rotate
           over the finished canvas destroyed every one of those values.
 
           Worse, the selector was global. A bare `.mapboxgl-canvas` inside JSX
@@ -369,8 +369,8 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       {/* Geocoder compact dark theme override */}
       <style>{`
         .mapboxgl-ctrl-geocoder {
-          background: rgba(10,10,10,0.92) !important;
-          border: 1px solid #2b2b2b !important;
+          background: rgba(var(--surface-overlay-rgb) / 0.92) !important;
+          border: 1px solid var(--border-default) !important;
           border-radius: 2px !important;
           font-size: 9px !important;
           min-width: 28px !important;
@@ -378,36 +378,36 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           box-shadow: none !important;
         }
         .mapboxgl-ctrl-geocoder--input {
-          color: #ccc !important;
+          color: var(--text-secondary) !important;
           font-size: 9px !important;
           height: 24px !important;
           padding: 2px 24px !important;
         }
         .mapboxgl-ctrl-geocoder--input::placeholder {
-          color: #555 !important;
+          color: var(--text-muted) !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions {
-          background: #0a0a0a !important;
-          border: 1px solid #2b2b2b !important;
+          background: var(--surface-overlay) !important;
+          border: 1px solid var(--border-default) !important;
           font-size: 9px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > li > a {
-          color: #aaa !important;
+          color: var(--text-secondary) !important;
           font-size: 9px !important;
           padding: 4px 8px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > .active > a,
         .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-          background: #1a1a1a !important;
-          color: #d4a017 !important;
+          background: var(--surface-raised) !important;
+          color: var(--panel-header-color) !important;
         }
         .mapboxgl-ctrl-geocoder--icon-search {
-          fill: #d4a017 !important;
+          fill: var(--panel-header-color) !important;
           width: 14px !important;
           height: 14px !important;
         }
         .mapboxgl-ctrl-geocoder--icon-close {
-          fill: #666 !important;
+          fill: var(--text-muted) !important;
         }
         .mapboxgl-ctrl-geocoder--collapsed {
           min-width: 28px !important;
@@ -416,14 +416,14 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       `}</style>
 
       {/* Top bar */}
-      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-[#0a0a0a]/90 to-transparent z-10">
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-surface-overlay/90 to-transparent z-10">
         <div className="flex items-center gap-1.5">
-          <MapPin className="w-3 h-3 text-[#d4a017]" />
-          <span className="text-[9px] font-semibold text-[#ccc] tracking-wide">
+          <MapPin className="w-3 h-3 [color:var(--panel-header-color)]" />
+          <span className="text-[9px] font-semibold text-rmpg-200 tracking-wide">
             MAPBOX
           </span>
           {assignedUnits.length > 0 && (
-            <span className="text-[8px] text-[#888]">
+            <span className="text-[8px] text-fg-muted">
               · {assignedUnits.length} unit{assignedUnits.length !== 1 ? 's' : ''}
             </span>
           )}
@@ -432,7 +432,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           <IconButton
             onClick={() => navigate('/map')}
             aria-label="Open full map"
-            className="p-0.5 text-[#888] hover:text-[#d4a017] transition-colors"
+            className="p-0.5 text-fg-muted hover:text-accent-silver-400 transition-colors"
           >
             <Maximize2 className="w-3 h-3" />
           </IconButton>
@@ -441,18 +441,18 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
       {/* Error overlay */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a]/90 z-20">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface-overlay/90 z-20">
           <div className="text-center px-4">
-            <WifiOff className="w-5 h-5 text-[#666] mx-auto mb-1" />
-            <p className="text-[9px] text-[#888] leading-tight">{error}</p>
+            <WifiOff className="w-5 h-5 text-fg-muted mx-auto mb-1" />
+            <p className="text-[9px] text-fg-muted leading-tight">{error}</p>
           </div>
         </div>
       )}
 
       {/* Loading */}
       {!loaded && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a] z-20">
-          <RefreshCw className="w-4 h-4 text-[#d4a017] animate-spin" />
+        <div className="absolute inset-0 flex items-center justify-center bg-surface-overlay z-20">
+          <RefreshCw className="w-4 h-4 [color:var(--panel-header-color)] animate-spin" />
         </div>
       )}
     </div>

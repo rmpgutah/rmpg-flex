@@ -103,6 +103,22 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // (3) CATEGORY_PRESET_COLORS — user-assignable categorical identity colors stored
   //     as data values, not theme chrome (analogous to connectionsGraphStyle).
   emailIframePrintData: /(^|\/)EmailPage\.(tsx)$/,
+  // FlexCamFootagePage uses Canvas 2D API for evidence export (captureAndDraw overlay):
+  // ctx.fillStyle literals on lines 509/523/551/559/646 require resolved hex strings.
+  // CSS variables do not resolve in a Canvas 2D context. UI chrome hex was migrated;
+  // the canvas draw function retains literal amber/red values required for evidence export.
+  flexCamCanvas: /(^|\/)FlexCamFootagePage\.(tsx)$/,
+  // ConnectionsPage owns TIMELINE_KIND_COLOR — a categorical entity-type identity palette
+  // identical in tuning rationale to connectionsGraphStyle.ts (collision-avoidance tuning,
+  // same color set, referenced in comments). It also exports a PNG via canvas with a
+  // literal background color. Re-theming either would change entity identity across the
+  // timeline and relationship graph simultaneously.
+  connectionsPageCategorical: /(^|\/)ConnectionsPage\.(tsx)$/,
+  // ServePage has Mapbox GL line-color paint properties (lines 1884, 1931) that require
+  // literal hex — CSS vars blank the layer. The marker DOM functions (buildServeJobMarkerElement,
+  // buildServeClusterMarkerElement) and popup HTML buttons use resolved colors for the
+  // Mapbox marker lifecycle where var() values cannot be guaranteed to resolve.
+  serveMapboxPaint: /(^|\/)ServePage\.(tsx)$/,
   // Navigation module — tactical-dark and Mapbox-paint contexts:
   //
   // TripReplayMap.tsx — every hex literal is a Mapbox paint property
@@ -126,6 +142,74 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // hex value. Changing to CSS vars would break those assertions, and the
   // severity palette is fixed CAD semantics, not theme chrome.
   navTacticalAndMapbox: /(^|\/)(TripReplayMap|NavigationPage|HudInstruments|NavSettingsPanel|drivingScoreColor|hudUnits)\.(tsx?|ts)$/,
+  // NavMapView contains 22+ Mapbox paint property calls (addLayer line-color/circle-color/
+  // circle-stroke-color) that require literal hex strings — CSS vars blank those layers.
+  // The UI overlay elements are mixed throughout the same component with the paint calls,
+  // making selective migration unsafe. Same rationale as NavigationPage.tsx exclusion.
+  navMapViewMapboxPaint: /(^|\/)NavMapView\.(tsx)$/,
+  // Map layer paint hooks — every hex literal feeds Mapbox GL addLayer / setPaintProperty /
+  // setFilter paint expressions. CSS var() cannot resolve in those contexts; the layer silently
+  // blanks. Covers: GeoJSON feature layers, vector-tile styling, route lines, geofence outlines,
+  // incident markers, safety-zone fills, and draw-mode paint. useMapboxHistoryCalls is also
+  // excluded under mapboxTactical above (via mapConstants) but its direct paint hook is here.
+  mapboxLayerPaintHooks: /(^|\/)use(GeoJsonLayers|VectorTileLayers|MapRouting|MapGeofenceAlerts|MapboxIncidents|MapboxSafetyZones|MapboxDraw)\.(ts)$/,
+  // useMapAtmosphere configures Mapbox GL fog / sky via map.setFog(). The setFog() API takes
+  // the same literal color values as paint properties; CSS var() is not resolved there.
+  mapboxAtmosphere: /(^|\/)useMapAtmosphere\.(ts)$/,
+  // serveMapUtils builds Mapbox GL addLayer / addSource / setPaintProperty calls. CSS vars
+  // cannot resolve in those contexts; literal hex is required for layer paint properties.
+  serveMapUtils: /(^|\/)serveMapUtils\.(ts)$/,
+  // statusColors defines UNIT_STATUS_HEX, PRIORITY_HEX, and priorityHex() which flow directly
+  // into Mapbox addLayer circle-color paint expressions (useMapboxHistoryCalls, mapMarkers).
+  // These are also operational-severity constants that tests assert on by literal value.
+  statusColors: /(^|\/)statusColors\.(ts)$/,
+  // useMapPlacesSearch and useMapInfoPanel build Mapbox popup / marker DOM via string
+  // interpolation (el.style.cssText, .setHTML()). The operational colors (POI categories:
+  // hospital=red, fire=orange, police=blue, etc.; unit=green, call=red, location=blue) have
+  // fixed semantic meaning that does not map to CSS-var tokens — same rationale as ServePage.tsx.
+  mapboxPopupOperationalColors: /(^|\/)use(MapPlacesSearch|MapInfoPanel)\.(ts)$/,
+  // ServeIntakeMap and ServeRoutePlanner contain Mapbox GL addLayer paint properties
+  // (line-color) and marker DOM el.style.cssText with resolved hex. CSS var() cannot
+  // resolve in Mapbox paint or in style strings handed to the Mapbox marker lifecycle.
+  // recordVisuals.ts defines BADGE_TONES — a fixed palette of text/bg/border/glow values
+  // deliberately tuned to sit on the pure-black Spillman surface. The header comment
+  // documents this intent: re-theming would break the tuned alpha ratios. Same rationale
+  // as connectionsGraphStyle.ts (categorical palette, not theme chrome).
+  recordBadgeTones: /(^|\/)recordVisuals\.(ts)$/,
+  serveIntakeAndRoutePlannerMapbox: /(^|\/)(ServeIntakeMap|ServeRoutePlanner)\.(tsx)$/,
+  // navMapHelpers supplies resolved color strings to map.setPaintProperty for route
+  // line-color and position circle-color. Literal hex is required; CSS vars blank the layer.
+  navMapHelpersMapboxPaint: /(^|\/)navMapHelpers\.(ts)$/,
+  // networkGraph.ts configures Graphology/Sigma node and edge colors — third-party
+  // graph viz library that consumes resolved hex strings directly.
+  networkGraphViz: /(^|\/)networkGraph\.(ts)$/,
+  // visTimeline.ts injects a CSS template string for the vis-timeline third-party library.
+  // Hex values in those styles are scoped to the timeline's own DOM subtree and cannot
+  // use CSS variables that live outside its shadow scope.
+  visTimelineThirdParty: /(^|\/)visTimeline\.(ts)$/,
+  // useMapWeatherAlerts feeds NWS alert polygon colors into Mapbox addLayer fill-color /
+  // line-color paint expressions via ['get', 'color']. CSS var() does not resolve there.
+  mapWeatherAlertsPaint: /(^|\/)useMapWeatherAlerts\.(ts)$/,
+  // VideoHudOverlay renders a video HUD with fixed operational indicator colors:
+  // EVIDENCE=yellow, FLAGGED=orange, RESTRICTED=red, GPS=green, REC=red.
+  // These encode document-classification levels and recording state — fixed CAD semantics
+  // that must remain constant regardless of theme, analogous to tactical-dark surfaces.
+  videoHudOperational: /(^|\/)VideoHudOverlay\.(tsx)$/,
+  // DashCamVideoPlayer is a tactical dashcam viewer surface (always-dark, same rationale as
+  // HudInstruments). border-[#2b2b2b] / divide-[#2b2b2b] are intentional near-black separators
+  // in the dashcam control bar; speed-indicator hex values are operational severity fixed to the
+  // night palette so the dashcam UI never blinds a driver. CSS vars would change these under the
+  // day theme and hurt usability.
+  dashcamPlayerTactical: /(^|\/)DashCamVideoPlayer\.(tsx)$/,
+  // useWhatsHere builds Mapbox popup HTML via template-string interpolation. The hex colors
+  // (WHAT'S HERE header gold, label grey, premise stat amber) are inlined into a raw HTML string
+  // handed to map.setPopup/.setHTML() — CSS var() cannot resolve inside Mapbox popup HTML.
+  // Same rationale as mapboxPopupOperationalColors (useMapPlacesSearch / useMapInfoPanel).
+  mapboxWhatsHerePopup: /(^|\/)useWhatsHere\.(ts)$/,
+  // useMapWeatherRadar's legend color array represents the actual display colors of NOAA/NWS
+  // radar tiles — they must match the pre-rendered radar imagery, not the app theme. Changing
+  // them would misrepresent radar intensity to an officer reading the map.
+  weatherRadarLegendColors: /(^|\/)useMapWeatherRadar\.(ts)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

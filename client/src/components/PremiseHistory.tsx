@@ -166,9 +166,9 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
 
   const priorityColor = (p: string) => {
     switch (p) {
-      case 'P1': return '#ef4444';
-      case 'P2': return '#f97316';
-      case 'P3': return '#eab308';
+      case 'P1': return 'var(--sev-critical)';
+      case 'P2': return 'var(--sev-high)';
+      case 'P3': return 'var(--sev-warn)';
       default: return 'var(--text-muted)';
     }
   };
@@ -179,9 +179,9 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       <div className="premise-header">
         <div className="flex items-center gap-1.5">
           {(data?.hasWarnings || hasTrespassOrders) ? (
-            <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} className="animate-emergency-blink" />
+            <AlertTriangle style={{ width: 12, height: 12, color: 'var(--sev-critical)' }} className="animate-emergency-blink" />
           ) : (
-            <MapPin style={{ width: 11, height: 11, color: '#4ade80' }} />
+            <MapPin style={{ width: 11, height: 11, color: 'var(--sev-ok)' }} />
           )}
           <span className="text-[10px] font-bold uppercase tracking-wider">
             Premise History{data && data.total > 0 ? ` — ${data.total} Prior Call${data.total !== 1 ? 's' : ''}` : ''}
@@ -201,14 +201,14 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
           className="flex items-center gap-2 px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
           style={{
             background: 'rgba(220, 38, 38, 0.3)',
-            borderBottom: '1px solid #991b1b',
-            color: '#ff6b6b',
+            borderBottom: '1px solid color-mix(in srgb, var(--sev-critical) 60%, transparent)',
+            color: 'var(--sev-critical-soft)',
           }}
         >
           <ShieldBan style={{ width: 12, height: 12, flexShrink: 0 }} />
           <span>ACTIVE TRESPASS ORDER{trespassOrders.length > 1 ? 'S' : ''}:</span>
           {trespassOrders.map(to => (
-            <span key={to.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
+            <span key={to.id} className="px-1.5 py-0.5" style={{ background: 'color-mix(in srgb, var(--sev-critical) 30%, transparent)', border: '1px solid var(--sev-critical)' }}>
               {(to.subject_last_name || '').toUpperCase()}, {to.subject_first_name || ''} — {toDisplayLabel(to.order_type || '').toUpperCase()}
             </span>
           ))}
@@ -238,12 +238,12 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
       {flaggedOccupants.length > 0 && (
         <div
           className="flex items-center gap-1.5 flex-wrap px-2 py-1.5 text-[10px] font-bold animate-emergency-blink"
-          style={{ background: 'rgba(220, 38, 38, 0.3)', borderBottom: '1px solid #991b1b', color: '#ff6b6b' }}
+          style={{ background: 'color-mix(in srgb, var(--sev-critical) 30%, transparent)', borderBottom: '1px solid color-mix(in srgb, var(--sev-critical) 60%, transparent)', color: 'var(--sev-critical-soft)' }}
         >
           <Shield style={{ width: 12, height: 12, flexShrink: 0 }} />
           <span>FLAGGED AT ADDRESS:</span>
           {flaggedOccupants.map((o) => (
-            <span key={o.id} className="px-1.5 py-0.5" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #ef4444' }}>
+            <span key={o.id} className="px-1.5 py-0.5" style={{ background: 'color-mix(in srgb, var(--sev-critical) 30%, transparent)', border: '1px solid var(--sev-critical)' }}>
               {o.name.toUpperCase()}
               {o.active_warrants > 0 ? ` — ${o.active_warrants} WARRANT${o.active_warrants > 1 ? 'S' : ''}` : ''}
               {o.gang ? ` — GANG: ${o.gang.toUpperCase()}` : ''}
@@ -259,21 +259,21 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
             On File At Address — {occupants.length} Individual{occupants.length !== 1 ? 's' : ''}
           </div>
           {occupants.slice(0, compact ? 4 : 15).map((o) => (
-            <div key={o.id} className="premise-call-item flex items-center gap-1.5" style={o.caution ? { borderLeft: '2px solid #ef4444' } : undefined}>
-              <span className="text-[10px] font-semibold" style={{ color: o.caution ? '#ff6b6b' : '#cccccc' }}>{o.name}</span>
+            <div key={o.id} className="premise-call-item flex items-center gap-1.5" style={o.caution ? { borderLeft: '2px solid var(--sev-critical)' } : undefined}>
+              <span className="text-[10px] font-semibold" style={{ color: o.caution ? 'var(--sev-critical-soft)' : 'var(--text-secondary)' }}>{o.name}</span>
               {o.dob && <span className="text-[9px] text-fg-muted">DOB {o.dob}</span>}
               {o.active_warrants > 0 && (
-                <span className="text-[8px] font-black px-1 py-px" style={{ background: '#991b1b', color: '#fff' }}>
+                <span className="text-[8px] font-black px-1 py-px" style={{ background: 'color-mix(in srgb, var(--sev-critical) 60%, transparent)', color: 'var(--text-primary)' }}>
                   {o.active_warrants} WARRANT{o.active_warrants > 1 ? 'S' : ''}
                 </span>
               )}
               {o.gang && (
-                <span className="text-[8px] font-bold px-1 py-px" style={{ background: 'rgba(234,88,12,0.3)', border: '1px solid #ea580c', color: '#fb923c' }}>
+                <span className="text-[8px] font-bold px-1 py-px" style={{ background: 'color-mix(in srgb, var(--sev-high) 30%, transparent)', border: '1px solid var(--sev-high)', color: 'var(--sev-high)' }}>
                   {o.gang}
                 </span>
               )}
               {o.flags.filter((f) => /caution|armed|violent|danger|weapon/i.test(f)).slice(0, 3).map((f) => (
-                <span key={f} className="text-[8px] px-1 py-px uppercase" style={{ background: 'rgba(234,179,8,0.2)', border: '1px solid #a16207', color: '#eab308' }}>{f}</span>
+                <span key={f} className="text-[8px] px-1 py-px uppercase" style={{ background: 'color-mix(in srgb, var(--sev-warn) 20%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 60%, transparent)', color: 'var(--sev-warn)' }}>{f}</span>
               ))}
             </div>
           ))}
@@ -290,7 +290,7 @@ export default function PremiseHistory({ address, propertyId, onClose, compact =
                 className="text-[8px] font-black px-1 py-px"
                 style={{
                   background: priorityColor(call.priority),
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   minWidth: 18,
                   textAlign: 'center',
                 }}
