@@ -13,8 +13,8 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac -c.mac.identity=null",
     "build:all": "electron-builder --mac --win",
-    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3,node-hid,usb-detection || echo '[postinstall] electron-rebuild skipped'",
-    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3,node-hid,usb-detection"
+    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped'",
+    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
   },
   "build": {
     "appId": "com.rmpg.flex",
@@ -136,8 +136,10 @@
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
     "jsqr": "^1.4.0",
+    "serialport": "^13.0.0"
+  },
+  "optionalDependencies": {
     "node-hid": "^3.1.0",
-    "serialport": "^13.0.0",
     "usb-detection": "^4.1.0"
   },
   "devDependencies": {
