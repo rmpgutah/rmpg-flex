@@ -14,7 +14,7 @@ interface ActiveUnit {
 
 function statusColor(status?: string): string {
   const s = (status ?? '').toLowerCase();
-  if (s.includes('available') || s === 'av' || s === '10-8') return '#22c55e';
+  if (s.includes('available') || s === 'av' || s === '10-8') return 'var(--sev-ok)';
   if (s.includes('busy') || s === 'busy' || s.includes('on call') || s === '10-6') return 'var(--sev-warn)';
   if (s.includes('out') || s.includes('off')) return 'var(--text-secondary)';
   return 'var(--accent-silver-400)';

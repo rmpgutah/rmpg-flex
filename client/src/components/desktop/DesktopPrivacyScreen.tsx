@@ -12,7 +12,7 @@ export default function DesktopPrivacyScreen({ onClose }: DesktopPrivacyScreenPr
         position: 'fixed',
         inset: 0,
         zIndex: 9000,
-        background: 'rgba(0,0,0,0.85)',
+        background: 'rgba(0 0 0 / 0.85)',
         pointerEvents: 'none',
       }}
     >

@@ -3610,7 +3610,7 @@ export default function DispatchPage() {
                   background: 'var(--surface-raised)',
                   border: '1px solid var(--spm-border)',
                   borderRadius: '2px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                  boxShadow: '0 8px 24px rgba(0 0 0 / 0.6)',
                 }}
               >
                 {templates.length === 0 ? (
@@ -6839,7 +6839,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -6929,10 +6929,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -7060,8 +7060,8 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
@@ -7560,8 +7560,8 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />

@@ -157,7 +157,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
         <div
           ref={overlayRef}
           onClick={e => { if (e.target === overlayRef.current) setLightboxIdx(null); }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 30000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0 0 0 / 0.88)', zIndex: 30000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           {/* Close */}
           <button
@@ -171,7 +171,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
             <button
               aria-label="Previous photo"
               onClick={() => setLightboxIdx(i => i !== null ? i - 1 : null)}
-              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}
+              style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0 0 0 / 0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}
             ><ChevronLeft size={20} /></button>
           )}
 
@@ -180,7 +180,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
             <button
               aria-label="Next photo"
               onClick={() => setLightboxIdx(i => i !== null ? i + 1 : null)}
-              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}
+              style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'rgba(0 0 0 / 0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 2, cursor: 'pointer', color: '#fff', padding: 8 }}
             ><ChevronRight size={20} /></button>
           )}
 
@@ -192,7 +192,7 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
           />
 
           {/* Metadata sidebar */}
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 20px', background: 'rgba(0,0,0,0.7)', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 20px', background: 'rgba(0 0 0 / 0.7)', display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>{photoFilename(currentPhoto)}</div>
               {photoDate(currentPhoto) && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>{formatDateTime(photoDate(currentPhoto))}</div>}

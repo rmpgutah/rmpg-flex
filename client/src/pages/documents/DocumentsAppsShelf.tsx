@@ -136,27 +136,27 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
     }
   };
 
-  const cardCls = 'group bg-surface-base hover:bg-surface-base border border-border-default hover:border-[#d4a017]/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
+  const cardCls = 'group bg-surface-base hover:bg-surface-base border border-border-default hover:border-accent-gold-300/40 rounded-[2px] p-3 transition-colors text-left flex items-start gap-2 min-w-[200px]';
 
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2 mb-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#d4a017]" />
+        <Sparkles className="w-3.5 h-3.5 text-[color:var(--field-label-color)]" />
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold">Apps</span>
         <span className="text-[10px] text-rmpg-600">— integrated tools that operate on this folder</span>
       </div>
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={openEditor} className={cardCls}>
-          <FileText className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <FileText className="w-5 h-5 text-[color:var(--field-label-color)] flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">PDF Editor</div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[color:var(--field-label-color)]">PDF Editor</div>
             <div className="text-[10px] text-rmpg-500">View, annotate, redact, sign, encrypt — proprietary RMPG PDF Engine</div>
           </div>
         </button>
         <button type="button" onClick={createBlankPdf} disabled={creatingBlank} className={cardCls}>
-          <FilePlus2 className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <FilePlus2 className="w-5 h-5 text-[color:var(--field-label-color)] flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">{creatingBlank ? 'Creating…' : 'New blank PDF'}</div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[color:var(--field-label-color)]">{creatingBlank ? 'Creating…' : 'New blank PDF'}</div>
             <div className="text-[10px] text-rmpg-500">Single-page A4 — opens in the editor</div>
           </div>
         </button>
@@ -165,23 +165,23 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
           if (currentFolderId != null) params.set('folderId', String(currentFolderId));
           navigate(`/document-writer${params.toString() ? `?${params.toString()}` : ''}`);
         }} className={cardCls}>
-          <FileText className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <FileText className="w-5 h-5 text-[color:var(--field-label-color)] flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">Document Writer</div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[color:var(--field-label-color)]">Document Writer</div>
             <div className="text-[10px] text-rmpg-500">Reports, memos, forms — full word processor with templates</div>
           </div>
         </button>
         <button type="button" onClick={createTextFile} disabled={creatingText} className={cardCls}>
-          <FileCode className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <FileCode className="w-5 h-5 text-[color:var(--field-label-color)] flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">{creatingText ? 'Creating…' : 'New Text File'}</div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[color:var(--field-label-color)]">{creatingText ? 'Creating…' : 'New Text File'}</div>
             <div className="text-[10px] text-rmpg-500">Plain text, JSON, CSV, Markdown, code — in-app editor</div>
           </div>
         </button>
         <button type="button" onClick={() => navigate('/docs')} className={cardCls}>
-          <FileText className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+          <FileText className="w-5 h-5 text-[color:var(--field-label-color)] flex-shrink-0 mt-0.5" />
           <div>
-            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[#d4a017]">Documents Library</div>
+            <div className="text-xs text-rmpg-100 font-semibold group-hover:text-[color:var(--field-label-color)]">Documents Library</div>
             <div className="text-[10px] text-rmpg-500">Authored narratives & reports — formatted, versioned, attachable to calls</div>
           </div>
         </button>
@@ -194,7 +194,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
             <button key={r.fileId} type="button"
               onClick={() => openRecent(r)}
               onContextMenu={(e) => openMenu(e, buildRecentMenu(r))}
-              className="px-2 py-0.5 bg-surface-base border border-border-default hover:border-[#d4a017]/50 rounded-sm text-rmpg-300 hover:text-rmpg-100 truncate max-w-[200px]"
+              className="px-2 py-0.5 bg-surface-base border border-border-default hover:border-accent-gold-300/50 rounded-sm text-rmpg-300 hover:text-rmpg-100 truncate max-w-[200px]"
               title={r.fileName}>
               {r.fileName}
             </button>

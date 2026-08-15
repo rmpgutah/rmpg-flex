@@ -59,7 +59,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
   return (
     <div className="border-t border-rmpg-700 pt-3 flex-1 flex flex-col min-h-0">
       <div className="flex items-center justify-between mb-2 flex-shrink-0">
-        <label className="field-label !flex items-center gap-1.5" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
+        <label className="field-label !flex items-center gap-1.5" style={{ color: 'var(--field-label-color)', fontSize: '9px', letterSpacing: '0.05em' }}>
           <FileText className="w-3 h-3" /> Documents
         </label>
         <div className="flex gap-1">
@@ -77,8 +77,8 @@ export default function CallDocumentsPanel({ callId }: Props) {
           <div key={d.id} className="group flex items-center gap-2 text-xs px-2 py-1.5 rounded-sm hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
             <FileText className="w-3 h-3 text-[#888] shrink-0" />
             <button type="button" className="flex-1 min-w-0 truncate text-left text-rmpg-200 hover:text-rmpg-100" onClick={() => setOpenId(d.id)}>{d.title}</button>
-            <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>{toDisplayLabel(d.status)}</span>
-            <button type="button" aria-label="Detach document" title="Detach" className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-1 text-[#888] hover:text-[#ef4444]" onClick={() => detach(d.id)}><Unlink className="w-3 h-3" /></button>
+            <span className={`text-[8px] uppercase ${d.status === 'finalized' ? 'text-[color:var(--field-label-color)]' : 'text-rmpg-500'}`}>{toDisplayLabel(d.status)}</span>
+            <button type="button" aria-label="Detach document" title="Detach" className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 p-1 text-[#888] hover:text-[color:var(--sev-critical)]" onClick={() => detach(d.id)}><Unlink className="w-3 h-3" /></button>
           </div>
         ))}
       </div>
@@ -88,7 +88,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setAttaching(false)}>
           <div className="w-full max-w-[480px] bg-surface-sunken border border-border-default rounded-[2px] p-3" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold">Attach existing document</span>
+              <span className="text-[10px] uppercase tracking-wider text-[color:var(--field-label-color)] font-semibold">Attach existing document</span>
               <button type="button" aria-label="Close" className="toolbar-btn p-1" onClick={() => setAttaching(false)}><X className="w-3 h-3" /></button>
             </div>
             <div className="flex gap-1 mb-2">
