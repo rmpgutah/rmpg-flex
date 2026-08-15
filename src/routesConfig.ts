@@ -159,6 +159,7 @@ import scheduling from './routes/scheduling';
 import scheduler from './routes/scheduler';
 import shiftBriefings from './routes/shiftBriefings';
 import serve from './routes/serve';
+import sync from './routes/sync';
 import serveDashboard from './routes/serveDashboard';
 import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
@@ -616,6 +617,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',
     note: 'Risk management: assessments, safety inspections, insurance claims' },
+  { prefix: '/api/sync', router: sync, auth: 'required',
+    note: 'FZ-55 secondary server sync: POST /queue, GET /queue, POST /queue/:id/ack, GET /status, POST /push, GET /config, PUT /config. Admin/manager only — enforced per-route inside sync.ts.' },
   { prefix: '/api/tasks', router: tasks, auth: 'required',
     note: 'Task/work management: assignments, comments, linked-entity tasks' },
   { prefix: '/api/training', router: training, auth: 'required',
