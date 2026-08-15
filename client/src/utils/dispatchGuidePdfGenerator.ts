@@ -2208,7 +2208,7 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
     { label: 'ENROUTE',      dx:  170, dy:    0, color: '#555555' },
     { label: 'ON SCENE',     dx:  170, dy:   70, color: '#666666' },
     { label: 'BUSY',         dx: -170, dy:  -70, color: '#666666' },
-    { label: 'OUT OF SVC',   dx: -170, dy:   70, color: 'var(--text-muted)' },
+    { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
   ];
   const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
   for (const s of satellites) {
@@ -2701,17 +2701,17 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
   type Evt = { min: number; label: string; color: string };
   const events: Evt[] = [
     { min: 0,     label: 'Phone rings\nF2 pressed',     color: '#555555' },
-    { min: 0.33,  label: 'Caller gives\nlocation',       color: 'var(--text-muted)' },
-    { min: 0.42,  label: 'Incident type\nclassified',    color: 'var(--text-muted)' },
+    { min: 0.33,  label: 'Caller gives\nlocation',       color: '#888888' },
+    { min: 0.42,  label: 'Incident type\nclassified',    color: '#888888' },
     { min: 0.48,  label: 'Voice-channel\nalert',          color: '#555555' },
-    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: 'var(--text-muted)' },
+    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#888888' },
     { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#666666' },
-    { min: 2.0,   label: 'U07 diverts\nto intercept',     color: 'var(--text-muted)' },
+    { min: 2.0,   label: 'U07 diverts\nto intercept',     color: '#888888' },
     { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#666666' },
     { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#555555' },
     { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#666666' },
-    { min: 12.5,  label: 'U12 clears\n(F7)',              color: 'var(--text-muted)' },
-    { min: 19.25, label: 'U07 clears\n(F7)',              color: 'var(--text-muted)' },
+    { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#888888' },
+    { min: 19.25, label: 'U07 clears\n(F7)',              color: '#888888' },
     { min: 20.5,  label: 'Close call\ndisp: GOA',         color: '#666666' },
   ];
 
@@ -2876,7 +2876,7 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const lanes: Array<{ label: string; color: string }> = [
-    { label: 'PRIMARY OFFICER', color: 'var(--text-muted)' },
+    { label: 'PRIMARY OFFICER', color: '#888888' },
     { label: 'DISPATCHER',      color: '#555555' },
     { label: 'SUPERVISOR',      color: '#666666' },
   ];
@@ -2948,13 +2948,13 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
 
   const layers: Array<{ label: string; detail: string; color: string }> = [
     { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#666666' },
-    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: 'var(--text-muted)' },
-    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: 'var(--text-muted)' },
+    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#888888' },
+    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#888888' },
     { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#777777' },
     { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#555555' },
-    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: 'var(--text-muted)' },
-    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: 'var(--text-muted)' },
-    { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: 'var(--text-primary)' },
+    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#888888' },
+    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#888888' },
+    { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: '#ffffff' },
   ];
 
   const barH = 16;
@@ -3103,13 +3103,13 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
   const fields: Array<{ label: string; example: string; color: string }> = [
     { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#555555' },
     { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#555555' },
-    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: 'var(--text-muted)' },
-    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: 'var(--text-muted)' },
-    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: 'var(--text-muted)' },
-    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: 'var(--text-muted)' },
+    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#888888' },
+    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#888888' },
+    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#888888' },
+    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#888888' },
     { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#666666' },
-    { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: 'var(--text-muted)' },
-    { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: 'var(--text-muted)' },
+    { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: '#888888' },
+    { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: '#888888' },
   ];
   const cols = 3;
   const rows = 3;
@@ -3184,10 +3184,10 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   // Sideband systems below
   const sideY = tierY + tierH + 26;
   const sidebands = [
-    { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: 'var(--text-muted)' },
-    { from: express, label: 'systemd unit\nrmpg-flex.service', color: 'var(--text-muted)' },
-    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: 'var(--text-muted)' },
-    { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: 'var(--text-muted)' },
+    { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
+    { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
+    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#888888' },
+    { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
   ];
   for (const sb of sidebands) {
     const sbX = sb.from.x + sb.from.w / 2 - 60;

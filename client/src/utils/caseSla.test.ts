@@ -56,7 +56,7 @@ describe('slaBadge', () => {
   it('maps states to label + color', () => {
     expect(slaBadge('overdue')).toEqual({ label: 'OVERDUE', color: 'var(--sev-critical)' });
     expect(slaBadge('due_soon')?.label).toBe('DUE SOON');
-    expect(slaBadge('on_track')?.color).toBe('#22c55e');
+    expect(slaBadge('on_track')?.color).toBe('var(--sev-ok)');
     expect(slaBadge('none')).toBeNull();
   });
 });

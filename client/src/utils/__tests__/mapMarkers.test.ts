@@ -71,8 +71,8 @@ describe('marker roots stay transform-free (pan/zoom drift guard)', () => {
   const ROOTS: Array<[string, () => HTMLElement]> = [
     ['buildUnitMarker', () => buildUnitMarker({ label: '12', status: 'in_service' })],
     ['buildCallMarker', () => buildCallMarker({ priority: 1, label: 'P1' })],
-    ['buildDotMarker', () => buildDotMarker({ color: 'var(--field-label-color)', size: 12 })],
-    ['buildDotMarker (pulsing)', () => buildDotMarker({ color: 'var(--field-label-color)', size: 12, pulse: true })],
+    ['buildDotMarker', () => buildDotMarker({ color: '#d4a017', size: 12 })],
+    ['buildDotMarker (pulsing)', () => buildDotMarker({ color: '#d4a017', size: 12, pulse: true })],
   ];
 
   for (const [name, build] of ROOTS) {
@@ -100,7 +100,7 @@ describe('marker roots stay transform-free (pan/zoom drift guard)', () => {
 
 describe('buildDotMarker', () => {
   it('returns a colored dot element', () => {
-    const el = buildDotMarker({ color: 'var(--field-label-color)', size: 12 });
+    const el = buildDotMarker({ color: '#d4a017', size: 12 });
     expect(el).toBeInstanceOf(HTMLElement);
     expect(el.style.background).toContain('rgb(212, 160, 23)');
   });
