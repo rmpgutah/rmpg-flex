@@ -101,7 +101,11 @@ function backToLogin(appOrigin: string, status: 'error', message: string) {
 // (both `false`), and a KV counter caps probes per client IP so the endpoint
 // can't be walked through an address list. Never reports whether an account
 // exists when it isn't SSO-linked.
-const CHECK_PROBES_PER_MINUTE = 20;
+// The SPA calls this on each identifier-first keystroke (debounced); 20/min
+// was easily exhausted during normal typing, producing Cloudflare-level 429s
+// because the probe volume triggered the zone rate limit before the Worker
+// could respond with its own graceful { ssoEnabled: false }. Raised 2026-08-15.
+const CHECK_PROBES_PER_MINUTE = 60;
 
 async function overCheckProbeLimit(env: Env['Bindings'], ip: string, nowMs: number): Promise<boolean> {
   const key = `oidc:dialer:check:${ip}:${Math.floor(nowMs / 60_000)}`;

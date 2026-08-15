@@ -276,11 +276,17 @@ auth.post('/login', async (c) => {
     // many legit users behind one IP) + a tighter per-username window so a
     // distributed credential-stuffing run still hits a wall. Counts every
     // attempt, success included — fine at these limits; KV fails open.
+    //
+    // Limit history:
+    //   ip:30/300s, user:10/300s → too low: shift-change NAT exhaustion (multiple
+    //   officers logging in concurrently) + SPA retries on session expiry burned
+    //   through both buckets, producing 429s for legitimate logins. Raised
+    //   2026-08-15 to ip:100/300s (~20 req/min avg) and user:30/300s.
     const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
     const [ipOk, userOk] = await Promise.all([
-      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 30, 300),
-      rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
+      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 100, 300),
+      rateLimitAllow(c.env.KV, `login:user:${uname}`, 30, 300),
     ]);
     if (!ipOk || !userOk) {
       await recordLoginAttempt(c, getDb(c.env), username, ip, false, 'rate_limited');
