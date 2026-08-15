@@ -391,6 +391,11 @@ head_sampling_rate = 1
 
 # Environment variables
 [vars]
+# ─── Turso secondary DB — set via `wrangler secret put`, NOT wrangler.toml ──
+# TURSO_URL          libsql://rmpg-flex-secondary-rmpg-utah.turso.io
+# TURSO_AUTH_TOKEN   Turso auth token (turso.tech dashboard → database → tokens)
+# Both must also be added to .dev.vars for local development.
+# Without them the dual-write wrapper is a null no-op — local dev is unaffected.
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
 CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
