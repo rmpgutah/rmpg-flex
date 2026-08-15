@@ -408,6 +408,29 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=6144
 
+  # Map test suite runs separately — mapbox-gl has a large parsed AST. When 28+
+  # map test files cluster in the same shard (via vitest's hash-based assignment),
+  # their combined transform cache inflates the parent process past the 6144 MB
+  # ceiling and either OOMs or GC-thrashes past the 25-minute timeout. Root-cause
+  # fix: isolate them here so the main shards never see the mapbox-gl import graph.
+  # Mirrors the pattern used for PDF (vitest.pdf.config.ts) and desktop tests.
+  client-tests-maps:
+    name: Client tests (map suite)
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --config vitest.maps.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
   client-build:
     name: Client build
     needs: [client-typecheck]
