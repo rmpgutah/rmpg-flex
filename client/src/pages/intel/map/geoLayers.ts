@@ -6,11 +6,11 @@ export interface LayerDef { key: string; label: string; color: string }
 
 export const LAYER_DEFS: LayerDef[] = [
   { key: 'sightings', label: 'Plate Sightings', color: '#22d3ee' },
-  { key: 'calls', label: 'Calls', color: 'var(--field-label-color)' },
-  { key: 'incidents', label: 'Incidents', color: 'var(--sev-warn)' },
+  { key: 'calls', label: 'Calls', color: '#d4a017' },
+  { key: 'incidents', label: 'Incidents', color: '#f59e0b' },
   { key: 'field_interviews', label: 'Field Interviews', color: '#10b981' },
   { key: 'warrants', label: 'Warrants', color: '#ff6b5e' },
-  { key: 'trespass', label: 'Trespass', color: 'var(--text-muted)' },
+  { key: 'trespass', label: 'Trespass', color: '#888888' },
 ];
 
 export function toGeoJSON(features: GeoFeature[]) {
