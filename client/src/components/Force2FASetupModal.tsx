@@ -93,7 +93,7 @@ export default function Force2FASetupModal() {
       role="dialog"
       aria-modal="true"
       aria-label="Two-factor setup required"
-      style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      style={{ background: 'rgba(0 0 0 / 0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div
         className="w-full max-w-md mx-4 p-6 space-y-5"

@@ -80,7 +80,7 @@ export default function WelfareCheckModal() {
       aria-modal="true"
       aria-labelledby="welfare-title"
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.92)' }}
+      style={{ background: 'rgba(0 0 0 / 0.92)' }}
     >
       <div
         className={`w-full max-w-xl border-4 p-6 space-y-5 ${urgent ? 'animate-pulse' : ''}`}
