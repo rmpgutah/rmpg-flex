@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, queryInChunks, execute, executeBatch, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -1714,10 +1714,10 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
       );
       if (ext && ext.stack_group_id) {
         const unitRows = unit_ids.length
-          ? await query<{ id: number; call_sign: string | null }>(
+          ? await queryInChunks<{ id: number; call_sign: string | null }>(
               db,
-              `SELECT id, call_sign FROM units WHERE id IN (${unit_ids.map(() => '?').join(',')})`,
-              ...unit_ids,
+              unit_ids,
+              (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`,
             )
           : [];
         const addCallSigns = unitRows.map((u) => u.call_sign).filter(Boolean) as string[];

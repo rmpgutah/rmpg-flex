@@ -88,9 +88,15 @@ export async function leaveStackGroup(db: D1Database, callId: number): Promise<v
     callId,
   );
 
+  // Count only active siblings — a previously-failed leaveStackGroup on a closed
+  // call could leave a phantom ext row with a stale group ID; joining through
+  // calls_for_service with ACTIVE_CALL_WHERE prevents it from blocking dissolution.
   const remaining = await queryFirst<{ cnt: number }>(
     db,
-    'SELECT COUNT(*) as cnt FROM calls_for_service_ext WHERE stack_group_id = ?',
+    `SELECT COUNT(*) as cnt
+     FROM calls_for_service_ext e
+     JOIN calls_for_service c ON c.id = e.id
+     WHERE e.stack_group_id = ? AND ${ACTIVE_CALL_WHERE}`,
     groupId,
   );
 
