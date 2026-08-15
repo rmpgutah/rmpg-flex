@@ -97,7 +97,7 @@ export default function OfflineQueueTab() {
                 <tr key={op.id} style={{ color: 'var(--sev-critical)' }}>
                   <td className="py-[2px] pr-3 font-mono">{op.method}</td>
                   <td className="py-[2px] pr-3 font-mono truncate max-w-[220px]">{op.path}</td>
-                  <td className="py-[2px] pr-3">{new Date(Math.floor(op.timestamp / 1000)).toLocaleTimeString()}</td>
+                  <td className="py-[2px] pr-3">{new Date(Math.floor(op.timestamp / 1000)).toLocaleTimeString()/* new-date-ok: local epoch number, not a server string */}</td>
                   <td className="py-[2px] pr-3">{op.retries}</td>
                   <td className="py-[2px]">
                     <button
