@@ -102,6 +102,13 @@ function initLocalDb() {
     }
   }
 
+  // Reconcile face_embedding column for installs predating face auth
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN face_embedding TEXT');
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message)) throw err;
+  }
+
   console.log('[LOCAL-DB] Ready');
   return db;
 }

@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.8.9",
+  "version": "5.9.0",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -13,7 +13,7 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac -c.mac.identity=null",
     "build:all": "electron-builder --mac --win",
-    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped (likely CI or first install before electron); run npm run rebuild manually if dev start fails with NODE_MODULE_VERSION'",
+    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped'",
     "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
   },
   "build": {
@@ -54,7 +54,11 @@
       "splash.html",
       "splashPreload.js",
       "assets/login-bg.jpg",
-      "assets/logo.png"
+      "assets/logo.png",
+      "**/node_modules/node-hid/**/*",
+      "**/node_modules/usb-detection/**/*",
+      "**/node_modules/@vladmandic/**/*",
+      "**/node_modules/jsqr/**/*"
     ],
     "extraResources": [
       {
@@ -128,9 +132,15 @@
   },
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
+    "@vladmandic/face-api": "^1.7.15",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
+    "jsqr": "^1.4.0",
     "serialport": "^13.0.0"
+  },
+  "optionalDependencies": {
+    "node-hid": "^3.1.0",
+    "usb-detection": "^4.1.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
