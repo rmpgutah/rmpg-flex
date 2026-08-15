@@ -405,7 +405,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               Controlled Substance
             </label>
             <label className="flex items-center gap-2 text-xs text-rmpg-300 cursor-pointer">
-              <input id="ff-evidenceformmodal-13" type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="accent-[#d4a017]" />
+              <input id="ff-evidenceformmodal-13" type="checkbox" checked={form.temperature_sensitive} onChange={(e) => updateField('temperature_sensitive', e.target.checked)} className="[accent-color:var(--field-label-color)]" />
               Temperature Sensitive
             </label>
           </div>

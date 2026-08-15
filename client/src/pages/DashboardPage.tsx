@@ -209,7 +209,7 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: '2px',
   color: 'var(--text-primary)',
   fontSize: '11px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+  boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
   padding: '8px 12px',
 };
 
@@ -1716,7 +1716,7 @@ export default function DashboardPage() {
                   borderRadius: '2px',
                   color: 'var(--text-primary)',
                   fontSize: '11px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                   padding: '8px 12px',
                 }}
                 labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
@@ -1764,7 +1764,7 @@ export default function DashboardPage() {
                         borderRadius: '2px',
                         color: 'var(--text-primary)',
                         fontSize: '11px',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                         padding: '8px 12px',
                       }}
                       formatter={(value: any) => [`${value} calls`, '']}
@@ -1916,7 +1916,7 @@ export default function DashboardPage() {
                       <XAxis dataKey="label" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} />
                       <YAxis tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} allowDecimals={false} width={28} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)', padding: '8px 12px' }}
                         labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
                         formatter={(value: any) => [`${value} calls`, '']}
                         cursor={{ stroke: goldSeries, strokeWidth: 1, strokeDasharray: '4 4' }}
@@ -2987,7 +2987,7 @@ export default function DashboardPage() {
                       borderRadius: '2px',
                       color: 'var(--text-primary)',
                       fontSize: '11px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                       padding: '8px 12px',
                     }}
                     formatter={(value: any, _name: any, props: any) => [

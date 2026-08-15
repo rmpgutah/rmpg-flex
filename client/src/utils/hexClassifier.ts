@@ -327,13 +327,47 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // the video overlay; re-theming would collapse those distinctions. Same rationale as
   // connectionsGraphStyle.ts categorical exclusion.
   redactionStudioCategorical: /(^|\/)RedactionStudio\.(tsx)$/,
+  // LawBookPage defines CHAPTER_META — a categorical accent per Utah Code chapter type
+  // (person, property, vehicle, juvenile, wildlife, alcohol, protective, fraud, …).
+  // Each type must be visually distinct; re-theming would collapse those distinctions.
+  // SEVERITY_CLASSES similarly assigns fixed operational severity identity colors.
+  // Same rationale as connectionsGraphStyle.ts categorical exclusion.
+  lawBookCategoricalPalette: /(^|\/)LawBookPage\.(tsx)$/,
   // SignaturePad uses Canvas 2D API (ctx.strokeStyle / ctx.fillStyle) for signature rendering.
   // CSS variables cannot resolve in a canvas 2D context.
   signaturePadCanvas: /(^|\/)SignaturePad\.(tsx)$/,
+  // PersonIntelGraphTab uses react-force-graph-2d (canvas-rendered) for the force-directed
+  // relationship graph. nodeColor/linkColor props and ctx.fillStyle are library/canvas APIs
+  // that cannot accept CSS variables. backgroundColor is a direct library prop.
+  intelForceGraphCanvas: /(^|\/)PersonIntelGraphTab\.(tsx)$/,
   // ContextMenu renders with explicit dark surface colors (#141414, #1e1e1e, #2a2a2a) pinned to
   // the tactical-dark palette — same rationale as NavSettingsPanel. The context menu appears
   // over any surface including map tiles and video, so it must always be near-black.
   contextMenuTactical: /(^|\/)ContextMenu\.(tsx)$/,
+  // recordVisuals.ts defines a categorical badge-color palette (red, orange, amber, gold,
+  // purple, pink, blue, teal, green, gray) for record severity visual tokens — each shade
+  // used directly in style props. Same rationale as connectionsGraphStyle.ts exclusion.
+  recordVisualsCategorical: /(^|\/)recordVisuals\.(ts)$/,
+  // agendaToCalendarEvents.ts defines a categorical event-type palette (serve, shift, court,
+  // custom, etc.). Each event type maps to a fixed, visually distinct color used directly by
+  // the calendar library. Same rationale as connectionsGraphStyle.ts categorical exclusion.
+  calendarEventTypePalette: /(^|\/)agendaToCalendarEvents\.(ts)$/,
+  // The entire document-writer subtree produces document HTML/CSS content that is rendered
+  // as the user's document (not the app's UI). HTML attribute strings (style="…") and
+  // print CSS at-rules inside JS strings cannot reference CSS variables.
+  // Covers: docActions*.ts, docTools.ts, features/*.ts, templates/**/*.ts, writer.css,
+  // analysis.ts, types.ts, _shared.ts, components/AppearanceDialog.tsx (color picker input value).
+  // DocumentWriterPage.tsx pageBg/textColor are also document-content colors, not app UI.
+  documentWriterSubtree: /(^|\/)pages\/document-writer\//,
+  // DashCameraTab renders status cards with near-black tinted backgrounds pinned to the
+  // tactical-dark palette: #0a1a0a (green-tinted for Available), #1a150a (amber for
+  // Maintenance), #1a0a0a (red for Damaged/Lost), #140a1a (purple for Videos). Each shade
+  // encodes a distinct operational status and must remain visually distinct across themes.
+  dashCamStatusCardsTactical: /(^|\/)DashCameraTab\.(tsx)$/,
+  // FirecrawlTab includes an <input type="color"> for a user-selectable accent color
+  // stored to the API. The input type="color" value attribute requires a 6-digit hex
+  // string — CSS variables or named colors are not valid there.
+  firecrawlColorPicker: /(^|\/)FirecrawlTab\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

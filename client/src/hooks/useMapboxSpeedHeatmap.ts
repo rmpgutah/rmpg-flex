@@ -55,7 +55,7 @@ export function useMapboxSpeedHeatmap(map: mapboxgl.Map | null) {
         'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 14, 1.2],
         'heatmap-color': [
           'interpolate', ['linear'], ['heatmap-density'],
-          0, 'rgba(0,0,0,0)',
+          0, 'rgba(0 0 0 / 0)',
           0.2, 'rgba(59,130,246,0.5)',
           0.5, 'rgba(234,179,8,0.7)',
           0.8, 'rgba(249,115,22,0.85)',

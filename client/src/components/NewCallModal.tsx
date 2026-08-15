@@ -445,7 +445,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" role="presentation" />
 
       {/* 78: Modal with deeper shadow for elevation */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0 0 0 / 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
           <div className="flex items-center gap-2">
@@ -459,8 +459,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : 'var(--border-default)',
-                color: mode === 'quick' ? '#d4a017' : '#888888',
+                borderColor: mode === 'quick' ? 'var(--field-label-color)' : 'var(--border-default)',
+                color: mode === 'quick' ? 'var(--field-label-color)' : 'var(--text-secondary)',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
             >
@@ -578,7 +578,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                         update('client_id', '');
                       }
                     }}
-                    style={{ borderColor: '#6b21a8' }}
+                    style={{ borderColor: 'var(--sev-special)' }}
                   >
                     <option value="">-- Select Client --</option>
                     {(() => {

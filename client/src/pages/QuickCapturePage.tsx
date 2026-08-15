@@ -28,7 +28,7 @@
 //   • GPS visibility — shows the actual lat/lng + accuracy that will
 //     be stamped on the FI, with a manual "re-acquire" button when
 //     the first fix is stale or wrong (mid-drive on-foot pattern).
-//   • Theme tokens throughout — no hardcoded #d4a017 / #888888 hex.
+//   • Theme tokens throughout — no hardcoded var(--field-label-color) / var(--text-secondary) hex.
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {

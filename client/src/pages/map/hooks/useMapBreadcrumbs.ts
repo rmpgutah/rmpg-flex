@@ -53,12 +53,12 @@ const speedToWeight = (speedMps: number | null): number => {
 export const SPEED_LEGEND_BANDS = [
   { color: '#666666', label: 'Stationary', range: '0 mph' },
   { color: '#999999', label: 'Walking', range: '<3 mph' },
-  { color: '#22c55e', label: 'Slow Drive', range: '3-10 mph' },
-  { color: '#22c55e', label: 'Residential', range: '10-25 mph' },
+  { color: 'var(--sev-ok)', label: 'Slow Drive', range: '3-10 mph' },
+  { color: 'var(--sev-ok)', label: 'Residential', range: '10-25 mph' },
   { color: '#84cc16', label: 'City Street', range: '25-35 mph' },
   { color: '#eab308', label: 'Arterial', range: '35-45 mph' },
-  { color: '#f97316', label: 'Highway', range: '45-55 mph' },
-  { color: '#ef4444', label: 'Freeway', range: '55-75 mph' },
+  { color: 'var(--sev-high)', label: 'Highway', range: '45-55 mph' },
+  { color: 'var(--sev-critical)', label: 'Freeway', range: '55-75 mph' },
   { color: '#dc2626', label: 'Pursuit', range: '75+ mph' },
 ];
 
@@ -338,7 +338,7 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
                   },
                   label: {
                     text: '!',
-                    color: '#ffffff',
+                    color: 'var(--text-primary)',
                     fontWeight: '900',
                     fontSize: '11px',
                   },

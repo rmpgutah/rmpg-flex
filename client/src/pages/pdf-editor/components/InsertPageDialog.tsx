@@ -10,7 +10,7 @@ interface Props {
   onPickImage: () => void;
 }
 
-const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-border-default hover:border-[#d4a017] rounded-[2px] py-4 text-[10px] text-rmpg-300 hover:text-rmpg-100 bg-surface-sunken';
+const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-border-default hover:[border-color:var(--field-label-color)] rounded-[2px] py-4 text-[10px] text-rmpg-300 hover:text-rmpg-100 bg-surface-sunken';
 
 export default function InsertPageDialog({ open, onClose, onTemplate, onPickImage }: Props) {
   if (!open) return null;
@@ -18,7 +18,7 @@ export default function InsertPageDialog({ open, onClose, onTemplate, onPickImag
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-surface-base border border-border-default rounded-[2px] w-[400px] max-w-full p-4" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3">
-          <FilePlus2 className="w-4 h-4 text-[#d4a017]" />
+          <FilePlus2 className="w-4 h-4 [color:var(--panel-header-color)]" />
           <div className="text-sm text-rmpg-100 font-semibold">Insert New Page</div>
           <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>

@@ -106,7 +106,7 @@ function StatsCard({
               {label}
             </p>
             <p className={`text-2xl font-black font-mono tabular-nums ${VALUE_COLORS[accent] || VALUE_COLORS.blue}`}
-              style={{ textShadow: `0 0 12px ${glow25}, 0 1px 2px rgba(0,0,0,0.5)`, lineHeight: 1 }}>
+              style={{ textShadow: `0 0 12px ${glow25}, 0 1px 2px rgba(0 0 0 / 0.5)`, lineHeight: 1 }}>
               {value}
             </p>
           </div>

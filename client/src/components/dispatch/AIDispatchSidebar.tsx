@@ -78,7 +78,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Suggested Flags */}
           {analysis.suggestedFlags && analysis.suggestedFlags.length > 0 && (
             <div>
-              <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#a78bfa' }}>
+              <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--sev-special)' }}>
                 <AlertTriangle className="w-3 h-3" /> Suggested Flags
               </label>
               <div className="flex flex-wrap gap-1">
@@ -91,8 +91,8 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                       onClick={() => onAcceptFlag(selectedCall.id, flag)}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold rounded-sm border transition-colors"
                       style={alreadySet
-                        ? { background: '#22c55e15', borderColor: '#22c55e40', color: '#4ade80', cursor: 'default', opacity: 0.7 }
-                        : { background: '#a855f715', borderColor: '#a855f740', color: '#c084fc', cursor: 'pointer' }
+                        ? { background: 'rgb(var(--sev-ok-rgb) / 0.08)', borderColor: 'rgb(var(--sev-ok-rgb) / 0.25)', color: 'var(--sev-ok-soft)', cursor: 'default', opacity: 0.7 }
+                        : { background: 'rgb(var(--sev-special-rgb) / 0.08)', borderColor: 'rgb(var(--sev-special-rgb) / 0.25)', color: 'var(--sev-special)', cursor: 'pointer' }
                       }
                       title={alreadySet ? `${flag} already set` : `Accept flag: ${flag}`}
                     >
@@ -117,7 +117,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.min(100, Math.max(0, analysis.confidence))}%`,
-                    background: analysis.confidence >= 75 ? '#4ade80' : analysis.confidence >= 50 ? '#fbbf24' : '#f87171',
+                    background: analysis.confidence >= 75 ? 'var(--sev-ok)' : analysis.confidence >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                   }}
                 />
               </div>

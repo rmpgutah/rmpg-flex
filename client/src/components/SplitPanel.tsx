@@ -130,7 +130,7 @@ export default function SplitPanel({
               style={{
                 background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
                 color: mobileTab === 'left' ? '#fff' : 'var(--text-muted)',
-                borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
+                borderBottom: mobileTab === 'left' ? '2px solid var(--text-muted)' : '2px solid transparent',
               }}
             >
               {leftLabel}
@@ -141,7 +141,7 @@ export default function SplitPanel({
               style={{
                 background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
                 color: mobileTab === 'right' ? '#fff' : 'var(--text-muted)',
-                borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
+                borderBottom: mobileTab === 'right' ? '2px solid var(--text-muted)' : '2px solid transparent',
               }}
             >
               {rightLabel}
@@ -191,7 +191,7 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? 'var(--border-default)' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
+            background: isDragging ? 'var(--border-default)' : 'linear-gradient(90deg, var(--surface-sunken), var(--surface-raised), var(--surface-sunken))',
             borderTop: '1px solid var(--border-strong)',
             borderBottom: '1px solid var(--border-subtle)',
             transition: isDragging ? 'none' : 'background 0.15s ease',

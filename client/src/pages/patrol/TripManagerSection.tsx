@@ -301,13 +301,13 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
   return (
     <div className="bg-surface-base border border-border-default rounded-[2px]">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+        <h4 className="text-[9px] [color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Route className="w-3 h-3" /> Trip Log Management ({trips.length})
         </h4>
         {canEdit && (
           <button
             onClick={startAdd}
-            className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] hover:bg-surface-raised transition-colors"
+            className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-raised border border-rmpg-700 [color:var(--panel-header-color)] hover:bg-surface-raised transition-colors"
           >
             <Plus className="w-3 h-3" /> Add Trip
           </button>
@@ -429,7 +429,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                 }
                 return (
                   <tr key={key} className="border-b border-border-default hover:bg-surface-sunken transition-colors">
-                    <td className={`px-2 py-[2px] font-mono font-bold text-[10px] ${t.trip_type === 'call_response' ? 'text-[#d4a017]' : 'text-rmpg-300'}`}>
+                    <td className={`px-2 py-[2px] font-mono font-bold text-[10px] ${t.trip_type === 'call_response' ? '[color:var(--panel-header-color)]' : 'text-rmpg-300'}`}>
                       {t.trip_type === 'call_response' ? 'RESPONSE' : 'PATROL'}
                     </td>
                     <td className="px-2 py-[2px] font-mono text-[10px] text-rmpg-300">{t.call_number || '—'}</td>
@@ -448,7 +448,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                     <td className="px-2 py-[2px] text-right">
                       {canEdit && (
                         <span className="inline-flex gap-1">
-                          <IconButton aria-label={`Edit trip ${t.id}`} onClick={() => startEdit(t)} className="text-rmpg-400 hover:text-[#d4a017]">
+                          <IconButton aria-label={`Edit trip ${t.id}`} onClick={() => startEdit(t)} className="text-rmpg-400 hover:[color:var(--panel-header-color)]">
                             <Pencil className="w-3 h-3" />
                           </IconButton>
                           <IconButton aria-label={`Delete trip ${t.id}`}

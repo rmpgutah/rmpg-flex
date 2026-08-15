@@ -155,7 +155,7 @@ export default function Dropdown({
           : opt.danger
             ? 'text-red-400 hover:bg-red-900/20'
             : opt.value === value
-              ? 'text-[#d4a017] bg-[#d4a017]/5'
+              ? '[color:var(--panel-header-color)] bg-[var(--field-label-color)]/5'
               : 'text-rmpg-200 hover:bg-surface-raised'
         }
       `}
@@ -167,7 +167,7 @@ export default function Dropdown({
         )}
       </span>
       {opt.value === value && (
-        <span className="text-[#d4a017] shrink-0">&#10003;</span>
+        <span className="[color:var(--panel-header-color)] shrink-0">&#10003;</span>
       )}
     </button>
   );

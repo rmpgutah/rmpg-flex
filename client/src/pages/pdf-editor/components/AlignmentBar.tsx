@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function AlignmentBar({ count, onAlign, onDistribute, onMatchSize }: Props) {
-  const btn = 'p-1 hover:bg-rmpg-700/40 rounded-sm text-rmpg-300 hover:text-[#d4a017] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-rmpg-300';
+  const btn = 'p-1 hover:bg-rmpg-700/40 rounded-sm text-rmpg-300 hover:[color:var(--panel-header-color)] disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-rmpg-300';
   const canDistribute = count >= 3;
   return (
     <div className="inline-flex items-center gap-0.5 border-l border-border-default pl-2 ml-1" role="group" aria-label="Arrange selection">

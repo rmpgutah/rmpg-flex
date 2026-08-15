@@ -136,7 +136,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           <span className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
             <span
               className="inline-block w-1.5 h-1.5 rounded-full flex-shrink-0"
-              style={{ background: connected ? '#4ade80' : '#6b7280' }}
+              style={{ background: connected ? 'var(--sev-ok)' : 'var(--text-muted)' }}
             />
             Dialer {connected ? 'Connected' : 'Disconnected'}
           </span>
@@ -181,7 +181,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           Dialer
           <span
             className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ background: connected ? '#4ade80' : '#6b7280' }}
+            style={{ background: connected ? 'var(--sev-ok)' : 'var(--text-muted)' }}
           />
         </button>
       )}

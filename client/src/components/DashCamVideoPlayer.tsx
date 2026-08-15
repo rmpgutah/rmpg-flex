@@ -283,13 +283,13 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
 
               {/* ── Top-left: Agency Watermark (burned-in text, no box) ── */}
               <p className="absolute top-3 left-4 font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] leading-none"
-                 style={{ textShadow: '0 0 6px rgba(0,0,0,1), 0 1px 8px rgba(0,0,0,0.9)' }}>
+                 style={{ textShadow: '0 0 6px rgba(0 0 0 / 1), 0 1px 8px rgba(0 0 0 / 0.9)' }}>
                 ROCKY MOUNTAIN PROTECTIVE GROUP
               </p>
 
               {/* ── Top-right: REC indicator + Case (raw LED, no box) ── */}
               <div className="absolute top-3 right-4 flex items-center gap-1.5"
-                   style={{ textShadow: '0 0 6px rgba(0,0,0,1), 0 1px 8px rgba(0,0,0,0.9)' }}>
+                   style={{ textShadow: '0 0 6px rgba(0 0 0 / 1), 0 1px 8px rgba(0 0 0 / 0.9)' }}>
                 <span className="led-dot led-red animate-led-blink" style={{ width: 6, height: 6 }} />
                 <span className="font-mono text-[11px] text-red-400 font-bold tracking-[0.15em]">REC</span>
                 {video.case_number && (

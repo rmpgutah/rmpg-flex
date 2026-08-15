@@ -21,7 +21,7 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div className="bg-surface-base border border-border-default rounded-[2px] w-[360px] p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
+          <div className="text-[11px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold inline-flex items-center gap-1.5">
             <Grid2x2 className="w-3.5 h-3.5" /> N-up export
           </div>
           <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
@@ -33,7 +33,7 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
         <div className="flex gap-1 mb-3">
           {([2, 4] as const).map(n => (
             <button key={n} type="button" onClick={() => setUp(n)}
-              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${up === n ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
+              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${up === n ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
               {n}-up
             </button>
           ))}
@@ -43,13 +43,13 @@ export default function NUpDialog({ open, busy, pageCount, onClose, onExport }: 
         <div className="flex gap-1 mb-3">
           {(['Letter', 'A4'] as const).map(s => (
             <button key={s} type="button" onClick={() => setSize(s)}
-              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${size === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
+              className={`flex-1 px-2 py-1.5 text-[11px] rounded-sm border ${size === s ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-rmpg-400 hover:text-rmpg-100'}`}>
               {s}
             </button>
           ))}
         </div>
 
-        <div className="text-[10px] text-rmpg-400 mb-3">{pageCount} page{pageCount === 1 ? '' : 's'} → <span className="text-[#d4a017] font-mono">{sheets}</span> sheet{sheets === 1 ? '' : 's'} ({size}{up === 2 ? ' landscape' : ''}).</div>
+        <div className="text-[10px] text-rmpg-400 mb-3">{pageCount} page{pageCount === 1 ? '' : 's'} → <span className="[color:var(--panel-header-color)] font-mono">{sheets}</span> sheet{sheets === 1 ? '' : 's'} ({size}{up === 2 ? ' landscape' : ''}).</div>
 
         <div className="flex items-center justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-secondary text-[11px]">Cancel</button>

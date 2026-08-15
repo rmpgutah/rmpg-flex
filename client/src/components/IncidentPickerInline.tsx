@@ -174,7 +174,7 @@ export default function IncidentPickerInline({
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading incidents…</div>
           )}
           {error && (
-            <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>
+            <div className="px-3 py-2 text-[11px] text-[color:var(--sev-critical)]">{error}</div>
           )}
           {!loading && !error && filtered.length === 0 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
@@ -188,12 +188,12 @@ export default function IncidentPickerInline({
                 type="button"
                 onClick={() => select(i)}
                 {...optionProps(idx, selected)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
-                style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-surface-deep' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
+                style={{ borderLeft: selected ? '2px solid var(--field-label-color)' : '2px solid transparent' }}
               >
-                <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : '#666' }} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-mono font-semibold text-[#d4a017]">{i.incident_number}</div>
+                  <div className="text-[11px] font-mono font-semibold text-[color:var(--field-label-color)]">{i.incident_number}</div>
                   <div className="text-[10px] text-rmpg-400 mt-0.5">
                     {humanizeType(i.type ?? '') || 'Unknown type'}
                     {i.officer_name && <span className="ml-2">· {i.officer_name}</span>}

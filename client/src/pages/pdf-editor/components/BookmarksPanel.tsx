@@ -42,7 +42,7 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
       </button>
       {!child && (
         <IconButton onClick={() => add(b.id)} aria-label={`Add child bookmark under ${b.title}`} title={`Add child bookmark (page ${activePage}) under "${b.title}"`}
-          className="p-0.5 text-rmpg-500 hover:text-[#d4a017] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Plus className="w-3 h-3" /></IconButton>
+          className="p-0.5 text-rmpg-500 hover:[color:var(--panel-header-color)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Plus className="w-3 h-3" /></IconButton>
       )}
       <IconButton onClick={() => onDelete(b.id)} aria-label="Delete bookmark"
         className="p-0.5 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Trash2 className="w-3 h-3" /></IconButton>
@@ -52,8 +52,8 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
   return (
     <div className="bg-surface-base border border-border-default rounded-[2px] w-[220px] flex-shrink-0 p-2 overflow-y-auto">
       <div className="flex items-center gap-1.5 mb-2 px-1">
-        <BookmarkIcon className="w-3.5 h-3.5 text-[#d4a017]" />
-        <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Bookmarks</div>
+        <BookmarkIcon className="w-3.5 h-3.5 [color:var(--panel-header-color)]" />
+        <div className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold">Bookmarks</div>
         <IconButton onClick={onClose} aria-label="Close bookmarks" className="ml-auto p-0.5 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></IconButton>
       </div>
 
@@ -64,10 +64,10 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
           onChange={e => setTitle(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') add(); }}
           placeholder={`Name (pg ${activePage})`}
-          className="flex-1 bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]"
+          className="flex-1 bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 px-1.5 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]"
         />
         <IconButton onClick={() => add()} aria-label="Add bookmark at current page" title={`Bookmark page ${activePage}`}
-          className="p-1 text-[#d4a017] hover:text-rmpg-100 border border-border-default rounded-sm"><Plus className="w-3 h-3" /></IconButton>
+          className="p-1 [color:var(--panel-header-color)] hover:text-rmpg-100 border border-border-default rounded-sm"><Plus className="w-3 h-3" /></IconButton>
       </div>
 
       {roots.length === 0 ? (

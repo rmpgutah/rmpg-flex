@@ -208,7 +208,7 @@ export default function GeoDataMapView({
 
   if (error) {
     return (
-      <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-[#888888]">
+      <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-fg-muted">
         {error}
       </div>
     );

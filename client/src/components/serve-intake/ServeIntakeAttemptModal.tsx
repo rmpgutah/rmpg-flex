@@ -166,7 +166,7 @@ export default function ServeIntakeAttemptModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }}
+      style={{ background: 'rgba(0 0 0 / 0.65)' }}
       onClick={guardedClose}
     >
       <div

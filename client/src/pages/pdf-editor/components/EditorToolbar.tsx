@@ -73,7 +73,7 @@ export default function EditorToolbar(p: Props) {
         <IconButton onClick={p.onTogglePageNumbers}
           aria-label={p.pageNumbersActive ? 'Page numbers on (click to remove)' : 'Stamp "Page N of M" footer'}
           title={p.pageNumbersActive ? 'Page-number footer ON — click to remove' : 'Stamp a "Page N of M" footer on every page'}
-          className={`p-1.5 rounded-sm transition-colors ${p.pageNumbersActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
+          className={`p-1.5 rounded-sm transition-colors ${p.pageNumbersActive ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
           disabled={!p.hasDocument}><Hash className="w-4 h-4" /></IconButton>
       )}
 
@@ -90,7 +90,7 @@ export default function EditorToolbar(p: Props) {
           onClick={p.encryptionActive ? p.onClearEncryption ?? p.onEncrypt : p.onEncrypt}
           aria-label={p.encryptionActive ? 'Encryption configured (click to clear)' : 'Encrypt PDF on next save'}
           title={p.encryptionActive ? 'Encryption configured — click to clear' : 'Encrypt PDF on next save'}
-          className={`p-1.5 rounded-sm transition-colors ${p.encryptionActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
+          className={`p-1.5 rounded-sm transition-colors ${p.encryptionActive ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-rmpg-700/60'}`}
           disabled={!p.hasDocument}
         >
           {p.encryptionActive ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}

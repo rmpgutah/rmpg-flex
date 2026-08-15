@@ -10,7 +10,7 @@
 // searches on the empty state (no leak between MDT operators); keyboard
 // navigation (↑/↓/Enter) matching GlobalSearch; Esc smart-cascade (filter →
 // query → blur); court-ready PDF export of the current result list; theme-
-// token chrome (no more raw #d4a017/#0a0a0a literals).
+// token chrome (no more raw var(--field-label-color)/var(--surface-deep) literals).
 //
 // Audit v1204: ConfirmDialog guards clear-recent-searches; ?article_id= deep-
 // link highlights a specific result by record id (deepLinkRef guard); N focuses

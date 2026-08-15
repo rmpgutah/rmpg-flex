@@ -140,7 +140,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
       <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[760px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
-            <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamps gallery
+            <Stamp className="w-4 h-4 [color:var(--panel-header-color)]" /> Stamps gallery
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
@@ -155,7 +155,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
           </div>
         )}
 
-        <div className="text-[9px] uppercase tracking-wider text-[#d4a017] mb-2 font-semibold">Built-in</div>
+        <div className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] mb-2 font-semibold">Built-in</div>
         <div className="grid grid-cols-3 gap-2 mb-4">
           {PRESETS.map(label => (
             <button key={label} type="button"
@@ -167,14 +167,14 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
         </div>
 
         <div className="flex items-center justify-between mb-2">
-          <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Custom uploads ({stamps.length})</div>
+          <div className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold">Custom uploads ({stamps.length})</div>
           <input id="ff-customstampsgallery-0" ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
           <div className="flex items-center gap-1.5">
             {onCreateNew && (
               <button type="button" onClick={onCreateNew}
                 className="btn-secondary inline-flex items-center gap-1 text-[10px]" title="Create a stamp from a template, or remove an image background">
-                <Sparkles className="w-3 h-3 text-[#d4a017]" /> Create / cut-out
+                <Sparkles className="w-3 h-3 [color:var(--panel-header-color)]" /> Create / cut-out
               </button>
             )}
             <button type="button" onClick={() => fileInputRef.current?.click()}
@@ -191,7 +191,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
         ) : (
           <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
             {stamps.map(s => (
-              <div key={s.id} className="bg-surface-base border border-border-default hover:border-[#d4a017]/50 rounded-sm p-2 group">
+              <div key={s.id} className="bg-surface-base border border-border-default hover:[border-color:var(--field-label-color)]/50 rounded-sm p-2 group">
                 <button type="button"
                   onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
                   className="block w-full bg-white rounded-sm overflow-hidden mb-1.5 aspect-[4/3] flex items-center justify-center">
@@ -200,9 +200,9 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
                 <div className="flex items-center gap-1">
                   <input id="ff-customstampsgallery-1" type="text" value={s.name}
                     onChange={(e) => handleRename(s.id, e.target.value.slice(0, 40))}
-                    className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-border-default focus:outline-none focus:border-[#d4a017]" />
+                    className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-border-default focus:outline-none focus:[border-color:var(--field-label-color)]" />
                   <button type="button" onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
-                    className="p-0.5 text-rmpg-400 hover:text-[#d4a017]" title="Use this stamp">
+                    className="p-0.5 text-rmpg-400 hover:[color:var(--panel-header-color)]" title="Use this stamp">
                     <Check className="w-3 h-3" />
                   </button>
                   <button type="button" onClick={() => handleDelete(s.id)}

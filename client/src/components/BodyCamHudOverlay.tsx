@@ -55,7 +55,7 @@ function interactionColor(type: string | null | undefined): string {
     case 'community_contact':
     case 'field_training':
     default:
-      return 'bg-[#888888]/70 text-rmpg-100';
+      return 'bg-rmpg-600/70 text-rmpg-100';
   }
 }
 

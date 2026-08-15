@@ -93,7 +93,7 @@ export function useMapHeatmap(map: mapboxgl.Map | null, mapLoaded: boolean): Use
             // Color ramp: transparent → blue → green → yellow → red
             'heatmap-color': [
               'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)',
+              0, 'rgba(0 0 0 / 0)',
               0.1, 'rgba(33,102,172,0.4)',
               0.3, 'rgba(103,169,207,0.6)',
               0.5, 'rgba(209,229,143,0.7)',

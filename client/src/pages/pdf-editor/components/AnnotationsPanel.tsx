@@ -94,7 +94,7 @@ export default function AnnotationsPanel(p: Props) {
 
   return (
     <div className="bg-surface-base border border-border-default rounded-[2px] w-[260px] flex-shrink-0 overflow-y-auto p-2 space-y-2">
-      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold px-1">
+      <div className="flex items-center gap-1 text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold px-1">
         <Layers className="w-3 h-3" /> Annotations ({filtered.length}{filtered.length !== p.annotations.length ? `/${p.annotations.length}` : ''})
       </div>
 
@@ -104,14 +104,14 @@ export default function AnnotationsPanel(p: Props) {
           <Search className="w-3 h-3 absolute left-1.5 top-1/2 -translate-y-1/2 text-rmpg-500" aria-hidden="true" />
           <input id="ff-annotationspanel-search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search text / note / author…"
-            className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+            className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]" />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 text-[10px]">×</button>
           )}
         </div>
         <select id="ff-annotationspanel-typefilter" value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)}
-          className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]">
+          className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1.5 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]">
           <option value="all">All types ({p.annotations.length})</option>
           {presentTypes.map(t => <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>)}
         </select>
@@ -125,7 +125,7 @@ export default function AnnotationsPanel(p: Props) {
             return (
               <button key={l} type="button" onClick={() => p.onToggleLayer(l)}
                 className="w-full text-left px-1.5 py-0.5 text-[10px] rounded-sm hover:bg-rmpg-700/40 flex items-center gap-1.5">
-                {visible ? <Eye className="w-3 h-3 text-[#d4a017]" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
+                {visible ? <Eye className="w-3 h-3 [color:var(--panel-header-color)]" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
                 <span className={visible ? 'text-rmpg-200' : 'text-rmpg-500'}>{l}</span>
               </button>
             );
@@ -144,12 +144,12 @@ export default function AnnotationsPanel(p: Props) {
               const selected = p.activeIds.has(a.id);
               return (
                 <div key={a.id}
-                  className={`group px-1.5 py-1 rounded-sm border ${selected ? 'bg-[#d4a017]/15 border-[#d4a017]/40' : 'border-transparent hover:bg-rmpg-700/30'}`}
+                  className={`group px-1.5 py-1 rounded-sm border ${selected ? 'bg-[#d4a017]/15 [border-color:var(--field-label-color)]/40' : 'border-transparent hover:bg-rmpg-700/30'}`}
                 >
                   <button type="button" onClick={(e) => p.onSelect(a.id, e.shiftKey)} className="w-full text-left">
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] text-rmpg-200 truncate">
-                        <span className="text-[#d4a017]">{TYPE_LABELS[a.type] ?? a.type}</span>
+                        <span className="[color:var(--panel-header-color)]">{TYPE_LABELS[a.type] ?? a.type}</span>
                         {summarize(a) && <span className="text-rmpg-400"> · {summarize(a)}</span>}
                       </span>
                     </div>
@@ -157,7 +157,7 @@ export default function AnnotationsPanel(p: Props) {
                   <div className="flex items-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
                     <button type="button" onClick={() => p.onToggleLock(a.id)} title={a.locked ? 'Unlock' : 'Lock'}
                       className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
-                      {a.locked ? <Lock className="w-3 h-3 text-[#d4a017]" /> : <Unlock className="w-3 h-3" />}
+                      {a.locked ? <Lock className="w-3 h-3 [color:var(--panel-header-color)]" /> : <Unlock className="w-3 h-3" />}
                     </button>
                     <button type="button" onClick={() => p.onSendBackward(a.id)} title="Send backward"
                       className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><ArrowDown className="w-3 h-3" /></button>

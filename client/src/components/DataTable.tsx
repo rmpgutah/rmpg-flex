@@ -189,7 +189,7 @@ function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  className={`group ${headerPadding} ${headerText} font-bold uppercase tracking-wider ${spillman ? 'text-[#d4a017]' : 'text-rmpg-400'} whitespace-nowrap ${alignClass(col.align)} ${
+                  className={`group ${headerPadding} ${headerText} font-bold uppercase tracking-wider ${spillman ? '[color:var(--panel-header-color)]' : 'text-rmpg-400'} whitespace-nowrap ${alignClass(col.align)} ${
                     isSortable ? `cursor-pointer select-none transition-colors ${spillman ? 'hover:bg-white/[0.03]' : 'hover:text-rmpg-200 hover:bg-white/[0.02]'}` : ''
                   }`}
                   style={col.width ? { width: col.width } : undefined}

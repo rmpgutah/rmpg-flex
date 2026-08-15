@@ -71,21 +71,21 @@ describe('DockToggleRow', () => {
 
   it('still applies the alpha-suffixed glow for an explicit hex color', () => {
     const onToggle = vi.fn();
-    render(<DockToggleRow item={{ id: 'y', label: 'Y', active: true, onToggle, color: '#22c55e' }} />);
+    render(<DockToggleRow item={{ id: 'y', label: 'Y', active: true, onToggle, color: 'var(--sev-ok)' }} />);
     const dot = screen.getByText('Y').closest('button')!.querySelector('span');
     expect(dot).toHaveStyle({ boxShadow: '0 0 4px #22c55e80' });
   });
 
   it('renders a colored left-border accent when pinned is true', () => {
     const onToggle = vi.fn();
-    render(<DockToggleRow item={{ id: 'p1audio', label: 'P1 Audio Alert', active: true, onToggle, color: '#ef4444', pinned: true }} />);
+    render(<DockToggleRow item={{ id: 'p1audio', label: 'P1 Audio Alert', active: true, onToggle, color: 'var(--sev-critical)', pinned: true }} />);
     const row = screen.getByText('P1 Audio Alert').closest('button')!;
     expect(row).toHaveStyle({ borderLeft: '3px solid #ef4444' });
   });
 
   it('has no left-border accent when pinned is false or omitted', () => {
     const onToggle = vi.fn();
-    render(<DockToggleRow item={{ id: 'traffic', label: 'Live Traffic', active: true, onToggle, color: '#22c55e' }} />);
+    render(<DockToggleRow item={{ id: 'traffic', label: 'Live Traffic', active: true, onToggle, color: 'var(--sev-ok)' }} />);
     const row = screen.getByText('Live Traffic').closest('button')!;
     expect(row).not.toHaveStyle({ borderLeft: '3px solid #22c55e' });
   });

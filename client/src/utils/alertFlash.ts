@@ -38,7 +38,7 @@ interface FlashSpec {
 
 const SPECS: Record<FlashSeverity, FlashSpec | null> = {
   info: null,                                             // no flash
-  warning:  { color: '#d4a017', durationMs: 300, cycles: 1, peakAlpha: 0.18 },  // brand gold
+  warning:  { color: 'var(--field-label-color)', durationMs: 300, cycles: 1, peakAlpha: 0.18 },  // brand gold
   critical: { color: '#dc2626', durationMs: 500, cycles: 2, peakAlpha: 0.30 },  // red
   pursuit:  { color: '#a21caf', durationMs: 400, cycles: 3, peakAlpha: 0.32 },  // magenta
 };

@@ -21,7 +21,7 @@ interface Props { recordType: string; recordId: number | string; title?: string;
 
 const STATUS: Record<SentDoc['status'], { label: string; cls: string }> = {
   sent:    { label: 'Sent',   cls: 'text-green-400 border-green-900' },
-  pending: { label: 'Queued', cls: 'text-[#d4a017] border-[#5a4a10]' },
+  pending: { label: 'Queued', cls: '[color:var(--panel-header-color)] border-amber-900/50' },
   failed:  { label: 'Failed', cls: 'text-red-400 border-red-900' },
 };
 
@@ -42,7 +42,7 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
 
   return (
     <div className="border border-border-default bg-surface-sunken">
-      <div className="px-3 py-2 text-[#d4a017] text-xs font-semibold uppercase border-b border-border-default">
+      <div className="px-3 py-2 [color:var(--panel-header-color)] text-xs font-semibold uppercase border-b border-border-default">
         {title}{items.length ? ` (${items.length})` : ''}
       </div>
       {loading ? (

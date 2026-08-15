@@ -40,7 +40,7 @@ export default function ShiftComparison({
                   borderRadius: '2px',
                   color: 'var(--text-primary)',
                   fontSize: '11px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                   padding: '6px 10px',
                 }}
                 cursor={{ fill: 'rgb(var(--spm-text-muted-rgb) / 0.08)' }}

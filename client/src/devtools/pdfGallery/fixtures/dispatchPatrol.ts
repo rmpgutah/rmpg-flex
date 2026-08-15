@@ -124,7 +124,7 @@ function assignment(i: number): AreaAssignment {
     shiftStart: '06:00',
     shiftEnd: '14:00',
     notes: 'Extra patrol requested near retail corridor.',
-    color: '#f59e0b',
+    color: 'var(--sev-warn)',
   };
 }
 

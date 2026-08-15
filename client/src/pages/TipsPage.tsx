@@ -50,7 +50,7 @@ const URGENCY_COLORS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  new: 'text-[#d4a017]',
+  new: '[color:var(--panel-header-color)]',
   reviewed: 'text-blue-400',
   investigating: 'text-amber-400',
   actionable: 'text-green-400',
@@ -158,7 +158,7 @@ export default function TipsPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'New', value: stats.new_tips, color: 'text-[#d4a017]' },
+          { label: 'New', value: stats.new_tips, color: '[color:var(--panel-header-color)]' },
           { label: 'Reviewed', value: stats.reviewed, color: 'text-blue-400' },
           { label: 'Investigating', value: stats.investigating, color: 'text-amber-400' },
           { label: 'Actionable', value: stats.actionable, color: 'text-green-400' },

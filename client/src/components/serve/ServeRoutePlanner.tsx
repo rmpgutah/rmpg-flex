@@ -672,7 +672,7 @@ export default function ServeRoutePlanner({
 
       const color = markerColor(stop.job.status);
       const el = document.createElement('div');
-      el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;`;
+      el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0 0 0 / 0.4);cursor:pointer;`;
       el.textContent = String(markerSeq);
       el.title = `${stop.job.recipient_name ?? 'Unknown'}\n${stop.job.recipient_address || ''}`;
 
@@ -686,7 +686,7 @@ export default function ServeRoutePlanner({
       const cl: [number, number] = [currentLocation.lng, currentLocation.lat];
       if (currentLocMarkerRef.current) currentLocMarkerRef.current.remove();
       const el = document.createElement('div');
-      el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#888888;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);';
+      el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#888888;border:2px solid #fff;box-shadow:0 1px 4px rgba(0 0 0 / 0.4);';
       currentLocMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(cl).addTo(mapRef.current!);
       bounds.extend(cl);
@@ -1668,7 +1668,7 @@ export default function ServeRoutePlanner({
           <div className="flex-1 relative bg-surface-overlay">
             <div ref={mapContainerRef} className="absolute inset-0" />
             {(!mapReady || optimizing) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.5)]">
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0 0 0 / 0.5)]">
                 <Loader2 size={24} className="animate-spin text-brand-400" />
               </div>
             )}

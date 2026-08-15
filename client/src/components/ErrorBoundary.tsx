@@ -150,11 +150,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
-          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
+          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid var(--sev-critical)' }}>
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"
-              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141414 100%)' }}
+              style={{ background: 'linear-gradient(180deg, rgb(var(--sev-critical-rgb) / 0.08) 0%, var(--surface-sunken) 100%)' }}
             >
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <h2 className="text-sm font-bold text-red-300 uppercase tracking-wider">

@@ -28,15 +28,15 @@ export default function PdfToolsDialog(p: Props) {
   const [size, setSize] = useState<keyof typeof PAGE_SIZE_PRESETS>('Letter');
   if (!p.open) return null;
 
-  const sectionTitle = 'text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold mb-1.5';
+  const sectionTitle = 'text-[10px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold mb-1.5';
   const hint = 'text-[9px] text-rmpg-600';
-  const input = 'bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+  const input = 'bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={p.onClose}>
       <div className="bg-surface-base border border-border-default rounded-[2px] w-[400px] max-h-[85vh] overflow-y-auto p-4 shadow-xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-[#d4a017] font-semibold inline-flex items-center gap-1.5">
+          <div className="text-[11px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold inline-flex items-center gap-1.5">
             <Wrench className="w-3.5 h-3.5" /> PDF Tools
           </div>
           <IconButton onClick={p.onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>

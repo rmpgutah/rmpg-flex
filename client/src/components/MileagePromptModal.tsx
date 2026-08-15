@@ -118,16 +118,16 @@ export default function MileagePromptModal({
         className="w-full max-w-[360px] border rounded-sm my-auto"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--color-rmpg-800, #141414)',
-          borderColor: 'var(--color-rmpg-600, #373737)',
+          background: 'var(--surface-overlay)',
+          borderColor: 'var(--border-default)',
         }}
       >
         {/* Header */}
         <div
           className="flex items-center justify-between px-3 py-2 border-b"
           style={{
-            background: 'var(--color-rmpg-700, #181818)',
-            borderColor: 'var(--color-rmpg-600, #373737)',
+            background: 'var(--surface-deep)',
+            borderColor: 'var(--border-default)',
           }}
         >
           <span className="text-xs sm:text-xs font-bold text-rmpg-100">
@@ -224,7 +224,7 @@ export default function MileagePromptModal({
         {/* Footer */}
         <div
           className="flex flex-col sm:flex-row justify-end gap-2 px-4 py-3 border-t"
-          style={{ borderColor: 'var(--color-rmpg-600, #373737)', touchAction: 'manipulation' }}
+          style={{ borderColor: 'var(--border-default)', touchAction: 'manipulation' }}
         >
           {!hideSkip && (
             <button type="button" onClick={handleSkip} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 text-amber-400 hover:text-amber-300 order-2 sm:order-1">

@@ -291,7 +291,7 @@ export function useMapInfoPanel(
           id: u.id,
           label: u.call_sign,
           distance: formatDistanceMi(dist),
-          color: '#22c55e',
+          color: 'var(--sev-ok)',
         });
       }
     }
@@ -305,7 +305,7 @@ export function useMapInfoPanel(
           id: c.id,
           label: `${c.call_number} (P${c.priority})`,
           distance: formatDistanceMi(dist),
-          color: '#ef4444',
+          color: 'var(--sev-critical)',
         });
       }
     }

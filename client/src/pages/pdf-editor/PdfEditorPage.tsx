@@ -1981,11 +1981,11 @@ export default function PdfEditorPage() {
           {isMobile && (
             <>
               <button type="button" onClick={() => setMobileToolsOpen(v => !v)} title="Toggle tools"
-                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileToolsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileToolsOpen ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
                 <Settings className="w-3 h-3" /> Tools
               </button>
               <button type="button" onClick={() => setMobileThumbsOpen(v => !v)} title="Toggle pages"
-                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileThumbsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileThumbsOpen ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
                 <Layers className="w-3 h-3" /> Pages
               </button>
             </>
@@ -1994,17 +1994,17 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Search className="w-3 h-3" /> Find</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, showAnnotationsPanel: !prefs.showAnnotationsPanel })}
             title="Toggle annotations panel"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             <Layers className="w-3 h-3" /> Panel ({state.annotations.length})
           </button>
           <button type="button" onClick={() => setShowMiniMap(v => !v)}
             title="Toggle mini-map page navigator"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             <MapIcon className="w-3 h-3" /> Mini-map
           </button>
           <button type="button" onClick={() => setForcePdfjs(v => !v)}
             title="Force the compatibility engine (PDF.js). Use if a page renders blank with the native engine."
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             {forcePdfjs ? '✓ Compat engine' : 'Compat engine'}
           </button>
           <button type="button" onClick={exportJson} title="Export annotations as JSON (full state)"
@@ -2027,12 +2027,12 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileInput className="w-3 h-3" /> Insert PDF</button>
           <button type="button" onClick={() => setCalibrationOpen(true)}
             title="Set a real-world measurement scale for the measure / area tools"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.calibration ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Ruler className="w-3 h-3" /> Calibrate{prefs.calibration ? ` (${prefs.calibration.unit})` : ''}</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.calibration ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Ruler className="w-3 h-3" /> Calibrate{prefs.calibration ? ` (${prefs.calibration.unit})` : ''}</button>
           <button type="button" onClick={() => setRedactOpen(true)} title="Search & redact SSN / phone / email by pattern"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><EyeOff className="w-3 h-3" /> Redact pattern</button>
           <button type="button" onClick={() => setHeaderFooterOpen(true)}
             title="Custom header & footer text"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.headerFooter ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Heading className="w-3 h-3" /> Header/Footer</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.headerFooter ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Heading className="w-3 h-3" /> Header/Footer</button>
           <button type="button" onClick={handleExtractText} title="Extract all document text to a .txt download"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileTextIcon className="w-3 h-3" /> Text</button>
           <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
@@ -2054,7 +2054,7 @@ export default function PdfEditorPage() {
           <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
             <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
-              className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-200'}`}>
+              className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)]' : 'border-border-default text-rmpg-200'}`}>
               <option value={0}>Free</option>
               <option value={1}>1:1</option>
               <option value={4 / 3}>4:3</option>
@@ -2071,7 +2071,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Grid2x2 className="w-3 h-3" /> N-up</button>
           <button type="button" onClick={() => setLabelsOpen(true)}
             title="Custom page labels (roman / alpha / prefixed ranges) — use {label} in the footer"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.pageLabels.length > 0 ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Hash className="w-3 h-3" /> Labels{state.pageLabels.length > 0 ? ` (${state.pageLabels.length})` : ''}</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.pageLabels.length > 0 ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Hash className="w-3 h-3" /> Labels{state.pageLabels.length > 0 ? ` (${state.pageLabels.length})` : ''}</button>
           <button type="button" onClick={handleDeskew} title="Deskew (straighten) the current page by a manual angle"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Deskew</button>
           <button type="button" onClick={handleExportCroppedRegion} title="Export the current page's crop region (or full page) as PNG"
@@ -2104,7 +2104,7 @@ export default function PdfEditorPage() {
               {prefs.annotationPresets.map(ps => (
                 <span key={ps.id} className="inline-flex items-center group">
                   <button type="button" onClick={() => applyPreset(ps)} title={`Apply "${ps.name}" (${ps.color}, ${ps.strokeWidth}px)`}
-                    className="px-1.5 py-0.5 rounded-sm border border-border-default hover:border-[#d4a017] inline-flex items-center gap-1">
+                    className="px-1.5 py-0.5 rounded-sm border border-border-default hover:[border-color:var(--field-label-color)] inline-flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-sm border border-border-subtle" style={{ background: ps.color }} />
                     <span className="text-[9px] max-w-[70px] truncate">{ps.name}</span>
                   </button>
@@ -2116,10 +2116,10 @@ export default function PdfEditorPage() {
           )}
           <button type="button" onClick={() => setPrefs({ ...prefs, showGrid: !prefs.showGrid })}
             title="Toggle the grid overlay"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, snapToGrid: !prefs.snapToGrid })}
             title="Snap annotation placement to the grid"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.snapToGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>Snap</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.snapToGrid ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>Snap</button>
           <button type="button" onClick={() => saveInteractive(false)} title="Save an interactive PDF: form fields, clickable links, bookmark outline"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Interactive</button>
           <button type="button" onClick={() => saveInteractive(true)} title="Save a flattened-form PDF: field values baked in, form locked (for filing)"
@@ -2134,7 +2134,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CopyIcon className="w-3 h-3" /> Save copy</button>
           <button type="button" onClick={() => setShowBookmarks(v => !v)}
             title="Toggle bookmarks panel"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
           <button type="button" onClick={goFirstPage} title="Go to first page (Home)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center"><ChevronsLeft className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={goLastPage} title="Go to last page (End)"
@@ -2169,7 +2169,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={() => setPrefsOpen(true)} title="Editor preferences"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Settings className="w-3 h-3" /></button>
           {selectedIds.size > 0 && (
-            <span className="text-[#d4a017]">{selectedIds.size} selected</span>
+            <span className="[color:var(--panel-header-color)]">{selectedIds.size} selected</span>
           )}
           {selectedIds.size >= 2 && (
             <AlignmentBar count={selectedIds.size} onAlign={applyAlign} onDistribute={applyDistribute} onMatchSize={applyMatchSize} />
@@ -2179,7 +2179,7 @@ export default function PdfEditorPage() {
 
       {hasDocument && viewOnly && (
         <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
-          <span className="text-[#d4a017] font-semibold uppercase tracking-wider">View-only</span>
+          <span className="[color:var(--panel-header-color)] font-semibold uppercase tracking-wider">View-only</span>
           <span>— editing tools are hidden. Click "Edit this PDF" to enable annotation, redaction, signatures, and more.</span>
           <button type="button" onClick={enableEditing} className="ml-auto btn-secondary text-[10px]">Edit this PDF</button>
         </div>
@@ -2388,7 +2388,7 @@ function EnginePanel(): React.ReactElement {
     <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
       <div>
         <span className="text-rmpg-500 font-semibold">RMPG PDF Engine</span> ·
-        Native: <span className="text-[#d4a017]">{summary.native}</span> · PDF.js fallback: <span className="text-rmpg-500">{summary.pdfjs}</span>
+        Native: <span className="[color:var(--panel-header-color)]">{summary.native}</span> · PDF.js fallback: <span className="text-rmpg-500">{summary.pdfjs}</span>
         {last && <> · last: <span className="text-rmpg-400">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
       </div>
       <div className="mt-0.5">

@@ -239,7 +239,7 @@ export default React.memo(function UnitStatusBoard({
               onClick={() => onUnitClick?.(unit)}
               onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
               className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''} ${isEmergency(unit) ? 'animate-emergency-blink' : ''}`}
-              style={isEmergency(unit) ? { background: 'rgba(var(--sev-critical-rgb) / 0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
+              style={isEmergency(unit) ? { background: 'rgba(var(--sev-critical-rgb) / 0.18)', boxShadow: 'inset 3px 0 0 var(--sev-critical)' } : undefined}
             >
               <td>
                 <div className="flex items-center gap-2">

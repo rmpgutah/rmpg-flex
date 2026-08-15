@@ -189,7 +189,7 @@ function PreviewModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.82)' }}
+      style={{ background: 'rgba(0 0 0 / 0.82)' }}
       onClick={onClose}
     >
       <div
@@ -220,7 +220,7 @@ function PreviewModal({
         {/* Media area */}
         <div
           className="flex items-center justify-center overflow-auto"
-          style={{ maxHeight: 'calc(90vh - 120px)', background: '#0a0e14' }}
+          style={{ maxHeight: 'calc(90vh - 120px)', background: 'var(--surface-deep)' }}
         >
           {type === 'photo' || type === 'screenshot' ? (
             <img
@@ -309,7 +309,7 @@ function CustodyModal({ item, onClose }: CustodyModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
+      style={{ background: 'rgba(0 0 0 / 0.75)' }}
       onClick={onClose}
     >
       <div
@@ -457,7 +457,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
+      style={{ background: 'rgba(0 0 0 / 0.75)' }}
       onClick={onClose}
     >
       <div

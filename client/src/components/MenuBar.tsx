@@ -1383,7 +1383,7 @@ export default function MenuBar({
       {/* ── Floating Timer Indicator ── */}
       {timerEndTime && (
         <div className="fixed top-[76px] right-4 z-[9990] flex items-center gap-2 px-3 py-1.5 border border-rmpg-600 animate-dropdown-appear"
-          style={{ background:"var(--surface-sunken)", borderTop: '2px solid #d4a017' }}>
+          style={{ background:"var(--surface-sunken)", borderTop: '2px solid var(--field-label-color)' }}>
           <Clock className="w-3.5 h-3.5 text-brand-400" />
           <span className="font-mono text-sm text-green-400 tabular-nums">{timerRemaining}</span>
           <button type="button" onClick={cancelQuickTimer} className="text-rmpg-400 hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>

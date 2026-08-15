@@ -29,13 +29,13 @@ const show = (v: unknown) => (real(v) ? String(v) : '—');
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 const KIND_COLOR: Record<string, string> = {
-  call: 'text-[#d4a017]', incident: 'text-orange-400', citation: 'text-rmpg-300',
+  call: '[color:var(--panel-header-color)]', incident: 'text-orange-400', citation: 'text-rmpg-300',
   field_interview: 'text-emerald-400', trespass_order: 'text-red-400',
   warrant: 'text-red-500', arrest: 'text-red-400',
 };
 
 const THREAT_COLOR: Record<string, string> = {
-  low: 'text-emerald-400', medium: 'text-[#d4a017]', high: 'text-orange-400',
+  low: 'text-emerald-400', medium: '[color:var(--panel-header-color)]', high: 'text-orange-400',
   critical: 'text-red-500', imminent: 'text-red-500',
 };
 
@@ -190,15 +190,15 @@ export default function PersonDossierPage() {
               </span>
             )}
             {watched && (
-              <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">WATCHED</span>
+              <span className="text-[9px] font-semibold [color:var(--panel-header-color)] border [border-color:var(--field-label-color)] px-2 py-[1px]">WATCHED</span>
             )}
             {data.cluster.length > 0 && (
-              <span className="text-[9px] text-[#d4a017] border border-border-default px-2 py-[1px]">
+              <span className="text-[9px] [color:var(--panel-header-color)] border border-border-default px-2 py-[1px]">
                 {data.cluster.length} LINKED IDENTIT{data.cluster.length === 1 ? 'Y' : 'IES'}
               </span>
             )}
             {linkedIntel.length > 0 && (
-              <span className="text-[9px] font-semibold text-[#d4a017] border border-[#d4a017] px-2 py-[1px]">
+              <span className="text-[9px] font-semibold [color:var(--panel-header-color)] border [border-color:var(--field-label-color)] px-2 py-[1px]">
                 {linkedIntel.length} INTEL REPORT{linkedIntel.length === 1 ? '' : 'S'}
               </span>
             )}
@@ -216,7 +216,7 @@ export default function PersonDossierPage() {
                   setWatched(!watched);
                 } catch (e) { console.error(e); }
               }}>
-              {watched ? <Eye className="w-4 h-4 text-[#d4a017]" /> : <EyeOff className="w-4 h-4" />}
+              {watched ? <Eye className="w-4 h-4 [color:var(--panel-header-color)]" /> : <EyeOff className="w-4 h-4" />}
             </IconButton>
           )}
           <IconButton

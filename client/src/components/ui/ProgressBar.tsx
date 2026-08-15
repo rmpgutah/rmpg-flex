@@ -14,7 +14,7 @@ export default function ProgressBar({
   value,
   label,
   showPercent = true,
-  color = '#888888',
+  color = 'var(--text-secondary)',
   height = 4,
   className = '',
 }: ProgressBarProps) {

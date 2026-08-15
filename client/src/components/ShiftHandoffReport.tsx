@@ -147,7 +147,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           .panel-title-bar { background: #eee !important; color: #333 !important; -webkit-print-color-adjust: exact; }
           .text-rmpg-100, .text-rmpg-200, .text-rmpg-300 { color: #222 !important; }
           .text-rmpg-400 { color: #666 !important; }
-          .text-brand-400 { color: #888888 !important; }
+          .text-brand-400 { color: #888 !important; }
         }
       `}</style>
     </div>
