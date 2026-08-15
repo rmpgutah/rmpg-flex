@@ -1051,6 +1051,29 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
+    // ── Stack sync: propagate timestamp + cascaded unit status to siblings ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext?.stack_group_id) {
+        const timestampFields: Record<string, string> = {
+          dispatched: 'dispatched_at',
+          enroute:    'enroute_at',
+          onscene:    'onscene_at',
+        };
+        const tsField = timestampFields[status as keyof typeof timestampFields];
+        const tsValue = tsField ? String(updated?.[tsField] ?? '') : '';
+        if (tsField && tsValue) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+            timestamps: { [tsField]: tsValue } as any,
+          });
+        }
+      }
+    } catch (stackErr) {
+      log.error('syncToStack timestamps failed (non-fatal)', { callId: id, status }, stackErr);
+    }
+
     // response_time_seconds is read by every response-time report/dashboard
     // stat (see reports.ts RESP formula), but nothing ever wrote it — those
     // stats silently fell back to (onscene_at - created_at), which measures
@@ -1105,6 +1128,15 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
             parseInt(id, 10), ...assignedIds);
         }
       } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
+    }
+
+    // ── Stack group: leave on terminal status ──
+    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+      try {
+        await leaveStackGroup(db, parseInt(id, 10));
+      } catch (stackErr) {
+        log.error('leaveStackGroup failed (non-fatal)', { callId: id }, stackErr);
+      }
     }
 
     // ── PSO cross-link: on clear/close of a process-server call, mirror
