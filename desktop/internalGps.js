@@ -127,6 +127,34 @@ function classifyFixQuality(hdop, satCount) {
   return 'poor';
 }
 
+const EARTH_RADIUS_M = 6_371_000;
+
+/**
+ * Great-circle dead reckoning: project a position forward from lat/lng
+ * at the given heading (degrees true) and speed (m/s) over elapsedMs ms.
+ * Pure function — no side effects, fully unit-testable.
+ */
+function projectPosition(lat, lng, headingDeg, speedMs, elapsedMs) {
+  const distM = speedMs * (elapsedMs / 1000);
+  if (distM === 0) return { lat, lng };
+  const bearingRad = (headingDeg * Math.PI) / 180;
+  const latRad = (lat * Math.PI) / 180;
+  const lngRad = (lng * Math.PI) / 180;
+  const angDist = distM / EARTH_RADIUS_M;
+  const newLatRad = Math.asin(
+    Math.sin(latRad) * Math.cos(angDist) +
+    Math.cos(latRad) * Math.sin(angDist) * Math.cos(bearingRad)
+  );
+  const newLngRad = lngRad + Math.atan2(
+    Math.sin(bearingRad) * Math.sin(angDist) * Math.cos(latRad),
+    Math.cos(angDist) - Math.sin(latRad) * Math.sin(newLatRad)
+  );
+  return {
+    lat: (newLatRad * 180) / Math.PI,
+    lng: (newLngRad * 180) / Math.PI,
+  };
+}
+
 /** Validate NMEA XOR checksum. Returns true if valid, false otherwise. */
 function checksumOk(sentence) {
   const star = sentence.lastIndexOf('*');
@@ -157,6 +185,10 @@ class InternalGps extends EventEmitter {
     this.baudRate = this.baudCandidates[0];
     this.gotValidData = false;
     this.baudProbeTimer = null;
+    this._lastFixAt = null;       // timestamp of last real fix (ms)
+    this._drTimer = null;         // dead reckoning interval
+    this.DR_MAX_MS = 30_000;      // stop projecting after 30s
+    this.DR_INTERVAL_MS = 1_000;  // emit estimated position every 1s
   }
 
   async start(portPath, baudRate) {
@@ -253,6 +285,12 @@ class InternalGps extends EventEmitter {
       this.gotValidData = true;
       if (this.baudProbeTimer) { clearTimeout(this.baudProbeTimer); this.baudProbeTimer = null; }
       console.log('[INTERNAL-GPS] Locked NMEA stream @', this.baudRate, 'baud');
+      // Schedule dead reckoning to begin if fixes stop arriving (checked 3s later)
+      setTimeout(() => {
+        if (this._lastFixAt && (Date.now() - this._lastFixAt) > 2000) {
+          this._startDeadReckoning();
+        }
+      }, 3000);
     }
     const body = line.split('*')[0];
     const fields = body.split(',');
@@ -323,7 +361,39 @@ class InternalGps extends EventEmitter {
         ),
         timestamp: new Date().toISOString(),
       });
+      this._lastFixAt = Date.now();
+      this._stopDeadReckoning(); // real fix arrived — cancel DR
     }
+  }
+
+  _startDeadReckoning() {
+    this._stopDeadReckoning();
+    this._drTimer = setInterval(() => {
+      if (!this.pending.lat || !this.pending.heading || !this.pending.speed) return;
+      const elapsed = Date.now() - (this._lastFixAt || Date.now());
+      if (elapsed > this.DR_MAX_MS) { this._stopDeadReckoning(); return; }
+      const projected = projectPosition(
+        this.pending.lat, this.pending.lng,
+        this.pending.heading, this.pending.speed,
+        this.DR_INTERVAL_MS
+      );
+      this.pending.lat = projected.lat;
+      this.pending.lng = projected.lng;
+      this.emit('position', {
+        latitude: projected.lat,
+        longitude: projected.lng,
+        accuracy: Math.min(50 + elapsed / 1000 * 5, 300), // grows with age
+        heading: this.pending.heading,
+        speed: this.pending.speed,
+        fixQuality: 'poor',
+        estimated: true,
+        timestamp: new Date().toISOString(),
+      });
+    }, this.DR_INTERVAL_MS);
+  }
+
+  _stopDeadReckoning() {
+    if (this._drTimer) { clearInterval(this._drTimer); this._drTimer = null; }
   }
 
   stop() {
@@ -335,6 +405,7 @@ class InternalGps extends EventEmitter {
       clearTimeout(this.baudProbeTimer);
       this.baudProbeTimer = null;
     }
+    this._stopDeadReckoning();
     if (this.port && this.port.isOpen) {
       this.port.close(() => { /* swallow — closing on shutdown */ });
     }
@@ -452,4 +523,4 @@ function probeGpsPortOpen(portPath, SerialPortCtor = SerialPort) {
   });
 }
 
-module.exports = { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen, parseVTG, parseGLL, parseGSV, classifyFixQuality };
+module.exports = { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen, parseVTG, parseGLL, parseGSV, classifyFixQuality, projectPosition };

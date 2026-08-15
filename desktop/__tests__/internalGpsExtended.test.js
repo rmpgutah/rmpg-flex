@@ -76,3 +76,25 @@ test('classifyFixQuality: none when no fix data', () => {
   assert.equal(classifyFixQuality(null, null), 'none');
   assert.equal(classifyFixQuality(undefined, 0), 'none');
 });
+
+// ── Dead reckoning — projectPosition ─────────────────────────
+const { projectPosition } = require('../internalGps');
+
+test('projectPosition: projects north at 10 m/s for 1 second', () => {
+  // Starting at (40.0, -111.0), heading 0° (north), speed 10 m/s, 1000 ms
+  const r = projectPosition(40.0, -111.0, 0, 10, 1000);
+  assert.ok(r.lat > 40.0);          // moved north
+  assert.ok(Math.abs(r.lng - (-111.0)) < 0.0001); // no east/west movement
+});
+
+test('projectPosition: projects east at 10 m/s for 1 second', () => {
+  const r = projectPosition(40.0, -111.0, 90, 10, 1000);
+  assert.ok(Math.abs(r.lat - 40.0) < 0.0001);
+  assert.ok(r.lng > -111.0);        // moved east
+});
+
+test('projectPosition: returns same point when speed is 0', () => {
+  const r = projectPosition(40.0, -111.0, 270, 0, 5000);
+  assert.ok(Math.abs(r.lat - 40.0) < 0.000001);
+  assert.ok(Math.abs(r.lng - (-111.0)) < 0.000001);
+});
