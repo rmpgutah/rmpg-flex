@@ -843,10 +843,6 @@ calls.put('/:id', async (c) => {
 
     // ── Stack sync: mileage + address changes ──
     try {
-      const ext = await queryFirst<{ stack_group_id: string | null }>(
-        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
-      );
-
       // Address change: leave old group, join/create at new address.
       const newAddr = body.location_address as string | undefined;
       const oldAddr = String(existing.location_address ?? '');
@@ -854,7 +850,12 @@ calls.put('/:id', async (c) => {
         await reassignStackGroup(db, parseInt(id, 10), newAddr);
       }
 
-      // Mileage sync to current group (re-read after possible reassignment).
+      // Re-read after possible reassignment — reassignStackGroup writes a new stack_group_id.
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+
+      // Mileage sync to current group.
       if (ext?.stack_group_id) {
         const mileageFields: SyncFields['mileage'] = {};
         if ('starting_mileage' in body && body.starting_mileage !== undefined) {
