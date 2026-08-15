@@ -90,7 +90,8 @@ import AdminMapDataTab from './admin/AdminMapDataTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminReanalysisTab from './admin/AdminReanalysisTab';
 import AdminDevSettingsTab from './admin/AdminDevSettingsTab';
-import { Book } from 'lucide-react';
+import SyncStatusTab from './admin/SyncStatusTab';
+import { Book, Server } from 'lucide-react';
 import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
 import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
 import TesseractTrainingPage from './TesseractTrainingPage';
@@ -264,7 +265,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning' | 'automations' | 'offline-queue';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning' | 'automations' | 'sync_status' | 'offline-queue';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -291,7 +292,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning', 'automations', 'offline-queue'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning', 'automations', 'sync_status', 'offline-queue'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -729,7 +730,8 @@ export default function AdminPage() {
         { id: 'health', label: 'System Health', icon: Activity },
         { id: 'downloads', label: 'Downloads', icon: Download },
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
-        { id: 'offline-queue', label: 'Offline Queue', icon: WifiOff },
+        { id: 'sync_status' as TabId, label: 'Sync Status', icon: Server },
+        { id: 'offline-queue' as TabId, label: 'Offline Queue', icon: WifiOff },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
       ],
@@ -1285,6 +1287,7 @@ export default function AdminPage() {
         {activeTab === 'ocr_learning' && <TesseractTrainingPage />}
 
         {activeTab === 'automations' && <AutomationsTab />}
+        {activeTab === 'sync_status' && <SyncStatusTab />}
         {activeTab === 'offline-queue' && <OfflineQueueTab />}
 
         {activeTab === 'email' && (

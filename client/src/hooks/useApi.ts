@@ -864,4 +864,82 @@ export async function apiDeleteCompanyDocument(id: number): Promise<void> {
 
 export type { UploadProgress };
 
+// ─── Dual-write for FZ-55 secondary server ───────────────────────────────────
+import { useContext } from 'react';
+import { ApiBaseContext } from './useApiBase';
+
+/**
+ * Pure dual-write function — exported for testing.
+ * Fires the same mutation at both local and cloud in parallel.
+ * Returns the local result if available; cloud result as fallback.
+ * Throws when both fail.
+ */
+export async function dualWrite<T>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number },
+  localBase: string | null,
+  cloudBase: string,
+): Promise<T> {
+  const normalizedPath = path.startsWith('/api') ? path : `/api${path}`;
+
+  if (!localBase) {
+    const res = await fetchWithTimeout(`${cloudBase}${normalizedPath}`, options);
+    if (!res.ok) throw new Error(`Cloud request failed: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
+  const [localResult, cloudResult] = await Promise.allSettled([
+    fetchWithTimeout(`${localBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Local ${r.status}`))
+    ),
+    fetchWithTimeout(`${cloudBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Cloud ${r.status}`))
+    ),
+  ]);
+
+  if (localResult.status === 'fulfilled') {
+    // Local succeeded — if cloud failed, queue the write for later replay
+    if (cloudResult.status === 'rejected') {
+      try {
+        const reqHeaders = options.headers as Record<string, string> | undefined;
+        const enqueueBody: Record<string, string> = {
+          method: options.method ?? 'POST',
+          path: normalizedPath,
+        };
+        if (options.body != null) {
+          enqueueBody.body = typeof options.body === 'string'
+            ? options.body
+            : JSON.stringify(options.body);
+        }
+        if (reqHeaders) enqueueBody.headers = JSON.stringify(reqHeaders);
+        await fetch(`${localBase}/api/sync/enqueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(reqHeaders?.Authorization ? { Authorization: reqHeaders.Authorization } : {}),
+          },
+          body: JSON.stringify(enqueueBody),
+        });
+      } catch { /* non-fatal — local write already succeeded */ }
+    }
+    return localResult.value;
+  }
+  if (cloudResult.status === 'fulfilled') return cloudResult.value;
+  throw new Error('No connectivity — both local and cloud endpoints unreachable');
+}
+
+/**
+ * Hook-based dual-write wrapper for use in React components.
+ * Reads cloud/local bases from ApiBaseContext automatically.
+ */
+export function useApiMutate() {
+  const { cloudBase, localBase } = useContext(ApiBaseContext);
+  return async function apiMutate<T>(
+    path: string,
+    options: RequestInit & { timeoutMs?: number } = {},
+  ): Promise<T> {
+    return dualWrite<T>(path, options, localBase, cloudBase);
+  };
+}
+
 export default useApi;
