@@ -13,7 +13,7 @@ export default function SyncStatusChip() {
         'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold select-none',
         mode === 'local'
           ? 'bg-green-900/40 text-green-300 border border-green-700/50'
-          : 'bg-surface-raised text-rmpg-400 border border-rmpg-700/40',
+          : 'bg-surface-raised text-fg-secondary border border-rmpg-700/40',
         isProbing ? 'opacity-60' : '',
       ].join(' ')}
     >

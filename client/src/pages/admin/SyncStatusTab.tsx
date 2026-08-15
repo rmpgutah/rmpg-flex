@@ -66,9 +66,9 @@ export default function SyncStatusTab() {
     <div className="space-y-4 p-4">
       <PanelTitleBar title="SYNC STATUS" icon={ServerIcon} />
 
-      <div className="flex items-center gap-3 text-xs text-rmpg-300">
+      <div className="flex items-center gap-3 text-xs text-fg-muted">
         <span>Active endpoint:</span>
-        <span className={mode === 'local' ? 'text-green-400 font-semibold' : 'text-rmpg-400'}>
+        <span className={mode === 'local' ? 'text-green-400 font-semibold' : 'text-fg-secondary'}>
           {mode === 'local' ? `LOCAL (${localBase})` : 'CLOUD (api.rmpgutah.us)'}
         </span>
       </div>
@@ -76,19 +76,19 @@ export default function SyncStatusTab() {
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
       {loading && !queue && (
-        <p className="text-xs text-rmpg-500">Loading sync status…</p>
+        <p className="text-xs text-fg-muted">Loading sync status…</p>
       )}
 
       {queue && (
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Pending', value: queue.pending, color: queue.pending > 0 ? 'text-amber-400' : 'text-rmpg-300' },
-            { label: 'Failed', value: queue.failed, color: queue.failed > 0 ? 'text-red-400' : 'text-rmpg-300' },
+            { label: 'Pending', value: queue.pending, color: queue.pending > 0 ? 'text-amber-400' : 'text-fg-muted' },
+            { label: 'Failed', value: queue.failed, color: queue.failed > 0 ? 'text-red-400' : 'text-fg-muted' },
             { label: 'Delivered', value: queue.delivered, color: 'text-green-400' },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-surface-raised rounded p-3 text-center">
               <div className={`text-2xl font-bold ${color}`}>{value}</div>
-              <div className="text-[10px] text-rmpg-400 mt-1">{label}</div>
+              <div className="text-[10px] text-fg-secondary mt-1">{label}</div>
             </div>
           ))}
         </div>
@@ -107,11 +107,11 @@ export default function SyncStatusTab() {
           Recent Conflicts (last 50)
         </h3>
         {conflicts.length === 0 ? (
-          <p className="text-xs text-rmpg-500">No conflicts recorded.</p>
+          <p className="text-xs text-fg-muted">No conflicts recorded.</p>
         ) : (
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-rmpg-400 font-semibold text-[9px] border-b border-rmpg-700">
+              <tr className="text-fg-secondary font-semibold text-[9px] border-b border-rmpg-700">
                 <th className="text-left py-[3px]">Table</th>
                 <th className="text-left py-[3px]">Record</th>
                 <th className="text-left py-[3px]">Winner</th>
@@ -121,12 +121,12 @@ export default function SyncStatusTab() {
             <tbody>
               {conflicts.map(row => (
                 <tr key={row.id} className="border-b border-rmpg-800/50">
-                  <td className="py-[2px] text-rmpg-300">{row.table_name}</td>
-                  <td className="py-[2px] text-rmpg-300">#{row.record_id}</td>
-                  <td className={`py-[2px] ${row.winning_source === 'fz55' ? 'text-green-400' : 'text-rmpg-400'}`}>
+                  <td className="py-[2px] text-fg-secondary">{row.table_name}</td>
+                  <td className="py-[2px] text-fg-secondary">#{row.record_id}</td>
+                  <td className={`py-[2px] ${row.winning_source === 'fz55' ? 'text-green-400' : 'text-fg-secondary'}`}>
                     {row.winning_source === 'fz55' ? 'FZ-55' : 'Cloudflare'}
                   </td>
-                  <td className="py-[2px] text-rmpg-500">{row.resolved_at.slice(0, 16)}</td>
+                  <td className="py-[2px] text-fg-muted">{row.resolved_at.slice(0, 16)}</td>
                 </tr>
               ))}
             </tbody>
