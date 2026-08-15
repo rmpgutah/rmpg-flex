@@ -445,9 +445,26 @@ export function downloadUrl(filename: string): string {
   return import.meta.env.DEV ? `/downloads/${encoded}` : `${CF_WORKER_DIRECT_BASE}/downloads/${encoded}`;
 }
 
+// ─── Fallback URL switching (Toughbook cold standby) ──────────────────────
+const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+let _consecutiveApiFailures = 0;
+
+export function resolveFallbackUrl(relativeUrl: string): string | null {
+  if (_consecutiveApiFailures < CONSECUTIVE_FAILURE_THRESHOLD) return null;
+  const fallback = localStorage.getItem(FALLBACK_URL_KEY);
+  return fallback ? `${fallback}${relativeUrl}` : null;
+}
+
+/** @internal — for unit tests only. Sets the failure counter without triggering real requests. */
+export function _setConsecutiveFailuresForTest(n: number): void {
+  _consecutiveApiFailures = n;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }
+  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean; _skipQueue?: boolean }
 ): Promise<T> {
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const url = options?.directWorker ? `${CF_WORKER_DIRECT_BASE}${relativeUrl}` : maybeRedirectToCfWorker(relativeUrl);
@@ -473,7 +490,27 @@ export async function apiFetch<T>(
   }
 
   const fetchInit: RequestInit = { ...options, headers };
-  const res = await fetchWithRetry(url, fetchInit);
+
+  let res: Response;
+  const fallbackUrl = resolveFallbackUrl(relativeUrl);
+  try {
+    res = await fetchWithRetry(fallbackUrl ?? url, fetchInit);
+    _consecutiveApiFailures = 0;
+  } catch (fetchErr) {
+    _consecutiveApiFailures += 1;
+    const m = method.toUpperCase();
+    if (MUTATING_METHODS.has(m) && !options?._skipQueue) {
+      console.warn('[API] Network error on mutation — enqueueing for offline replay:', m, relativeUrl);
+      const { enqueueOperation } = await import('./useOfflineQueue');
+      await enqueueOperation({
+        method: m,
+        path: relativeUrl,
+        body: options?.body ? (() => { try { return JSON.parse(options.body as string); } catch { return undefined; } })() : undefined,
+        headers: { ...(options?.headers as Record<string, string>) },
+      });
+    }
+    throw fetchErr;
+  }
 
   // On 401, attempt a transparent token refresh and retry once
   if (res.status === 401) {
