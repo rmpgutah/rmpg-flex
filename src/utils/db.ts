@@ -4,6 +4,8 @@ import {
   PARCEL_RECORD_STRUCTURAL_COLUMNS, PROMOTED_RECORD_FIELDS,
   PROMOTED_TARGET_TABLES, sqlType,
 } from './sl-assessor/camaFields';
+import { getTursoClient, type InValue } from './tursoClient';
+import { log } from './logger';
 
 export function getDb(env: { DB: D1Database }) {
   return env.DB;
@@ -15,8 +17,16 @@ export async function query<T = unknown>(
   ...bindings: unknown[]
 ): Promise<T[]> {
   const stmt = db.prepare(sql);
-  const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).all<T>();
-  return result.results ?? [];
+  try {
+    const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).all<T>();
+    return result.results ?? [];
+  } catch (err) {
+    const turso = getTursoClient();
+    if (!turso) throw err;
+    log.warn('D1 read failed — falling back to Turso', { sql });
+    const result = await turso.execute({ sql, args: bindings as InValue[] });
+    return (result.rows ?? []) as T[];
+  }
 }
 
 export async function queryFirst<T = unknown>(
@@ -25,8 +35,16 @@ export async function queryFirst<T = unknown>(
   ...bindings: unknown[]
 ): Promise<T | null> {
   const stmt = db.prepare(sql);
-  const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).first<T>();
-  return result ?? null;
+  try {
+    const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).first<T>();
+    return result ?? null;
+  } catch (err) {
+    const turso = getTursoClient();
+    if (!turso) throw err;
+    log.warn('D1 queryFirst failed — falling back to Turso', { sql });
+    const result = await turso.execute({ sql, args: bindings as InValue[] });
+    return (result.rows?.[0] as T) ?? null;
+  }
 }
 
 export async function execute(
@@ -34,8 +52,29 @@ export async function execute(
   sql: string,
   ...bindings: unknown[]
 ): Promise<D1Result> {
-  const stmt = db.prepare(sql);
-  return await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).run();
+  const turso = getTursoClient();
+
+  const d1Promise = (bindings.length > 0
+    ? db.prepare(sql).bind(...bindings)
+    : db.prepare(sql)
+  ).run();
+
+  const tursoPromise = turso
+    ? turso.execute({ sql, args: bindings as InValue[] }).catch((err: unknown) => {
+        log.error('Turso dual-write failed', { sql },
+          err instanceof Error ? err : new Error(String(err)));
+      })
+    : Promise.resolve(null);
+
+  const [d1Result] = await Promise.allSettled([d1Promise, tursoPromise]);
+
+  if (d1Result.status === 'rejected') {
+    log.error('D1 write failed — Turso captured the row', { sql },
+      d1Result.reason instanceof Error ? d1Result.reason : new Error(String(d1Result.reason)));
+    throw d1Result.reason;
+  }
+
+  return d1Result.value;
 }
 
 /**

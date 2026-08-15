@@ -19,6 +19,7 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
+import { useOfflineQueue } from './hooks/useOfflineQueue';
 import { importDashboard } from './routes/routeModules';
 import LoginPage from './pages/LoginPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
@@ -765,6 +766,10 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // Mount the offline queue drain loop for the app lifetime.
+  // Runs drainQueue on 30s interval + focus + online events.
+  useOfflineQueue();
+
   // TWO nested boundaries by design (defense in depth):
   //  • OUTER — sits above every context provider. A render/effect throw inside
   //    AuthProvider, WebSocketProvider, UserPreferencesProvider, ToastProvider,
