@@ -36,12 +36,12 @@ export default function SuggestedLinksPanel() {
         <div key={s.id} className="px-2 py-[2px] text-[11px] text-rmpg-200 flex items-center gap-2 border-b border-border-default last:border-b-0">
           <span className="flex-1 min-w-0 truncate">
             <span className="text-[color:var(--field-label-color)]">{s.entity_label || `${s.entity_type} #${s.entity_id}`}</span>
-            <span className="text-rmpg-500"> mentioned on </span>
+            <span className="text-fg-muted"> mentioned on </span>
             {s.source_label || `${s.source_type} #${s.source_id}`}
-            {s.match_basis && <span className="text-rmpg-500"> ({s.match_basis})</span>}
+            {s.match_basis && <span className="text-fg-muted"> ({s.match_basis})</span>}
           </span>
           <button onClick={() => decide(s.id, 'confirm')} className="text-[9px] text-[color:var(--field-label-color)] border border-border-default px-2 py-[1px]">LINK</button>
-          <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-rmpg-500 border border-border-default px-2 py-[1px]">DISMISS</button>
+          <button onClick={() => decide(s.id, 'reject')} className="text-[9px] text-fg-muted border border-border-default px-2 py-[1px]">DISMISS</button>
         </div>
       ))}
     </div>

@@ -29,7 +29,7 @@ const show = (v: unknown) => (real(v) ? String(v) : '—');
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 const KIND_COLOR: Record<string, string> = {
-  call: '[color:var(--panel-header-color)]', incident: 'text-orange-400', citation: 'text-rmpg-300',
+  call: '[color:var(--panel-header-color)]', incident: 'text-orange-400', citation: 'text-fg-muted',
   field_interview: 'text-emerald-400', trespass_order: 'text-red-400',
   warrant: 'text-red-500', arrest: 'text-red-400',
 };
@@ -42,7 +42,7 @@ const THREAT_COLOR: Record<string, string> = {
 function Field({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="flex gap-2 text-[11px] py-[2px]">
-      <span className="text-rmpg-400 w-24 shrink-0">{label}</span>
+      <span className="text-fg-muted w-24 shrink-0">{label}</span>
       <span className="text-rmpg-200">{show(value)}</span>
     </div>
   );
@@ -120,7 +120,7 @@ export default function PersonDossierPage() {
       return (
         <div className="p-4 space-y-3">
           <PanelTitleBar title="PERSON DOSSIER" icon={UserSearch} />
-          <div className="bg-surface-base border border-border-default p-4 text-[11px] text-rmpg-400">
+          <div className="bg-surface-base border border-border-default p-4 text-[11px] text-fg-muted">
             No person on file for id <span className="text-rmpg-200">#{id}</span>. The record may have been merged, deleted, or never existed.
             <div className="mt-3">
               <button onClick={() => navigate(-1)} className="text-brand-400 hover:underline">← Back</button>
@@ -131,7 +131,7 @@ export default function PersonDossierPage() {
     }
     return <div className="p-4 text-[11px] text-red-400">{error.message}</div>;
   }
-  if (!data) return <div className="p-4 text-[11px] text-rmpg-400">Loading dossier…</div>;
+  if (!data) return <div className="p-4 text-[11px] text-fg-muted">Loading dossier…</div>;
 
   const p = data.person;
   const name = [p.first_name, p.middle_name, p.last_name].filter(real).join(' ') || `Person #${p.id}`;
@@ -170,10 +170,10 @@ export default function PersonDossierPage() {
               <img src={p.photo_url} alt={name} className="w-full h-full object-cover" />
             </button>
           )
-          : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-rmpg-400">NO PHOTO</div>}
+          : <div className="w-20 h-24 bg-surface-overlay border border-border-default flex items-center justify-center text-[9px] text-fg-muted">NO PHOTO</div>}
         <div className="flex-1 min-w-0">
           <div className="text-lg text-rmpg-100 font-semibold">{name}</div>
-          <div className="text-[11px] text-rmpg-400">
+          <div className="text-[11px] text-fg-muted">
             DOB {show(p.dob)} · {show(p.gender)} · {show(p.race)}
             {real(p.dl_number) && <> · DL {p.dl_number} ({show(p.dl_state)})</>}
           </div>
@@ -265,18 +265,18 @@ export default function PersonDossierPage() {
           )}
 
           <Section title={`KNOWN ASSOCIATES (${data.associates.length})`}>
-            {data.associates.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
+            {data.associates.length === 0 && <div className="text-[11px] text-fg-muted">None on record.</div>}
             {data.associates.map((a) => (
               <Link key={a.person_id} to={`/intel/person/${a.person_id}`}
                 className="flex justify-between text-[11px] py-[2px] hover:bg-surface-raised">
                 <span className="text-brand-400">{a.name}</span>
-                <span className="text-rmpg-400">{a.shared_events}× ({a.kinds.join(', ')})</span>
+                <span className="text-fg-muted">{a.shared_events}× ({a.kinds.join(', ')})</span>
               </Link>
             ))}
           </Section>
 
           <Section title={`VEHICLES (${data.vehicles.length})`}>
-            {data.vehicles.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
+            {data.vehicles.length === 0 && <div className="text-[11px] text-fg-muted">None on record.</div>}
             {data.vehicles.map((v) => (
               <div key={v.id} className="text-[11px] text-rmpg-200 py-[2px]">
                 {[v.color, v.year, v.make, v.model].filter(real).join(' ')}
@@ -286,11 +286,11 @@ export default function PersonDossierPage() {
           </Section>
 
           <Section title="ADDRESSES">
-            {data.addresses.length === 0 && <div className="text-[11px] text-rmpg-400">None on record.</div>}
+            {data.addresses.length === 0 && <div className="text-[11px] text-fg-muted">None on record.</div>}
             {data.addresses.map((a, i) => (
               <div key={i} className="text-[11px] py-[2px]">
                 <span className="text-rmpg-200">{a.address}</span>
-                <span className="text-rmpg-400"> — {a.source}</span>
+                <span className="text-fg-muted"> — {a.source}</span>
               </div>
             ))}
           </Section>
@@ -311,13 +311,13 @@ export default function PersonDossierPage() {
                     <FileText className="w-3 h-3 text-brand-400 shrink-0" />
                     <span className="text-brand-400">{r.report_number || `IR-${r.id}`}</span>
                     {r.threat_level && (
-                      <span className={`text-[9px] font-semibold ${THREAT_COLOR[r.threat_level] || 'text-rmpg-400'}`}>
+                      <span className={`text-[9px] font-semibold ${THREAT_COLOR[r.threat_level] || 'text-fg-muted'}`}>
                         {r.threat_level.toUpperCase()}
                       </span>
                     )}
                   </div>
                   <div className="text-[10px] text-rmpg-200 ml-5 truncate">{r.title}</div>
-                  <div className="text-[9px] text-rmpg-400 ml-5">
+                  <div className="text-[9px] text-fg-muted ml-5">
                     {r.role || 'subject'}
                     {r.disseminated_at && ` · ${formatDate(r.disseminated_at)}`}
                     {r.handling_code && ` · ${r.handling_code}`}
@@ -330,16 +330,16 @@ export default function PersonDossierPage() {
 
         {/* Right column — timeline */}
         <Section title={`CONTACT TIMELINE (${data.timeline.length})`}>
-          {data.timeline.length === 0 && <div className="text-[11px] text-rmpg-400">No system contacts.</div>}
+          {data.timeline.length === 0 && <div className="text-[11px] text-fg-muted">No system contacts.</div>}
           {data.timeline.map((e) => (
             <div key={`${e.kind}:${e.id}`} className="flex items-baseline gap-2 text-[11px] py-[2px] border-b border-border-default last:border-b-0">
-              <span className="text-rmpg-400 w-20 shrink-0">{formatDate(e.date)}</span>
-              <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-rmpg-400'}`}>
+              <span className="text-fg-muted w-20 shrink-0">{formatDate(e.date)}</span>
+              <span className={`w-28 shrink-0 text-[9px] font-semibold ${KIND_COLOR[e.kind] || 'text-fg-muted'}`}>
                 {toDisplayLabel(e.kind).toUpperCase()}
               </span>
               <span className="text-rmpg-200">{e.title}</span>
-              {e.status && <span className="text-rmpg-400 text-[9px]">({formatLabel(e.status)})</span>}
-              {e.subtitle && <span className="text-rmpg-400 truncate">{e.subtitle}</span>}
+              {e.status && <span className="text-fg-muted text-[9px]">({formatLabel(e.status)})</span>}
+              {e.subtitle && <span className="text-fg-muted truncate">{e.subtitle}</span>}
             </div>
           ))}
         </Section>
@@ -364,7 +364,7 @@ export default function PersonDossierPage() {
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="mt-2 text-[10px] text-rmpg-400 text-center">{name} — press Esc to close</div>
+            <div className="mt-2 text-[10px] text-fg-muted text-center">{name} — press Esc to close</div>
           </div>
         </div>
       )}

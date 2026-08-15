@@ -1196,7 +1196,7 @@ export default function MenuBar({
                 10-Codes Quick Reference
                 <span className="text-[8px] font-mono text-fg-muted bg-rmpg-800 px-1 py-0 border border-rmpg-700">APCO</span>
               </h2>
-              <button type="button" onClick={() => setShow10Codes(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-600 focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
+              <button type="button" onClick={() => setShow10Codes(false)} className="text-fg-muted hover:text-rmpg-100 text-xs transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-600 focus-visible:outline-none px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500" aria-label="Close 10-codes reference">ESC</button>
             </div>
             <div className="flex-1 overflow-auto p-4 scrollbar-dark">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -1228,7 +1228,7 @@ export default function MenuBar({
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
                         <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
-                        <span className="text-rmpg-300">{desc}</span>
+                        <span className="text-fg-muted">{desc}</span>
                       </div>
                     ))}
                   </div>
@@ -1261,7 +1261,7 @@ export default function MenuBar({
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
                         <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
-                        <span className="text-rmpg-300">{desc}</span>
+                        <span className="text-fg-muted">{desc}</span>
                       </div>
                     ))}
                   </div>
@@ -1293,7 +1293,7 @@ export default function MenuBar({
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
                         <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
-                        <span className="text-rmpg-300">{desc}</span>
+                        <span className="text-fg-muted">{desc}</span>
                       </div>
                     ))}
                   </div>
@@ -1327,7 +1327,7 @@ export default function MenuBar({
                     ].map(([code, desc]) => (
                       <div key={code} className="flex items-baseline gap-2 text-xs py-0.5">
                         <span className="text-rmpg-100 font-mono font-bold w-12 flex-shrink-0">{code}</span>
-                        <span className="text-rmpg-300">{desc}</span>
+                        <span className="text-fg-muted">{desc}</span>
                       </div>
                     ))}
                   </div>
@@ -1335,7 +1335,7 @@ export default function MenuBar({
               </div>
             </div>
             <div className="p-2 border-t border-rmpg-700 text-center" style={{ background: 'var(--surface-overlay)' }}>
-              <span className="text-[9px] text-fg-muted">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-rmpg-300 rounded-sm text-[8px]">ESC</kbd> to close</span>
+              <span className="text-[9px] text-fg-muted">Press <kbd className="px-1 py-0.5 bg-rmpg-800 border border-rmpg-600 text-fg-muted rounded-sm text-[8px]">ESC</kbd> to close</span>
             </div>
           </div>
         </div>
@@ -1349,10 +1349,10 @@ export default function MenuBar({
               <h2 className="text-sm font-bold text-rmpg-100 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-brand-400" />Quick Timer
               </h2>
-              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-rmpg-400 hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
+              <button type="button" onClick={() => setTimerPromptOpen(false)} className="text-fg-muted hover:text-rmpg-100 text-xs px-2 py-0.5 border border-rmpg-600 hover:border-rmpg-500">ESC</button>
             </div>
             <div className="p-4 space-y-3">
-              <label htmlFor="ff-menubar-0" className="block text-xs text-rmpg-300">Duration (minutes)</label>
+              <label htmlFor="ff-menubar-0" className="block text-xs text-fg-muted">Duration (minutes)</label>
               <input id="ff-menubar-0"
                 ref={timerInputRef}
                 type="number"
@@ -1366,7 +1366,7 @@ export default function MenuBar({
               <div className="flex gap-2">
                 {[5, 10, 15, 30].map((m) => (
                   <button key={m} type="button" onClick={() => setTimerMinutesInput(String(m))}
-                    className="flex-1 text-xs py-1 border border-rmpg-600 text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400 transition-colors">
+                    className="flex-1 text-xs py-1 border border-rmpg-600 text-fg-muted hover:text-rmpg-100 hover:border-rmpg-400 transition-colors">
                     {m}m
                   </button>
                 ))}
@@ -1386,7 +1386,7 @@ export default function MenuBar({
           style={{ background:"var(--surface-sunken)", borderTop: '2px solid var(--field-label-color)' }}>
           <Clock className="w-3.5 h-3.5 text-brand-400" />
           <span className="font-mono text-sm text-green-400 tabular-nums">{timerRemaining}</span>
-          <button type="button" onClick={cancelQuickTimer} className="text-rmpg-400 hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>
+          <button type="button" onClick={cancelQuickTimer} className="text-fg-muted hover:text-red-400 text-xs ml-1" title="Cancel timer">&times;</button>
         </div>
       )}
 

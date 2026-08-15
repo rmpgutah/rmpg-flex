@@ -36,27 +36,27 @@ export default function ExportRangeDialog({ open, pageCount, onClose, onExport }
           <div className="text-[11px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold inline-flex items-center gap-1.5">
             <FileOutput className="w-3.5 h-3.5" /> Export page range
           </div>
-          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={onClose} aria-label="Close" title="Close" className="text-fg-muted hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
-        <div className="text-[10px] text-rmpg-500 mb-3">Document has {pageCount} page{pageCount === 1 ? '' : 's'}. Choose a 1-indexed range to export as a new PDF.</div>
+        <div className="text-[10px] text-fg-muted mb-3">Document has {pageCount} page{pageCount === 1 ? '' : 's'}. Choose a 1-indexed range to export as a new PDF.</div>
 
         <div className="flex items-center gap-2 mb-3">
-          <label className="text-[10px] text-rmpg-300 flex-1">
-            <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">From</span>
+          <label className="text-[10px] text-fg-muted flex-1">
+            <span className="block text-[9px] uppercase tracking-wider text-fg-muted mb-0.5">From</span>
             <input id="ff-exportrange-from" type="number" min={1} max={pageCount} value={from}
               onChange={e => setFrom(parseInt(e.target.value, 10) || 1)}
               className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]" />
           </label>
-          <label className="text-[10px] text-rmpg-300 flex-1">
-            <span className="block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5">To</span>
+          <label className="text-[10px] text-fg-muted flex-1">
+            <span className="block text-[9px] uppercase tracking-wider text-fg-muted mb-0.5">To</span>
             <input id="ff-exportrange-to" type="number" min={1} max={pageCount} value={to}
               onChange={e => setTo(parseInt(e.target.value, 10) || pageCount)}
               className="w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]" />
           </label>
         </div>
 
-        <div className="text-[10px] text-rmpg-400 mb-3">Will export <span className="[color:var(--panel-header-color)] font-mono">{count}</span> page{count === 1 ? '' : 's'} (pages {lo}–{hi}).</div>
+        <div className="text-[10px] text-fg-muted mb-3">Will export <span className="[color:var(--panel-header-color)] font-mono">{count}</span> page{count === 1 ? '' : 's'} (pages {lo}–{hi}).</div>
 
         <div className="flex items-center justify-end gap-2">
           <button type="button" onClick={onClose} className="btn-secondary text-[11px]">Cancel</button>

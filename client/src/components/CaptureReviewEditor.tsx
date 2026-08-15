@@ -27,7 +27,7 @@ interface VerifyResponse { success?: boolean; hits?: Array<{ severity: string; d
 interface HistoryRow { id: number; action: string; details: string | null; created_at: string; user_name: string | null }
 
 const FIELD = 'bg-surface-overlay border border-border-default px-2 py-1.5 text-[12px] text-rmpg-200 focus:border-accent-gold-300 outline-none w-full';
-const LABEL = 'text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5 block';
+const LABEL = 'text-[9px] uppercase tracking-wider text-fg-muted mb-0.5 block';
 
 export default function CaptureReviewEditor({
   capture, onClose, onSaved,
@@ -165,7 +165,7 @@ export default function CaptureReviewEditor({
           {history && history.length > 0 && (
             <div className="border border-border-default">
               <button type="button" onClick={() => setShowHistory((v) => !v)}
-                className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-rmpg-500 hover:text-rmpg-400">
+                className="w-full px-2 py-1 flex items-center justify-between text-[9px] uppercase tracking-wider text-fg-muted hover:text-fg-muted">
                 <span className="flex items-center gap-1"><History className="w-3 h-3" /> History ({history.length})</span>
                 <span>{showHistory ? '−' : '+'}</span>
               </button>
@@ -177,7 +177,7 @@ export default function CaptureReviewEditor({
                         <span className="text-[color:var(--field-label-color)]">{h.user_name || 'Officer'}</span>
                         <span className="text-fg-muted">{String(h.created_at).slice(5, 16)}</span>
                       </div>
-                      {h.details && <div className="text-rmpg-400 mt-0.5 break-words">{h.details}</div>}
+                      {h.details && <div className="text-fg-muted mt-0.5 break-words">{h.details}</div>}
                     </li>
                   ))}
                 </ul>

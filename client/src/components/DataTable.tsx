@@ -181,7 +181,7 @@ function DataTable<T>({
             style={spillman ? undefined : { background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}
           >
             {showRowNumbers && (
-              <th className={`${headerPadding} text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8`} scope="col">#</th>
+              <th className={`${headerPadding} text-[10px] font-bold uppercase tracking-wider text-fg-muted text-center w-8`} scope="col">#</th>
             )}
             {columns.map((col) => {
               const isSortable = col.sortable && onSort;
@@ -189,7 +189,7 @@ function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  className={`group ${headerPadding} ${headerText} font-bold uppercase tracking-wider ${spillman ? '[color:var(--panel-header-color)]' : 'text-rmpg-400'} whitespace-nowrap ${alignClass(col.align)} ${
+                  className={`group ${headerPadding} ${headerText} font-bold uppercase tracking-wider ${spillman ? '[color:var(--panel-header-color)]' : 'text-fg-muted'} whitespace-nowrap ${alignClass(col.align)} ${
                     isSortable ? `cursor-pointer select-none transition-colors ${spillman ? 'hover:bg-white/[0.03]' : 'hover:text-rmpg-200 hover:bg-white/[0.02]'}` : ''
                   }`}
                   style={col.width ? { width: col.width } : undefined}

@@ -1769,10 +1769,10 @@ export default function PdfEditorPage() {
           .rmpg-pdf-light-chrome .border-\\[\\#222222\\],
           .rmpg-pdf-light-chrome .border-\\[\\#1a1a1a\\] { border-color:#c2c2c6 !important; }
           .rmpg-pdf-light-chrome .text-rmpg-200,
-          .rmpg-pdf-light-chrome .text-rmpg-300,
-          .rmpg-pdf-light-chrome .text-rmpg-400 { color:#2a2a2a !important; }
-          .rmpg-pdf-light-chrome .text-rmpg-500,
-          .rmpg-pdf-light-chrome .text-rmpg-600 { color:#6a6a6a !important; }
+          .rmpg-pdf-light-chrome .text-fg-muted,
+          .rmpg-pdf-light-chrome .text-fg-muted { color:#2a2a2a !important; }
+          .rmpg-pdf-light-chrome .text-fg-muted,
+          .rmpg-pdf-light-chrome .text-fg-muted { color:#6a6a6a !important; }
           /* Keep the PDF page surface pure white regardless of chrome theme. */
           .rmpg-pdf-light-chrome .bg-white { background:#ffffff !important; }
         `}</style>
@@ -1960,15 +1960,15 @@ export default function PdfEditorPage() {
 
       {!hasDocument && (
         <div className="flex-1 bg-surface-base border border-border-default rounded-[2px] p-12 text-center flex flex-col items-center justify-center">
-          <FileText className="w-16 h-16 mb-4 text-rmpg-600" />
+          <FileText className="w-16 h-16 mb-4 text-fg-muted" />
           <div className="text-base text-rmpg-200 mb-2 font-semibold">PDF Editor</div>
-          <div className="text-xs text-rmpg-500 mb-6 max-w-md">View, annotate, redact, sign, stamp, watermark, reorder, rotate, merge — all running locally in your browser. Files never leave the device.</div>
+          <div className="text-xs text-fg-muted mb-6 max-w-md">View, annotate, redact, sign, stamp, watermark, reorder, rotate, merge — all running locally in your browser. Files never leave the device.</div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={onPickFile} className="btn-primary">Open PDF</button>
             <button type="button" onClick={onPickMerge} className="btn-secondary">Merge multiple PDFs</button>
           </div>
-          <div className="mt-6 text-[10px] text-rmpg-600 max-w-md">
-            <strong className="text-rmpg-500">Note on redaction:</strong> the redaction tool paints an opaque black box over content. For maximum-sensitivity material (FOIA, court submissions), follow with a print-to-PDF round trip to flatten the entire content stream.
+          <div className="mt-6 text-[10px] text-fg-muted max-w-md">
+            <strong className="text-fg-muted">Note on redaction:</strong> the redaction tool paints an opaque black box over content. For maximum-sensitivity material (FOIA, court submissions), follow with a print-to-PDF round trip to flatten the entire content stream.
           </div>
         </div>
       )}
@@ -1977,7 +1977,7 @@ export default function PdfEditorPage() {
           prefs / JSON I/O / print. These are kept out of the main EditorToolbar
           so that toolbar stays tight; quick actions live just below it. */}
       {hasDocument && !viewOnly && (
-        <div className={`flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300 ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
+        <div className={`flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mb-2 text-[10px] text-fg-muted ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
           {isMobile && (
             <>
               <button type="button" onClick={() => setMobileToolsOpen(v => !v)} title="Toggle tools"
@@ -2038,7 +2038,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ImageDownIcon className="w-3 h-3" /> PNG</button>
           <label className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">DPI</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">DPI</span>
             <select id="ff-pdfeditorpage-pngdpi" value={pngDpi} onChange={e => setPngDpi(parseInt(e.target.value, 10))}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               <option value={72}>72</option>
@@ -2052,7 +2052,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
           <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">Crop AR</span>
             <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
               className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)]' : 'border-border-default text-rmpg-200'}`}>
               <option value={0}>Free</option>
@@ -2089,7 +2089,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={() => setTypedSigMode('quicksign')} title="Quick-sign: place signature + today's date + initials together"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Quick-sign</button>
           <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">Note</span>
             <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(k => (
@@ -2109,7 +2109,7 @@ export default function PdfEditorPage() {
                     <span className="text-[9px] max-w-[70px] truncate">{ps.name}</span>
                   </button>
                   <button type="button" onClick={() => deletePreset(ps.id)} aria-label={`Delete preset ${ps.name}`} title="Delete preset"
-                    className="text-rmpg-600 hover:text-red-400 text-[10px] px-0.5">×</button>
+                    className="text-fg-muted hover:text-red-400 text-[10px] px-0.5">×</button>
                 </span>
               ))}
             </span>
@@ -2178,7 +2178,7 @@ export default function PdfEditorPage() {
       )}
 
       {hasDocument && viewOnly && (
-        <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
+        <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-fg-muted">
           <span className="[color:var(--panel-header-color)] font-semibold uppercase tracking-wider">View-only</span>
           <span>— editing tools are hidden. Click "Edit this PDF" to enable annotation, redaction, signatures, and more.</span>
           <button type="button" onClick={enableEditing} className="ml-auto btn-secondary text-[10px]">Edit this PDF</button>
@@ -2194,7 +2194,7 @@ export default function PdfEditorPage() {
               <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
               {isMobile && (
                 <button type="button" onClick={() => setMobileToolsOpen(false)} aria-label="Close tools"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-fg-muted hover:text-rmpg-100">×</button>
               )}
             </div>
           )}
@@ -2224,7 +2224,7 @@ export default function PdfEditorPage() {
               />
               {isMobile && (
                 <button type="button" onClick={() => setMobileThumbsOpen(false)} aria-label="Close pages"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-fg-muted hover:text-rmpg-100">×</button>
               )}
             </div>
           )}
@@ -2385,11 +2385,11 @@ function EnginePanel(): React.ReactElement {
   const summary = diagnosticsSummary();
   const last = getDiagnostics()[0];
   return (
-    <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
+    <div className="text-[9px] text-fg-muted mt-2 text-center select-none">
       <div>
-        <span className="text-rmpg-500 font-semibold">RMPG PDF Engine</span> ·
-        Native: <span className="[color:var(--panel-header-color)]">{summary.native}</span> · PDF.js fallback: <span className="text-rmpg-500">{summary.pdfjs}</span>
-        {last && <> · last: <span className="text-rmpg-400">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
+        <span className="text-fg-muted font-semibold">RMPG PDF Engine</span> ·
+        Native: <span className="[color:var(--panel-header-color)]">{summary.native}</span> · PDF.js fallback: <span className="text-fg-muted">{summary.pdfjs}</span>
+        {last && <> · last: <span className="text-fg-muted">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
       </div>
       <div className="mt-0.5">
         RMPG PDF Engine v1.0 — proprietary facade + writer; PDF.js (Mozilla, Apache 2.0) handles rendering for the long tail of document features (images, embedded fonts, cross-ref streams). Native renderer covers RMPG-generated PDFs and grows over time.

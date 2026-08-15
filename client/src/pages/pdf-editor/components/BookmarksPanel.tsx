@@ -35,17 +35,17 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
 
   const Row = ({ b, child }: { b: Bookmark; child?: boolean }) => (
     <div className={`group flex items-center gap-1 rounded-sm px-1.5 py-1 ${child ? 'ml-3' : ''} ${b.page === activePage ? 'bg-[#d4a017]/15' : 'hover:bg-rmpg-700/30'}`}>
-      {child && <CornerDownRight className="w-3 h-3 text-rmpg-600 flex-shrink-0" aria-hidden="true" />}
+      {child && <CornerDownRight className="w-3 h-3 text-fg-muted flex-shrink-0" aria-hidden="true" />}
       <button type="button" onClick={() => onJump(b.page)} className="flex-1 text-left min-w-0" title={`Go to page ${b.page}`}>
         <div className="text-[10px] text-rmpg-200 truncate">{b.title}</div>
-        <div className="text-[9px] text-rmpg-600">Page {b.page > pageCount ? '?' : b.page}</div>
+        <div className="text-[9px] text-fg-muted">Page {b.page > pageCount ? '?' : b.page}</div>
       </button>
       {!child && (
         <IconButton onClick={() => add(b.id)} aria-label={`Add child bookmark under ${b.title}`} title={`Add child bookmark (page ${activePage}) under "${b.title}"`}
-          className="p-0.5 text-rmpg-500 hover:[color:var(--panel-header-color)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Plus className="w-3 h-3" /></IconButton>
+          className="p-0.5 text-fg-muted hover:[color:var(--panel-header-color)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Plus className="w-3 h-3" /></IconButton>
       )}
       <IconButton onClick={() => onDelete(b.id)} aria-label="Delete bookmark"
-        className="p-0.5 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Trash2 className="w-3 h-3" /></IconButton>
+        className="p-0.5 text-fg-muted hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"><Trash2 className="w-3 h-3" /></IconButton>
     </div>
   );
 
@@ -54,7 +54,7 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
       <div className="flex items-center gap-1.5 mb-2 px-1">
         <BookmarkIcon className="w-3.5 h-3.5 [color:var(--panel-header-color)]" />
         <div className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold">Bookmarks</div>
-        <IconButton onClick={onClose} aria-label="Close bookmarks" className="ml-auto p-0.5 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></IconButton>
+        <IconButton onClick={onClose} aria-label="Close bookmarks" className="ml-auto p-0.5 text-fg-muted hover:text-rmpg-100"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div className="flex items-center gap-1 mb-2">
@@ -71,7 +71,7 @@ export default function BookmarksPanel({ bookmarks, activePage, pageCount, onAdd
       </div>
 
       {roots.length === 0 ? (
-        <div className="text-[10px] text-rmpg-600 px-1 py-2">No bookmarks. Add one to jump quickly between pages. Hover a row and press + to nest a child under it.</div>
+        <div className="text-[10px] text-fg-muted px-1 py-2">No bookmarks. Add one to jump quickly between pages. Hover a row and press + to nest a child under it.</div>
       ) : (
         <div className="space-y-0.5">
           {roots.map(b => (

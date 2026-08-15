@@ -54,19 +54,19 @@ export default function CompareDialog({ open, onClose, pageCount, onCompare }: P
           <div className="text-[11px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold inline-flex items-center gap-1.5">
             <GitCompare className="w-3.5 h-3.5" /> Compare PDFs
           </div>
-          <IconButton onClick={close} aria-label="Close" title="Close" className="text-rmpg-400 hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
+          <IconButton onClick={close} aria-label="Close" title="Close" className="text-fg-muted hover:text-rmpg-100 p-1"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <label className="text-[10px] text-rmpg-300 border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100">
+          <label className="text-[10px] text-fg-muted border border-border-default rounded-sm px-2 py-1 cursor-pointer hover:text-rmpg-100">
             {otherName ? `2nd PDF: ${otherName}` : 'Choose 2nd PDF…'}
             <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
           </label>
-          <span className="text-[10px] text-rmpg-500">Page</span>
+          <span className="text-[10px] text-fg-muted">Page</span>
           <input id="ff-compare-page" type="number" min={1} max={pageCount} value={page}
             onChange={e => setPage(Math.max(1, Math.min(pageCount, parseInt(e.target.value, 10) || 1)))}
             className="bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm w-16 focus:outline-none focus:[border-color:var(--field-label-color)]" />
-          <span className="text-[10px] text-rmpg-600">of {pageCount}</span>
+          <span className="text-[10px] text-fg-muted">of {pageCount}</span>
           <button type="button" disabled={busy || !other} onClick={run} className="btn-primary text-[11px] ml-auto disabled:opacity-40">{busy ? 'Comparing…' : 'Compare'}</button>
         </div>
 
@@ -75,13 +75,13 @@ export default function CompareDialog({ open, onClose, pageCount, onCompare }: P
         {result && (
           <>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] text-rmpg-400">
+              <span className="text-[10px] text-fg-muted">
                 Changed area: <span className="[color:var(--panel-header-color)] font-mono">{(result.changed * 100).toFixed(2)}%</span>
                 {result.changed < 0.0005 && <span className="text-green-300"> — pages look identical</span>}
               </span>
               <div className="ml-auto flex gap-1">
-                <button type="button" onClick={() => setView('diff')} className={`px-2 py-0.5 text-[10px] rounded-sm border ${view === 'diff' ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-rmpg-400'}`}>Diff overlay</button>
-                <button type="button" onClick={() => setView('side')} className={`px-2 py-0.5 text-[10px] rounded-sm border ${view === 'side' ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-rmpg-400'}`}>Side by side</button>
+                <button type="button" onClick={() => setView('diff')} className={`px-2 py-0.5 text-[10px] rounded-sm border ${view === 'diff' ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-fg-muted'}`}>Diff overlay</button>
+                <button type="button" onClick={() => setView('side')} className={`px-2 py-0.5 text-[10px] rounded-sm border ${view === 'side' ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)] [border-color:var(--field-label-color)]' : 'border-border-default text-fg-muted'}`}>Side by side</button>
               </div>
             </div>
             <div className="bg-surface-overlay border border-border-default rounded-sm p-2">
@@ -90,17 +90,17 @@ export default function CompareDialog({ open, onClose, pageCount, onCompare }: P
               ) : (
                 <div className="flex gap-2 justify-center">
                   <div className="flex-1">
-                    <div className="text-[9px] text-rmpg-500 text-center mb-1">This document</div>
+                    <div className="text-[9px] text-fg-muted text-center mb-1">This document</div>
                     <img src={result.aUrl} alt="Document A page" className="max-w-full block border border-border-default" />
                   </div>
                   <div className="flex-1">
-                    <div className="text-[9px] text-rmpg-500 text-center mb-1">{otherName || 'Second document'}</div>
+                    <div className="text-[9px] text-fg-muted text-center mb-1">{otherName || 'Second document'}</div>
                     <img src={result.bUrl} alt="Document B page" className="max-w-full block border border-border-default" />
                   </div>
                 </div>
               )}
             </div>
-            <div className="text-[9px] text-rmpg-600 mt-1">Gold pixels mark regions that differ. Compares the same 1-indexed page in each document.</div>
+            <div className="text-[9px] text-fg-muted mt-1">Gold pixels mark regions that differ. Compares the same 1-indexed page in each document.</div>
           </>
         )}
       </div>

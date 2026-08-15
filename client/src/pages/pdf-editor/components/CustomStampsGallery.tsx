@@ -142,10 +142,10 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
             <Stamp className="w-4 h-4 [color:var(--panel-header-color)]" /> Stamps gallery
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-fg-muted hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="text-[10px] text-rmpg-500 mb-3">
+        <div className="text-[10px] text-fg-muted mb-3">
           Choose a stamp to drop onto the page. Custom stamps live in your browser only.
         </div>
 
@@ -160,7 +160,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
           {PRESETS.map(label => (
             <button key={label} type="button"
               onClick={() => { onPick({ kind: 'preset', label }); onClose(); }}
-              className="bg-surface-base hover:bg-surface-raised border-2 border-border-panel/70 hover:border-border-panel rounded-sm py-2 px-3 text-rmpg-500 font-bold text-sm tracking-wider">
+              className="bg-surface-base hover:bg-surface-raised border-2 border-border-panel/70 hover:border-border-panel rounded-sm py-2 px-3 text-fg-muted font-bold text-sm tracking-wider">
               {label}
             </button>
           ))}
@@ -185,7 +185,7 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
         </div>
 
         {stamps.length === 0 ? (
-          <div className="bg-surface-base border border-border-default rounded-sm p-6 text-center text-[10px] text-rmpg-500">
+          <div className="bg-surface-base border border-border-default rounded-sm p-6 text-center text-[10px] text-fg-muted">
             No custom stamps yet. Upload a PNG (transparent backgrounds work) or JPEG up to {Math.round(MAX_BYTES / 1024)} KB.
           </div>
         ) : (
@@ -202,11 +202,11 @@ export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew
                     onChange={(e) => handleRename(s.id, e.target.value.slice(0, 40))}
                     className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-border-default focus:outline-none focus:[border-color:var(--field-label-color)]" />
                   <button type="button" onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
-                    className="p-0.5 text-rmpg-400 hover:[color:var(--panel-header-color)]" title="Use this stamp">
+                    className="p-0.5 text-fg-muted hover:[color:var(--panel-header-color)]" title="Use this stamp">
                     <Check className="w-3 h-3" />
                   </button>
                   <button type="button" onClick={() => handleDelete(s.id)}
-                    className="p-0.5 text-rmpg-400 hover:text-red-400" title="Delete">
+                    className="p-0.5 text-fg-muted hover:text-red-400" title="Delete">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>

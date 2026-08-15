@@ -10,7 +10,7 @@ interface Props {
   onPickImage: () => void;
 }
 
-const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-border-default hover:[border-color:var(--field-label-color)] rounded-[2px] py-4 text-[10px] text-rmpg-300 hover:text-rmpg-100 bg-surface-sunken';
+const cardCls = 'flex flex-col items-center justify-center gap-1.5 border border-border-default hover:[border-color:var(--field-label-color)] rounded-[2px] py-4 text-[10px] text-fg-muted hover:text-rmpg-100 bg-surface-sunken';
 
 export default function InsertPageDialog({ open, onClose, onTemplate, onPickImage }: Props) {
   if (!open) return null;
@@ -20,21 +20,21 @@ export default function InsertPageDialog({ open, onClose, onTemplate, onPickImag
         <div className="flex items-center gap-2 mb-3">
           <FilePlus2 className="w-4 h-4 [color:var(--panel-header-color)]" />
           <div className="text-sm text-rmpg-100 font-semibold">Insert New Page</div>
-          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-fg-muted hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
-        <div className="text-[10px] text-rmpg-500 mb-3">A new US-Letter page is appended to the end of the document.</div>
+        <div className="text-[10px] text-fg-muted mb-3">A new US-Letter page is appended to the end of the document.</div>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" className={cardCls} onClick={() => { onTemplate('blank'); onClose(); }}>
-            <FilePlus2 className="w-6 h-6 text-rmpg-400" /> Blank
+            <FilePlus2 className="w-6 h-6 text-fg-muted" /> Blank
           </button>
           <button type="button" className={cardCls} onClick={() => { onTemplate('lined'); onClose(); }}>
-            <AlignJustify className="w-6 h-6 text-rmpg-400" /> Lined
+            <AlignJustify className="w-6 h-6 text-fg-muted" /> Lined
           </button>
           <button type="button" className={cardCls} onClick={() => { onTemplate('grid'); onClose(); }}>
-            <Grid3x3 className="w-6 h-6 text-rmpg-400" /> Grid
+            <Grid3x3 className="w-6 h-6 text-fg-muted" /> Grid
           </button>
           <button type="button" className={cardCls} onClick={() => { onPickImage(); onClose(); }}>
-            <ImageIcon className="w-6 h-6 text-rmpg-400" /> From image…
+            <ImageIcon className="w-6 h-6 text-fg-muted" /> From image…
           </button>
         </div>
       </div>

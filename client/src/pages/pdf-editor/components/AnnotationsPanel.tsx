@@ -101,13 +101,13 @@ export default function AnnotationsPanel(p: Props) {
       {/* Search + type filter */}
       <div className="space-y-1">
         <div className="relative">
-          <Search className="w-3 h-3 absolute left-1.5 top-1/2 -translate-y-1/2 text-rmpg-500" aria-hidden="true" />
+          <Search className="w-3 h-3 absolute left-1.5 top-1/2 -translate-y-1/2 text-fg-muted" aria-hidden="true" />
           <input id="ff-annotationspanel-search" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="Search text / note / author…"
             className="w-full bg-surface-sunken border border-border-default text-[10px] text-rmpg-100 pl-6 pr-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]" />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100 text-[10px]">×</button>
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-muted hover:text-rmpg-100 text-[10px]">×</button>
           )}
         </div>
         <select id="ff-annotationspanel-typefilter" value={typeFilter} onChange={e => setTypeFilter(e.target.value as typeof typeFilter)}
@@ -119,14 +119,14 @@ export default function AnnotationsPanel(p: Props) {
 
       {layers.length > 0 && (
         <div className="border-b border-border-default pb-2">
-          <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mb-1 px-1">Layer visibility</div>
+          <div className="text-[9px] uppercase tracking-wider text-fg-muted mb-1 px-1">Layer visibility</div>
           {layers.map(l => {
             const visible = p.layerVisibility[l] !== false;
             return (
               <button key={l} type="button" onClick={() => p.onToggleLayer(l)}
                 className="w-full text-left px-1.5 py-0.5 text-[10px] rounded-sm hover:bg-rmpg-700/40 flex items-center gap-1.5">
-                {visible ? <Eye className="w-3 h-3 [color:var(--panel-header-color)]" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                <span className={visible ? 'text-rmpg-200' : 'text-rmpg-500'}>{l}</span>
+                {visible ? <Eye className="w-3 h-3 [color:var(--panel-header-color)]" /> : <EyeOff className="w-3 h-3 text-fg-muted" />}
+                <span className={visible ? 'text-rmpg-200' : 'text-fg-muted'}>{l}</span>
               </button>
             );
           })}
@@ -136,7 +136,7 @@ export default function AnnotationsPanel(p: Props) {
       {pages.map(pageNum => (
         <div key={pageNum}>
           <button type="button" onClick={() => p.onJumpToPage(pageNum)}
-            className="text-[9px] uppercase tracking-wider text-rmpg-400 hover:text-rmpg-100 mb-1 px-1 block w-full text-left">
+            className="text-[9px] uppercase tracking-wider text-fg-muted hover:text-rmpg-100 mb-1 px-1 block w-full text-left">
             Page {pageNum} ({byPage.get(pageNum)!.length})
           </button>
           <div className="space-y-0.5">
@@ -150,21 +150,21 @@ export default function AnnotationsPanel(p: Props) {
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[10px] text-rmpg-200 truncate">
                         <span className="[color:var(--panel-header-color)]">{TYPE_LABELS[a.type] ?? a.type}</span>
-                        {summarize(a) && <span className="text-rmpg-400"> · {summarize(a)}</span>}
+                        {summarize(a) && <span className="text-fg-muted"> · {summarize(a)}</span>}
                       </span>
                     </div>
                   </button>
                   <div className="flex items-center gap-0.5 opacity-40 group-hover:opacity-100 transition-opacity">
                     <button type="button" onClick={() => p.onToggleLock(a.id)} title={a.locked ? 'Unlock' : 'Lock'}
-                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100">
+                      className="p-0.5 text-fg-muted hover:text-rmpg-100">
                       {a.locked ? <Lock className="w-3 h-3 [color:var(--panel-header-color)]" /> : <Unlock className="w-3 h-3" />}
                     </button>
                     <button type="button" onClick={() => p.onSendBackward(a.id)} title="Send backward"
-                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><ArrowDown className="w-3 h-3" /></button>
+                      className="p-0.5 text-fg-muted hover:text-rmpg-100"><ArrowDown className="w-3 h-3" /></button>
                     <button type="button" onClick={() => p.onBringForward(a.id)} title="Bring forward"
-                      className="p-0.5 text-rmpg-400 hover:text-rmpg-100"><ArrowUp className="w-3 h-3" /></button>
+                      className="p-0.5 text-fg-muted hover:text-rmpg-100"><ArrowUp className="w-3 h-3" /></button>
                     <button type="button" onClick={() => p.onDelete(a.id)} title="Delete"
-                      className="p-0.5 text-rmpg-400 hover:text-red-400 ml-auto"><Trash2 className="w-3 h-3" /></button>
+                      className="p-0.5 text-fg-muted hover:text-red-400 ml-auto"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
               );
@@ -174,12 +174,12 @@ export default function AnnotationsPanel(p: Props) {
       ))}
 
       {p.annotations.length === 0 && (
-        <div className="text-[10px] text-rmpg-500 italic px-1 py-4 text-center">
+        <div className="text-[10px] text-fg-muted italic px-1 py-4 text-center">
           No annotations yet. Switch to a tool and click on a page to add one.
         </div>
       )}
       {p.annotations.length > 0 && filtered.length === 0 && (
-        <div className="text-[10px] text-rmpg-500 italic px-1 py-4 text-center">
+        <div className="text-[10px] text-fg-muted italic px-1 py-4 text-center">
           No annotations match the current search / filter.
         </div>
       )}

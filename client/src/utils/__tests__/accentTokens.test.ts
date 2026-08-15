@@ -735,7 +735,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // text-fg-muted, and de-duplicating the Blocked IPs card — it was
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
-  const PIN = 10479;
+  //
+  // 10479 -> 10314: hex sweep migrated text-rmpg-300/400/500 in 22 files
+  // (ForensicDashcamPlayer, PropertiesPanel, PersonDossierPage, TripManagerSection,
+  // MenuBar, PdfEditorPage, pdf-editor components, and others) to text-fg-muted.
+  const PIN = 10314;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

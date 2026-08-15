@@ -562,14 +562,14 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               ▶ Full Trip
             </a>
           )}
-          <span className="text-[11px] text-rmpg-400 truncate">{media?.address || address || ''}</span>
+          <span className="text-[11px] text-fg-muted truncate">{media?.address || address || ''}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Tactical toolbar */}
           {media?.has_video && (
             <>
               <button onClick={() => setRate((r) => (r >= 2 ? 0.25 : +(r + 0.25).toFixed(2)))}
-                className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:[border-color:var(--field-label-color)] tabular-nums" title="Playback speed ( < / > )">
+                className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] tabular-nums" title="Playback speed ( < / > )">
                 {rate.toFixed(2)}×
               </button>
               <button onClick={() => setEnhanceKey((k) => nextPresetKey(k))} title="Cycle image enhancement (n)"
@@ -587,19 +587,19 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => captureRef.current()} title="Capture evidence frame (c)"
-                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:[border-color:var(--field-label-color)]" aria-label="Capture evidence frame">
+                className="p-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)]" aria-label="Capture evidence frame">
                 <Camera className="w-3.5 h-3.5" />
               </button>
               <button onClick={rescanPlate} disabled={rescan.busy} title="Re-scan plate from the target vehicle (best-frame OCR)"
-                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:[border-color:var(--field-label-color)] disabled:opacity-50" aria-label="Re-scan plate">
+                className="p-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] disabled:opacity-50" aria-label="Re-scan plate">
                 {rescan.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               </button>
               <button onClick={exportReport} title="Export forensic PDF report"
-                className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Export forensic report">
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Export forensic report">
                 <FileText className="w-3.5 h-3.5" /> REPORT
               </button>
               <button onClick={() => setRedactOpen(true)} title="Redact & export for disclosure"
-                className="text-[10px] font-semibold px-1.5 py-1 border border-[#232323] text-rmpg-300 hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Open redaction studio">
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#232323] text-fg-muted hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Open redaction studio">
                 <ShieldOff className="w-3.5 h-3.5" /> REDACT
               </button>
               <span className="w-px h-4 bg-surface-raised" />
@@ -616,12 +616,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
             {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-fg-muted">(telemetry)</span>}
           </button>
-          <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-fg-muted hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
         </div>
       </div>
 
       {loading && (
-        <div className="flex-1 flex items-center justify-center text-rmpg-400 text-sm gap-2">
+        <div className="flex-1 flex items-center justify-center text-fg-muted text-sm gap-2">
           <Loader2 className="w-5 h-5 animate-spin" /> Resolving clip…
         </div>
       )}
@@ -825,7 +825,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           <div className="border-l border-[#222] bg-surface-raised overflow-auto">
             {/* Road track */}
             <div className="p-3 border-b border-[#222]">
-              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-2 flex items-center justify-between">
                 <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> GPS road track</span>
                 <span className="flex items-center gap-0.5">
                   {(['svg', 'map'] as const).map((v) => (
@@ -862,7 +862,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               {trackPts.length > 1 && (
                 <div className="mt-2 flex items-center justify-between text-[9px] [color:var(--panel-header-color)] border-t border-[#1a1a1a] pt-1.5">
                   <span className="flex items-center gap-1"><Route className="w-3 h-3" /> Predicted</span>
-                  <span className="font-mono text-rmpg-300">
+                  <span className="font-mono text-fg-muted">
                     {Math.abs(turnRate) < 4 ? 'STRAIGHT' : turnRate > 0 ? `BEARING RIGHT ${Math.abs(turnRate).toFixed(0)}°/s` : `BEARING LEFT ${Math.abs(turnRate).toFixed(0)}°/s`} · hdg {compass(heading)}
                   </span>
                 </div>
@@ -871,7 +871,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
 
             {/* Driving analysis */}
             <div className="p-3">
-              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center gap-1">
+              <div className="text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-2 flex items-center gap-1">
                 <Activity className="w-3 h-3" /> Driving analysis
               </div>
 
@@ -881,7 +881,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 return (
                   <div className="mb-2.5 border border-[#222] bg-surface-sunken p-2">
                     <div className="flex items-center justify-between text-[9px] uppercase tracking-wider mb-1">
-                      <span className="flex items-center gap-1 text-rmpg-400 font-semibold"><Gauge className="w-3 h-3" /> AI risk score</span>
+                      <span className="flex items-center gap-1 text-fg-muted font-semibold"><Gauge className="w-3 h-3" /> AI risk score</span>
                       <span className="font-mono font-bold tabular-nums" style={{ color: col }}>{risk.score}/100 · {risk.level}</span>
                     </div>
                     <div className="h-1.5 bg-surface-deep border border-[#1a1a1a] overflow-hidden">
@@ -890,7 +890,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                     {risk.factors.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {risk.factors.map((f, i) => (
-                          <span key={i} className="text-[9px] px-1 py-0.5 border border-[#2a2a2a] text-rmpg-300 bg-black/40">{f}</span>
+                          <span key={i} className="text-[9px] px-1 py-0.5 border border-[#2a2a2a] text-fg-muted bg-black/40">{f}</span>
                         ))}
                       </div>
                     )}
@@ -940,16 +940,16 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               {/* Plate re-identification — cross-source prior sightings */}
               {media?.plate && prior && (
                 <div className="mt-3 border-t border-[#222] pt-2">
-                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-1.5">
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-1.5">
                     <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Plate re-ID</span>
                     <button onClick={() => setDossier(media.plate)} className="text-[8px] px-1.5 py-0.5 border [border-color:var(--field-label-color)] [color:var(--panel-header-color)] hover:bg-[#1a1400]">DOSSIER</button>
                   </div>
                   <div className="text-[11px] text-rmpg-200">
                     <span className="[color:var(--panel-header-color)] tracking-[0.15em] font-semibold">{media.plate}</span>
-                    <span className="text-rmpg-400"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
+                    <span className="text-fg-muted"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
                   </div>
                   {prior.sightings.slice(0, 4).map((s) => (
-                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-fg-muted flex justify-between gap-2 mt-0.5 hover:text-rmpg-300">
+                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-fg-muted flex justify-between gap-2 mt-0.5 hover:text-fg-muted">
                       <span className="truncate">{s.location || s.source}</span>
                       <span className="shrink-0 font-mono">{String(s.created_at || '').slice(5, 16)}</span>
                     </button>
