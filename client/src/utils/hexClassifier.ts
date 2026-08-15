@@ -147,6 +147,27 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // The UI overlay elements are mixed throughout the same component with the paint calls,
   // making selective migration unsafe. Same rationale as NavigationPage.tsx exclusion.
   navMapViewMapboxPaint: /(^|\/)NavMapView\.(tsx)$/,
+  // Map layer paint hooks — every hex literal feeds Mapbox GL addLayer / setPaintProperty /
+  // setFilter paint expressions. CSS var() cannot resolve in those contexts; the layer silently
+  // blanks. Covers: GeoJSON feature layers, vector-tile styling, route lines, geofence outlines,
+  // incident markers, safety-zone fills, and draw-mode paint. useMapboxHistoryCalls is also
+  // excluded under mapboxTactical above (via mapConstants) but its direct paint hook is here.
+  mapboxLayerPaintHooks: /(^|\/)use(GeoJsonLayers|VectorTileLayers|MapRouting|MapGeofenceAlerts|MapboxIncidents|MapboxSafetyZones|MapboxDraw)\.(ts)$/,
+  // useMapAtmosphere configures Mapbox GL fog / sky via map.setFog(). The setFog() API takes
+  // the same literal color values as paint properties; CSS var() is not resolved there.
+  mapboxAtmosphere: /(^|\/)useMapAtmosphere\.(ts)$/,
+  // serveMapUtils builds Mapbox GL addLayer / addSource / setPaintProperty calls. CSS vars
+  // cannot resolve in those contexts; literal hex is required for layer paint properties.
+  serveMapUtils: /(^|\/)serveMapUtils\.(ts)$/,
+  // statusColors defines UNIT_STATUS_HEX, PRIORITY_HEX, and priorityHex() which flow directly
+  // into Mapbox addLayer circle-color paint expressions (useMapboxHistoryCalls, mapMarkers).
+  // These are also operational-severity constants that tests assert on by literal value.
+  statusColors: /(^|\/)statusColors\.(ts)$/,
+  // useMapPlacesSearch and useMapInfoPanel build Mapbox popup / marker DOM via string
+  // interpolation (el.style.cssText, .setHTML()). The operational colors (POI categories:
+  // hospital=red, fire=orange, police=blue, etc.; unit=green, call=red, location=blue) have
+  // fixed semantic meaning that does not map to CSS-var tokens — same rationale as ServePage.tsx.
+  mapboxPopupOperationalColors: /(^|\/)use(MapPlacesSearch|MapInfoPanel)\.(ts)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
