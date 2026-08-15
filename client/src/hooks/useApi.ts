@@ -827,4 +827,56 @@ export async function apiDeleteCompanyDocument(id: number): Promise<void> {
 
 export type { UploadProgress };
 
+// ─── Dual-write for FZ-55 secondary server ───────────────────────────────────
+import { useContext } from 'react';
+import { ApiBaseContext } from './useApiBase';
+
+/**
+ * Pure dual-write function — exported for testing.
+ * Fires the same mutation at both local and cloud in parallel.
+ * Returns the local result if available; cloud result as fallback.
+ * Throws when both fail.
+ */
+export async function dualWrite<T>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number },
+  localBase: string | null,
+  cloudBase: string,
+): Promise<T> {
+  const normalizedPath = path.startsWith('/api') ? path : `/api${path}`;
+
+  if (!localBase) {
+    const res = await fetchWithTimeout(`${cloudBase}${normalizedPath}`, options);
+    if (!res.ok) throw new Error(`Cloud request failed: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
+  const [localResult, cloudResult] = await Promise.allSettled([
+    fetchWithTimeout(`${localBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Local ${r.status}`))
+    ),
+    fetchWithTimeout(`${cloudBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Cloud ${r.status}`))
+    ),
+  ]);
+
+  if (localResult.status === 'fulfilled') return localResult.value;
+  if (cloudResult.status === 'fulfilled') return cloudResult.value;
+  throw new Error('No connectivity — both local and cloud endpoints unreachable');
+}
+
+/**
+ * Hook-based dual-write wrapper for use in React components.
+ * Reads cloud/local bases from ApiBaseContext automatically.
+ */
+export function useApiMutate() {
+  const { cloudBase, localBase } = useContext(ApiBaseContext);
+  return async function apiMutate<T>(
+    path: string,
+    options: RequestInit & { timeoutMs?: number } = {},
+  ): Promise<T> {
+    return dualWrite<T>(path, options, localBase, cloudBase);
+  };
+}
+
 export default useApi;
