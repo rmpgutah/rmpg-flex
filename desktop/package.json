@@ -13,8 +13,8 @@
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac -c.mac.identity=null",
     "build:all": "electron-builder --mac --win",
-    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped (likely CI or first install before electron); run npm run rebuild manually if dev start fails with NODE_MODULE_VERSION'",
-    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
+    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3,node-hid,usb-detection || echo '[postinstall] electron-rebuild skipped'",
+    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3,node-hid,usb-detection"
   },
   "build": {
     "appId": "com.rmpg.flex",
@@ -54,7 +54,11 @@
       "splash.html",
       "splashPreload.js",
       "assets/login-bg.jpg",
-      "assets/logo.png"
+      "assets/logo.png",
+      "**/node_modules/node-hid/**/*",
+      "**/node_modules/usb-detection/**/*",
+      "**/node_modules/@vladmandic/**/*",
+      "**/node_modules/jsqr/**/*"
     ],
     "extraResources": [
       {
@@ -128,9 +132,13 @@
   },
   "dependencies": {
     "@serialport/parser-readline": "^13.0.0",
+    "@vladmandic/face-api": "^3.4.0",
     "better-sqlite3": "^12.11.1",
     "electron-updater": "^6.8.9",
-    "serialport": "^13.0.0"
+    "jsqr": "^1.4.0",
+    "node-hid": "^3.1.0",
+    "serialport": "^13.0.0",
+    "usb-detection": "^4.1.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
