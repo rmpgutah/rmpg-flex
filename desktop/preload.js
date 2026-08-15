@@ -365,4 +365,10 @@ contextBridge.exposeInMainWorld('electron', {
     ipcRenderer.on('offline:authorization-changed', handler);
     return () => ipcRenderer.removeListener('offline:authorization-changed', handler);
   },
+
+  // ─── Face Recognition Auth ───────────────────────────────────
+  faceEnroll: (userId, embedding) => ipcRenderer.invoke('face:enroll', { userId, embedding }),
+  faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
+  faceClear: (userId) => ipcRenderer.invoke('face:clear', { userId }),
+  faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
 });

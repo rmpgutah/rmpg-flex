@@ -16,6 +16,7 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { createFaceAuth, euclideanDistance } = require('./faceAuth');
 const {
   parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
   parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
@@ -198,6 +199,7 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+let faceAuth = null; // initialized after localDb is ready
 
 // Rolling-window crash-recovery timestamps for the main window's renderer
 // and GPU-process crashes — see crashRecovery.js. Kept at module scope
@@ -4651,6 +4653,55 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
   }
 });
 
+// ─── Face Recognition Auth ──────────────────────────────────
+// Enrollment: renderer captures N frames, extracts embeddings via face-api.js
+// (runs in renderer — has canvas + camera access), sends averaged embedding here.
+guardedHandle('face:enroll', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding)) return { ok: false, error: 'invalid_params' };
+  try {
+    faceAuth.storeEmbedding(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:enroll', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('face:enroll', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+// Verify: renderer sends a live embedding (extracted by face-api.js in renderer).
+guardedHandle('face:verify', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, reason: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding)) return { ok: false, reason: 'invalid_params' };
+  try {
+    const result = faceAuth.verify(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:verify', result.match ? 'success' : 'denied', {
+      targetUserId: userId, confidence: result.confidence,
+    });
+    return { ok: result.match, confidence: result.confidence, reason: result.reason };
+  } catch (err) {
+    logSecurityAuditEvent('face:verify', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('face:clear', (_event, { userId }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  try {
+    faceAuth.deleteEmbedding(userId);
+    logSecurityAuditEvent('face:clear', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('face:enrollment-status', (_event, { userId }) => {
+  if (!faceAuth) return { enrolled: false };
+  const embedding = faceAuth.getEmbedding(userId);
+  return { enrolled: embedding !== null };
+});
+
 // ── System info: battery (Windows only) ──
 guardedHandle('system:get-battery', async () => {
   if (process.platform !== 'win32') return null;
@@ -4971,6 +5022,15 @@ app.whenReady().then(async () => {
           const { changes } = invalidateAllActivePinSessions(liveDb);
           console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
         });
+      }
+      try {
+        const localDb = getLocalDb();
+        if (localDb) {
+          faceAuth = createFaceAuth({ db: localDb, safeStorage });
+          console.log('[FACE-AUTH] Initialized');
+        }
+      } catch (err) {
+        console.error('[FACE-AUTH] Failed to initialize:', err.message);
       }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
