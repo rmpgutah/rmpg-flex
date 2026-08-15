@@ -312,6 +312,16 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // rmpg-pdf-engine native layer uses Canvas 2D ctx.fillStyle for PDF page rasterization.
   // CSS variables cannot resolve in a canvas 2D context.
   rmpgPdfEngineNative: /(^|\/)rmpg-pdf-engine\//,
+  // Mixed Mapbox + React components — contain both addLayer/setPaintProperty paint calls
+  // and React JSX. Excluding the whole file is safer than attempting to migrate individual
+  // hex values: a wrong replacement in a paint expression silently blanks a map layer.
+  // ConnectionsMapPanel: addLayer circle-color + fill-color + line-color for sightings map.
+  // ForensicTrackMap: addLayer line-color for GPS trail rendering.
+  // GeoDataMapView: addLayer fill-color / line-color for geographic data overlay.
+  // SightingsMap: addLayer circle-color step expression for person sightings heat.
+  // DashCamDetailPage: setPaintProperty line-color for dashcam route segment coloring.
+  // PatrolPage: addLayer circle-color / line-color for patrol trail rendering.
+  mixedMapboxReactComponents: /(^|\/)(ConnectionsMapPanel|ForensicTrackMap|GeoDataMapView|SightingsMap|DashCamDetailPage|PatrolPage)\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
