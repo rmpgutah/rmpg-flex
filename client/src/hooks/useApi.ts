@@ -860,7 +860,33 @@ export async function dualWrite<T>(
     ),
   ]);
 
-  if (localResult.status === 'fulfilled') return localResult.value;
+  if (localResult.status === 'fulfilled') {
+    // Local succeeded — if cloud failed, queue the write for later replay
+    if (cloudResult.status === 'rejected') {
+      try {
+        const reqHeaders = options.headers as Record<string, string> | undefined;
+        const enqueueBody: Record<string, string> = {
+          method: options.method ?? 'POST',
+          path: normalizedPath,
+        };
+        if (options.body != null) {
+          enqueueBody.body = typeof options.body === 'string'
+            ? options.body
+            : JSON.stringify(options.body);
+        }
+        if (reqHeaders) enqueueBody.headers = JSON.stringify(reqHeaders);
+        await fetch(`${localBase}/api/sync/enqueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(reqHeaders?.Authorization ? { Authorization: reqHeaders.Authorization } : {}),
+          },
+          body: JSON.stringify(enqueueBody),
+        });
+      } catch { /* non-fatal — local write already succeeded */ }
+    }
+    return localResult.value;
+  }
   if (cloudResult.status === 'fulfilled') return cloudResult.value;
   throw new Error('No connectivity — both local and cloud endpoints unreachable');
 }

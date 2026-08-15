@@ -18,7 +18,7 @@ describe('buildApiBase probe logic', () => {
     const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({ ok: true } as Response);
 
-    const { probeLocal } = await import('../useApiBase.tsx');
+    const { probeLocal } = await import('../useApiBase');
     const result = await probeLocal(LOCAL_BASE);
     expect(result).toBe(true);
   });
@@ -27,7 +27,7 @@ describe('buildApiBase probe logic', () => {
     const mockFetch = vi.mocked(fetch);
     mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
-    const { probeLocal } = await import('../useApiBase.tsx');
+    const { probeLocal } = await import('../useApiBase');
     const result = await probeLocal(LOCAL_BASE);
     expect(result).toBe(false);
   });
@@ -36,7 +36,7 @@ describe('buildApiBase probe logic', () => {
     const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValueOnce({ ok: false } as Response);
 
-    const { probeLocal } = await import('../useApiBase.tsx');
+    const { probeLocal } = await import('../useApiBase');
     const result = await probeLocal(LOCAL_BASE);
     expect(result).toBe(false);
   });

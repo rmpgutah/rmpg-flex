@@ -1,3 +1,4 @@
+import { SignJWT, decodeJwt } from 'jose';
 import { log } from './logger';
 
 export type WinnerSource = 'fz55' | 'cloudflare' | 'equal';
@@ -34,6 +35,33 @@ const CLOUD_BASE = 'https://api.rmpgutah.us';
 const MAX_ATTEMPTS = 10;
 const STALE_DAYS = 7;
 
+async function freshAuthHeader(storedHeaders: string, jwtSecret: string): Promise<string> {
+  let authHeader = '';
+  try {
+    const parsed = JSON.parse(storedHeaders) as Record<string, string>;
+    authHeader = parsed['Authorization'] ?? parsed['authorization'] ?? '';
+  } catch { return ''; }
+
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  if (!token) return '';
+
+  try {
+    const claims = decodeJwt(token);
+    const secret = new TextEncoder().encode(jwtSecret);
+    const freshToken = await new SignJWT({
+      sub: claims.sub,
+      user_id: (claims['user_id'] as string | undefined) ?? claims.sub,
+      role: claims['role'],
+      org_id: claims['org_id'],
+    })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('8h')
+      .sign(secret);
+    return `Bearer ${freshToken}`;
+  } catch { return ''; }
+}
+
 export async function replayQueue(
   db: D1Database,
   jwtSecret: string,
@@ -59,6 +87,10 @@ export async function replayQueue(
     try {
       const headers: Record<string, string> = row.headers ? JSON.parse(row.headers) : {};
       headers['Content-Type'] = 'application/json';
+      if (row.headers) {
+        const fresh = await freshAuthHeader(row.headers, jwtSecret);
+        if (fresh) headers['Authorization'] = fresh;
+      }
 
       const res = await fetch(`${CLOUD_BASE}${row.path}`, {
         method: row.method,

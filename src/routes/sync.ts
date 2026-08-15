@@ -5,8 +5,12 @@ import type { Bindings, Variables } from '../types';
 
 const sync = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// GET /api/sync/queue — pending/failed queue counts (admin)
+// GET /api/sync/queue — pending/failed queue counts (admin/manager only)
 sync.get('/queue', async (c) => {
+  const user = c.get('user');
+  if (!user || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
   const db = c.env.DB;
   const [pending, failed, delivered] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as count FROM sync_queue WHERE status = 'pending'`).first<{ count: number }>(),
@@ -20,8 +24,12 @@ sync.get('/queue', async (c) => {
   });
 });
 
-// GET /api/sync/conflicts — paginated conflict audit log (admin)
+// GET /api/sync/conflicts — paginated conflict audit log (admin/manager only)
 sync.get('/conflicts', async (c) => {
+  const user = c.get('user');
+  if (!user || !['admin', 'manager'].includes(user.role)) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
   const db = c.env.DB;
   const page = parseInt(c.req.query('page') ?? '1');
   const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 200);
@@ -52,6 +60,15 @@ sync.post('/replay', async (c) => {
   const result = await replayQueue(c.env.DB, c.env.JWT_SECRET ?? '');
   log.info('manual sync replay triggered', { ...result, userId: user.id });
   return c.json(result);
+});
+
+// POST /api/sync/enqueue — record a missed cloud write for later replay
+sync.post('/enqueue', async (c) => {
+  const body = await c.req.json<{ method: string; path: string; body?: string; headers?: string }>();
+  const result = await c.env.DB.prepare(
+    `INSERT INTO sync_queue (method, path, body, headers, created_at) VALUES (?,?,?,?,datetime('now'))`
+  ).bind(body.method, body.path, body.body ?? null, body.headers ?? null).run();
+  return c.json({ ok: true, id: result.meta.last_row_id });
 });
 
 export default sync;
