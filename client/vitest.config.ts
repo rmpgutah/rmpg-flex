@@ -47,6 +47,24 @@ export default defineConfig({
       'src/**/*Pdf*.test.tsx',
       'src/**/*pdf*.test.ts',
       'src/**/*pdf*.test.tsx',
+      // → vitest.maps.config.ts
+      // mapbox-gl has a large parsed AST; map tests cluster in one shard via
+      // vitest's hash-based assignment, inflating the transform cache past the
+      // 6144 MB ceiling — GC thrashes 18-24 min after tests complete, then
+      // OOMs or times out. Isolated here to keep the main shards cache-lean.
+      'src/**/*[Mm]ap*.test.ts',
+      'src/**/*[Mm]ap*.test.tsx',
+      'src/**/*mapbox*.test.ts',
+      'src/**/*mapbox*.test.tsx',
+      'src/**/*[Mm]apbox*.test.ts',
+      'src/**/*[Mm]apbox*.test.tsx',
+      'src/hooks/__tests__/useCachedBasemap.test.ts',
+      'src/hooks/__tests__/useMapGeofenceAlerts.test.ts',
+      'src/hooks/__tests__/useMapTraffic.test.ts',
+      'src/hooks/__tests__/useVectorTileLayers.labels.test.ts',
+      'src/hooks/__tests__/useVectorTileLayers.osm.test.ts',
+      'src/hooks/__tests__/weatherAlertFeatures.test.ts',
+      'src/hooks/__tests__/mapInfoPanelWeather.test.ts',
     ],
   },
 });

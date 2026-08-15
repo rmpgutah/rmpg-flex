@@ -36,6 +36,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 import { log, logErrorToDb } from './utils/logger';
+import { initTursoSingleton } from './utils/tursoClient';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
@@ -51,6 +52,10 @@ export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ─── Global middleware ───────────────────────────────────────
+app.use('*', async (c, next) => {
+  initTursoSingleton(c.env);
+  await next();
+});
 app.use('*', logger());
 app.use('*', secureHeaders());
 app.use('*', cors({
