@@ -79,7 +79,7 @@ export function buildCallMarker(label: string, priority?: string): HTMLElement {
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;
-    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));cursor:pointer;
+    filter:drop-shadow(0 2px 6px rgba(var(--surface-overlay-rgb) / 0.8));cursor:pointer;
   `;
 
   const tag = document.createElement('div');
@@ -522,10 +522,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {/* Title badge with priority accent */}
           <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5"
             style={{
-              background: 'rgba(0,0,0,0.8)',
+              background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
               backdropFilter: 'blur(4px)',
               borderLeft: `2px solid ${priorityColor}`,
-              color: '#aaaaaa',
+              color: 'var(--text-secondary)',
               fontFamily: "'JetBrains Mono', monospace",
               display: 'flex', alignItems: 'center', gap: 3,
             }}>
@@ -539,13 +539,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {assignedUnits.length > 0 && (
             <span className="text-[7px] font-bold px-1.5 py-0.5"
               style={{
-                background: 'rgba(0,0,0,0.8)',
+                background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
                 backdropFilter: 'blur(4px)',
-                color: '#666666',
+                color: 'var(--text-muted)',
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
               {assignedWithGpsCount}/{assignedUnits.length} UNITS
-              {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
+              {assignedWithGpsCount > 0 && <span style={{ color: 'var(--sev-ok)', marginLeft: 3 }}>●</span>}
             </span>
           )}
         </div>
@@ -553,7 +553,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           <button type="button"
             onClick={() => navigate('/map')}
             className="text-rmpg-400 hover:text-rmpg-100"
-            style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+            style={{ background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -562,7 +562,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             <button type="button"
               onClick={onClose}
               className="text-rmpg-400 hover:text-rmpg-100"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+              style={{ background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
               ✕
@@ -579,16 +579,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         }}>
           <div style={{
             width: 24, height: 24, borderRadius: '50%',
-            background: 'rgba(0,0,0,0.8)',
-            border: '1px solid #2b2b2b',
+            background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
+            border: '1px solid var(--border-default)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(4px)',
           }}>
             <svg width="16" height="16" viewBox="0 0 16 16"
               style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
-              <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
-              <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
-              <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+              <polygon points="8,2 6.5,9 8,7.5 9.5,9" style={{ fill: 'var(--panel-header-color)' }} />
+              <polygon points="8,14 6.5,7 8,8.5 9.5,7" style={{ fill: 'var(--text-muted)' }} />
+              <text x="8" y="1.5" textAnchor="middle" style={{ fill: 'var(--panel-header-color)' }} fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
             </svg>
           </div>
         </div>
@@ -598,15 +598,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.92)', border: '1px solid #88888830',
+          background: 'rgba(var(--surface-overlay-rgb) / 0.92)', border: '1px solid rgba(var(--text-muted-rgb) / 0.19)',
           backdropFilter: 'blur(4px)',
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
-          borderLeft: '2px solid #22c55e',
+          borderLeft: '2px solid var(--sev-ok)',
         }}>
           <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
-          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 9, color: 'var(--text-primary)', fontWeight: 900 }}>{activeRoute.eta}</span>
           <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{activeRoute.distance}</span>
         </div>
       )}
@@ -620,7 +620,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {isNavGuidanceActive(call?.status) && activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
+          background: 'rgba(var(--surface-overlay-rgb) / 0.97)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
         }}>
           {/* ETA + miles, above */}
           <div style={{
@@ -631,7 +631,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
             <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
-              {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
+              {activeRoute.eta} <span style={{ fontSize: 8, color: 'var(--sev-ok)' }}>ETA</span>
             </span>
             <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
             {(() => {
@@ -674,7 +674,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               modifier={activeRoute.steps[0].modifier}
               size={28}
             />
-            <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
@@ -714,7 +714,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: `1px solid ${withAlpha(STATUS_COLORS.warning, '55')}`,
+            background: 'rgba(var(--surface-overlay-rgb) / 0.95)', border: `1px solid ${withAlpha(STATUS_COLORS.warning, '55')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -733,7 +733,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: `1px solid ${withAlpha(STATUS_COLORS.caution, '40')}`,
+            background: 'rgba(var(--surface-overlay-rgb) / 0.92)', border: `1px solid ${withAlpha(STATUS_COLORS.caution, '40')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -751,13 +751,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',
           display: 'flex', alignItems: 'center', gap: 3,
-          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+          background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 5px', borderRadius: 2,
         }}>
           <div style={{
             width: 5, height: 5, borderRadius: '50%',
-            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+            background: 'var(--sev-ok)', boxShadow: '0 0 4px rgba(var(--sev-ok-rgb) / 0.5)',
           }} />
-          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
+          <Wifi style={{ width: 7, height: 7, color: 'rgba(var(--sev-ok-rgb) / 0.38)' }} />
         </div>
       )}
     </div>
