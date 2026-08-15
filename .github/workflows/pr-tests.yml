@@ -88,12 +88,13 @@ jobs:
       - run: cd client && npx tsc --noEmit
 
   # The 590-file client suite OOMs the 7 GB ubuntu-latest runner. Root cause:
-  # the parent vitest process accumulates Vite transform-cache entries for every
-  # file in a shard; heavy library imports (Mapbox, large page trees) can push
-  # past 6 GB even after PDF tests are isolated. 16 shards ≈ 21 files each,
-  # well within the 6144 MB per-process ceiling (runner has 7 GB). 12 shards
-  # was tried but shard 7/12 (38 files, heavy page imports) still OOM'd after
-  # all tests completed during GC of the Vite transform cache.
+  # the parent vitest process (pool:'forks') pre-transforms ALL shard files and
+  # accumulates a ~6 GB Vite transform cache; after tests complete the GC either
+  # crashes (OOM) or times out (>25 min) trying to compact it.
+  # Fix: vitest.config.ts uses pool:'threads' + maxThreads:2 so each worker
+  # thread transforms lazily (on-demand) instead. The parent accumulates nothing.
+  # 16 shards ≈ 28 files each keeps each shard's import graph small enough for
+  # the shared 6144 MB heap ceiling (runner has 7 GB).
   client-tests-1:
     name: Client tests (shard 1/16)
     needs: [client-typecheck]
