@@ -189,8 +189,9 @@ export default function CriminalHistoryPage() {
       console.error('Person search error:', err);
       addToast('Failed to search persons', 'error');
       setPersons([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [searchQuery, searchType, addToast]);
 
   const selectPerson = useCallback(async (person: PersonResult) => {

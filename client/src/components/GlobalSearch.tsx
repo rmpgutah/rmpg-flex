@@ -86,11 +86,14 @@ export const GlobalSearch: React.FC = () => {
     setIsLoading(true);
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await knowledgeBaseSearch(query, 40);
-      if (cancelled) return;
-      setResults(r);
-      setSelectedIndex(0);
-      setIsLoading(false);
+      try {
+        const r = await knowledgeBaseSearch(query, 40);
+        if (cancelled) return;
+        setResults(r);
+        setSelectedIndex(0);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
   }, [query]);

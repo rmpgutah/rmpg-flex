@@ -30,10 +30,13 @@ function WeatherWidget() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const data = await fetchWeather();
-    if (data) { setWeather(data); setError(false); }
-    else { setError(true); }
-    setLoading(false);
+    try {
+      const data = await fetchWeather();
+      if (data) { setWeather(data); setError(false); }
+      else { setError(true); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refresh().catch(() => {}); }, [refresh]);

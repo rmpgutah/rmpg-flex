@@ -359,15 +359,17 @@ export default function BodyCamerasPage() {
     const path = opts?.force
       ? `/personnel/body-cameras/${camId}?force=true`
       : `/personnel/body-cameras/${camId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete body camera', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     setCameraToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Body camera destroyed (admin override)' : 'Body camera deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Camera list could not refresh — pull-to-refresh to retry', 'info'); }
@@ -380,15 +382,17 @@ export default function BodyCamerasPage() {
     const path = opts?.force
       ? `/personnel/bodycam-videos/${vidId}?force=true`
       : `/personnel/bodycam-videos/${vidId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     setVideoToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }

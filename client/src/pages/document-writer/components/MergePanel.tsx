@@ -36,10 +36,13 @@ export default function MergePanel({
   const lookupCall = async () => {
     if (!callNumber.trim()) return;
     setLoadingCall(true); setCallError(null);
-    const c = await fetchCallForMerge(callNumber);
-    setLoadingCall(false);
-    if (c) { setCall(c); }
-    else { setCall(null); setCallError('No matching call found.'); }
+    try {
+      const c = await fetchCallForMerge(callNumber);
+      if (c) { setCall(c); }
+      else { setCall(null); setCallError('No matching call found.'); }
+    } finally {
+      setLoadingCall(false);
+    }
   };
 
   const doMerge = () => {

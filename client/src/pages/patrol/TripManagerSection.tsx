@@ -196,6 +196,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       onChanged?.();
     } catch (err: any) {
       addToast(err?.message || 'Update failed', 'error');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -215,6 +216,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       onChanged?.();
     } catch (err: any) {
       addToast(err?.message || 'Add failed', 'error');
+    } finally {
       setSubmitting(false);
     }
   };

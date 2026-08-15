@@ -155,8 +155,9 @@ export default function ServeIntakeAttemptModal({
       onSuccess?.(body);
     } catch (err: any) {
       setSubmitError(err?.message || 'Failed to log attempt');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }, [result, attemptType, notes, gps, queueId, onSuccess]);
 
   if (!isOpen) return null;

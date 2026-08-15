@@ -906,11 +906,12 @@ export default function ServeIntakePage() {
       // A user-initiated cancel isn't an error — reset quietly without the
       // red banner. Everything else surfaces its message.
       if (!err?.aborted) setError(err?.message || 'Failed to process documents');
+    } finally {
+      uploadXhrRef.current = null;
+      setProcessing(false);
+      setUploadPhase('idle');
+      setUploadStat(null);
     }
-    uploadXhrRef.current = null;
-    setProcessing(false);
-    setUploadPhase('idle');
-    setUploadStat(null);
   }, [files, editOverrides, detectedDefendants, selectedDefendants, selectedClientId]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —

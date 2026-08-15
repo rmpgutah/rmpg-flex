@@ -346,21 +346,25 @@ export default function FlexCamFootagePage() {
       bEl.pause();
       bEl.src = url;
       setLoading(true);
-      const outcome = await new Promise<'ready' | 'error' | 'timeout'>((resolve) => {
-        if (bEl.readyState >= 2) { resolve('ready'); return; }
-        let timer: number | undefined;
-        const cleanup = () => {
-          bEl.removeEventListener('canplay', onCanplay);
-          bEl.removeEventListener('error', onErr);
-          if (timer !== undefined) window.clearTimeout(timer);
-        };
-        const onCanplay = () => { cleanup(); resolve('ready'); };
-        const onErr = () => { cleanup(); resolve('error'); };
-        bEl.addEventListener('canplay', onCanplay);
-        bEl.addEventListener('error', onErr);
-        timer = window.setTimeout(() => { cleanup(); resolve('timeout'); }, 15_000);
-      });
-      setLoading(false);
+      let outcome: 'ready' | 'error' | 'timeout';
+      try {
+        outcome = await new Promise<'ready' | 'error' | 'timeout'>((resolve) => {
+          if (bEl.readyState >= 2) { resolve('ready'); return; }
+          let timer: number | undefined;
+          const cleanup = () => {
+            bEl.removeEventListener('canplay', onCanplay);
+            bEl.removeEventListener('error', onErr);
+            if (timer !== undefined) window.clearTimeout(timer);
+          };
+          const onCanplay = () => { cleanup(); resolve('ready'); };
+          const onErr = () => { cleanup(); resolve('error'); };
+          bEl.addEventListener('canplay', onCanplay);
+          bEl.addEventListener('error', onErr);
+          timer = window.setTimeout(() => { cleanup(); resolve('timeout'); }, 15_000);
+        });
+      } finally {
+        setLoading(false);
+      }
       if (myGen !== genRef.current) return; // stale — newer call won
       if (outcome !== 'ready') {
         setPlaybackErr(outcome === 'timeout'
