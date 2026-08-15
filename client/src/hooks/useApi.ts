@@ -446,7 +446,7 @@ export function downloadUrl(filename: string): string {
 }
 
 // ─── Fallback URL switching (Toughbook cold standby) ──────────────────────
-const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
+export const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
 const CONSECUTIVE_FAILURE_THRESHOLD = 3;
 const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 let _consecutiveApiFailures = 0;
@@ -517,10 +517,10 @@ export async function apiFetch<T>(
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
+      const retryRes = await fetchWithRetry(fallbackUrl ?? url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
-        nackForApiFailure(method, url, retryRes.status);
+        nackForApiFailure(method, fallbackUrl ?? url, retryRes.status);
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
       chimeForApiSuccess(method, url);

@@ -130,7 +130,7 @@ export function useOfflineQueue(): {
   const drain = useCallback(async () => {
     if (!navigator.onLine) return;
     const { apiFetch } = await import('./useApi');
-    await drainQueue((path, opts) => apiFetch<unknown>(path, opts));
+    await drainQueue((path, opts) => apiFetch<unknown>(path, { ...opts, _skipQueue: true }));
     await syncState();
   }, [syncState]);
 

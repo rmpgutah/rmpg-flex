@@ -3,19 +3,17 @@ import { WifiOff } from 'lucide-react';
 import {
   getQueuedOperations,
   removeOperation,
-  useOfflineQueue,
+  drainQueue,
   type QueuedOperation,
   MAX_RETRIES,
 } from '../../hooks/useOfflineQueue';
+import { apiFetch, FALLBACK_URL_KEY } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
-
-const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
 
 export default function OfflineQueueTab() {
   const [ops, setOps] = useState<QueuedOperation[]>([]);
   const [fallbackUrl, setFallbackUrl] = useState(() => localStorage.getItem(FALLBACK_URL_KEY) ?? '');
   const [fallbackInput, setFallbackInput] = useState(() => localStorage.getItem(FALLBACK_URL_KEY) ?? '');
-  const { drain } = useOfflineQueue();
 
   async function load() {
     setOps(await getQueuedOperations());
@@ -39,7 +37,7 @@ export default function OfflineQueueTab() {
   }
 
   async function handleDrain() {
-    await drain();
+    await drainQueue((path, opts) => apiFetch<unknown>(path, { ...opts, _skipQueue: true }));
     void load();
   }
 
@@ -99,7 +97,7 @@ export default function OfflineQueueTab() {
                 <tr key={op.id} style={{ color: 'var(--sev-critical)' }}>
                   <td className="py-[2px] pr-3 font-mono">{op.method}</td>
                   <td className="py-[2px] pr-3 font-mono truncate max-w-[220px]">{op.path}</td>
-                  <td className="py-[2px] pr-3">{new Date(op.timestamp).toLocaleTimeString()}</td>
+                  <td className="py-[2px] pr-3">{new Date(Math.floor(op.timestamp / 1000)).toLocaleTimeString()}</td>
                   <td className="py-[2px] pr-3">{op.retries}</td>
                   <td className="py-[2px]">
                     <button

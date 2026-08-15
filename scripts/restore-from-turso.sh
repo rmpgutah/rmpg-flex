@@ -3,7 +3,8 @@
 # Dumps the Turso secondary DB and imports it into wrangler dev's local D1.
 # Prerequisites on the Toughbook:
 #   - turso CLI installed (curl -sSfL https://get.tur.so/install.sh | bash)
-#   - TURSO_AUTH_TOKEN set in environment or .dev.vars
+#   - Before running: export TURSO_API_TOKEN=<platform-token-from-turso.tech>
+#     (Note: this is separate from TURSO_AUTH_TOKEN used by the Worker's @libsql/client)
 set -euo pipefail
 
 DB_NAME="rmpg-flex-secondary"
