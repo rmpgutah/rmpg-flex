@@ -107,6 +107,7 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import SyncStatusChip from './SyncStatusChip';
 import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
 // Lazy: 66.6 KB (plus SignaturePad's 21.9 KB, which it statically imports) and
@@ -1257,6 +1258,9 @@ export default function Layout() {
                   )}
                 </button>
               )}
+
+              {/* FZ-55 server mode indicator */}
+              <SyncStatusChip />
 
               {/* Notifications */}
               <NotificationCenter />
