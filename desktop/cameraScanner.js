@@ -76,10 +76,9 @@ class CameraScanner {
       height: 480,
       show: false,
       webPreferences: {
-        offscreen: false,
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: undefined,
+        offscreen: true,
+        nodeIntegration: true,
+        webSecurity: false,
       },
     });
 

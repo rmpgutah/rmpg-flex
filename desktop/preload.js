@@ -376,8 +376,8 @@ contextBridge.exposeInMainWorld('electron', {
   // Starts / stops the off-screen camera scanner window.
   // Decoded results arrive via onBarcodeScan (hardware:barcode-scan event)
   // with the same { payload, source } shape as the xPAK hardware scanner.
-  cameraScanStart: () => ipcRenderer.invoke('device:camera-scan-start'),
-  cameraScanStop: () => ipcRenderer.invoke('device:camera-scan-stop'),
+  cameraStart: () => ipcRenderer.invoke('device:camera-scan-start'),
+  cameraStop: () => ipcRenderer.invoke('device:camera-scan-stop'),
   onBarcodeScan: (cb) => {
     const handler = (_e, data) => cb(data);
     ipcRenderer.on('hardware:barcode-scan', handler);
