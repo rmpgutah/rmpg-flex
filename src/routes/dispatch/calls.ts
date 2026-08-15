@@ -1555,6 +1555,26 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       { sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
 
+    // ── Stack sync: add unit to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: {
+            addIds: [unit_id],
+            addCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack assign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
+
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
     // assigned officer's MDT via sendToUser. Best-effort.
@@ -1610,6 +1630,27 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+
+    // ── Stack sync: remove unit from sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id ?? '', 10), {
+          units: {
+            removeIds: [unit_id],
+            removeCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack unassign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
+
     return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
   } catch (err) {
     log.error('POST /:id/unassign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Unassign failed' }, 500); }
@@ -1633,6 +1674,33 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
+    }
+
+    // ── Stack sync: add all dispatched units to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRows = unit_ids.length
+          ? await query<{ id: number; call_sign: string | null }>(
+              db,
+              `SELECT id, call_sign FROM units WHERE id IN (${unit_ids.map(() => '?').join(',')})`,
+              ...unit_ids,
+            )
+          : [];
+        const addCallSigns = unitRows.map((u) => u.call_sign).filter(Boolean) as string[];
+        const dispatchedAtRow = await queryFirst<{ dispatched_at: string | null }>(
+          db, 'SELECT dispatched_at FROM calls_for_service WHERE id = ?', id,
+        );
+        const dispatchedAt = dispatchedAtRow?.dispatched_at ?? '';
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: { addIds: unit_ids, addCallSigns },
+          ...(dispatchedAt ? { timestamps: { dispatched_at: dispatchedAt } } : {}),
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack dispatch failed (non-fatal)', { callId: id }, stackErr as Error);
     }
 
     // Return the updated call row, not a {message}. The client
