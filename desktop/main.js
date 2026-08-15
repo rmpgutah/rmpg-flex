@@ -16,7 +16,12 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('./hardwareFz55');
+const {
+  parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
+  parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
+  parseWindowsThermalOutput, parseWindowsSmartCardOutput, parseWindowsFingerprintOutput,
+  parseWindowsWwanSignalOutput,
+} = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
@@ -1527,6 +1532,121 @@ guardedHandle('sys:tpm-status', async () => {
   } catch (err) {
     console.error('[SYS:TPM-STATUS] Get-Tpm failed:', err.message);
     return null;
+  }
+});
+guardedHandle('sys:thermal-status', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-WmiObject -Namespace root/WMI -Class MSAcpi_ThermalZoneTemperature | Select-Object CurrentTemperature | ConvertTo-Json'],
+      { timeout: 5000 }
+    );
+    const result = parseWindowsThermalOutput(stdout);
+    if (result && result.maxTempF > 185) {
+      mainWindow?.webContents.send('hardware:thermal-alert', result);
+    }
+    return result;
+  } catch (err) {
+    console.error('[SYS:THERMAL-STATUS]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:smartcard-status', async () => {
+  if (process.platform !== 'win32') return { present: false, cardInserted: false, atr: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsSmartCardOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:SMARTCARD-STATUS]', err.message);
+    return { present: false, cardInserted: false, atr: null };
+  }
+});
+guardedHandle('device:fingerprint-status', async () => {
+  if (process.platform !== 'win32') return { present: false, ready: false };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class Biometric | Select-Object FriendlyName, Status | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsFingerprintOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:FINGERPRINT-STATUS]', err.message);
+    return { present: false, ready: false };
+  }
+});
+guardedHandle('sys:battery-detail', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining, BatteryStatus, EstimatedRunTime | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsBatteryOutput(stdout);
+  } catch (err) {
+    console.error('[SYS:BATTERY-DETAIL]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:wwan-signal', async () => {
+  if (process.platform !== 'win32') return { rssi: null, bars: 0 };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'signal', 'interface=*'],
+      { timeout: 3000 }
+    );
+    return parseWindowsWwanSignalOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:WWAN-SIGNAL]', err.message);
+    return { rssi: null, bars: 0 };
+  }
+});
+guardedHandle('device:wwan-carrier', async () => {
+  if (process.platform !== 'win32') return { carrier: null, apn: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'connection', 'interface=*'],
+      { timeout: 3000 }
+    );
+    const carrierMatch = stdout.match(/Provider Name\s*:\s*(.+)/i);
+    const apnMatch = stdout.match(/Access String\s*:\s*(.+)/i);
+    return {
+      carrier: carrierMatch ? carrierMatch[1].trim() : null,
+      apn: apnMatch ? apnMatch[1].trim() : null,
+    };
+  } catch (err) {
+    console.error('[DEVICE:WWAN-CARRIER]', err.message);
+    return { carrier: null, apn: null };
   }
 });
 guardedHandle('sys:idle-time', () => {
