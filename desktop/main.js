@@ -4704,6 +4704,18 @@ guardedHandle('face:enrollment-status', (_event, { userId }) => {
   return { enrolled: embedding !== null };
 });
 
+// ── Face unlock success (from splash lock screen renderer) ──
+// Uses ipcMain.on (not guardedHandle) — this is a fire-and-forget send from the
+// trusted local file splash.html, not an invoke requiring a response.
+ipcMain.on('face:unlock-success', () => {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+  logSecurityAuditEvent('face:unlock-success', 'success', {});
+});
+
 // ── Camera QR / Barcode Scanner ──
 guardedHandle('device:camera-scan-start', () => {
   if (!cameraScanner) cameraScanner = new CameraScanner();
