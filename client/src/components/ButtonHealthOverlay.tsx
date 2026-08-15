@@ -35,10 +35,10 @@ function drawHighlights(report: ButtonHealthReport) {
   for (const e of report.entries) {
     const [x, y, w, h] = e.rect;
     const box = document.createElement('div');
-    const color = e.severity === 'blocked' ? '#ef4444' : '#f59e0b';
+    const color = e.severity === 'blocked' ? 'var(--sev-critical)' : 'var(--sev-warn)';
     box.style.cssText =
       `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
-      `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0,0,0,0.6);` +
+      `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0 0 0 / 0.6);` +
       `background:${withAlpha(color, '1a')};border-radius:2px;`;
     layer.appendChild(box);
   }
@@ -90,9 +90,9 @@ export default function ButtonHealthOverlay() {
     zIndex: 2147483647,
     background: 'var(--surface-base)',
     color: 'var(--text-primary)',
-    border: '1px solid #d4a017',
+    border: '1px solid var(--accent-silver-400)',
     borderRadius: 2,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+    boxShadow: '0 8px 32px rgba(0 0 0 / 0.6)',
     font: '12px ui-monospace, SFMono-Regular, Menlo, monospace',
     pointerEvents: 'auto',
   };
@@ -111,7 +111,7 @@ export default function ButtonHealthOverlay() {
           top: 0,
         }}
       >
-        <strong style={{ color: '#d4a017', letterSpacing: '0.08em' }}>BUTTON HEALTH</strong>
+        <strong style={{ color: 'var(--panel-header-color)', letterSpacing: '0.08em' }}>BUTTON HEALTH</strong>
         <span>
           <button type="button" onClick={rescan} style={btnStyle}>
             Re-scan
@@ -132,7 +132,7 @@ export default function ButtonHealthOverlay() {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            style={{ ...btnStyle, color: '#ef4444' }}
+            style={{ ...btnStyle, color: 'var(--sev-critical)' }}
             aria-label="Close diagnostic"
           >
             ✕
@@ -146,20 +146,20 @@ export default function ButtonHealthOverlay() {
             {report.url} · {report.viewport[0]}×{report.viewport[1]}
           </div>
           <div style={{ marginBottom: 8 }}>
-            <Stat label="Visible" value={report.totalVisible} color="#9ca3af" />{' '}
-            <Stat label="Blocked" value={report.blocked} color="#ef4444" />{' '}
-            <Stat label="Sliver" value={report.sliver} color="#f59e0b" />
+            <Stat label="Visible" value={report.totalVisible} color="var(--text-muted)" />{' '}
+            <Stat label="Blocked" value={report.blocked} color="var(--sev-critical)" />{' '}
+            <Stat label="Sliver" value={report.sliver} color="var(--sev-warn)" />
           </div>
 
           {report.entries.length === 0 ? (
-            <div style={{ color: '#22c55e' }}>✓ All buttons fully clickable on this screen.</div>
+            <div style={{ color: 'var(--sev-ok)' }}>✓ All buttons fully clickable on this screen.</div>
           ) : (
             <>
               <div style={{ color: 'var(--text-secondary)', margin: '6px 0 4px' }}>Top click-stealers:</div>
               <ul style={{ margin: '0 0 8px', paddingLeft: 16 }}>
                 {report.interceptorTally.slice(0, 5).map(([sig, n]) => (
                   <li key={sig}>
-                    <span style={{ color: '#f59e0b' }}>{n}×</span> {sig}
+                    <span style={{ color: 'var(--sev-warn)' }}>{n}×</span> {sig}
                   </li>
                 ))}
               </ul>
@@ -174,7 +174,7 @@ export default function ButtonHealthOverlay() {
                 >
                   <div>
                     <span
-                      style={{ color: e.severity === 'blocked' ? '#ef4444' : '#f59e0b' }}
+                      style={{ color: e.severity === 'blocked' ? 'var(--sev-critical)' : 'var(--sev-warn)' }}
                     >
                       [{e.severity} {e.reachablePoints}/5]
                     </span>{' '}
