@@ -841,6 +841,36 @@ calls.put('/:id', async (c) => {
     const updatedExt = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
 
+    // ── Stack sync: mileage + address changes ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+
+      // Address change: leave old group, join/create at new address.
+      const newAddr = body.location_address as string | undefined;
+      const oldAddr = String(existing.location_address ?? '');
+      if (newAddr && newAddr.trim().toLowerCase() !== oldAddr.trim().toLowerCase()) {
+        await reassignStackGroup(db, parseInt(id, 10), newAddr);
+      }
+
+      // Mileage sync to current group (re-read after possible reassignment).
+      if (ext?.stack_group_id) {
+        const mileageFields: SyncFields['mileage'] = {};
+        if ('starting_mileage' in body && body.starting_mileage !== undefined) {
+          mileageFields.starting_mileage = Number(body.starting_mileage);
+        }
+        if ('ending_mileage' in body && body.ending_mileage !== undefined) {
+          mileageFields.ending_mileage = Number(body.ending_mileage);
+        }
+        if (Object.keys(mileageFields).length) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), { mileage: mileageFields });
+        }
+      }
+    } catch (stackErr) {
+      log.error('stack sync on PUT /calls/:id failed (non-fatal)', { callId: id }, stackErr);
+    }
+
     // Forward geocode: if address changed and the row still has no coordinates,
     // populate lat/lng in the background so the call appears on the map.
     const newAddr = body.location_address as string | undefined;
