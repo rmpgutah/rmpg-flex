@@ -154,6 +154,19 @@
       <button type="button" class="pw-submit" id="pw-submit" aria-label="Sign in">&#8594;</button>
     </div>
     <div class="lock-error" id="lock-error"></div>
+    <!-- Face unlock — shown only when enrollment-status returns true -->
+    <div id="face-unlock-section" style="display:none; text-align:center; margin-top:12px;">
+      <button id="face-unlock-btn" style="
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #f0f4f9;
+        padding: 8px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+      ">Use Face Unlock</button>
+      <p id="face-status" style="color:#94a3b8; font-size:12px; margin-top:6px;"></p>
+    </div>
     <div class="lock-hint">Press Ctrl+Alt+Shift+F12 for emergency access</div>
   </section>
 
@@ -233,6 +246,11 @@
 
         showPhase('phase-lock');
         setTimeout(function() { document.getElementById('pw-input').focus(); }, 200);
+
+        // Attempt to show face unlock button if enrollment exists
+        initFaceUnlock(loginName).catch(function(err) {
+          console.warn('[FACE-UNLOCK] init error', err);
+        });
       }
 
       if (phase === 'welcome') {
@@ -260,6 +278,66 @@
       }
       // On success, main sends splash:phase welcome — no action needed here.
     });
+
+    // ── Face Unlock ───────────────────────────────────────────────
+    function loadScript(src) {
+      return new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = src; s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    async function initFaceUnlock(userId) {
+      if (!userId) return;
+      var status = await window.splashBridge.faceEnrollmentStatus(userId);
+      if (!status || !status.enrolled) return;
+
+      document.getElementById('face-unlock-section').style.display = 'block';
+
+      document.getElementById('face-unlock-btn').addEventListener('click', async function() {
+        var statusEl = document.getElementById('face-status');
+        statusEl.textContent = 'Looking for your face…';
+
+        try {
+          if (typeof faceapi === 'undefined') {
+            await loadScript('./vendor/face-api.min.js');
+          }
+          await faceapi.nets.tinyFaceDetector.loadFromUri('./vendor/face-models');
+          await faceapi.nets.faceRecognitionNet.loadFromUri('./vendor/face-models');
+
+          var stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          var video = document.createElement('video');
+          video.srcObject = stream;
+          await new Promise(function(r) { video.onloadedmetadata = r; video.play(); });
+
+          var detection = await faceapi
+            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          stream.getTracks().forEach(function(t) { t.stop(); });
+
+          if (!detection) {
+            statusEl.textContent = 'No face detected — use PIN';
+            return;
+          }
+
+          var embedding = Array.from(detection.descriptor);
+          var result = await window.splashBridge.faceVerify(userId, embedding);
+
+          if (result && result.ok) {
+            statusEl.textContent = 'Face recognized ✓';
+            window.splashBridge.faceUnlockSuccess();
+          } else {
+            statusEl.textContent = 'Face not recognized — use PIN';
+          }
+        } catch (err) {
+          statusEl.textContent = 'Camera error — use PIN';
+          console.error('[FACE-UNLOCK]', err);
+        }
+      });
+    }
   </script>
 </body>
 </html>
