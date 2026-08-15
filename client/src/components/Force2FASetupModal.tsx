@@ -100,14 +100,14 @@ export default function Force2FASetupModal() {
         style={{
           background: 'var(--surface-overlay)',
           border: '1px solid var(--border-default)',
-          borderTop: '3px solid #888888',
+          borderTop: '3px solid var(--border-default)',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <ShieldCheck style={{ width: 20, height: 20, color: '#888888' }} />
+            <ShieldCheck style={{ width: 20, height: 20, color: 'var(--text-muted)' }} />
             <div className="text-lg font-bold text-rmpg-100">Two-Factor Authentication Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
@@ -129,7 +129,7 @@ export default function Force2FASetupModal() {
           <div className="space-y-4">
             <div
               className="p-3 text-[10px] space-y-2"
-              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: '#888888' }}
+              style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)' }}
             >
               <div className="font-bold text-[9px] uppercase tracking-wider mb-2 text-rmpg-300">
                 What You'll Need
@@ -153,7 +153,7 @@ export default function Force2FASetupModal() {
               onClick={handleDefer}
               className="w-full flex items-center justify-center gap-2 py-2 text-[10px] uppercase tracking-wider font-bold transition-colors"
               style={{ color: 'var(--text-muted)', background: 'transparent', border: 'none' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#888888')}
+              onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-muted)')}
               onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
             >
               <Clock style={{ width: 12, height: 12 }} />
@@ -165,14 +165,14 @@ export default function Force2FASetupModal() {
         {/* ── QR Code + Verify ─────────────────────────── */}
         {step === 'qr' && (
           <div className="space-y-4">
-            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
               Step 1: Scan QR Code
             </div>
             <p className="text-[10px] text-fg-muted">
               Open Google Authenticator and scan this QR code to add your account.
             </p>
 
-            <div className="flex justify-center py-2" style={{ background: '#fff', borderRadius: 2 }}>
+            <div className="flex justify-center py-2" style={{ background: 'white', borderRadius: 2 }}>
               {qrDataUrl && (
                 <img
                   src={qrDataUrl}
@@ -183,7 +183,7 @@ export default function Force2FASetupModal() {
               )}
             </div>
 
-            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
+            <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: 'var(--text-muted)' }}>
               Step 2: Enter Verification Code
             </div>
             <p className="text-[10px] text-fg-muted">
@@ -201,7 +201,7 @@ export default function Force2FASetupModal() {
             {busy && (
               <div className="flex items-center justify-center gap-2">
                 <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
+                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Verifying...</span>
               </div>
             )}
           </div>
@@ -211,17 +211,17 @@ export default function Force2FASetupModal() {
         {step === 'backups' && (
           <div className="space-y-4">
             <div className="flex items-center justify-center gap-2 py-2">
-              <Check style={{ width: 24, height: 24, color: '#22c55e' }} />
+              <Check style={{ width: 24, height: 24, color: 'var(--sev-ok)' }} />
               <span className="text-sm font-bold text-green-400">2FA Enabled Successfully</span>
             </div>
 
             <div
               className="p-3"
-              style={{ background: 'rgba(220,38,38,0.05)', border: '1px solid #991b1b' }}
+              style={{ background: 'color-mix(in srgb, var(--sev-critical) 5%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 60%, transparent)' }}
             >
               <div className="flex items-center gap-1 mb-2">
-                <AlertCircle style={{ width: 12, height: 12, color: '#ef4444' }} />
-                <span className="text-[9px] font-bold uppercase" style={{ color: '#ef4444' }}>
+                <AlertCircle style={{ width: 12, height: 12, color: 'var(--sev-critical)' }} />
+                <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--sev-critical)' }}>
                   Save these recovery codes — they will NOT be shown again
                 </span>
               </div>

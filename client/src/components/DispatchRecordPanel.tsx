@@ -50,32 +50,32 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
 
   const inner = (
     <>
-      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--rt-border, #1f1f1f)' }}>
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--rt-border, var(--border-subtle))' }}>
         {record.kind === 'person'
-          ? <User className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, #d4a017)' }} />
-          : <Car className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, #d4a017)' }} />}
-        <span className="text-[10px] font-bold uppercase tracking-wider min-w-0 flex-1 truncate" style={{ color: 'var(--rt-text, #e8e8e8)' }}>
+          ? <User className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, var(--field-label-color))' }} />
+          : <Car className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent, var(--field-label-color))' }} />}
+        <span className="text-[10px] font-bold uppercase tracking-wider min-w-0 flex-1 truncate" style={{ color: 'var(--rt-text, var(--text-primary))' }}>
           {title}
         </span>
         <a
           href={`/detached/record/${record.kind}/${record.id}`}
           target="_blank" rel="noopener noreferrer"
           aria-label="Open full record in new window"
-          className="hover:opacity-80" style={{ color: 'var(--rt-muted, #888)' }}
+          className="hover:opacity-80" style={{ color: 'var(--rt-muted, var(--text-muted))' }}
         >
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
-        <button type="button" onClick={onClose} aria-label="Close record panel" className="hover:opacity-80" style={{ color: 'var(--rt-muted, #888)' }}>
+        <button type="button" onClick={onClose} aria-label="Close record panel" className="hover:opacity-80" style={{ color: 'var(--rt-muted, var(--text-muted))' }}>
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-3 text-[10px] font-mono" style={{ color: 'var(--rt-text, #e8e8e8)' }}>
+      <div className="flex-1 overflow-auto p-3 text-[10px] font-mono" style={{ color: 'var(--rt-text, var(--text-primary))' }}>
         {loading && (
           <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--rt-muted, #888)' }} role="status" aria-label="Loading record" />
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--rt-muted, var(--text-muted))' }} role="status" aria-label="Loading record" />
           </div>
         )}
-        {error && <p style={{ color: '#f87171' }}>{error}</p>}
+        {error && <p style={{ color: 'var(--sev-critical-soft)' }}>{error}</p>}
         {data && record.kind === 'person' && <PersonFields p={data} />}
         {data && record.kind === 'vehicle' && <VehicleFields v={data} />}
       </div>
@@ -90,7 +90,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
         className="flex flex-col"
         style={{
           position: 'fixed', right: 12, bottom: 78, width: 300, maxHeight: '60vh', zIndex: 9000,
-          border: '1px solid var(--rt-border, #1f1f1f)', background: 'var(--rt-panel, #0d0d0d)',
+          border: '1px solid var(--rt-border, var(--border-subtle))', background: 'var(--rt-panel, var(--surface-overlay))',
           boxShadow: '0 4px 16px rgba(0,0,0,0.6)', borderRadius: 2,
         }}
       >
@@ -102,7 +102,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
   return (
     <aside
       className="w-72 shrink-0 flex flex-col min-h-0"
-      style={{ borderLeft: '1px solid var(--rt-border, #1f1f1f)', background: 'var(--rt-panel, #0d0d0d)' }}
+      style={{ borderLeft: '1px solid var(--rt-border, var(--border-subtle))', background: 'var(--rt-panel, var(--surface-overlay))' }}
     >
       {inner}
     </aside>
@@ -113,8 +113,8 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
   return (
     <div className="flex gap-2 py-0.5">
-      <span className="shrink-0" style={{ color: 'var(--rt-muted, #888)', minWidth: 64 }}>{label}</span>
-      <span className="flex-1 break-words" style={{ color: 'var(--rt-text, #e8e8e8)' }}>{value}</span>
+      <span className="shrink-0" style={{ color: 'var(--rt-muted, var(--text-muted))', minWidth: 64 }}>{label}</span>
+      <span className="flex-1 break-words" style={{ color: 'var(--rt-text, var(--text-primary))' }}>{value}</span>
     </div>
   );
 }
@@ -137,7 +137,7 @@ function PersonFields({ p }: { p: any }) {
             const t = typeof f === 'object' && f ? (f.type || JSON.stringify(f)) : String(f);
             return (
               <span key={`${t}-${i}`} className="px-1.5 py-0.5 text-[9px] uppercase font-bold"
-                style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>
+                style={{ background: 'color-mix(in srgb, var(--sev-critical-soft) 15%, transparent)', color: 'var(--sev-critical-soft)', border: '1px solid color-mix(in srgb, var(--sev-critical-soft) 30%, transparent)' }}>
                 {t}
               </span>
             );

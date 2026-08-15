@@ -257,7 +257,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #a7b1bc, transparent)',
+              background: 'linear-gradient(90deg, transparent, var(--accent-silver-400), transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -329,10 +329,10 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col items-center justify-center py-20 px-4 text-center" role="alert">
         <div className="w-12 h-12 flex items-center justify-center mb-3"
           style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)' }}>
-          <span style={{ color: '#ef4444', fontSize: 20, fontWeight: 800 }}>!</span>
+          <span style={{ color: 'var(--sev-critical)', fontSize: 20, fontWeight: 800 }}>!</span>
         </div>
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#fca5a5] mb-1.5">Access Denied</h3>
-        <p className="text-[10px] text-[#888] max-w-xs mb-4">You do not have permission to view this page.</p>
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--sev-critical-soft)] mb-1.5">Access Denied</h3>
+        <p className="text-[10px] text-fg-muted max-w-xs mb-4">You do not have permission to view this page.</p>
         <a href="/" className="btn-gold">Return to Dashboard</a>
       </div>
     );
@@ -416,15 +416,15 @@ function NotFoundPage() {
         >
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: '#dc2626', boxShadow: '0 0 6px rgba(220,38,38,0.6)' }}
+            style={{ background: 'var(--sev-critical)', boxShadow: '0 0 6px color-mix(in srgb, var(--sev-critical) 60%, transparent)' }}
           />
-          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#888888]">
+          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-fg-muted">
             Route Not Found
           </span>
         </div>
 
         {/* Message */}
-        <p className="text-sm text-[#888888] mb-2 leading-relaxed">
+        <p className="text-sm text-fg-muted mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
         <p className="text-[11px] text-rmpg-500 mb-6">
@@ -437,17 +437,19 @@ function NotFoundPage() {
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
             background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
-            border: '1px solid #d4a017',
-            color: '#d4a017',
+            border: '1px solid var(--accent-gold-300)',
+            color: 'var(--accent-gold-300)',
             borderRadius: 2,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, #242424 0%, #1a1a1a 100%)';
-            e.currentTarget.style.borderColor = '#e8b52a';
+            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
+            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
+            e.currentTarget.style.opacity = '0.85';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
-            e.currentTarget.style.borderColor = '#d4a017';
+            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
+            e.currentTarget.style.opacity = '1';
           }}
         >
           Return to Dashboard

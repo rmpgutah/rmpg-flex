@@ -168,6 +168,43 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // hospital=red, fire=orange, police=blue, etc.; unit=green, call=red, location=blue) have
   // fixed semantic meaning that does not map to CSS-var tokens — same rationale as ServePage.tsx.
   mapboxPopupOperationalColors: /(^|\/)use(MapPlacesSearch|MapInfoPanel)\.(ts)$/,
+  // ServeIntakeMap and ServeRoutePlanner contain Mapbox GL addLayer paint properties
+  // (line-color) and marker DOM el.style.cssText with resolved hex. CSS var() cannot
+  // resolve in Mapbox paint or in style strings handed to the Mapbox marker lifecycle.
+  serveIntakeAndRoutePlannerMapbox: /(^|\/)(ServeIntakeMap|ServeRoutePlanner)\.(tsx)$/,
+  // navMapHelpers supplies resolved color strings to map.setPaintProperty for route
+  // line-color and position circle-color. Literal hex is required; CSS vars blank the layer.
+  navMapHelpersMapboxPaint: /(^|\/)navMapHelpers\.(ts)$/,
+  // networkGraph.ts configures Graphology/Sigma node and edge colors — third-party
+  // graph viz library that consumes resolved hex strings directly.
+  networkGraphViz: /(^|\/)networkGraph\.(ts)$/,
+  // visTimeline.ts injects a CSS template string for the vis-timeline third-party library.
+  // Hex values in those styles are scoped to the timeline's own DOM subtree and cannot
+  // use CSS variables that live outside its shadow scope.
+  visTimelineThirdParty: /(^|\/)visTimeline\.(ts)$/,
+  // useMapWeatherAlerts feeds NWS alert polygon colors into Mapbox addLayer fill-color /
+  // line-color paint expressions via ['get', 'color']. CSS var() does not resolve there.
+  mapWeatherAlertsPaint: /(^|\/)useMapWeatherAlerts\.(ts)$/,
+  // VideoHudOverlay renders a video HUD with fixed operational indicator colors:
+  // EVIDENCE=yellow, FLAGGED=orange, RESTRICTED=red, GPS=green, REC=red.
+  // These encode document-classification levels and recording state — fixed CAD semantics
+  // that must remain constant regardless of theme, analogous to tactical-dark surfaces.
+  videoHudOperational: /(^|\/)VideoHudOverlay\.(tsx)$/,
+  // DashCamVideoPlayer is a tactical dashcam viewer surface (always-dark, same rationale as
+  // HudInstruments). border-[#2b2b2b] / divide-[#2b2b2b] are intentional near-black separators
+  // in the dashcam control bar; speed-indicator hex values are operational severity fixed to the
+  // night palette so the dashcam UI never blinds a driver. CSS vars would change these under the
+  // day theme and hurt usability.
+  dashcamPlayerTactical: /(^|\/)DashCamVideoPlayer\.(tsx)$/,
+  // useWhatsHere builds Mapbox popup HTML via template-string interpolation. The hex colors
+  // (WHAT'S HERE header gold, label grey, premise stat amber) are inlined into a raw HTML string
+  // handed to map.setPopup/.setHTML() — CSS var() cannot resolve inside Mapbox popup HTML.
+  // Same rationale as mapboxPopupOperationalColors (useMapPlacesSearch / useMapInfoPanel).
+  mapboxWhatsHerePopup: /(^|\/)useWhatsHere\.(ts)$/,
+  // useMapWeatherRadar's legend color array represents the actual display colors of NOAA/NWS
+  // radar tiles — they must match the pre-rendered radar imagery, not the app theme. Changing
+  // them would misrepresent radar intensity to an officer reading the map.
+  weatherRadarLegendColors: /(^|\/)useMapWeatherRadar\.(ts)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {

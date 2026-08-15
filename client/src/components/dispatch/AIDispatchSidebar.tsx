@@ -16,10 +16,10 @@ interface AIDispatchSidebarProps {
 }
 
 const SEVERITY_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  low: { bg: '#22c55e20', border: '#22c55e50', text: '#4ade80', label: 'LOW' },
-  medium: { bg: '#f59e0b20', border: '#f59e0b50', text: '#fbbf24', label: 'MEDIUM' },
-  high: { bg: '#ef444420', border: '#ef444450', text: '#f87171', label: 'HIGH' },
-  critical: { bg: '#dc262620', border: '#dc262680', text: '#ef4444', label: 'CRITICAL' },
+  low: { bg: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', text: 'var(--sev-ok-soft)', label: 'LOW' },
+  medium: { bg: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', text: 'var(--sev-warn-soft)', label: 'MEDIUM' },
+  high: { bg: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', text: 'var(--sev-critical-soft)', label: 'HIGH' },
+  critical: { bg: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-critical) 50%, transparent)', text: 'var(--sev-critical)', label: 'CRITICAL' },
 };
 
 export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFlag, onDismiss }: AIDispatchSidebarProps) {
@@ -35,7 +35,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           <Brain className="w-3.5 h-3.5 text-purple-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
         </div>
-        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close AI panel">
+        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-white/[0.06] transition-colors" title="Close AI panel">
           <X className="w-3.5 h-3.5 text-fg-muted" />
         </button>
       </div>

@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus, Award, Target, Shield, Activity, BarChart3 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
-import { withAlpha } from '../utils/withAlpha';
 
 interface MetricDetail {
   score: number;
@@ -35,22 +34,22 @@ interface ShiftScorecardProps {
 }
 
 const GRADE_COLORS: Record<string, string> = {
-  A: '#d4a017', B: '#22c55e', C: '#eab308', D: '#f97316', F: '#ef4444',
+  A: 'var(--accent-gold-300)', B: 'var(--sev-ok)', C: 'var(--sev-warn)', D: 'var(--sev-high)', F: 'var(--sev-critical)',
 };
 
 const METRIC_CONFIG: { key: keyof ScorecardData['metrics']; label: string; icon: React.ElementType; color: string }[] = [
-  { key: 'response_time', label: 'Response Time', icon: Activity, color: '#888888' },
-  { key: 'call_volume', label: 'Call Volume', icon: BarChart3, color: '#8b5cf6' },
-  { key: 'patrol_coverage', label: 'Patrol Coverage', icon: Target, color: '#888888' },
-  { key: 'report_completion', label: 'Reports', icon: Award, color: '#d4a017' },
-  { key: 'proactive_activity', label: 'Proactive', icon: TrendingUp, color: '#22c55e' },
-  { key: 'safety', label: 'Safety', icon: Shield, color: '#f97316' },
+  { key: 'response_time', label: 'Response Time', icon: Activity, color: 'var(--text-muted)' },
+  { key: 'call_volume', label: 'Call Volume', icon: BarChart3, color: 'var(--sev-special)' },
+  { key: 'patrol_coverage', label: 'Patrol Coverage', icon: Target, color: 'var(--text-muted)' },
+  { key: 'report_completion', label: 'Reports', icon: Award, color: 'var(--accent-gold-300)' },
+  { key: 'proactive_activity', label: 'Proactive', icon: TrendingUp, color: 'var(--sev-ok)' },
+  { key: 'safety', label: 'Safety', icon: Shield, color: 'var(--sev-high)' },
 ];
 
 const TREND_ICONS: Record<string, { Icon: React.ElementType; color: string }> = {
-  up: { Icon: TrendingUp, color: '#22c55e' },
-  down: { Icon: TrendingDown, color: '#ef4444' },
-  flat: { Icon: Minus, color: '#eab308' },
+  up: { Icon: TrendingUp, color: 'var(--sev-ok)' },
+  down: { Icon: TrendingDown, color: 'var(--sev-critical)' },
+  flat: { Icon: Minus, color: 'var(--sev-warn)' },
 };
 
 export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
@@ -74,8 +73,8 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
   // Circular progress indicator (CSS conic-gradient)
   const pct = data ? Math.round(data.total_score) : 0;
   const conicGradient = data
-    ? `conic-gradient(${GRADE_COLORS[data.grade] || '#888888'} ${pct * 3.6}deg, #050505 0deg)`
-    : 'conic-gradient(#050505 360deg)';
+    ? `conic-gradient(${GRADE_COLORS[data.grade] || 'var(--text-muted)'} ${pct * 3.6}deg, var(--surface-deep) 0deg)`
+    : 'conic-gradient(var(--surface-deep) 360deg)';
 
   const trend = data ? TREND_ICONS[data.trend.direction] : null;
 
@@ -87,7 +86,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
           value={shiftDate}
           onChange={(e) => setShiftDate(e.target.value)}
           className="toolbar-btn text-xs"
-          style={{ fontFamily: 'monospace', background: 'var(--surface-overlay)', color: '#94a3b8', border: '1px solid #888888', borderRadius: 2, padding: '1px 6px' }}
+          style={{ fontFamily: 'monospace', background: 'var(--surface-overlay)', color: 'var(--text-secondary)', border: '1px solid var(--border-default)', borderRadius: 2, padding: '1px 6px' }}
         />
       </PanelTitleBar>
 
@@ -118,7 +117,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
               className="flex items-center justify-center font-bold"
               style={{
                 fontFamily: 'monospace', fontSize: 48, lineHeight: 1,
-                color: GRADE_COLORS[data.grade], textShadow: `0 0 12px ${withAlpha(GRADE_COLORS[data.grade], '40')}`,
+                color: GRADE_COLORS[data.grade],
                 minWidth: 64,
               }}
             >
@@ -165,7 +164,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
                   style={{
                     position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 2,
                     width: `${Math.max(4, ((data.peer_rank.total - data.peer_rank.rank + 1) / data.peer_rank.total) * 100)}%`,
-                    background: '#888888',
+                    background: 'var(--text-muted)',
                   }}
                 />
               </div>

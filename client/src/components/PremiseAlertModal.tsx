@@ -35,9 +35,9 @@ interface PremiseAlertPayload {
 }
 
 const LEVEL_STYLE: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  critical: { bg: 'rgba(239,68,68,0.18)', border: '#ef4444', text: '#ef4444', label: 'CRITICAL' },
-  warning:  { bg: 'rgba(245,158,11,0.18)', border: '#f59e0b', text: '#f59e0b', label: 'WARNING' },
-  info:     { bg: 'rgba(136,136,136,0.18)', border: '#888888', text: '#cccccc', label: 'INFO' },
+  critical: { bg: 'rgb(var(--sev-critical-rgb) / 0.18)', border: 'var(--sev-critical)', text: 'var(--sev-critical)', label: 'CRITICAL' },
+  warning:  { bg: 'rgb(var(--sev-warn-rgb) / 0.18)', border: 'var(--sev-warn)', text: 'var(--sev-warn)', label: 'WARNING' },
+  info:     { bg: 'rgb(var(--text-muted-rgb) / 0.18)', border: 'var(--text-muted)', text: 'var(--text-secondary)', label: 'INFO' },
 };
 
 function styleFor(level: string) {
@@ -101,7 +101,7 @@ export default function PremiseAlertModal() {
           </div>
           <span
             className="text-[10px] font-black uppercase tracking-wider px-2 py-1"
-            style={{ background: s.border, color: '#0a0a0a', borderRadius: 2 }}
+            style={{ background: s.border, color: 'black', borderRadius: 2 }}
           >
             {s.label}
           </span>
@@ -123,7 +123,7 @@ export default function PremiseAlertModal() {
                   </span>
                   <span
                     className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5"
-                    style={{ background: as_.border, color: '#0a0a0a', borderRadius: 2 }}
+                    style={{ background: as_.border, color: 'black', borderRadius: 2 }}
                   >
                     {as_.label}
                   </span>
@@ -144,7 +144,7 @@ export default function PremiseAlertModal() {
                       <span
                         key={f}
                         className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5"
-                        style={{ background: 'var(--surface-raised)', color: '#d4a017', borderRadius: 2 }}
+                        style={{ background: 'var(--surface-raised)', color: 'var(--field-label-color)', borderRadius: 2 }}
                       >
                         {f}
                       </span>
@@ -161,7 +161,7 @@ export default function PremiseAlertModal() {
           onClick={acknowledge}
           autoFocus
           className="w-full py-3 text-sm font-black uppercase tracking-wider"
-          style={{ background: s.border, color: '#0a0a0a', borderRadius: 2 }}
+          style={{ background: s.border, color: 'black', borderRadius: 2 }}
         >
           ACKNOWLEDGE ALERT
           {queue.length > 1 && (

@@ -30,10 +30,10 @@ export default function VoicePersonaSettings() {
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
-        <Volume2 style={{ width: 11, height: 11, color: '#888888' }} />
+        <Volume2 style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
         <span
           className="text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: '#888888' }}
+          style={{ color: 'var(--text-muted)' }}
         >
           Voice Persona
         </span>
@@ -45,7 +45,7 @@ export default function VoicePersonaSettings() {
       >
         {/* Voice picker */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Dispatcher voice
           </span>
           <select id="ff-voicepersonasettings-0"
@@ -69,7 +69,7 @@ export default function VoicePersonaSettings() {
 
         {/* Terseness radio */}
         <div>
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Terseness
           </span>
           <div className="flex gap-2 mt-1">
@@ -82,9 +82,9 @@ export default function VoicePersonaSettings() {
                   onClick={() => setPersona({ terseness: t })}
                   className="px-3 py-1 text-[11px] uppercase tracking-wider"
                   style={{
-                    background: active ? 'var(--surface-raised)' : '#0a0a0a',
-                    border: `1px solid ${active ? '#d4a017' : 'var(--border-subtle)'}`,
-                    color: active ? '#d4a017' : '#888888',
+                    background: active ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+                    border: `1px solid ${active ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
+                    color: active ? 'var(--accent-gold-300)' : 'var(--text-muted)',
                     borderRadius: 2,
                   }}
                 >
@@ -97,7 +97,7 @@ export default function VoicePersonaSettings() {
 
         {/* Rate slider */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Rate: {persona.rate.toFixed(2)}x
           </span>
           <input id="ff-voicepersonasettings-1"
@@ -113,7 +113,7 @@ export default function VoicePersonaSettings() {
 
         {/* Pitch slider */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Pitch: {persona.pitch > 0 ? '+' : ''}{persona.pitch}
           </span>
           <input id="ff-voicepersonasettings-2"
@@ -134,8 +134,8 @@ export default function VoicePersonaSettings() {
           className="px-3 py-1 text-[11px] uppercase tracking-wider"
           style={{
             background: 'var(--surface-raised)',
-            border: '1px solid #d4a017',
-            color: '#d4a017',
+            border: '1px solid var(--accent-gold-300)',
+            color: 'var(--accent-gold-300)',
             borderRadius: 2,
           }}
         >
@@ -146,10 +146,10 @@ export default function VoicePersonaSettings() {
       {/* Dispatcher Brain master switch — Phase 2 kill switch */}
       <div className="mt-4">
         <div className="flex items-center gap-1.5 mb-2">
-          <Volume2 style={{ width: 11, height: 11, color: '#888888' }} />
+          <Volume2 style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
           <span
             className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: '#888888' }}
+            style={{ color: 'var(--text-muted)' }}
           >
             Dispatcher Brain (Beta)
           </span>
@@ -168,9 +168,9 @@ export default function VoicePersonaSettings() {
             onClick={() => setPersona({ brainEnabled: !persona.brainEnabled })}
             className="px-3 py-1 text-[11px] uppercase tracking-wider"
             style={{
-              background: persona.brainEnabled ? 'var(--surface-raised)' : '#0a0a0a',
-              border: `1px solid ${persona.brainEnabled ? '#d4a017' : 'var(--border-subtle)'}`,
-              color: persona.brainEnabled ? '#d4a017' : '#888888',
+              background: persona.brainEnabled ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+              border: `1px solid ${persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
+              color: persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--text-muted)',
               borderRadius: 2,
             }}
           >

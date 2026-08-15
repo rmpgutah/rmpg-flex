@@ -41,13 +41,13 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
     <button
       type="button"
       onClick={() => onApply(code.code)}
-      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-[#ffffff08] transition-colors border-b border-border-default/50"
+      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-white/[0.03] transition-colors border-b border-border-default/50"
       title={`${code.code} — ${code.description}\nCategory: ${code.category} · Priority: ${code.priority}${code.notes ? `\nNotes: ${code.notes}` : ''}`}
     >
       <button
         type="button"
         onClick={e => { e.stopPropagation(); onToggleFav(code.id); }}
-        className="p-0.5 rounded hover:bg-[#ffffff15] transition-colors shrink-0"
+        className="p-0.5 rounded hover:bg-white/[0.08] transition-colors shrink-0"
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         aria-label={isFavorite ? `Remove ${code.code} from favorites` : `Add ${code.code} to favorites`}
       >
@@ -135,7 +135,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
           <Hash className="w-3.5 h-3.5 text-brand-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-brand-300">Dispatch Codes</span>
         </div>
-        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close codes panel">
+        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-white/[0.06] transition-colors" title="Close codes panel">
           <X className="w-3.5 h-3.5 text-fg-muted" />
         </button>
       </div>
@@ -203,7 +203,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
                   <button
                     type="button"
                     onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-rmpg-100 border-b border-border-default hover:bg-[#ffffff08] transition-colors"
+                    className="w-full flex items-center gap-1.5 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-rmpg-100 border-b border-border-default hover:bg-white/[0.03] transition-colors"
                     style={{ background:"var(--surface-sunken)" }}
                   >
                     <CatIcon className="w-2.5 h-2.5" />
