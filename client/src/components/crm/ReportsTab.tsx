@@ -57,13 +57,13 @@ interface CrmMetrics {
 
 // ── Stage colors ──────────────────────────────────────────
 const STAGE_COLORS: Record<PipelineStage, string> = {
-  new: '#888888',
-  contacted: '#8b5cf6',
-  qualified: '#d4a017',
-  proposal: '#f59e0b',
-  negotiation: '#f97316',
-  won: '#22c55e',
-  lost: '#ef4444',
+  new: 'var(--text-muted)',
+  contacted: 'var(--sev-special)',
+  qualified: 'var(--accent-gold-300)',
+  proposal: 'var(--sev-warn)',
+  negotiation: 'var(--sev-high)',
+  won: 'var(--sev-ok)',
+  lost: 'var(--sev-critical)',
   dismissed: 'var(--text-muted)',
 };
 

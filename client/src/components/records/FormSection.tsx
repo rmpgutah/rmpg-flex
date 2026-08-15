@@ -18,10 +18,8 @@ interface FormSectionProps {
   className?: string;
 }
 
-const GOLD = '#d4a017';
-
 function FormSection({ title, icon: Icon, accent, children, className = '' }: FormSectionProps) {
-  const accentColor = accent ? BADGE_TONES[accent].text : GOLD;
+  const accentColor = accent ? BADGE_TONES[accent].text : 'var(--panel-header-color)';
   const accentGlow = accent ? BADGE_TONES[accent].glow : 'rgba(212,160,23,0.3)';
   const railColor = accent ? BADGE_TONES[accent].border : 'rgba(212,160,23,0.45)';
 

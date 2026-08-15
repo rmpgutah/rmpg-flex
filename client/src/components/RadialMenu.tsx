@@ -21,14 +21,14 @@ interface MenuSegment {
 }
 
 const SEGMENTS: MenuSegment[] = [
-  { label: 'Status', icon: Radio, color: '#888888', action: 'status' },
-  { label: 'Panic', icon: AlertTriangle, color: '#ef4444', action: 'panic' },
-  { label: 'Note', icon: StickyNote, color: '#22c55e', action: 'note' },
-  { label: 'Backup', icon: Shield, color: '#f97316', action: 'backup' },
-  { label: 'On Scene', icon: MapPin, color: '#a855f7', action: 'onscene' },
-  { label: 'Body Cam', icon: Camera, color: '#888888', action: 'bodycam' },
-  { label: 'Arrived', icon: CheckCircle, color: '#84cc16', action: 'arrived' },
-  { label: 'Supervisor', icon: UserPlus, color: '#d4a017', action: 'supervisor' },
+  { label: 'Status', icon: Radio, color: 'var(--text-muted)', action: 'status' },
+  { label: 'Panic', icon: AlertTriangle, color: 'var(--sev-critical)', action: 'panic' },
+  { label: 'Note', icon: StickyNote, color: 'var(--sev-ok)', action: 'note' },
+  { label: 'Backup', icon: Shield, color: 'var(--sev-high)', action: 'backup' },
+  { label: 'On Scene', icon: MapPin, color: 'var(--sev-special)', action: 'onscene' },
+  { label: 'Body Cam', icon: Camera, color: 'var(--text-muted)', action: 'bodycam' },
+  { label: 'Arrived', icon: CheckCircle, color: 'var(--sev-ok)', action: 'arrived' },
+  { label: 'Supervisor', icon: UserPlus, color: 'var(--accent-silver-400)', action: 'supervisor' },
 ];
 
 export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: RadialMenuProps) {
@@ -201,7 +201,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         onTouchEnd={() => clearTimeout(longPressTimer.current)}
         className="fixed bottom-20 right-4 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
         style={{
-          background: isOpen ? '#ef4444' : '#888888',
+          background: isOpen ? 'var(--sev-critical)' : 'var(--text-muted)',
           border: '2px solid rgba(255,255,255,0.2)',
         }}
         title="Quick Actions (long-press on mobile)"
@@ -223,8 +223,8 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         >
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Center circle */}
-            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#545454" strokeWidth="1" />
-            <text x={cx} y={cy + 3} textAnchor="middle" fill="#9ca3af" fontSize="8" fontFamily="monospace">ACTIONS</text>
+            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="var(--border-default)" strokeWidth="1" />
+            <text x={cx} y={cy + 3} textAnchor="middle" fill="var(--text-muted)" fontSize="8" fontFamily="monospace">ACTIONS</text>
             {renderSegments()}
           </svg>
           {/* Labels outside SVG */}

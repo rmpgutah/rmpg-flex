@@ -56,10 +56,10 @@ function RecordField({
     <div
       className={`flex items-start gap-2 text-xs group/field px-1 -mx-1 py-[1px] rounded-[2px] hover:bg-white/[0.03] transition-colors ${className}`}
     >
-      {Icon && <Icon className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-muted, #8a8a8a)' }} aria-hidden="true" />}
+      {Icon && <Icon className="w-3 h-3 mt-0.5 flex-shrink-0 text-fg-muted" aria-hidden="true" />}
       <span
         className="min-w-[78px] shrink-0 select-none uppercase tracking-wide text-[9px] font-semibold mt-[1px]"
-        style={{ color: 'var(--text-muted, #8a8a8a)', letterSpacing: '0.04em' }}
+        style={{ color: 'var(--text-muted)', letterSpacing: '0.04em' }}
       >
         {label}
       </span>
