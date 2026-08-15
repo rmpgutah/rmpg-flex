@@ -103,6 +103,22 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // (3) CATEGORY_PRESET_COLORS — user-assignable categorical identity colors stored
   //     as data values, not theme chrome (analogous to connectionsGraphStyle).
   emailIframePrintData: /(^|\/)EmailPage\.(tsx)$/,
+  // FlexCamFootagePage uses Canvas 2D API for evidence export (captureAndDraw overlay):
+  // ctx.fillStyle literals on lines 509/523/551/559/646 require resolved hex strings.
+  // CSS variables do not resolve in a Canvas 2D context. UI chrome hex was migrated;
+  // the canvas draw function retains literal amber/red values required for evidence export.
+  flexCamCanvas: /(^|\/)FlexCamFootagePage\.(tsx)$/,
+  // ConnectionsPage owns TIMELINE_KIND_COLOR — a categorical entity-type identity palette
+  // identical in tuning rationale to connectionsGraphStyle.ts (collision-avoidance tuning,
+  // same color set, referenced in comments). It also exports a PNG via canvas with a
+  // literal background color. Re-theming either would change entity identity across the
+  // timeline and relationship graph simultaneously.
+  connectionsPageCategorical: /(^|\/)ConnectionsPage\.(tsx)$/,
+  // ServePage has Mapbox GL line-color paint properties (lines 1884, 1931) that require
+  // literal hex — CSS vars blank the layer. The marker DOM functions (buildServeJobMarkerElement,
+  // buildServeClusterMarkerElement) and popup HTML buttons use resolved colors for the
+  // Mapbox marker lifecycle where var() values cannot be guaranteed to resolve.
+  serveMapboxPaint: /(^|\/)ServePage\.(tsx)$/,
   // Navigation module — tactical-dark and Mapbox-paint contexts:
   //
   // TripReplayMap.tsx — every hex literal is a Mapbox paint property

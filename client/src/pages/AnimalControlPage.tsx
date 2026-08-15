@@ -240,7 +240,7 @@ export default function AnimalControlPage() {
       </PanelTitleBar>
 
       {/* Stats bar */}
-      <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2 px-3 py-2 border-b border-rmpg-700`} style={{ background: '#0a0a0a' }}>
+      <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken`}>
         <StatsCard icon={PawPrint} label="Open" value={stats.open} accent="amber" />
         <StatsCard icon={Search} label="Investigating" value={stats.investigating} accent="blue" />
         <StatsCard icon={Calendar} label="Quarantine" value={stats.quarantine} accent="red" />
@@ -248,7 +248,7 @@ export default function AnimalControlPage() {
       </div>
 
       {/* Filter / Search toolbar */}
-      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#0a0a0a' }}>
+      <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken`}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
           <input
@@ -292,7 +292,7 @@ export default function AnimalControlPage() {
       {/* Content: list + detail */}
       <div className="flex flex-1 overflow-hidden">
         {/* Table / list */}
-        <div className={`${selectedCase && !isMobile ? 'w-[55%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent border-r border-rmpg-700`}>
+        <div className={`${selectedCase && !isMobile ? 'w-[55%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-800 scrollbar-track-transparent border-r border-rmpg-700`}>
           {loading && cases.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400">
               <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...
@@ -308,7 +308,7 @@ export default function AnimalControlPage() {
             <>
               {/* Table header */}
               {!isMobile && (
-                <div className="grid grid-cols-[100px_80px_90px_90px_90px_1fr_100px_80px_90px] gap-1 px-3 py-[3px] border-b border-rmpg-700 text-[9px] font-semibold text-rmpg-500 uppercase" style={{ background: '#111' }}>
+                <div className="grid grid-cols-[100px_80px_90px_90px_90px_1fr_100px_80px_90px] gap-1 px-3 py-[3px] border-b border-rmpg-700 text-[9px] font-semibold text-rmpg-500 uppercase bg-surface-sunken">
                   <span>Case #</span>
                   <span>Date</span>
                   <span>Type</span>
@@ -392,7 +392,7 @@ export default function AnimalControlPage() {
 
         {/* Detail panel */}
         {selectedCase && !isMobile && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-800 scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{selectedCase.case_number}</h2>
@@ -413,8 +413,8 @@ export default function AnimalControlPage() {
 
             <div className="space-y-3 text-xs">
               {/* Case info */}
-              <div className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase mb-2">Case Info</h3>
+              <div className="border border-rmpg-700 p-3 bg-surface-base">
+                <h3 className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase mb-2">Case Info</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                   <div><span className="text-rmpg-500">Type:</span> <span className="text-white capitalize">{toDisplayLabel(selectedCase.case_type)}</span></div>
                   <div><span className="text-rmpg-500">Status:</span> <span className={`font-bold px-1.5 py-0 border rounded-sm text-[8px] ${STATUS_COLORS[selectedCase.status] || ''}`}>{(selectedCase.status || '').toUpperCase()}</span></div>
@@ -425,8 +425,8 @@ export default function AnimalControlPage() {
               </div>
 
               {/* Animal info */}
-              <div className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase mb-2">Animal Info</h3>
+              <div className="border border-rmpg-700 p-3 bg-surface-base">
+                <h3 className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase mb-2">Animal Info</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                   <div><span className="text-rmpg-500">Type:</span> <span className="text-white">{selectedCase.animal_type || '\u2014'}</span></div>
                   <div><span className="text-rmpg-500">Breed:</span> <span className="text-white">{selectedCase.breed || '\u2014'}</span></div>
@@ -440,8 +440,8 @@ export default function AnimalControlPage() {
               </div>
 
               {/* Owner info */}
-              <div className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <h3 className="text-[10px] font-bold text-[#d4a017] uppercase mb-2">Owner Info</h3>
+              <div className="border border-rmpg-700 p-3 bg-surface-base">
+                <h3 className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase mb-2">Owner Info</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                   <div><span className="text-rmpg-500">Name:</span> <span className="text-white">{selectedCase.owner_last_name ? `${selectedCase.owner_last_name}, ${selectedCase.owner_first_name}` : '\u2014'}</span></div>
                   <div><span className="text-rmpg-500">Phone:</span> <span className="text-white">{selectedCase.owner_phone || '\u2014'}</span></div>
@@ -451,7 +451,7 @@ export default function AnimalControlPage() {
 
               {/* Quarantine */}
               {(selectedCase.quarantine_start || selectedCase.quarantine_end) && (
-                <div className="border border-red-700/50 p-3" style={{ background: '#1a0a0a' }}>
+                <div className="border border-red-700/50 p-3 bg-surface-sunken">
                   <h3 className="text-[10px] font-bold text-red-400 uppercase mb-2">Quarantine</h3>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                     <div><span className="text-rmpg-500">Start:</span> <span className="text-white">{safeDateStr(selectedCase.quarantine_start)}</span></div>
@@ -462,8 +462,8 @@ export default function AnimalControlPage() {
 
               {/* Notes */}
               {selectedCase.notes && (
-                <div className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                  <h3 className="text-[10px] font-bold text-[#d4a017] uppercase mb-2">Notes</h3>
+                <div className="border border-rmpg-700 p-3 bg-surface-base">
+                  <h3 className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase mb-2">Notes</h3>
                   <div className="text-[11px] text-rmpg-300 whitespace-pre-wrap">{selectedCase.notes}</div>
                 </div>
               )}
@@ -476,13 +476,12 @@ export default function AnimalControlPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => { setFormOpen(false); setEditingCase(null); }}>
           <div
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-rmpg-700 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent"
-            style={{ background: '#0e0e0e' }}
+            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-rmpg-700 scrollbar-thin scrollbar-thumb-rmpg-800 scrollbar-track-transparent bg-surface-sunken"
             onClick={e => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: 'linear-gradient(180deg, #1a1a1a, #242424)' }}>
-              <span className="text-[11px] font-bold text-[#d4a017] uppercase tracking-wider">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700 bg-surface-raised">
+              <span className="text-[11px] font-bold [color:var(--panel-header-color)] uppercase tracking-wider">
                 {editingCase ? `Edit ${editingCase.case_number}` : 'New Animal Control Case'}
               </span>
               <IconButton onClick={() => { setFormOpen(false); setEditingCase(null); }} aria-label="Close form">
@@ -492,8 +491,8 @@ export default function AnimalControlPage() {
 
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Section: Case Info */}
-              <fieldset className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <legend className="text-[10px] font-bold text-[#d4a017] uppercase px-1">Case Info</legend>
+              <fieldset className="border border-rmpg-700 p-3 bg-surface-base">
+                <legend className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase px-1">Case Info</legend>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <label className="block text-[10px] text-rmpg-400 mb-0.5">Type *</label>
@@ -513,8 +512,8 @@ export default function AnimalControlPage() {
               </fieldset>
 
               {/* Section: Animal Info */}
-              <fieldset className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <legend className="text-[10px] font-bold text-[#d4a017] uppercase px-1">Animal Info</legend>
+              <fieldset className="border border-rmpg-700 p-3 bg-surface-base">
+                <legend className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase px-1">Animal Info</legend>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <label className="block text-[10px] text-rmpg-400 mb-0.5">Animal Type</label>
@@ -567,8 +566,8 @@ export default function AnimalControlPage() {
               </fieldset>
 
               {/* Section: Owner Info */}
-              <fieldset className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <legend className="text-[10px] font-bold text-[#d4a017] uppercase px-1">Owner Info</legend>
+              <fieldset className="border border-rmpg-700 p-3 bg-surface-base">
+                <legend className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase px-1">Owner Info</legend>
                 <div className="grid grid-cols-2 gap-3 mt-1">
                   <div>
                     <label className="block text-[10px] text-rmpg-400 mb-0.5">First Name</label>
@@ -590,8 +589,8 @@ export default function AnimalControlPage() {
               </fieldset>
 
               {/* Section: Notes */}
-              <fieldset className="border border-rmpg-700 p-3" style={{ background: '#141414' }}>
-                <legend className="text-[10px] font-bold text-[#d4a017] uppercase px-1">Notes</legend>
+              <fieldset className="border border-rmpg-700 p-3 bg-surface-base">
+                <legend className="text-[10px] font-bold [color:var(--panel-header-color)] uppercase px-1">Notes</legend>
                 <textarea className="input-dark w-full text-xs mt-1" rows={3} value={formData.notes} onChange={e => update('notes', e.target.value)} placeholder="Additional notes..." />
               </fieldset>
 
