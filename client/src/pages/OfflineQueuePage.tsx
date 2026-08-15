@@ -15,16 +15,16 @@ interface SyncQueueItem {
 }
 
 const METHOD_COLORS: Record<string, string> = {
-  GET: 'var(--sev-ok, #22c55e)',
-  POST: 'var(--brand-400, #60a5fa)',
-  PUT: 'var(--sev-warn, #f59e0b)',
-  DELETE: 'var(--sev-critical, #ef4444)',
+  GET: 'var(--sev-ok)',
+  POST: 'var(--brand-400)',
+  PUT: 'var(--sev-warn)',
+  DELETE: 'var(--sev-critical)',
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  pending: 'var(--sev-warn, #f59e0b)',
-  failed: 'var(--sev-critical, #ef4444)',
-  syncing: 'var(--brand-400, #60a5fa)',
+  pending: 'var(--sev-warn)',
+  failed: 'var(--sev-critical)',
+  syncing: 'var(--brand-400)',
 };
 
 function formatTime(iso: string): string {
@@ -132,7 +132,7 @@ export default function OfflineQueuePage() {
         style={{
           background: isOnline ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
           borderBottom: `1px solid ${isOnline ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}`,
-          color: isOnline ? 'var(--sev-ok, #22c55e)' : 'var(--sev-critical, #ef4444)',
+          color: isOnline ? 'var(--sev-ok)' : 'var(--sev-critical)',
         }}
       >
         {isOnline ? (
@@ -163,10 +163,10 @@ export default function OfflineQueuePage() {
           <button
             className="flex items-center gap-1 px-3 py-1 text-xs font-medium transition-opacity"
             style={{
-              background: 'var(--brand-700, #1e3a5f)',
-              color: 'var(--brand-200, #bfdbfe)',
+              background: 'var(--brand-700)',
+              color: 'var(--brand-200)',
               borderRadius: 2,
-              border: '1px solid var(--brand-500, #3b82f6)',
+              border: '1px solid var(--brand-500)',
               opacity: retryingAll ? 0.6 : 1,
               cursor: retryingAll ? 'not-allowed' : 'pointer',
             }}
@@ -181,9 +181,9 @@ export default function OfflineQueuePage() {
             className="flex items-center gap-1 px-3 py-1 text-xs font-medium transition-opacity"
             style={{
               background: 'rgba(239,68,68,0.12)',
-              color: 'var(--sev-critical, #ef4444)',
+              color: 'var(--sev-critical)',
               borderRadius: 2,
-              border: '1px solid rgba(239,68,68,0.3)',
+              border: '1px solid rgba(var(--sev-critical-rgb), 0.3)',
               opacity: clearing ? 0.6 : 1,
               cursor: clearing || failedCount === 0 ? 'not-allowed' : 'pointer',
             }}
@@ -215,12 +215,12 @@ export default function OfflineQueuePage() {
       <div className="flex-1 overflow-y-auto min-h-0">
         {queue.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 py-16">
-            <CheckCircle size={36} style={{ color: 'var(--sev-ok, #22c55e)', opacity: 0.7 }} />
+            <CheckCircle size={36} style={{ color: 'var(--sev-ok)', opacity: 0.7 }} />
             <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
               All data synchronized
             </span>
             {localCount > 0 && (
-              <span className="text-xs" style={{ color: 'var(--sev-warn, #f59e0b)' }}>
+              <span className="text-xs" style={{ color: 'var(--sev-warn)' }}>
                 {localCount} {localCount === 1 ? 'item' : 'items'} in local storage queue
               </span>
             )}
@@ -300,10 +300,10 @@ export default function OfflineQueuePage() {
                       <button
                         className="flex items-center gap-1 px-2 py-[2px] text-[10px] font-medium ml-auto"
                         style={{
-                          background: 'var(--brand-700, #1e3a5f)',
-                          color: 'var(--brand-200, #bfdbfe)',
+                          background: 'var(--brand-700)',
+                          color: 'var(--brand-200)',
                           borderRadius: 2,
-                          border: '1px solid var(--brand-500, #3b82f6)',
+                          border: '1px solid var(--brand-500)',
                           opacity: retryingId === item.id ? 0.5 : 1,
                           cursor: retryingId === item.id ? 'not-allowed' : 'pointer',
                         }}
