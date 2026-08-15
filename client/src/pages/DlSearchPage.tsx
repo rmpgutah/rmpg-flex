@@ -640,8 +640,9 @@ export default function DlSearchPage() {
       setResults([]);
       setSource('ERROR');
       fromDeepLinkRef.current = false;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [firstName, lastName, dlNumber, state, dob, addToast]);
 
   // Apply pending deep-link once handleSearch is stable. One-shot — clears

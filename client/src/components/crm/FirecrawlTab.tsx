@@ -10418,8 +10418,7 @@ function SupportBotPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/support-bots');
       setBots(data || []);
-    } catch { addToast('Failed to load support bots', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load support bots', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadBots(); }, [loadBots]);
@@ -10539,8 +10538,7 @@ function TrendCronPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/trend-crons');
       setCrons(data || []);
-    } catch { addToast('Failed to load trend crons', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load trend crons', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadCrons(); }, [loadCrons]);
@@ -10641,8 +10639,7 @@ function SiteMigratorPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/migrations');
       setMigrations(data || []);
-    } catch { addToast('Failed to load migrations', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load migrations', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadMigrations(); }, [loadMigrations]);
@@ -10741,8 +10738,7 @@ function CodeRepoPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/code-repos');
       setRepos(data || []);
-    } catch { addToast('Failed to load code repos', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load code repos', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadRepos(); }, [loadRepos]);

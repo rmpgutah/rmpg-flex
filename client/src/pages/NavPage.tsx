@@ -316,7 +316,7 @@ export default function NavPage() {
       const res = await apiFetch<{ trips: NavTrip[] }>('/nav/trip/history?limit=50');
       if (res?.trips) setTripHistory(res.trips);
     } catch { /* silent */ }
-    setLoading(false);
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);

@@ -56,7 +56,7 @@ export default function LoginHistoryTable() {
         setTotal(data.total);
       }
     } catch { /* ignore */ }
-    setLoading(false);
+    finally { setLoading(false); }
   }, [token, offset]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);

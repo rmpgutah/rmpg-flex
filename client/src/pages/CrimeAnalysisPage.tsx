@@ -148,7 +148,7 @@ export default function CrimeAnalysisPage() {
   const OrangeGradient = (
     <defs>
       <linearGradient id="orangeBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="var(--sev-warn)" />
+        <stop offset="0%" stopColor="var(--sev-high)" />
         <stop offset="100%" stopColor="var(--sev-warn)" />
       </linearGradient>
     </defs>
@@ -315,7 +315,7 @@ export default function CrimeAnalysisPage() {
                     <AreaChart data={todData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="todGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--sev-special)" stopOpacity={0.5} />
+                          <stop offset="0%" stopColor="var(--sev-special-soft)" stopOpacity={0.5} />
                           <stop offset="50%" stopColor="var(--rmpg-400)" stopOpacity={0.3} />
                           <stop offset="100%" stopColor="var(--rmpg-400)" stopOpacity={0.05} />
                         </linearGradient>
@@ -325,8 +325,8 @@ export default function CrimeAnalysisPage() {
                         interval={isMobile ? 5 : 3} />
                       <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={28} />
                       <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} calls`} />} />
-                      <Area type="monotone" dataKey="count" stroke="var(--sev-special)" strokeWidth={2}
-                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: 'var(--sev-special)', stroke: 'var(--sev-special)' }} />
+                      <Area type="monotone" dataKey="count" stroke="var(--sev-special-soft)" strokeWidth={2}
+                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: 'var(--sev-special)', stroke: 'var(--sev-special-soft)' }} />
                     </AreaChart>
                   </ResponsiveContainer>
                   <div className="flex items-center justify-center gap-4 mt-2">
@@ -334,7 +334,7 @@ export default function CrimeAnalysisPage() {
                       <div className="w-3 h-2 bg-rmpg-400" /> Day (06-18)
                     </span>
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                      <div className="w-3 h-2" style={{ background: 'var(--sev-special)' }} /> Night
+                      <div className="w-3 h-2" style={{ background: 'var(--sev-special-soft)' }} /> Night
                     </span>
                   </div>
                 </>
@@ -353,12 +353,12 @@ export default function CrimeAnalysisPage() {
                   <BarChart data={dowData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="greenBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--sev-ok)" />
+                        <stop offset="0%" stopColor="var(--sev-ok-soft)" />
                         <stop offset="100%" stopColor="var(--sev-ok)" />
                       </linearGradient>
                       <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="var(--sev-special)" />
-                        <stop offset="100%" stopColor="var(--sev-special)" />
+                        <stop offset="100%" stopColor="var(--sev-special-soft)" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid {...GRID_PROPS} vertical={false} />

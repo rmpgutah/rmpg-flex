@@ -86,8 +86,9 @@ export default function TextEditorPage() {
       setOriginalContent(text);
     } catch (err: any) {
       addToast(err.message || 'Failed to load file', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fileId, addToast]);
 
   useEffect(() => { fetchContent(); }, [fetchContent]);
@@ -109,8 +110,9 @@ export default function TextEditorPage() {
       addToast('Saved', 'success');
     } catch (err: any) {
       addToast(err.message || 'Save failed', 'error');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleRevertConfirm = () => {
