@@ -274,7 +274,7 @@ export default function ModuleTileBar({
                   background: 'var(--surface-raised)',
                   border: '1px solid var(--border-subtle)',
                   borderTop: '2px solid var(--border-default)',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
+                  boxShadow: '0 6px 20px rgba(0 0 0 / 0.6)',
                   padding: '4px 0',
                 }}
               >

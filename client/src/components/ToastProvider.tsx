@@ -124,7 +124,7 @@ const ToastItem = ({ toast, onDismiss }: ToastItemProps) => {
       `}
       style={{
         animation: isExiting ? 'none' : 'slideIn 0.3s ease-out',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+        boxShadow: '0 8px 24px rgba(0 0 0 / 0.6)',
       }}
     >
       <div className="flex items-start gap-3 p-3">

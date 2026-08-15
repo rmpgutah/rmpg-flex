@@ -38,7 +38,7 @@ function drawHighlights(report: ButtonHealthReport) {
     const color = e.severity === 'blocked' ? 'var(--sev-critical)' : 'var(--sev-warn)';
     box.style.cssText =
       `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
-      `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0,0,0,0.6);` +
+      `border:2px solid ${color};box-shadow:0 0 0 1px rgba(0 0 0 / 0.6);` +
       `background:${withAlpha(color, '1a')};border-radius:2px;`;
     layer.appendChild(box);
   }
@@ -92,7 +92,7 @@ export default function ButtonHealthOverlay() {
     color: 'var(--text-primary)',
     border: '1px solid var(--accent-silver-400)',
     borderRadius: 2,
-    boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+    boxShadow: '0 8px 32px rgba(0 0 0 / 0.6)',
     font: '12px ui-monospace, SFMono-Regular, Menlo, monospace',
     pointerEvents: 'auto',
   };

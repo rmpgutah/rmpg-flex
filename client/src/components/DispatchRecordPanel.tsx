@@ -91,7 +91,7 @@ export default function DispatchRecordPanel({ record, onClose, floating = false 
         style={{
           position: 'fixed', right: 12, bottom: 78, width: 300, maxHeight: '60vh', zIndex: 9000,
           border: '1px solid var(--rt-border, var(--border-subtle))', background: 'var(--rt-panel, var(--surface-overlay))',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.6)', borderRadius: 2,
+          boxShadow: '0 4px 16px rgba(0 0 0 / 0.6)', borderRadius: 2,
         }}
       >
         {inner}

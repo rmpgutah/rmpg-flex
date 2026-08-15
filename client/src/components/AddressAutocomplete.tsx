@@ -141,7 +141,7 @@ function injectAutocompleteStyles() {
       background: var(--surface-sunken) !important;
       border: 1px solid var(--border-default) !important;
       border-radius: 2px !important;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+      box-shadow: 0 8px 24px rgba(0 0 0 / 0.6) !important;
       font-family: 'Courier New', monospace !important;
       z-index: 99999 !important;
       margin-top: 2px !important;

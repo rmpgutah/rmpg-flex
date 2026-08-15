@@ -55,7 +55,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {/* Safety Briefing */}
           <div>
-            <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#d4a017' }}>
+            <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--field-label-color)' }}>
               <Shield className="w-3 h-3" /> Safety Briefing
             </label>
             {analysis.severityOverride && SEVERITY_COLORS[analysis.severityOverride] && (

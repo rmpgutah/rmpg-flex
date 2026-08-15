@@ -66,7 +66,7 @@ export default function PttController() {
     const el = document.createElement('style');
     el.id = 'rmpg-ptt-style';
     el.textContent =
-      '@keyframes rmpg-ptt-pulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,0.5),0 0 0 0 rgba(239,68,68,0.5)}50%{box-shadow:0 2px 8px rgba(0,0,0,0.5),0 0 0 6px rgba(239,68,68,0)}}' +
+      '@keyframes rmpg-ptt-pulse{0%,100%{box-shadow:0 2px 8px rgba(0 0 0 / 0.5),0 0 0 0 rgba(239,68,68,0.5)}50%{box-shadow:0 2px 8px rgba(0 0 0 / 0.5),0 0 0 6px rgba(239,68,68,0)}}' +
       '@keyframes rmpg-ptt-blink{0%,100%{opacity:1}50%{opacity:0.25}}';
     document.head.appendChild(el);
   }, []);
@@ -205,7 +205,7 @@ export default function PttController() {
         display: 'flex', alignItems: 'stretch', gap: 0,
         background: bg, border: `1px solid ${border}`,
         borderRadius: 2, userSelect: 'none',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+        boxShadow: '0 2px 8px rgba(0 0 0 / 0.5)',
         fontFamily: "'JetBrains Mono', monospace",
         animation: voice.transmitting ? 'rmpg-ptt-pulse 1s ease-in-out infinite' : undefined,
       }}

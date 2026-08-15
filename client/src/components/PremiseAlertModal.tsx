@@ -81,7 +81,7 @@ export default function PremiseAlertModal() {
       aria-modal="true"
       aria-labelledby="premise-alert-title"
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.85)' }}
+      style={{ background: 'rgba(0 0 0 / 0.85)' }}
     >
       <div
         className="w-full max-w-2xl border-4 p-5 space-y-4"

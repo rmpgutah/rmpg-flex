@@ -171,6 +171,11 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // ServeIntakeMap and ServeRoutePlanner contain Mapbox GL addLayer paint properties
   // (line-color) and marker DOM el.style.cssText with resolved hex. CSS var() cannot
   // resolve in Mapbox paint or in style strings handed to the Mapbox marker lifecycle.
+  // recordVisuals.ts defines BADGE_TONES — a fixed palette of text/bg/border/glow values
+  // deliberately tuned to sit on the pure-black Spillman surface. The header comment
+  // documents this intent: re-theming would break the tuned alpha ratios. Same rationale
+  // as connectionsGraphStyle.ts (categorical palette, not theme chrome).
+  recordBadgeTones: /(^|\/)recordVisuals\.(ts)$/,
   serveIntakeAndRoutePlannerMapbox: /(^|\/)(ServeIntakeMap|ServeRoutePlanner)\.(tsx)$/,
   // navMapHelpers supplies resolved color strings to map.setPaintProperty for route
   // line-color and position circle-color. Literal hex is required; CSS vars blank the layer.
