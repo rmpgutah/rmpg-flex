@@ -142,6 +142,11 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // hex value. Changing to CSS vars would break those assertions, and the
   // severity palette is fixed CAD semantics, not theme chrome.
   navTacticalAndMapbox: /(^|\/)(TripReplayMap|NavigationPage|HudInstruments|NavSettingsPanel|drivingScoreColor|hudUnits)\.(tsx?|ts)$/,
+  // NavMapView contains 22+ Mapbox paint property calls (addLayer line-color/circle-color/
+  // circle-stroke-color) that require literal hex strings — CSS vars blank those layers.
+  // The UI overlay elements are mixed throughout the same component with the paint calls,
+  // making selective migration unsafe. Same rationale as NavigationPage.tsx exclusion.
+  navMapViewMapboxPaint: /(^|\/)NavMapView\.(tsx)$/,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
