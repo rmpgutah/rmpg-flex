@@ -86,6 +86,11 @@ html.theme-dark,
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
   --brand-gold-rgb: 212 160 23;
+  /* Tailwind color aliases — used by chart/data-viz components (CrimeAnalysisPage
+     SVG gradients). Fixed across themes because these are data colors, not chrome. */
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
 
   --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
   --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
@@ -319,6 +324,9 @@ html.theme-light {
   --sev-ok-rgb: 21 128 61;       --sev-info-rgb: 37 99 235;
   --sev-special-rgb: 124 58 237;
   --brand-gold-rgb: 147 108 10;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
   --spm-group-head: linear-gradient(#eef3f9, #cfdcec);
   --spm-toolbar: linear-gradient(#ffffff, #e8e6da);
   --spm-toolbar-hover: linear-gradient(#ffffff, #dad7c9);
@@ -440,6 +448,9 @@ html.theme-legacy-black {
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
   --brand-gold-rgb: 212 160 23;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
   --spm-group-head: linear-gradient(#141414, #0b0b0b);
   --spm-toolbar: linear-gradient(#1a1a1a, #0b0b0b);
   --spm-toolbar-hover: linear-gradient(#222222, #141414);
@@ -604,6 +615,9 @@ html.theme-blue-silver {
   --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
 
   /* Records chrome tokens — BLUE & SILVER */
   --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
