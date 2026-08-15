@@ -72,6 +72,61 @@ function parseRMC(fields) {
   };
 }
 
+/** Parse $GPVTG: $GPVTG,track,T,magTrack,M,speedKnots,N,speedKmh,K,mode */
+function parseVTG(fields) {
+  if (!fields || fields.length < 9) return null;
+  const mode = fields[9]; // 'A'=autonomous, 'D'=DGPS, 'E'=DR, 'V'=no fix
+  if (mode === 'V' || mode === 'N') return null;
+  const heading = parseFloat(fields[1]);
+  const speedKnots = parseFloat(fields[5]);
+  return {
+    heading: Number.isFinite(heading) ? heading : null,
+    speedMs: Number.isFinite(speedKnots) ? speedKnots * 0.514444 : null,
+  };
+}
+
+/** Parse $GPGLL: $GPGLL,lat,N/S,lng,E/W,time,status */
+function parseGLL(fields) {
+  if (!fields || fields.length < 7) return null;
+  if (fields[6] !== 'A') return null; // V = void
+  const lat = nmeaToDecimal(fields[1], fields[2]);
+  const lng = nmeaToDecimal(fields[3], fields[4]);
+  if (lat === null || lng === null) return null;
+  return { lat, lng };
+}
+
+/** Parse $GPGSV: $GPGSV,totalMsgs,msgNum,satsInView,[prn,elev,azim,snr x4] */
+function parseGSV(fields) {
+  if (!fields || fields.length < 4) return null;
+  const satsInView = parseInt(fields[3], 10);
+  if (!Number.isFinite(satsInView)) return null;
+  const sats = [];
+  for (let i = 4; i + 3 < fields.length; i += 4) {
+    const prn = parseInt(fields[i], 10);
+    const snr = parseInt(fields[i + 3], 10);
+    if (Number.isFinite(prn)) {
+      sats.push({ prn, snr: Number.isFinite(snr) ? snr : 0 });
+    }
+  }
+  return { satsInView, sats };
+}
+
+/**
+ * Classifies a GPS fix into a quality tier based on HDOP and satellite count.
+ * 'excellent': HDOP < 1 and sats >= 8
+ * 'good':      HDOP < 2 and sats >= 5
+ * 'degraded':  HDOP < 5
+ * 'poor':      any valid fix with HDOP >= 5
+ * 'none':      no fix data
+ */
+function classifyFixQuality(hdop, satCount) {
+  if (!Number.isFinite(hdop) || !Number.isFinite(satCount)) return 'none';
+  if (hdop < 1 && satCount >= 8) return 'excellent';
+  if (hdop < 2 && satCount >= 5) return 'good';
+  if (hdop < 5) return 'degraded';
+  return 'poor';
+}
+
 /** Validate NMEA XOR checksum. Returns true if valid, false otherwise. */
 function checksumOk(sentence) {
   const star = sentence.lastIndexOf('*');
@@ -89,7 +144,7 @@ class InternalGps extends EventEmitter {
     this.port = null;
     this.parser = null;
     /** Coalesced position state — GGA gives fix, RMC adds heading/speed */
-    this.pending = { lat: null, lng: null, accuracy: null, heading: null, speed: null };
+    this.pending = { lat: null, lng: null, accuracy: null, heading: null, speed: null, sats: 0 };
     this.reconnectTimer = null;
     this.portPath = null;
     // Baud ladder. The FZ-55's u-blox NEO-M8 module defaults to 9600, NOT 4800
@@ -213,6 +268,7 @@ class InternalGps extends EventEmitter {
         this.pending.lat = r.lat;
         this.pending.lng = r.lng;
         this.pending.accuracy = r.accuracy;
+        this.pending.sats = r.sats;
         updated = true;
       }
     } else if (sentence === 'RMC') {
@@ -227,6 +283,31 @@ class InternalGps extends EventEmitter {
         this.pending.heading = r.heading;
         updated = true;
       }
+    } else if (sentence === 'VTG') {
+      const r = parseVTG(fields);
+      if (r) {
+        if (r.speedMs !== null) this.pending.speed = r.speedMs;
+        if (r.heading !== null) this.pending.heading = r.heading;
+        updated = true;
+      }
+    } else if (sentence === 'GLL') {
+      const r = parseGLL(fields);
+      if (r && this.pending.lat === null) {
+        this.pending.lat = r.lat;
+        this.pending.lng = r.lng;
+        updated = true;
+      }
+    } else if (sentence === 'GSV') {
+      const r = parseGSV(fields);
+      if (r) {
+        this.emit('gps:constellation', {
+          satsInView: r.satsInView,
+          satsTracked: r.sats.filter((s) => s.snr > 0).length,
+          avgSnr: r.sats.length > 0
+            ? Math.round(r.sats.reduce((s, sat) => s + sat.snr, 0) / r.sats.length)
+            : 0,
+        });
+      }
     }
 
     if (updated && this.pending.lat !== null && this.pending.lng !== null) {
@@ -236,6 +317,10 @@ class InternalGps extends EventEmitter {
         accuracy: this.pending.accuracy ?? 10, // assume 10m if HDOP missing
         heading: this.pending.heading,
         speed: this.pending.speed,
+        fixQuality: classifyFixQuality(
+          this.pending.accuracy ? this.pending.accuracy / 5 : null, // reverse HDOP estimate
+          this.pending.sats ?? null
+        ),
         timestamp: new Date().toISOString(),
       });
     }
@@ -367,4 +452,4 @@ function probeGpsPortOpen(portPath, SerialPortCtor = SerialPort) {
   });
 }
 
-module.exports = { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen };
+module.exports = { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen, parseVTG, parseGLL, parseGSV, classifyFixQuality };
