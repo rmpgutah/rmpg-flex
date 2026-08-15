@@ -210,6 +210,108 @@ export const EXCLUSION_REASONS: Record<string, RegExp> = {
   // radar tiles — they must match the pre-rendered radar imagery, not the app theme. Changing
   // them would misrepresent radar intensity to an officer reading the map.
   weatherRadarLegendColors: /(^|\/)useMapWeatherRadar\.(ts)$/,
+  // Observable Plot API (fill / stroke / style.background) consumes resolved color strings —
+  // var() is not meaningful as a Plot spec value.
+  observablePlot: /(^|\/)observablePlot\.(ts)$/,
+  // Mapbox popup HTML (setHTML / innerHTML) and paint-property hooks that feed addLayer
+  // circle-color / line-color expressions. The BOOKMARK_COLORS / SHAPE_COLORS arrays feed
+  // directly into Mapbox marker and layer paint; CSS vars cannot resolve there.
+  mapboxBookmarksAndDrawing: /(^|\/)use(MapBookmarks|MapDrawing|MapClustering)\.(ts)$/,
+  // Speed/response-time heatmap hooks — every hex is a Mapbox paint step expression value
+  // (circle-color step, line-color case). These return resolved hex strings for Mapbox too.
+  mapboxHeatmapHooks: /(^|\/)use(MapboxResponseTime|MapboxSpeedViolations)\.(ts)$/,
+  // Choropleth and traffic layer hooks — Mapbox fill-color / line-color paint properties.
+  mapboxChoroplethTraffic: /(^|\/)use(ActivityChoropleth|MapTraffic)\.(ts)$/,
+  // District hierarchy: Mapbox paint (text-color, fill-color) plus popup HTML template strings.
+  // osmPopup builds the "What's Here?" popup HTML via template literals handed to setHTML().
+  mapboxDistrictPopupHtml: /(^|\/)use(DistrictHierarchyLayers)\.(ts)$|(^|\/)osmPopup\.(ts)$/,
+  // Canvas 2D drawing — ctx.fillStyle / ctx.strokeStyle require resolved hex strings.
+  // graphToPng: canvas background color. photoStamp: officer stamp overlay with ctx.fillStyle.
+  // renderRedacted: canvas redaction bar with ctx.fillStyle. blur: canvas box fill.
+  canvas2dDrawing: /(^|\/)(graphToPng|photoStamp)\.(ts)$|(^|\/)redaction\/(renderRedacted|blur)\.(ts)$/,
+  // Excalidraw / tacticalWhiteboard API (strokeColor, viewBackgroundColor) consumes resolved
+  // color strings — same reason as Observable Plot.
+  excalidrawApi: /(^|\/)tacticalWhiteboard\.(ts)$/,
+  // theme.ts passes resolved hex to <meta name="theme-color"> and Capacitor StatusBar.setBackgroundColor
+  // — both are native browser/OS APIs that require literal hex strings, not CSS variables.
+  // mapboxLoader.ts injects a CSS snippet into the Mapbox GL container and builds fill-extrusion
+  // paint properties; CSS var() cannot resolve in either context.
+  nativeThemeAndMapboxLoader: /(^|\/)theme\.(ts)$|(^|\/)mapboxLoader\.(ts)$/,
+  // richTextEditor.ts creates React elements via React.createElement (no JSX) and assembles
+  // class strings for a headless text editor. The active-format highlight (#d4a017 → token) is
+  // an edge case but the file is a third-party-adapter integration that is safer to audit
+  // manually than to auto-migrate; all other hex is tactical-dark editor chrome.
+  richTextEditorIntegration: /(^|\/)richTextEditor\.(ts)$/,
+  // alertFlash.ts applies a flash overlay to the document body using hex color strings that are
+  // interpolated into a CSS rgba() call at runtime (peakAlpha is dynamic). The flash overlay
+  // cannot use CSS variables because it is a transient imperative DOM mutation, not themed chrome.
+  alertFlashRuntime: /(^|\/)alertFlash\.(ts)$/,
+  // caseSla.ts returns operational severity color objects consumed by React inline styles.
+  // navUnits.ts / tacticalForensics.ts return resolved hex strings for CAD severity tiers —
+  // same pattern as drivingScoreColor.ts / hudUnits.ts (already excluded under navTacticalAndMapbox).
+  cadSeverityColorHelpers: /(^|\/)caseSla\.(ts)$|(^|\/)navUnits\.(ts)$|(^|\/)tacticalForensics\.(ts)$/,
+  // redaction module — both canvas2D files already covered above. uiTrapDiagnostic.ts injects
+  // inline CSS strings that are removed from the DOM after a short timeout (diagnostic overlay);
+  // the hex values never persist in styled components.
+  uiTrapDiagnosticOverlay: /(^|\/)uiTrapDiagnostic\.(ts)$/,
+  // Desktop canvas widgets that use Canvas 2D API for drawing (ctx.fillStyle / ctx.clearRect).
+  // CSS variables cannot resolve in a canvas 2D context — same rationale as photoStamp.ts.
+  // DesktopCitationGenerator: signature canvas with ctx.strokeStyle.
+  // DesktopHotZonesWidget: heatmap drawing loop with ctx.fillStyle.
+  desktopCanvas: /(^|\/)(DesktopCitationGenerator|DesktopHotZonesWidget)\.(tsx)$/,
+  // Additional Mapbox paint hooks — hex flows into addLayer / setPaintProperty expressions.
+  // CSS var() cannot resolve in Mapbox paint contexts; the layer silently blanks.
+  // useMapMeasure / useMapMeasureDraw: ruler line-color + polygon fill-color paint.
+  // useMapMatchTrace: trace line-color paint for GPS match overlays.
+  // useMapboxRepeatAddresses: circle-color heat step expressions.
+  // useMapboxHistoryCalls: circle-color / line-color paint for call history heatmap.
+  // useMapboxPursuitSegments: line-color per pursuit segment.
+  // useMapboxSpeedHeatmap: circle-color step expressions for speed violations.
+  // useEventPlanning: fill-color / line-color per event zone polygon.
+  // useMapCoordinateGrid: line-color for grid overlay.
+  // useMapDaylight: addLayer fill-color for day/night shadow polygon.
+  // useNavGuidanceEngine: Mapbox route paint + nav overlay resolved colors.
+  // useMapDirectionsPanel: line-color paint for direction route layer.
+  // useMapProjection: map.setFog() atmosphere API — same restriction as mapboxAtmosphere.
+  // useMapPrintExport: Canvas 2D ctx.fillStyle for the print-export stamp overlay.
+  mapboxAdditionalPaintHooks: /(^|\/)use(MapMeasure|MapMeasureDraw|MapMatchTrace|MapboxRepeatAddresses|MapboxHistoryCalls|MapboxPursuitSegments|MapboxSpeedHeatmap|MapHeatmap|MapboxCoverageGaps|EventPlanning|MapCoordinateGrid|MapDaylight|NavGuidanceEngine|MapDirectionsPanel|MapProjection|MapPrintExport)\.(ts)$/,
+  // Operational severity / grade color helpers — return fixed color strings for CAD score tiers
+  // (patrol zone grades A–F, subject risk levels low/moderate/high/extreme, shift type identity).
+  // Same rationale as drivingScoreColor.ts / hudUnits.ts (excluded under navTacticalAndMapbox):
+  // the severity palette encodes CAD semantics and tests assert on the literal values.
+  cadGradeAndRiskColors: /(^|\/)use(PatrolZone|OfficerSafety)\.(ts)$|(^|\/)useShiftPlanning\.(ts)$/,
+  // helpReferenceData.ts holds PRIORITY_LEVELS and UNIT_STATUS_CODES — CAD operational data
+  // tables (P1–P5 priority colors, AVL/DSP/ONS unit status colors) whose hex values encode
+  // the same fixed severity semantics as statusColors.ts. They are consumed as inline style
+  // color strings in React components, not as theme chrome.
+  cadReferenceDataColors: /(^|\/)helpReferenceData\.(ts)$/,
+  // desktopAccents.ts defines ACCENT_PRESETS — a fixed color-picker palette whose hex values
+  // are stored in localStorage and written directly to a CSS custom property via
+  // style.setProperty('--desktop-shell-accent', hex). var() values would break the picker.
+  desktopAccentPresets: /(^|\/)desktopAccents\.(ts)$/,
+  // DesktopColorPicker is a hex color picker component — #3b82f6 default and preview swatch
+  // are color DATA values (the picked color itself), not theme chrome. Same rationale as
+  // AdminSystemTab color picker defaults.
+  desktopColorPickerData: /(^|\/)DesktopColorPicker\.(tsx)$/,
+  // PDF v2 engine — context.ts calls jsPDF setFillColor/setTextColor; style.ts is the
+  // PDF design-token palette for printed document output. CSS vars are meaningless in jsPDF.
+  pdfV2Engine: /(^|\/)pdf\/v2\//,
+  // devtools/pdfGallery — fixture data files hold test/preview color values for the PDF
+  // gallery renderer. renderToCanvas.ts uses Canvas 2D ctx.strokeStyle for geometry preview.
+  // These are devtools-only and not production theme chrome.
+  pdfGalleryDevtools: /(^|\/)devtools\//,
+  // Operational severity / activity tier colors returned as string values for inline styles.
+  // caseActivity.ts — GREEN/AMBER/GOLD/GRAY/RED tier palette for case activity event badges.
+  // dispatchTimers.ts — returns timer status colors (green/amber/red) per operational tier.
+  // alprSource.ts — ALPR source categorical identity colors (purple=dashcam, blue=camera, etc.).
+  // dispositionCodes.ts — C_OK/C_NEUTRAL/C_ENF/C_NEG palette per disposition category.
+  // accessibilityPreferences.ts — named high-contrast color preset values written to CSS vars via setProperty.
+  // withAlpha.ts — hex manipulation utility; all hex in file is JSDoc documentation examples.
+  // recordLinks.ts and markdown.tsx — isolated dark-surface inline styles / code-block styles not tied to theme.
+  cadOperationalColorHelpers: /(^|\/)caseActivity\.(ts)$|(^|\/)dispatchTimers\.(ts)$|(^|\/)alprSource\.(ts)$|(^|\/)dispositionCodes\.(ts)$|(^|\/)accessibilityPreferences\.(ts)$|(^|\/)withAlpha\.(ts)$|(^|\/)recordLinks\.(ts)$|(^|\/)markdown\.(tsx)$/,
+  // rmpg-pdf-engine native layer uses Canvas 2D ctx.fillStyle for PDF page rasterization.
+  // CSS variables cannot resolve in a canvas 2D context.
+  rmpgPdfEngineNative: /(^|\/)rmpg-pdf-engine\//,
 };
 
 export function classifyFile(path: string): 'excluded' | 'in-scope' {
