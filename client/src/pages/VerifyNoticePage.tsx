@@ -38,31 +38,31 @@ export default function VerifyNoticePage() {
 
   const containerStyle: React.CSSProperties = {
     minHeight: '100dvh',
-    background: '#1a2940',
+    background: 'var(--surface-base)',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '24px 16px',
     fontFamily: 'system-ui, sans-serif',
-    color: '#f0f4f9',
+    color: 'var(--text-primary)',
   };
 
   const cardStyle: React.CSSProperties = {
-    background: '#22405f',
+    background: 'var(--surface-raised)',
     borderRadius: 4,
     padding: '28px 24px',
     maxWidth: 480,
     width: '100%',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
-    border: '1px solid #2e5278',
+    boxShadow: '0 4px 24px rgb(0 0 0 / 0.4)',
+    border: '1px solid var(--border-strong)',
   };
 
   const logoBarStyle: React.CSSProperties = {
     fontSize: 11,
     fontWeight: 700,
     letterSpacing: '0.12em',
-    color: '#c3ccd6',
+    color: 'var(--text-secondary)',
     marginBottom: 4,
     textTransform: 'uppercase',
   };
@@ -70,41 +70,41 @@ export default function VerifyNoticePage() {
   const agencyStyle: React.CSSProperties = {
     fontSize: 17,
     fontWeight: 700,
-    color: '#d9bd72',
+    color: 'var(--field-label-color)',
     marginBottom: 20,
     lineHeight: 1.25,
   };
 
   const refBadgeStyle: React.CSSProperties = {
     display: 'inline-block',
-    background: '#1a2940',
-    border: '1px solid #3a6491',
+    background: 'var(--surface-sunken)',
+    border: '1px solid var(--brand-600)',
     borderRadius: 3,
     padding: '3px 10px',
     fontSize: 12,
     fontWeight: 600,
     letterSpacing: '0.08em',
-    color: '#c3ccd6',
+    color: 'var(--text-secondary)',
     marginBottom: 18,
   };
 
   const bodyStyle: React.CSSProperties = {
     fontSize: 14,
     lineHeight: 1.7,
-    color: '#d0d8e4',
+    color: 'var(--text-primary)',
     marginBottom: 24,
   };
 
   const dividerStyle: React.CSSProperties = {
-    borderTop: '1px solid #2e5278',
+    borderTop: '1px solid var(--border-strong)',
     margin: '20px 0',
   };
 
   const ctaStyle: React.CSSProperties = {
     display: 'block',
     textAlign: 'center',
-    background: '#2e5278',
-    color: '#f0f4f9',
+    background: 'var(--surface-sunken)',
+    color: 'var(--text-primary)',
     borderRadius: 3,
     padding: '13px 20px',
     textDecoration: 'none',
@@ -116,7 +116,7 @@ export default function VerifyNoticePage() {
   const footerStyle: React.CSSProperties = {
     marginTop: 20,
     fontSize: 11,
-    color: '#7a8fa6',
+    color: 'var(--text-muted)',
     textAlign: 'center',
   };
 
@@ -128,7 +128,7 @@ export default function VerifyNoticePage() {
           <div style={agencyStyle}>Rocky Mountain Protective Group</div>
           <p style={bodyStyle}>
             This QR code could not be verified. Please call{' '}
-            <a href="tel:+13853406555" style={{ color: '#d9bd72' }}>(385) 340-6555</a>{' '}
+            <a href="tel:+13853406555" style={{ color: 'var(--field-label-color)' }}>(385) 340-6555</a>{' '}
             to confirm the notice is genuine.
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function VerifyNoticePage() {
   if (!data) {
     return (
       <div style={containerStyle}>
-        <div style={{ color: '#7a8fa6', fontSize: 14 }}>Verifying notice…</div>
+        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Verifying notice…</div>
       </div>
     );
   }
