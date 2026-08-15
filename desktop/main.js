@@ -20,7 +20,7 @@ const {
   parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
   parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
   parseWindowsThermalOutput, parseWindowsSmartCardOutput, parseWindowsFingerprintOutput,
-  parseWindowsWwanSignalOutput,
+  parseWindowsWwanSignalOutput, parseBodyCamHidReport,
 } = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
@@ -308,6 +308,37 @@ process.on('uncaughtException', (err) => {
 });
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
+
+// ── WWAN live push ────────────────────────────────────────────
+let _lastWwanState = null;
+const WWAN_PUSH_INTERVAL = 30_000;
+function pushWwanIfChanged() {
+  if (process.platform !== 'win32') return;
+  const { execFile } = require('child_process');
+  execFile(
+    'powershell.exe',
+    ['-NoProfile', '-Command',
+      "Get-NetAdapter | Where-Object {$_.InterfaceDescription -match 'Sierra|EM74|EM75|EM91'} | Select-Object Name, Status | ConvertTo-Json"],
+    { timeout: 3000 },
+    (err, stdout) => {
+      if (err) return;
+      const state = parseWindowsWwanOutput(stdout);
+      const changed = !_lastWwanState ||
+        state.present !== _lastWwanState.present ||
+        state.connected !== _lastWwanState.connected;
+      if (changed) {
+        _lastWwanState = state;
+        mainWindow?.webContents.send('hardware:wwan-changed', state);
+      }
+    }
+  );
+}
+let _wwanPushTimer = null;
+function startWwanPush() {
+  if (_wwanPushTimer) return;
+  pushWwanIfChanged();
+  _wwanPushTimer = setInterval(pushWwanIfChanged, WWAN_PUSH_INTERVAL);
+}
 
 // ─── Single Instance Lock ────────────────────────────────────
 // Prevent multiple instances from racing and crashing with
@@ -1016,6 +1047,34 @@ async function createMainWindow() {
     console.warn('[APP] Cache clear timed out or failed — continuing:', err && err.message);
   }
 
+  // ── WWAN live push timer ──────────────────────────────────
+  startWwanPush();
+
+  // ── USB hot-plug GPS re-detect ────────────────────────────
+  try {
+    const usbDetect = require('usb-detection');
+    usbDetect.startMonitoring();
+    usbDetect.on('add', async () => {
+      // Any USB insertion — re-probe for GPS
+      setTimeout(async () => {
+        const found = await findGpsPort();
+        if (found) {
+          mainWindow?.webContents.send('hardware:gps-plugged', found);
+          // If GPS reader is not currently active, auto-start
+          if (!internalGpsReader) {
+            internalGpsReader = new InternalGps();
+            internalGpsReader.on('position', (pos) => mainWindow?.webContents.send('geo:position', pos));
+            internalGpsReader.on('gps:constellation', (c) => mainWindow?.webContents.send('gps:constellation', c));
+            await internalGpsReader.start(found.path);
+          }
+        }
+      }, 1500); // brief delay for device driver init
+    });
+    app.on('before-quit', () => usbDetect.stopMonitoring());
+  } catch (err) {
+    console.warn('[APP] usb-detection unavailable:', err.message);
+  }
+
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
   // Promise rejection here is handled by the did-fail-load listener
@@ -1506,16 +1565,67 @@ guardedHandle('sys:battery', async () => {
 
   return null;
 });
-guardedHandle('sys:body-cam-status', () => {
-  // Return null when no body cam is physically present — widget treats non-null
-  // as "camera connected" and shows Ready/Recording state accordingly.
+const BODY_CAM_VIDS = new Map([
+  [0x2B0E, 'Axon'],     // Axon Body 3/4
+  [0x22B8, 'Motorola'], // Motorola Si500
+]);
+let bodyCamHidDevice = null;
+
+function detectBodyCam() {
+  if (process.platform !== 'win32') return null;
+  try {
+    const HID = require('node-hid');
+    const devices = HID.devices();
+    for (const [vid, vendor] of BODY_CAM_VIDS) {
+      const d = devices.find((dev) => dev.vendorId === vid);
+      if (d) return { present: true, vendor, model: d.product || null, vid, path: d.path };
+    }
+  } catch (err) {
+    console.warn('[BODY-CAM] HID enumeration failed:', err.message);
+  }
   return null;
+}
+
+guardedHandle('sys:body-cam-status', () => {
+  const cam = detectBodyCam();
+  if (!cam) return { present: false, vendor: null, model: null, batteryPct: null };
+  // Attempt to read HID state
+  let batteryPct = null;
+  try {
+    const HID = require('node-hid');
+    const dev = new HID.HID(cam.path);
+    const report = dev.readTimeout(200);
+    dev.close();
+    const parsed = parseBodyCamHidReport(Buffer.from(report));
+    batteryPct = parsed.batteryPct;
+  } catch { /* HID read failed — return presence only */ }
+  return { present: true, vendor: cam.vendor, model: cam.model, batteryPct };
 });
+
 guardedHandle('sys:body-cam-start', () => {
-  return { ok: false, reason: 'not_supported' };
+  const cam = detectBodyCam();
+  if (!cam) return { ok: false, reason: 'no_camera' };
+  try {
+    const HID = require('node-hid');
+    bodyCamHidDevice = new HID.HID(cam.path);
+    // Axon record command: write report [0x01, 0x01] (report ID 1, flag record=1)
+    bodyCamHidDevice.write([0x01, 0x01]);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
+
 guardedHandle('sys:body-cam-stop', () => {
-  return { ok: false, reason: 'not_supported' };
+  if (!bodyCamHidDevice) return { ok: false, reason: 'not_started' };
+  try {
+    bodyCamHidDevice.write([0x01, 0x00]); // clear recording flag
+    bodyCamHidDevice.close();
+    bodyCamHidDevice = null;
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
 guardedHandle('sys:tpm-status', async () => {
   if (process.platform !== 'win32') return null;
@@ -1647,6 +1757,27 @@ guardedHandle('device:wwan-carrier', async () => {
   } catch (err) {
     console.error('[DEVICE:WWAN-CARRIER]', err.message);
     return { carrier: null, apn: null };
+  }
+});
+guardedHandle('device:usb-devices', async () => {
+  if (process.platform !== 'win32') return [];
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        "Get-PnpDevice | Where-Object {$_.Class -eq 'USB'} | Select-Object FriendlyName, Status | ConvertTo-Json"],
+      { timeout: 5000 }
+    );
+    let parsed;
+    try { parsed = JSON.parse(stdout); } catch { return []; }
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    return entries.filter(Boolean).map((e) => ({ name: e.FriendlyName || '', status: e.Status || '' }));
+  } catch (err) {
+    console.error('[DEVICE:USB-DEVICES]', err.message);
+    return [];
   }
 });
 guardedHandle('sys:idle-time', () => {
@@ -4962,6 +5093,11 @@ app.whenReady().then(async () => {
             console.error('[APP] Push sync on reconnect failed:', err.message);
           });
         }
+        // Detect WWAN failover
+        const currentWwan = _lastWwanState;
+        if (currentWwan?.connected) {
+          mainWindow?.webContents.send('connectivity:failover', { from: 'wifi', to: 'wwan' });
+        }
       }
     });
 
@@ -4997,6 +5133,8 @@ app.on('before-quit', () => {
   appUpdater.destroy();
   globalShortcut.unregisterAll();
 
+  // Clean up WWAN push timer
+  if (_wwanPushTimer) { clearInterval(_wwanPushTimer); _wwanPushTimer = null; }
   // Clean up offline modules
   if (connectivityMonitor) connectivityMonitor.stop();
   if (syncManager && syncManager.stopPullSchedule) syncManager.stopPullSchedule();
