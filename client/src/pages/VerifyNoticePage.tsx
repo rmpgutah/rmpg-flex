@@ -6,12 +6,10 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-const API_BASE = (() => {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const h = window.location.hostname;
-  if (h === 'localhost') return 'http://localhost:8787';
-  return 'https://api.rmpgutah.us';
-})();
+// Use same-origin relative path in production so the request routes through
+// the Pages _redirects proxy (/api/* → api.rmpgutah.us) and bypasses the WAF
+// managed challenge (fetch() cannot solve a JS challenge).
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
 
 interface VerifyResponse {
   ok: boolean;
