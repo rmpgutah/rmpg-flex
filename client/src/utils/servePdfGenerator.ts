@@ -1372,7 +1372,11 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     const QR_SIZE = 22;
     const qrX = getRailX();
     const pageH = doc.internal.pageSize.getHeight();
-    const qrY = pageH - 8 - 2 - QR_SIZE;
+    // addPageFooter places the accent line at pageH - 11 (SAFE_PRINT_EDGE_BOTTOM=8, offset=3).
+    // Keep the "Scan to verify" label (3.5mm) + 2mm gap entirely above that line.
+    const FOOTER_ACCENT_Y = pageH - 11;
+    const QR_LABEL_H = 3.5;
+    const qrY = FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE;
     doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
