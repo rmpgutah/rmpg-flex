@@ -11,7 +11,7 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
@@ -22,6 +22,8 @@ import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
 import PerformanceTab from './serve/PerformanceTab';
 import AnalyticsTab from './serve/AnalyticsTab';
+import SubjectFileTab from './serve/SubjectFileTab';
+import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -59,7 +61,7 @@ import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -2252,7 +2254,8 @@ export default function ServePage() {
           if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
           if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
           if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
-          // Queue, Route, Map, Stats, My Run — visible to all
+          if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
+          // Queue, Route, Map, Stats, My Run, Subject File — visible to all
           return true;
         }).map(tab => {
           const Icon =
@@ -2263,6 +2266,8 @@ export default function ServePage() {
             tab === 'Assign' ? Users :
             tab === 'Performance' ? BarChart3 :
             tab === 'Analytics' ? LineChart :
+            tab === 'Subject File' ? ScrollText :
+            tab === 'Collections' ? DollarSign :
             Route; // My Run
           return (
             <button type="button"
@@ -3166,6 +3171,12 @@ export default function ServePage() {
         )}
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
         {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
+        {activeTab === 'Subject File' && (
+          <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+        )}
+        {activeTab === 'Collections' && ['admin','manager','supervisor'].includes(user?.role ?? '') && (
+          <CollectionDatabaseTab />
+        )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}
