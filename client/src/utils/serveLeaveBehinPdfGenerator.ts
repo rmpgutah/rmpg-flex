@@ -23,7 +23,6 @@ import {
   setActiveSectionStyle,
   sanitizePdfText,
   stampGenerationTime,
-  drawBarcodeCornerStamp,
 } from './pdfGenerator';
 import {
   SPACING, FONT,
@@ -190,10 +189,6 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Barcode stamp (job ID as the scannable value)
-  const barcodeValue = `JOB-${data.jobId}${data.caseNumber ? ' ' + data.caseNumber : ''}`;
-  drawBarcodeCornerStamp(doc, sanitizePdfText(barcodeValue));
-
   drawFooter(doc, 1, 2);
 
   // ─────────────────────────────────────────────────────────────
@@ -252,7 +247,6 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  drawBarcodeCornerStamp(doc, sanitizePdfText(barcodeValue));
   drawFooter(doc, 2, 2);
 
   return doc;

@@ -42,7 +42,7 @@ app.get('/', async (c) => {
     const jobRow = await queryFirst<{ id: number; officer_id: number | null; recipient_name: string | null }>(
       db,
       'SELECT id, officer_id, recipient_name FROM serve_queue WHERE id = ?',
-      [parseInt(jobMatch[1], 10)],
+      parseInt(jobMatch[1], 10),
     );
     if (jobRow) {
       jobId        = jobRow.id;
@@ -57,7 +57,7 @@ app.get('/', async (c) => {
     const ins = await execute(
       db,
       'INSERT INTO serve_qr_scans (job_ref, job_id, scanned_at, ip_address, user_agent, notified) VALUES (?, ?, ?, ?, ?, 0)',
-      [ref, jobId, now, ip, ua],
+      ref, jobId, now, ip, ua,
     );
     scanId = ins.meta?.last_row_id ?? null;
   } catch (err) {
@@ -92,11 +92,11 @@ app.get('/', async (c) => {
       `INSERT INTO notifications
          (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
        VALUES ('serve_qr_scan', 'high', ?, ?, 'serve_job', ?, ?, 0, datetime('now'))`,
-      [title, message, jobId, officerId],
+      title, message, jobId, officerId,
     );
 
     if (scanId !== null) {
-      await execute(db, 'UPDATE serve_qr_scans SET notified = 1 WHERE id = ?', [scanId]);
+      await execute(db, 'UPDATE serve_qr_scans SET notified = 1 WHERE id = ?', scanId);
     }
   } catch (err) {
     log.error('serve_qr_scan: notify failed', { ref, jobId }, err as Error);
