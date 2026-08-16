@@ -23,9 +23,9 @@ interface Totals { count: number; subtotal: number; tax: number; total: number }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function usd(n: number | null | undefined) {
+function usd(n: number | string | null | undefined) {
   if (n == null) return '—';
-  return `$${n.toFixed(2)}`;
+  return `$${Number(n).toFixed(2)}`;
 }
 
 function paymentBadge(status: string) {

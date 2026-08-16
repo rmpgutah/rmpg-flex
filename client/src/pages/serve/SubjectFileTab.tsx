@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   User, FileText, MapPin, Phone, Mail, Calendar, Briefcase, Scale,
   Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
-  DollarSign, Camera, MessageSquare, RefreshCw, Search, Download,
+  DollarSign, Camera, MessageSquare, RefreshCw, Search, Download, QrCode,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -19,6 +19,23 @@ interface ServeComment {
   body: string;
   created_at: string;
   is_system: number;
+}
+
+interface QrScan {
+  id: number;
+  job_ref: string;
+  scanned_at: string;
+  ip_address: string | null;
+  geo_city: string | null;
+  geo_region: string | null;
+  geo_country: string | null;
+  geo_lat: number | null;
+  geo_lon: number | null;
+  device_type: string | null;
+  platform: string | null;
+  timezone_iana: string | null;
+  lang: string | null;
+  time_on_page_ms: number | null;
 }
 
 type SubjectFileJob = ServeJob;
@@ -82,7 +99,7 @@ function AttemptRow({ attempt, index }: { attempt: ServeAttempt; index: number }
           <Field label="Person Served" value={attempt.person_served_name} />
           <Field label="Relationship" value={attempt.person_served_relationship} />
           <Field label="Description" value={attempt.person_served_description} />
-          <Field label="GPS" value={attempt.latitude != null ? `${attempt.latitude.toFixed(5)}, ${attempt.longitude?.toFixed(5)}` : null} mono />
+          <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
           <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
           <Field label="Photos" value={attempt.photo_ids?.length ? `${attempt.photo_ids.length} attached` : null} />
           <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
@@ -179,6 +196,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [attempts, setAttempts] = useState<ServeAttempt[]>([]);
   const [skipTraces, setSkipTraces] = useState<ServeSkipTrace[]>([]);
   const [comments, setComments] = useState<ServeComment[]>([]);
+  const [qrScans, setQrScans] = useState<QrScan[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async (id: number) => {
@@ -193,8 +211,12 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
       setAttempts(attRes ?? []);
       setComments(commRes ?? []);
 
-      const stRes = await apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${id}/skip-trace`).catch(() => null);
+      const [stRes, scanRes] = await Promise.all([
+        apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${id}/skip-trace`).catch(() => null),
+        apiFetch<{ ok: boolean; scans: QrScan[] }>(`/verify/scans?jobRef=JOB-${id}`).catch(() => null),
+      ]);
       setSkipTraces(stRes?.data ?? []);
+      setQrScans(scanRes?.scans ?? []);
     } catch {
       /* toast handled by apiFetch */
     }
@@ -288,7 +310,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               <div className="col-span-2">
                 <Field label="Address" value={[job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip].filter(Boolean).join(', ')} />
               </div>
-              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${job.recipient_lat.toFixed(5)}, ${job.recipient_lng?.toFixed(5)}` : null} mono />
+              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${Number(job.recipient_lat).toFixed(5)}, ${Number(job.recipient_lng).toFixed(5)}` : null} mono />
               <Field label="Geocode Source" value={job.geocode_source ? formatEnumValue(job.geocode_source) : null} />
               {job.contact_restrictions && (
                 <div className="col-span-2">
@@ -352,8 +374,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
             {/* Billing */}
             <Section title="Billing" icon={DollarSign} defaultOpen={false}>
-              <Field label="Serve Fee" value={job.serve_fee != null ? `$${job.serve_fee.toFixed(2)}` : null} />
-              <Field label="Rush Fee" value={job.rush_fee != null ? `$${job.rush_fee.toFixed(2)}` : null} />
+              <Field label="Serve Fee" value={job.serve_fee != null ? `$${Number(job.serve_fee).toFixed(2)}` : null} />
+              <Field label="Rush Fee" value={job.rush_fee != null ? `$${Number(job.rush_fee).toFixed(2)}` : null} />
               <Field
                 label="Payment Status"
                 value={job.payment_status ? (
@@ -394,6 +416,35 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       <span className="text-[10px] text-text-secondary">{safeDateStr(st.created_at)}</span>
                     </div>
                     <Field label="Addresses Found" value={st.addresses_found?.length ? `${st.addresses_found.length} results` : null} />
+                  </div>
+                ))}
+              </Section>
+            )}
+
+            {/* QR Scan History */}
+            {qrScans.length > 0 && (
+              <Section title={`QR Scan History (${qrScans.length})`} icon={QrCode} defaultOpen={false}>
+                {qrScans.map(scan => (
+                  <div key={scan.id} className="col-span-2 border border-border-subtle rounded-[2px] p-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-rmpg-200">{scan.device_type ? formatEnumValue(scan.device_type) : 'Unknown device'}</span>
+                      <span className="text-[10px] text-text-secondary font-mono">{safeDateStr(scan.scanned_at)}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      {(scan.geo_city || scan.geo_region) && (
+                        <Field label="Location" value={[scan.geo_city, scan.geo_region, scan.geo_country].filter(Boolean).join(', ')} />
+                      )}
+                      {scan.geo_lat != null && (
+                        <Field label="Geo Coords" value={`${Number(scan.geo_lat).toFixed(4)}, ${Number(scan.geo_lon).toFixed(4)}`} mono />
+                      )}
+                      <Field label="Platform" value={scan.platform} />
+                      <Field label="Language" value={scan.lang} />
+                      <Field label="Timezone" value={scan.timezone_iana} />
+                      {scan.time_on_page_ms != null && (
+                        <Field label="Time on Page" value={`${Math.round(Number(scan.time_on_page_ms) / 1000)}s`} />
+                      )}
+                      <Field label="IP Address" value={scan.ip_address} mono />
+                    </div>
                   </div>
                 ))}
               </Section>
