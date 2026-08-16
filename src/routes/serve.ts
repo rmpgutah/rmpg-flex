@@ -1055,6 +1055,45 @@ sv.get('/aging', async (c) => {
   return c.json(rows);
 });
 
+// GET /upcoming — must be before /:id (Hono matches in registration order)
+sv.get('/upcoming', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id, u.full_name AS officer_name,
+           q.next_attempt_note
+    FROM serve_queue q
+    LEFT JOIN users u ON u.id = q.officer_id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.next_attempt_note IS NOT NULL AND q.next_attempt_note != ''
+    ORDER BY q.deadline ASC NULLS LAST, q.priority DESC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
+// GET /client-breakdown — must be before /:id (same reason as above)
+sv.get('/client-breakdown', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT
+      COALESCE(NULLIF(client_name, ''), NULLIF(attorney_name, ''), 'Unknown Client') AS client,
+      COUNT(*)                                                                        AS total,
+      SUM(CASE WHEN status = 'served'    THEN 1 ELSE 0 END)                          AS served,
+      SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)                          AS failed,
+      SUM(CASE WHEN status NOT IN ('served','failed','cancelled') THEN 1 ELSE 0 END) AS active
+    FROM serve_queue
+    GROUP BY 1
+    ORDER BY total DESC
+    LIMIT 50
+  `);
+  return c.json(rows);
+});
+
 sv.get('/:id', async (c) => {
   const denied = requireRole(c, ...READ);
   if (denied) return c.json({ error: denied }, 403);
@@ -1927,24 +1966,7 @@ sv.get('/:id/gps-trail', async (c) => {
 
 // [1] GET /aging is registered above the /:id catch-all (route order matters in Hono).
 
-// [2] GET /upcoming — jobs with a scheduled attempt window in the next 48 hours
-sv.get('/upcoming', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
-           q.status, q.attempt_count, q.officer_id, u.full_name AS officer_name,
-           q.next_attempt_note
-    FROM serve_queue q
-    LEFT JOIN users u ON u.id = q.officer_id
-    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
-      AND q.next_attempt_note IS NOT NULL AND q.next_attempt_note != ''
-    ORDER BY q.deadline ASC NULLS LAST, q.priority DESC
-    LIMIT 200
-  `);
-  return c.json(rows);
-});
+// [2] GET /upcoming — moved to before /:id (see route-order note above)
 
 // [3] PATCH /bulk-deadline — extend deadline on multiple jobs at once
 sv.patch('/bulk-deadline', async (c) => {
@@ -2080,25 +2102,7 @@ sv.get('/stats/velocity', async (c) => {
   return c.json({ last_7_days: last7, prior_7_days: prev7, trend: last7 - prev7 });
 });
 
-// [9] GET /client-breakdown — job counts grouped by client/attorney
-sv.get('/client-breakdown', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT
-      COALESCE(NULLIF(client_name, ''), NULLIF(attorney_name, ''), 'Unknown Client') AS client,
-      COUNT(*)                                                                        AS total,
-      SUM(CASE WHEN status = 'served'    THEN 1 ELSE 0 END)                          AS served,
-      SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)                          AS failed,
-      SUM(CASE WHEN status NOT IN ('served','failed','cancelled') THEN 1 ELSE 0 END) AS active
-    FROM serve_queue
-    GROUP BY 1
-    ORDER BY total DESC
-    LIMIT 50
-  `);
-  return c.json(rows);
-});
+// [9] GET /client-breakdown — moved before /:id; see route-order note at top of this section
 
 // [10] GET /:id/address-history — previous jobs at the same service address
 sv.get('/:id/address-history', async (c) => {

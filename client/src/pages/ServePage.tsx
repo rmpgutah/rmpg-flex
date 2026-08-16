@@ -3011,9 +3011,9 @@ export default function ServePage() {
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
-                      ? `${stats.mileage.toFixed(1)} mi`
+                      ? `${Number(stats.mileage).toFixed(1)} mi`
                       : stats?.planned_mileage
-                        ? `${stats.planned_mileage.toFixed(1)} mi`
+                        ? `${Number(stats.planned_mileage).toFixed(1)} mi`
                         : '--'
                   }
                 </div>
