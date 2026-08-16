@@ -377,7 +377,7 @@ export default function SignaturePad({
     return (
       <div className="space-y-1">
         <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-        <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 inline-block">
+        <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 block w-full">
           <img src={value} alt="Signature" className="max-h-16 object-contain" />
           <div className="absolute top-1 right-1 flex gap-1">
             {/* 65: Re-sign button with transition */}

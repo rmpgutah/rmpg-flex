@@ -54,8 +54,8 @@ const S: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: '24px 16px',
+    justifyContent: 'flex-start',
+    padding: '24px 16px 40px',
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
   },
   card: {
