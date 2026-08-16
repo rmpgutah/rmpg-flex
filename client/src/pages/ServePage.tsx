@@ -2697,7 +2697,7 @@ export default function ServePage() {
                     {routeJobs.map((job, idx) => {
                       const isCompleted = job.status === 'served';
                       const isFailed = job.status === 'failed';
-                      const deadlineDate = job.deadline ? new Date(job.deadline) : null;
+                      const deadlineDate = job.deadline ? parseTimestamp(job.deadline) : null;
                       const isOverdue = deadlineDate && deadlineDate < new Date(); // new-date-ok — wall-clock comparison
                       const priorityColors: Record<string, string> = {
                         urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
