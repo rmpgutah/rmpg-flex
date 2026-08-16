@@ -87,15 +87,20 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx tsc --noEmit
 
-  # pool:'threads' + maxThreads:2 (vitest.config.ts) keeps the heap manageable:
-  # each worker thread transforms files lazily rather than the parent
-  # pre-transforming everything eagerly. PDF/map/desktop suites run in their own
-  # jobs below to keep the heavy ASTs out of this job's transform cache.
+  # The 590-file suite needs sharding to stay within the 7 GB runner heap and
+  # the 25-minute timeout. pool:'threads' + maxThreads:2 (vitest.config.ts)
+  # handles transform-cache growth; sharding caps per-job file count.
+  # PDF/map/desktop suites run in dedicated jobs below.
+  # Matrix strategy shows as one collapsible entry in the PR checks UI.
   client-tests:
-    name: Client tests
+    name: Client tests (${{ matrix.shard }}/16)
     needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -104,7 +109,7 @@ jobs:
           cache: npm
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run
+      - run: cd client && npx vitest run --shard=${{ matrix.shard }}/16
         env:
           NODE_OPTIONS: --max-old-space-size=6144
 
