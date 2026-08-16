@@ -93,7 +93,7 @@ async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promis
   if (!job.recipient_address) return;
   const full = [
     job.recipient_address,
-    (job as any).recipient_address_2,
+    job.recipient_address_2,
     job.recipient_city,
     job.recipient_state,
     job.recipient_zip,
@@ -171,7 +171,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
         </div>
         <div className="text-[10px] text-rmpg-500 truncate mt-0.5">
           {job.recipient_address
-            ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
+            ? [job.recipient_address, job.recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
             : '— no address —'}
         </div>
         {job.deadline && (
@@ -274,7 +274,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
       <div className="text-[13px] font-semibold text-rmpg-100 mb-0.5 truncate">{job.recipient_name}</div>
       <div className="text-[11px] text-rmpg-400 mb-2 truncate">
         {job.recipient_address
-          ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state]
+          ? [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state]
               .filter(Boolean).join(', ')
           : '— no address on file —'}
       </div>

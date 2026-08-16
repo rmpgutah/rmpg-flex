@@ -151,12 +151,12 @@ export function useFleetCosts(
     const fuelTotal = num(fuelSummary?.total_cost);
     const maintTotal = maintenance.reduce((s, m) => s + num((m as any).cost), 0);
     const loanTotal = ln.reduce((s, l) => s + num((l as any).original_amount), 0);
-    const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? (p as any).premium_amount), 0);
+    const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? p.premium_amount), 0);
     const accTotal = acc.reduce((s, a) => s + num((a as any).cost), 0);
     const utilTotal = util.reduce((s, u) => s + num((u as any).cost_amount), 0);
     const otherTotal = others.reduce((s, o) => s + num((o as any).amount), 0);
     const monthlyLoan = ln.filter((l) => String((l as any).status ?? 'active') === 'active').reduce((s, l) => s + num((l as any).monthly_payment), 0);
-    const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? (p as any).premium_amount), (p as any).premium_frequency), 0);
+    const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? p.premium_amount), (p as any).premium_frequency), 0);
     const monthlyUtil = util.reduce((s, u) => s + perMonth(num((u as any).cost_amount), (u as any).cost_frequency), 0);
     const monthlyOther = others
       .filter((o) => String((o as any).status ?? 'active') !== 'cancelled' && String((o as any).status ?? 'active') !== 'inactive')
