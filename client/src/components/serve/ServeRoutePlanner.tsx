@@ -1393,7 +1393,7 @@ export default function ServeRoutePlanner({
     setRouteAccepted(true);
     onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
     onClose();
-  }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, routeOrigin, onRouteOptimized, onClose]);
+  }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, plannedStartTime, routeOrigin, onRouteOptimized, onClose]);
 
   if (!isOpen) return null;
 
