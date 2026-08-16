@@ -2701,6 +2701,17 @@ si.post('/:id/attempts', async (c) => {
   });
 });
 
+// ── GET /:id/skip-trace ─────────────────────────────────────
+si.get('/:id/skip-trace', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const rows = await query(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
+  return c.json({ data: rows });
+});
+
 // ── POST /:id/skip-trace ────────────────────────────────────
 si.post('/:id/skip-trace', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');

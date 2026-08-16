@@ -186,7 +186,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
     try {
       const [jobRes, attRes, commRes] = await Promise.all([
         apiFetch<SubjectFileJob>(`/process-server/${id}`),
-        apiFetch<ServeAttempt[]>(`/process-server/${id}/attempt`).catch(() => [] as ServeAttempt[]),
+        apiFetch<ServeAttempt[]>(`/serve-intake/${id}/attempts`).catch(() => [] as ServeAttempt[]),
         apiFetch<ServeComment[]>(`/process-server/${id}/comments`).catch(() => [] as ServeComment[]),
       ]);
       setJob(jobRes);
@@ -364,7 +364,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                   }>{formatEnumValue(job.payment_status)}</span>
                 ) : null}
               />
-              <Field label="Mileage" value={job.mileage_actual != null ? `${job.mileage_actual.toFixed(1)} mi` : null} />
+              <Field label="Mileage" value={job.mileage_actual != null ? `${Number(job.mileage_actual).toFixed(1)} mi` : null} />
             </Section>
 
             {/* Attempt History */}
