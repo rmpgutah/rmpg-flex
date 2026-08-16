@@ -2626,11 +2626,25 @@ export default function ServePage() {
               // ordered job list so the Route tab shows arrival times without
               // another API call. Plain IIFE (not useMemo) because this runs
               // inside a conditional render expression where hooks are banned.
+              // Anchor ETAs to the saved planned start time when available so
+              // the Route tab shows future wall-clock times rather than
+              // "from now". Parse as local time (same logic as ServeRoutePlanner).
+              const routeStartMs = (() => {
+                const t = savedRoute?.planned_start_time;
+                const d = savedRoute?.route_date;
+                if (t && d && /^\d{2}:\d{2}$/.test(t)) {
+                  const [h, m] = t.split(':').map(Number);
+                  const dt = new Date(d + 'T00:00:00'); // new-date-ok — local-time parse intentional
+                  dt.setHours(h, m, 0, 0);
+                  return dt.getTime();
+                }
+                return Date.now(); // new-date-ok — fallback to now when no saved start
+              })();
               const stopEtas: Map<number, number> = (() => {
                 const geocoded = routeJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
                 if (geocoded.length < 1) return new Map<number, number>();
                 const stopItems = geocoded.map((j, i) => ({ job: j, selected: true, order: i }));
-                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null);
+                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null, routeStartMs);
                 const map = new Map<number, number>();
                 ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) map.set(s.job.id, perStopArrivalMs[i]); });
                 return map;
