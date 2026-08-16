@@ -82,7 +82,7 @@ function AttemptRow({ attempt, index }: { attempt: ServeAttempt; index: number }
           <Field label="Person Served" value={attempt.person_served_name} />
           <Field label="Relationship" value={attempt.person_served_relationship} />
           <Field label="Description" value={attempt.person_served_description} />
-          <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
+          <Field label="GPS" value={attempt.latitude != null ? `${attempt.latitude.toFixed(5)}, ${attempt.longitude?.toFixed(5)}` : null} mono />
           <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
           <Field label="Photos" value={attempt.photo_ids?.length ? `${attempt.photo_ids.length} attached` : null} />
           <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
@@ -288,7 +288,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               <div className="col-span-2">
                 <Field label="Address" value={[job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip].filter(Boolean).join(', ')} />
               </div>
-              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${Number(job.recipient_lat).toFixed(5)}, ${Number(job.recipient_lng).toFixed(5)}` : null} mono />
+              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${job.recipient_lat.toFixed(5)}, ${job.recipient_lng?.toFixed(5)}` : null} mono />
               <Field label="Geocode Source" value={job.geocode_source ? formatEnumValue(job.geocode_source) : null} />
               {job.contact_restrictions && (
                 <div className="col-span-2">
@@ -352,8 +352,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
             {/* Billing */}
             <Section title="Billing" icon={DollarSign} defaultOpen={false}>
-              <Field label="Serve Fee" value={job.serve_fee != null ? `$${Number(job.serve_fee).toFixed(2)}` : null} />
-              <Field label="Rush Fee" value={job.rush_fee != null ? `$${Number(job.rush_fee).toFixed(2)}` : null} />
+              <Field label="Serve Fee" value={job.serve_fee != null ? `$${job.serve_fee.toFixed(2)}` : null} />
+              <Field label="Rush Fee" value={job.rush_fee != null ? `$${job.rush_fee.toFixed(2)}` : null} />
               <Field
                 label="Payment Status"
                 value={job.payment_status ? (
@@ -364,7 +364,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                   }>{formatEnumValue(job.payment_status)}</span>
                 ) : null}
               />
-              <Field label="Mileage" value={job.mileage_actual != null ? `${Number(job.mileage_actual).toFixed(1)} mi` : null} />
+              <Field label="Mileage" value={job.mileage_actual != null ? `${job.mileage_actual.toFixed(1)} mi` : null} />
             </Section>
 
             {/* Attempt History */}

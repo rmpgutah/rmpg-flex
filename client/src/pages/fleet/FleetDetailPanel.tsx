@@ -387,7 +387,7 @@ export default function FleetDetailPanel({ data, costs, actions, activeTab, onTa
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
             )}
             {(() => {
-              const nextMi = (detail as any).next_service_mileage;
+              const nextMi = detail.next_service_mileage;
               const curMi = detail.current_mileage;
               if (nextMi && curMi) {
                 const milesLeft = nextMi - curMi;
