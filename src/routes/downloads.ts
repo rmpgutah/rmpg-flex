@@ -180,7 +180,7 @@ export async function serveUpdatesYaml(bucket: R2Bucket, platform: 'win' | 'mac'
     c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     return c.text(yaml);
   } catch (err) {
-    console.error(`${platform} YAML error:`, err);
+    log.error(`${platform} YAML generation failed`, { platform }, err as Error);
     return c.text('Failed to generate manifest', 500);
   }
 }
@@ -404,7 +404,7 @@ downloads.get('/downloads/check', async (c) => {
       downloadBytes: target.bytes,
     });
   } catch (err) {
-    console.error('downloads/check error:', err);
+    log.error('downloads/check failed', { route: '/api/downloads/check' }, err as Error);
     return c.json({ error: 'Check failed' }, 500);
   }
 });
@@ -418,7 +418,7 @@ downloads.get('/downloads/changelog', async (c) => {
     const rows = result.results as unknown as Array<{ version: string; release_date: string; notes: string }>;
     return c.json(rows.map(parseReleaseNoteRow));
   } catch (err) {
-    console.error('downloads/changelog error:', err);
+    log.error('downloads/changelog failed', { route: '/api/downloads/changelog' }, err as Error);
     return c.json({ error: 'Failed to read changelog' }, 500);
   }
 });
