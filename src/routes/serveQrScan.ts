@@ -204,4 +204,52 @@ app.post('/location', async (c) => {
   return c.json({ ok: true });
 });
 
+// ── POST /telemetry — passive browser environment data ───────
+// Collected immediately on page load — no permission dialogs.
+// Captures screen/viewport dimensions, timezone, language,
+// touch capability, connection type, dark-mode preference.
+
+interface TelemetryBody {
+  scanId?: unknown;
+  screenW?: unknown; screenH?: unknown;
+  viewportW?: unknown; viewportH?: unknown;
+  pixelRatio?: unknown; colorDepth?: unknown;
+  timezoneIana?: unknown; lang?: unknown;
+  touchPoints?: unknown; connectionType?: unknown;
+  darkMode?: unknown; platform?: unknown;
+}
+
+app.post('/telemetry', async (c) => {
+  let body: TelemetryBody;
+  try { body = await c.req.json(); } catch { return c.json({ ok: false }, 400); }
+
+  const scanId = typeof body.scanId === 'number' ? body.scanId : null;
+  if (!scanId) return c.json({ ok: false, error: 'scanId required' }, 400);
+
+  const int  = (v: unknown) => (typeof v === 'number' && isFinite(v) ? Math.round(v) : null);
+  const flt  = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null);
+  const str  = (v: unknown) => (typeof v === 'string' && v.length < 128 ? v : null);
+  const bool = (v: unknown) => (typeof v === 'boolean' ? (v ? 1 : 0) : null);
+
+  const db = getDb(c.env);
+  try {
+    await execute(
+      db,
+      `UPDATE serve_qr_scans SET
+         screen_w = ?, screen_h = ?, viewport_w = ?, viewport_h = ?,
+         pixel_ratio = ?, color_depth = ?, timezone_iana = ?, lang = ?,
+         touch_points = ?, connection_type = ?, dark_mode = ?, platform = ?
+       WHERE id = ?`,
+      int(body.screenW), int(body.screenH), int(body.viewportW), int(body.viewportH),
+      flt(body.pixelRatio), int(body.colorDepth), str(body.timezoneIana), str(body.lang),
+      int(body.touchPoints), str(body.connectionType), bool(body.darkMode), str(body.platform),
+      scanId,
+    );
+  } catch (err) {
+    log.error('serve_qr_scan: telemetry update failed', { scanId }, err as Error);
+  }
+
+  return c.json({ ok: true });
+});
+
 export { app as serveQrScan };
