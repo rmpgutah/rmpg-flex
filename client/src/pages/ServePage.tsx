@@ -3221,6 +3221,7 @@ export default function ServePage() {
         // default (every non-served/failed geocoded job).
         preselectedJobIds={selectedJobIds}
         mileageRate={serveMileageRate}
+        initialDate={selectedDate}
       />
 
       {/* Skip Trace Panel */}

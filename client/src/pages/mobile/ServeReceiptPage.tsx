@@ -965,7 +965,7 @@ export default function ServeReceiptPage() {
         </p>
       </header>
 
-      <div className="p-3 max-w-lg mx-auto w-full flex-1">
+      <div className="p-3 pb-28 max-w-lg mx-auto w-full flex-1">
         {/* The single most important sentence on this page. Recipients
             refuse to sign because they think it concedes something; say
             plainly that it does not, before anything else is asked. */}

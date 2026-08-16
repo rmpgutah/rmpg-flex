@@ -68,6 +68,10 @@ interface ServeRoutePlannerProps {
   preselectedJobIds?: Set<number>;
   onVerifyAddress?: (jobId: number) => void;
   mileageRate?: number;
+  /** YYYY-MM-DD date the parent page is currently viewing. Initializes the
+   *  date picker so the planner and Route tab always operate on the same date
+   *  by default. Defaults to today when omitted. */
+  initialDate?: string;
 }
 
 interface StopItem {
@@ -376,7 +380,7 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
-  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress, mileageRate,
+  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized, preselectedJobIds, onVerifyAddress, mileageRate, initialDate,
 }: ServeRoutePlannerProps) {
   const IRS_MILEAGE_RATE = mileageRate ?? 0.67;
   const TERMINAL_STATUSES = new Set<ServeJob['status']>(['served', 'failed', 'skipped', 'archived']);
@@ -394,11 +398,12 @@ export default function ServeRoutePlanner({
   const [totalDuration, setTotalDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
-  const [routeDate, setRouteDate] = useState(() => {
-    const d = new Date(); // new-date-ok — default to tomorrow for route planning
-    d.setDate(d.getDate() + 1);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  });
+  const [routeDate, setRouteDate] = useState(
+    () => initialDate ?? (() => {
+      const d = new Date(); // new-date-ok — default to today matching the page's date
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })(),
+  );
   const [plannedStartTime, setPlannedStartTime] = useState(
     () => localStorage.getItem('rmpg_route_start_time') ?? '08:00',
   );
@@ -444,9 +449,10 @@ export default function ServeRoutePlanner({
   // true = stats came from haversine estimate; false = from Mapbox Directions
   const [statsIsEstimate, setStatsIsEstimate] = useState(true);
 
-  // Reset derived stats when planner opens
+  // Reset derived stats when planner opens; sync date to the page's current date.
   useEffect(() => {
     if (!isOpen) return;
+    if (initialDate) setRouteDate(initialDate);
     setReturnLegMiles(0);
     setStopArrivalTimes(new Map());
     setShowSplitBanner(false);
