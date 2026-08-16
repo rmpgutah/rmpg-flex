@@ -1,7 +1,7 @@
 // Subject-facing landing page for the Notice of Attempt QR code.
 // Reached at /verify?ref=JOB-122 when the subject scans the QR code
-// printed on the notice. Calls the public /api/verify route on mount to
-// log the scan and notify the assigned process server.
+// printed on the notice. Calls the public /api/verify route on mount,
+// then fires a telemetry POST with passive browser environment data.
 
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -18,40 +18,67 @@ interface VerifyResponse {
   message: string;
 }
 
-// ── Styles (inline — this page is intentionally outside the app shell) ──
+// ── Design tokens (Navy/Silver — matches app Blue & Silver theme) ──
+// Surface: deep navy  |  Accent: cool silver  |  Text: near-white
+const C = {
+  pageBg:      '#1a3050',
+  cardBg:      '#22405f',
+  cardBorder:  'rgba(191,202,215,0.12)',   // silver-500 / 12%
+  eyebrow:     'rgba(207,216,226,0.5)',    // silver-400 / 50%
+  agencyName:  '#cfd8e2',                  // silver-400
+  refBadgeBg:  'rgba(0,0,0,0.22)',
+  refBadgeBdr: 'rgba(207,216,226,0.2)',
+  refBadgeTxt: 'rgba(207,216,226,0.85)',
+  verifiedBg:  'rgba(34,160,100,0.12)',
+  verifiedBdr: 'rgba(34,160,100,0.3)',
+  verifiedTxt: '#5de0a0',
+  bodyTxt:     'rgba(240,244,249,0.72)',
+  divider:     'rgba(191,202,215,0.12)',
+  callBtnBg:   '#2d5a8a',
+  callBtnTxt:  '#f0f4f9',
+  callBtnBdr:  'rgba(207,216,226,0.12)',
+  locBtnBg:    'rgba(207,216,226,0.06)',
+  locBtnTxt:   'rgba(207,216,226,0.6)',
+  locBtnBdr:   'rgba(207,216,226,0.14)',
+  noteTxt:     'rgba(207,216,226,0.35)',
+  footerTxt:   'rgba(207,216,226,0.28)',
+  successTxt:  '#5de0a0',
+  spinnerBdr:  'rgba(207,216,226,0.15)',
+  spinnerAcct: '#cfd8e2',
+};
 
-const S = {
+const S: Record<string, React.CSSProperties> = {
   page: {
     minHeight: '100dvh',
-    background: '#1a3050',
+    background: C.pageBg,
     display: 'flex',
-    flexDirection: 'column' as const,
+    flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     padding: '24px 16px',
     fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
   },
   card: {
-    background: '#22405f',
+    background: C.cardBg,
     borderRadius: 6,
     padding: '28px 24px 24px',
     maxWidth: 480,
     width: '100%',
-    boxShadow: '0 8px 32px rgb(0 0 0 / 0.5)',
-    border: '1px solid rgb(255 255 255 / 0.08)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+    border: `1px solid ${C.cardBorder}`,
   },
   eyebrow: {
     fontSize: 11,
     fontWeight: 700,
     letterSpacing: '0.14em',
-    color: 'rgb(255 255 255 / 0.55)',
-    textTransform: 'uppercase' as const,
+    color: C.eyebrow,
+    textTransform: 'uppercase',
     marginBottom: 6,
   },
   agencyName: {
     fontSize: 22,
     fontWeight: 700,
-    color: '#d9bd72',
+    color: C.agencyName,
     marginBottom: 20,
     lineHeight: 1.2,
   },
@@ -59,96 +86,119 @@ const S = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 6,
-    background: 'rgb(0 0 0 / 0.25)',
-    border: '1px solid rgb(255 255 255 / 0.15)',
+    background: C.refBadgeBg,
+    border: `1px solid ${C.refBadgeBdr}`,
     borderRadius: 4,
     padding: '5px 12px',
     fontSize: 13,
     fontWeight: 600,
     letterSpacing: '0.06em',
-    color: 'rgb(255 255 255 / 0.85)',
+    color: C.refBadgeTxt,
     marginBottom: 20,
+  },
+  verified: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: C.verifiedBg,
+    border: `1px solid ${C.verifiedBdr}`,
+    borderRadius: 4,
+    padding: '8px 12px',
+    fontSize: 13,
+    color: C.verifiedTxt,
+    marginBottom: 18,
   },
   body: {
     fontSize: 14,
     lineHeight: 1.75,
-    color: 'rgb(255 255 255 / 0.75)',
+    color: C.bodyTxt,
     marginBottom: 22,
   },
   divider: {
-    borderTop: '1px solid rgb(255 255 255 / 0.1)',
+    borderTop: `1px solid ${C.divider}`,
     margin: '20px 0',
   },
   callBtn: {
     display: 'block',
-    textAlign: 'center' as const,
-    background: '#2d5a8a',
-    color: '#fff',
+    textAlign: 'center',
+    background: C.callBtnBg,
+    color: C.callBtnTxt,
     borderRadius: 5,
     padding: '14px 20px',
     textDecoration: 'none',
     fontWeight: 700,
     fontSize: 16,
     letterSpacing: '0.01em',
-    border: '1px solid rgb(255 255 255 / 0.1)',
-    transition: 'background 0.15s',
+    border: `1px solid ${C.callBtnBdr}`,
   },
-  locationBtn: {
+  locBtn: {
     display: 'block',
     width: '100%',
+    boxSizing: 'border-box',
     marginTop: 10,
-    background: 'rgb(255 255 255 / 0.06)',
-    color: 'rgb(255 255 255 / 0.65)',
-    border: '1px solid rgb(255 255 255 / 0.12)',
+    background: C.locBtnBg,
+    color: C.locBtnTxt,
+    border: `1px solid ${C.locBtnBdr}`,
     borderRadius: 5,
     padding: '11px 16px',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
-    textAlign: 'center' as const,
+    textAlign: 'center',
   },
-  locationNote: {
+  note: {
     marginTop: 8,
     fontSize: 11,
-    color: 'rgb(255 255 255 / 0.35)',
-    textAlign: 'center' as const,
+    color: C.noteTxt,
+    textAlign: 'center',
     lineHeight: 1.5,
   },
   footer: {
     marginTop: 22,
     fontSize: 11,
-    color: 'rgb(255 255 255 / 0.3)',
-    textAlign: 'center' as const,
+    color: C.footerTxt,
+    textAlign: 'center',
     lineHeight: 1.6,
-  },
-  verified: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    background: 'rgb(34 160 100 / 0.15)',
-    border: '1px solid rgb(34 160 100 / 0.35)',
-    borderRadius: 4,
-    padding: '8px 12px',
-    fontSize: 13,
-    color: '#5de0a0',
-    marginBottom: 18,
   },
   spinner: {
     width: 20,
     height: 20,
-    border: '2px solid rgb(255 255 255 / 0.15)',
-    borderTopColor: '#d9bd72',
+    border: `2px solid ${C.spinnerBdr}`,
+    borderTopColor: C.spinnerAcct,
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
+    margin: '0 auto',
   },
 };
+
+// Collect passive browser environment data — no permission required.
+function collectTelemetry() {
+  const nav = navigator as Navigator & {
+    connection?: { effectiveType?: string };
+    userAgentData?: { platform?: string };
+  };
+  return {
+    screenW:       window.screen.width,
+    screenH:       window.screen.height,
+    viewportW:     window.innerWidth,
+    viewportH:     window.innerHeight,
+    pixelRatio:    window.devicePixelRatio,
+    colorDepth:    window.screen.colorDepth,
+    timezoneIana:  Intl.DateTimeFormat().resolvedOptions().timeZone,
+    lang:          navigator.language,
+    touchPoints:   navigator.maxTouchPoints,
+    connectionType: nav.connection?.effectiveType ?? null,
+    darkMode:      window.matchMedia('(prefers-color-scheme: dark)').matches,
+    platform:      nav.userAgentData?.platform ?? navigator.platform ?? null,
+  };
+}
 
 export default function VerifyNoticePage() {
   const [params] = useSearchParams();
   const ref = params.get('ref') ?? '';
   const [data, setData] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState(false);
-  const [locationState, setLocationState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
+  const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
   const scanIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -158,38 +208,47 @@ export default function VerifyNoticePage() {
       .then((d: VerifyResponse) => {
         setData(d);
         scanIdRef.current = d.scanId ?? null;
+        // Fire telemetry immediately — passive, no prompt
+        if (d.scanId) {
+          fetch(`${API_BASE}/api/verify/telemetry`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
+          }).catch(() => {/* best-effort */});
+        }
       })
       .catch(() => setError(true));
   }, [ref]);
 
   function requestLocation() {
-    if (!navigator.geolocation) { setLocationState('denied'); return; }
-    setLocationState('requesting');
+    if (!navigator.geolocation) { setLocState('denied'); return; }
+    setLocState('requesting');
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
         fetch(`${API_BASE}/api/verify/location`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
         }).catch(() => {/* best-effort */});
-        setLocationState('sent');
+        setLocState('sent');
       },
-      () => setLocationState('denied'),
+      () => setLocState('denied'),
       { timeout: 10000, maximumAge: 60000 },
     );
   }
 
+  const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
+
   if (error) {
     return (
       <div style={S.page}>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <style>{keyframes}</style>
         <div style={S.card}>
           <div style={S.eyebrow}>State of Utah · Private Process Server</div>
           <div style={S.agencyName}>Rocky Mountain Protective Group</div>
           <p style={S.body}>
             This QR code could not be verified. Please call{' '}
-            <a href="tel:+13853406555" style={{ color: '#d9bd72' }}>(385) 340-6555</a>{' '}
+            <a href="tel:+13853406555" style={{ color: C.agencyName }}>(385) 340-6555</a>{' '}
             to confirm the notice is genuine.
           </p>
           <div style={S.footer}>
@@ -203,10 +262,10 @@ export default function VerifyNoticePage() {
   if (!data) {
     return (
       <div style={S.page}>
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <style>{keyframes}</style>
         <div style={{ ...S.card, textAlign: 'center', padding: '40px 24px' }}>
           <div style={S.spinner} />
-          <div style={{ marginTop: 16, color: 'rgb(255 255 255 / 0.45)', fontSize: 13 }}>
+          <div style={{ marginTop: 16, color: C.noteTxt, fontSize: 13 }}>
             Verifying notice…
           </div>
         </div>
@@ -216,8 +275,7 @@ export default function VerifyNoticePage() {
 
   return (
     <div style={S.page}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
+      <style>{keyframes}</style>
       <div style={S.card}>
         <div style={S.eyebrow}>State of Utah · Private Process Server</div>
         <div style={S.agencyName}>{data.agency}</div>
@@ -225,7 +283,7 @@ export default function VerifyNoticePage() {
         {ref && <div style={S.refBadge}>REF: {ref}</div>}
 
         <div style={S.verified}>
-          <span style={{ fontSize: 16 }}>✓</span>
+          <span style={{ fontSize: 15 }}>✓</span>
           Notice verified — this is a genuine legal document.
         </div>
 
@@ -237,32 +295,27 @@ export default function VerifyNoticePage() {
           Call {data.phone}
         </a>
 
-        {locationState === 'idle' && scanIdRef.current !== null && (
+        {locState === 'idle' && scanIdRef.current !== null && (
           <>
-            <button style={S.locationBtn} onClick={requestLocation}>
-              📍 Share approximate location to help us serve you faster
+            <button style={S.locBtn} onClick={requestLocation}>
+              📍 Share location to help coordinate delivery
             </button>
-            <div style={S.locationNote}>
-              Optional — your browser will ask for permission. Used only to coordinate delivery.
+            <div style={S.note}>
+              Optional · your browser will ask for permission
             </div>
           </>
         )}
-
-        {locationState === 'requesting' && (
-          <div style={{ ...S.locationNote, marginTop: 14, color: 'rgb(255 255 255 / 0.5)' }}>
-            Waiting for location permission…
+        {locState === 'requesting' && (
+          <div style={{ ...S.note, marginTop: 14 }}>Waiting for permission…</div>
+        )}
+        {locState === 'sent' && (
+          <div style={{ ...S.note, marginTop: 14, color: C.successTxt }}>
+            ✓ Location shared.
           </div>
         )}
-
-        {locationState === 'sent' && (
-          <div style={{ ...S.locationNote, marginTop: 14, color: '#5de0a0' }}>
-            ✓ Location shared — our process server has been notified.
-          </div>
-        )}
-
-        {locationState === 'denied' && (
-          <div style={{ ...S.locationNote, marginTop: 14 }}>
-            Location not shared — call the number above to arrange delivery.
+        {locState === 'denied' && (
+          <div style={{ ...S.note, marginTop: 14 }}>
+            Location not shared — call us to arrange delivery.
           </div>
         )}
 
