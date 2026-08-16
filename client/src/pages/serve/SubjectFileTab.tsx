@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   User, FileText, MapPin, Phone, Mail, Calendar, Briefcase, Scale,
   Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
-  DollarSign, Camera, MessageSquare, RefreshCw, Search, Download,
+  DollarSign, Camera, MessageSquare, RefreshCw, Search, Download, QrCode,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -19,6 +19,57 @@ interface ServeComment {
   body: string;
   created_at: string;
   is_system: number;
+}
+
+interface QrScan {
+  id: number;
+  job_ref: string;
+  scanned_at: string;
+  ip_address: string | null;
+  geo_city: string | null;
+  geo_region: string | null;
+  geo_country: string | null;
+  geo_lat: number | null;
+  geo_lon: number | null;
+  geo_source: string | null;
+  device_type: string | null;
+  platform: string | null;
+  timezone_iana: string | null;
+  lang: string | null;
+  screen_w: number | null;
+  screen_h: number | null;
+  viewport_w: number | null;
+  viewport_h: number | null;
+  pixel_ratio: number | null;
+  color_depth: number | null;
+  touch_points: number | null;
+  connection_type: string | null;
+  dark_mode: number | null;
+  // from serve_scan_details (may be null if details beacon hasn't fired yet)
+  hardware_concurrency: number | null;
+  device_memory: number | null;
+  battery_level: number | null;
+  battery_charging: number | null;
+  connection_downlink: number | null;
+  connection_rtt: number | null;
+  connection_save_data: number | null;
+  screen_avail_w: number | null;
+  screen_avail_h: number | null;
+  screen_orientation: string | null;
+  color_gamut: string | null;
+  hdr_support: number | null;
+  reduced_motion: number | null;
+  pointer_type: string | null;
+  cookie_enabled: number | null;
+  do_not_track: number | null;
+  canvas_fingerprint: string | null;
+  webgl_vendor: string | null;
+  webgl_renderer: string | null;
+  local_ips: string | null;
+  history_length: number | null;
+  referrer: string | null;
+  pdf_support: number | null;
+  time_on_page_ms: number | null;
 }
 
 type SubjectFileJob = ServeJob;
@@ -82,7 +133,7 @@ function AttemptRow({ attempt, index }: { attempt: ServeAttempt; index: number }
           <Field label="Person Served" value={attempt.person_served_name} />
           <Field label="Relationship" value={attempt.person_served_relationship} />
           <Field label="Description" value={attempt.person_served_description} />
-          <Field label="GPS" value={attempt.latitude != null ? `${attempt.latitude.toFixed(5)}, ${attempt.longitude?.toFixed(5)}` : null} mono />
+          <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
           <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
           <Field label="Photos" value={attempt.photo_ids?.length ? `${attempt.photo_ids.length} attached` : null} />
           <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
@@ -179,6 +230,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [attempts, setAttempts] = useState<ServeAttempt[]>([]);
   const [skipTraces, setSkipTraces] = useState<ServeSkipTrace[]>([]);
   const [comments, setComments] = useState<ServeComment[]>([]);
+  const [qrScans, setQrScans] = useState<QrScan[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async (id: number) => {
@@ -186,15 +238,19 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
     try {
       const [jobRes, attRes, commRes] = await Promise.all([
         apiFetch<SubjectFileJob>(`/process-server/${id}`),
-        apiFetch<ServeAttempt[]>(`/process-server/${id}/attempt`).catch(() => [] as ServeAttempt[]),
+        apiFetch<ServeAttempt[]>(`/serve-intake/${id}/attempts`).catch(() => [] as ServeAttempt[]),
         apiFetch<ServeComment[]>(`/process-server/${id}/comments`).catch(() => [] as ServeComment[]),
       ]);
       setJob(jobRes);
       setAttempts(attRes ?? []);
       setComments(commRes ?? []);
 
-      const stRes = await apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${id}/skip-trace`).catch(() => null);
+      const [stRes, scanRes] = await Promise.all([
+        apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${id}/skip-trace`).catch(() => null),
+        apiFetch<{ ok: boolean; scans: QrScan[] }>(`/verify/scans?jobRef=JOB-${id}`).catch(() => null),
+      ]);
       setSkipTraces(stRes?.data ?? []);
+      setQrScans(scanRes?.scans ?? []);
     } catch {
       /* toast handled by apiFetch */
     }
@@ -288,7 +344,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               <div className="col-span-2">
                 <Field label="Address" value={[job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip].filter(Boolean).join(', ')} />
               </div>
-              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${job.recipient_lat.toFixed(5)}, ${job.recipient_lng?.toFixed(5)}` : null} mono />
+              <Field label="Lat / Lng" value={job.recipient_lat != null ? `${Number(job.recipient_lat).toFixed(5)}, ${Number(job.recipient_lng).toFixed(5)}` : null} mono />
               <Field label="Geocode Source" value={job.geocode_source ? formatEnumValue(job.geocode_source) : null} />
               {job.contact_restrictions && (
                 <div className="col-span-2">
@@ -352,8 +408,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
 
             {/* Billing */}
             <Section title="Billing" icon={DollarSign} defaultOpen={false}>
-              <Field label="Serve Fee" value={job.serve_fee != null ? `$${job.serve_fee.toFixed(2)}` : null} />
-              <Field label="Rush Fee" value={job.rush_fee != null ? `$${job.rush_fee.toFixed(2)}` : null} />
+              <Field label="Serve Fee" value={job.serve_fee != null ? `$${Number(job.serve_fee).toFixed(2)}` : null} />
+              <Field label="Rush Fee" value={job.rush_fee != null ? `$${Number(job.rush_fee).toFixed(2)}` : null} />
               <Field
                 label="Payment Status"
                 value={job.payment_status ? (
@@ -364,7 +420,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                   }>{formatEnumValue(job.payment_status)}</span>
                 ) : null}
               />
-              <Field label="Mileage" value={job.mileage_actual != null ? `${job.mileage_actual.toFixed(1)} mi` : null} />
+              <Field label="Mileage" value={job.mileage_actual != null ? `${Number(job.mileage_actual).toFixed(1)} mi` : null} />
             </Section>
 
             {/* Attempt History */}
@@ -394,6 +450,105 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       <span className="text-[10px] text-text-secondary">{safeDateStr(st.created_at)}</span>
                     </div>
                     <Field label="Addresses Found" value={st.addresses_found?.length ? `${st.addresses_found.length} results` : null} />
+                  </div>
+                ))}
+              </Section>
+            )}
+
+            {/* QR Scan History */}
+            {qrScans.length > 0 && (
+              <Section title={`QR Scan Intelligence (${qrScans.length} scan${qrScans.length !== 1 ? 's' : ''})`} icon={QrCode} defaultOpen>
+                {qrScans.map((scan, idx) => (
+                  <div key={scan.id} className="col-span-2 border border-border-subtle rounded-[2px] overflow-hidden">
+                    {/* Scan header */}
+                    <div className="flex items-center justify-between px-3 py-2 bg-rmpg-900/60 border-b border-border-subtle">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Scan #{idx + 1}</span>
+                        {scan.device_type && (
+                          <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800 text-rmpg-200">
+                            {formatEnumValue(scan.device_type)}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-text-secondary font-mono">{safeDateStr(scan.scanned_at)}</span>
+                    </div>
+                    <div className="p-3 grid grid-cols-2 gap-x-6 gap-y-3">
+                      {/* Network / Location */}
+                      <Field label="IP Address" value={scan.ip_address} mono />
+                      {(scan.geo_city || scan.geo_region || scan.geo_country) && (
+                        <Field label="Geo Location" value={[scan.geo_city, scan.geo_region, scan.geo_country].filter(Boolean).join(', ')} />
+                      )}
+                      {scan.geo_lat != null && (
+                        <Field label="Geo Coords" value={`${Number(scan.geo_lat).toFixed(4)}, ${Number(scan.geo_lon).toFixed(4)}`} mono />
+                      )}
+                      {scan.geo_source && <Field label="Geo Source" value={formatEnumValue(scan.geo_source)} />}
+                      {scan.local_ips && (
+                        <div className="col-span-2">
+                          <Field label="Local IPs (WebRTC)" value={scan.local_ips} mono />
+                        </div>
+                      )}
+                      {scan.connection_type && <Field label="Connection" value={formatEnumValue(scan.connection_type)} />}
+                      {scan.connection_downlink != null && (
+                        <Field label="Downlink" value={`${Number(scan.connection_downlink).toFixed(1)} Mbps${scan.connection_rtt != null ? ` / ${scan.connection_rtt}ms RTT` : ''}`} mono />
+                      )}
+                      {scan.connection_save_data === 1 && <Field label="Data Saver" value="Enabled" />}
+                      {/* Device / Platform */}
+                      <Field label="Platform" value={scan.platform} />
+                      <Field label="Language" value={scan.lang} />
+                      <Field label="Timezone" value={scan.timezone_iana} />
+                      {scan.screen_w != null && (
+                        <Field label="Screen" value={`${scan.screen_w}×${scan.screen_h}${scan.pixel_ratio != null ? ` @${Number(scan.pixel_ratio).toFixed(1)}x` : ''}`} mono />
+                      )}
+                      {scan.viewport_w != null && (
+                        <Field label="Viewport" value={`${scan.viewport_w}×${scan.viewport_h}`} mono />
+                      )}
+                      {scan.touch_points != null && Number(scan.touch_points) > 0 && (
+                        <Field label="Touch Points" value={String(scan.touch_points)} mono />
+                      )}
+                      {scan.pointer_type && <Field label="Pointer" value={formatEnumValue(scan.pointer_type)} />}
+                      {scan.hardware_concurrency != null && (
+                        <Field label="CPU Cores" value={String(scan.hardware_concurrency)} mono />
+                      )}
+                      {scan.device_memory != null && (
+                        <Field label="RAM" value={`${scan.device_memory} GB`} mono />
+                      )}
+                      {/* Battery */}
+                      {scan.battery_level != null && (
+                        <Field
+                          label="Battery"
+                          value={`${Math.round(Number(scan.battery_level) * 100)}%${scan.battery_charging === 1 ? ' ⚡' : ''}`}
+                          mono
+                        />
+                      )}
+                      {/* Display / A11y */}
+                      {scan.color_gamut && <Field label="Color Gamut" value={scan.color_gamut.toUpperCase()} />}
+                      {scan.dark_mode != null && <Field label="Dark Mode" value={scan.dark_mode ? 'Yes' : 'No'} />}
+                      {scan.reduced_motion === 1 && <Field label="Reduced Motion" value="Enabled" />}
+                      {/* Privacy signals */}
+                      {scan.do_not_track === 1 && <Field label="Do Not Track" value="Enabled" />}
+                      {scan.cookie_enabled === 0 && <Field label="Cookies" value="Disabled" />}
+                      {/* Fingerprint */}
+                      {scan.webgl_vendor && (
+                        <div className="col-span-2">
+                          <Field label="GPU" value={[scan.webgl_vendor, scan.webgl_renderer].filter(Boolean).join(' — ')} mono />
+                        </div>
+                      )}
+                      {scan.canvas_fingerprint && (
+                        <div className="col-span-2">
+                          <Field label="Canvas Fingerprint" value={scan.canvas_fingerprint.slice(0, 32) + '…'} mono />
+                        </div>
+                      )}
+                      {/* Engagement */}
+                      {scan.time_on_page_ms != null && (
+                        <Field label="Time on Page" value={`${Math.round(Number(scan.time_on_page_ms) / 1000)}s`} mono />
+                      )}
+                      {scan.referrer && (
+                        <div className="col-span-2">
+                          <Field label="Referrer" value={scan.referrer} mono />
+                        </div>
+                      )}
+                      {scan.pdf_support === 1 && <Field label="PDF Support" value="Yes" />}
+                    </div>
                   </div>
                 ))}
               </Section>
