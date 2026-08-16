@@ -11,9 +11,10 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
+import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useToast } from '../components/ToastProvider';
@@ -1106,6 +1107,7 @@ export default function ServePage() {
     data: { totalDistance: number; totalDuration: number; fuelCost: number },
   ) => {
     setRouteData({ orderedIds: orderedJobIds, ...data });
+    setActiveTab('Route');
     // Persist sort order to server
     try {
       await apiFetch('/process-server/reorder', {
@@ -2601,13 +2603,17 @@ export default function ServePage() {
         {/* ── Route Tab (Step 3.4) ──────────────────────────────── */}
         {activeTab === 'Route' && (
           <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
-            {savedRoute && savedRoute.optimized_order_json ? (() => {
+            {/* Use routeData as an immediate fallback before savedRoute arrives from DB */}
+            {(savedRoute?.optimized_order_json || routeData) ? (() => {
               const orderIds: number[] = (() => {
-                try {
-                  return typeof savedRoute.optimized_order_json === 'string'
-                    ? JSON.parse(savedRoute.optimized_order_json)
-                    : savedRoute.optimized_order_json;
-                } catch { return []; }
+                if (savedRoute?.optimized_order_json) {
+                  try {
+                    return typeof savedRoute.optimized_order_json === 'string'
+                      ? JSON.parse(savedRoute.optimized_order_json)
+                      : savedRoute.optimized_order_json;
+                  } catch { /* fall through to routeData */ }
+                }
+                return routeData?.orderedIds ?? [];
               })();
               const routeJobs = orderIds
                 .map(id => jobs.find(j => j.id === id))
@@ -2616,21 +2622,36 @@ export default function ServePage() {
               const totalStops = routeJobs.length;
               const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
 
+              // Per-stop ETA estimates: run haversine nearest-neighbor on the
+              // ordered job list so the Route tab shows arrival times without
+              // another API call. Plain IIFE (not useMemo) because this runs
+              // inside a conditional render expression where hooks are banned.
+              const stopEtas: Map<number, number> = (() => {
+                const geocoded = routeJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
+                if (geocoded.length < 1) return new Map<number, number>();
+                const stopItems = geocoded.map((j, i) => ({ job: j, selected: true, order: i }));
+                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null);
+                const map = new Map<number, number>();
+                ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) map.set(s.job.id, perStopArrivalMs[i]); });
+                return map;
+              })();
+
               return (
                 <>
                   {/* Stats bar */}
-                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-rmpg-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span> stops
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-4 sm:flex-wrap px-3 py-2.5 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                      <MapPin size={12} className="text-fg-secondary" />
+                      <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span>
+                      <span>stops</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Navigation size={12} className="text-emerald-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Calendar size={12} className="text-amber-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_time_minutes
@@ -2638,8 +2659,26 @@ export default function ServePage() {
                           : '--'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs ml-auto">
-                      <span className="font-mono tabular-nums text-brand-gold-500">
+                    {savedRoute?.total_distance_miles && (
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                        <span className="text-[color:var(--field-label-color)] font-mono">$</span>
+                        <span className="font-mono tabular-nums text-rmpg-100">
+                          ${(Number(savedRoute.total_distance_miles) * serveMileageRate).toFixed(2)}
+                        </span>
+                        <span className="text-fg-muted text-[9px]">fuel</span>
+                      </div>
+                    )}
+                    {savedRoute?.total_distance_miles && totalStops > 0 && (
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                        <Gauge size={11} className="text-fg-muted" />
+                        <span className="font-mono tabular-nums text-rmpg-100">
+                          {(totalStops / Number(savedRoute.total_distance_miles)).toFixed(1)}
+                        </span>
+                        <span className="text-fg-muted text-[9px]">stops/mi</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs sm:ml-auto col-span-2 sm:col-span-1">
+                      <span className="font-mono tabular-nums text-[color:var(--field-label-color)]">
                         {completedCount}/{totalStops} done ({progressPct}%)
                       </span>
                     </div>
@@ -2658,57 +2697,103 @@ export default function ServePage() {
                     {routeJobs.map((job, idx) => {
                       const isCompleted = job.status === 'served';
                       const isFailed = job.status === 'failed';
+                      const deadlineDate = job.deadline ? parseTimestamp(job.deadline) : null;
+                      const isOverdue = deadlineDate && deadlineDate < new Date(); // new-date-ok — wall-clock comparison
+                      const priorityColors: Record<string, string> = {
+                        urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
+                        rush: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
+                        normal: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
+                        routine: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
+                      };
+                      const twColors: Record<string, string> = {
+                        morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+                        afternoon: 'bg-surface-sunken/40 text-fg-secondary border-border-default/50',
+                        evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
+                        anytime: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
+                      };
                       return (
                         <div
                           key={job.id}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
+                          className={`flex items-start gap-2.5 px-3 py-2.5 rounded-[2px] border transition-all duration-150 ${
                             isCompleted
                               ? 'bg-green-900/10 border-green-800/30 opacity-60'
                               : isFailed
                                 ? 'bg-red-900/10 border-red-800/30 opacity-60'
-                                : 'bg-surface-raised border-rmpg-700 hover:border-rmpg-400/30'
+                                : 'bg-surface-raised border-rmpg-700 hover:border-rmpg-500/40'
                           }`}
                         >
                           {/* Stop number */}
                           <span
-                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 ${
+                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 mt-0.5 ${
                               isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : job.status === 'in_progress' ? 'bg-amber-500' : 'bg-rmpg-500'
                             }`}
                           >
                             {idx + 1}
                           </span>
 
-                          {/* Completion indicator */}
-                          {isCompleted ? (
-                            <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
-                          ) : (
-                            <Circle size={14} className="text-rmpg-600 flex-shrink-0" />
-                          )}
-
                           {/* Info */}
                           <div className="flex-1 min-w-0">
-                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-rmpg-100'}`}>
-                              {job.recipient_name}
+                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                              <span className={`text-xs font-medium truncate ${isCompleted ? 'text-fg-muted line-through' : 'text-rmpg-100'}`}>
+                                {job.recipient_name}
+                              </span>
+                              {job.priority && job.priority !== 'normal' && (
+                                <span className={`text-[9px] px-1 py-0.5 rounded-[2px] border font-mono uppercase flex-shrink-0 ${priorityColors[job.priority] ?? priorityColors.normal}`}>
+                                  {job.priority}
+                                </span>
+                              )}
+                              {job.time_window && job.time_window !== 'anytime' && (
+                                <span className={`text-[9px] px-1 py-0.5 rounded-[2px] border font-mono flex-shrink-0 ${twColors[job.time_window] ?? twColors.anytime}`}>
+                                  {job.time_window}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[10px] text-rmpg-500 truncate">
+                            <div className="text-[10px] text-fg-muted truncate">
                               {job.recipient_address || 'No address'}
                               {(job as any).recipient_address_2 ? `, ${(job as any).recipient_address_2}` : ''}
                               {job.recipient_city ? `, ${job.recipient_city}` : ''}
                             </div>
+                            {stopEtas.has(job.id) && (
+                              <div className={`text-[9px] font-mono mt-0.5 ${isCompleted ? 'text-fg-muted' : 'text-fg-secondary'}`}>
+                                ETA {new Date(stopEtas.get(job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms */}
+                              </div>
+                            )}
+                            {deadlineDate && (
+                              <div className={`text-[9px] font-mono mt-0.5 ${isOverdue ? 'text-red-400' : 'text-fg-muted'}`}>
+                                {isOverdue ? '⚠ ' : ''}Deadline: {deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {/* new-date-ok — from DB */}
+                              </div>
+                            )}
+                            {(job as any).case_number && (
+                              <div className="text-[9px] text-fg-muted font-mono mt-0.5">
+                                Case #{(job as any).case_number}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Status badge */}
-                          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0 border ${
-                            isCompleted
-                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                              : isFailed
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                : job.status === 'in_progress'
-                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                  : 'bg-rmpg-500/10 text-rmpg-400 border-rmpg-500/20'
-                          }`}>
-                            {toDisplayLabel(job.status)}
-                          </span>
+                          {/* Right side: status + navigate */}
+                          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                            <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] border ${
+                              isCompleted
+                                ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                : isFailed
+                                  ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                  : job.status === 'in_progress'
+                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    : 'bg-rmpg-500/10 text-fg-secondary border-rmpg-500/20'
+                            }`}>
+                              {toDisplayLabel(job.status)}
+                            </span>
+                            {!isCompleted && !isFailed && (job.recipient_lat != null || job.recipient_address) && (
+                              <button
+                                type="button"
+                                onClick={() => handleNavigate(job.id)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono text-emerald-400 bg-emerald-900/20 border border-emerald-700/40 rounded-[2px] hover:bg-emerald-900/40 transition-colors"
+                                aria-label={`Navigate to ${job.recipient_name}`}
+                              >
+                                <Navigation size={9} /> Nav
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

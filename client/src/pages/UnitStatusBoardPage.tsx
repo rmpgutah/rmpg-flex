@@ -326,9 +326,9 @@ export default function UnitStatusBoardPage() {
     if (!matchesFilter(u, filter)) return false;
     if (!q) return true;
     return (
-      u.officer_name.toLowerCase().includes(q) ||
-      u.badge.toLowerCase().includes(q) ||
-      u.unit_id.toLowerCase().includes(q)
+      (u.officer_name?.toLowerCase() ?? '').includes(q) ||
+      (u.badge?.toLowerCase() ?? '').includes(q) ||
+      (u.unit_id?.toLowerCase() ?? '').includes(q)
     );
   });
 

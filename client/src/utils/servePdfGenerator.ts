@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import {
   addConfidentialWatermark,
   addReportHeader,
@@ -1360,6 +1361,27 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   );
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
+  // ── Subject-facing QR code ──
+  try {
+    const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+    });
+    const QR_SIZE = 22;
+    const qrX = getRailX();
+    const pageH = doc.internal.pageSize.getHeight();
+    const qrY = pageH - 8 - 2 - QR_SIZE;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('Scan to verify', qrX + QR_SIZE / 2, qrY + QR_SIZE + 2.5, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  } catch {
+    // best-effort
+  }
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -1373,17 +1395,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   tightLayout = false;
 
   finalizePoliceReport(doc, {
-    barcode: {
-      formMetadata: {
-        form: 'NOTICE-OF-ATTEMPT',
-        caseNumber: data.caseNumber,
-        agency: 'RMPG',
-        agencyOri: 'UT0180100',
-        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
-        officer: data.serverName,
-        badge: data.serverBadge,
-      },
-    },
+    barcode: { disabled: true },
   });
 
   return doc;

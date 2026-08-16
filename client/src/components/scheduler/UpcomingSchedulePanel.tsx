@@ -52,7 +52,7 @@ export default function UpcomingSchedulePanel() {
             <button key={i.key} onClick={() => navigate(i.link || '/scheduler')}
               className="w-full flex items-center gap-2 px-3 py-[4px] text-left text-[11px] hover:bg-surface-base/60">
               <Icon className={`w-3.5 h-3.5 shrink-0 ${TONES[i.source]}`} />
-              <span className="font-mono text-rmpg-400 w-[86px] shrink-0">{i.date.slice(5)}{i.start ? ` ${i.start}` : ''}</span>
+              <span className="font-mono text-rmpg-400 w-[86px] shrink-0">{i.date?.slice(5) ?? ''}{i.start ? ` ${i.start}` : ''}</span>
               <span className="truncate text-rmpg-100">{i.title}</span>
             </button>
           );

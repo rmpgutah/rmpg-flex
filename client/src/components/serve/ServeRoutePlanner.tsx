@@ -403,6 +403,10 @@ export default function ServeRoutePlanner({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // Fingerprint of the stop selection+order when Directions last ran.
+  // Auto-compute skips when this matches the current order to avoid
+  // overwriting precise routed stats with haversine estimates.
+  const lastDirectionsOrderKeyRef = useRef<string>('');
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
   const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
@@ -433,6 +437,8 @@ export default function ServeRoutePlanner({
     newEtas: string[];
   } | null>(null);
   const [routeAccepted, setRouteAccepted] = useState(false);
+  // true = stats came from haversine estimate; false = from Mapbox Directions
+  const [statsIsEstimate, setStatsIsEstimate] = useState(true);
 
   // Reset derived stats when planner opens
   useEffect(() => {
@@ -541,6 +547,41 @@ export default function ServeRoutePlanner({
         firstSelectedStop.job.recipient_lat, firstSelectedStop.job.recipient_lng,
       )
     : null;
+
+  // Auto-compute haversine stats whenever stops are reordered or selection changes.
+  // Gives immediate feedback without requiring "Optimize Route". Skips when the
+  // current order key matches lastDirectionsOrderKeyRef (Directions result still valid)
+  // or when a Directions optimize is actively running (it sets its own stats).
+  useEffect(() => {
+    if (optimizing) return;
+    const selected = stops.filter(s => s.selected);
+    const currentKey = selected.map(s => s.job.id).join(',') + ':' + String(returnToStart);
+    if (currentKey === lastDirectionsOrderKeyRef.current) return;
+    if (selected.length < 1) {
+      setTotalDistance(0);
+      setTotalDuration(0);
+      setReturnLegMiles(0);
+      setStopArrivalTimes(new Map());
+      return;
+    }
+    const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds, perStopArrivalMs } =
+      nearestNeighborOrder(selected, routeOrigin);
+    let returnMi = 0;
+    if (returnToStart && routeOrigin && ordered.length > 0) {
+      const last = ordered[ordered.length - 1];
+      returnMi = haversineMiles(last.job.recipient_lat!, last.job.recipient_lng!, routeOrigin.lat, routeOrigin.lng);
+    }
+    const totalDur = totalDurationMinutes + estimateDriveMinutes(returnMi);
+    setTotalDistance(totalDistanceMiles + returnMi);
+    setTotalDuration(totalDur);
+    setReturnLegMiles(returnMi);
+    setStatsIsEstimate(true);
+    const arrivals = new Map<number, number>();
+    ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) arrivals.set(s.job.id, perStopArrivalMs[i]); });
+    setStopArrivalTimes(arrivals);
+    setMissedDeadlineIds(missedDeadlineJobIds);
+    setShowSplitBanner(totalDur > 480);
+  }, [stops, routeOrigin, returnToStart, optimizing]);
 
   useEffect(() => {
     if (!isOpen || savedRouteLoaded) return;
@@ -711,24 +752,8 @@ export default function ServeRoutePlanner({
     selected: s.job.recipient_lat != null && s.job.recipient_lng != null,
   }))), []);
   const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
-  const moveStop = useCallback((idx: number, dir: -1 | 1) => {
-    setStops(prev => {
-      const next = [...prev];
-      const targetIdx = idx + dir;
-      if (targetIdx < 0 || targetIdx >= next.length) return prev;
-      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
-      return next.map((s, i) => ({ ...s, order: i }));
-    });
-  }, []);
-  // Drag-and-drop reorder — mirrors the pattern already used for PDF page
-  // thumbnails (pdf-editor/components/ThumbnailSidebar.tsx): a moved stop is
-  // spliced out and reinserted at the drop index rather than swapped, so
-  // dragging stop 1 onto stop 5 shifts 2-5 up by one instead of just
-  // swapping 1 and 5 (what the up/down arrows do one step at a time).
-  const reorderStop = useCallback((fromIdx: number, toIdx: number) => {
-    setStops(prev => reorderList(prev, fromIdx, toIdx).map((s, i) => ({ ...s, order: i })));
-  }, []);
 
+  // Defined before moveStop/reorderStop so those callbacks can reference it.
   const clearRouteFromMap = useCallback(() => {
     if (!mapRef.current) return;
     const srcId = routeSourceIdRef.current;
@@ -744,6 +769,30 @@ export default function ServeRoutePlanner({
       returnRouteSourceIdRef.current = null;
     }
   }, []);
+
+  const moveStop = useCallback((idx: number, dir: -1 | 1) => {
+    setStops(prev => {
+      const next = [...prev];
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= next.length) return prev;
+      [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+      return next.map((s, i) => ({ ...s, order: i }));
+    });
+    // Invalidate the Directions fingerprint so auto-compute kicks in,
+    // and remove the now-stale route polyline from the map.
+    lastDirectionsOrderKeyRef.current = '';
+    clearRouteFromMap();
+  }, [clearRouteFromMap]);
+  // Drag-and-drop reorder — mirrors the pattern already used for PDF page
+  // thumbnails (pdf-editor/components/ThumbnailSidebar.tsx): a moved stop is
+  // spliced out and reinserted at the drop index rather than swapped, so
+  // dragging stop 1 onto stop 5 shifts 2-5 up by one instead of just
+  // swapping 1 and 5 (what the up/down arrows do one step at a time).
+  const reorderStop = useCallback((fromIdx: number, toIdx: number) => {
+    setStops(prev => reorderList(prev, fromIdx, toIdx).map((s, i) => ({ ...s, order: i })));
+    lastDirectionsOrderKeyRef.current = '';
+    clearRouteFromMap();
+  }, [clearRouteFromMap]);
 
   const optimizeRoute = useCallback(async () => {
     const selected = stops.filter(s => s.selected);
@@ -812,10 +861,12 @@ export default function ServeRoutePlanner({
       // F5: store missed deadline ids for pre-confirm dialog
       setMissedDeadlineIds(missedDeadlineJobIds);
       const unselected = stops.filter(s => !s.selected);
-      setStops([
+      const newStopsOffline = [
         ...ordered.map((s, i) => ({ ...s, order: i })),
         ...unselected.map((s, i) => ({ ...s, order: ordered.length + i })),
-      ]);
+      ];
+      setStops(newStopsOffline);
+      lastDirectionsOrderKeyRef.current = ordered.map(s => s.job.id).join(',') + ':' + String(returnToStart);
       const deadlineWarning = describeMissedDeadlines(missedDeadlineJobIds, selected);
       setError(
         'Map unavailable — used straight-line distance estimate instead of driving directions.'
@@ -1035,6 +1086,7 @@ export default function ServeRoutePlanner({
         ...unselected.map((s, i) => ({ ...s, order: allOrderedStops.length + i })),
       ];
       setStops(newStops);
+      lastDirectionsOrderKeyRef.current = allOrderedStops.map(s => s.job.id).join(',') + ':' + String(returnToStart);
 
       // Never report a partly-estimated route as if it were fully routed —
       // the distance drives the mileage figure the officer bills against.
@@ -1052,6 +1104,7 @@ export default function ServeRoutePlanner({
       setError(err?.message || 'Route optimization failed');
     } finally {
       setOptimizing(false);
+      setStatsIsEstimate(false);
       // Apply server optimizer results: ETAs, geocode warnings, matrixFallback.
       // Runs after client-side stops are set so the ETA lookup array aligns.
       const serverResult = await serverOptimizePromise;
@@ -1631,7 +1684,14 @@ export default function ServeRoutePlanner({
                   <span className="text-amber-400 font-mono">{returnLegMiles.toFixed(1)} mi</span>
                 </div>
               )}
-              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-rmpg-100 font-mono">{totalDistance.toFixed(1)} mi {returnLegMiles > 0 && <span className="text-fg-muted text-[9px]">(circular)</span>}</span></div>
+              <div className="flex justify-between text-xs">
+                <span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> Distance:</span>
+                <span className="text-rmpg-100 font-mono flex items-center gap-1">
+                  {totalDistance.toFixed(1)} mi
+                  {returnLegMiles > 0 && <span className="text-fg-muted text-[9px]">(circular)</span>}
+                  {statsIsEstimate && totalDistance > 0 && <span className="text-rmpg-600 text-[9px]">(est.)</span>}
+                </span>
+              </div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
