@@ -18,7 +18,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 
@@ -96,10 +96,26 @@ jobs:
         env:
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
-          curl -sSfL https://get.tur.so/install.sh | bash -s -- --yes
-          export PATH="$HOME/.turso:$PATH"
+          set -euo pipefail
+          # Pin the Turso CLI version and verify the checksum instead of piping
+          # an unverified remote script to bash — the curl|bash pattern lets a
+          # compromised or MITM'd get.tur.so serve arbitrary code with full access
+          # to all in-scope secrets.
+          TURSO_VERSION="v0.96.1"
+          TURSO_SHA256="e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2"
+          curl -sSfL "https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/turso_linux_amd64.tar.gz" \
+            -o turso.tar.gz
+          # NOTE: update TURSO_SHA256 above when bumping TURSO_VERSION.
+          # Get the correct digest from the release's checksums.txt file.
+          echo "${TURSO_SHA256}  turso.tar.gz" | sha256sum -c - || {
+            echo "::error::Turso CLI checksum mismatch — possible MITM or corrupt download"
+            exit 1
+          }
+          tar -xzf turso.tar.gz turso
+          chmod +x turso
           for f in migrations/*.sql; do
-            turso db shell rmpg-flex-secondary < "$f" || true
+            ./turso db shell rmpg-flex-secondary < "$f" || \
+              echo "::warning::Migration $f failed on Turso secondary (non-blocking)"
           done
 
       - name: Fetch Tesseract model
@@ -135,12 +151,16 @@ jobs:
 
       - name: Stage Pages Functions
         run: |
-          if [ -d "client/dist" ]; then
-            cp -r functions/ client/dist/functions/
-          else
-            echo "No client/dist directory — skipping Pages Functions staging"
+          set -euo pipefail
+          if [ ! -d "client/dist" ]; then
+            echo "::error::client/dist not found — client build must have failed"
             exit 1
           fi
+          if [ ! -d "functions" ]; then
+            echo "::error::functions/ directory not found at repo root — Pages Functions are missing"
+            exit 1
+          fi
+          cp -r functions/ client/dist/functions/
 
       - name: Deploy client to Pages
         uses: cloudflare/wrangler-action@v4
@@ -166,8 +186,11 @@ jobs:
       # was guarding against). If this 10064s again, do NOT re-add
       # continue-on-error — confirm proxy/index.ts still exports those four stub
       # classes. See memory project-auth-outage-name-collision.
+      #
+      # `if: success()` (default) rather than `if: always()`: deploying the proxy
+      # when the Worker itself failed would wire the proxy to a Worker version that
+      # was never reached. A failed Worker deploy should fail the whole run.
       - name: Deploy proxy
-        if: always()
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}

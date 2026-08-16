@@ -213,6 +213,7 @@ jobs:
 
   client-entry-size:
     name: client-entry-size
+    needs: [client-typecheck]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
