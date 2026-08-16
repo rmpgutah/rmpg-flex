@@ -20,6 +20,10 @@ name: PR Guards
 on:
   pull_request: {}
 
+concurrency:
+  group: pr-guards-${{ github.ref }}
+  cancel-in-progress: true
+
 # Least-privilege GITHUB_TOKEN (CWE-275). Every check here only reads the
 # repo and diffs against the PR base — no comments, no writes.
 permissions:

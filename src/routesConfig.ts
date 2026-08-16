@@ -264,6 +264,8 @@ import drivingEvents from './routes/drivingEvents';
 // Admin database repair — rebuild corrupt FTS tables (persons_fts, cases_fts)
 // that trigger SQLITE_CORRUPT_VTAB on every person/case write.
 import adminRepair from './routes/admin/repair';
+import crypto from './routes/crypto';
+import browserSearch from './routes/browserSearch';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -808,4 +810,14 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // FlexOS system routes: remote lock (KV-backed), active-call polling,
   // unit status read/write. Used by the FlexOS desktop system context.
   { prefix: '/api/system', router: systemRoutes, auth: 'required' },
+
+  // Post-quantum crypto admin — key material & sealing/signing (admin/manager
+  // gated inside the route). Was never wired into routesConfig despite its
+  // header comment claiming so; all /api/crypto/* requests were silently 404ing.
+  { prefix: '/api/crypto', router: crypto, auth: 'required' },
+
+  // Branded browser search proxy — DuckDuckGo Instant Answer proxied server-side
+  // so no third-party domain appears in headless Chrome navigations. Public: no
+  // auth header on the browser's fetch. Same 404 drop as crypto above.
+  { prefix: '/api/browser-search', router: browserSearch, auth: 'public' },
 ];

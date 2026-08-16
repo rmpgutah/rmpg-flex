@@ -26,7 +26,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { escapeLike, codedLike } from '../utils/searchText';
 import { mergeTimeline } from '../utils/intelDossier';
@@ -671,12 +671,20 @@ async function filterNodesByDateRange(
     const col = DATE_FIELD[type];
     if (!table) continue;
     try {
-      const ph = ids.map(() => '?').join(',');
-      const conditions: string[] = [`id IN (${ph})`];
-      const params: unknown[] = [...ids];
-      if (dateFrom) { conditions.push(`${col} >= ?`); params.push(dateFrom); }
-      if (dateTo) { conditions.push(`${col} <= ?`); params.push(dateTo); }
-      const rows = await query<{ id: number }>(db, `SELECT id FROM ${table} WHERE ${conditions.join(' AND ')}`, ...params);
+      // ids can reach MAX_NODES (120) — chunk to stay under D1's 100-param cap.
+      // leadingBindings (date bounds) are bound before the IN-list chunk so the
+      // SQL must list those conditions first.
+      const leading: unknown[] = [];
+      const dateConditions: string[] = [];
+      if (dateFrom) { dateConditions.push(`${col} >= ?`); leading.push(dateFrom); }
+      if (dateTo) { dateConditions.push(`${col} <= ?`); leading.push(dateTo); }
+      const prefix = dateConditions.length ? dateConditions.join(' AND ') + ' AND ' : '';
+      const rows = await queryInChunks<{ id: number }>(
+        db,
+        ids,
+        (ph) => `SELECT id FROM ${table} WHERE ${prefix}id IN (${ph})`,
+        leading,
+      );
       for (const r of rows) inRange.add(`${type}-${r.id}`);
     } catch (err) {
       console.error(`[Connections] date-filter ${type} error:`, (err as Error)?.message);
@@ -691,12 +699,17 @@ async function filterNodesByDateRange(
   const vsIds = nodes.filter((n) => n.type === 'alpr_sighting' && n.entityId < 0).map((n) => -n.entityId);
   if (vsIds.length) {
     try {
-      const ph = vsIds.map(() => '?').join(',');
-      const conditions: string[] = [`id IN (${ph})`];
-      const params: unknown[] = [...vsIds];
-      if (dateFrom) { conditions.push(`created_at >= ?`); params.push(dateFrom); }
-      if (dateTo) { conditions.push(`created_at <= ?`); params.push(dateTo); }
-      const rows = await query<{ id: number }>(db, `SELECT id FROM vehicle_sightings WHERE ${conditions.join(' AND ')}`, ...params);
+      const vsLeading: unknown[] = [];
+      const vsDateConds: string[] = [];
+      if (dateFrom) { vsDateConds.push(`created_at >= ?`); vsLeading.push(dateFrom); }
+      if (dateTo) { vsDateConds.push(`created_at <= ?`); vsLeading.push(dateTo); }
+      const vsPrefix = vsDateConds.length ? vsDateConds.join(' AND ') + ' AND ' : '';
+      const rows = await queryInChunks<{ id: number }>(
+        db,
+        vsIds,
+        (ph) => `SELECT id FROM vehicle_sightings WHERE ${vsPrefix}id IN (${ph})`,
+        vsLeading,
+      );
       for (const r of rows) inRange.add(`alpr_sighting-${-r.id}`);
     } catch (err) {
       console.error(`[Connections] date-filter alpr_sighting(vehicle_sightings) error:`, (err as Error)?.message);
@@ -1032,10 +1045,13 @@ connections.get('/timeline', operational, async (c) => {
   const sources: any[][] = [];
   for (const [type, ids] of byType) {
     try {
-      const ph = ids.map(() => '?').join(',');
+      // Chunk to avoid D1's 100-bound-parameter cap — ?nodes= is unbounded.
       const extra = type === 'intel_report' ? "AND status = 'disseminated'" : '';
-      const rows = await query<any>(db,
-        `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`, ...ids);
+      const rows = await queryInChunks<any>(
+        db,
+        ids,
+        (ph) => `SELECT ${TIMELINE_QUERY[type]} FROM ${TIMELINE_TABLE[type]} WHERE id IN (${ph}) ${extra}`,
+      );
       sources.push(rows.map((row) => buildTimelineEvent(type, row)).filter(Boolean));
     } catch (err: any) { console.error(`[Connections] timeline ${type} error:`, err?.message); }
   }
