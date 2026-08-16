@@ -353,7 +353,7 @@ export default function CollectionDatabaseTab() {
       {/* Void confirmation modal */}
       {voidId != null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-surface-raised border border-border-subtle rounded-[2px] p-6 w-96 space-y-4 shadow-xl">
+          <div className="bg-surface-raised border border-border-subtle rounded-[2px] p-6 w-96 space-y-4 shadow-xl max-h-[80vh] overflow-y-auto">
             <div className="flex items-center gap-2">
               <AlertTriangle size={16} className="text-red-400" />
               <span className="text-[13px] font-semibold text-text-primary">Void Charge</span>
