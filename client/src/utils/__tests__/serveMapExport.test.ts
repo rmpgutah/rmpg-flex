@@ -2,15 +2,43 @@ import { describe, it, expect, vi } from 'vitest';
 import { exportServeMapSheet } from '../serveMapExport';
 
 const saveMock = vi.fn();
+
 vi.mock('jspdf', () => ({
   jsPDF: vi.fn(function () {
     return {
       setFontSize: vi.fn(),
       setFont: vi.fn(),
+      setFillColor: vi.fn(),
+      setTextColor: vi.fn(),
+      setDrawColor: vi.fn(),
+      setLineWidth: vi.fn(),
       text: vi.fn(),
+      rect: vi.fn(),
+      line: vi.fn(),
+      addPage: vi.fn(),
       save: saveMock,
+      internal: {
+        pageSize: {
+          getWidth: vi.fn(() => 216),
+          getHeight: vi.fn(() => 279),
+        },
+      },
     };
   }),
+}));
+
+vi.mock('../pdfGenerator', () => ({
+  fetchPdfBranding: vi.fn(async () => ({})),
+  setActiveBranding: vi.fn(),
+  loadPdfAssets: vi.fn(async () => {}),
+  setActiveFormKey: vi.fn(),
+  setActiveCaseNumber: vi.fn(),
+  addPageFooter: vi.fn(),
+  stampGenerationTime: vi.fn(),
+}));
+
+vi.mock('../pdfFormHelpers', () => ({
+  drawNibrsHeader: vi.fn(() => 30),
 }));
 
 describe('exportServeMapSheet', () => {
