@@ -462,9 +462,17 @@ export default function ServeRoutePlanner({
     setRouteAccepted(false);
   }, [isOpen]);
 
-  // Initialize stops from jobs
+  // Track whether stops have been initialized for the current open session.
+  const stopsInitializedRef = useRef(false);
+
+  // Initialize stops when the modal first opens.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      stopsInitializedRef.current = false;
+      return;
+    }
+    if (stopsInitializedRef.current) return;
+    stopsInitializedRef.current = true;
     const items: StopItem[] = visibleJobs.map((job, i) => ({
       job,
       // Un-geocoded jobs are never pre-selected — they can't be routed.
@@ -482,7 +490,37 @@ export default function ServeRoutePlanner({
     setTotalDistance(0);
     setTotalDuration(0);
     setError(null);
-  }, [isOpen, jobs, preselectedJobIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  // While the modal is open, reconcile job list changes (polling) without
+  // touching existing selections. New jobs are appended unselected; jobs
+  // that disappeared are removed.
+  useEffect(() => {
+    if (!isOpen || !stopsInitializedRef.current) return;
+    setStops(prev => {
+      const prevById = new Map(prev.map(s => [s.job.id, s]));
+      const incoming = new Set(visibleJobs.map(j => j.id));
+      // Remove jobs that are no longer in the visible list.
+      const kept = prev.filter(s => incoming.has(s.job.id)).map(s => ({
+        ...s,
+        // Refresh the job data (status/fields may have changed) but keep selected.
+        job: visibleJobs.find(j => j.id === s.job.id) ?? s.job,
+      }));
+      const keptIds = new Set(kept.map(s => s.job.id));
+      // Append genuinely new jobs at the end, unselected.
+      const added: StopItem[] = visibleJobs
+        .filter(j => !keptIds.has(j.id) && !prevById.has(j.id))
+        .map((job, i) => ({
+          job,
+          selected: false,
+          order: kept.length + i,
+        }));
+      if (added.length === 0 && kept.length === prev.length
+          && kept.every((s, i) => s.job === prev[i].job)) return prev;
+      return [...kept, ...added];
+    });
+  }, [isOpen, jobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live GPS tracking ───
   // The app already runs a single mandatory, hardened location tracker
