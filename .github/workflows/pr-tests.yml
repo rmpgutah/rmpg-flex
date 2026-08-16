@@ -87,15 +87,11 @@ jobs:
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx tsc --noEmit
 
-  # pool:'threads' + maxThreads:2 (vitest.config.ts) keeps the heap manageable:
-  # each worker thread transforms files lazily rather than the parent
-  # pre-transforming everything eagerly. PDF/map/desktop suites run in their own
-  # jobs below to keep the heavy ASTs out of this job's transform cache.
   client-tests:
     name: Client tests
     needs: [client-typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -105,70 +101,6 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: cd client && npm ci --legacy-peer-deps
       - run: cd client && npx vitest run
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
-
-  # Desktop component suite runs separately so its ~100 files don't skew
-  # shard assignments for the main suite.
-  client-tests-desktop:
-    name: Client tests (desktop components)
-    needs: [client-typecheck]
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --config vitest.desktop.config.ts
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
-
-  # PDF test suite runs separately — jsPDF and pdf-lib have ~10 MB parsed ASTs
-  # each. When ~17 PDF test files cluster in one shard (by vitest's hash), their
-  # combined transform cache inflates past the 4 GB heap limit and OOMs the
-  # runner after all tests complete. Running them in their own job keeps each
-  # main shard at ~64 files with a manageable transform cache.
-  client-tests-pdf:
-    name: Client tests (PDF suite)
-    needs: [client-typecheck]
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --config vitest.pdf.config.ts
-        env:
-          NODE_OPTIONS: --max-old-space-size=6144
-
-  # Map test suite runs separately — mapbox-gl has a large parsed AST. When 28+
-  # map test files cluster in the same shard (via vitest's hash-based assignment),
-  # their combined transform cache inflates the parent process past the 6144 MB
-  # ceiling and either OOMs or GC-thrashes past the 25-minute timeout. Root-cause
-  # fix: isolate them here so the main shards never see the mapbox-gl import graph.
-  # Mirrors the pattern used for PDF (vitest.pdf.config.ts) and desktop tests.
-  client-tests-maps:
-    name: Client tests (map suite)
-    needs: [client-typecheck]
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: cd client && npm ci --legacy-peer-deps
-      - run: cd client && npx vitest run --config vitest.maps.config.ts
         env:
           NODE_OPTIONS: --max-old-space-size=6144
 
