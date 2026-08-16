@@ -307,15 +307,15 @@ sv.post('/routes', async (c) => {
     `INSERT INTO serve_routes (
        officer_id, route_date, optimized_order_json, waypoints_json,
        total_distance_miles, total_time_minutes,
-       start_lat, start_lng, end_lat, end_lng, notes
-     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
+       start_lat, start_lng, end_lat, end_lng, notes, planned_start_time
+     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?,?)`,
     officerId, body.route_date ?? null,
     routeJsonColumn(body.optimized_order_json, body.optimized_order),
     routeJsonColumn(body.waypoints_json, body.waypoints),
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
-    body.notes ?? null,
+    body.notes ?? null, body.planned_start_time ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
