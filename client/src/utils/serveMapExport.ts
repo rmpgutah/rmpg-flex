@@ -5,7 +5,6 @@ import {
 } from './pdfGenerator';
 import { LAYOUT, COLOR, FONT } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
-import { registerArialFont } from './pdf/fonts/registerArial';
 import { localToday } from './dateUtils';
 
 export interface QueueMapItemForExport {
@@ -66,7 +65,7 @@ function drawTableRow(
   const deadlineW = 28;
   const nameW = rw - badgeW - 10 - deadlineW - 4;
 
-  doc.setFont('Arial', 'bold');
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   const nameStr = item.recipient_name || '(name not set)';
@@ -74,7 +73,7 @@ function drawTableRow(
 
   // Address — smaller, below name
   if (item.recipient_address) {
-    doc.setFont('Arial', 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(100, 115, 130);
     doc.text(item.recipient_address, nameX, y + 7.2, { maxWidth: nameW });
@@ -107,7 +106,6 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
   await loadPdfAssets();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
-  registerArialFont(doc);
   setActiveFormKey('serve_route_sheet');
   setActiveCaseNumber('ROUTE');
   stampGenerationTime();
@@ -163,7 +161,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
 
   doc.setFillColor(230, 236, 242);
   doc.rect(lx, y, pageW - 2 * lx, 8, 'F');
-  doc.setFont('Arial', 'normal');
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(
@@ -173,7 +171,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
   y += 10;
 
   if (items.length === 0) {
-    doc.setFont('Arial', 'normal');
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(130, 140, 150);
     doc.text('No jobs match the current filter.', lx, y + 8);
