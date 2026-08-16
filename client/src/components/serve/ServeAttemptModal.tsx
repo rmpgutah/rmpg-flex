@@ -166,6 +166,7 @@ export default function ServeAttemptModal({
     latitude: null, longitude: null, accuracy: null,
     loading: true, error: null,
   });
+  const [gpsRetryCount, setGpsRetryCount] = useState(0);
 
   // Text/dropdown fields — draft-persisted so an in-progress attempt survives
   // a lost connection, accidental close, or device switch (photos/signature/
@@ -225,12 +226,17 @@ export default function ServeAttemptModal({
 
   // ─── GPS Acquisition ────────────────────────────────────────────────
 
-  const acquireGps = useCallback(() => {
+  const acquireGps = useCallback((retryIndex = 0) => {
     setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
     if (!navigator.geolocation) {
       setGps(prev => ({ ...prev, loading: false, error: 'Geolocation not available' }));
       return;
     }
+    // First attempt: high-accuracy GPS (best for outdoor/vehicle at service address).
+    // Retries: low-accuracy IP/WiFi fix — resolves in <2s on desktop/indoor where
+    // the GPS chip times out. Accepts a 60s cached position so it returns immediately
+    // if the browser already has a recent fix from another tab.
+    const highAccuracy = retryIndex === 0;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGps({
@@ -245,20 +251,17 @@ export default function ServeAttemptModal({
         setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
       },
       {
-        enableHighAccuracy: true,
-        // Same tuning as useGpsTracking.ts's watchPosition config: a 15s
-        // timeout fires the error callback before a weak-signal fix can land
-        // at a doorstep/building interior, which is exactly where Process
-        // Server attempts happen. 27s gives that fix time to arrive.
-        timeout: 27000,
-        maximumAge: 3000,
+        enableHighAccuracy: highAccuracy,
+        timeout: highAccuracy ? 27000 : 10000,
+        maximumAge: highAccuracy ? 3000 : 60000,
       },
     );
   }, []);
 
   useEffect(() => {
     if (isOpen) {
-      acquireGps();
+      setGpsRetryCount(0);
+      acquireGps(0);
       // Reset UI/binary state on open — text fields are handled by
       // useFormDraft (restores a pending draft or starts from EMPTY_ATTEMPT_DRAFT).
       setStep(0);
@@ -322,7 +325,7 @@ export default function ServeAttemptModal({
     try {
       for (const file of toUpload) {
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('files', file);
         const result = await apiPostForm<{ id: string; url: string }>('/uploads', formData);
         setPhotos(prev => [...prev, { id: result.id, url: result.url }]);
       }
@@ -501,14 +504,28 @@ export default function ServeAttemptModal({
                 <span className="text-sm">Acquiring GPS position...</span>
               </div>
             ) : gps.error ? (
-              <div className="bg-red-900/30 border border-red-700 rounded-sm p-3 text-sm text-red-300">
-                <p>GPS Error: {gps.error}</p>
-                <button type="button"
-                  onClick={acquireGps}
-                  className="mt-2 px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-red-200 rounded-sm"
-                >
-                  Retry
-                </button>
+              <div className="bg-red-900/30 border border-red-700 rounded-sm p-3 text-sm text-red-300 space-y-2">
+                <p className="font-semibold">GPS unavailable{gpsRetryCount > 0 ? ' — using low-accuracy fallback' : ''}</p>
+                <p className="text-xs text-red-400">{gps.error}</p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button type="button"
+                    onClick={() => {
+                      const next = gpsRetryCount + 1;
+                      setGpsRetryCount(next);
+                      acquireGps(next);
+                    }}
+                    className="px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-red-200 rounded-sm"
+                  >
+                    {gpsRetryCount === 0 ? 'Retry (low-accuracy)' : 'Retry again'}
+                  </button>
+                  <span className="text-xs text-red-500">or</span>
+                  <button type="button"
+                    onClick={() => setStep(1)}
+                    className="px-3 py-1 text-xs bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm"
+                  >
+                    Proceed without GPS
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
@@ -741,7 +758,7 @@ export default function ServeAttemptModal({
       // ─── Step 3: Documentation ─────────────────────────────
       case 2:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
+          <div className="space-y-4 p-4">
             <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Documentation</h3>
 
             {/* Camera input */}
@@ -904,7 +921,7 @@ export default function ServeAttemptModal({
       // ─── Step 4: Review & Signature (or fast-path Submit for failed) ─
       case 3:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
+          <div className="space-y-4 p-4">
             {submitResult ? (
               // Post-submit result
               <div className="space-y-4 text-center py-4">
@@ -1162,8 +1179,8 @@ export default function ServeAttemptModal({
         {/* Step indicator */}
         <StepIndicator />
 
-        {/* Step content */}
-        <div className="flex-1 overflow-hidden">
+        {/* Step content — single scroll region; steps must not add their own overflow */}
+        <div className="flex-1 overflow-y-auto scrollbar-dark">
           {renderStep()}
         </div>
       </div>
