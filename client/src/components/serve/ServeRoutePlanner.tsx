@@ -57,6 +57,7 @@ interface ServeRoutePlannerProps {
     totalDistance: number;
     totalDuration: number;
     fuelCost: number;
+    routeDate: string;
   }) => void;
   /**
    * When set (e.g. opened via "Add to route" on a map marker), only these
@@ -1391,7 +1392,7 @@ export default function ServeRoutePlanner({
     }
 
     setRouteAccepted(true);
-    onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
+    onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE, routeDate });
     onClose();
   }, [stops, missedDeadlineIds, showDeadlineConfirm, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, plannedStartTime, routeOrigin, onRouteOptimized, onClose]);
 
