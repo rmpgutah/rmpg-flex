@@ -1348,17 +1348,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   tightLayout = false;
 
   finalizePoliceReport(doc, {
-    barcode: {
-      formMetadata: {
-        form: 'NOTICE-OF-ATTEMPT',
-        caseNumber: data.caseNumber,
-        agency: 'RMPG',
-        agencyOri: 'UT0180100',
-        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
-        officer: data.serverName,
-        badge: data.serverBadge,
-      },
-    },
+    barcode: { disabled: true },
   });
 
   return doc;
