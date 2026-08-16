@@ -911,8 +911,9 @@ export default function ServePage() {
   }, []);
 
   // ── Fetch saved route for today ──────────────────────────────────
-  const fetchSavedRoute = useCallback(async () => {
+  const fetchSavedRoute = useCallback(async (dateOverride?: string) => {
     if (!user?.id) return;
+    const date = dateOverride ?? selectedDate;
     try {
       // GET /routes/:date returns a ROW ARRAY (src/routes/serve.ts uses
       // query(), i.e. `T[]`), newest first. Assigning the array straight to
@@ -921,7 +922,7 @@ export default function ServePage() {
       // route existed — unconditionally, for every date and officer. Take the
       // newest row (ORDER BY id DESC) and keep the object fallback in case the
       // endpoint is ever narrowed to a single row.
-      const resp = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
+      const resp = await apiFetch<any>(`/process-server/routes/${date}?officer_id=${Number(user.id)}`);
       setSavedRoute(Array.isArray(resp) ? (resp[0] ?? null) : (resp ?? null));
     } catch { setSavedRoute(null); }
   }, [selectedDate, user?.id]);
@@ -1106,9 +1107,16 @@ export default function ServePage() {
 
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
-    data: { totalDistance: number; totalDuration: number; fuelCost: number },
+    data: { totalDistance: number; totalDuration: number; fuelCost: number; routeDate?: string },
   ) => {
     setRouteData({ orderedIds: orderedJobIds, ...data });
+    // Sync the page date to the planner's route date so fetchSavedRoute reads
+    // the right row — the user can change the date inside the planner, and if
+    // the page's selectedDate still points at a different day, the Route tab
+    // would fetch the old route and appear not to update.
+    if (data.routeDate && data.routeDate !== selectedDate) {
+      setSelectedDate(data.routeDate);
+    }
     setActiveTab('Route');
     // Persist sort order to server
     try {
@@ -1117,11 +1125,11 @@ export default function ServePage() {
         body: JSON.stringify({ items: orderedJobIds.map((id, i) => ({ id, sort_order: i })) }),
       });
       refreshJobs();
-      fetchSavedRoute(); // Refresh saved route for Route tab
+      fetchSavedRoute(data.routeDate); // pass planner date so GET targets the right row
     } catch {
       addToast('Could not save route order on server', 'error');
     }
-  }, [refreshJobs, fetchSavedRoute]);
+  }, [refreshJobs, fetchSavedRoute, selectedDate]);
 
   const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
     // Could update the job's address — for now just close and refresh
@@ -3167,6 +3175,17 @@ export default function ServePage() {
             officerId={Number(user.id)}
             sharedJobs={jobs}
             onJobsChange={setJobs}
+            routeOrderIds={(() => {
+              if (savedRoute?.optimized_order_json) {
+                try {
+                  const ids = typeof savedRoute.optimized_order_json === 'string'
+                    ? JSON.parse(savedRoute.optimized_order_json)
+                    : savedRoute.optimized_order_json;
+                  return Array.isArray(ids) ? ids : undefined;
+                } catch { return undefined; }
+              }
+              return routeData?.orderedIds;
+            })()}
           />
         )}
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}

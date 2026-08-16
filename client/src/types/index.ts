@@ -482,6 +482,9 @@ export interface Unit {
    *  ignition_state ('on'/'off'/etc.) is the last-synced vehicle state. */
   camera_device_id?: string | null;
   camera_ignition_state?: string | null;
+  /** Number of stops in the officer's active Process Server route plan for today.
+   *  Null/undefined means no route has been planned. */
+  ps_route_stops?: number | null;
   created_at: string;
   updated_at: string;
 }
