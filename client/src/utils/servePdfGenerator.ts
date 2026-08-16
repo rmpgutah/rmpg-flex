@@ -875,6 +875,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   setActiveBranding(branding);
   await loadPdfAssets();
 
+  // Defensive reset: a prior render that threw after setting tightLayout=true
+  // would leave it set, causing this render to silently use compact spacing.
+  // A stale true here is the only way the notice gets tight spacing without
+  // actually being in a tight-fit scenario.
+  tightLayout = false;
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'mobile');
@@ -938,9 +944,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // panels, the signature block) shares that same left/right edge. This
     // band previously sat 1mm inset on both sides, reading as a wobble in
     // the page's left margin when the eye tracks straight down.
+    // Light fill distinguishes this from plain bordered boxes elsewhere on
+    // the page and gives the status stamp visual weight proportional to its
+    // importance without competing with the tinted section headers.
+    doc.setFillColor(242, 245, 249);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(getRailX(), y, getRailWidth(doc), bandH);
+    doc.rect(getRailX(), y, getRailWidth(doc), bandH, 'FD');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -958,9 +968,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // undifferentiated column, so nothing signalled which facts were about the
   // READER and which were about the CASE. The box edge does that work.
   const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
+  // When both attorney and client are present, split onto separate lines so
+  // the combined string doesn't wrap mid-name in the narrow panel column.
+  // "\n" is honoured by drawSubjectPanel's value-splitting logic.
   const hiringPartyLabel = (() => {
     if (data.attorneyName && data.clientName) {
-      return `${data.attorneyName} (atty) for ${data.clientName}`;
+      return `${data.attorneyName} (Atty)\n${data.clientName}`;
     }
     return data.attorneyName || data.clientName || 'N/A';
   })();
@@ -1185,26 +1198,38 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       const boxX = getRailX();
       const boxW = getRailWidth(doc);
       const padX = SPACING.MD;
-      const padY = 1.8;
+      const padY = 2.0;
       const lineH = 3.4;
+      // "NEXT ATTEMPT" header strip sits in a mini-header bar — same visual
+      // language as every section bar on the page so this call-out reads as
+      // a structured element, not a floating label.
+      const headerH = SPACING.SECTION_HEADER_H;
       doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(NOTICE_FONT);
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
         boxW - padX * 2,
       );
-      const boxH = padY * 2 + lineH + noteLines.length * lineH;
+      const boxH = headerH + padY + noteLines.length * lineH + padY;
       y = checkPageBreak(doc, y, boxH + SPACING.SM);
 
+      // Outer border
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
       doc.rect(boxX, y, boxW, boxH);
 
-      let cy = y + padY + lineH * 0.7;
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NEXT ATTEMPT', boxX + padX, cy);
-      cy += lineH;
+      // Header strip — same accent as the subject panels' "routine" tier
+      const naAccent = resolveSectionAccentColor('routine');
+      doc.setFillColor(naAccent[0], naAccent[1], naAccent[2]);
+      doc.rect(boxX, y, boxW, headerH, 'F');
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(255, 255, 255);
+      doc.text('NEXT ATTEMPT', boxX + padX, y + headerH - 1.4);
+
+      const cy = y + headerH + padY + lineH * 0.7;
       doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(noteLines, boxX + padX, cy);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2009,7 +2034,11 @@ function drawSubjectPanel(
     : doc.splitTextToSize(sanitizePdfText(name), w - pad * 2) as string[];
 
   // Measure wrapped values up front — a row is as tall as its value.
-  const labelW = w * 0.42;
+  // 0.38 gives values ~4% more space than 0.42 — enough to prevent a
+  // long street address ("…STREET, SALT LAKE CITY, UT…") from splitting
+  // mid-city-name. Labels are short fixed strings (≤ 20 chars at 5.5pt)
+  // and fit comfortably at this ratio.
+  const labelW = w * 0.38;
   const valueW = w - labelW - pad * 2;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);
