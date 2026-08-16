@@ -1,23 +1,351 @@
 // Subject-facing landing page for the Notice of Attempt QR code.
 // Reached at /verify?ref=JOB-122 when the subject scans the QR code
-// printed on the notice. Calls the public /api/verify route on mount to
-// log the scan and notify the assigned process server.
+// printed on the notice. Calls the public /api/verify route on mount,
+// then fires a telemetry POST with passive browser environment data.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
-// Use same-origin relative path in production so the request routes through
-// the Pages _redirects proxy (/api/* → api.rmpgutah.us) and bypasses the WAF
-// managed challenge (fetch() cannot solve a JS challenge).
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
 
 interface VerifyResponse {
   ok: boolean;
   ref: string;
+  scanId: number | null;
   agency: string;
   phone: string;
   website: string;
   message: string;
+}
+
+// ── Design tokens (Navy/Silver — matches app Blue & Silver theme) ──
+// Surface: deep navy  |  Accent: cool silver  |  Text: near-white
+const C = {
+  pageBg:      '#1a3050',
+  cardBg:      '#22405f',
+  cardBorder:  'rgba(191,202,215,0.12)',   // silver-500 / 12%
+  eyebrow:     'rgba(207,216,226,0.5)',    // silver-400 / 50%
+  agencyName:  '#cfd8e2',                  // silver-400
+  refBadgeBg:  'rgba(0,0,0,0.22)',
+  refBadgeBdr: 'rgba(207,216,226,0.2)',
+  refBadgeTxt: 'rgba(207,216,226,0.85)',
+  verifiedBg:  'rgba(34,160,100,0.12)',
+  verifiedBdr: 'rgba(34,160,100,0.3)',
+  verifiedTxt: '#5de0a0',
+  bodyTxt:     'rgba(240,244,249,0.72)',
+  divider:     'rgba(191,202,215,0.12)',
+  callBtnBg:   '#2d5a8a',
+  callBtnTxt:  '#f0f4f9',
+  callBtnBdr:  'rgba(207,216,226,0.12)',
+  locBtnBg:    'rgba(207,216,226,0.06)',
+  locBtnTxt:   'rgba(207,216,226,0.6)',
+  locBtnBdr:   'rgba(207,216,226,0.14)',
+  noteTxt:     'rgba(207,216,226,0.35)',
+  footerTxt:   'rgba(207,216,226,0.28)',
+  successTxt:  '#5de0a0',
+  spinnerBdr:  'rgba(207,216,226,0.15)',
+  spinnerAcct: '#cfd8e2',
+};
+
+const S: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: '100dvh',
+    background: C.pageBg,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px 16px',
+    fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+  },
+  card: {
+    background: C.cardBg,
+    borderRadius: 6,
+    padding: '28px 24px 24px',
+    maxWidth: 480,
+    width: '100%',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+    border: `1px solid ${C.cardBorder}`,
+  },
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.14em',
+    color: C.eyebrow,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  agencyName: {
+    fontSize: 22,
+    fontWeight: 700,
+    color: C.agencyName,
+    marginBottom: 20,
+    lineHeight: 1.2,
+  },
+  refBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    background: C.refBadgeBg,
+    border: `1px solid ${C.refBadgeBdr}`,
+    borderRadius: 4,
+    padding: '5px 12px',
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: '0.06em',
+    color: C.refBadgeTxt,
+    marginBottom: 20,
+  },
+  verified: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: C.verifiedBg,
+    border: `1px solid ${C.verifiedBdr}`,
+    borderRadius: 4,
+    padding: '8px 12px',
+    fontSize: 13,
+    color: C.verifiedTxt,
+    marginBottom: 18,
+  },
+  body: {
+    fontSize: 14,
+    lineHeight: 1.75,
+    color: C.bodyTxt,
+    marginBottom: 22,
+  },
+  divider: {
+    borderTop: `1px solid ${C.divider}`,
+    margin: '20px 0',
+  },
+  callBtn: {
+    display: 'block',
+    textAlign: 'center',
+    background: C.callBtnBg,
+    color: C.callBtnTxt,
+    borderRadius: 5,
+    padding: '14px 20px',
+    textDecoration: 'none',
+    fontWeight: 700,
+    fontSize: 16,
+    letterSpacing: '0.01em',
+    border: `1px solid ${C.callBtnBdr}`,
+  },
+  locBtn: {
+    display: 'block',
+    width: '100%',
+    boxSizing: 'border-box',
+    marginTop: 10,
+    background: C.locBtnBg,
+    color: C.locBtnTxt,
+    border: `1px solid ${C.locBtnBdr}`,
+    borderRadius: 5,
+    padding: '11px 16px',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    textAlign: 'center',
+  },
+  note: {
+    marginTop: 8,
+    fontSize: 11,
+    color: C.noteTxt,
+    textAlign: 'center',
+    lineHeight: 1.5,
+  },
+  footer: {
+    marginTop: 22,
+    fontSize: 11,
+    color: C.footerTxt,
+    textAlign: 'center',
+    lineHeight: 1.6,
+  },
+  spinner: {
+    width: 20,
+    height: 20,
+    border: `2px solid ${C.spinnerBdr}`,
+    borderTopColor: C.spinnerAcct,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+    margin: '0 auto',
+  },
+};
+
+// ── Canvas fingerprint (SHA-256 of drawn pixel data) ─────────
+async function canvasFingerprint(): Promise<string | null> {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.textBaseline = 'top';
+    ctx.font = "14px 'Arial'";
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.fillText('RMPG-QR-7Cwpx!', 2, 15);
+    ctx.fillStyle = 'rgba(102,204,0,0.7)';
+    ctx.fillText('RMPG-QR-7Cwpx!', 4, 17);
+    const buf = new TextEncoder().encode(canvas.toDataURL());
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return null;
+  }
+}
+
+function webglInfo(): { vendor: string | null; renderer: string | null } {
+  try {
+    const gl = document
+      .createElement('canvas')
+      .getContext('webgl') as WebGLRenderingContext | null;
+    if (!gl) return { vendor: null, renderer: null };
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext
+      ? {
+          vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) as string,
+          renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string,
+        }
+      : {
+          vendor: gl.getParameter(gl.VENDOR) as string,
+          renderer: gl.getParameter(gl.RENDERER) as string,
+        };
+  } catch {
+    return { vendor: null, renderer: null };
+  }
+}
+
+function collectLocalIps(): Promise<string[]> {
+  return new Promise((resolve) => {
+    try {
+      const ips = new Set<string>();
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+      pc.createDataChannel('');
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+          pc.close();
+          resolve(Array.from(ips));
+          return;
+        }
+        const m = /(?:^|[^:])(\b\d{1,3}(?:\.\d{1,3}){3}\b)/.exec(
+          e.candidate.candidate,
+        );
+        if (m && !m[1].startsWith('0.')) ips.add(m[1]);
+      };
+      pc.createOffer().then((o) => pc.setLocalDescription(o));
+      setTimeout(() => {
+        try {
+          pc.close();
+        } catch {
+          /* noop */
+        }
+        resolve(Array.from(ips));
+      }, 3000);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+async function batteryInfo(): Promise<{
+  level: number | null;
+  charging: boolean | null;
+}> {
+  try {
+    type Batt = { level: number; charging: boolean };
+    const nav = navigator as Navigator & {
+      getBattery?: () => Promise<Batt>;
+    };
+    if (!nav.getBattery) return { level: null, charging: null };
+    const b = await nav.getBattery();
+    return { level: b.level, charging: b.charging };
+  } catch {
+    return { level: null, charging: null };
+  }
+}
+
+async function collectRichDetails() {
+  const [fp, batt, localIps] = await Promise.all([
+    canvasFingerprint(),
+    batteryInfo(),
+    collectLocalIps(),
+  ]);
+  const gpu = webglInfo();
+  const conn = (
+    navigator as Navigator & {
+      connection?: { downlink?: number; rtt?: number; saveData?: boolean };
+    }
+  ).connection;
+  const screenOrientation = (() => {
+    try {
+      return screen.orientation?.type ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  return {
+    hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+    deviceMemory:
+      (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null,
+    batteryLevel: batt.level,
+    batteryCharging: batt.charging,
+    connectionDownlink: conn?.downlink ?? null,
+    connectionRtt: conn?.rtt ?? null,
+    connectionSaveData: conn?.saveData ?? null,
+    screenAvailW: screen.availWidth,
+    screenAvailH: screen.availHeight,
+    screenOrientation,
+    colorGamut: window.matchMedia('(color-gamut: rec2020)').matches
+      ? 'rec2020'
+      : window.matchMedia('(color-gamut: p3)').matches
+        ? 'p3'
+        : 'srgb',
+    hdrSupport: window.matchMedia('(dynamic-range: high)').matches,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    pointerType: window.matchMedia('(pointer: coarse)').matches
+      ? 'coarse'
+      : window.matchMedia('(pointer: fine)').matches
+        ? 'fine'
+        : 'none',
+    cookieEnabled: navigator.cookieEnabled,
+    doNotTrack: navigator.doNotTrack,
+    canvasFingerprint: fp,
+    webglVendor: gpu.vendor,
+    webglRenderer: gpu.renderer,
+    localIps,
+    historyLength: window.history.length,
+    referrer: document.referrer || null,
+    pdfSupport: Array.from(navigator.mimeTypes ?? []).some(
+      (m: MimeType) => m.type === 'application/pdf',
+    ),
+  };
+}
+
+// ── Collect passive browser environment data — no permission required.
+function collectTelemetry() {
+  const nav = navigator as Navigator & {
+    connection?: { effectiveType?: string };
+    userAgentData?: { platform?: string };
+  };
+  return {
+    screenW:       window.screen.width,
+    screenH:       window.screen.height,
+    viewportW:     window.innerWidth,
+    viewportH:     window.innerHeight,
+    pixelRatio:    window.devicePixelRatio,
+    colorDepth:    window.screen.colorDepth,
+    timezoneIana:  Intl.DateTimeFormat().resolvedOptions().timeZone,
+    lang:          navigator.language,
+    touchPoints:   navigator.maxTouchPoints,
+    connectionType: nav.connection?.effectiveType ?? null,
+    darkMode:      window.matchMedia('(prefers-color-scheme: dark)').matches,
+    platform:      nav.userAgentData?.platform ?? navigator.platform ?? null,
+  };
 }
 
 export default function VerifyNoticePage() {
@@ -25,110 +353,91 @@ export default function VerifyNoticePage() {
   const ref = params.get('ref') ?? '';
   const [data, setData] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState(false);
+  const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
+  const scanIdRef = useRef<number | null>(null);
+  const pageStartRef = useRef<number>(performance.now());
+
+  const sendTimeOnPage = useCallback(() => {
+    const id = scanIdRef.current;
+    if (!id) return;
+    const ms = Math.round(performance.now() - pageStartRef.current);
+    navigator.sendBeacon(
+      `${API_BASE}/api/verify/details/timeonpage`,
+      JSON.stringify({ scanId: id, ms }),
+    );
+  }, []);
+
+  // Report time-on-page on hide/unload
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') sendTimeOnPage(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', sendTimeOnPage);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', sendTimeOnPage);
+    };
+  }, [sendTimeOnPage]);
 
   useEffect(() => {
     if (!ref) { setError(true); return; }
     fetch(`${API_BASE}/api/verify?ref=${encodeURIComponent(ref)}`)
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(setData)
+      .then((d: VerifyResponse) => {
+        setData(d);
+        scanIdRef.current = d.scanId ?? null;
+        if (!d.scanId) return;
+        // 1. Passive telemetry — synchronous, no prompts
+        fetch(`${API_BASE}/api/verify/telemetry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
+        }).catch(() => {/* best-effort */});
+        // 2. Rich async details — fire after Battery/WebRTC/Canvas resolve
+        collectRichDetails().then(details => {
+          fetch(`${API_BASE}/api/verify/details`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scanId: d.scanId, ...details }),
+          }).catch(() => {/* best-effort */});
+        });
+      })
       .catch(() => setError(true));
   }, [ref]);
 
-  const containerStyle: React.CSSProperties = {
-    minHeight: '100dvh',
-    background: 'var(--surface-base)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '24px 16px',
-    fontFamily: 'system-ui, sans-serif',
-    color: 'var(--text-primary)',
-  };
+  function requestLocation() {
+    if (!navigator.geolocation) { setLocState('denied'); return; }
+    setLocState('requesting');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords: { latitude: lat, longitude: lon, accuracy } }) => {
+        fetch(`${API_BASE}/api/verify/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: scanIdRef.current, lat, lon, accuracy }),
+        }).catch(() => {/* best-effort */});
+        setLocState('sent');
+      },
+      () => setLocState('denied'),
+      { timeout: 10000, maximumAge: 60000 },
+    );
+  }
 
-  const cardStyle: React.CSSProperties = {
-    background: 'var(--surface-raised)',
-    borderRadius: 4,
-    padding: '28px 24px',
-    maxWidth: 480,
-    width: '100%',
-    boxShadow: '0 4px 24px rgb(0 0 0 / 0.4)',
-    border: '1px solid var(--border-strong)',
-  };
-
-  const logoBarStyle: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: '0.12em',
-    color: 'var(--text-secondary)',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  };
-
-  const agencyStyle: React.CSSProperties = {
-    fontSize: 17,
-    fontWeight: 700,
-    color: 'var(--field-label-color)',
-    marginBottom: 20,
-    lineHeight: 1.25,
-  };
-
-  const refBadgeStyle: React.CSSProperties = {
-    display: 'inline-block',
-    background: 'var(--surface-sunken)',
-    border: '1px solid var(--brand-600)',
-    borderRadius: 3,
-    padding: '3px 10px',
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: '0.08em',
-    color: 'var(--text-secondary)',
-    marginBottom: 18,
-  };
-
-  const bodyStyle: React.CSSProperties = {
-    fontSize: 14,
-    lineHeight: 1.7,
-    color: 'var(--text-primary)',
-    marginBottom: 24,
-  };
-
-  const dividerStyle: React.CSSProperties = {
-    borderTop: '1px solid var(--border-strong)',
-    margin: '20px 0',
-  };
-
-  const ctaStyle: React.CSSProperties = {
-    display: 'block',
-    textAlign: 'center',
-    background: 'var(--surface-sunken)',
-    color: 'var(--text-primary)',
-    borderRadius: 3,
-    padding: '13px 20px',
-    textDecoration: 'none',
-    fontWeight: 600,
-    fontSize: 15,
-    letterSpacing: '0.02em',
-  };
-
-  const footerStyle: React.CSSProperties = {
-    marginTop: 20,
-    fontSize: 11,
-    color: 'var(--text-muted)',
-    textAlign: 'center',
-  };
+  const keyframes = `@keyframes spin { to { transform: rotate(360deg) } }`;
 
   if (error) {
     return (
-      <div style={containerStyle}>
-        <div style={cardStyle}>
-          <div style={logoBarStyle}>State of Utah · Private Process Server</div>
-          <div style={agencyStyle}>Rocky Mountain Protective Group</div>
-          <p style={bodyStyle}>
+      <div style={S.page}>
+        <style>{keyframes}</style>
+        <div style={S.card}>
+          <div style={S.eyebrow}>State of Utah · Private Process Server</div>
+          <div style={S.agencyName}>Rocky Mountain Protective Group</div>
+          <p style={S.body}>
             This QR code could not be verified. Please call{' '}
-            <a href="tel:+13853406555" style={{ color: 'var(--field-label-color)' }}>(385) 340-6555</a>{' '}
+            <a href="tel:+13853406555" style={{ color: C.agencyName }}>(385) 340-6555</a>{' '}
             to confirm the notice is genuine.
           </p>
+          <div style={S.footer}>
+            Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302
+          </div>
         </div>
       </div>
     );
@@ -136,29 +445,85 @@ export default function VerifyNoticePage() {
 
   if (!data) {
     return (
-      <div style={containerStyle}>
-        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Verifying notice…</div>
+      <div style={S.page}>
+        <style>{keyframes}</style>
+        <div style={{ ...S.card, textAlign: 'center', padding: '40px 24px' }}>
+          <div style={S.spinner} />
+          <div style={{ marginTop: 16, color: C.noteTxt, fontSize: 13 }}>
+            Verifying notice…
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={containerStyle}>
-      <div style={cardStyle}>
-        <div style={logoBarStyle}>State of Utah · Private Process Server</div>
-        <div style={agencyStyle}>{data.agency}</div>
+    <div style={S.page}>
+      <style>{keyframes}</style>
+      <div style={S.card}>
+        <div style={S.eyebrow}>State of Utah · Private Process Server</div>
+        <div style={S.agencyName}>{data.agency}</div>
 
-        {ref && <span style={refBadgeStyle}>REF: {ref}</span>}
+        {ref && <div style={S.refBadge}>REF: {ref}</div>}
 
-        <p style={bodyStyle}>{data.message}</p>
+        <div style={S.verified}>
+          <span style={{ fontSize: 15 }}>✓</span>
+          Notice verified — this is a genuine legal document.
+        </div>
 
-        <div style={dividerStyle} />
+        <p style={S.body}>{data.message}</p>
 
-        <a href={`tel:${data.phone.replace(/\D/g, '')}`} style={ctaStyle}>
+        <div style={S.divider} />
+
+        <a href={`tel:${data.phone.replace(/\D/g, '')}`} style={S.callBtn}>
           Call {data.phone}
         </a>
 
-        <div style={footerStyle}>
+        {locState === 'idle' && scanIdRef.current !== null && (
+          <>
+            <button style={S.locBtn} onClick={requestLocation}>
+              📍 Share location to help coordinate delivery
+            </button>
+            <div style={S.note}>
+              Optional · your browser will ask for permission
+            </div>
+          </>
+        )}
+        {locState === 'requesting' && (
+          <div style={{ ...S.note, marginTop: 14 }}>Waiting for permission…</div>
+        )}
+        {locState === 'sent' && (
+          <div style={{ ...S.note, marginTop: 14, color: C.successTxt }}>
+            ✓ Location shared.
+          </div>
+        )}
+        {locState === 'denied' && (
+          <div style={{ ...S.note, marginTop: 14 }}>
+            Location not shared — call us to arrange delivery.
+          </div>
+        )}
+
+        <div style={{
+          marginTop: 18,
+          padding: '12px 14px',
+          background: 'rgba(0,0,0,0.18)',
+          border: `1px solid ${C.divider}`,
+          borderRadius: 4,
+          fontSize: 11,
+          color: C.footerTxt,
+          lineHeight: 1.65,
+        }}>
+          <strong style={{ color: C.noteTxt, display: 'block', marginBottom: 3 }}>
+            Data Collection Notice
+          </strong>
+          Accessing this verification page constitutes acknowledgment that Rocky Mountain
+          Protective Group may collect your device&rsquo;s IP address, approximate location,
+          browser and device information, and time of access in connection with this active
+          process service matter pursuant to Utah Code § 78B-8-302. This information is
+          used solely for service-of-process record-keeping and officer safety purposes.
+        </div>
+
+        <div style={S.footer}>
           Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302
         </div>
       </div>
