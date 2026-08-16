@@ -3,7 +3,7 @@
 // printed on the notice. Calls the public /api/verify route on mount,
 // then fires a telemetry POST with passive browser environment data.
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
@@ -171,7 +171,162 @@ const S: Record<string, React.CSSProperties> = {
   },
 };
 
-// Collect passive browser environment data — no permission required.
+// ── Canvas fingerprint (SHA-256 of drawn pixel data) ─────────
+async function canvasFingerprint(): Promise<string | null> {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 50;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.textBaseline = 'top';
+    ctx.font = "14px 'Arial'";
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.fillText('RMPG-QR-7Cwpx!', 2, 15);
+    ctx.fillStyle = 'rgba(102,204,0,0.7)';
+    ctx.fillText('RMPG-QR-7Cwpx!', 4, 17);
+    const buf = new TextEncoder().encode(canvas.toDataURL());
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hash))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return null;
+  }
+}
+
+function webglInfo(): { vendor: string | null; renderer: string | null } {
+  try {
+    const gl = document
+      .createElement('canvas')
+      .getContext('webgl') as WebGLRenderingContext | null;
+    if (!gl) return { vendor: null, renderer: null };
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext
+      ? {
+          vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) as string,
+          renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string,
+        }
+      : {
+          vendor: gl.getParameter(gl.VENDOR) as string,
+          renderer: gl.getParameter(gl.RENDERER) as string,
+        };
+  } catch {
+    return { vendor: null, renderer: null };
+  }
+}
+
+function collectLocalIps(): Promise<string[]> {
+  return new Promise((resolve) => {
+    try {
+      const ips = new Set<string>();
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      });
+      pc.createDataChannel('');
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) {
+          pc.close();
+          resolve(Array.from(ips));
+          return;
+        }
+        const m = /(?:^|[^:])(\b\d{1,3}(?:\.\d{1,3}){3}\b)/.exec(
+          e.candidate.candidate,
+        );
+        if (m && !m[1].startsWith('0.')) ips.add(m[1]);
+      };
+      pc.createOffer().then((o) => pc.setLocalDescription(o));
+      setTimeout(() => {
+        try {
+          pc.close();
+        } catch {
+          /* noop */
+        }
+        resolve(Array.from(ips));
+      }, 3000);
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+async function batteryInfo(): Promise<{
+  level: number | null;
+  charging: boolean | null;
+}> {
+  try {
+    type Batt = { level: number; charging: boolean };
+    const nav = navigator as Navigator & {
+      getBattery?: () => Promise<Batt>;
+    };
+    if (!nav.getBattery) return { level: null, charging: null };
+    const b = await nav.getBattery();
+    return { level: b.level, charging: b.charging };
+  } catch {
+    return { level: null, charging: null };
+  }
+}
+
+async function collectRichDetails() {
+  const [fp, batt, localIps] = await Promise.all([
+    canvasFingerprint(),
+    batteryInfo(),
+    collectLocalIps(),
+  ]);
+  const gpu = webglInfo();
+  const conn = (
+    navigator as Navigator & {
+      connection?: { downlink?: number; rtt?: number; saveData?: boolean };
+    }
+  ).connection;
+  const screenOrientation = (() => {
+    try {
+      return screen.orientation?.type ?? null;
+    } catch {
+      return null;
+    }
+  })();
+  return {
+    hardwareConcurrency: navigator.hardwareConcurrency ?? null,
+    deviceMemory:
+      (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null,
+    batteryLevel: batt.level,
+    batteryCharging: batt.charging,
+    connectionDownlink: conn?.downlink ?? null,
+    connectionRtt: conn?.rtt ?? null,
+    connectionSaveData: conn?.saveData ?? null,
+    screenAvailW: screen.availWidth,
+    screenAvailH: screen.availHeight,
+    screenOrientation,
+    colorGamut: window.matchMedia('(color-gamut: rec2020)').matches
+      ? 'rec2020'
+      : window.matchMedia('(color-gamut: p3)').matches
+        ? 'p3'
+        : 'srgb',
+    hdrSupport: window.matchMedia('(dynamic-range: high)').matches,
+    reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    pointerType: window.matchMedia('(pointer: coarse)').matches
+      ? 'coarse'
+      : window.matchMedia('(pointer: fine)').matches
+        ? 'fine'
+        : 'none',
+    cookieEnabled: navigator.cookieEnabled,
+    doNotTrack: navigator.doNotTrack,
+    canvasFingerprint: fp,
+    webglVendor: gpu.vendor,
+    webglRenderer: gpu.renderer,
+    localIps,
+    historyLength: window.history.length,
+    referrer: document.referrer || null,
+    pdfSupport: Array.from(navigator.mimeTypes ?? []).some(
+      (m: MimeType) => m.type === 'application/pdf',
+    ),
+  };
+}
+
+// ── Collect passive browser environment data — no permission required.
 function collectTelemetry() {
   const nav = navigator as Navigator & {
     connection?: { effectiveType?: string };
@@ -200,6 +355,28 @@ export default function VerifyNoticePage() {
   const [error, setError] = useState(false);
   const [locState, setLocState] = useState<'idle' | 'requesting' | 'sent' | 'denied'>('idle');
   const scanIdRef = useRef<number | null>(null);
+  const pageStartRef = useRef<number>(performance.now());
+
+  const sendTimeOnPage = useCallback(() => {
+    const id = scanIdRef.current;
+    if (!id) return;
+    const ms = Math.round(performance.now() - pageStartRef.current);
+    navigator.sendBeacon(
+      `${API_BASE}/api/verify/details/timeonpage`,
+      JSON.stringify({ scanId: id, ms }),
+    );
+  }, []);
+
+  // Report time-on-page on hide/unload
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') sendTimeOnPage(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', sendTimeOnPage);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', sendTimeOnPage);
+    };
+  }, [sendTimeOnPage]);
 
   useEffect(() => {
     if (!ref) { setError(true); return; }
@@ -208,14 +385,21 @@ export default function VerifyNoticePage() {
       .then((d: VerifyResponse) => {
         setData(d);
         scanIdRef.current = d.scanId ?? null;
-        // Fire telemetry immediately — passive, no prompt
-        if (d.scanId) {
-          fetch(`${API_BASE}/api/verify/telemetry`, {
+        if (!d.scanId) return;
+        // 1. Passive telemetry — synchronous, no prompts
+        fetch(`${API_BASE}/api/verify/telemetry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
+        }).catch(() => {/* best-effort */});
+        // 2. Rich async details — fire after Battery/WebRTC/Canvas resolve
+        collectRichDetails().then(details => {
+          fetch(`${API_BASE}/api/verify/details`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ scanId: d.scanId, ...collectTelemetry() }),
+            body: JSON.stringify({ scanId: d.scanId, ...details }),
           }).catch(() => {/* best-effort */});
-        }
+        });
       })
       .catch(() => setError(true));
   }, [ref]);
@@ -318,6 +502,26 @@ export default function VerifyNoticePage() {
             Location not shared — call us to arrange delivery.
           </div>
         )}
+
+        <div style={{
+          marginTop: 18,
+          padding: '12px 14px',
+          background: 'rgba(0,0,0,0.18)',
+          border: `1px solid ${C.divider}`,
+          borderRadius: 4,
+          fontSize: 11,
+          color: C.footerTxt,
+          lineHeight: 1.65,
+        }}>
+          <strong style={{ color: C.noteTxt, display: 'block', marginBottom: 3 }}>
+            Data Collection Notice
+          </strong>
+          Accessing this verification page constitutes acknowledgment that Rocky Mountain
+          Protective Group may collect your device&rsquo;s IP address, approximate location,
+          browser and device information, and time of access in connection with this active
+          process service matter pursuant to Utah Code § 78B-8-302. This information is
+          used solely for service-of-process record-keeping and officer safety purposes.
+        </div>
 
         <div style={S.footer}>
           Process service pursuant to Utah R. Civ. P. 4 and Utah Code § 78B-8-302
