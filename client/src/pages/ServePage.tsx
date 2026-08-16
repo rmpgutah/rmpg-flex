@@ -2640,18 +2640,18 @@ export default function ServePage() {
                 <>
                   {/* Stats bar */}
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-4 sm:flex-wrap px-3 py-2.5 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-rmpg-400" />
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                      <MapPin size={12} className="text-fg-secondary" />
                       <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span>
                       <span>stops</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Navigation size={12} className="text-emerald-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Calendar size={12} className="text-amber-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_time_minutes
@@ -2660,24 +2660,24 @@ export default function ServePage() {
                       </span>
                     </div>
                     {savedRoute?.total_distance_miles && (
-                      <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                         <span className="text-[color:var(--field-label-color)] font-mono">$</span>
                         <span className="font-mono tabular-nums text-rmpg-100">
                           ${(Number(savedRoute.total_distance_miles) * serveMileageRate).toFixed(2)}
                         </span>
-                        <span className="text-rmpg-600 text-[9px]">fuel</span>
+                        <span className="text-fg-muted text-[9px]">fuel</span>
                       </div>
                     )}
                     {savedRoute?.total_distance_miles && totalStops > 0 && (
-                      <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                        <Gauge size={11} className="text-rmpg-500" />
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                        <Gauge size={11} className="text-fg-muted" />
                         <span className="font-mono tabular-nums text-rmpg-100">
                           {(totalStops / Number(savedRoute.total_distance_miles)).toFixed(1)}
                         </span>
-                        <span className="text-rmpg-600 text-[9px]">stops/mi</span>
+                        <span className="text-fg-muted text-[9px]">stops/mi</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs sm:ml-auto col-span-2 sm:col-span-1">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs sm:ml-auto col-span-2 sm:col-span-1">
                       <span className="font-mono tabular-nums text-[color:var(--field-label-color)]">
                         {completedCount}/{totalStops} done ({progressPct}%)
                       </span>
@@ -2702,14 +2702,14 @@ export default function ServePage() {
                       const priorityColors: Record<string, string> = {
                         urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
                         rush: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
-                        normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
+                        normal: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
                         routine: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
                       };
                       const twColors: Record<string, string> = {
                         morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-                        afternoon: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
+                        afternoon: 'bg-surface-sunken/40 text-fg-secondary border-border-default/50',
                         evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-                        anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
+                        anytime: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
                       };
                       return (
                         <div
@@ -2734,7 +2734,7 @@ export default function ServePage() {
                           {/* Info */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                              <span className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-rmpg-100'}`}>
+                              <span className={`text-xs font-medium truncate ${isCompleted ? 'text-fg-muted line-through' : 'text-rmpg-100'}`}>
                                 {job.recipient_name}
                               </span>
                               {job.priority && job.priority !== 'normal' && (
@@ -2748,13 +2748,13 @@ export default function ServePage() {
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] text-rmpg-500 truncate">
+                            <div className="text-[10px] text-fg-muted truncate">
                               {job.recipient_address || 'No address'}
                               {(job as any).recipient_address_2 ? `, ${(job as any).recipient_address_2}` : ''}
                               {job.recipient_city ? `, ${job.recipient_city}` : ''}
                             </div>
                             {stopEtas.has(job.id) && (
-                              <div className={`text-[9px] font-mono mt-0.5 ${isCompleted ? 'text-rmpg-600' : 'text-fg-secondary'}`}>
+                              <div className={`text-[9px] font-mono mt-0.5 ${isCompleted ? 'text-fg-muted' : 'text-fg-secondary'}`}>
                                 ETA {new Date(stopEtas.get(job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms */}
                               </div>
                             )}
@@ -2764,7 +2764,7 @@ export default function ServePage() {
                               </div>
                             )}
                             {(job as any).case_number && (
-                              <div className="text-[9px] text-rmpg-600 font-mono mt-0.5">
+                              <div className="text-[9px] text-fg-muted font-mono mt-0.5">
                                 Case #{(job as any).case_number}
                               </div>
                             )}
@@ -2779,7 +2779,7 @@ export default function ServePage() {
                                   ? 'bg-red-500/10 text-red-400 border-red-500/20'
                                   : job.status === 'in_progress'
                                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                    : 'bg-rmpg-500/10 text-rmpg-400 border-rmpg-500/20'
+                                    : 'bg-rmpg-500/10 text-fg-secondary border-rmpg-500/20'
                             }`}>
                               {toDisplayLabel(job.status)}
                             </span>
