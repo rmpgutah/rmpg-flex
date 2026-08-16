@@ -355,7 +355,7 @@ export default function ServePage() {
   const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
     // GET /:id returns the job row + its serve_attempts (joined w/ officer).
     const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-    const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+    const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
     // both the legacy result enum AND the new disposition_code: a PS/05.*
@@ -474,7 +474,7 @@ export default function ServePage() {
 
       const fullAddress = [
         job.recipient_address,
-        (job as any).recipient_address_2,
+        job.recipient_address_2,
         job.recipient_city,
         job.recipient_state,
         job.recipient_zip,
@@ -549,7 +549,7 @@ export default function ServePage() {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [
-        job.recipient_address, (job as any).recipient_address_2,
+        job.recipient_address, job.recipient_address_2,
         job.recipient_city, job.recipient_state, job.recipient_zip,
       ].filter(Boolean).join(', ');
 
@@ -566,17 +566,17 @@ export default function ServePage() {
         attorneyName: job.attorney_name || null,
         serviceInstructions: job.service_instructions || null,
         serveDate: job.serve_date || null,
-        recipientType: ((job as any).recipient_type as 'individual' | 'business' | null) || null,
+        recipientType: job.recipient_type || null,
         recipientName: job.recipient_name,
         recipientAddress: fullAddress || job.recipient_address || 'N/A',
-        businessName: (job as any).business_name || null,
-        businessDba: (job as any).business_dba || null,
-        businessEin: (job as any).business_ein || null,
-        businessSosFiling: (job as any).business_sos_filing || null,
-        businessStateOfInc: (job as any).business_state_of_inc || null,
-        registeredAgentName: (job as any).registered_agent_name || null,
-        registeredAgentTitle: (job as any).registered_agent_title || null,
-        registeredOfficeAddress: (job as any).registered_office_address || null,
+        businessName: job.business_name || null,
+        businessDba: job.business_dba || null,
+        businessEin: job.business_ein || null,
+        businessSosFiling: job.business_sos_filing || null,
+        businessStateOfInc: job.business_state_of_inc || null,
+        registeredAgentName: job.registered_agent_name || null,
+        registeredAgentTitle: job.registered_agent_title || null,
+        registeredOfficeAddress: job.registered_office_address || null,
         officerName: user?.full_name || user?.username || 'Process Server',
         officerBadge: user?.badge_number || '',
       });
@@ -593,7 +593,7 @@ export default function ServePage() {
   const handleAffidavitOfService = async (jobId: number) => {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+      const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
       const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
@@ -654,7 +654,7 @@ export default function ServePage() {
   const handleAffidavitOfNonService = async (jobId: number) => {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+      const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
       const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
@@ -954,7 +954,7 @@ export default function ServePage() {
     }
     if (!job.recipient_address) return;
     const addr = [
-      job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
+      job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
     ].filter(Boolean).join(', ');
     try {
       const geo = await apiFetch<{ results: Array<{ lat: string; lon: string }> }>(`/geocode/search?q=${encodeURIComponent(addr)}&limit=1`);
@@ -1144,7 +1144,7 @@ export default function ServePage() {
     setFormData({
       recipient_name: job.recipient_name,
       recipient_address: job.recipient_address || '',
-      recipient_address_2: (job as any).recipient_address_2 || '',
+      recipient_address_2: job.recipient_address_2 || '',
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
@@ -1188,15 +1188,15 @@ export default function ServePage() {
       contact_restrictions: job.contact_restrictions || '',
       building_access_notes: job.building_access_notes || '',
       // Recipient type fields (mig 0237)
-      recipient_type: ((job as any).recipient_type as '' | 'individual' | 'business') || '',
-      business_name: (job as any).business_name || '',
-      business_dba: (job as any).business_dba || '',
-      business_ein: (job as any).business_ein || '',
-      business_sos_filing: (job as any).business_sos_filing || '',
-      business_state_of_inc: (job as any).business_state_of_inc || '',
-      registered_agent_name: (job as any).registered_agent_name || '',
-      registered_agent_title: (job as any).registered_agent_title || '',
-      registered_office_address: (job as any).registered_office_address || '',
+      recipient_type: (job.recipient_type as '' | 'individual' | 'business') || '',
+      business_name: job.business_name || '',
+      business_dba: job.business_dba || '',
+      business_ein: job.business_ein || '',
+      business_sos_filing: job.business_sos_filing || '',
+      business_state_of_inc: job.business_state_of_inc || '',
+      registered_agent_name: job.registered_agent_name || '',
+      registered_agent_title: job.registered_agent_title || '',
+      registered_office_address: job.registered_office_address || '',
     });
     setCreateJobOpen(true);
     snapshotForm();
@@ -1244,7 +1244,7 @@ export default function ServePage() {
         body: JSON.stringify({
           recipient_name: source.recipient_name,
           recipient_address: source.recipient_address,
-          recipient_address_2: (source as any).recipient_address_2 ?? undefined,
+          recipient_address_2: source.recipient_address_2 ?? undefined,
           recipient_city: source.recipient_city,
           recipient_state: source.recipient_state,
           recipient_zip: source.recipient_zip,
@@ -1704,7 +1704,7 @@ export default function ServePage() {
 
         // Popup on click
         el.addEventListener('click', () => {
-          const fullAddr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+          const fullAddr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
             .filter(Boolean).join(', ');
           if (popupRef.current) {
             popupRef.current.setLngLat(lngLat).setHTML(`
@@ -2081,7 +2081,7 @@ export default function ServePage() {
 
   // ── Build a serve-job row context menu ──
   const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
-    const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+    const addr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
     return [
@@ -2769,7 +2769,7 @@ export default function ServePage() {
                             </div>
                             <div className="text-[10px] text-fg-muted truncate">
                               {job.recipient_address || 'No address'}
-                              {(job as any).recipient_address_2 ? `, ${(job as any).recipient_address_2}` : ''}
+                              {job.recipient_address_2 ? `, ${job.recipient_address_2}` : ''}
                               {job.recipient_city ? `, ${job.recipient_city}` : ''}
                             </div>
                             {stopEtas.has(job.id) && (

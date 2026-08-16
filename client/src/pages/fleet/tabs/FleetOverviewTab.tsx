@@ -448,7 +448,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                   {daysUntil < 0 ? 'SERVICE OVERDUE' : 'SERVICE DUE SOON'}
                 </div>
                 <div className="text-[9px] text-rmpg-400">
-                  {(detail as any).next_service_type || 'Scheduled Service'} - {daysUntil < 0 ? `${Math.abs(daysUntil)} days overdue` : `Due in ${daysUntil} days`} ({detail.next_service_due})
+                  {detail.next_service_type || 'Scheduled Service'} - {daysUntil < 0 ? `${Math.abs(daysUntil)} days overdue` : `Due in ${daysUntil} days`} ({detail.next_service_due})
                 </div>
               </div>
             </div>

@@ -21,15 +21,7 @@ interface ServeComment {
   is_system: number;
 }
 
-interface SubjectFileJob extends ServeJob {
-  quality_status?: string | null;
-  quality_reviewed_by?: string | null;
-  quality_reviewed_at?: string | null;
-  contract_id?: number | null;
-  business_id?: number | null;
-  recipient_type?: string | null;
-  geocode_source?: string | null;
-}
+type SubjectFileJob = ServeJob;
 
 // ── Small helpers ──────────────────────────────────────────────────────────
 
