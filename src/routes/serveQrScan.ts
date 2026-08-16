@@ -4,12 +4,16 @@
 // PUBLIC route mounted at /api/verify (no auth — the subject scanning
 // the QR code is a member of the public with no session).
 //
-// On scan:
+// On scan (GET /):
 //   1. Parse the `?ref=` query param (e.g. "JOB-122" or a court case #).
 //   2. Resolve the matching serve_queue row if the ref is a JOB- number.
-//   3. Write a serve_qr_scans row (timestamp, IP, UA).
+//   3. Write a serve_qr_scans row (timestamp, IP, UA, IP-based geo).
 //   4. Notify the assigned process server via WS + notifications table.
 //   5. Return a subject-facing JSON payload with agency contact info.
+//
+// Location callback (POST /location):
+//   Accepts GPS coordinates from the browser after the subject grants
+//   the browser's native location permission. Updates the scan row.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -21,6 +25,24 @@ import { broadcastAll } from './ws';
 
 const app = new Hono<Env>();
 
+// ── Helpers ──────────────────────────────────────────────────
+
+function parseDeviceType(ua: string | null): string {
+  if (!ua) return 'unknown';
+  const s = ua.toLowerCase();
+  if (/ipad|tablet|kindle|playbook|silk|(android(?!.*mobile))/i.test(s)) return 'tablet';
+  if (/mobile|iphone|ipod|android|blackberry|mini|windows\sce|palm/i.test(s)) return 'mobile';
+  return 'desktop';
+}
+
+function cfFloat(val: string | undefined): number | null {
+  if (!val) return null;
+  const n = parseFloat(val);
+  return isNaN(n) ? null : n;
+}
+
+// ── GET / — initial QR scan ──────────────────────────────────
+
 app.get('/', async (c) => {
   const ref = (c.req.query('ref') ?? '').trim();
   if (!ref) {
@@ -31,6 +53,14 @@ app.get('/', async (c) => {
   const ip  = clientIp(c);
   const ua  = c.req.header('User-Agent') ?? null;
   const now = new Date().toISOString();
+
+  // Cloudflare IP-geo headers — present on every Worker request.
+  const geoCity    = c.req.header('cf-ipcity')    ?? null;
+  const geoRegion  = c.req.header('cf-ipregion')  ?? null;
+  const geoCountry = c.req.header('cf-ipcountry') ?? null;
+  const geoLat     = cfFloat(c.req.header('cf-iplatitude'));
+  const geoLon     = cfFloat(c.req.header('cf-iplongitude'));
+  const deviceType = parseDeviceType(ua);
 
   // Resolve serve_queue row from "JOB-<id>" ref so we can notify the officer.
   let jobId: number | null = null;
@@ -56,8 +86,15 @@ app.get('/', async (c) => {
   try {
     const ins = await execute(
       db,
-      'INSERT INTO serve_qr_scans (job_ref, job_id, scanned_at, ip_address, user_agent, notified) VALUES (?, ?, ?, ?, ?, 0)',
+      `INSERT INTO serve_qr_scans
+         (job_ref, job_id, scanned_at, ip_address, user_agent,
+          geo_city, geo_region, geo_country, geo_lat, geo_lon, geo_source,
+          device_type, notified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       ref, jobId, now, ip, ua,
+      geoCity, geoRegion, geoCountry, geoLat, geoLon,
+      (geoLat !== null ? 'ip' : null),
+      deviceType,
     );
     scanId = ins.meta?.last_row_id ?? null;
   } catch (err) {
@@ -71,11 +108,13 @@ app.get('/', async (c) => {
       hour: 'numeric', minute: '2-digit', hour12: true,
     });
     const recipientLabel = recipientName ?? 'Subject';
+    const locationStr = geoCity
+      ? ` from ${[geoCity, geoRegion, geoCountry].filter(Boolean).join(', ')}`
+      : '';
+    const deviceStr = deviceType !== 'unknown' ? ` (${deviceType})` : '';
     const title   = 'QR Code Scanned — Subject Engaged';
-    const message = `${recipientLabel} scanned the Notice of Attempt QR at ${scanTime} MT (ref: ${ref}).`;
+    const message = `${recipientLabel} scanned the Notice of Attempt QR at ${scanTime} MT${locationStr}${deviceStr} (ref: ${ref}).`;
 
-    // Broadcast to all online officers — the serve module listens for
-    // 'serve_qr_scan' to surface a toast/badge in the ServePage.
     broadcastAll('serve_qr_scan', {
       ref,
       jobId,
@@ -83,10 +122,14 @@ app.get('/', async (c) => {
       recipientName: recipientLabel,
       scannedAt: now,
       ip,
+      geoCity,
+      geoRegion,
+      geoCountry,
+      geoLat,
+      geoLon,
+      deviceType,
     });
 
-    // Persist for officers who are offline; target the assigned server when
-    // known, otherwise fan out to NULL (inbox shows it to all managers).
     await execute(
       db,
       `INSERT INTO notifications
@@ -105,6 +148,7 @@ app.get('/', async (c) => {
   return c.json({
     ok:      true,
     ref,
+    scanId,
     agency:  'Rocky Mountain Protective Group',
     phone:   '(385) 340-6555',
     website: 'https://rmpgutah.us',
@@ -113,6 +157,51 @@ app.get('/', async (c) => {
       'operating in the State of Utah. To arrange a convenient delivery time or confirm this notice ' +
       'is genuine, please contact our office using the information above and reference: ' + ref,
   });
+});
+
+// ── POST /location — GPS callback after browser permission ───
+
+app.post('/location', async (c) => {
+  let body: { scanId?: unknown; lat?: unknown; lon?: unknown; accuracy?: unknown };
+  try { body = await c.req.json(); } catch { return c.json({ ok: false }, 400); }
+
+  const scanId  = typeof body.scanId  === 'number' ? body.scanId  : null;
+  const lat     = typeof body.lat     === 'number' ? body.lat     : null;
+  const lon     = typeof body.lon     === 'number' ? body.lon     : null;
+
+  if (!scanId || lat === null || lon === null) {
+    return c.json({ ok: false, error: 'scanId, lat, lon required' }, 400);
+  }
+
+  const db = getDb(c.env);
+  try {
+    await execute(
+      db,
+      `UPDATE serve_qr_scans
+          SET geo_lat = ?, geo_lon = ?, geo_source = 'gps'
+        WHERE id = ?`,
+      lat, lon, scanId,
+    );
+
+    // Re-broadcast with precise location so the officer's live map updates.
+    const row = await queryFirst<{ job_ref: string; job_id: number | null; geo_city: string | null; geo_region: string | null }>(
+      db, 'SELECT job_ref, job_id, geo_city, geo_region FROM serve_qr_scans WHERE id = ?', scanId,
+    );
+    if (row) {
+      broadcastAll('serve_qr_location', {
+        scanId,
+        jobId: row.job_id,
+        ref: row.job_ref,
+        lat,
+        lon,
+        source: 'gps',
+      });
+    }
+  } catch (err) {
+    log.error('serve_qr_scan: location update failed', { scanId }, err as Error);
+  }
+
+  return c.json({ ok: true });
 });
 
 export { app as serveQrScan };
