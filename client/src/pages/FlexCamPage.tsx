@@ -44,7 +44,7 @@ function statusBadge(r: Req): { bg: string; ring: string; text: string; label: s
     case 'complete':   return { bg: 'bg-emerald-900/30', ring: 'border-emerald-700/50', text: 'text-emerald-400', label: 'READY',        Icon: CheckCircle2 };
     case 'fulfilling': return { bg: 'bg-blue-900/30',   ring: 'border-blue-700/50',   text: 'text-blue-400',    label: 'DOWNLOADING',  Icon: Clock };
     case 'partial':    return { bg: 'bg-amber-900/30',  ring: 'border-amber-700/50',  text: 'text-amber-400',   label: 'PARTIAL',      Icon: RefreshCw };
-    default:           return { bg: 'bg-surface-raised', ring: 'border-border-default', text: 'text-rmpg-400',  label: r.status.toUpperCase(), Icon: Video };
+    default:           return { bg: 'bg-surface-raised', ring: 'border-border-default', text: 'text-rmpg-400',  label: (r.status ?? '').toUpperCase() || 'UNKNOWN', Icon: Video };
   }
 }
 
