@@ -685,7 +685,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any) => [`${value} mi`, 'Miles']}
                   labelFormatter={(label) => {
-                    const d = parseTimestamp(label);
+                    const d = parseTimestamp(String(label));
                     return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
@@ -785,7 +785,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any, name: any) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
                   labelFormatter={(label) => {
-                    const d = parseTimestamp(label);
+                    const d = parseTimestamp(String(label));
                     return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
