@@ -24,6 +24,9 @@ import {
   User,
   Gavel,
   Navigation,
+  Heart,
+  Clock,
+  BookOpen,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -1051,6 +1054,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.aliases && <RecordField label="Other Aliases" value={selectedPerson.aliases} />}
             {selectedPerson.suffix && <RecordField label="Suffix" value={selectedPerson.suffix} />}
             {selectedPerson.sex && <RecordField label="Sex (Birth/Legal)" value={selectedPerson.sex} />}
+            {selectedPerson.gender && <RecordField label="Gender Identity" value={humanizeGender(selectedPerson.gender)} />}
             <RecordField label="Language" value={selectedPerson.language} />
             {selectedPerson.nationality && <RecordField label="Nationality" value={selectedPerson.nationality} />}
             <RecordField label="Place of Birth" value={selectedPerson.place_of_birth} />
@@ -1107,12 +1111,20 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.work_phone && <RecordField label="Work Phone" value={formatPhoneDisplay(selectedPerson.work_phone)} icon={Phone} copyable />}
             <RecordField label="Email" value={selectedPerson.email} icon={Mail} copyable />
             {selectedPerson.email_secondary && <RecordField label="Email 2" value={selectedPerson.email_secondary} icon={Mail} copyable />}
-            <RecordField label="Address" value={[formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', ')} icon={MapPin} copyable />
-            <RecordField label="Employer" value={selectedPerson.employer} icon={Briefcase} />
-            <RecordField label="Occupation" value={selectedPerson.occupation} />
+            <RecordField label="Address" value={[formatAddressDisplay(selectedPerson.address), selectedPerson.address_2, formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', ')} icon={MapPin} copyable />
             <RecordField label="Social Media" value={selectedPerson.social_media} />
           </FieldGrid>
         </CollapsibleSection>
+
+        {/* ── Employment ───────────────────────────── */}
+        {(selectedPerson.employer || selectedPerson.occupation) && (
+          <CollapsibleSection title="Employment" icon={Briefcase}>
+            <FieldGrid cols={2}>
+              <RecordField label="Employer" value={selectedPerson.employer} icon={Briefcase} />
+              <RecordField label="Occupation" value={selectedPerson.occupation} />
+            </FieldGrid>
+          </CollapsibleSection>
+        )}
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
@@ -1232,11 +1244,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         </CollapsibleSection>
 
         {/* ── Legal & Associations (conditional) ──── */}
-        {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
+        {(selectedPerson.probation_parole || selectedPerson.known_associates || hasValue(selectedPerson.gang_affiliation) || selectedPerson.alias_dob) && (
           <CollapsibleSection title="Legal & Associations" icon={Shield} accent="amber">
             <FieldGrid cols={2}>
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
               {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
+              {hasValue(selectedPerson.gang_affiliation) && <RecordField label="Gang Affiliation" value={selectedPerson.gang_affiliation} />}
+              {selectedPerson.alias_dob && <RecordField label="Alias DOB" value={safeDateDisplay(selectedPerson.alias_dob)} />}
             </FieldGrid>
             {selectedPerson.known_associates && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
@@ -1278,6 +1292,17 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           </CollapsibleSection>
         )}
 
+        {/* ── Custody / Intake (conditional) ─────────── */}
+        {(selectedPerson.voice_description || selectedPerson.religion || selectedPerson.dietary_restrictions) && (
+          <CollapsibleSection title="Custody / Intake" icon={BookOpen}>
+            <FieldGrid cols={3}>
+              {selectedPerson.voice_description && <RecordField label="Voice Description" value={selectedPerson.voice_description} />}
+              {selectedPerson.religion && <RecordField label="Religion" value={selectedPerson.religion} />}
+              {selectedPerson.dietary_restrictions && <RecordField label="Dietary Restrictions" value={selectedPerson.dietary_restrictions} />}
+            </FieldGrid>
+          </CollapsibleSection>
+        )}
+
         {/* ── Education & Military (conditional) ───── */}
         {(selectedPerson.education_level || selectedPerson.military_branch || selectedPerson.military_status || selectedPerson.tribal_affiliation) && (
           <CollapsibleSection title="Education & Military" icon={Shield}>
@@ -1310,9 +1335,18 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedPerson.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words whitespace-pre-wrap">{selectedPerson.notes}</p>
           </CollapsibleSection>
         )}
+
+        {/* ── Record Metadata ─────────────────────── */}
+        <CollapsibleSection title="Record Info" icon={Clock} defaultOpen={false}>
+          <FieldGrid cols={2}>
+            <RecordField label="Created" value={safeDateDisplay(selectedPerson.created_at)} />
+            <RecordField label="Last Updated" value={safeDateDisplay(selectedPerson.updated_at)} />
+            <RecordField label="Record ID" value={selectedPerson.id} mono />
+          </FieldGrid>
+        </CollapsibleSection>
 
         {/* ── Criminal History (standalone component) ─ */}
         <CriminalHistorySection
