@@ -290,7 +290,7 @@ export default function DispatchAnalyticsStrip() {
                   return (
                     <div key={r.priority} className="flex items-center gap-1.5 text-[8px]">
                       <span className="font-mono font-bold w-5 flex-shrink-0" style={{ color }}>{r.priority}</span>
-                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-weak)' }}>
+                      <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-default)' }}>
                         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color, opacity: 0.75 }} />
                       </div>
                       <span className="font-mono tabular-nums text-rmpg-300 w-8 text-right flex-shrink-0">{r.avg_minutes}m</span>
