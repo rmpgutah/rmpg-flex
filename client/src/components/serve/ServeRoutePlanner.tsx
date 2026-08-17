@@ -28,7 +28,7 @@ interface RouteStopPayload {
   lng: number;
   geocodeSource: 'point' | 'centroid' | null;
   deadlineAt: string | null;
-  defendantType: 'individual' | 'business';
+  defendantType: 'individual' | 'apartment' | 'business';
   addressHash: string;
   defendant: string;
   address: string;
@@ -206,7 +206,12 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 // reasonably-spaced deadlines and flag genuine infeasibility via
 // missedDeadlineJobIds, but it does not guarantee a globally optimal route.
 const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
-const STOP_DWELL_MS = 5 * 60 * 1000; // 5 minutes — knock, serve, paperwork
+const DWELL_BY_TYPE_MS: Record<string, number> = {
+  individual: 7 * 60 * 1000,
+  apartment: 10 * 60 * 1000,
+  business: 13 * 60 * 1000,
+};
+const STOP_DWELL_MS = 7 * 60 * 1000; // fallback
 
 /** Greedy nearest-neighbor reorder from an optional origin, biased toward
  *  approaching deadlines. Returns the reordered stops, the total
@@ -266,7 +271,8 @@ export function nearestNeighborOrder(
     if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
     perStopArrivalMs.push(chosen.arrivalMs);
-    elapsedMs = chosen.arrivalMs + STOP_DWELL_MS;
+    const stopDwell = DWELL_BY_TYPE_MS[inferDefendantType(next.job.recipient_address, next.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs = chosen.arrivalMs + stopDwell;
     ordered.push(next);
   }
 
@@ -359,6 +365,17 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 
 // ─── Server-Route Helpers ────────────────────────────────────────────────
 
+const APARTMENT_RE = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:oor)?|#)\b|\s#\d/i;
+
+function inferDefendantType(
+  address: string | null | undefined,
+  businessId: number | null | undefined,
+): 'individual' | 'apartment' | 'business' {
+  if (businessId) return 'business';
+  if (address && APARTMENT_RE.test(address)) return 'apartment';
+  return 'individual';
+}
+
 /** Convert client StopItems to the shape the server optimizer expects. */
 export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
   return stops
@@ -369,8 +386,7 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
       lng: s.job.recipient_lng!,
       geocodeSource: null,
       deadlineAt: s.job.deadline ?? null,
-      // ServeJob has no defendant_type column yet; individual is the safer default
-      defendantType: 'individual' as const,
+      defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
       addressHash: '',
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
@@ -1000,7 +1016,7 @@ export default function ServeRoutePlanner({
         if (!token) throw new Error('No Mapbox token');
 
         const coordStr = allCoords.map(c => c.join(',')).join(';');
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
 
         // A cluster that fails to route must NOT drop its stops. `newStops`
         // below is built from allOrderedStops + the UNSELECTED stops, so any
@@ -1062,7 +1078,7 @@ export default function ServeRoutePlanner({
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
         try {
           const token = await getMapboxAccessToken();
-          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
           const retRes = await fetch(retUrl);
           if (retRes.ok) {
             const retData = await retRes.json();
@@ -1277,17 +1293,25 @@ export default function ServeRoutePlanner({
       doc.setTextColor(missed ? 180 : 30, missed ? 30 : 30, 30);
       doc.setFontSize(10);
       doc.text(`${idx + 1}. ${stop.job.recipient_name ?? 'Unknown'}`, margin, y);
+      const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
+      const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
       if (etaStr) {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(9);
         doc.setTextColor(80, 80, 80);
-        doc.text(`ETA ${etaStr}`, pageW - margin, y, { align: 'right' });
+        doc.text(`ETA ${etaStr}  (~${dwellMin} min)`, pageW - margin, y, { align: 'right' });
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`~${dwellMin} min buffer`, pageW - margin, y, { align: 'right' });
       }
       y += 13;
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(80, 80, 80);
-      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
+      const typeLabel = dtype === 'business' ? 'BUSINESS' : dtype === 'apartment' ? 'APT/COMPLEX' : '';
+      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, typeLabel, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
       doc.text(addrLine || 'No address', margin + 10, y);
       if (missed) {
         doc.setTextColor(180, 30, 30);

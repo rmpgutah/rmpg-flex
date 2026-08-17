@@ -27,9 +27,15 @@ export function isRiskFlagged(item: {
   return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
 }
 
-export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue';
+export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue' | 'served';
 
-export function matchesDeadlineFilter(deadline: string | null, filter: DeadlineFilter, now: number): boolean {
+export function matchesDeadlineFilter(
+  deadline: string | null,
+  filter: DeadlineFilter,
+  now: number,
+  status?: string | null,
+): boolean {
+  if (filter === 'served') return status === 'served';
   if (filter === 'all') return true;
   if (!deadline) return false;
   const deadlineMs = parseTimestamp(deadline).getTime();
