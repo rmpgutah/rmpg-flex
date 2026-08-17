@@ -105,8 +105,9 @@ export default function DocumentsPage() {
       setBreadcrumbs(data.breadcrumbs || []);
     } catch (err: any) {
       addToast(err.message || 'Failed to load documents', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [addToast]);
 
   useEffect(() => { fetchContents(currentFolderId); }, [currentFolderId, fetchContents]);
@@ -168,43 +169,46 @@ export default function DocumentsPage() {
     setUploadProgress(items.map(f => ({ name: f.name, done: false, error: false })));
     const token = localStorage.getItem('rmpg_token');
     let successCount = 0;
-    for (let i = 0; i < items.length; i++) {
-      const file = items[i];
-      const formData = new FormData();
-      formData.append('files', file);
-      if (currentFolderId) {
-        formData.append('entity_type', 'document_folder');
-        formData.append('entity_id', String(currentFolderId));
-      }
-      try {
-        const resp = await fetch('/api/uploads', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-          body: formData,
-        });
-        if (resp.ok) {
-          const results = await resp.json();
-          if (currentFolderId && results?.[0]?.file_id) {
-            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
-              method: 'POST',
-              body: JSON.stringify({ file_id: results[0].file_id }),
-            }).catch(() => {});
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const file = items[i];
+        const formData = new FormData();
+        formData.append('files', file);
+        if (currentFolderId) {
+          formData.append('entity_type', 'document_folder');
+          formData.append('entity_id', String(currentFolderId));
+        }
+        try {
+          const resp = await fetch('/api/uploads', {
+            method: 'POST',
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+            body: formData,
+          });
+          if (resp.ok) {
+            const results = await resp.json();
+            if (currentFolderId && results?.[0]?.file_id) {
+              await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
+                method: 'POST',
+                body: JSON.stringify({ file_id: results[0].file_id }),
+              }).catch(() => {});
+            }
+            successCount++;
+            setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
+          } else {
+            setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
           }
-          successCount++;
-          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
-        } else {
+        } catch {
           setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
         }
-      } catch {
-        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
       }
+      if (successCount > 0) {
+        addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+        fetchContents(currentFolderId);
+      }
+      setTimeout(() => setUploadProgress([]), 3000);
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
-      fetchContents(currentFolderId);
-    }
-    setTimeout(() => setUploadProgress([]), 3000);
   }, [currentFolderId, addToast, fetchContents]);
 
   const navigateTo = (folderId: number | null) => {
@@ -745,7 +749,7 @@ export default function DocumentsPage() {
                 {(() => { const { Icon, tint } = getFileIconMeta(file.mime_type); return <Icon className={`w-4 h-4 flex-shrink-0 ${tint}`} />; })()}
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
-                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
+                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' })} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={() => setInfoFile(file)}

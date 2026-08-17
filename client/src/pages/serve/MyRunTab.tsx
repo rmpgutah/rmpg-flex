@@ -93,7 +93,7 @@ async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promis
   if (!job.recipient_address) return;
   const full = [
     job.recipient_address,
-    (job as any).recipient_address_2,
+    job.recipient_address_2,
     job.recipient_city,
     job.recipient_state,
     job.recipient_zip,
@@ -115,9 +115,10 @@ interface RunJobRowProps {
   isNext: boolean;
   onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
   navigate: NavigateFunction;
+  routeStop?: number;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -148,11 +149,17 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
           : 'border-border-default bg-surface-sunken'
       }`}
     >
-      {/* Status dot */}
-      <span
-        className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${SERVE_FOLDER_CONFIG[deriveServeFolder(job)].dotClass}`}
-        aria-hidden
-      />
+      {/* Route stop number (when a plan is active) or status dot */}
+      {routeStop != null ? (
+        <span className="mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold bg-rmpg-700 text-rmpg-200 leading-none" aria-label={`Stop ${routeStop}`}>
+          {routeStop}
+        </span>
+      ) : (
+        <span
+          className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${SERVE_FOLDER_CONFIG[deriveServeFolder(job)].dotClass}`}
+          aria-hidden
+        />
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -171,7 +178,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
         </div>
         <div className="text-[10px] text-rmpg-500 truncate mt-0.5">
           {job.recipient_address
-            ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
+            ? [job.recipient_address, job.recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
             : '— no address —'}
         </div>
         {job.deadline && (
@@ -238,7 +245,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
 
 // ─── Next Job Card ─────────────────────────────────────────────────────────────
 
-function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction }) {
+function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
@@ -264,7 +271,9 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
       {/* Header row */}
       <div className="flex items-center gap-2 mb-2">
         <MapPin size={13} className="text-brand-400 flex-shrink-0" aria-hidden />
-        <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">Next Stop</span>
+        <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">
+          Next Stop{routeStop != null ? ` · #${routeStop}` : ''}
+        </span>
         <span className={`ml-auto text-[9px] uppercase font-bold ${priorityColor(job.priority)}`}>
           {formatEnumValue(job.priority)}
         </span>
@@ -274,7 +283,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
       <div className="text-[13px] font-semibold text-rmpg-100 mb-0.5 truncate">{job.recipient_name}</div>
       <div className="text-[11px] text-rmpg-400 mb-2 truncate">
         {job.recipient_address
-          ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state]
+          ? [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state]
               .filter(Boolean).join(', ')
           : '— no address on file —'}
       </div>
@@ -463,11 +472,13 @@ export interface MyRunTabProps {
   sharedJobs?: ServeJob[];
   /** Optional: the ServePage `setJobs` dispatcher — propagates optimistic updates to the Queue tab instantly. */
   onJobsChange?: Dispatch<SetStateAction<ServeJob[]>>;
+  /** Ordered job IDs from the saved route plan — when provided, active jobs sort by route sequence and show stop numbers. */
+  routeOrderIds?: number[];
 }
 
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
-export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunTabProps) {
+export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds }: MyRunTabProps) {
   const navigate = useNavigate();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
@@ -571,6 +582,14 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     return allJobs; // already filtered in fetch
   }, [allJobs, sharedJobs, officerId, today]);
 
+  // Route position lookup: job id → 1-based stop number (only for jobs in the plan)
+  const routeStopIndex = useMemo((): Map<number, number> => {
+    if (!routeOrderIds || routeOrderIds.length === 0) return new Map();
+    const map = new Map<number, number>();
+    routeOrderIds.forEach((id, i) => map.set(id, i + 1));
+    return map;
+  }, [routeOrderIds]);
+
   // ── Progress metrics ──────────────────────────────────────────────────
   const { totalToday, servedToday, activeJobs } = useMemo(() => {
     const total = todayOfficerJobs.length;
@@ -593,7 +612,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
 
   // ── Next job ──────────────────────────────────────────────────────────
   const nextJob = useMemo((): ServeJob | null => {
-    // in_progress first, then pending; within each group: urgent→rush→normal→routine, then deadline ASC
+    // in_progress first, then pending; within each group: route order → priority → deadline
     const candidates = todayOfficerJobs.filter(
       (j) => j.status === 'in_progress' || j.status === 'pending',
     );
@@ -606,6 +625,12 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     return [...candidates].sort((a, b) => {
       const sr = statusRank(a.status) - statusRank(b.status);
       if (sr !== 0) return sr;
+      // Route order beats priority when a plan exists
+      if (routeStopIndex.size > 0) {
+        const ar = routeStopIndex.get(a.id) ?? Infinity;
+        const br = routeStopIndex.get(b.id) ?? Infinity;
+        if (ar !== br) return ar - br;
+      }
       const pr = priorityRank(a.priority) - priorityRank(b.priority);
       if (pr !== 0) return pr;
       if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
@@ -613,7 +638,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
       if (b.deadline) return 1;
       return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     })[0];
-  }, [todayOfficerJobs]);
+  }, [todayOfficerJobs, routeStopIndex]);
 
   // ── Group by folder ───────────────────────────────────────────────────
   const byFolder = useMemo((): Record<ServeFolder, ServeJob[]> => {
@@ -623,8 +648,18 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     for (const job of todayOfficerJobs) {
       groups[deriveServeFolder(job)].push(job);
     }
+    // When a route plan exists, sort active folders by planned stop order.
+    if (routeStopIndex.size > 0) {
+      const routeSort = (a: ServeJob, b: ServeJob) => {
+        const ai = routeStopIndex.get(a.id) ?? Infinity;
+        const bi = routeStopIndex.get(b.id) ?? Infinity;
+        return ai - bi;
+      };
+      groups.in_progress.sort(routeSort);
+      groups.pending.sort(routeSort);
+    }
     return groups;
-  }, [todayOfficerJobs]);
+  }, [todayOfficerJobs, routeStopIndex]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Render
@@ -692,7 +727,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
 
           {/* ── Next Job card (shown when run is NOT complete) ──── */}
           {!runComplete && nextJob && (
-            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} />
+            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} />
           )}
 
           {/* ── Folder-grouped job list ─────────────────────────── */}
@@ -718,6 +753,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
                       isNext={nextJob?.id === job.id && !runComplete}
                       onOptimisticUpdate={handleOptimisticUpdate}
                       navigate={navigate}
+                      routeStop={routeStopIndex.get(job.id)}
                     />
                   ))}
                 </ServeStatusFolder>

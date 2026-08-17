@@ -109,6 +109,7 @@ function getFileIcon(mime: string) {
 
 function formatDate(dateStr: string): string {
   return parseTimestamp(dateStr).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

@@ -56,22 +56,22 @@ export default function InstallDashboard() {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="bg-surface-base border border-border-default">
         <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
-          <Package className="w-3.5 h-3.5 text-[#d4a017]" />
-          <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">
+          <Package className="w-3.5 h-3.5 [color:var(--panel-header-color)]" />
+          <div className="text-[9px] [color:var(--panel-header-color)] uppercase tracking-wider font-semibold flex-1">
             Installed Tools
           </div>
           <div className="text-[#888] text-[10px] font-mono">{count} / {total}</div>
         </div>
         <div className="p-3 space-y-2">
           <div className="h-1 bg-surface-overlay overflow-hidden">
-            <div className="h-full bg-[#d4a017] transition-all" style={{ width: `${pct}%` }} />
+            <div className="h-full bg-[var(--field-label-color)] transition-all" style={{ width: `${pct}%` }} />
           </div>
           <div className="flex flex-wrap gap-1">
             {TRACKED_BINARIES.map((b) => (
               <span
                 key={b}
                 className={`text-[9px] font-mono px-1.5 py-0.5 border ${
-                  installed[b] ? 'text-[#7fd38a] border-[#2e7d32]/50' : 'text-rmpg-500 border-rmpg-700'
+                  installed[b] ? 'text-green-400 border-green-800/50' : 'text-rmpg-500 border-rmpg-700'
                 }`}
                 title={installed[b] ? 'Installed' : 'Not installed'}
               >
@@ -85,8 +85,8 @@ export default function InstallDashboard() {
 
       <div className="bg-surface-base border border-border-default">
         <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
-          <Clock className="w-3.5 h-3.5 text-[#d4a017]" />
-          <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+          <Clock className="w-3.5 h-3.5 [color:var(--panel-header-color)]" />
+          <div className="text-[9px] [color:var(--panel-header-color)] uppercase tracking-wider font-semibold">
             Recent Runs
           </div>
         </div>
@@ -96,10 +96,10 @@ export default function InstallDashboard() {
           ) : (
             recent.map((r, i) => (
               <div key={i} className="px-2 py-1.5 text-[10px] font-mono flex items-baseline gap-2">
-                <span className={r.exit === 0 ? 'text-[#7fd38a]' : 'text-[#ff8888]'}>
+                <span className={r.exit === 0 ? 'text-green-400' : 'text-red-400'}>
                   {r.exit === 0 ? '✓' : '✗'}
                 </span>
-                <span className="text-[#d4a017]">{r.toolId}</span>
+                <span className="[color:var(--panel-header-color)]">{r.toolId}</span>
                 {Object.values(r.args).filter(Boolean).slice(0, 1).map((v, j) => (
                   <span key={j} className="text-rmpg-200 min-w-0 truncate flex-1">{v}</span>
                 ))}

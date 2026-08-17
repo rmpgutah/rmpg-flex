@@ -30,7 +30,8 @@ interface DossierResponse {
 
 function fmtDate(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleString([], {
+    return parseTimestamp(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'numeric', day: 'numeric', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
@@ -61,7 +62,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
       <div className="w-full max-w-lg max-h-[85vh] flex flex-col border border-border-subtle bg-surface-sunken">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-          <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">
+          <span className="text-[11px] font-semibold tracking-wider text-[var(--field-label-color)]">
             VEHICLE FILE —{' '}
             <span className="font-mono text-rmpg-100">{plate}</span>
           </span>
@@ -140,7 +141,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                   </div>
                   {variants.length > 0 && (
                     <div className="text-[9px] text-[#888] border-t border-border-default pt-0.5 mt-0.5">
-                      variants: {variants.join(', ')} — <span className="text-[#d4a017]">verify</span>
+                      variants: {variants.join(', ')} — <span className="text-[var(--field-label-color)]">verify</span>
                     </div>
                   )}
                 </div>

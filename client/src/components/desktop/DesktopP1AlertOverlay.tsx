@@ -27,10 +27,10 @@ export default function DesktopP1AlertOverlay() {
       <style>{`@keyframes p1-flash { from { background: rgba(220,38,38,0.05); } to { background: rgba(220,38,38,0.3); } }`}</style>
       <div style={{
         background: 'var(--surface-raised)', borderRadius: 2,
-        border: '2px solid var(--sev-critical, #ef4444)',
+        border: '2px solid var(--sev-critical)',
         padding: '16px 24px', textAlign: 'center',
       }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--sev-critical, #ef4444)', letterSpacing: '0.12em', marginBottom: 4 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--sev-critical)', letterSpacing: '0.12em', marginBottom: 4 }}>
           P1 — PRIORITY CALL ASSIGNED
         </div>
         <div style={{ fontSize: 10, color: 'var(--text-primary)', marginBottom: 8 }}>
@@ -39,7 +39,7 @@ export default function DesktopP1AlertOverlay() {
         <button
           type="button"
           onClick={() => { dismissed.current = activeCall.id; setVisible(false); }}
-          style={{ fontSize: 9, padding: '3px 12px', background: 'var(--sev-critical, #ef4444)', color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer' }}
+          style={{ fontSize: 9, padding: '3px 12px', background: 'var(--sev-critical)', color: '#fff', border: 'none', borderRadius: 2, cursor: 'pointer' }}
         >
           ACKNOWLEDGE
         </button>

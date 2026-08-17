@@ -73,16 +73,16 @@ export default function WirelessAttacksPage() {
       <PanelTitleBar title="WIRELESS ATTACKS — NATIVE TOOLS" icon={Wifi} />
 
       <div className="bg-surface-base border border-border-default p-3 flex items-start gap-3">
-        <ShieldAlert className="w-4 h-4 text-[#d4a017] shrink-0 mt-0.5" />
+        <ShieldAlert className="w-4 h-4 [color:var(--panel-header-color)] shrink-0 mt-0.5" />
         <div className="text-[11px] text-rmpg-300 leading-relaxed">
-          <span className="text-[#d4a017] font-semibold">AUTHORIZED USE ONLY</span> — Wireless reconnaissance
+          <span className="[color:var(--panel-header-color)] font-semibold">AUTHORIZED USE ONLY</span> — Wireless reconnaissance
           is legal on networks you own or have explicit written authorization to test. Scanning or
           attacking third-party networks without consent violates federal and state law.
         </div>
       </div>
 
       {!isElectron && (
-        <div className="bg-surface-base border border-rmpg-700 text-[#d4a017] text-[11px] p-3">
+        <div className="bg-surface-base border border-rmpg-700 [color:var(--panel-header-color)] text-[11px] p-3">
           These tools execute on the local workstation — open Flex in the desktop app to use them.
         </div>
       )}

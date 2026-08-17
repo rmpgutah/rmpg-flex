@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import {
   addConfidentialWatermark,
   addReportHeader,
@@ -874,6 +875,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   setActiveBranding(branding);
   await loadPdfAssets();
 
+  // Defensive reset: a prior render that threw after setting tightLayout=true
+  // would leave it set, causing this render to silently use compact spacing.
+  // A stale true here is the only way the notice gets tight spacing without
+  // actually being in a tight-fit scenario.
+  tightLayout = false;
+
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   applyPrintTarget(doc, options.printTarget ?? 'mobile');
@@ -937,9 +944,13 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
     // panels, the signature block) shares that same left/right edge. This
     // band previously sat 1mm inset on both sides, reading as a wobble in
     // the page's left margin when the eye tracks straight down.
+    // Light fill distinguishes this from plain bordered boxes elsewhere on
+    // the page and gives the status stamp visual weight proportional to its
+    // importance without competing with the tinted section headers.
+    doc.setFillColor(242, 245, 249);
     doc.setDrawColor(...COLOR.TEXT_PRIMARY);
     doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(getRailX(), y, getRailWidth(doc), bandH);
+    doc.rect(getRailX(), y, getRailWidth(doc), bandH, 'FD');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_VALUE + 1);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -957,9 +968,12 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // undifferentiated column, so nothing signalled which facts were about the
   // READER and which were about the CASE. The box edge does that work.
   const courtCaseDisplay = (data.caseNumber && data.caseNumber !== headerRef) ? data.caseNumber : 'N/A';
+  // When both attorney and client are present, split onto separate lines so
+  // the combined string doesn't wrap mid-name in the narrow panel column.
+  // "\n" is honoured by drawSubjectPanel's value-splitting logic.
   const hiringPartyLabel = (() => {
     if (data.attorneyName && data.clientName) {
-      return `${data.attorneyName} (atty) for ${data.clientName}`;
+      return `${data.attorneyName} (Atty)\n${data.clientName}`;
     }
     return data.attorneyName || data.clientName || 'N/A';
   })();
@@ -1184,26 +1198,38 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
       const boxX = getRailX();
       const boxW = getRailWidth(doc);
       const padX = SPACING.MD;
-      const padY = 1.8;
+      const padY = 2.0;
       const lineH = 3.4;
+      // "NEXT ATTEMPT" header strip sits in a mini-header bar — same visual
+      // language as every section bar on the page so this call-out reads as
+      // a structured element, not a floating label.
+      const headerH = SPACING.SECTION_HEADER_H;
       doc.setFont(PDF_VALUE_FONT, 'bold');
       doc.setFontSize(NOTICE_FONT);
       const noteLines: string[] = doc.splitTextToSize(
         sanitizePdfText(data.nextAttemptNote, { preserveCase: true }),
         boxW - padX * 2,
       );
-      const boxH = padY * 2 + lineH + noteLines.length * lineH;
+      const boxH = headerH + padY + noteLines.length * lineH + padY;
       y = checkPageBreak(doc, y, boxH + SPACING.SM);
 
+      // Outer border
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
       doc.rect(boxX, y, boxW, boxH);
 
-      let cy = y + padY + lineH * 0.7;
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NEXT ATTEMPT', boxX + padX, cy);
-      cy += lineH;
+      // Header strip — same accent as the subject panels' "routine" tier
+      const naAccent = resolveSectionAccentColor('routine');
+      doc.setFillColor(naAccent[0], naAccent[1], naAccent[2]);
+      doc.rect(boxX, y, boxW, headerH, 'F');
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+      doc.setTextColor(255, 255, 255);
+      doc.text('NEXT ATTEMPT', boxX + padX, y + headerH - 1.4);
+
+      const cy = y + headerH + padY + lineH * 0.7;
       doc.setFont(PDF_VALUE_FONT, 'italic');
+      doc.setFontSize(NOTICE_FONT);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(noteLines, boxX + padX, cy);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -1264,15 +1290,9 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   // default forced a page break the real content did not need -- the content
   // fit with room to spare and still landed on sheet two.
   //
-  // SIG_ROW_H was 11 here while the comment at the call site below (and this
-  // one) documented 9 -- the value drifted from its own stated intent at
-  // some point and nobody re-measured. On an unsigned notice (the common
-  // case -- these go out before the recipient ever signs anything) that
-  // extra 2mm reads as a visibly oversized blank gap between the
-  // certification sentence and the signature line, which looks unfinished
-  // on a document meant to stand as a court-facing record. Restored to 9 to
-  // match the documented design and tighten that gap.
-  const SIG_ROW_H = 9;
+  // 18mm gives a wet-signature line with room to write; 9mm was too tight
+  // for a real pen signature on a PJ-700 thermal print.
+  const SIG_ROW_H = 18;
   const SIG_INFO_H = 7;
   const sigBlockH = SPACING.SIGNATURE_ROLE_H + SIG_ROW_H + SIG_INFO_H;
   y = checkPageBreak(doc, y, sigBlockH + SPACING.LG);
@@ -1341,6 +1361,32 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   );
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
+  // ── Subject-facing QR code ──
+  try {
+    const verifyUrl = `https://rmpgutah.us/verify?ref=${encodeURIComponent(headerRef)}`;
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 200,
+    });
+    const QR_SIZE = 22;
+    const qrX = getRailX();
+    const pageH = doc.internal.pageSize.getHeight();
+    // addPageFooter places the accent line at pageH - 11 (SAFE_PRINT_EDGE_BOTTOM=8, offset=3).
+    // Keep the "Scan to verify" label (3.5mm) + 2mm gap entirely above that line.
+    const FOOTER_ACCENT_Y = pageH - 11;
+    const QR_LABEL_H = 3.5;
+    const qrY = FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE;
+    doc.addImage(qrDataUrl, 'PNG', qrX, qrY, QR_SIZE, QR_SIZE);
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('Scan to verify', qrX + QR_SIZE / 2, qrY + QR_SIZE + 2.5, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  } catch {
+    // best-effort
+  }
+
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
@@ -1353,17 +1399,7 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData, options
   tightLayout = false;
 
   finalizePoliceReport(doc, {
-    barcode: {
-      formMetadata: {
-        form: 'NOTICE-OF-ATTEMPT',
-        caseNumber: data.caseNumber,
-        agency: 'RMPG',
-        agencyOri: 'UT0180100',
-        reportDate: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }),
-        officer: data.serverName,
-        badge: data.serverBadge,
-      },
-    },
+    barcode: { disabled: true },
   });
 
   return doc;
@@ -2002,7 +2038,11 @@ function drawSubjectPanel(
     : doc.splitTextToSize(sanitizePdfText(name), w - pad * 2) as string[];
 
   // Measure wrapped values up front — a row is as tall as its value.
-  const labelW = w * 0.42;
+  // 0.38 gives values ~4% more space than 0.42 — enough to prevent a
+  // long street address ("…STREET, SALT LAKE CITY, UT…") from splitting
+  // mid-city-name. Labels are short fixed strings (≤ 20 chars at 5.5pt)
+  // and fit comfortably at this ratio.
+  const labelW = w * 0.38;
   const valueW = w - labelW - pad * 2;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_TABLE_BODY - 0.7);

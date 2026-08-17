@@ -124,6 +124,14 @@ export function useServiceWorker() {
       if (event.data?.type === 'SW_UPDATED') {
         setUpdateAvailable(true);
       }
+      // SW background sync asks the page to flush the write queue when the
+      // device reconnects (SW cannot call apiFetch directly — it lacks the
+      // session cookie/JWT that the page holds in memory).
+      if (event.data?.type === 'SYNC_PUSH_REQUESTED') {
+        import('../utils/offlineQueue').then(({ processQueue }) => {
+          processQueue(fetch).catch(() => {});
+        });
+      }
     };
 
     navigator.serviceWorker.addEventListener('message', handleMessage);

@@ -325,7 +325,7 @@ function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured
       transform: 'translateX(-50%)',
       zIndex: '2147483647',
       background: 'var(--surface-raised)',
-      color: '#d4a017',
+      color: 'var(--field-label-color)',
       border: '1px solid #d4a017',
       borderRadius: '2px',
       padding: '8px 16px',
@@ -333,7 +333,7 @@ function showRecoveryToast(actions: string[], headline = 'UI diagnostic captured
       fontFamily: 'monospace',
       pointerEvents: 'none',
       whiteSpace: 'nowrap',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.8)',
+      boxShadow: '0 2px 8px rgba(0 0 0 / 0.8)',
     });
     document.body.appendChild(div);
     setTimeout(() => {

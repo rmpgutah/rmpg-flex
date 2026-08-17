@@ -118,7 +118,7 @@ export async function stampPhoto(file: File, opts: PhotoStampOptions): Promise<F
     const bannerH = lines.length * lineH + pad * 2;
 
     // translucent bottom banner
-    ctx.fillStyle = 'rgba(0,0,0,0.58)';
+    ctx.fillStyle = 'rgba(0 0 0 / 0.58)';
     ctx.fillRect(0, H - bannerH, W, bannerH);
     // gold top rule (RMPG brand) without violating any UI rule — this is image content
     ctx.fillStyle = '#d4a017';
@@ -131,7 +131,7 @@ export async function stampPhoto(file: File, opts: PhotoStampOptions): Promise<F
       // line 1 (timestamp) gold, rest white for legibility
       ctx.fillStyle = i === 0 ? '#ffd34d' : '#f4f4f4';
       // subtle shadow for contrast over bright photos
-      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
       ctx.shadowBlur = Math.round(fontPx / 6);
       ctx.fillText(lines[i], pad, y);
       ctx.shadowBlur = 0;
@@ -142,7 +142,7 @@ export async function stampPhoto(file: File, opts: PhotoStampOptions): Promise<F
     ctx.font = `bold ${Math.round(fontPx * 0.9)}px monospace`;
     ctx.fillStyle = 'rgba(212,160,23,0.85)';
     ctx.textAlign = 'right';
-    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
     ctx.shadowBlur = Math.round(fontPx / 5);
     ctx.fillText(agency, W - pad, pad);
     ctx.shadowBlur = 0;

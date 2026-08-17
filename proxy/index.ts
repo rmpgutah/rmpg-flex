@@ -661,6 +661,12 @@ const API_ROUTES: RouteRule[] = [
   // this session — route the whole namespace to env.API so the new
   // pipeline is what runs in prod. Legacy serve-intake is dead code
   // after this entry lands.
+  // Recipient-facing QR acknowledgement form (public, no auth) and the
+  // officer-side admin surface (auth-required). Both live in
+  // src/routes/serveReceipt.ts — route both prefixes so neither falls
+  // through to the legacy worker (which has no handler for them).
+  { kind: 'prefix', value: '/api/serve-receipt' },
+  { kind: 'prefix', value: '/api/serve-receipts' },
   { kind: 'prefix', value: '/api/serve-intake' },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is

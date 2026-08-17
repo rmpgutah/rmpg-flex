@@ -91,8 +91,8 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
   return (
     <div className="bg-surface-base border border-border-default">
       <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
-        <Search className="w-3.5 h-3.5 text-[#d4a017]" />
-        <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
+        <Search className="w-3.5 h-3.5 text-[color:var(--panel-header-color)]" />
+        <div className="text-[9px] text-[color:var(--panel-header-color)] uppercase tracking-wider font-semibold">
           Full Catalog — {tools.length} upstream tools
         </div>
         <input id="ff-fullcatalog-0"
@@ -100,7 +100,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
           placeholder="Filter by name…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="ml-auto bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] px-2 py-0.5 w-48 focus:border-[#d4a017] outline-none"
+          className="ml-auto bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] px-2 py-0.5 w-48 focus:border-brand-400 outline-none"
         />
       </div>
       <div className="divide-y divide-[var(--border-subtle)]">
@@ -114,12 +114,12 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                 onClick={() => setExpanded(isOpen ? null : tool.className)}
                 className="w-full flex items-start gap-2 text-left hover:bg-surface-raised py-1 -mx-1 px-1"
               >
-                {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-[#888] shrink-0 mt-0.5" /> : <ChevronRight className="w-3.5 h-3.5 text-[#888] shrink-0 mt-0.5" />}
+                {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-[color:var(--text-muted)] shrink-0 mt-0.5" /> : <ChevronRight className="w-3.5 h-3.5 text-[color:var(--text-muted)] shrink-0 mt-0.5" />}
                 <div className="flex-1 min-w-0">
                   <div className="text-rmpg-200 text-xs font-semibold">{tool.title}</div>
-                  <div className="text-[#888] text-[10px] leading-snug line-clamp-2">{tool.description}</div>
+                  <div className="text-[color:var(--text-muted)] text-[10px] leading-snug line-clamp-2">{tool.description}</div>
                 </div>
-                {isRunning && <span className="text-[9px] font-mono text-[#7fd38a] uppercase tracking-wider border border-[#2e7d32] px-1.5 py-0.5">RUNNING</span>}
+                {isRunning && <span className="text-[9px] font-mono text-green-400 uppercase tracking-wider border border-green-800 px-1.5 py-0.5">RUNNING</span>}
               </button>
               {isOpen && (
                 <div className="mt-2 space-y-2 pl-5">
@@ -130,14 +130,14 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                           onClick={() => run(tool, 'install', i)}
                           disabled={Boolean(running)}
                           title={cmd}
-                          className="px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-[10px] hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1 font-mono"
+                          className="px-2 py-1 bg-surface-raised border border-rmpg-700 text-accent-silver-400 text-[10px] hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1 font-mono"
                         >
                           <Download className="w-3 h-3 shrink-0" /> Install {tool.install.length > 1 ? `[${i + 1}]` : ''}
                         </button>
                         <button
                           onClick={() => api?.reconCatalogTerminal?.({ category: categorySlug, className: tool.className, kind: 'install', index: i })}
                           title={`Open in macOS Terminal (needed if the command prompts for sudo)\n\n${cmd}`}
-                          className="px-1.5 py-1 bg-surface-raised border border-rmpg-700 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                          className="px-1.5 py-1 bg-surface-raised border border-rmpg-700 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                         >
                           <Terminal className="w-3 h-3" />
                         </button>
@@ -149,14 +149,14 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                           onClick={() => run(tool, 'run', i)}
                           disabled={Boolean(running)}
                           title={cmd}
-                          className="px-2 py-1 bg-[#d4a017] text-black text-[10px] font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1"
+                          className="px-2 py-1 bg-[color:var(--accent-silver-500)] text-rmpg-50 text-[10px] font-semibold hover:bg-[color:var(--accent-silver-400)] disabled:opacity-40 flex items-center gap-1"
                         >
                           <Play className="w-3 h-3" /> Run {tool.run.length > 1 ? `[${i + 1}]` : ''}
                         </button>
                         <button
                           onClick={() => api?.reconCatalogTerminal?.({ category: categorySlug, className: tool.className, kind: 'run', index: i })}
                           title={`Open in macOS Terminal (needed if the tool prompts for sudo)\n\n${cmd}`}
-                          className="px-1.5 py-1 bg-surface-raised border border-rmpg-700 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                          className="px-1.5 py-1 bg-surface-raised border border-rmpg-700 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                         >
                           <Terminal className="w-3 h-3" />
                         </button>
@@ -165,7 +165,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                     {isRunning && (
                       <button
                         onClick={stop}
-                        className="px-2 py-1 bg-surface-raised border border-[#b33] text-[#ff8888] text-[10px] hover:bg-[#2a1414] flex items-center gap-1"
+                        className="px-2 py-1 bg-surface-raised border border-[#b33] text-red-400 text-[10px] hover:bg-red-950 flex items-center gap-1"
                       >
                         <Square className="w-3 h-3" /> Stop
                       </button>
@@ -174,7 +174,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                       <a
                         href={tool.projectUrl}
                         target="_blank" rel="noreferrer"
-                        className="px-2 py-1 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                        className="px-2 py-1 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                       >
                         <ExternalLink className="w-3 h-3" /> Project
                       </a>
@@ -187,8 +187,8 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
                     >
                       {lines.map((line, i) => (
                         <span key={i} className={
-                          line.kind === 'stderr' ? 'text-[#ff8888]' :
-                          line.kind === 'meta'   ? 'text-[#d4a017]' :
+                          line.kind === 'stderr' ? 'text-red-400' :
+                          line.kind === 'meta'   ? 'text-[color:var(--text-muted)]' :
                                                    'text-rmpg-200'
                         }>{line.text}</span>
                       ))}

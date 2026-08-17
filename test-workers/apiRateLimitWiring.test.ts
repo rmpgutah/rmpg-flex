@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { app } from '../src/index';
 import { sign } from 'hono/jwt';
 import { getDb, execute } from '../src/utils/db';
+import { API_RATE_LIMIT } from '../src/middleware/rateLimit';
 
 const SECRET = 'test-jwt-secret-do-not-use-in-prod';
 
@@ -43,7 +44,7 @@ describe('apiRateLimit — wired into the real app', () => {
     const token = await mintAccessToken(user!.id, 'admin', 'rate-limit-wiring-test');
 
     const windowStart = currentWindowStart(300);
-    await env.KV.put(`rl:api:user:${user!.id}:${windowStart}`, '600', { expirationTtl: 600 });
+    await env.KV.put(`rl:api:user:${user!.id}:${windowStart}`, String(API_RATE_LIMIT), { expirationTtl: 600 });
 
     const res = await app.request(
       '/api/warrants/scrapers',
@@ -81,7 +82,7 @@ describe('apiRateLimit — wired into the real app', () => {
     // (which just returned a non-429 status for this exact same user a
     // moment ago).
     const windowStart = currentWindowStart(300);
-    await env.KV.put(`rl:api:user:${user!.id}:${windowStart}`, '600', { expirationTtl: 600 });
+    await env.KV.put(`rl:api:user:${user!.id}:${windowStart}`, String(API_RATE_LIMIT), { expirationTtl: 600 });
 
     const after = await app.request(
       '/api/warrants/scrapers',

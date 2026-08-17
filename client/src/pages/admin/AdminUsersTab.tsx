@@ -1026,7 +1026,7 @@ export default function AdminUsersTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div><span className="text-rmpg-400">Last Login:</span> <span className="text-rmpg-200 ml-1">{selectedUser.last_login || selectedUser.last_login_display || '--'}</span></div>
                     <div><span className="text-rmpg-400">Login Count:</span> <span className="text-rmpg-200 ml-1">{selectedUser.login_count ?? '--'}</span></div>
-                    <div><span className="text-rmpg-400">Created:</span> <span className="text-rmpg-200 ml-1">{selectedUser.created_at ? parseTimestamp(selectedUser.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</span></div>
+                    <div><span className="text-rmpg-400">Created:</span> <span className="text-rmpg-200 ml-1">{selectedUser.created_at ? parseTimestamp(selectedUser.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' }) : '--'}</span></div>
                   </div>
                 </div>
 
@@ -1343,7 +1343,7 @@ export default function AdminUsersTab({
                                   {session.device_geo_accuracy_m && ` (±${Math.round(Number(session.device_geo_accuracy_m))}m)`}
                                 </span>
                               )}
-                              <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{session.last_used_at ? parseTimestamp(session.last_used_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{session.last_used_at ? parseTimestamp(session.last_used_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--'}</span>
                             </div>
                           </div>
                           {!!session.likely_vpn_or_hosting && (

@@ -1698,6 +1698,7 @@ const EVIDENCE_WRITABLE_COLUMNS = new Set([
   'storage_temperature', 'location_detail',
   'retention_until', 'disposition',
   'notes', 'flags',
+  'pq_sealed_description', 'pq_seal_aad',
 ]);
 
 function coerceBooleanField(key: string, val: unknown): unknown {
@@ -1736,6 +1737,8 @@ const EVIDENCE_DRIFT_COLUMNS: Record<string, string> = {
   release_approved_at: 'TEXT',
   location_detail: 'TEXT',
   flags: 'TEXT',
+  pq_sealed_description: 'TEXT',
+  pq_seal_aad: 'TEXT',
 };
 
 // Reconcile the evidence table against the write-path column set before any

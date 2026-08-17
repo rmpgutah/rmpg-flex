@@ -205,7 +205,7 @@ function Slider({
     <div className="space-y-1" style={disabled ? { opacity: 0.5 } : undefined}>
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</span>
-        <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{display}</span>
+        <span className="text-[10px] font-mono tabular-nums" style={{ color: 'var(--field-label-color)' }}>{display}</span>
       </div>
       <input
         type="range"
@@ -276,14 +276,14 @@ export default function NavSettingsPanel({
         borderTop: '1px solid var(--border-default)',
         borderTopLeftRadius: 2,
         borderTopRightRadius: 2,
-        boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
+        boxShadow: '0 -8px 24px rgba(0 0 0 / 0.6)',
         maxHeight: '80vh',
         overflowY: 'auto',
         backdropFilter: 'blur(4px)',
       }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
           Navigation Settings
         </span>
         <CloseButton onClick={onClose} />

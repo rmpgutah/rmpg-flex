@@ -87,7 +87,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
             mk(line[line.length - 1] as [number, number], '#ef4444');
             // White playback-position dot with a gold ring — a plain (non-directional)
             // marker, so the shared dot builder fits; keep the gold ring + glow.
-            const pel = buildDotMarker({ color: '#ffffff', size: 14 });
+            const pel = buildDotMarker({ color: 'var(--text-primary)', size: 14 });
             pel.style.border = `2px solid ${GOLD}`;
             pel.style.boxShadow = `0 0 8px ${GOLD}`;
             const posMarker = new mapboxgl.Marker({ element: pel }).setLngLat(line[0] as [number, number]).addTo(map);

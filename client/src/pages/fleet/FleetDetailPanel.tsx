@@ -51,8 +51,8 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
   out_of_service: 'Out of Service', retired: 'Retired',
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
-  in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: 'var(--text-muted)',
+  in_service: 'var(--sev-ok)', maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)', retired: 'var(--text-muted)',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -387,7 +387,7 @@ export default function FleetDetailPanel({ data, costs, actions, activeTab, onTa
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
             )}
             {(() => {
-              const nextMi = (detail as any).next_service_mileage;
+              const nextMi = detail.next_service_mileage;
               const curMi = detail.current_mileage;
               if (nextMi && curMi) {
                 const milesLeft = nextMi - curMi;

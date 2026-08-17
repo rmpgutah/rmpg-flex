@@ -90,3 +90,4 @@ __pycache__/
 # Tesseract fine-tuned model — fetched from R2 at deploy time, never
 # committed (real document training data-derived artifact).
 containers/tesseract-ocr/model/
+client/tmp-pdf-regen/

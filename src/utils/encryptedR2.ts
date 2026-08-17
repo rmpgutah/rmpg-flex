@@ -119,9 +119,19 @@ export async function getDecrypted(
   const obj = await bucket.get(key);
   if (!obj) return null;
 
-  const row = await db.prepare(
-    'SELECT wrapped_dek, dek_iv, file_iv FROM file_encryption_keys WHERE r2_key = ?',
-  ).bind(key).first<EncryptionKeyRow>();
+  let row: EncryptionKeyRow | null = null;
+  try {
+    row = await db.prepare(
+      'SELECT wrapped_dek, dek_iv, file_iv FROM file_encryption_keys WHERE r2_key = ?',
+    ).bind(key).first<EncryptionKeyRow>();
+  } catch (err) {
+    // If the migration hasn't been applied yet, the table doesn't exist.
+    // Every file predates encryption in that case, so return null to let
+    // callers fall back to the legacy plaintext path.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('no such table')) return null;
+    throw err;
+  }
   if (!row) return null;
 
   const kek = await importKek(kekB64);

@@ -15,12 +15,19 @@ const { hardenGuestWebPreferences, shouldAllowGuestNavigation, isCompanyBrowserR
 const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosticsBundleOnExport, validateBackupFileBeforeImport } = require('./security/secretsStore');
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
-const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('./hardwareFz55');
+const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
+const { createFaceAuth } = require('./faceAuth');
+const { CameraScanner } = require('./cameraScanner');
+const {
+  parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
+  parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
+  parseWindowsThermalOutput, parseWindowsSmartCardOutput, parseWindowsFingerprintOutput,
+  parseWindowsWwanSignalOutput, parseBodyCamHidReport,
+} = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
-const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse } = require('./kioskShell');
+const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse, validateFlexOsLoginResponse } = require('./kioskShell');
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
 const fs = require('fs');
 
@@ -193,6 +200,8 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+let faceAuth = null; // initialized after localDb is ready
+let cameraScanner = null;
 
 // Rolling-window crash-recovery timestamps for the main window's renderer
 // and GPU-process crashes — see crashRecovery.js. Kept at module scope
@@ -225,6 +234,16 @@ let kioskDeliberatelyReverting = false;
 // wasteful and could add jank to the gesture itself. See createMainWindow().
 let boundsSaveDebounceTimer = null;
 const BOUNDS_SAVE_DEBOUNCE_MS = 500;
+
+// Cached Windows account info for the startup lock screen.
+// undefined = not yet fetched; null = fetched but unavailable (non-win32 or error).
+let cachedWindowsAccountInfo = undefined;
+
+// Tracks whether the splash window's did-finish-load has fired.
+// The Promise.all phase transition may resolve before the page finishes
+// loading; this flag lets the transition queue itself until the page is ready.
+let splashLoaded = false;
+let splashPhasePending = null;
 
 // Secondary (non-main) windows opened via 'window:open-secondary', keyed by
 // a server-generated UUID so the renderer never handles a raw BrowserWindow
@@ -295,6 +314,37 @@ process.on('uncaughtException', (err) => {
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
 
+// ── WWAN live push ────────────────────────────────────────────
+let _lastWwanState = null;
+const WWAN_PUSH_INTERVAL = 30_000;
+function pushWwanIfChanged() {
+  if (process.platform !== 'win32') return;
+  const { execFile } = require('child_process');
+  execFile(
+    'powershell.exe',
+    ['-NoProfile', '-Command',
+      "Get-NetAdapter | Where-Object {$_.InterfaceDescription -match 'Sierra|EM74|EM75|EM91'} | Select-Object Name, Status | ConvertTo-Json"],
+    { timeout: 3000 },
+    (err, stdout) => {
+      if (err) return;
+      const state = parseWindowsWwanOutput(stdout);
+      const changed = !_lastWwanState ||
+        state.present !== _lastWwanState.present ||
+        state.connected !== _lastWwanState.connected;
+      if (changed) {
+        _lastWwanState = state;
+        mainWindow?.webContents.send('hardware:wwan-changed', state);
+      }
+    }
+  );
+}
+let _wwanPushTimer = null;
+function startWwanPush() {
+  if (_wwanPushTimer) return;
+  pushWwanIfChanged();
+  _wwanPushTimer = setInterval(pushWwanIfChanged, WWAN_PUSH_INTERVAL);
+}
+
 // ─── Single Instance Lock ────────────────────────────────────
 // Prevent multiple instances from racing and crashing with
 // "Cannot create BrowserWindow before app is ready".
@@ -359,320 +409,64 @@ function getSplashLogoDataUri() {
 
 function createSplashWindow() {
   if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
+
+  const splashPreloadPath = resolveTrustedPreloadPath(
+    path.join(__dirname, 'splashPreload.js'),
+    path.join(__dirname, 'splashPreload.js')
+  );
+
+  // Full-screen on Windows (kiosk shell context); standard splash size elsewhere.
+  const isWin = process.platform === 'win32';
+  const { width: screenW, height: screenH } = isWin
+    ? screen.getPrimaryDisplay().bounds
+    : { width: 520, height: 400 };
+
   splashWindow = new BrowserWindow({
-    width: 480,
-    height: 380,
+    width: screenW,
+    height: screenH,
+    x: 0,
+    y: 0,
     frame: false,
-    transparent: true,
+    transparent: false,
     resizable: false,
     alwaysOnTop: true,
-    center: true,
+    center: !isWin,
     skipTaskbar: true,
-    webPreferences: hardenWebPreferencesDefaults(),
+    hasShadow: false,
+    thickFrame: false,
+    backgroundColor: '#000000',
+    webPreferences: hardenWebPreferencesDefaults({
+      preload: splashPreloadPath,
+    }),
   });
 
-  const logoUri = getSplashLogoDataUri();
-  const logoMarkup = logoUri
-    ? `<img src="${logoUri}" alt="RMPG Flex" class="logo-img" draggable="false" />`
-    : `<div class="logo-fallback"><span>RMPG</span></div>`;
+  splashWindow.loadFile(SPLASH_PAGE_PATH).catch((err) => {
+    console.warn('[SPLASH] loadFile failed:', err && err.message);
+  });
 
-  const splashHTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: #e6e6e6;
-          height: 100vh;
-          overflow: hidden;
-          -webkit-app-region: drag;
-          position: relative;
-          /* Two-layer background: soft gold radial + charcoal base, framed */
-          background:
-            radial-gradient(ellipse at center, rgba(212,160,23,0.10) 0%, rgba(0,0,0,0) 65%),
-            linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
-          border: 1px solid #1a1a1a;
-          border-radius: 6px;
-          box-shadow:
-            inset 0 0 0 1px rgba(212,160,23,0.18),
-            0 0 0 1px rgba(0,0,0,0.5),
-            0 18px 40px rgba(0,0,0,0.6);
-        }
-        /* Subtle drifting grid */
-        body::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background:
-            linear-gradient(rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px,
-            linear-gradient(90deg, rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px;
-          mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-          -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-          pointer-events: none;
-          animation: grid-drift 22s linear infinite;
-        }
-        @keyframes grid-drift {
-          0%   { background-position: 0 0, 0 0; }
-          100% { background-position: 32px 32px, 32px 32px; }
-        }
-        /* HUD corner brackets */
-        .corner {
-          position: absolute;
-          width: 18px;
-          height: 18px;
-          pointer-events: none;
-          opacity: 0.85;
-          animation: corner-pulse 3.6s ease-in-out infinite;
-        }
-        .corner::before, .corner::after {
-          content: '';
-          position: absolute;
-          background: #d4a017;
-          box-shadow: 0 0 6px rgba(212,160,23,0.5);
-        }
-        .corner::before { top: 0; left: 0; width: 12px; height: 1.5px; }
-        .corner::after  { top: 0; left: 0; width: 1.5px; height: 12px; }
-        .corner.tl { top: 10px; left: 10px; }
-        .corner.tr { top: 10px; right: 10px; transform: scaleX(-1); }
-        .corner.bl { bottom: 10px; left: 10px; transform: scaleY(-1); }
-        .corner.br { bottom: 10px; right: 10px; transform: scale(-1); }
-        @keyframes corner-pulse {
-          0%, 100% { opacity: 0.55; }
-          50% { opacity: 1; }
-        }
-        /* Layout */
-        .stage {
-          position: relative;
-          z-index: 1;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 28px 24px 20px;
-        }
-        /* Logo block with rotating ring + pulse aura */
-        .logo-wrap {
-          position: relative;
-          width: 132px;
-          height: 132px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 18px;
-        }
-        .logo-wrap::before {
-          /* Pulse aura behind logo */
-          content: '';
-          position: absolute;
-          inset: -8px;
-          border-radius: 50%;
-          background: radial-gradient(circle, rgba(212,160,23,0.35) 0%, rgba(212,160,23,0) 65%);
-          filter: blur(4px);
-          animation: aura-pulse 2.6s ease-in-out infinite;
-        }
-        .logo-wrap::after {
-          /* Rotating gold arc ring */
-          content: '';
-          position: absolute;
-          inset: -2px;
-          border-radius: 50%;
-          background: conic-gradient(from 0deg,
-            rgba(212,160,23,0) 0deg,
-            rgba(212,160,23,0.05) 30deg,
-            rgba(212,160,23,0.95) 70deg,
-            rgba(212,160,23,0.05) 110deg,
-            rgba(212,160,23,0) 140deg,
-            rgba(212,160,23,0) 360deg);
-          mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
-          -webkit-mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
-          animation: ring-spin 2.8s linear infinite;
-        }
-        @keyframes aura-pulse {
-          0%, 100% { opacity: 0.5; transform: scale(0.95); }
-          50%      { opacity: 1;   transform: scale(1.08); }
-        }
-        @keyframes ring-spin {
-          to { transform: rotate(360deg); }
-        }
-        .logo-img {
-          position: relative;
-          z-index: 2;
-          width: 96px;
-          height: 96px;
-          object-fit: contain;
-          filter: drop-shadow(0 0 12px rgba(212,160,23,0.45));
-          animation: logo-float 6s ease-in-out infinite;
-        }
-        .logo-fallback {
-          position: relative;
-          z-index: 2;
-          width: 96px;
-          height: 96px;
-          border: 2px solid #d4a017;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .logo-fallback span {
-          font-size: 26px;
-          font-weight: 900;
-          letter-spacing: 2px;
-          color: #d4a017;
-        }
-        @keyframes logo-float {
-          0%, 100% { transform: translateY(0); }
-          50%      { transform: translateY(-3px); }
-        }
-        /* Title block */
-        h1 {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: 6px;
-          text-transform: uppercase;
-          color: #f0f0f0;
-          margin-bottom: 5px;
-          text-shadow: 0 0 12px rgba(212,160,23,0.25);
-        }
-        .subtitle {
-          font-size: 9px;
-          color: #888;
-          text-transform: uppercase;
-          letter-spacing: 4px;
-          margin-bottom: 20px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .subtitle::before, .subtitle::after {
-          content: '';
-          height: 1px;
-          width: 22px;
-          background: linear-gradient(90deg, transparent, #d4a017, transparent);
-        }
-        /* Indeterminate progress bar */
-        .progress-track {
-          position: relative;
-          width: 240px;
-          height: 3px;
-          background: rgba(212,160,23,0.10);
-          border-radius: 1px;
-          overflow: hidden;
-          margin-bottom: 14px;
-          box-shadow: inset 0 0 0 1px rgba(212,160,23,0.18);
-        }
-        .progress-bar {
-          position: absolute;
-          top: 0;
-          left: -40%;
-          width: 40%;
-          height: 100%;
-          background: linear-gradient(90deg,
-            rgba(212,160,23,0) 0%,
-            rgba(212,160,23,0.5) 35%,
-            rgba(212,160,23,1) 50%,
-            rgba(212,160,23,0.5) 65%,
-            rgba(212,160,23,0) 100%);
-          box-shadow: 0 0 8px rgba(212,160,23,0.6);
-          animation: progress-slide 1.6s ease-in-out infinite;
-        }
-        @keyframes progress-slide {
-          0%   { left: -40%; }
-          100% { left: 100%; }
-        }
-        /* Status line */
-        .status {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 9px;
-          color: #b8924a;
-          text-transform: uppercase;
-          letter-spacing: 2.5px;
-        }
-        .status .dot {
-          width: 5px;
-          height: 5px;
-          border-radius: 50%;
-          background: #d4a017;
-          box-shadow: 0 0 6px #d4a017;
-          animation: status-blink 1.6s ease-in-out infinite;
-        }
-        @keyframes status-blink {
-          0%, 100% { opacity: 0.3; }
-          50%      { opacity: 1; }
-        }
-        .status .ellipsis::after {
-          content: '';
-          display: inline-block;
-          width: 12px;
-          text-align: left;
-          animation: ellipsis 1.4s steps(4, end) infinite;
-        }
-        @keyframes ellipsis {
-          0%   { content: ''; }
-          25%  { content: '.'; }
-          50%  { content: '..'; }
-          75%  { content: '...'; }
-          100% { content: ''; }
-        }
-        /* Version badge bottom */
-        .version {
-          position: absolute;
-          bottom: 12px;
-          right: 14px;
-          font-size: 8px;
-          letter-spacing: 2px;
-          color: rgba(212,160,23,0.55);
-          text-transform: uppercase;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
-        .build-tag {
-          position: absolute;
-          bottom: 12px;
-          left: 14px;
-          font-size: 8px;
-          letter-spacing: 2px;
-          color: rgba(255,255,255,0.25);
-          text-transform: uppercase;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="corner tl"></div>
-      <div class="corner tr"></div>
-      <div class="corner bl"></div>
-      <div class="corner br"></div>
-
-      <div class="stage">
-        <div class="logo-wrap">
-          ${logoMarkup}
-        </div>
-        <h1>RMPG Flex</h1>
-        <p class="subtitle">CAD &middot; RMS Dispatch System</p>
-
-        <div class="progress-track">
-          <div class="progress-bar"></div>
-        </div>
-
-        <div class="status">
-          <span class="dot"></span>
-          <span>Establishing Secure Uplink<span class="ellipsis"></span></span>
-        </div>
-      </div>
-
-      <div class="build-tag">RMPG-PRIMARY</div>
-      <div class="version">v${app.getVersion ? app.getVersion() : '5.8.2'}</div>
-    </body>
-    </html>
-  `)}`;
-
-  splashWindow.loadURL(splashHTML).catch((err) => {
-    console.warn('[SPLASH] loadURL failed:', err && err.message);
+  // Inject the RMPG logo into the boot phase once the page is ready.
+  // Also flush any phase message that was queued before did-finish-load fired.
+  splashLoaded = false;
+  splashPhasePending = null;
+  splashWindow.webContents.once('did-finish-load', () => {
+    splashLoaded = true;
+    const logoUri = getSplashLogoDataUri();
+    if (logoUri && splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.executeJavaScript(
+        `(function(){
+          var img = document.getElementById('boot-logo');
+          var fallback = document.getElementById('boot-logo-fallback');
+          if (img) { img.src = ${JSON.stringify(logoUri)}; img.style.display = ''; }
+          if (fallback) { fallback.style.display = 'none'; }
+          document.documentElement.style.setProperty('--rmpg-logo-url', 'url(' + ${JSON.stringify(logoUri)} + ')');
+        })();`
+      ).catch(() => {});
+    }
+    // Deliver any phase message that was queued before this event fired.
+    if (splashPhasePending && splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:phase', splashPhasePending);
+      splashPhasePending = null;
+    }
   });
 }
 
@@ -707,16 +501,88 @@ function startSplashTimeout(maxMs = 15000) {
   }, maxMs);
 }
 
+/**
+ * Reads the signed-in Windows account name and profile picture for display
+ * on the startup lock screen. Runs once at boot; result cached in
+ * cachedWindowsAccountInfo. Returns null on non-win32 or any error.
+ */
+async function getWindowsAccountInfo() {
+  if (cachedWindowsAccountInfo !== undefined) return cachedWindowsAccountInfo;
+  if (process.platform !== 'win32') {
+    cachedWindowsAccountInfo = null;
+    return null;
+  }
+
+  const { promisify } = require('util');
+  const execFileAsync = promisify(require('child_process').execFile);
+  const os = require('os');
+  const fsMod = require('fs');
+  const pathMod = require('path');
+
+  let name = os.userInfo().username;
+  let fullName = null;
+  let avatarDataUri = null;
+
+  // 1. Get full name from Get-LocalUser (3s timeout — WMI starts during boot)
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-LocalUser $env:USERNAME | Select-Object Name,FullName | ConvertTo-Json'],
+      { timeout: 3000, windowsHide: true }
+    );
+    const parsed = JSON.parse(stdout.trim());
+    if (parsed && typeof parsed.Name === 'string' && parsed.Name) name = parsed.Name;
+    if (parsed && typeof parsed.FullName === 'string' && parsed.FullName.trim()) {
+      fullName = parsed.FullName.trim();
+    }
+  } catch (err) {
+    console.warn('[ACCOUNT] Get-LocalUser failed:', err.message);
+  }
+
+  // 2. Find account picture — pick the largest PNG/JPG by file size
+  try {
+    const picDir = pathMod.join(
+      process.env.USERPROFILE || os.homedir(),
+      'AppData', 'Roaming', 'Microsoft', 'Windows', 'AccountPictures'
+    );
+    if (fsMod.existsSync(picDir)) {
+      const files = fsMod.readdirSync(picDir)
+        .filter((f) => /\.(png|jpg|jpeg)$/i.test(f))
+        .map((f) => {
+          const full = pathMod.join(picDir, f);
+          return { full, size: fsMod.statSync(full).size };
+        })
+        .sort((a, b) => b.size - a.size);
+      if (files.length > 0) {
+        const best = files[0].full;
+        const ext = pathMod.extname(best).slice(1).toLowerCase();
+        const mime = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg' : 'image/png';
+        const b64 = fsMod.readFileSync(best).toString('base64');
+        avatarDataUri = `data:${mime};base64,${b64}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[ACCOUNT] Avatar lookup failed:', err.message);
+  }
+
+  cachedWindowsAccountInfo = { name, fullName, avatarDataUri };
+  return cachedWindowsAccountInfo;
+}
+
 // ─── Server Connectivity Check ──────────────────────────────
 /**
  * Verify that the remote RMPG Flex server is reachable.
  * Retries a few times with short delays before giving up.
  */
-function checkServerConnectivity() {
+function checkServerConnectivity(opts) {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
-    const delayMs = 2000;
+    // In kiosk shell mode, Windows starts this app before the network stack
+    // is fully up. Give it more time: 8 × 3s = 24s max. In normal mode,
+    // 3 × 2s = 6s is plenty (and a hung connectivity check stalls the splash).
+    const maxAttempts = (opts && opts.kioskShell) ? 8 : 3;
+    const delayMs = (opts && opts.kioskShell) ? 3000 : 2000;
     let resolved = false;
 
     function tryConnect() {
@@ -1023,6 +889,10 @@ async function createMainWindow() {
   // self-revert, an unavailable escape accelerator — also silently opted out
   // of relaunch-on-close, i.e. exited and left the session with no shell.
   isRunningAsKioskShell = isKioskShell;
+  // Terminate Windows 11 shell host processes so the Start Menu, Win key, and
+  // Windows taskbar cannot appear over FlexOS when it is running as the shell.
+  // Fire-and-forget — startup must not block waiting for taskkill to finish.
+  if (isKioskShell) suppressWindowsShellProcesses();
   let kioskBootState = null;
   let kioskRevertSucceeded = false;
   if (isKioskShell) {
@@ -1030,7 +900,7 @@ async function createMainWindow() {
     setConfig('kiosk_boot_attempts', kioskBootState);
     if (shouldSelfRevert(kioskBootState)) {
       console.error(`[KIOSK] ${MAX_BOOT_FAILURES} consecutive failed boots — self-reverting shell to explorer.exe`);
-      const revert = await runElevatedRegistryWrite('"explorer.exe"');
+      const revert = await deleteHkcuShell();
       kioskRevertSucceeded = revert.ok;
       if (revert.ok) {
         setConfig('kiosk_shell_enabled', false);
@@ -1040,20 +910,19 @@ async function createMainWindow() {
           `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row and has been automatically disabled. Windows will use its normal desktop from now on.`
         );
       } else {
-        // The elevated write did NOT land — most commonly because the
-        // operator dismissed the UAC prompt. The Winlogon shell key still
-        // points at this app, so kiosk_shell_enabled and the boot counter
-        // are deliberately left ALONE: clearing them here would tell the
-        // next boot "kiosk is off" while Windows still starts us as the
-        // shell, which drops the escape hotkey and turns the next window
-        // close into a black screen. Leaving the counter above the limit
-        // means the next boot retries this revert.
+        // The HKCU Shell delete failed unexpectedly (permissions issue or
+        // locked registry hive). The Winlogon shell key still points at this
+        // app, so kiosk_shell_enabled and the boot counter are deliberately
+        // left ALONE: clearing them here would tell the next boot "kiosk is
+        // off" while Windows still starts us as the shell, which drops the
+        // escape hotkey and turns the next window close into a black screen.
+        // Leaving the counter above the limit means the next boot retries.
         console.error('[KIOSK] self-revert failed, shell key unchanged:', revert.error);
         dialog.showErrorBox(
           'RMPG Flex Kiosk Mode Could Not Be Disabled',
           `Kiosk Mode failed to start ${MAX_BOOT_FAILURES} times in a row, but the Windows shell setting could not be restored (${revert.error}).\n\n`
-            + 'This computer is still set to start RMPG Flex instead of the normal desktop. Approve the Windows permission prompt on the next attempt, '
-            + `or press ${KIOSK_ESCAPE_ACCELERATORS[0]} to exit Kiosk Mode now.`
+            + `This computer is still set to start RMPG Flex instead of the normal desktop. Press ${KIOSK_ESCAPE_ACCELERATORS[0]} to exit Kiosk Mode, `
+            + 'or contact IT support for a manual registry revert.'
         );
       }
       // Fall through to a window either way — do not exit, so the operator
@@ -1108,6 +977,7 @@ async function createMainWindow() {
     ...(useKioskChrome
       ? { kiosk: true, frame: false, fullscreen: true, autoHideMenuBar: true }
       : {
+          fullscreen: process.platform === 'win32',
           width: 1440,
           height: 900,
           ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y, width: restoredBounds.width, height: restoredBounds.height } : {}),
@@ -1194,6 +1064,34 @@ async function createMainWindow() {
     console.warn('[APP] Cache clear timed out or failed — continuing:', err && err.message);
   }
 
+  // ── WWAN live push timer ──────────────────────────────────
+  startWwanPush();
+
+  // ── USB hot-plug GPS re-detect ────────────────────────────
+  try {
+    const usbDetect = require('usb-detection');
+    usbDetect.startMonitoring();
+    usbDetect.on('add', async () => {
+      // Any USB insertion — re-probe for GPS
+      setTimeout(async () => {
+        const found = await findGpsPort();
+        if (found) {
+          mainWindow?.webContents.send('hardware:gps-plugged', found);
+          // If GPS reader is not currently active, auto-start
+          if (!internalGpsReader) {
+            internalGpsReader = new InternalGps();
+            internalGpsReader.on('position', (pos) => mainWindow?.webContents.send('geo:position', pos));
+            internalGpsReader.on('gps:constellation', (c) => mainWindow?.webContents.send('gps:constellation', c));
+            await internalGpsReader.start(found.path);
+          }
+        }
+      }, 1500); // brief delay for device driver init
+    });
+    app.on('before-quit', () => usbDetect.stopMonitoring());
+  } catch (err) {
+    console.warn('[APP] usb-detection unavailable:', err.message);
+  }
+
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
   // Promise rejection here is handled by the did-fail-load listener
@@ -1205,9 +1103,14 @@ async function createMainWindow() {
 
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
-    closeSplash();
-    mainWindow.show();
-    mainWindow.focus();
+    // In kiosk shell mode the splash drives show/focus via the splash:auth flow.
+    // Do not close the splash here — it must stay up for the lock screen.
+    // In all other contexts (dev, non-kiosk Windows, macOS) close and show directly.
+    if (!isKioskShell) {
+      closeSplash();
+      mainWindow.show();
+      mainWindow.focus();
+    }
     if (isKioskShell && !kioskRevertSucceeded) {
       setConfig('kiosk_boot_attempts', resetBootAttemptState());
       if (kioskBootStabilityTimer) { clearTimeout(kioskBootStabilityTimer); kioskBootStabilityTimer = null; }
@@ -1342,7 +1245,7 @@ async function createMainWindow() {
       const result = classifyKeystrokeBurst(barcodeBuffer);
       resetBarcodeBuffer();
       if (result.isScan) {
-        mainWindow.webContents.send('hardware:barcode-scanned', result.payload);
+        mainWindow.webContents.send('hardware:barcode-scan', { payload: result.payload, source: 'xpak' });
       }
     }
   });
@@ -1585,6 +1488,7 @@ guardedHandle('sys:info', () => {
   }
   return formatSystemInfo(os, freeBytes);
 });
+guardedHandle('sys:cpu-usage', () => getCpuUsagePercent(require('os')));
 guardedHandle('sys:logs', (_event, lines = 500) => {
   return tailLogFile(LOG_FILE_PATH, lines, require('fs'));
 });
@@ -1623,35 +1527,125 @@ guardedHandle('sys:battery', async () => {
   }
 
   if (process.platform === 'win32') {
-    try {
-      const { stdout } = await execFileAsync(
-        'powershell.exe',
-        ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
-        { timeout: 3000 }
-      );
-      const raw = parseWindowsBatteryOutput(stdout);
-      if (!raw) return null;
-      // parseWindowsBatteryOutput returns { overallPercent, charging, batteries };
-      // normalize to { percent, charging } to match the client BatteryStatus interface.
-      return { percent: raw.overallPercent, charging: raw.charging };
-    } catch (err) {
-      console.error('[SYS:BATTERY] Get-CimInstance Win32_Battery failed:', err.message);
-      return null;
+    // When running as the Windows shell (Winlogon), WMI (winmgmt) may not be
+    // ready yet at boot — use a longer timeout and retry before falling back.
+    const isShellContext = getConfig('kiosk_shell_enabled') === true;
+    const cimTimeout = isShellContext ? 8000 : 3000;
+    const maxAttempts = isShellContext ? 2 : 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const { stdout } = await execFileAsync(
+          'powershell.exe',
+          ['-NoProfile', '-Command', 'Get-CimInstance -ClassName Win32_Battery | Select-Object DeviceID, EstimatedChargeRemaining, BatteryStatus | ConvertTo-Json'],
+          { timeout: cimTimeout }
+        );
+        const raw = parseWindowsBatteryOutput(stdout.trim());
+        if (raw) {
+          return { percent: raw.overallPercent, charging: raw.charging };
+        }
+      } catch (err) {
+        console.warn(`[SYS:BATTERY] CimInstance attempt ${attempt}/${maxAttempts} failed:`, err.message);
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
     }
+
+    // Fallback: WMIC uses DCOM instead of CIM-XML and is available earlier at boot.
+    try {
+      const { stdout: wmicOut } = await execFileAsync(
+        'wmic',
+        ['path', 'Win32_Battery', 'get', 'EstimatedChargeRemaining,BatteryStatus', '/format:csv'],
+        { timeout: 5000, windowsHide: true }
+      );
+      const lines = wmicOut.trim().split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      // CSV layout: Node,BatteryStatus,EstimatedChargeRemaining (header is always first)
+      if (lines.length >= 2) {
+        const headers = lines[0].split(',').map((h) => h.trim());
+        const percentIdx = headers.indexOf('EstimatedChargeRemaining');
+        const statusIdx = headers.indexOf('BatteryStatus');
+        let totalPercent = 0, charging = false, count = 0;
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(',').map((v) => v.trim());
+          const pct = parseInt(cols[percentIdx], 10);
+          const status = parseInt(cols[statusIdx], 10);
+          if (!isNaN(pct)) { totalPercent += pct; charging = charging || (status === 2); count++; }
+        }
+        if (count > 0) {
+          return { percent: Math.round(totalPercent / count), charging };
+        }
+      }
+    } catch (wmicErr) {
+      console.warn('[SYS:BATTERY] WMIC fallback failed:', wmicErr.message);
+    }
+
+    return null;
   }
 
   return null;
 });
-guardedHandle('sys:body-cam-status', () => {
-  // Return null when no body cam is physically present — widget treats non-null
-  // as "camera connected" and shows Ready/Recording state accordingly.
+const BODY_CAM_VIDS = new Map([
+  [0x2B0E, 'Axon'],     // Axon Body 3/4
+  [0x22B8, 'Motorola'], // Motorola Si500
+]);
+let bodyCamHidDevice = null;
+
+function detectBodyCam() {
+  if (process.platform !== 'win32') return null;
+  try {
+    const HID = require('node-hid');
+    const devices = HID.devices();
+    for (const [vid, vendor] of BODY_CAM_VIDS) {
+      const d = devices.find((dev) => dev.vendorId === vid);
+      if (d) return { present: true, vendor, model: d.product || null, vid, path: d.path };
+    }
+  } catch (err) {
+    console.warn('[BODY-CAM] HID enumeration failed:', err.message);
+  }
   return null;
+}
+
+guardedHandle('sys:body-cam-status', () => {
+  const cam = detectBodyCam();
+  if (!cam) return { present: false, vendor: null, model: null, batteryPct: null };
+  // Attempt to read HID state
+  let batteryPct = null;
+  try {
+    const HID = require('node-hid');
+    const dev = new HID.HID(cam.path);
+    const report = dev.readTimeout(200);
+    dev.close();
+    const parsed = parseBodyCamHidReport(Buffer.from(report));
+    batteryPct = parsed.batteryPct;
+  } catch { /* HID read failed — return presence only */ }
+  return { present: true, vendor: cam.vendor, model: cam.model, batteryPct };
 });
+
 guardedHandle('sys:body-cam-start', () => {
-  return { ok: false, reason: 'not_supported' };
+  const cam = detectBodyCam();
+  if (!cam) return { ok: false, reason: 'no_camera' };
+  try {
+    const HID = require('node-hid');
+    bodyCamHidDevice = new HID.HID(cam.path);
+    // Axon record command: write report [0x01, 0x01] (report ID 1, flag record=1)
+    bodyCamHidDevice.write([0x01, 0x01]);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
+
 guardedHandle('sys:body-cam-stop', () => {
-  return { ok: false, reason: 'not_supported' };
+  if (!bodyCamHidDevice) return { ok: false, reason: 'not_started' };
+  try {
+    bodyCamHidDevice.write([0x01, 0x00]); // clear recording flag
+    bodyCamHidDevice.close();
+    bodyCamHidDevice = null;
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
 guardedHandle('sys:tpm-status', async () => {
   if (process.platform !== 'win32') return null;
@@ -1668,6 +1662,142 @@ guardedHandle('sys:tpm-status', async () => {
   } catch (err) {
     console.error('[SYS:TPM-STATUS] Get-Tpm failed:', err.message);
     return null;
+  }
+});
+guardedHandle('sys:thermal-status', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-WmiObject -Namespace root/WMI -Class MSAcpi_ThermalZoneTemperature | Select-Object CurrentTemperature | ConvertTo-Json'],
+      { timeout: 5000 }
+    );
+    const result = parseWindowsThermalOutput(stdout);
+    if (result && result.maxTempF > 185) {
+      mainWindow?.webContents.send('hardware:thermal-alert', result);
+    }
+    return result;
+  } catch (err) {
+    console.error('[SYS:THERMAL-STATUS]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:smartcard-status', async () => {
+  if (process.platform !== 'win32') return { present: false, cardInserted: false, atr: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status, ATR | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsSmartCardOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:SMARTCARD-STATUS]', err.message);
+    return { present: false, cardInserted: false, atr: null };
+  }
+});
+guardedHandle('device:fingerprint-status', async () => {
+  if (process.platform !== 'win32') return { present: false, ready: false };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class Biometric | Select-Object FriendlyName, Status | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsFingerprintOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:FINGERPRINT-STATUS]', err.message);
+    return { present: false, ready: false };
+  }
+});
+guardedHandle('sys:battery-detail', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining, BatteryStatus, EstimatedRunTime | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsBatteryOutput(stdout);
+  } catch (err) {
+    console.error('[SYS:BATTERY-DETAIL]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:wwan-signal', async () => {
+  if (process.platform !== 'win32') return { rssi: null, bars: 0 };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'signal', 'interface=*'],
+      { timeout: 3000 }
+    );
+    return parseWindowsWwanSignalOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:WWAN-SIGNAL]', err.message);
+    return { rssi: null, bars: 0 };
+  }
+});
+guardedHandle('device:wwan-carrier', async () => {
+  if (process.platform !== 'win32') return { carrier: null, apn: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'connection', 'interface=*'],
+      { timeout: 3000 }
+    );
+    const carrierMatch = stdout.match(/Provider Name\s*:\s*(.+)/i);
+    const apnMatch = stdout.match(/Access String\s*:\s*(.+)/i);
+    return {
+      carrier: carrierMatch ? carrierMatch[1].trim() : null,
+      apn: apnMatch ? apnMatch[1].trim() : null,
+    };
+  } catch (err) {
+    console.error('[DEVICE:WWAN-CARRIER]', err.message);
+    return { carrier: null, apn: null };
+  }
+});
+guardedHandle('device:usb-devices', async () => {
+  if (process.platform !== 'win32') return [];
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        "Get-PnpDevice | Where-Object {$_.Class -eq 'USB'} | Select-Object FriendlyName, Status | ConvertTo-Json"],
+      { timeout: 5000 }
+    );
+    let parsed;
+    try { parsed = JSON.parse(stdout); } catch { return []; }
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    return entries.filter(Boolean).map((e) => ({ name: e.FriendlyName || '', status: e.Status || '' }));
+  } catch (err) {
+    console.error('[DEVICE:USB-DEVICES]', err.message);
+    return [];
   }
 });
 guardedHandle('sys:idle-time', () => {
@@ -1702,6 +1832,52 @@ guardedHandle('sys:export-diagnostics', async () => {
 guardedHandle('sys:restart', () => {
   app.relaunch();
   app.exit();
+});
+
+guardedHandle('os:shutdown', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Shut Down',
+    message: 'Shut down this computer?',
+    detail: 'The computer will shut down in 5 seconds. To cancel, run: shutdown /a',
+    buttons: ['Shut Down', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (response !== 0) return { ok: false, error: 'cancelled' };
+  try {
+    await execFileAsync('shutdown.exe', ['/s', '/t', '5'], { windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('os:restart', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  const execFileAsync = promisify(execFile);
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    title: 'Restart',
+    message: 'Restart this computer?',
+    detail: 'The computer will restart in 5 seconds. To cancel, run: shutdown /a',
+    buttons: ['Restart', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (response !== 0) return { ok: false, error: 'cancelled' };
+  try {
+    await execFileAsync('shutdown.exe', ['/r', '/t', '5'], { windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // ─── File & Data Export/Import ──────────────────────────────
@@ -1910,45 +2086,134 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
  * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
  * been run on real Windows; verify manually before shipping.
  */
-function runElevatedRegistryWrite(shellValue) {
+// ─── Windows shell process suppression ───────────────────────
+// When FlexOS is the Winlogon shell, explorer.exe is not running, but Windows
+// 11 starts dedicated host processes for the Start Menu and shell chrome even
+// without explorer: StartMenuExperienceHost.exe, ShellExperienceHost.exe, and
+// SearchHost.exe. These respond to the Win key independently and surface the
+// Start Menu over the top of any fullscreen window. Terminating them prevents
+// Windows UI from bleeding through while FlexOS is the active shell.
+//
+// This is ONLY called when isKioskShell is true — i.e. FlexOS was launched as
+// the HKCU Winlogon Shell replacement. It must never run in a normal session
+// where explorer.exe is the shell, because killing those processes there would
+// damage the user's desktop session.
+function suppressWindowsShellProcesses() {
+  if (process.platform !== 'win32') return;
+  const { execFile } = require('child_process');
+  // Windows 11 decomposes the Start Menu into these separate host processes.
+  // explorer.exe itself is intentionally omitted: when FlexOS IS the Winlogon
+  // shell, explorer.exe was never started by Windows — there is nothing to kill.
+  // If it somehow is running (e.g. a GPO or startup item launched it), including
+  // it here is safe because the FlexOS shell relaunch guard keeps the session
+  // alive regardless.
+  // NEVER add these to the targets list — they are Microsoft background services
+  // that must remain active in kiosk shell mode for Rocky Mountain Protective Group
+  // operations. Killing them causes device security failures, sync loss, or a BSOD:
+  //   OneDrive.exe               — file sync
+  //   SecurityHealthSystray.exe  — Windows Security / Defender
+  //   WmiPrvSE.exe               — WMI provider host (battery, hardware queries need this)
+  //   MicrosoftEdgeUpdate.exe    — Edge update service
+  //   WinStore.App.exe           — Microsoft Store
+  //   lsass.exe                  — credential & authentication store
+  //   winlogon.exe               — session manager (killing = kernel panic / BSOD)
+  //   svchost.exe                — hosts Entra/Azure AD, Windows Update, and 100+ services
+  const targets = [
+    'StartMenuExperienceHost.exe',
+    'ShellExperienceHost.exe',
+    'SearchHost.exe',
+    'explorer.exe',
+  ];
+  for (const proc of targets) {
+    execFile(
+      'taskkill',
+      ['/F', '/IM', proc],
+      { windowsHide: true },
+      (err, _stdout, stderr) => {
+        const msg = (err && err.message) || stderr || '';
+        // "not found" / "no tasks" means the process wasn't running — expected.
+        if (!msg || /not found|no tasks/i.test(msg)) {
+          console.log(`[SHELL] ${proc}: not running (ok)`);
+        } else if (err) {
+          console.warn(`[SHELL] taskkill ${proc}:`, msg.trim());
+        } else {
+          console.log(`[SHELL] Suppressed: ${proc}`);
+        }
+      }
+    );
+  }
+}
+
+// ─── HKCU Winlogon Shell registry helpers ─────────────────────
+// The Shell value is written to HKCU (per-user) rather than HKLM
+// (machine-wide). Per-user has two advantages over the old HKLM approach:
+//   1. No UAC — HKCU is always writable by the owning user without elevation.
+//   2. Per-user state matches the per-user userData config that tracks
+//      kiosk_shell_enabled/kiosk_boot_attempts. An IT recovery account that
+//      logs in while the kiosk user's HKCU Shell points at this app gets its
+//      OWN HKCU (no Shell override), so it boots to explorer.exe normally.
+// HKCU Shell overrides HKLM Shell — Windows checks HKCU first. Deleting the
+// HKCU value on revert (rather than writing "explorer.exe") restores the
+// system default cleanly even if HKLM was ever customized by an admin.
+const HKCU_WINLOGON_KEY = 'HKCU\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
+
+/**
+ * Writes the kiosk Shell value to HKCU Winlogon. No UAC required.
+ * shellValue must already be the quoted registry string produced by
+ * buildShellRegistryValue (e.g. `"C:\path\to\RMPG Flex.exe"`).
+ * Returns { ok: true } or { ok: false, error: string }.
+ */
+function runRegistryWrite(shellValue) {
   return new Promise((resolve) => {
     const { spawn } = require('child_process');
-    const regKeyPath = 'HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon';
-    // SECURITY: shellValue is derived from process.execPath (the install path
-    // of this app) and is attacker-influenced if the app is ever installed to
-    // a path containing shell metacharacters (e.g. an install dir literally
-    // named C:\Users\O'Brien\...). It used to be interpolated into a single
-    // *string* -ArgumentList wrapped in PowerShell single-quotes, escaping
-    // only embedded double quotes — a literal `'` in shellValue would close
-    // that quoted string early and let the remainder be re-parsed as
-    // additional PowerShell tokens inside a UAC-elevated process (command
-    // injection). Fixed by building -ArgumentList as a PowerShell *array*
-    // literal (`@(...)`) with each reg.exe argument as its own PS
-    // single-quoted string literal. Start-Process passes each array element
-    // through as one literal process argument (no further shell re-parsing),
-    // so no argument — including the reg key path or shellValue — needs
-    // internal double-quote wrapping to survive embedded spaces. The only
-    // escaping required is for the PS single-quoted literal itself: a
-    // literal `'` inside a PS single-quoted string is escaped by doubling it
-    // (`'` -> `''`), per PowerShell's quoting rules. That is applied here to
-    // every value embedded in the command (the key path and shellValue),
-    // which neutralizes single quotes, double quotes, backticks, `$`,
-    // semicolons, pipes, etc. — none of those are special inside a PS
-    // single-quoted literal. [WINDOWS-UNVERIFIED]: this exact escaping has
-    // not been exercised against a live UAC prompt; verify manually on
-    // Windows (including an install path containing a literal `'`) before
-    // shipping.
-    const psSingleQuote = (value) => `'${String(value).replace(/'/g, "''")}'`;
-    const regArgs = ['add', regKeyPath, '/v', 'Shell', '/t', 'REG_SZ', '/d', shellValue, '/f'];
-    const argumentListLiteral = `@(${regArgs.map(psSingleQuote).join(',')})`;
-    const psCommand = `Start-Process reg.exe -ArgumentList ${argumentListLiteral} -Verb RunAs -Wait`;
-    const child = spawn('powershell.exe', ['-NoProfile', '-Command', psCommand], { windowsHide: false });
+    const child = spawn('reg.exe', [
+      'add', HKCU_WINLOGON_KEY,
+      '/v', 'Shell',
+      '/t', 'REG_SZ',
+      '/d', shellValue,
+      '/f',
+    ], { windowsHide: true });
     let stderr = '';
     child.stderr?.on('data', (d) => { stderr += d.toString(); });
     child.on('error', (err) => resolve({ ok: false, error: err.message }));
     child.on('close', (code) => {
       if (code === 0) resolve({ ok: true });
       else resolve({ ok: false, error: stderr || `reg.exe exited with code ${code}` });
+    });
+  });
+}
+
+/**
+ * Deletes the Shell value from HKCU Winlogon, restoring the system default
+ * (HKLM explorer.exe fallback). "Value not found" is treated as success —
+ * if the value was already gone the registry is already in the desired state.
+ * Returns { ok: true } or { ok: false, error: string }.
+ */
+function deleteHkcuShell() {
+  return new Promise((resolve) => {
+    const { spawn } = require('child_process');
+    const child = spawn('reg.exe', [
+      'delete', HKCU_WINLOGON_KEY,
+      '/v', 'Shell',
+      '/f',
+    ], { windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', (err) => resolve({ ok: false, error: err.message }));
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ ok: true });
+      } else if (
+        // reg.exe exits 1 with "unable to find" or "The system was unable to
+        // find the specified registry key or value" when the value didn't exist.
+        // Either way the end state is what we want: no HKCU Shell override.
+        stderr.toLowerCase().includes('unable to find') ||
+        stderr.toLowerCase().includes('not found')
+      ) {
+        resolve({ ok: true });
+      } else {
+        resolve({ ok: false, error: stderr || `reg.exe exited with code ${code}` });
+      }
     });
   });
 }
@@ -1972,18 +2237,19 @@ guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
     return { ok: false, error: 'This action requires an admin or manager session' };
   }
   try {
-    const shellValue = enabled
-      ? buildShellRegistryValue(process.execPath)
-      : '"explorer.exe"';
     // Deliberate revert-and-restart: mark this BEFORE the registry write so
     // window-all-closed (should the settings window close during this) never
     // mistakes it for an unexpected exit and relaunches back into kiosk mode.
     if (!enabled) kioskDeliberatelyReverting = true;
-    // The main process does not run elevated; the actual registry write
-    // happens in a UAC-elevated helper (runElevatedRegistryWrite above),
-    // which spawns `reg.exe` via PowerShell's Start-Process -Verb RunAs so
-    // Windows shows the native UAC consent prompt.
-    const result = await runElevatedRegistryWrite(shellValue);
+    // Enable: write HKCU Shell to point at this app (no UAC needed).
+    // Disable: delete the HKCU Shell value so Windows falls back to the
+    // HKLM default (explorer.exe), restoring the system default cleanly.
+    let result;
+    if (enabled) {
+      result = await runRegistryWrite(buildShellRegistryValue(process.execPath));
+    } else {
+      result = await deleteHkcuShell();
+    }
     if (!result.ok) {
       // Un-latch the deliberate-revert flag set above: the registry write
       // failed, so the shell key still points at this app and a subsequent
@@ -2041,6 +2307,8 @@ guardedHandle('device:kiosk-shell-state', () => {
 // it must keep working even if the main window's renderer is dead.
 let kioskEscapeWindow = null;
 const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minute
+const splashAuthRateLimiter = createRateLimiter(5, 60_000);  // 5 attempts/minute
+const returnToWindowsRateLimiter = createRateLimiter(5, 60_000);
 
 // kioskEscape.html is loaded with loadFile(), so its frame URL is
 // file:///…/kioskEscape.html — host "" — which the remote-origin guard
@@ -2050,6 +2318,8 @@ const kioskEscapeRateLimiter = createRateLimiter(5, 60_000); // 5 attempts/minut
 // It gets the local-file guard instead, allow-listing exactly this one page.
 const KIOSK_ESCAPE_PAGE_PATH = path.join(__dirname, 'kioskEscape.html');
 const { guardedHandle: guardedLocalFileHandle } = createLocalFileIpcGuards(ipcMain, [KIOSK_ESCAPE_PAGE_PATH]);
+const SPLASH_PAGE_PATH = path.join(__dirname, 'splash.html');
+const { guardedOn: guardedSplashOn } = createLocalFileIpcGuards(ipcMain, [SPLASH_PAGE_PATH]);
 
 function openKioskEscapeWindow() {
   if (kioskEscapeWindow) { kioskEscapeWindow.focus(); return; }
@@ -2111,16 +2381,16 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     // definition near the top of this file. Set before the registry write
     // so window-all-closed never mistakes this for an unexpected exit.
     kioskDeliberatelyReverting = true;
-    const revert = await runElevatedRegistryWrite('"explorer.exe"');
+    // Delete the HKCU Shell value — restores the HKLM explorer.exe default
+    // without requiring UAC. No UAC prompt = no accidental dismissal path.
+    const revert = await deleteHkcuShell();
     if (!revert.ok) {
-      // The elevated write did not land (usually a dismissed UAC prompt), so
-      // the Winlogon shell key still points at this app. Un-latch the
-      // deliberate-revert flag: leaving it set would make the next
-      // window-all-closed exit for real and strand the machine with no
-      // shell. Report the failure instead of the success this used to claim.
+      // The HKCU delete failed unexpectedly. Un-latch the deliberate-revert
+      // flag: leaving it set would make the next window-all-closed exit for
+      // real and strand the machine with no shell.
       kioskDeliberatelyReverting = false;
       logSecurityAuditEvent('kiosk:attempt-escape', 'error', { reason: 'registry_revert_failed', error: revert.error });
-      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Approve the Windows permission prompt and try again.` };
+      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Contact IT support for a manual registry revert.` };
     }
     setConfig('kiosk_shell_enabled', false);
     setConfig('kiosk_boot_attempts', resetBootAttemptState());
@@ -2136,6 +2406,152 @@ guardedLocalFileHandle('kiosk:attempt-escape', async (event, username, password)
     return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
   }
 });
+
+// Renderer-initiated kiosk revert (from FlexOSPowerMenu) — counterpart to
+// kiosk:attempt-escape (which is called from the kioskEscape.html file://
+// window). Uses guardedHandle (trusted remote origin) not guardedLocalFileHandle.
+guardedHandle('os:return-to-windows', async (event, username, password) => {
+  if (process.platform !== 'win32') return { ok: false, error: 'not_supported' };
+  if (getConfig('kiosk_shell_enabled') !== true) return { ok: false, error: 'not_in_kiosk_mode' };
+
+  const rateCheck = returnToWindowsRateLimiter.checkRateLimit('os:return-to-windows');
+  if (!rateCheck.ok) {
+    logSecurityAuditEvent('os:return-to-windows', 'denied', { reason: 'rate_limited' });
+    return rateCheck;
+  }
+
+  const shapeCheck = validateKioskEscapeCredentials(username, password);
+  if (!shapeCheck.ok) return shapeCheck;
+
+  try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    if (!isAllowedApiHost(loginUrl, [KIOSK_ESCAPE_API_HOSTNAME])) {
+      logSecurityAuditEvent('os:return-to-windows', 'error', { reason: 'host_not_allowlisted' });
+      return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+    }
+    const result = await withRequestTimeout(
+      new Promise((resolve, reject) => {
+        const request = net.request({ method: 'POST', url: loginUrl });
+        request.setHeader('Content-Type', 'application/json');
+        let body = '';
+        request.on('response', (response) => {
+          response.on('data', (chunk) => { body += chunk.toString(); });
+          response.on('end', () => resolve(body));
+        });
+        request.on('error', reject);
+        request.write(JSON.stringify({ username, password }));
+        request.end();
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+      setTimeout
+    );
+    const validation = validateEscapeLoginResponse(result);
+    logSecurityAuditEvent('os:return-to-windows', validation.ok ? 'success' : 'denied', { username });
+    if (!validation.ok) return validation;
+
+    kioskDeliberatelyReverting = true;
+    const revert = await deleteHkcuShell();
+    if (!revert.ok) {
+      kioskDeliberatelyReverting = false;
+      logSecurityAuditEvent('os:return-to-windows', 'error', { reason: 'registry_revert_failed', error: revert.error });
+      return { ok: false, error: `Could not restore the Windows desktop shell: ${revert.error}. Contact IT support for a manual registry revert.` };
+    }
+    logSecurityAuditEvent('os:return-to-windows', 'success', { reason: 'registry_reverted', username });
+    setConfig('kiosk_shell_enabled', false);
+    setConfig('kiosk_boot_attempts', resetBootAttemptState());
+    dialog.showMessageBoxSync({
+      type: 'info',
+      title: 'Kiosk Mode Disabled',
+      message: 'Kiosk Mode has been disabled. Restart the computer to return to the normal Windows desktop.',
+    });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('os:return-to-windows', 'error', { error: err.message });
+    return { ok: false, error: 'Could not reach the server — check network connectivity and try again.' };
+  }
+});
+
+// ── Startup lock screen authentication ──────────────────────
+// Forwards FlexOS credentials from the splash lock screen to /api/auth/login.
+// Uses guardedSplashOn (file:// sender guard) not guardedOn (remote-origin guard)
+// because splash.html is loaded via loadFile(), giving it a file:// sender URL.
+guardedSplashOn('splash:auth', async (event, payload) => {
+  const rateCheck = splashAuthRateLimiter.checkRateLimit('splash:auth');
+  if (!rateCheck.ok) {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:auth-result', { ok: false, error: 'Too many attempts — please wait before trying again.' });
+    }
+    return;
+  }
+
+  const username = (payload && typeof payload.username === 'string') ? payload.username.trim() : '';
+  const password = (payload && typeof payload.password === 'string') ? payload.password : '';
+
+  const sendResult = (data) => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.webContents.send('splash:auth-result', data);
+    }
+  };
+
+  if (!username || !password) {
+    sendResult({ ok: false, error: 'Username and password are required' });
+    return;
+  }
+
+  if (!isAllowedApiHost(KIOSK_ESCAPE_API_BASE, [KIOSK_ESCAPE_API_HOSTNAME].filter(Boolean))) {
+    sendResult({ ok: false, error: 'Auth endpoint not configured' });
+    return;
+  }
+
+  try {
+    const loginUrl = `${KIOSK_ESCAPE_API_BASE}/api/auth/login`;
+    const response = await withRequestTimeout(
+      fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      }),
+      DEFAULT_IPC_REQUEST_TIMEOUT_MS
+    );
+    const rawJson = await response.text();
+    const validated = validateFlexOsLoginResponse(rawJson);
+
+    sendResult(validated.ok
+      ? { ok: true, officer: validated.officer }
+      : { ok: false, error: validated.error }
+    );
+
+    if (validated.ok) {
+      // Persist the session token and last-used FlexOS username.
+      try {
+        const parsedResponse = JSON.parse(rawJson);
+        if (parsedResponse && parsedResponse.token) {
+          setConfig('last_session_token', parsedResponse.token);
+        }
+      } catch (_) {}
+      try { setConfig('last_flexos_username', username); } catch (_) {}
+      // Transition splash to Phase 3 (welcome), then close after animation.
+      if (splashWindow && !splashWindow.isDestroyed()) {
+        splashWindow.webContents.send('splash:phase', {
+          phase: 'welcome',
+          data: { officerName: validated.officer.name, role: validated.officer.role },
+        });
+        // Phase 3 animates for 2.5s + 400ms fade. Close splash and show main after 3.1s.
+        setTimeout(() => {
+          closeSplash();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }, 3100);
+      }
+    }
+  } catch (err) {
+    console.error('[SPLASH:AUTH] Login request failed:', err.message);
+    sendResult({ ok: false, error: 'Unable to reach server — check network connection' });
+  }
+});
+
 guardedHandle('device:auto-launch-state', () => app.getLoginItemSettings().openAtLogin);
 guardedHandle('device:register-shortcut', (event, accelerator, actionId) => {
   const validation = validateGlobalShortcutAccelerator(accelerator);
@@ -3724,6 +4140,37 @@ guardedHandle('app:force-refresh', async () => {
 
 let internalGpsReader = null;
 
+// ── Geofence engine ──────────────────────────────────────────
+let _geofenceZones = []; // [{ id, lat, lng, radiusM, label }]
+let _activeZoneIds = new Set(); // currently inside zones
+
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function checkGeofences(latitude, longitude) {
+  for (const zone of _geofenceZones) {
+    const dist = haversineM(latitude, longitude, zone.lat, zone.lng);
+    const inside = dist <= zone.radiusM;
+    const wasInside = _activeZoneIds.has(zone.id);
+    if (inside && !wasInside) {
+      _activeZoneIds.add(zone.id);
+      mainWindow?.webContents.send('geo:geofence-enter', { zoneId: zone.id, label: zone.label });
+    } else if (!inside && wasInside) {
+      _activeZoneIds.delete(zone.id);
+      mainWindow?.webContents.send('geo:geofence-exit', { zoneId: zone.id, label: zone.label });
+    }
+  }
+}
+
 /**
  * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
  *
@@ -3823,6 +4270,7 @@ guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('geo:internal-gps-update', pos);
     }
+    if (!pos.estimated) checkGeofences(pos.latitude, pos.longitude);
   });
   internalGpsReader.on('error', (err) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3842,6 +4290,17 @@ guardedHandle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
+});
+
+// ── Geofence zone loader (called by renderer after server sync) ──
+guardedHandle('geo:set-geofence-zones', (_event, zones) => {
+  if (!Array.isArray(zones)) return { ok: false };
+  _geofenceZones = zones.filter(
+    (z) => z && typeof z.id !== 'undefined' &&
+    Number.isFinite(z.lat) && Number.isFinite(z.lng) && Number.isFinite(z.radiusM)
+  );
+  _activeZoneIds = new Set(); // reset membership on zone reload
+  return { ok: true, count: _geofenceZones.length };
 });
 
 // ─── Power management (keep navigation alive off-screen) ─────
@@ -4212,6 +4671,163 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
   }
 });
 
+// ─── Face Recognition Auth ──────────────────────────────────
+// Enrollment: renderer captures N frames, extracts embeddings via face-api.js
+// (runs in renderer — has canvas + camera access), sends averaged embedding here.
+guardedHandle('face:enroll', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, error: 'invalid_params' };
+  try {
+    faceAuth.storeEmbedding(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:enroll', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('face:enroll', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+// Verify: renderer sends a live embedding (extracted by face-api.js in renderer).
+guardedHandle('face:verify', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, reason: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, reason: 'invalid_params' };
+  try {
+    const result = faceAuth.verify(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:verify', result.match ? 'success' : 'denied', {
+      targetUserId: userId, confidence: result.confidence,
+    });
+    return { ok: result.match, confidence: result.confidence, reason: result.reason };
+  } catch (err) {
+    logSecurityAuditEvent('face:verify', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('face:clear', (_event, { userId }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  try {
+    faceAuth.deleteEmbedding(userId);
+    logSecurityAuditEvent('face:clear', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('face:enrollment-status', (_event, { userId }) => {
+  if (!faceAuth) return { enrolled: false };
+  const embedding = faceAuth.getEmbedding(userId);
+  return { enrolled: embedding !== null };
+});
+
+// ── Face unlock success (from splash lock screen renderer) ──
+// Uses ipcMain.on (not guardedHandle) — this is a fire-and-forget send from the
+// trusted local file splash.html, not an invoke requiring a response.
+ipcMain.on('face:unlock-success', () => {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+  logSecurityAuditEvent('face:unlock-success', 'success', {});
+});
+
+// ── Camera QR / Barcode Scanner ──
+guardedHandle('device:camera-scan-start', () => {
+  if (!cameraScanner) cameraScanner = new CameraScanner();
+  const started = cameraScanner.start(mainWindow, BrowserWindow);
+  return { ok: started };
+});
+
+guardedHandle('device:camera-scan-stop', () => {
+  cameraScanner?.stop();
+  return { ok: true };
+});
+
+// ── System info: battery (Windows only) ──
+guardedHandle('system:get-battery', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync(
+      'wmic path Win32_Battery get EstimatedChargeRemaining,BatteryStatus /format:csv',
+      { timeout: 3000, encoding: 'utf8', windowsHide: true }
+    );
+    const lines = out.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
+    if (!lines.length) return null;
+    const parts = lines[0].trim().split(',');
+    // CSV columns: Node, EstimatedChargeRemaining, BatteryStatus
+    const pct = parseInt(parts[1], 10);
+    const status = parseInt(parts[2], 10); // 2 = AC/charging, 1 = discharging
+    return { percent: isNaN(pct) ? null : pct, charging: status === 2 };
+  } catch { return null; }
+});
+
+// ── System info: WiFi network (Windows only) ──
+guardedHandle('system:get-network', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execSync } = require('child_process');
+    const out = execSync(
+      'netsh wlan show interfaces',
+      { timeout: 3000, encoding: 'utf8', windowsHide: true }
+    );
+    const ssidMatch = out.match(/^\s+SSID\s+:\s+(.+)/m);
+    const signalMatch = out.match(/^\s+Signal\s+:\s+(\d+)%/m);
+    return {
+      ssid: ssidMatch ? ssidMatch[1].trim() : null,
+      signal: signalMatch ? parseInt(signalMatch[1], 10) : null,
+    };
+  } catch { return null; }
+});
+
+// ── System: set OS master volume ──────────────────────────────
+guardedHandle('system:set-volume', async (_event, level) => {
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    if (process.platform === 'win32') {
+      // nircmd setsysvolume takes 0–65535
+      const nircmdPath = path.join(
+        process.resourcesPath || path.join(__dirname, 'vendor'),
+        'nircmd.exe'
+      );
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)(nircmdPath, ['setsysvolume', String(Math.round(clamped / 100 * 65535))], { timeout: 2000 });
+    } else if (process.platform === 'darwin') {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)('osascript', ['-e', `set volume output volume ${clamped}`], { timeout: 2000 });
+    } else {
+      return { ok: false, reason: 'unsupported_platform' };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYSTEM:SET-VOLUME]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── Device: set display brightness (Windows only — WMI) ───────
+guardedHandle('device:set-brightness', async (_event, level) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(0, ${clamped})`],
+      { timeout: 3000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[DEVICE:SET-BRIGHTNESS]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ─── Application Menu ───────────────────────────────────────
 function createMenu() {
   const isMac = process.platform === 'darwin';
@@ -4380,6 +4996,16 @@ app.whenReady().then(async () => {
   appReady = true;
   console.log('[APP] Starting RMPG Flex...');
   console.log('[APP] Mode:', DEV_MODE ? 'development' : 'production');
+
+  // On Windows (non-kiosk), register as a startup app so FlexOS launches on every boot.
+  // This is set once and persists — the user can toggle it off via Settings > System.
+  if (process.platform === 'win32' && !DEV_MODE) {
+    const currentSettings = app.getLoginItemSettings();
+    if (!currentSettings.openAtLogin) {
+      app.setLoginItemSettings({ openAtLogin: true });
+      console.log('[APP] Registered RMPG Flex as a Windows startup app');
+    }
+  }
   console.log('[APP] Platform:', process.platform, process.arch);
   console.log('[APP] Server:', REMOTE_SERVER_URL);
 
@@ -4439,6 +5065,15 @@ app.whenReady().then(async () => {
           console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
         });
       }
+      try {
+        const localDb = getLocalDb();
+        if (localDb) {
+          faceAuth = createFaceAuth({ db: localDb, safeStorage });
+          console.log('[FACE-AUTH] Initialized');
+        }
+      } catch (err) {
+        console.error('[FACE-AUTH] Failed to initialize:', err.message);
+      }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
@@ -4448,7 +5083,36 @@ app.whenReady().then(async () => {
     // leaving macOS users staring at the splash for up to 10s before
     // the window even began loading. Now the window starts immediately
     // and the connectivity result is used only to seed the monitor.
-    const connectivityPromise = checkServerConnectivity();
+    // In kiosk shell mode, Windows starts this process before the network
+    // stack is fully up — use more retries so the initial check doesn't
+    // seed the monitor as "offline" just because the NIC wasn't ready yet.
+    const isKioskContext = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+    const connectivityPromise = checkServerConnectivity({ kioskShell: isKioskContext });
+
+    // Kick off Windows account lookup in parallel with connectivity check.
+    // Both must resolve (+ 3s minimum) before the lock screen shows.
+    const accountInfoPromise = getWindowsAccountInfo();
+    const minBootPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // After DB init, we know if this is a kiosk shell session.
+    // Drive phase transitions only in kiosk shell mode.
+    Promise.all([accountInfoPromise, minBootPromise]).then(([accountInfo]) => {
+      const isKioskForSplash = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+      if (isKioskForSplash && splashWindow && !splashWindow.isDestroyed()) {
+        const phaseMsg = {
+          phase: 'lock',
+          data: accountInfo || { name: getConfig('last_flexos_username') || 'Officer', fullName: null, avatarDataUri: null },
+        };
+        if (splashLoaded) {
+          splashWindow.webContents.send('splash:phase', phaseMsg);
+        } else {
+          // Page hasn't finished loading yet — queue for delivery in did-finish-load.
+          splashPhasePending = phaseMsg;
+        }
+      }
+    }).catch((err) => {
+      console.warn('[SPLASH] Phase 1→2 transition error:', err && err.message);
+    });
 
     // Lifted out of the `if (DEV_MODE)` block below (rather than left as a
     // block-scoped const inside it) so the Task 10 self-test further down
@@ -4614,6 +5278,11 @@ app.whenReady().then(async () => {
             console.error('[APP] Push sync on reconnect failed:', err.message);
           });
         }
+        // Detect WWAN failover
+        const currentWwan = _lastWwanState;
+        if (currentWwan?.connected) {
+          mainWindow?.webContents.send('connectivity:failover', { from: 'wifi', to: 'wwan' });
+        }
       }
     });
 
@@ -4649,6 +5318,8 @@ app.on('before-quit', () => {
   appUpdater.destroy();
   globalShortcut.unregisterAll();
 
+  // Clean up WWAN push timer
+  if (_wwanPushTimer) { clearInterval(_wwanPushTimer); _wwanPushTimer = null; }
   // Clean up offline modules
   if (connectivityMonitor) connectivityMonitor.stop();
   if (syncManager && syncManager.stopPullSchedule) syncManager.stopPullSchedule();

@@ -29,7 +29,7 @@ function todayIso(): string {
 function formatTime(iso: string): string {
   try {
     return parseTimestamp(iso).toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {
     return iso;
@@ -67,7 +67,7 @@ function VisibilityBadge({ visibility }: { visibility: ShiftNote['visibility'] }
         letterSpacing: '0.04em',
         padding: '1px 6px',
         borderRadius: 2,
-        background: 'var(--surface-sunken, rgba(0,0,0,0.3))',
+        background: 'var(--surface-sunken, rgba(0 0 0 / 0.3))',
         border: '1px solid var(--border-subtle)',
         ...Object.fromEntries(cfg.color.split(';').filter(Boolean).map(s => {
           const [k, v] = s.split(':');
@@ -312,7 +312,7 @@ export default function ShiftNotesPage() {
               textTransform: 'uppercase',
               borderRadius: 2,
               border: 'none',
-              background: submitting || !content.trim() ? 'var(--surface-sunken, rgba(0,0,0,0.3))' : 'var(--brand-400)',
+              background: submitting || !content.trim() ? 'var(--surface-sunken, rgba(0 0 0 / 0.3))' : 'var(--brand-400)',
               color: submitting || !content.trim() ? 'var(--text-secondary)' : 'var(--surface-base)',
               cursor: submitting || !content.trim() ? 'not-allowed' : 'pointer',
             }}

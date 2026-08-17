@@ -73,12 +73,13 @@ function saveHistory(plate: string, state: string): void {
 
 function formatTs(ts: number): string {
   const d = new Date(ts); // new-date-ok — numeric Unix ms, not a D1 string
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 }
 
 function formatSightingTs(raw: string): string {
   const d = parseTimestamp(raw);
-  return d.toLocaleString([], {
+  return d.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -158,11 +159,11 @@ export default function QuickPlateCheckPage() {
   const regStatus = result?.registration_status?.toLowerCase() ?? '';
   const regColor =
     regStatus === 'valid'
-      ? 'var(--sev-ok, #22c55e)'
+      ? 'var(--sev-ok, var(--sev-ok))'
       : regStatus === 'expired'
-      ? 'var(--sev-warn, #f59e0b)'
+      ? 'var(--sev-warn, var(--sev-warn))'
       : regStatus === 'suspended'
-      ? 'var(--sev-critical, #ef4444)'
+      ? 'var(--sev-critical, var(--sev-critical))'
       : 'var(--text-secondary)';
 
   return (

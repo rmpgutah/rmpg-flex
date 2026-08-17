@@ -78,7 +78,7 @@ export default function RecordingsTab() {
           <ul className="divide-y" style={{ borderColor: 'var(--rt-border)' }}>
             {recordings.map((r) => {
               const time = (() => {
-                try { return parseTimestamp(r.transmitted_at).toLocaleString('en-US', { hour12: false }); }
+                try { return parseTimestamp(r.transmitted_at).toLocaleString('en-US', { timeZone: 'America/Denver', hour12: false }); }
                 catch { return r.transmitted_at; }
               })();
               return (
@@ -98,8 +98,7 @@ export default function RecordingsTab() {
                   <AudioPlayButton transmissionId={r.transmission_id} />
                   <button type="button" onClick={() => remove(r.id)}
                     aria-label="Delete bookmark"
-                    className="opacity-60 hover:opacity-100"
-                    style={{ color: '#ef4444' }}>
+                    className="opacity-60 hover:opacity-100 text-red-500">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </li>

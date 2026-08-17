@@ -459,7 +459,7 @@ export default React.memo(function ServeJobCard({
         <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Linked Dispatch Call */}
           {linkedCall && (
-            <div className="p-2 rounded-[2px] border mb-2" style={{ background: '#88888810', borderColor: '#88888830' }}>
+            <div className="p-2 rounded-[2px] border mb-2" style={{ background: 'rgb(var(--accent-silver-500-rgb) / 0.06)', borderColor: 'rgb(var(--accent-silver-500-rgb) / 0.19)' }}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Dispatch Link</span>
                 <button type="button"
@@ -487,7 +487,7 @@ export default React.memo(function ServeJobCard({
                   return (
                     <div className="mt-1 flex items-center gap-1 text-[9px]">
                       <span className="text-rmpg-400">Compliance:</span>
-                      <span className="font-mono tabular-nums" style={{ color: met === 4 ? '#4ade80' : '#fbbf24' }}>{met}/4 windows</span>
+                      <span className="font-mono tabular-nums" style={{ color: met === 4 ? 'var(--sev-ok)' : 'var(--sev-warn-soft)' }}>{met}/4 windows</span>
                     </div>
                   );
                 } catch { return null; }
@@ -811,7 +811,7 @@ export default React.memo(function ServeJobCard({
         {fullAddress && (
           <button type="button"
             onClick={handleCopyAddress}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
             title="Copy address"
             aria-label={`Copy address for ${job.recipient_name}`}
           >
@@ -834,7 +834,7 @@ export default React.memo(function ServeJobCard({
         {/* Directions link */}
         <button type="button"
           onClick={(e) => { e.stopPropagation(); window.open(`https://www.openstreetmap.org/directions?to=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-amber-900/20"
           title="Open in Maps"
           aria-label={`Open Maps to ${job.recipient_name}`}
         >
@@ -843,7 +843,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >
@@ -852,7 +852,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-green-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-green-900/20"
           title="Attempt Service"
           aria-label={`Attempt service for ${job.recipient_name}`}
         >
@@ -861,7 +861,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >
@@ -874,12 +874,21 @@ export default React.memo(function ServeJobCard({
         <ServeReceiptActions job={job} compact />
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-amber-900/20"
           title="Flag Bad Address"
           aria-label={`Flag bad address for ${job.recipient_name}`}
         >
           <AlertTriangle className="w-3 h-3" />
           Flag
+        </button>
+        <button type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(job.id); }}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
+          title="Edit Job"
+          aria-label={`Edit job for ${job.recipient_name}`}
+        >
+          <Pencil className="w-3 h-3" />
+          Edit
         </button>
       </div>
     </div>

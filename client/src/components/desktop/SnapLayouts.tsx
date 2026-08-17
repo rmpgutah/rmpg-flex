@@ -31,6 +31,8 @@ export function computeSnapZones(viewportW: number, viewportH: number, taskbarH:
       { id: 'right-third', label: 'Right third', x: third * 2, y: 0, width: viewportW - third * 2, height: dH },
       { id: 'top-left', label: 'Top-left quarter', x: 0, y: 0, width: third, height: half },
       { id: 'top-right', label: 'Top-right quarter', x: third * 2, y: 0, width: viewportW - third * 2, height: half },
+      { id: 'bottom-left', label: 'Bottom-left quarter', x: 0, y: half, width: third, height: dH - half },
+      { id: 'bottom-right', label: 'Bottom-right quarter', x: third * 2, y: half, width: viewportW - third * 2, height: dH - half },
       { id: 'right-two-thirds', label: 'Right two-thirds', x: third, y: 0, width: twoThirds, height: dH },
     ];
   }
@@ -42,6 +44,8 @@ export function computeSnapZones(viewportW: number, viewportH: number, taskbarH:
     { id: 'right-half', label: 'Right half', x: half, y: 0, width: viewportW - half, height: dH },
     { id: 'top-left-quarter', label: 'Top-left', x: 0, y: 0, width: half, height: halfH },
     { id: 'top-right-quarter', label: 'Top-right', x: half, y: 0, width: viewportW - half, height: halfH },
+    { id: 'bottom-left-quarter', label: 'Bottom-left', x: 0, y: halfH, width: half, height: dH - halfH },
+    { id: 'bottom-right-quarter', label: 'Bottom-right', x: half, y: halfH, width: viewportW - half, height: dH - halfH },
   ];
 }
 
@@ -75,7 +79,7 @@ export default function SnapLayouts({ taskbarH, onSnap, onDismiss }: SnapLayouts
         transform: 'translateX(-50%)',
         background: 'var(--surface-raised)',
         border: '1px solid var(--border-strong)',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        boxShadow: '0 8px 24px var(--window-shadow)',
         borderRadius: 2,
         padding: 8,
         display: 'grid',

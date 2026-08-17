@@ -108,7 +108,7 @@ function renderTokens(tokens: Token[], keyPrefix: string): ReactNode[] {
       case 'underline': return <u key={k}>{renderTokens(t.children, k)}</u>;
       case 'link':
         return (
-          <a key={k} href={t.href} target="_blank" rel="noopener noreferrer" className="text-[#d4a017] underline hover:text-[#e8b830]">
+          <a key={k} href={t.href} target="_blank" rel="noopener noreferrer" className="[color:var(--panel-header-color)] underline hover:text-[#e8b830]">
             {renderTokens(t.children, k)}
           </a>
         );

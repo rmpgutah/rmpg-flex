@@ -2701,6 +2701,17 @@ si.post('/:id/attempts', async (c) => {
   });
 });
 
+// ── GET /:id/skip-trace ─────────────────────────────────────
+si.get('/:id/skip-trace', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const rows = await query(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
+  return c.json({ data: rows });
+});
+
 // ── POST /:id/skip-trace ────────────────────────────────────
 si.post('/:id/skip-trace', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
@@ -2817,8 +2828,8 @@ si.get('/map-items', async (c) => {
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
             q.document_type, q.case_number, q.deadline, q.attempt_count,
             q.parsed_data->>'recipient_type' AS recipient_type,
-            q.parsed_data->>'recipient_lat'  AS recipient_lat,
-            q.parsed_data->>'recipient_lng'  AS recipient_lng,
+            COALESCE(q.recipient_lat, CAST(q.parsed_data->>'recipient_lat' AS REAL))  AS recipient_lat,
+            COALESCE(q.recipient_lng, CAST(q.parsed_data->>'recipient_lng' AS REAL))  AS recipient_lng,
             sn.id   AS location_note_id,
             sn.note_text AS location_note_text,
             ns.scheduled_date AS next_attempt_date,

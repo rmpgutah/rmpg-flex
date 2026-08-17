@@ -1133,6 +1133,11 @@ busybox $busybox_frag_hash"
       CONFIG_E1000E:fz55-wired-net
       CONFIG_IWLWIFI:fz55-wifi
       CONFIG_BLK_DEV_NVME:fz55-storage
+      CONFIG_IIO:ish-sensor-hub-iio-path
+      CONFIG_IIO_BUFFER:ish-sensor-hub-iio-streaming
+      CONFIG_SERIAL_8250:rs232-xpak-and-vehicle-gps
+      CONFIG_CPU_FREQ:update-preflight-cpu-check
+      CONFIG_X86_INTEL_PSTATE:cpu-power-management
     "
     ksym_failed=0
     for entry in $FZ55_REQUIRED_KSYMS; do

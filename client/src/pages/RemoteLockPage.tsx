@@ -47,7 +47,7 @@ function fmtTs(ts?: string): string {
   if (!ts) return '';
   try {
     return parseTimestamp(ts).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+      timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
     });
   } catch {
     return ts;
@@ -194,7 +194,7 @@ export default function RemoteLockPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastPoll && (
             <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>
-              Updated {lastPoll.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+              Updated {lastPoll.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
             </span>
           )}
           <button type="button" onClick={poll} title="Refresh"
@@ -339,7 +339,7 @@ export default function RemoteLockPage() {
 
       {/* Lock modal */}
       {lockTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0 0 0 / 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--sev-critical)', borderRadius: 2, padding: 18, width: 340, maxWidth: '90vw' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
               <Lock style={{ width: 13, height: 13, color: 'var(--sev-critical)' }} />
@@ -393,7 +393,7 @@ export default function RemoteLockPage() {
 
       {/* Unlock modal */}
       {unlockTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0 0 0 / 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'var(--surface-raised)', border: '1px solid var(--sev-ok)', borderRadius: 2, padding: 18, width: 320, maxWidth: '90vw' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
               <Unlock style={{ width: 13, height: 13, color: 'var(--sev-ok)' }} />

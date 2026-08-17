@@ -42,18 +42,18 @@ function Metric({
         alignItems: 'center',
         gap: 5,
         padding: '0 10px',
-        borderRight: '1px solid rgba(195,204,214,0.08)',
+        borderRight: '1px solid rgba(var(--accent-silver-400-rgb),0.08)',
       }}
     >
       <Icon
         style={{
           width: 10,
           height: 10,
-          color: alert && (value ?? 0) > 0 ? 'var(--sev-critical, #ef4444)' : 'var(--text-muted, #8da0b3)',
+          color: alert && (value ?? 0) > 0 ? 'var(--sev-critical)' : 'var(--text-muted)',
           flexShrink: 0,
         }}
       />
-      <span style={{ fontSize: 9, color: 'var(--text-muted, #8da0b3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+      <span style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
         {label}
       </span>
       <span
@@ -61,7 +61,7 @@ function Metric({
           fontSize: 10,
           fontWeight: 600,
           fontVariantNumeric: 'tabular-nums',
-          color: alert && (value ?? 0) > 0 ? 'var(--sev-critical, #ef4444)' : 'var(--text-primary, #f0f4f9)',
+          color: alert && (value ?? 0) > 0 ? 'var(--sev-critical)' : 'var(--text-primary)',
           minWidth: 18,
           textAlign: 'right',
         }}
@@ -113,10 +113,10 @@ export default function FlexOSStatusBar() {
         right: 0,
         height: STATUS_BAR_HEIGHT,
         ...positionStyle,
-        background: 'rgba(15,32,53,0.82)',
+        background: 'rgba(var(--surface-overlay-rgb),0.82)',
         backdropFilter: 'blur(6px)',
-        borderTop: taskbarPos === 'top' ? 'none' : '1px solid rgba(195,204,214,0.06)',
-        borderBottom: taskbarPos === 'top' ? '1px solid rgba(195,204,214,0.06)' : 'none',
+        borderTop: taskbarPos === 'top' ? 'none' : '1px solid rgba(var(--accent-silver-400-rgb),0.06)',
+        borderBottom: taskbarPos === 'top' ? '1px solid rgba(var(--accent-silver-400-rgb),0.06)' : 'none',
         display: 'flex',
         alignItems: 'center',
         zIndex: 990,
@@ -129,10 +129,10 @@ export default function FlexOSStatusBar() {
         alignItems: 'center',
         gap: 5,
         padding: '0 10px',
-        borderRight: '1px solid rgba(195,204,214,0.08)',
+        borderRight: '1px solid rgba(var(--accent-silver-400-rgb),0.08)',
       }}>
-        <ShieldCheck style={{ width: 10, height: 10, color: 'var(--accent-silver-400, #c3ccd6)' }} />
-        <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400, #c3ccd6)' }}>
+        <ShieldCheck style={{ width: 10, height: 10, color: 'var(--accent-silver-400)' }} />
+        <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--accent-silver-400)' }}>
           FlexOS
         </span>
       </div>
@@ -147,8 +147,8 @@ export default function FlexOSStatusBar() {
 
       {/* Last-updated timestamp */}
       {lastUpdated && (
-        <span style={{ fontSize: 8, color: 'var(--text-muted, #8da0b3)', padding: '0 10px', letterSpacing: '0.04em' }}>
-          {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        <span style={{ fontSize: 8, color: 'var(--text-muted)', padding: '0 10px', letterSpacing: '0.04em' }}>
+          {lastUpdated.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
         </span>
       )}
     </div>

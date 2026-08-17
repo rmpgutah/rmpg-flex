@@ -131,7 +131,8 @@ import { withAlpha } from '../../utils/withAlpha';
 import { HAZARD_FLAGS, buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml, shouldAnimateMarkerMove, formatEtaSeconds, formatDistanceMiles } from './utils/mapMarkers';
 import {
   TACTICAL_SURFACE_BASE, TACTICAL_SURFACE_RAISED, TACTICAL_BORDER, TACTICAL_TEXT_MUTED, TACTICAL_BRAND_GOLD,
-  TACTICAL_TEXT_PRIMARY,
+  TACTICAL_TEXT_PRIMARY, TACTICAL_TEXT_DIM, TACTICAL_INFO, TACTICAL_TEXT_NEAR_WHITE, TACTICAL_SILVER,
+  TACTICAL_ERROR, ISOCHRONE_COLORS,
 } from './utils/tacticalPalette';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -149,7 +150,7 @@ const UNITS_FAST_POLL_MS = 5_000;
 if (typeof document !== 'undefined' && !document.getElementById('rmpg-pulse-css')) {
   const css = document.createElement('style');
   css.id = 'rmpg-pulse-css';
-  css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px #3b82f680,0 0 24px #3b82f640}50%{box-shadow:0 0 20px #3b82f6b0,0 0 40px #3b82f670}}@keyframes rmpg-pulse-ring{0%,100%{opacity:0.6;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}`;
+  css.textContent = `@keyframes rmpg-pulse{0%,100%{box-shadow:0 0 12px rgb(var(--sev-info-rgb)/0.5),0 0 24px rgb(var(--sev-info-rgb)/0.25)}50%{box-shadow:0 0 20px rgb(var(--sev-info-rgb)/0.69),0 0 40px rgb(var(--sev-info-rgb)/0.44)}}@keyframes rmpg-pulse-ring{0%,100%{opacity:0.6;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}`;
   document.head.appendChild(css);
 }
 
@@ -502,7 +503,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         if (tilequery.errorRef.current) {
           identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark' })
             .setLngLat(e.lngLat)
-            .setHTML(`<div style="font:11px monospace;color:#f87171;background:#0a0a0a;padding:4px 6px;">${tilequery.errorRef.current}</div>`)
+            .setHTML(`<div style="font:11px monospace;color:${TACTICAL_ERROR};background:${TACTICAL_SURFACE_BASE};padding:4px 6px;">${tilequery.errorRef.current}</div>`)
             .addTo(map);
         }
         return;
@@ -515,7 +516,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         info.state && `State: ${info.state}`,
         info.sectorName && `Area: ${info.sectorName}`,
       ].filter(Boolean);
-      const html = `<div style="font:11px monospace;color:#ddd;background:#0a0a0a;padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}<br/><button data-action="streetview" style="margin-top:4px;font:11px monospace;color:#3b82f6;background:transparent;border:1px solid #3b82f6;padding:2px 6px;cursor:pointer;">Street View</button></div>`;
+      const html = `<div style="font:11px monospace;color:${TACTICAL_TEXT_DIM};background:${TACTICAL_SURFACE_BASE};padding:4px 6px;">${lines.length ? lines.join('<br/>') : 'No data at this point'}<br/><button data-action="streetview" style="margin-top:4px;font:11px monospace;color:${TACTICAL_INFO};background:transparent;border:1px solid ${TACTICAL_INFO};padding:2px 6px;cursor:pointer;">Street View</button></div>`;
       identifyPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, className: 'mapbox-popup-dark' })
         .setLngLat(e.lngLat)
         .setHTML(html)
@@ -563,7 +564,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
   const unitColorMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const u of units) m[u.id] = UNIT_STATUS_COLORS[u.status] || '#888';
+    for (const u of units) m[u.id] = UNIT_STATUS_COLORS[u.status] || TACTICAL_TEXT_MUTED;
     return m;
   }, [units]);
   const unitIds = useMemo(() => units.map(u => u.id), [units]);
@@ -664,14 +665,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       });
       map.addLayer({
         id: `${HIGHLIGHT_SOURCE}-line`, type: 'line', source: HIGHLIGHT_SOURCE,
-        paint: { 'line-color': '#f0f4f9', 'line-width': 3, 'line-opacity': 0.9 },
+        paint: { 'line-color': TACTICAL_TEXT_NEAR_WHITE, 'line-width': 3, 'line-opacity': 0.9 },
       });
       map.addLayer({
         id: `${HIGHLIGHT_SOURCE}-point`, type: 'circle', source: HIGHLIGHT_SOURCE,
         filter: ['==', ['geometry-type'], 'Point'],
         paint: {
-          'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)',
-          'circle-stroke-color': '#f0f4f9', 'circle-stroke-width': 2,
+          'circle-radius': 9, 'circle-color': 'transparent',
+          'circle-stroke-color': TACTICAL_TEXT_NEAR_WHITE, 'circle-stroke-width': 2,
         },
       });
     };
@@ -706,7 +707,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     inspectMarkerRef.current?.remove();
     inspectMarkerRef.current = null;
     if (!featureInspect.result) return;
-    inspectMarkerRef.current = new mapboxgl.Marker({ color: '#c3ccd6' })
+    inspectMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_SILVER })
       .setLngLat(featureInspect.result.lngLat)
       .addTo(map);
     return () => { inspectMarkerRef.current?.remove(); inspectMarkerRef.current = null; };
@@ -937,10 +938,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         if (lat == null || lng == null) continue;
         current.add(job.id);
 
-        const color = job.priority === 'urgent' ? '#ef4444'
-          : job.priority === 'rush' ? '#f59e0b'
-          : job.status === 'attempted' ? '#60a5fa'
-          : '#94a3b8';
+        const color = job.priority === 'urgent' ? 'var(--sev-critical)'
+          : job.priority === 'rush' ? 'var(--sev-warn)'
+          : job.status === 'attempted' ? 'var(--sev-info)'
+          : 'var(--text-muted)';
 
         const existing = psoMarkersRef.current.get(job.id);
         if (existing) {
@@ -956,7 +957,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           const popupBody = `<div style="font-size:11px;padding:4px 6px;"><strong>${escapeHtml(job.recipient_name ?? 'Unknown')}</strong><br/>${escapeHtml(job.status)} · ${escapeHtml(job.priority)}</div>`;
           const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
             .setHTML(popupBody);
-          const marker = new mapboxgl.Marker({ element: el })
+          const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
             .setLngLat([lng, lat])
             .setPopup(popup)
             .addTo(map);
@@ -1029,7 +1030,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         applyUnitMarkerState(existing.getElement(), unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
       } else {
         const el = buildUnitMarkerEl(unit, unit.call_number ? enRouteEtas[unit.call_number] : null);
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
           .setLngLat([unit.longitude, unit.latitude])
           .setPopup(
             new mapboxgl.Popup({ offset: 18, closeButton: false, className: 'mapbox-popup-dark' })
@@ -1107,7 +1108,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         const popup = new mapboxgl.Popup({ offset: 16, closeButton: false, className: 'mapbox-popup-dark' })
           .setHTML(buildCallPopupHtml(call, isQueued, Date.now(), assignedUnitInfo));
         bindAddToRoutePopup(popup);
-        const marker = new mapboxgl.Marker({ element: el })
+        const marker = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
           .setLngLat([call.longitude, call.latitude])
           .setPopup(popup)
           .addTo(map);
@@ -1201,8 +1202,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       svg.style.zIndex = '2';
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', 'M12 2 20 20 12 15 4 20Z');
-      path.setAttribute('fill', '#3b82f6');
-      path.setAttribute('stroke', '#ffffff');
+      path.setAttribute('fill', TACTICAL_INFO);
+      path.setAttribute('stroke', TACTICAL_TEXT_PRIMARY);
       path.setAttribute('stroke-width', '1.5');
       svg.appendChild(path);
       el.appendChild(svg);
@@ -1212,7 +1213,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       dot.setAttribute('data-role', 'self-dot');
       dot.style.cssText = `
         width:18px;height:18px;border-radius:50%;
-        background:#3b82f6;border:3px solid #fff;
+        background:${TACTICAL_INFO};border:3px solid ${TACTICAL_TEXT_PRIMARY};
         box-shadow:0 0 10px rgba(59,130,246,0.5), 0 0 20px rgba(59,130,246,0.25);
         animation:rmpg-pulse 2s ease-in-out infinite;
         position:relative;z-index:2;
@@ -1224,16 +1225,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const speedEl = document.createElement('div');
       speedEl.setAttribute('data-role', 'self-speed');
       speedEl.style.cssText = `
-        background:rgba(0,0,0,0.75);border:1px solid rgba(59,130,246,0.5);
+        background:rgb(0 0 0 / 0.75);border:1px solid rgba(59,130,246,0.5);
         border-radius:2px;padding:0 4px;
-        font:700 9px/13px ui-monospace,monospace;color:#93c5fd;
+        font:700 9px/13px ui-monospace,monospace;color:${TACTICAL_INFO};
         white-space:nowrap;position:relative;z-index:2;
       `;
       speedEl.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
       speedEl.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
       el.appendChild(speedEl);
 
-      selfMarkerRef.current = new mapboxgl.Marker({ element: el })
+      selfMarkerRef.current = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
         .setLngLat([gps.longitude, gps.latitude])
         .addTo(map);
     }
@@ -1377,7 +1378,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (!data?.features) { console.error('Isochrone response missing features'); return; }
       upsertGeoJsonSource(map, 'isochrone', data as any);
 
-      const colors = ['#22c55e', '#f59e0b', '#ef4444']; // 5min=green, 10min=yellow, 15min=red
+      const colors = ISOCHRONE_COLORS; // 5min=green, 10min=yellow, 15min=red
       data.features.forEach((_, idx) => {
         const fillId = `isochrone-fill-${idx}`;
         const borderId = `isochrone-border-${idx}`;
@@ -1386,7 +1387,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             id: fillId,
             type: 'fill',
             source: 'isochrone',
-            paint: { 'fill-color': colors[idx] || '#888', 'fill-opacity': 0.1 },
+            paint: { 'fill-color': colors[idx] || TACTICAL_TEXT_MUTED, 'fill-opacity': 0.1 },
             filter: ['==', ['get', 'contour'], (idx + 1) * 5],
           });
         }
@@ -1395,7 +1396,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             id: borderId,
             type: 'line',
             source: 'isochrone',
-            paint: { 'line-color': colors[idx] || '#888', 'line-width': 1.5, 'line-opacity': 0.6 },
+            paint: { 'line-color': colors[idx] || TACTICAL_TEXT_MUTED, 'line-width': 1.5, 'line-opacity': 0.6 },
             filter: ['==', ['get', 'contour'], (idx + 1) * 5],
           });
         }
@@ -1750,14 +1751,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           background: ${TACTICAL_SURFACE_RAISED} !important;
           border: 1px solid ${TACTICAL_BORDER} !important;
           border-radius: 2px !important;
-          color: #e0e0e0 !important;
+          color: ${TACTICAL_TEXT_PRIMARY} !important;
           font-family: ui-monospace, monospace !important;
           font-size: 12px !important;
           box-shadow: none !important;
           min-width: 260px !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
-          color: #e0e0e0 !important;
+          color: ${TACTICAL_TEXT_PRIMARY} !important;
           font-size: 12px !important;
         }
         .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
@@ -1769,7 +1770,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           border-radius: 2px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > li > a {
-          color: #ccc !important;
+          color: ${TACTICAL_TEXT_DIM} !important;
           font-size: 11px !important;
         }
         .mapboxgl-ctrl-geocoder .suggestions > .active > a,
@@ -2046,7 +2047,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {snapshotGalleryOpen && (
         <div
           className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
-          style={{ borderRadius: 2, width: 220, maxHeight: 340, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+          style={{ borderRadius: 2, width: 220, maxHeight: 340, boxShadow: '0 8px 28px rgb(0 0 0 / 0.55)' }}
         >
           <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border-subtle">
             <span className="text-[10px] font-black tracking-wider text-brand-gold-500 flex-1 uppercase">
@@ -2075,11 +2076,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 No snapshots yet.
               </div>
             ) : (
-              snapshot.snapshots.map((s) => (
+              snapshot.snapshots.map((s) => {
+                const snapshotTime = new Date(s.timestamp).toLocaleTimeString('en-US', { timeZone: 'America/Denver' }); // new-date-ok
+                return (
                 <div key={s.timestamp} className="relative group">
                   <img
                     src={s.url}
-                    alt={`Snapshot at ${new Date(s.timestamp).toLocaleTimeString()}`}
+                    alt={`Snapshot at ${snapshotTime}`}
                     className="w-full h-auto border border-border-subtle"
                     style={{ borderRadius: 2 }}
                   />
@@ -2092,7 +2095,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <X className="w-2.5 h-2.5" />
                   </button>
                 </div>
-              ))
+              );})
             )}
           </div>
         </div>
@@ -2101,7 +2104,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {infoPanel.panel && (
         <div
           className="absolute bottom-14 left-1/2 -translate-x-1/2 z-40 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono text-[11px] text-rmpg-200"
-          style={{ borderRadius: 2, width: 280, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+          style={{ borderRadius: 2, width: 280, boxShadow: '0 8px 28px rgb(0 0 0 / 0.55)' }}
         >
           <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border-subtle">
             <div>
@@ -2159,7 +2162,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {showBookmarksPanel && (
         <div
           className="absolute top-11 right-3 z-30 bg-surface-raised/95 border border-border-default backdrop-blur-sm font-mono overflow-hidden"
-          style={{ borderRadius: 2, width: 260, maxHeight: 320, boxShadow: '0 8px 28px rgba(0,0,0,0.55)' }}
+          style={{ borderRadius: 2, width: 260, maxHeight: 320, boxShadow: '0 8px 28px rgb(0 0 0 / 0.55)' }}
         >
           <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border-subtle">
             <Star className="w-3.5 h-3.5 text-brand-gold-500" />
@@ -2176,7 +2179,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 No bookmarks yet — use "Drop Bookmark" to save a location.
               </div>
             ) : (
-              mapBookmarks.bookmarks.map((bm) => (
+              mapBookmarks.bookmarks.map((bm) => {
+                const bmDate = new Date(bm.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }); // new-date-ok
+                return (
                 <div
                   key={bm.id}
                   className="flex items-center gap-2 px-2.5 py-1.5 border-b border-border-subtle cursor-pointer hover:bg-surface-overlay"
@@ -2188,7 +2193,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-[10px] font-bold text-rmpg-200 truncate">{bm.name}</div>
-                    <div className="text-[8px] text-rmpg-500">{new Date(bm.createdAt).toLocaleDateString()}</div>
+                    <div className="text-[8px] text-rmpg-500">{bmDate}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); mapBookmarks.removeBookmark(bm.id); }}
@@ -2198,7 +2203,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                     <X className="w-3 h-3" />
                   </button>
                 </div>
-              ))
+              );})
             )}
           </div>
         </div>
@@ -2213,7 +2218,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           {/* Unit Counts */}
           <div className="flex items-center gap-3">
             {Object.entries(unitCounts).map(([status, count]) => {
-              const color = UNIT_STATUS_COLORS[status as keyof typeof UNIT_STATUS_COLORS] || '#888';
+              const color = UNIT_STATUS_COLORS[status as keyof typeof UNIT_STATUS_COLORS] || TACTICAL_TEXT_MUTED;
               const label = UNIT_STATUS_LABELS[status as keyof typeof UNIT_STATUS_LABELS] || status;
               return (
                 <span key={status} className="flex items-center gap-1">
@@ -2241,8 +2246,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 className="w-1.5 h-1.5"
                 style={{
                   borderRadius: '50%',
-                  background: isConnected ? '#22c55e' : '#ef4444',
-                  boxShadow: `0 0 4px ${withAlpha(isConnected ? '#22c55e' : '#ef4444', '80')}`,
+                  background: isConnected ? 'var(--sev-ok)' : 'var(--sev-critical)',
+                  boxShadow: `0 0 4px ${withAlpha(isConnected ? 'var(--sev-ok)' : 'var(--sev-critical)', '80')}`,
                 }}
               />
               <span className={isConnected ? 'text-green-500' : 'text-red-400'}>

@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, queryInChunks, execute, executeBatch, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -13,6 +13,7 @@ import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
+import { assignStackGroup, leaveStackGroup, reassignStackGroup, syncToStack, type SyncFields } from '../../utils/stackSync';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -341,6 +342,15 @@ calls.post('/', async (c) => {
         } catch (extErr) {
           console.warn('run_card ext write failed (non-fatal):', extErr);
         }
+      }
+
+      // ── Stack group assignment ──
+      // Best-effort: never block call creation on a sync failure.
+      try {
+        await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+        await assignStackGroup(db, callId, String(location_address || ''));
+      } catch (stackErr) {
+        log.error('assignStackGroup failed on call create (non-fatal)', { callId }, stackErr);
       }
 
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
@@ -831,6 +841,37 @@ calls.put('/:id', async (c) => {
     const updatedExt = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
 
+    // ── Stack sync: mileage + address changes ──
+    try {
+      // Address change: leave old group, join/create at new address.
+      const newAddr = body.location_address as string | undefined;
+      const oldAddr = String(existing.location_address ?? '');
+      if (newAddr && newAddr.trim().toLowerCase() !== oldAddr.trim().toLowerCase()) {
+        await reassignStackGroup(db, parseInt(id, 10), newAddr);
+      }
+
+      // Re-read after possible reassignment — reassignStackGroup writes a new stack_group_id.
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+
+      // Mileage sync to current group.
+      if (ext?.stack_group_id) {
+        const mileageFields: SyncFields['mileage'] = {};
+        if ('starting_mileage' in body && body.starting_mileage !== undefined) {
+          mileageFields.starting_mileage = Number(body.starting_mileage);
+        }
+        if ('ending_mileage' in body && body.ending_mileage !== undefined) {
+          mileageFields.ending_mileage = Number(body.ending_mileage);
+        }
+        if (Object.keys(mileageFields).length) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), { mileage: mileageFields });
+        }
+      }
+    } catch (stackErr) {
+      log.error('stack sync on PUT /calls/:id failed (non-fatal)', { callId: id }, stackErr);
+    }
+
     // Forward geocode: if address changed and the row still has no coordinates,
     // populate lat/lng in the background so the call appears on the map.
     const newAddr = body.location_address as string | undefined;
@@ -1041,6 +1082,29 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
+    // ── Stack sync: propagate timestamp + cascaded unit status to siblings ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext?.stack_group_id) {
+        const timestampFields: Record<string, string> = {
+          dispatched: 'dispatched_at',
+          enroute:    'enroute_at',
+          onscene:    'onscene_at',
+        };
+        const tsField = timestampFields[status as keyof typeof timestampFields];
+        const tsValue = tsField ? String(updated?.[tsField] ?? '') : '';
+        if (tsField && tsValue) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+            timestamps: { [tsField]: tsValue } as any,
+          });
+        }
+      }
+    } catch (stackErr) {
+      log.error('syncToStack timestamps failed (non-fatal)', { callId: id, status }, stackErr);
+    }
+
     // response_time_seconds is read by every response-time report/dashboard
     // stat (see reports.ts RESP formula), but nothing ever wrote it — those
     // stats silently fell back to (onscene_at - created_at), which measures
@@ -1095,6 +1159,15 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
             parseInt(id, 10), ...assignedIds);
         }
       } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
+    }
+
+    // ── Stack group: leave on terminal status ──
+    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+      try {
+        await leaveStackGroup(db, parseInt(id, 10));
+      } catch (stackErr) {
+        log.error('leaveStackGroup failed (non-fatal)', { callId: id }, stackErr);
+      }
     }
 
     // ── PSO cross-link: on clear/close of a process-server call, mirror
@@ -1513,6 +1586,26 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       { sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
 
+    // ── Stack sync: add unit to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: {
+            addIds: [unit_id],
+            addCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack assign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
+
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
     // assigned officer's MDT via sendToUser. Best-effort.
@@ -1568,6 +1661,27 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+
+    // ── Stack sync: remove unit from sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id ?? '', 10), {
+          units: {
+            removeIds: [unit_id],
+            removeCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack unassign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
+
     return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
   } catch (err) {
     log.error('POST /:id/unassign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Unassign failed' }, 500); }
@@ -1591,6 +1705,33 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
+    }
+
+    // ── Stack sync: add all dispatched units to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRows = unit_ids.length
+          ? await queryInChunks<{ id: number; call_sign: string | null }>(
+              db,
+              unit_ids,
+              (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`,
+            )
+          : [];
+        const addCallSigns = unitRows.map((u) => u.call_sign).filter(Boolean) as string[];
+        const dispatchedAtRow = await queryFirst<{ dispatched_at: string | null }>(
+          db, 'SELECT dispatched_at FROM calls_for_service WHERE id = ?', id,
+        );
+        const dispatchedAt = dispatchedAtRow?.dispatched_at ?? '';
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: { addIds: unit_ids, addCallSigns },
+          ...(dispatchedAt ? { timestamps: { dispatched_at: dispatchedAt } } : {}),
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack dispatch failed (non-fatal)', { callId: id }, stackErr as Error);
     }
 
     // Return the updated call row, not a {message}. The client

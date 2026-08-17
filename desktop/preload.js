@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // ─── System & Diagnostics ───────────────────────────
   getSystemInfo: () => ipcRenderer.invoke('sys:info'),
+  getCpuUsage: () => ipcRenderer.invoke('sys:cpu-usage'),
   getAppLogs: (lines) => ipcRenderer.invoke('sys:logs', lines),
   openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
   exportDiagnosticsBundle: () => ipcRenderer.invoke('sys:export-diagnostics'),
@@ -97,6 +98,9 @@ contextBridge.exposeInMainWorld('electron', {
   getTpmStatus: () => ipcRenderer.invoke('sys:tpm-status'),
   getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
   restartApp: () => ipcRenderer.invoke('sys:restart'),
+  shutdownOs: () => ipcRenderer.invoke('os:shutdown'),
+  restartOs: () => ipcRenderer.invoke('os:restart'),
+  returnToWindows: (username, password) => ipcRenderer.invoke('os:return-to-windows', username, password),
   getBodyCamStatus: () => ipcRenderer.invoke('sys:body-cam-status'),
   startBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-start'),
   stopBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-stop'),
@@ -257,8 +261,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 
-  // Force clear all caches and reload (for update propagation)
-  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
+  // ─── System Quick-Settings ──────────────────────────────
+  getBattery: () => ipcRenderer.invoke('system:get-battery'),
+  getNetwork: () => ipcRenderer.invoke('system:get-network'),
+  setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
 
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the
@@ -358,5 +364,23 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('offline:authorization-changed', handler);
     return () => ipcRenderer.removeListener('offline:authorization-changed', handler);
+  },
+
+  // ─── Face Recognition Auth ───────────────────────────────────
+  faceEnroll: (userId, embedding) => ipcRenderer.invoke('face:enroll', { userId, embedding }),
+  faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
+  faceClear: (userId) => ipcRenderer.invoke('face:clear', { userId }),
+  faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
+
+  // ─── Camera QR / Barcode Scanner ─────────────────────────────
+  // Starts / stops the off-screen camera scanner window.
+  // Decoded results arrive via onBarcodeScan (hardware:barcode-scan event)
+  // with the same { payload, source } shape as the xPAK hardware scanner.
+  cameraStart: () => ipcRenderer.invoke('device:camera-scan-start'),
+  cameraStop: () => ipcRenderer.invoke('device:camera-scan-stop'),
+  onBarcodeScan: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('hardware:barcode-scan', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
   },
 });

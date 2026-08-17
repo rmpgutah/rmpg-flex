@@ -773,7 +773,7 @@ export default function CodeEnforcementPage() {
                   ['Code Section', selectedViolation.code_section || '—'],
                   ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
-                  ['Compliance Deadline', selectedViolation.compliance_deadline ? parseTimestamp(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
+                  ['Compliance Deadline', selectedViolation.compliance_deadline ? parseTimestamp(selectedViolation.compliance_deadline).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
                   ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (

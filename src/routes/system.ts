@@ -25,7 +25,7 @@ app.post('/remote-lock', async (c) => {
 app.get('/lock-status', async (c) => {
   const user = c.var.user;
   if (!user) return c.json({ locked: false });
-  const unit = await c.env.DB.prepare('SELECT id FROM dispatch_units WHERE officer_id = ? LIMIT 1')
+  const unit = await c.env.DB.prepare('SELECT id FROM units WHERE officer_id = ? LIMIT 1')
     .bind(user.id).first<{ id: number }>();
   if (!unit) return c.json({ locked: false });
   const raw = await c.env.KV.get(`remote_lock:${unit.id}`);
@@ -47,13 +47,13 @@ app.get('/my-call', async (c) => {
   const user = c.var.user;
   if (!user) return c.json({ call: null });
   const call = await c.env.DB.prepare(`
-    SELECT cfs.id, cfs.call_number, cfs.nature_of_call, cfs.priority, cfs.status, cfs.address, cfs.created_at
+    SELECT cfs.id, cfs.call_number, cfs.incident_type, cfs.priority, cfs.status, cfs.location_address, cfs.created_at
     FROM calls_for_service cfs
-    JOIN dispatch_units du ON du.current_call_id = cfs.id
+    JOIN units du ON du.current_call_id = cfs.id
     WHERE du.officer_id = ? LIMIT 1
   `).bind(user.id).first<{
-    id: number; call_number: string; nature_of_call: string;
-    priority: number; status: string; address?: string; created_at?: string;
+    id: number; call_number: string; incident_type: string;
+    priority: number; status: string; location_address?: string; created_at?: string;
   }>();
   return c.json({ call: call ?? null });
 });
@@ -61,7 +61,7 @@ app.get('/my-call', async (c) => {
 app.get('/my-unit-status', async (c) => {
   const user = c.var.user;
   if (!user) return c.json({ status: 'available' });
-  const unit = await c.env.DB.prepare('SELECT status FROM dispatch_units WHERE officer_id = ? LIMIT 1')
+  const unit = await c.env.DB.prepare('SELECT status FROM units WHERE officer_id = ? LIMIT 1')
     .bind(user.id).first<{ status: string }>();
   return c.json({ status: unit?.status ?? 'available' });
 });
@@ -71,7 +71,7 @@ app.patch('/my-unit-status', async (c) => {
   if (!user) return c.json({ error: 'Unauthorized' }, 401);
   const body = await c.req.json<{ status: string }>();
   if (!body?.status) return c.json({ error: 'status required' }, 400);
-  await c.env.DB.prepare('UPDATE dispatch_units SET status = ? WHERE officer_id = ?')
+  await c.env.DB.prepare('UPDATE units SET status = ? WHERE officer_id = ?')
     .bind(body.status, user.id).run();
   return c.json({ ok: true, status: body.status });
 });

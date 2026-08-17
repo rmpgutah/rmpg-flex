@@ -115,7 +115,7 @@ export default function ShiftBriefingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           shift_type: currentShift.type,
-          title: `${currentShift.type.toUpperCase()} Shift Briefing - ${new Date().toLocaleDateString()}`,
+          title: `${currentShift.type.toUpperCase()} Shift Briefing - ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           content: JSON.stringify(generated),
         }),
       });
@@ -358,7 +358,7 @@ export default function ShiftBriefingsPage() {
                     {shiftIcon(b.shift_type)}
                     <span className="font-mono text-neutral-400">{b.briefing_number}</span>
                     <span className="text-neutral-200">{b.title}</span>
-                    <span className="text-neutral-500">{parseTimestamp(b.created_at).toLocaleDateString()}</span>
+                    <span className="text-neutral-500">{parseTimestamp(b.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="text-neutral-500">
@@ -415,7 +415,7 @@ export default function ShiftBriefingsPage() {
                     <p className="text-xs text-neutral-400 mt-0.5 truncate">{alert.description}</p>
                   </div>
                   <span className="text-[10px] text-neutral-600 whitespace-nowrap">
-                    {parseTimestamp(alert.created_at).toLocaleDateString()}
+                    {parseTimestamp(alert.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' })}
                   </span>
                 </div>
               ))

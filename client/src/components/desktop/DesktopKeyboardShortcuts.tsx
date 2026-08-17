@@ -13,8 +13,9 @@ interface DesktopKeyboardShortcutsProps {
   onToggleLauncher: () => void;
   onPrevVirtualDesktop: () => void;
   onNextVirtualDesktop: () => void;
-  onSnapLayouts: () => void;
-  onShortcutReference: () => void;
+  onOpenShortcutRef?: () => void;
+  onOpenCommandPalette?: () => void;
+  onOpenCalculator?: () => void;
 }
 
 export default function DesktopKeyboardShortcuts({
@@ -22,8 +23,9 @@ export default function DesktopKeyboardShortcuts({
   onToggleLauncher,
   onPrevVirtualDesktop,
   onNextVirtualDesktop,
-  onSnapLayouts,
-  onShortcutReference,
+  onOpenShortcutRef,
+  onOpenCommandPalette,
+  onOpenCalculator,
 }: DesktopKeyboardShortcutsProps) {
   const { minimizeAll, restoreAll, focusedId, windows, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical } = useDesktopWindows();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
@@ -76,20 +78,6 @@ export default function DesktopKeyboardShortcuts({
       if (meta && ctrl && key === 'ArrowRight') {
         e.preventDefault();
         onNextVirtualDesktop();
-        return;
-      }
-
-      // Win+Z — Snap layouts overlay
-      if (meta && key === 'z' && !ctrl && !alt && !shift) {
-        e.preventDefault();
-        onSnapLayouts();
-        return;
-      }
-
-      // Win+/ — Keyboard shortcut reference
-      if (meta && key === '/' && !ctrl && !alt && !shift) {
-        e.preventDefault();
-        onShortcutReference();
         return;
       }
 
@@ -167,11 +155,47 @@ export default function DesktopKeyboardShortcuts({
         tileVertical(window.innerWidth, window.innerHeight - taskbarH);
         return;
       }
+
+      // Ctrl+P — Command palette
+      if (e.ctrlKey && !e.metaKey && e.key === 'p') {
+        e.preventDefault();
+        onOpenCommandPalette?.();
+        return;
+      }
+
+      // Ctrl+R — Run dialog (Windows-style Win+R equivalent)
+      if (ctrl && !meta && !shift && !alt && key === 'r') {
+        e.preventDefault();
+        window.dispatchEvent(new Event('open-run-dialog'));
+        return;
+      }
+
+      // Win+C — Calculator
+      if ((e.metaKey || (e.ctrlKey && e.shiftKey)) && e.key.toLowerCase() === 'c' && !e.altKey) {
+        // Don't steal Ctrl+C (copy) — only fire on Meta+C or Ctrl+Shift+C
+        if (e.metaKey) { e.preventDefault(); onOpenCalculator?.(); return; }
+      }
+
+      // Win+/ — Open keyboard shortcut reference
+      if (meta && key === '/') {
+        e.preventDefault();
+        onOpenShortcutRef?.();
+        return;
+      }
+
+      // Win+Z — Open Snap Layouts for focused window
+      if (meta && key === 'z' && !ctrl && !alt && !shift) {
+        e.preventDefault();
+        if (focusedId) {
+          window.dispatchEvent(new CustomEvent('flexos-open-snap-layouts', { detail: { winId: focusedId } }));
+        }
+        return;
+      }
     };
 
     window.addEventListener('keydown', handle);
     return () => window.removeEventListener('keydown', handle);
-  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onSnapLayouts, onShortcutReference, taskbarH]);
+  }, [focusedId, windows, minimizeAll, restoreAll, toggleMaximize, minimizeWindow, closeWindow, moveResize, cascade, tileHorizontal, tileVertical, onLock, onToggleLauncher, onPrevVirtualDesktop, onNextVirtualDesktop, onOpenShortcutRef, onOpenCommandPalette, onOpenCalculator, taskbarH]);
 
   return null;
 }

@@ -42,7 +42,7 @@ const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boo
       borderRadius: dot ? 6 : 2,
       background: line ? 'transparent' : color,
       borderTop: line ? `2px solid ${color}` : undefined,
-      border: dot ? '1px solid #1a1a1a' : undefined,
+      border: dot ? '1px solid var(--border-subtle)' : undefined,
     }}
   />
 );
@@ -105,18 +105,18 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
 
   const bg = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.94)';
   const fg = isLight ? '#222' : 'var(--text-secondary)';
-  const sub = isLight ? '#666' : '#888';
+  const sub = isLight ? '#666' : 'var(--text-muted)';
 
   return (
     <div
       className="absolute z-40 backdrop-blur-md"
-      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid #88888840', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-1.5 px-2 py-1"
-        style={{ color: '#d4a017', fontSize: 9, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+        style={{ color: 'var(--panel-header-color)', fontSize: 9, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}
         aria-expanded={open}
       >
         <List className="w-3 h-3" /> Legend

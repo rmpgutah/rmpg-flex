@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -27,7 +28,7 @@ export default function DesktopShiftTimerWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  const elapsed = active && clockIn ? formatElapsed(now - new Date(clockIn).getTime()) : null;
+  const elapsed = active && clockIn ? formatElapsed(now - parseTimestamp(clockIn).getTime()) : null;
 
   return (
     <div className="p-3" style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', width: 200 }}>

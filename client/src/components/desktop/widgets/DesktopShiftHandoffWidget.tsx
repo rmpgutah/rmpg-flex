@@ -15,16 +15,23 @@ const DEFAULT_ITEMS: Item[] = [
   { id: 'bodycam',   label: 'Body cam docked & charging',    done: false },
 ];
 
+function todayMT(): string {
+  // Always use Mountain Time so the key is consistent across machines in different timezones
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+}
+
 function todayKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `rmpg_handoff_${y}-${m}-${day}`;
+  return `rmpg_handoff_${todayMT()}`;
 }
 
 function shiftDateLabel(): string {
-  return new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date().toLocaleDateString('en-US', {
+    timeZone: 'America/Denver',
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
 }
 
 function loadItems(): Item[] {
@@ -91,12 +98,12 @@ export default function DesktopShiftHandoffWidget() {
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
         <ClipboardCheck
-          style={{ width: 11, height: 11, color: allDone ? 'var(--sev-ok, #22c55e)' : 'var(--field-label-color)', flexShrink: 0 }}
+          style={{ width: 11, height: 11, color: allDone ? 'var(--sev-ok)' : 'var(--field-label-color)', flexShrink: 0 }}
         />
         <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--field-label-color)', letterSpacing: '0.09em', textTransform: 'uppercase' }}>
           Handoff
         </span>
-        <span style={{ marginLeft: 'auto', fontSize: 9, color: allDone ? 'var(--sev-ok, #22c55e)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: allDone ? 'var(--sev-ok)' : 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
           {doneCount}/{total}
         </span>
         <button
@@ -119,13 +126,13 @@ export default function DesktopShiftHandoffWidget() {
 
       {/* Progress bar */}
       <div style={{
-        height: 3, borderRadius: 2, background: 'var(--surface-sunken, rgba(0,0,0,0.25))',
+        height: 3, borderRadius: 2, background: 'var(--surface-sunken)',
         marginBottom: 6, overflow: 'hidden',
       }}>
         <div style={{
           height: '100%', borderRadius: 2,
           width: `${pct}%`,
-          background: allDone ? 'var(--sev-ok, #22c55e)' : 'var(--brand-400, #4d9fd6)',
+          background: allDone ? 'var(--sev-ok)' : 'var(--brand-400)',
           transition: 'width 0.25s ease, background 0.25s ease',
         }} />
       </div>
@@ -141,8 +148,8 @@ export default function DesktopShiftHandoffWidget() {
             {/* Checkbox */}
             <span style={{
               width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-              border: `1px solid ${item.done ? 'var(--sev-ok, #22c55e)' : 'var(--border-subtle, rgba(255,255,255,0.15))'}`,
-              background: item.done ? 'var(--sev-ok, #22c55e)' : 'transparent',
+              border: `1px solid ${item.done ? 'var(--sev-ok)' : 'var(--border-subtle)'}`,
+              background: item.done ? 'var(--sev-ok)' : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'background 0.15s ease, border-color 0.15s ease',
             }}>
@@ -165,9 +172,9 @@ export default function DesktopShiftHandoffWidget() {
       {allDone && (
         <div style={{
           marginTop: 7, borderRadius: 2, padding: '4px 6px', textAlign: 'center',
-          background: 'rgba(34,197,94,0.15)', border: '1px solid var(--sev-ok, #22c55e)',
+          background: 'rgba(34,197,94,0.15)', border: '1px solid var(--sev-ok)',
         }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--sev-ok, #22c55e)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--sev-ok)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
             Shift Handoff Complete
           </span>
         </div>

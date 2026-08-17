@@ -119,7 +119,7 @@ function chartTooltipStyle() {
       color: 'var(--text-primary)',
       fontSize: '11px',
       fontFamily: 'monospace',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+      boxShadow: '0 4px 12px rgb(0 0 0 / 0.4)',
     },
     cursor: { fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 12%, transparent)` },
   };
@@ -188,7 +188,7 @@ function formatGroupKey(key: string): string {
 
 function formatDateLabel(dateStr: string): string {
   const date = parseTimestamp(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 function exportToCSV(
@@ -394,7 +394,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
@@ -657,9 +657,9 @@ function WeeklyDigestCard() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {[
               { label: 'Calls', value: digest.summary?.totalCalls || 0, color: 'var(--text-muted)' },
-              { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
-              { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
-              { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
+              { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: 'var(--stat-accent-green)' },
+              { label: 'Citations', value: digest.summary?.totalCitations || 0, color: 'var(--stat-accent-amber)' },
+              { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: 'var(--stat-accent-red-bright)' },
               { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: 'var(--text-muted)' },
             ].map(s => (
               <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
@@ -674,7 +674,7 @@ function WeeklyDigestCard() {
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
@@ -729,15 +729,15 @@ function CrimeTrendCard() {
             <AreaChart data={data.monthlyTrend}>
               <defs>
                 <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="var(--sev-critical)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--sev-critical)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
               <Tooltip {...chartTooltipStyle()} />
-              <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
+              <Area type="monotone" dataKey="count" stroke="var(--sev-critical)" strokeWidth={2} fill="url(#trendGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -800,9 +800,9 @@ function CitationRevenueCard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: 'var(--text-muted)' },
-            { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
-            { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: '#f59e0b' },
-            { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: '#ef4444' },
+            { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: 'var(--stat-accent-green)' },
+            { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: 'var(--stat-accent-amber)' },
+            { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: 'var(--stat-accent-red-bright)' },
           ].map(s => (
             <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
               <div className="text-sm font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
@@ -818,8 +818,8 @@ function CitationRevenueCard() {
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <Tooltip {...chartTooltipStyle()} />
               <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '9px' }} />
-              <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="collected" name="Collected" fill="var(--sev-ok)" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="outstanding" name="Outstanding" fill="var(--sev-warn)" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -1463,10 +1463,10 @@ export default function ReportsPage() {
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
               { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-rmpg-500' },
-              { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
-              { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
-              { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
-              { label: 'Active Officers', value: stats.activeOfficers, color: '#ef4444', border: 'border-l-red-500' },
+              { label: 'Incidents Filed', value: stats.incidentsFiled, color: 'var(--sev-ok)', border: 'border-l-green-500' },
+              { label: 'Avg Response', value: stats.avgResponse, color: 'var(--sev-warn)', border: 'border-l-amber-500' },
+              { label: 'SLA Met', value: stats.slaMet, color: 'var(--stat-accent-purple)', border: 'border-l-purple-500' },
+              { label: 'Active Officers', value: stats.activeOfficers, color: 'var(--sev-critical)', border: 'border-l-red-500' },
             ].map((s) => (
               <div key={s.label} className={`bg-surface-base panel-beveled p-3 border-l-[3px] ${s.border} hover:bg-surface-raised transition-all duration-200 group cursor-default`}>
                 <p className="text-2xl font-black font-mono group-hover:brightness-110 transition-all" style={{ color: s.color }}>{s.value}</p>

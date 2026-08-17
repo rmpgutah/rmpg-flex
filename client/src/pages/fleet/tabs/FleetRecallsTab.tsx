@@ -162,7 +162,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
-                  {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
+                  {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
                 <div className="flex gap-1">
                   <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>

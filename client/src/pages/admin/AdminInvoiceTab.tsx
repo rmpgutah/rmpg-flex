@@ -20,7 +20,7 @@ import { importWithRetry } from '../../utils/importWithRetry';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
-  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); } // new-date-ok
 }
 
 // ============================================================
@@ -134,8 +134,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           return acc;
         }, {}),
       } as InvoiceStats);
-    } catch { setError('Failed to load invoices'); }
-    setLoading(false);
+    } catch { setError('Failed to load invoices'); } finally { setLoading(false); }
   }, [clientId]);
 
   const fetchStats = useCallback(async () => { /* derived inline in fetchInvoices — no scoped stats endpoint exists */ }, []);
@@ -145,8 +144,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     try {
       const res = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${id}`);
       setSelectedInvoice(res.data);
-    } catch { setError('Failed to load invoice detail'); }
-    setLoading(false);
+    } catch { setError('Failed to load invoice detail'); } finally { setLoading(false); }
   }, []);
 
   // Shared "open invoice" — used by the list row onClick + right-click menu.
@@ -205,8 +203,9 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       fetchInvoices();
     } catch (e: any) {
       setError(e.message || 'Failed to create invoice');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleStatusChange = async (status: string) => {
@@ -220,8 +219,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleAddLineItem = async () => {
@@ -241,8 +239,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setShowAddItem(false);
       setItemForm({ line_type: 'custom', description: '', quantity: '1', unit_price: '0' });
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleDeleteLineItem = async (itemId: string) => {
@@ -274,8 +271,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setPayForm({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleDeletePayment = async (paymentId: string) => {
@@ -295,8 +291,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await apiFetch(`/billing/invoices/${selectedInvoice.id}/generate`, { method: 'POST' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleSaveNotes = async (notes: string) => {

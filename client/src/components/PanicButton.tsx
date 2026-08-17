@@ -105,7 +105,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     // Directly trigger panic (no confirmation needed for hardware trigger)
     setSending(true);
     try {
-      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
+      const result = await apiFetch<{ id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
@@ -113,12 +113,12 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
           trigger_method: 'hardware_button',
         }),
       });
-      if (result?.panic_id) {
-        setOwnPanicId(result.panic_id);
+      if (result?.id) {
+        setOwnPanicId(result.id);
         setOwnPanicTime(Date.now());
       }
       // Start live mic broadcast for 60 seconds
-      panicAudio.startBroadcast(result?.panic_id);
+      panicAudio.startBroadcast(result?.id);
     } catch (err) {
       console.error('Failed to send hardware panic alert:', err);
       addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);
@@ -305,7 +305,8 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     setIncomingAlert(null);
     alarmRef.current?.stop();
     alarmRef.current = null;
-  }, [incomingAlert?.panic_id]);
+    panicAudio.stopListening?.();
+  }, [incomingAlert?.panic_id, panicAudio]);
 
   // Cancel own panic (within 30 seconds)
   const cancelOwnPanic = useCallback(async () => {
@@ -411,19 +412,19 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
 
     try {
-      const result = await apiFetch<{ panic_id?: number }>('/dispatch/panic', {
+      const result = await apiFetch<{ id?: number }>('/dispatch/panic', {
         method: 'POST',
         body: JSON.stringify({
           latitude: latitude ?? null,
           longitude: longitude ?? null,
         }),
       });
-      if (result?.panic_id) {
-        setOwnPanicId(result.panic_id);
+      if (result?.id) {
+        setOwnPanicId(result.id);
         setOwnPanicTime(Date.now());
       }
       // Start live mic broadcast for 60 seconds
-      panicAudio.startBroadcast(result?.panic_id);
+      panicAudio.startBroadcast(result?.id);
     } catch (err) {
       console.error('Failed to send panic alert:', err);
       addToast('PANIC ALERT FAILED -- Retry or radio dispatch!', 'error', 15000);
@@ -454,7 +455,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             <button type="button"
               onClick={handleCancel}
               className="px-2 py-1 text-[9px] font-bold uppercase"
-              style={{ background: 'var(--border-subtle)', border: '1px solid var(--border-default)', color: '#888888' }}
+              style={{ background: 'var(--border-subtle)', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
             >
               Cancel
             </button>
@@ -483,7 +484,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               <button type="button"
                 onClick={cancelOwnPanic}
                 className="px-2 py-1 text-[9px] font-bold uppercase"
-                style={{ background: 'var(--surface-raised)', border: '1px solid #f59e0b', color: '#f59e0b' }}
+                style={{ background: 'var(--surface-raised)', border: '1px solid var(--sev-warn)', color: 'var(--sev-warn)' }}
                 title="Cancel your panic alert"
               >
                 CANCEL
@@ -502,14 +503,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
             onClick={e => e.stopPropagation()}
           >
             {/* Pulsing border */}
-            <div className="absolute inset-0 animate-emergency-pulse" style={{ border: '3px solid #ff0000', pointerEvents: 'none' }} />
+            <div className="absolute inset-0 animate-emergency-pulse" style={{ border: '3px solid var(--sev-critical)', pointerEvents: 'none' }} />
 
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3"
-              style={{ background: 'linear-gradient(180deg, #991b1b, #7f1d1d)' }}
+              style={{ background: 'linear-gradient(180deg, rgba(var(--sev-critical-rgb) / 0.8), rgba(var(--sev-critical-rgb) / 0.6))' }}
             >
-              <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: '#ffffff' }} />
+              <AlertTriangle className="animate-emergency-blink" style={{ width: 20, height: 20, color: 'var(--text-primary)' }} />
               <span className="text-sm font-bold uppercase tracking-widest text-rmpg-100">
                 Emergency Panic Alert
               </span>
@@ -517,17 +518,17 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                 onClick={acknowledgeAlert}
                 className="ml-auto p-1 hover:bg-red-800/50 transition-colors"
               >
-                <X style={{ width: 14, height: 14, color: '#ffffff' }} />
+                <X style={{ width: 14, height: 14, color: 'var(--text-primary)' }} />
               </button>
             </div>
 
             {/* Body */}
-            <div className="p-4 space-y-3" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid #ff0000' }}>
+            <div className="p-4 space-y-3" style={{ background: 'var(--surface-overlay)', borderTop: '2px solid var(--sev-critical)' }}>
               <div className="text-center">
                 <div className="text-lg font-bold text-red-400 animate-emergency-blink">
                   {incomingAlert.user_name}
                 </div>
-                <div className="text-xs font-mono" style={{ color: '#888888' }}>
+                <div className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
                   {incomingAlert.badge_number && `Badge: ${incomingAlert.badge_number} | `}
                   {(incomingAlert.role || '').toUpperCase()}
                   {incomingAlert.unit_call_sign && ` | Unit: ${incomingAlert.unit_call_sign}`}
@@ -536,11 +537,11 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Auto-created dispatch card info */}
               {incomingAlert.call_number && (
-                <div className="text-center p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid #dc2626' }}>
+                <div className="text-center p-2" style={{ background: 'var(--surface-overlay)', border: '1px solid var(--sev-critical)' }}>
                   <div className="flex items-center justify-center gap-2 mb-1">
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider animate-emergency-blink"
-                      style={{ background: '#dc2626', color: '#fff', letterSpacing: '1.5px' }}
+                      style={{ background: 'var(--sev-critical)', color: 'var(--text-primary)', letterSpacing: '1.5px' }}
                     >
                       P1
                     </span>
@@ -549,7 +550,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                     </span>
                     <span
                       className="px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider"
-                      style={{ background: '#166534', color: '#22c55e', letterSpacing: '1px' }}
+                      style={{ background: 'rgba(var(--sev-ok-rgb) / 0.2)', color: 'var(--sev-ok)', letterSpacing: '1px' }}
                     >
                       DISPATCHED
                     </span>
@@ -588,7 +589,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Acknowledged indicator */}
               {incomingAlert.acknowledged_by && (
-                <div className="text-center text-[10px] font-mono p-1.5" style={{ background: '#0a1a0a', border: '1px solid #166534', color: '#22c55e' }}>
+                <div className="text-center text-[10px] font-mono p-1.5" style={{ background: 'rgba(var(--sev-ok-rgb) / 0.08)', border: '1px solid rgba(var(--sev-ok-rgb) / 0.4)', color: 'var(--sev-ok)' }}>
                   Acknowledged by {incomingAlert.acknowledged_by}
                   {incomingAlert.acknowledged_at && ` at ${safeTimeStr(incomingAlert.acknowledged_at)}`}
                 </div>
@@ -596,7 +597,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
               {/* Escalation level indicator */}
               {incomingAlert.escalation_level && incomingAlert.escalation_level > 1 && (
-                <div className="text-center text-[10px] font-bold uppercase tracking-wider p-1" style={{ background: '#1a0505', border: '1px solid #dc2626', color: '#ef4444' }}>
+                <div className="text-center text-[10px] font-bold uppercase tracking-wider p-1" style={{ background: 'rgba(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgba(var(--sev-critical-rgb) / 0.5)', color: 'var(--sev-critical)' }}>
                   Escalation Level {incomingAlert.escalation_level}
                 </div>
               )}
@@ -605,10 +606,10 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
               {panicAudio.isReceiving && (
                 <div
                   className="flex items-center justify-center gap-2 p-2 animate-emergency-pulse"
-                  style={{ background: '#1a0505', border: '1px solid #dc2626' }}
+                  style={{ background: 'rgba(var(--sev-critical-rgb) / 0.1)', border: '1px solid rgba(var(--sev-critical-rgb) / 0.5)' }}
                 >
-                  <Mic size={14} color="#ef4444" className="animate-emergency-blink" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#ef7a7a' }}>
+                  <Mic size={14} color="var(--sev-critical)" className="animate-emergency-blink" />
+                  <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--sev-critical-soft)' }}>
                     Live Audio — Listening...
                   </span>
                   <span className="led-dot led-red animate-led-blink" />
@@ -660,7 +661,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={resolveCode4}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: 'var(--surface-raised)', border: '1px solid #2d4a1a', color: '#5a9e3a' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid rgba(var(--sev-ok-rgb) / 0.5)', color: 'var(--sev-ok)' }}
                   >
                     Code 4 — Resolve
                   </button>
@@ -670,7 +671,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={markFalseAlarm}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: 'var(--surface-raised)', border: '1px solid #444', color: '#888' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
                   >
                     Mark False Alarm
                   </button>
@@ -680,7 +681,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
                   <button type="button"
                     onClick={forceDeactivate}
                     className="w-full py-1.5 text-[10px] font-bold uppercase tracking-wider text-center"
-                    style={{ background: 'var(--surface-raised)', border: '1px solid #5a1a1a', color: '#c0392b' }}
+                    style={{ background: 'var(--surface-raised)', border: '1px solid rgba(var(--sev-critical-rgb) / 0.5)', color: 'var(--sev-critical)' }}
                   >
                     Force Deactivate (Admin)
                   </button>

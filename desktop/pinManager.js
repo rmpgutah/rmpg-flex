@@ -198,14 +198,33 @@ function computePin(userSecret, adminSecret, windowStart) {
 /**
  * Get the start of the current 24-hour PIN window.
  * Windows start at midnight Mountain Time.
+ *
+ * Previous approach fed a locale-formatted string back into `new Date()`, which
+ * parses it in the SYSTEM local timezone — not Mountain Time. On machines in UTC
+ * or Eastern time that produced a window start hours off from MT midnight, so two
+ * officers could compute different PINs for the same moment.
+ *
+ * Fix: use Intl to extract the MT date as YYYY-MM-DD (en-CA gives ISO format) and
+ * the MT UTC offset, then build a proper ISO-8601 string with the offset embedded
+ * so `new Date()` resolves to the correct UTC instant regardless of system timezone.
  */
 function get24hWindowStart() {
   const now = new Date();
-  // Use Mountain Time for consistency with the server's TZ
-  const mtString = now.toLocaleString('en-US', { timeZone: 'America/Denver' });
-  const mt = new Date(mtString);
-  mt.setHours(0, 0, 0, 0);
-  return mt.toISOString();
+  // Get today's date in Mountain Time as "YYYY-MM-DD"
+  const dateMT = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+  // Get the current MT UTC offset (handles MDT=-06:00 vs MST=-07:00 automatically)
+  const tzParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', timeZoneName: 'shortOffset',
+  }).formatToParts(now);
+  const offsetStr = tzParts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT-7';
+  const match = offsetStr.match(/GMT([+-])(\d+)/);
+  const sign = match?.[1] ?? '-';
+  const hrs = String(match?.[2] ?? '7').padStart(2, '0');
+  // Build midnight MT as an offset-aware ISO string so new Date() resolves correctly
+  return new Date(`${dateMT}T00:00:00.000${sign}${hrs}:00`).toISOString();
 }
 
 // ─── Brute-Force Protection ─────────────────────────────────

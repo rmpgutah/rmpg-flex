@@ -67,9 +67,9 @@ const CLASSIFICATION_STYLES: Record<UnitRow['classification'], { bg: string; bor
   healthy:  { bg: 'bg-green-900/20',   border: 'border-green-700/40',   text: 'text-green-400',  icon: CheckCircle2,    label: 'HEALTHY' },
   warning:  { bg: 'bg-amber-900/20',   border: 'border-amber-700/40',   text: 'text-amber-400',  icon: AlertTriangle,   label: 'WARN' },
   critical: { bg: 'bg-red-900/30',     border: 'border-red-700/50',    text: 'text-red-400',    icon: AlertOctagon,    label: 'CRITICAL' },
-  silent:   { bg: 'bg-[#1a1a1a]',      border: 'border-[#444]',         text: 'text-[#888]',     icon: WifiOff,         label: 'SILENT' },
+  silent:   { bg: 'bg-surface-sunken',  border: 'border-[color:var(--border-subtle)]', text: 'text-[color:var(--text-muted)]', icon: WifiOff,         label: 'SILENT' },
   fallback: { bg: 'bg-blue-900/20',    border: 'border-blue-700/40',    text: 'text-blue-400',   icon: Wifi,            label: 'FALLBACK' },
-  off_duty: { bg: 'bg-[#0d0d0d]',      border: 'border-[#222]',         text: 'text-[#666]',     icon: MoonStar,        label: 'OFF DUTY' },
+  off_duty: { bg: 'bg-surface-overlay', border: 'border-[color:var(--border-subtle)]', text: 'text-[color:var(--text-muted)]', icon: MoonStar,        label: 'OFF DUTY' },
 };
 
 export default function AdminGpsHealthTab({ LoadingSpinner, setError }: Props) {

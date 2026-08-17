@@ -10,7 +10,7 @@
 // searches on the empty state (no leak between MDT operators); keyboard
 // navigation (↑/↓/Enter) matching GlobalSearch; Esc smart-cascade (filter →
 // query → blur); court-ready PDF export of the current result list; theme-
-// token chrome (no more raw #d4a017/#0a0a0a literals).
+// token chrome (no more raw var(--field-label-color)/var(--surface-deep) literals).
 //
 // Audit v1204: ConfirmDialog guards clear-recent-searches; ?article_id= deep-
 // link highlights a specific result by record id (deepLinkRef guard); N focuses
@@ -121,25 +121,28 @@ export default function KnowledgeBasePage() {
     setLoading(true);
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await knowledgeBaseSearch(q, 80);
-      if (cancelled) return;
-      setResults(r);
-      setSearched(true);
-      setLoading(false);
-      setSelectedIndex(0);
-      const next: Record<string, string> = { q };
-      if (typeFilter) next.type = typeFilter;
-      setParams(next, { replace: true });
+      try {
+        const r = await knowledgeBaseSearch(q, 80);
+        if (cancelled) return;
+        setResults(r);
+        setSearched(true);
+        setSelectedIndex(0);
+        const next: Record<string, string> = { q };
+        if (typeFilter) next.type = typeFilter;
+        setParams(next, { replace: true });
 
-      // Append to recent — newest first, dedup by query, capped at MAX_RECENT.
-      const k = recentKey(user?.id);
-      if (k) {
-        setRecent((prev) => {
-          const entry: RecentSearch = { q, count: r.length, at: new Date().toISOString() };
-          const updated = [entry, ...prev.filter((p) => p.q.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENT);
-          try { localStorage.setItem(k, JSON.stringify(updated)); } catch { /* quota — ignore */ }
-          return updated;
-        });
+        // Append to recent — newest first, dedup by query, capped at MAX_RECENT.
+        const k = recentKey(user?.id);
+        if (k) {
+          setRecent((prev) => {
+            const entry: RecentSearch = { q, count: r.length, at: new Date().toISOString() };
+            const updated = [entry, ...prev.filter((p) => p.q.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENT);
+            try { localStorage.setItem(k, JSON.stringify(updated)); } catch { /* quota — ignore */ }
+            return updated;
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };

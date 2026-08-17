@@ -59,7 +59,7 @@ export default function IntelContextPanel() {
   if (panelCollapsed) {
     return (
       <aside className="w-[24px] bg-surface-overlay border-l border-border-default flex items-start justify-center pt-2">
-        <button aria-label="Expand context panel" onClick={togglePanel} className="text-[#888] text-[12px]">⟩</button>
+        <button aria-label="Expand context panel" onClick={togglePanel} className="text-fg-muted text-[12px]">⟩</button>
       </aside>
     );
   }
@@ -67,13 +67,13 @@ export default function IntelContextPanel() {
   return (
     <aside className="w-[264px] bg-surface-overlay border-l border-border-default flex flex-col">
       <div className="flex items-center px-[11px] py-[8px] border-b border-border-default">
-        <span className="font-mono text-[9px] tracking-widest text-[#888] uppercase">◈ Context</span>
+        <span className="font-mono text-[9px] tracking-widest text-fg-muted uppercase">◈ Context</span>
         {selected && (
           <div className="ml-2 flex gap-1">
             <button onClick={() => setPanelMode('dossier')}
-              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'dossier' ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>DOSSIER</button>
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'dossier' ? 'border-brand-400 text-brand-300' : 'border-border-default text-rmpg-400'}`}>DOSSIER</button>
             <button onClick={() => setPanelMode('graph')}
-              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'graph' ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-400'}`}>GRAPH</button>
+              className={`text-[8px] font-mono px-[5px] py-[1px] rounded-[2px] border ${panelMode === 'graph' ? 'border-brand-400 text-brand-300' : 'border-border-default text-rmpg-400'}`}>GRAPH</button>
           </div>
         )}
         <button aria-label="Collapse context panel" onClick={togglePanel} className="ml-auto text-rmpg-500 text-[12px]">⟨</button>
@@ -96,7 +96,7 @@ export default function IntelContextPanel() {
                 const { watched, toggle } = useWatchToggle('person', p.id, !!dossier.watched);
                 return (
                   <button onClick={toggle}
-                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-subtle text-[#888]'}`}>
+                    className={`flex-1 text-center font-mono text-[8px] tracking-wide border rounded-[2px] py-[6px] uppercase ${watched ? 'border-brand-400 text-brand-300' : 'border-border-subtle text-fg-muted'}`}>
                     {watched ? '★ Watching' : '☆ Watch'}
                   </button>
                 );
@@ -107,17 +107,17 @@ export default function IntelContextPanel() {
                     <div className="text-[13px] text-rmpg-100 font-bold">{name}</div>
                     <div className="flex gap-1 flex-wrap mt-[6px]">
                       {(dossier.flags || []).map((f) => (
-                        <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-[#3a0d0a] text-[#ff6b5e]">{f}</span>
+                        <span key={f} className="font-mono text-[8px] px-[5px] py-[1px] rounded-[2px] bg-red-950/80 text-red-400">{f}</span>
                       ))}
                     </div>
                   </div>
 
                   {dossier.escalation && (
-                    <div className="border border-[#5a3a10] bg-[#0a0603] rounded-[2px] px-[10px] py-[8px]">
-                      <div className="text-[8px] text-[#d4a017] uppercase tracking-wider">Escalation Index</div>
-                      <div className="font-mono text-[16px] text-[#f0c050] font-bold">
+                    <div className="border border-amber-900/50 bg-surface-sunken rounded-[2px] px-[10px] py-[8px]">
+                      <div className="text-[8px] text-[color:var(--field-label-color)] uppercase tracking-wider">Escalation Index</div>
+                      <div className="font-mono text-[16px] text-amber-300 font-bold">
                         {Number(dossier.escalation.ratio || 0).toFixed(1)}
-                        <span className="text-[9px] text-[#a07a20] ml-1">{dossier.escalation.trend}</span>
+                        <span className="text-[9px] text-amber-700 ml-1">{dossier.escalation.trend}</span>
                       </div>
                       <div className="text-[9px] text-rmpg-400">{dossier.escalation.recent} recent vs {dossier.escalation.baseline} baseline</div>
                     </div>
@@ -128,7 +128,7 @@ export default function IntelContextPanel() {
                       <div className="font-mono text-[8px] tracking-widest text-rmpg-500 uppercase mb-[6px]">Recent Timeline</div>
                       {(dossier.timeline || []).slice(0, 5).map((t, i) => (
                         <div key={i} className="flex gap-[7px] py-[3px]">
-                          <span className="w-[6px] h-[6px] rounded-full bg-[#d4a017] mt-[3px] shrink-0" />
+                          <span className="w-[6px] h-[6px] rounded-full bg-brand-600 mt-[3px] shrink-0" />
                           <div>
                             <div className="text-[10px] text-rmpg-300"><b className="text-rmpg-200">{formatEnumValue(t.kind)}</b> {t.label || t.description || ''}</div>
                             <div className="font-mono text-[8px] text-rmpg-500">{t.date || ''}</div>
@@ -140,11 +140,11 @@ export default function IntelContextPanel() {
 
                   <div>
                     <button onClick={() => summarizeDossier(name)} disabled={aiBusy}
-                      className="w-full text-center font-mono text-[8px] tracking-wide text-[#c084fc] border border-[#3a2a5a] rounded-[2px] py-[6px] uppercase disabled:opacity-50">
+                      className="w-full text-center font-mono text-[8px] tracking-wide text-purple-400 border border-purple-900/50 rounded-[2px] py-[6px] uppercase disabled:opacity-50">
                       {aiBusy ? 'Summarizing…' : '✨ AI Summary'}
                     </button>
                     {aiSummary && (
-                      <div className="mt-[6px] text-[10px] text-rmpg-200 leading-relaxed whitespace-pre-wrap border-l-2 border-[#3a2a5a] pl-2">
+                      <div className="mt-[6px] text-[10px] text-rmpg-200 leading-relaxed whitespace-pre-wrap border-l-2 border-purple-900/50 pl-2">
                         {aiSummary}
                       </div>
                     )}
@@ -157,7 +157,7 @@ export default function IntelContextPanel() {
                         <button key={a.person_id}
                           onClick={() => selectEntity('person', a.person_id, a.name)}
                           className="w-full text-left flex items-center gap-2 py-[3px] hover:bg-surface-sunken rounded-[2px] px-1">
-                          <span className="w-[6px] h-[6px] rounded-full bg-[#22d3ee] mt-[1px] shrink-0" />
+                          <span className="w-[6px] h-[6px] rounded-full bg-cyan-400 mt-[1px] shrink-0" />
                           <span className="text-[10px] text-rmpg-200 min-w-0 flex-1 truncate">{a.name}</span>
                           <span className="font-mono text-[8px] text-rmpg-500">{a.shared_events} shared</span>
                         </button>
@@ -167,12 +167,12 @@ export default function IntelContextPanel() {
 
                   <div className="flex gap-[6px] pt-1">
                     <WatchBtn />
-                    <button onClick={() => setPanelMode('graph')} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-border-subtle rounded-[2px] py-[6px] uppercase">Graph</button>
+                    <button onClick={() => setPanelMode('graph')} className="flex-1 text-center font-mono text-[8px] tracking-wide text-rmpg-200 border border-border-subtle rounded-[2px] py-[6px] uppercase">Graph</button>
                   </div>
                   <div className="flex gap-[6px]">
-                    <Link to={`/intel/person/${p.id}`} className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#d4a017] border border-border-subtle rounded-[2px] py-[6px] uppercase">Full Dossier</Link>
+                    <Link to={`/intel/person/${p.id}`} className="flex-1 text-center font-mono text-[8px] tracking-wide text-rmpg-200 border border-border-subtle rounded-[2px] py-[6px] uppercase">Full Dossier</Link>
                     <button onClick={() => navigate(`/intel/reports/new?from=person:${p.id}&label=${encodeURIComponent(name)}`)}
-                      className="flex-1 text-center font-mono text-[8px] tracking-wide text-[#22d3ee] border border-[#1f3a3a] rounded-[2px] py-[6px] uppercase">+ Report</button>
+                      className="flex-1 text-center font-mono text-[8px] tracking-wide text-cyan-400 border border-cyan-900/50 rounded-[2px] py-[6px] uppercase">+ Report</button>
                   </div>
                 </div>
               );

@@ -51,7 +51,7 @@ export function useMapPrintExport(
         const watermark = `RMPG FLEX  ${ts} UTC  ${center.lat.toFixed(5)},${center.lng.toFixed(5)}  Z${zoom}`;
 
         // Background bar
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillStyle = 'rgba(0 0 0 / 0.7)';
         ctx.fillRect(0, height - 28, width, 28);
 
         // Text

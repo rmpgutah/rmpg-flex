@@ -3,7 +3,8 @@ import { MapPin } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
 
-interface GpsPoint { lat: number; lon: number; speed?: number; timestamp: string; }
+// Server uses `lng` (Google Maps convention), not `lon`.
+interface GpsPoint { lat: number; lng: number; speed?: number | null; }
 
 export default function DesktopGpsTrailWidget() {
   const { user } = useAuth();
@@ -13,8 +14,15 @@ export default function DesktopGpsTrailWidget() {
     if (!user?.id) return;
     async function load() {
       try {
-        const r = await apiFetch<{ trail: GpsPoint[] }>(`/dispatch/gps/trail?officer_id=${user!.id}&limit=8`);
-        if (r?.trail) setTrail(r.trail);
+        // Step 1: resolve the officer's unit id (officer_id ≠ unit_id).
+        const unitRow = await apiFetch<{ id: number } | null>('/dispatch/gps/my-unit');
+        if (!unitRow?.id) return;
+        // Step 2: fetch the trail for that unit. /trails returns a bare
+        // array of trail objects; each has a `points` array with lat/lng.
+        const trails = await apiFetch<Array<{ points: GpsPoint[] }>>(`/dispatch/gps/trails?unit_id=${unitRow.id}&hours=1`);
+        if (Array.isArray(trails) && trails[0]?.points) {
+          setTrail(trails[0].points.slice(-8));
+        }
       } catch { /* offline */ }
     }
     load();
@@ -34,10 +42,10 @@ export default function DesktopGpsTrailWidget() {
         <>
           <div style={{ fontSize: 10, color: 'var(--text-primary)' }}>
             {typeof latest.lat === 'number' ? latest.lat.toFixed(5) : '—'},{' '}
-            {typeof latest.lon === 'number' ? latest.lon.toFixed(5) : '—'}
+            {typeof latest.lng === 'number' ? latest.lng.toFixed(5) : '—'}
           </div>
-          {latest.speed !== undefined && (
-            <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>{Math.round(latest.speed)} mph</div>
+          {latest.speed != null && (
+            <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>{Math.round(latest.speed * 2.23694)} mph</div>
           )}
           <div style={{ display: 'flex', gap: 3, marginTop: 6 }}>
             {trail.map((_, i) => (

@@ -363,7 +363,7 @@ export default function WriterToolbar({
               {['', '1', '0.8', '0.6', '0.4', '0.2'].map((v) => <option key={v} value={v}>{v || '—'}</option>)}
             </select>
           </MenuRow>
-          <MenuButton onClick={() => editor.chain().focus().setTextShadow('1px 1px 2px rgba(0,0,0,0.5)').run()}>Text shadow on</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().setTextShadow('1px 1px 2px rgba(0 0 0 / 0.5)').run()}>Text shadow on</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().setTextShadow('none').run()}>Text shadow off</MenuButton>
           <MenuButton onClick={() => setBlock({ dropCap: 'true' })}>Drop cap (first letter)</MenuButton>
           <MenuButton onClick={() => setBlock({ dropCap: null })}>Remove drop cap</MenuButton>

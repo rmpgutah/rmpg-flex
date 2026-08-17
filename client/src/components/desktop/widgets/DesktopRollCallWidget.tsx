@@ -11,9 +11,9 @@ interface Unit {
 }
 
 function getStatusDotColor(status: string): string {
-  if (status === 'available') return 'var(--sev-ok, #22c55e)';
-  if (status === 'busy' || status === 'on-call' || status === 'traffic-stop') return 'var(--sev-warn, #f59e0b)';
-  return 'var(--text-secondary, #6b7280)';
+  if (status === 'available') return 'var(--sev-ok)';
+  if (status === 'busy' || status === 'on-call' || status === 'traffic-stop') return 'var(--sev-warn)';
+  return 'var(--text-secondary)';
 }
 
 function isOnCall(status: string): boolean {
@@ -45,8 +45,8 @@ export default function DesktopRollCallWidget() {
   useEffect(() => {
     async function load() {
       try {
-        const r = await apiFetch<{ units: Unit[] }>('/dispatch/units');
-        if (r?.units) setUnits(r.units);
+        const r = await apiFetch<Unit[]>('/dispatch/units');
+        if (Array.isArray(r)) setUnits(r);
       } catch { /* offline */ }
       lastFetchRef.current = Date.now();
       setSecondsSince(0);
@@ -94,11 +94,11 @@ export default function DesktopRollCallWidget() {
       {/* Counts row */}
       {!loading && totalUnits > 0 && (
         <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginBottom: 6, letterSpacing: '0.04em' }}>
-          <span style={{ color: 'var(--sev-ok, #22c55e)', fontWeight: 600 }}>{availableCount} ONLINE</span>
+          <span style={{ color: 'var(--sev-ok)', fontWeight: 600 }}>{availableCount} ONLINE</span>
           {onCallCount > 0 && (
             <>
               <span style={{ margin: '0 4px', opacity: 0.4 }}>·</span>
-              <span style={{ color: 'var(--sev-warn, #f59e0b)', fontWeight: 600 }}>{onCallCount} ON CALL</span>
+              <span style={{ color: 'var(--sev-warn)', fontWeight: 600 }}>{onCallCount} ON CALL</span>
             </>
           )}
           {oosCount > 0 && (
@@ -115,13 +115,13 @@ export default function DesktopRollCallWidget() {
         <div style={{
           fontSize: 9,
           fontWeight: 700,
-          color: 'var(--sev-critical, #ef4444)',
+          color: 'var(--sev-critical)',
           letterSpacing: '0.08em',
           marginBottom: 6,
           padding: '3px 5px',
-          border: '1px solid var(--sev-critical, #ef4444)',
+          border: '1px solid var(--sev-critical)',
           borderRadius: 2,
-          background: 'color-mix(in srgb, var(--sev-critical, #ef4444) 10%, transparent)',
+          background: 'color-mix(in srgb, var(--sev-critical) 10%, transparent)',
         }}>
           NO UNITS AVAILABLE
         </div>
@@ -136,13 +136,13 @@ export default function DesktopRollCallWidget() {
                   width: 20,
                   height: 20,
                   borderRadius: 2,
-                  background: 'var(--surface-raised, #2d4a6a)',
+                  background: 'var(--surface-raised)',
                   flexShrink: 0,
                 }} />
                 <div style={{
                   height: 8,
                   borderRadius: 2,
-                  background: 'var(--surface-raised, #2d4a6a)',
+                  background: 'var(--surface-raised)',
                   width: `${50 + i * 12}px`,
                 }} />
                 <div style={{
@@ -150,7 +150,7 @@ export default function DesktopRollCallWidget() {
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  background: 'var(--surface-raised, #2d4a6a)',
+                  background: 'var(--surface-raised)',
                   flexShrink: 0,
                 }} />
               </div>
@@ -162,7 +162,7 @@ export default function DesktopRollCallWidget() {
                   width: 20,
                   height: 20,
                   borderRadius: 2,
-                  background: 'var(--surface-raised, #2d4a6a)',
+                  background: 'var(--surface-raised)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

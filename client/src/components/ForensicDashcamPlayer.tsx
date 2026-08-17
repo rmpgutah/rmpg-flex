@@ -367,7 +367,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       const lines = evidenceStampLines(evidenceMeta());
       const fs = Math.max(12, Math.round(H * 0.022));
       const stripH = fs * (lines.length + 0.6) + 12;
-      ctx.fillStyle = 'rgba(0,0,0,0.68)'; ctx.fillRect(0, H - stripH, W, stripH);
+      ctx.fillStyle = 'rgba(0 0 0 / 0.68)'; ctx.fillRect(0, H - stripH, W, stripH);
       ctx.textBaseline = 'top';
       lines.forEach((l, i) => {
         ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px sans-serif`;
@@ -553,8 +553,8 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#222] bg-surface-raised shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <Car className="w-4 h-4 text-[#d4a017] shrink-0" />
-          <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">FORENSIC PLAYBACK</span>
+          <Car className="w-4 h-4 [color:var(--panel-header-color)] shrink-0" />
+          <span className="text-[11px] font-semibold tracking-wider [color:var(--panel-header-color)]">FORENSIC PLAYBACK</span>
           {evType && <span className="text-[10px] uppercase px-1.5 py-0.5 border border-amber-700/50 bg-amber-900/30 text-amber-300">{toDisplayLabel(evType)}</span>}
           {media?.footage_request_id && (
             <a href={`/flexcam/${media.footage_request_id}`} target="_blank" rel="noreferrer"
@@ -562,53 +562,53 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               ▶ Full Trip
             </a>
           )}
-          <span className="text-[11px] text-rmpg-400 truncate">{media?.address || address || ''}</span>
+          <span className="text-[11px] text-fg-muted truncate">{media?.address || address || ''}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Tactical toolbar */}
           {media?.has_video && (
             <>
               <button onClick={() => setRate((r) => (r >= 2 ? 0.25 : +(r + 0.25).toFixed(2)))}
-                className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] tabular-nums" title="Playback speed ( < / > )">
+                className="text-[10px] font-mono px-1.5 py-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] tabular-nums" title="Playback speed ( < / > )">
                 {rate.toFixed(2)}×
               </button>
               <button onClick={() => setEnhanceKey((k) => nextPresetKey(k))} title="Cycle image enhancement (n)"
-                className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-1 border ${enhanceKey !== 'none' ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}
+                className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-1 border ${enhanceKey !== 'none' ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}
                 aria-label="Cycle image enhancement preset">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span className="tracking-wider uppercase">{preset.label}</span>
               </button>
               <button onClick={() => setMagnifierOn((x) => !x)} title="Plate magnifier (m)"
-                className={`p-1 border ${magnifierOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle plate magnifier">
+                className={`p-1 border ${magnifierOn ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle plate magnifier">
                 <Maximize2 className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => setZoomOn((x) => !x)} title="Digital zoom on target (z)"
-                className={`p-1 border ${zoomOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle digital zoom">
+                className={`p-1 border ${zoomOn ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`} aria-label="Toggle digital zoom">
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
               <button onClick={() => captureRef.current()} title="Capture evidence frame (c)"
-                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017]" aria-label="Capture evidence frame">
+                className="p-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)]" aria-label="Capture evidence frame">
                 <Camera className="w-3.5 h-3.5" />
               </button>
               <button onClick={rescanPlate} disabled={rescan.busy} title="Re-scan plate from the target vehicle (best-frame OCR)"
-                className="p-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] disabled:opacity-50" aria-label="Re-scan plate">
+                className="p-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] disabled:opacity-50" aria-label="Re-scan plate">
                 {rescan.busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
               </button>
               <button onClick={exportReport} title="Export forensic PDF report"
-                className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-rmpg-300 hover:border-[#d4a017] flex items-center gap-1" aria-label="Export forensic report">
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#2a2a2a] text-fg-muted hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Export forensic report">
                 <FileText className="w-3.5 h-3.5" /> REPORT
               </button>
               <button onClick={() => setRedactOpen(true)} title="Redact & export for disclosure"
-                className="text-[10px] font-semibold px-1.5 py-1 border border-[#232323] text-rmpg-300 hover:border-[#d4a017] flex items-center gap-1" aria-label="Open redaction studio">
+                className="text-[10px] font-semibold px-1.5 py-1 border border-[#232323] text-fg-muted hover:[border-color:var(--field-label-color)] flex items-center gap-1" aria-label="Open redaction studio">
                 <ShieldOff className="w-3.5 h-3.5" /> REDACT
               </button>
-              <span className="w-px h-4 bg-[#2a2a2a]" />
+              <span className="w-px h-4 bg-surface-raised" />
             </>
           )}
           <button
             onClick={() => setAiOn((v) => !v)}
             className={`text-[10px] font-semibold tracking-wider px-2 py-1 border flex items-center gap-1 ${
-              aiOn ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}
+              aiOn ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)] bg-[#1a1400]' : 'border-[#2a2a2a] text-[#777]'}`}
             aria-label="Toggle AI vehicle tracking">
             <ScanSearch className="w-3 h-3" />
             AI TRACK
@@ -616,12 +616,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
             {aiOn && detStatus === 'ready' && <span className="text-[8px] tabular-nums">· {tracks.length} tracked</span>}
             {aiOn && detStatus === 'unavailable' && <span className="text-[8px] text-fg-muted">(telemetry)</span>}
           </button>
-          <button onClick={onClose} className="text-rmpg-400 hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} className="text-fg-muted hover:text-rmpg-100 p-1" aria-label="Close player"><X className="w-5 h-5" /></button>
         </div>
       </div>
 
       {loading && (
-        <div className="flex-1 flex items-center justify-center text-rmpg-400 text-sm gap-2">
+        <div className="flex-1 flex items-center justify-center text-fg-muted text-sm gap-2">
           <Loader2 className="w-5 h-5 animate-spin" /> Resolving clip…
         </div>
       )}
@@ -697,7 +697,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                                   strokeDasharray={plateConfirmed ? undefined : '8 5'} vectorEffect="non-scaling-stroke" />
                                 {media.plate && (
                                   <>
-                                    <rect x={px} y={py - 26} width={Math.max(80, label.length * 15)} height={24} fill="rgba(0,0,0,0.78)" stroke={lpCol} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                                    <rect x={px} y={py - 26} width={Math.max(80, label.length * 15)} height={24} fill="rgba(0 0 0 / 0.78)" stroke={lpCol} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
                                     <text x={px + 5} y={py - 8} fontSize={19} fill={lpCol} fontFamily="monospace" letterSpacing="2">{label}</text>
                                     {!plateConfirmed && (
                                       <text x={px + 5} y={py + ph + 16} fontSize={11} fill="#f59e0b" fontFamily="sans-serif" letterSpacing="1">UNCONFIRMED</text>
@@ -709,7 +709,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                           })()}
                           {vTag && (
                             <>
-                              <rect x={x} y={tagY - 22} width={tagW} height={22} fill="rgba(0,0,0,0.8)" stroke="#d4a017" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                              <rect x={x} y={tagY - 22} width={tagW} height={22} fill="rgba(0 0 0 / 0.8)" stroke="#d4a017" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
                               <text x={x + 6} y={tagY - 6} fontSize={16} fill="#d4a017" fontFamily="sans-serif">{vTag}</text>
                             </>
                           )}
@@ -747,8 +747,8 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 {/* BOLO / hotlist tactical alert */}
                 {hits.length > 0 && (
                   <div className={`absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 border-2 text-center max-w-[80%] ${
-                    critical.length ? 'bg-red-950/90 border-red-500 animate-pulse' : 'bg-amber-950/90 border-[#d4a017]'}`}>
-                    <div className={`flex items-center gap-1.5 justify-center text-[11px] font-bold tracking-wider ${critical.length ? 'text-red-300' : 'text-[#d4a017]'}`}>
+                    critical.length ? 'bg-red-950/90 border-red-500 animate-pulse' : 'bg-amber-950/90 [border-color:var(--field-label-color)]'}`}>
+                    <div className={`flex items-center gap-1.5 justify-center text-[11px] font-bold tracking-wider ${critical.length ? 'text-red-300' : '[color:var(--panel-header-color)]'}`}>
                       <ShieldAlert className="w-4 h-4" />
                       {critical.length ? 'HOTLIST HIT' : 'WATCHLIST'} — {media.plate}
                       {!plateConfirmed && <span className="text-[9px] font-bold text-amber-300 ml-1">· VERIFY PLATE (unconfirmed read)</span>}
@@ -799,7 +799,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                   <div className="text-white/60">{media.event_timestamp || ''}</div>
                   {media.plate && (
                     <div className="mt-1 flex flex-col items-end gap-0.5">
-                      <div className={`inline-block px-1.5 py-0.5 bg-black/70 border tracking-[0.15em] text-sm ${plateConfirmed ? 'border-[#d4a017] text-[#d4a017]' : 'border-amber-600 text-amber-400'}`}>
+                      <div className={`inline-block px-1.5 py-0.5 bg-black/70 border tracking-[0.15em] text-sm ${plateConfirmed ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)]' : 'border-amber-600 text-amber-400'}`}>
                         {media.plate}{media.plate_confidence != null && <span className="text-[8px] ml-1">{Math.round(media.plate_confidence * 100)}% trust</span>}
                       </div>
                       {!plateConfirmed && (
@@ -825,12 +825,12 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
           <div className="border-l border-[#222] bg-surface-raised overflow-auto">
             {/* Road track */}
             <div className="p-3 border-b border-[#222]">
-              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center justify-between">
+              <div className="text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-2 flex items-center justify-between">
                 <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> GPS road track</span>
                 <span className="flex items-center gap-0.5">
                   {(['svg', 'map'] as const).map((v) => (
                     <button key={v} onClick={() => setTrackView(v)}
-                      className={`text-[8px] px-1.5 py-0.5 border ${trackView === v ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-[#2a2a2a] text-fg-muted'}`}>
+                      className={`text-[8px] px-1.5 py-0.5 border ${trackView === v ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)] bg-[#1a1400]' : 'border-[#2a2a2a] text-fg-muted'}`}>
                       {v === 'svg' ? 'SCHEMATIC' : 'MAP'}
                     </button>
                   ))}
@@ -860,9 +860,9 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />End</span>
               </div>
               {trackPts.length > 1 && (
-                <div className="mt-2 flex items-center justify-between text-[9px] text-[#d4a017] border-t border-[#1a1a1a] pt-1.5">
+                <div className="mt-2 flex items-center justify-between text-[9px] [color:var(--panel-header-color)] border-t border-[#1a1a1a] pt-1.5">
                   <span className="flex items-center gap-1"><Route className="w-3 h-3" /> Predicted</span>
-                  <span className="font-mono text-rmpg-300">
+                  <span className="font-mono text-fg-muted">
                     {Math.abs(turnRate) < 4 ? 'STRAIGHT' : turnRate > 0 ? `BEARING RIGHT ${Math.abs(turnRate).toFixed(0)}°/s` : `BEARING LEFT ${Math.abs(turnRate).toFixed(0)}°/s`} · hdg {compass(heading)}
                   </span>
                 </div>
@@ -871,7 +871,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
 
             {/* Driving analysis */}
             <div className="p-3">
-              <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-2 flex items-center gap-1">
+              <div className="text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-2 flex items-center gap-1">
                 <Activity className="w-3 h-3" /> Driving analysis
               </div>
 
@@ -881,16 +881,16 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 return (
                   <div className="mb-2.5 border border-[#222] bg-surface-sunken p-2">
                     <div className="flex items-center justify-between text-[9px] uppercase tracking-wider mb-1">
-                      <span className="flex items-center gap-1 text-rmpg-400 font-semibold"><Gauge className="w-3 h-3" /> AI risk score</span>
+                      <span className="flex items-center gap-1 text-fg-muted font-semibold"><Gauge className="w-3 h-3" /> AI risk score</span>
                       <span className="font-mono font-bold tabular-nums" style={{ color: col }}>{risk.score}/100 · {risk.level}</span>
                     </div>
-                    <div className="h-1.5 bg-[#0a0a0a] border border-[#1a1a1a] overflow-hidden">
+                    <div className="h-1.5 bg-surface-deep border border-[#1a1a1a] overflow-hidden">
                       <div className="h-full transition-all" style={{ width: `${risk.score}%`, background: col }} />
                     </div>
                     {risk.factors.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {risk.factors.map((f, i) => (
-                          <span key={i} className="text-[9px] px-1 py-0.5 border border-[#2a2a2a] text-rmpg-300 bg-black/40">{f}</span>
+                          <span key={i} className="text-[9px] px-1 py-0.5 border border-[#2a2a2a] text-fg-muted bg-black/40">{f}</span>
                         ))}
                       </div>
                     )}
@@ -918,7 +918,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
                 <Stat icon={AlertTriangle} label="Hard accel" value={`${stats.maxAccelG.toFixed(2)} g`} tone={stats.maxAccelG > 0.35 ? 'warn' : 'normal'} />
               </div>
               <div className="mt-3 p-2 border border-[#2a2300] bg-[#161200] text-[11px] text-amber-200/90 leading-snug">
-                <span className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold block mb-1">Forensic verdict</span>
+                <span className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold block mb-1">Forensic verdict</span>
                 {verdict}
               </div>
 
@@ -940,16 +940,16 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
               {/* Plate re-identification — cross-source prior sightings */}
               {media?.plate && prior && (
                 <div className="mt-3 border-t border-[#222] pt-2">
-                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-rmpg-400 font-semibold mb-1.5">
+                  <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-fg-muted font-semibold mb-1.5">
                     <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> Plate re-ID</span>
-                    <button onClick={() => setDossier(media.plate)} className="text-[8px] px-1.5 py-0.5 border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400]">DOSSIER</button>
+                    <button onClick={() => setDossier(media.plate)} className="text-[8px] px-1.5 py-0.5 border [border-color:var(--field-label-color)] [color:var(--panel-header-color)] hover:bg-[#1a1400]">DOSSIER</button>
                   </div>
                   <div className="text-[11px] text-rmpg-200">
-                    <span className="text-[#d4a017] tracking-[0.15em] font-semibold">{media.plate}</span>
-                    <span className="text-rmpg-400"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
+                    <span className="[color:var(--panel-header-color)] tracking-[0.15em] font-semibold">{media.plate}</span>
+                    <span className="text-fg-muted"> — {prior.count} prior sighting{prior.count === 1 ? '' : 's'}{prior.distinct_days ? ` over ${prior.distinct_days} day${prior.distinct_days === 1 ? '' : 's'}` : ''}</span>
                   </div>
                   {prior.sightings.slice(0, 4).map((s) => (
-                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-fg-muted flex justify-between gap-2 mt-0.5 hover:text-rmpg-300">
+                    <button key={s.id} onClick={() => setDossier(media.plate)} className="w-full text-left text-[10px] text-fg-muted flex justify-between gap-2 mt-0.5 hover:text-fg-muted">
                       <span className="truncate">{s.location || s.source}</span>
                       <span className="shrink-0 font-mono">{String(s.created_at || '').slice(5, 16)}</span>
                     </button>
@@ -966,7 +966,7 @@ export default function ForensicDashcamPlayer({ eventId, eventType, address, onC
       )}
 
       {rescan.result && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border border-[#d4a017] text-[#d4a017] text-[11px] font-mono tracking-wider flex items-center gap-2">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/90 border [border-color:var(--field-label-color)] [color:var(--panel-header-color)] text-[11px] font-mono tracking-wider flex items-center gap-2">
           <ScanSearch className="w-3.5 h-3.5" /> PLATE RE-SCAN — {rescan.result}
           <button onClick={() => setRescan({ busy: false, result: null })} className="text-fg-muted hover:text-rmpg-100 ml-1" aria-label="Dismiss">×</button>
         </div>

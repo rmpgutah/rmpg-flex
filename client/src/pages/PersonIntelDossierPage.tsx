@@ -307,7 +307,7 @@ export default function PersonIntelDossierPage() {
             </span>
           )}
           <span className="ml-auto flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString()}
+            <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}
           </span>
         </div>
       </div>

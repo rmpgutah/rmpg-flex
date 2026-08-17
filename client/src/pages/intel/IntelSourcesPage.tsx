@@ -29,8 +29,8 @@ export default function IntelSourcesPage() {
 
   return (
     <div className="p-4 space-y-3" style={{ background: 'var(--surface-base)', minHeight: '100%', color: 'var(--text-primary)' }}>
-      <h1 className="text-sm font-semibold" style={{ color: '#d4a017' }}>SOURCE / CI REGISTRY</h1>
-      {msg && <div style={{ color: '#ef4444', fontSize: 11 }}>{msg}</div>}
+      <h1 className="text-sm font-semibold" style={{ color: 'var(--panel-header-color)' }}>SOURCE / CI REGISTRY</h1>
+      {msg && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{msg}</div>}
 
       <div className="flex gap-2 flex-wrap items-center">
         <select style={field} value={form.source_type} onChange={(e) => setForm({ ...form, source_type: e.target.value })}>
@@ -41,11 +41,11 @@ export default function IntelSourcesPage() {
         <select style={field} value={form.reliability_grade} onChange={(e) => setForm({ ...form, reliability_grade: e.target.value })}>
           {['A', 'B', 'C', 'D', 'E', 'F'].map((g) => <option key={g}>{g}</option>)}
         </select>
-        <button onClick={create} style={{ background: '#d4a017', color: '#000', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}>+ ADD SOURCE</button>
+        <button onClick={create} style={{ background: 'var(--rmpg-600)', color: 'var(--text-primary)', borderRadius: 2, padding: '4px 10px', fontSize: 11, fontWeight: 600 }}>+ ADD SOURCE</button>
       </div>
 
       <div className="overflow-x-auto"><table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
-        <thead><tr style={{ color: '#888', textAlign: 'left' }}>
+        <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
           <th className="py-[3px] text-[9px] font-semibold">CODE</th>
           <th className="py-[3px] text-[9px] font-semibold">TYPE</th>
           <th className="py-[3px] text-[9px] font-semibold">LABEL</th>
@@ -55,8 +55,8 @@ export default function IntelSourcesPage() {
         <tbody>
           {rows.map((s) => (
             <tr key={s.id} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-              <td className="py-[2px]" style={{ color: '#d4a017' }}>{s.source_code}</td>
-              <td className="py-[2px]">{s.source_type}{s._restricted && <span style={{ color: '#888' }}> 🔒</span>}</td>
+              <td className="py-[2px]" style={{ color: 'var(--panel-header-color)' }}>{s.source_code}</td>
+              <td className="py-[2px]">{s.source_type}{s._restricted && <span style={{ color: 'var(--text-muted)' }}> 🔒</span>}</td>
               <td className="py-[2px]">{s.display_label || '—'}</td>
               <td className="py-[2px]">{s.reliability_grade || '—'}</td>
               <td className="py-[2px] uppercase">{formatEnumValue(s.status)}</td>

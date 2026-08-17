@@ -111,15 +111,15 @@ export default function CoverageTimeline({ data, expanded, onToggle }: CoverageT
                   let tooltip: string;
 
                   if (!zone) {
-                    bgColor = '#1a1a1a';
+                    bgColor = 'var(--surface-overlay)';
                     opacity = 0.3;
                     tooltip = `${beat.name} | ${fmtTime(iv.start)}-${fmtTime(iv.end)} | No coverage`;
                   } else if (zone.avg_speed !== null && zone.avg_speed < 5) {
-                    bgColor = '#854d0e';
+                    bgColor = 'rgb(var(--sev-warn-rgb) / 0.6)';
                     opacity = Math.min(0.5 + zone.unit_count * 0.15, 1);
                     tooltip = `${beat.name} | ${fmtTime(iv.start)}-${fmtTime(iv.end)} | ${zone.unit_count} unit${zone.unit_count !== 1 ? 's' : ''} | ${zone.avg_speed != null ? zone.avg_speed.toFixed(1) : '?'} mph (slow)`;
                   } else {
-                    bgColor = '#166534';
+                    bgColor = 'rgb(var(--sev-ok-rgb) / 0.45)';
                     opacity = Math.min(0.5 + zone.unit_count * 0.15, 1);
                     tooltip = `${beat.name} | ${fmtTime(iv.start)}-${fmtTime(iv.end)} | ${zone.unit_count} unit${zone.unit_count !== 1 ? 's' : ''} | ${zone.avg_speed != null ? zone.avg_speed.toFixed(1) : '?'} mph`;
                   }
@@ -139,15 +139,15 @@ export default function CoverageTimeline({ data, expanded, onToggle }: CoverageT
           {/* Legend */}
           <div className="flex items-center gap-3 mt-1.5 ml-[80px]">
             <div className="flex items-center gap-1">
-              <div style={{ width: 8, height: 8, backgroundColor: '#166534', borderRadius: 1 }} />
+              <div style={{ width: 8, height: 8, backgroundColor: 'rgb(var(--sev-ok-rgb) / 0.45)', borderRadius: 1 }} />
               <span className="text-[7px] font-mono text-rmpg-400">Covered</span>
             </div>
             <div className="flex items-center gap-1">
-              <div style={{ width: 8, height: 8, backgroundColor: '#854d0e', borderRadius: 1 }} />
+              <div style={{ width: 8, height: 8, backgroundColor: 'rgb(var(--sev-warn-rgb) / 0.6)', borderRadius: 1 }} />
               <span className="text-[7px] font-mono text-rmpg-400">Slow/Stationary</span>
             </div>
             <div className="flex items-center gap-1">
-              <div style={{ width: 8, height: 8, backgroundColor: '#1a1a1a', borderRadius: 1, border: '1px solid #333' }} />
+              <div style={{ width: 8, height: 8, backgroundColor: 'var(--surface-overlay)', borderRadius: 1, border: '1px solid var(--border-subtle)' }} />
               <span className="text-[7px] font-mono text-rmpg-400">Gap</span>
             </div>
           </div>

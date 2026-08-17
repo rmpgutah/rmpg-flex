@@ -85,7 +85,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors"
         style={aiUnavailable
           ? { background: 'var(--surface-raised)', borderColor: 'var(--border-default)', color: 'var(--text-muted)', cursor: 'not-allowed' }
-          : { background: '#7c3aed15', borderColor: '#7c3aed40', color: '#a78bfa', cursor: isLoading ? 'wait' : 'pointer' }
+          : { background: 'color-mix(in srgb, var(--sev-special) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-special) 25%, transparent)', color: 'var(--sev-special)', cursor: isLoading ? 'wait' : 'pointer' }
         }
         title={aiUnavailable ? 'AI service is unavailable' : !notes?.trim() ? 'Enter notes first' : 'Generate narrative from notes using AI'}
       >
@@ -99,7 +99,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
           onClick={handleExtractFields}
           disabled={extracting || !notes?.trim() || notes.length < 20}
           className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors ml-1.5"
-          style={{ background: '#06b6d415', borderColor: '#06b6d440', color: '#22d3ee' }}
+          style={{ background: 'color-mix(in srgb, var(--sev-info) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 25%, transparent)', color: 'var(--sev-info)' }}
           title={notes.length < 20 ? 'Enter at least 20 characters of text first' : 'Extract caller name, address, persons, and incident type from notes'}
         >
           {extracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
@@ -114,7 +114,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
 
       {/* Preview box */}
       {preview && (
-        <div className="mt-2 rounded-sm border p-2" style={{ background: 'var(--surface-overlay)', borderColor: '#7c3aed30' }}>
+        <div className="mt-2 rounded-sm border p-2" style={{ background: 'var(--surface-overlay)', borderColor: 'color-mix(in srgb, var(--sev-special) 19%, transparent)' }}>
           <label className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider text-purple-400 mb-1">
             <Brain className="w-2.5 h-2.5" /> AI Draft — Review Before Accepting
           </label>
@@ -123,14 +123,14 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
             <button
               onClick={handleAccept}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-sm border transition-colors"
-              style={{ background: '#22c55e15', borderColor: '#22c55e40', color: '#4ade80' }}
+              style={{ background: 'color-mix(in srgb, var(--sev-ok) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-ok) 25%, transparent)', color: 'var(--sev-ok-soft)' }}
             >
               <Check className="w-2.5 h-2.5" /> Use This
             </button>
             <button
               onClick={handleDiscard}
               className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-semibold rounded-sm border transition-colors"
-              style={{ background: '#ef444415', borderColor: '#ef444440', color: '#f87171' }}
+              style={{ background: 'color-mix(in srgb, var(--sev-critical) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', color: 'var(--sev-critical-soft)' }}
             >
               <X className="w-2.5 h-2.5" /> Discard
             </button>

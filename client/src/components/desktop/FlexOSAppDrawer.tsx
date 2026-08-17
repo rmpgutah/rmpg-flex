@@ -6,10 +6,10 @@
  * Positioned above/below taskbar depending on taskbar position preference.
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, X, Star, Shield, type LucideIcon } from 'lucide-react';
+import { Search, X, Star, Shield, Clock, type LucideIcon } from 'lucide-react';
 import type { NavFunction } from '../../data/navCatalog';
 import { NAV_CATEGORIES } from '../../data/navCatalog';
-import { loadFavorites } from '../../utils/navFavorites';
+import { loadFavorites, loadRecent } from '../../utils/navFavorites';
 import { getTaskbarPosition, getTaskbarSize, isAppPinned, pinApp, unpinApp } from '../../utils/taskbarPreferences';
 import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
 import ContextMenu from '../ContextMenu';
@@ -57,8 +57,12 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
   useClickOutside(ref, onClose);
 
   const [query, setQuery] = useState('');
-  const [activeGroup, setActiveGroup] = useState('All');
+  const [activeGroup, setActiveGroup] = useState(() => loadRecent().length > 0 ? 'Recents' : 'All');
   const favorites = useMemo(() => loadFavorites(), []);
+  const recents = useMemo(() => {
+    const paths = loadRecent().slice(0, 6);
+    return paths.map(p => catalog.find(fn => fn.path === p)).filter((fn): fn is NavFunction => !!fn);
+  }, [catalog]);
   const taskbarPos = getTaskbarPosition();
   const taskbarH = TASKBAR_HEIGHT_PX[getTaskbarSize()];
 
@@ -79,17 +83,19 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
   }, [catalog, favorites]);
 
   const groupTabs = useMemo(() => {
-    const tabs = ['All', 'Pinned'];
+    const tabs: string[] = [];
+    if (recents.length > 0) tabs.push('Recents');
+    tabs.push('All', 'Pinned');
     for (const k of CATEGORY_ORDER) { if (groups.has(k) && groups.get(k)!.length > 0) tabs.push(k); }
     return tabs;
-  }, [groups]);
+  }, [groups, recents.length]);
 
   const displayItems = useMemo(() => {
-    const base = groups.get(activeGroup) ?? [];
+    const base = activeGroup === 'Recents' ? recents : (groups.get(activeGroup) ?? []);
     if (!query.trim()) return base;
     const q = query.toLowerCase();
     return base.filter(fn => fn.label.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q));
-  }, [groups, activeGroup, query]);
+  }, [groups, recents, activeGroup, query]);
 
   // ESC closes drawer
   useEffect(() => {
@@ -110,12 +116,12 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
         ...positionStyle,
         width: DRAWER_WIDTH,
         height: DRAWER_HEIGHT,
-        background: 'var(--surface-raised, #1a3352)',
+        background: 'var(--surface-raised)',
         border: '1px solid var(--border-default, rgba(195,204,214,0.12))',
         zIndex: 1010,
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+        boxShadow: '0 16px 40px rgba(0 0 0 / 0.6)',
       }}
     >
       {/* Header */}
@@ -125,14 +131,14 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
         gap: 8,
         padding: '10px 12px',
         borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.08))',
-        background: 'var(--surface-base, #22405f)',
+        background: 'var(--surface-base)',
       }}>
-        <Shield style={{ width: 14, height: 14, color: 'var(--accent-silver-400, #c3ccd6)', flexShrink: 0 }} />
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary, #f0f4f9)', letterSpacing: '0.04em' }}>
+        <Shield style={{ width: 14, height: 14, color: 'var(--accent-silver-400)', flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.04em' }}>
           FlexOS
         </span>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-sunken, #0f2035)', padding: '4px 8px', marginLeft: 8 }}>
-          <Search style={{ width: 11, height: 11, color: 'var(--text-muted, #8da0b3)', flexShrink: 0 }} />
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-sunken)', padding: '4px 8px', marginLeft: 8 }}>
+          <Search style={{ width: 11, height: 11, color: 'var(--text-muted)', flexShrink: 0 }} />
           <input
             autoFocus
             type="text"
@@ -145,17 +151,17 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
               border: 'none',
               outline: 'none',
               fontSize: 11,
-              color: 'var(--text-primary, #f0f4f9)',
+              color: 'var(--text-primary)',
             }}
           />
           {query && (
             <button type="button" onClick={() => setQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}>
-              <X style={{ width: 10, height: 10, color: 'var(--text-muted, #8da0b3)' }} />
+              <X style={{ width: 10, height: 10, color: 'var(--text-muted)' }} />
             </button>
           )}
         </div>
         <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
-          <X style={{ width: 12, height: 12, color: 'var(--text-muted, #8da0b3)' }} />
+          <X style={{ width: 12, height: 12, color: 'var(--text-muted)' }} />
         </button>
       </div>
 
@@ -179,10 +185,10 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
               fontWeight: activeGroup === tab ? 700 : 400,
               letterSpacing: '0.08em',
               textTransform: 'uppercase',
-              color: activeGroup === tab ? 'var(--text-primary, #f0f4f9)' : 'var(--text-muted, #8da0b3)',
+              color: activeGroup === tab ? 'var(--text-primary)' : 'var(--text-muted)',
               background: 'none',
               border: 'none',
-              borderBottom: activeGroup === tab ? '2px solid var(--accent-silver-400, #c3ccd6)' : '2px solid transparent',
+              borderBottom: activeGroup === tab ? '2px solid var(--accent-silver-400)' : '2px solid transparent',
               cursor: 'pointer',
               whiteSpace: 'nowrap',
               display: 'flex',
@@ -190,6 +196,7 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
               gap: 4,
             }}
           >
+            {tab === 'Recents' && <Clock style={{ width: 9, height: 9 }} />}
             {tab === 'Pinned' && <Star style={{ width: 9, height: 9 }} />}
             {tab}
           </button>
@@ -219,7 +226,7 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
                 fontWeight: 500,
                 background: 'rgba(var(--rmpg-500-rgb, 62 116 168), 0.15)',
                 border: '1px solid rgba(195,204,214,0.1)',
-                color: 'var(--text-secondary, #adbccc)',
+                color: 'var(--text-secondary)',
                 cursor: 'pointer',
                 letterSpacing: '0.02em',
               }}
@@ -234,7 +241,7 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
       {/* App grid */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
         {displayItems.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted, #8da0b3)' }}>
+          <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>
             {query ? `No results for "${query}"` : 'No modules in this category'}
           </div>
         ) : (
@@ -251,7 +258,7 @@ export default function FlexOSAppDrawer({ catalog, onNavigate, onClose, quickAct
         padding: '6px 12px',
         borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.08))',
         fontSize: 9,
-        color: 'var(--text-muted, #8da0b3)',
+        color: 'var(--text-muted)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -297,10 +304,10 @@ function AppTile({ fn, onNavigate, onClose }: { fn: NavFunction; onNavigate: (p:
       }}
       title={fn.label}
     >
-      {Icon && <Icon style={{ width: 20, height: 20, color: 'var(--accent-silver-300, #d4dde6)', flexShrink: 0 }} />}
+      {Icon && <Icon style={{ width: 20, height: 20, color: 'var(--accent-silver-300)', flexShrink: 0 }} />}
       <span style={{
         fontSize: 9,
-        color: 'var(--text-secondary, #adbccc)',
+        color: 'var(--text-secondary)',
         textAlign: 'center',
         lineHeight: 1.2,
         maxWidth: '100%',

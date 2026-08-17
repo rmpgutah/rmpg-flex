@@ -1449,6 +1449,37 @@ export default function DispatchPage() {
       addToast(`${data.call_sign ?? `Unit ${data.unit_id}`} ${verb} ${data.zone_name ?? 'geofence zone'}`, 'info');
     });
 
+    // Smart automation rule fired — server (Task 5/6) or officer client
+    // (POST /api/automation-rules/firings/client) both call emitAlert which
+    // fans out here.  Severity mirrors the spec: notify_* → 'warning',
+    // trigger_welfare_check / change_unit_status → 'error'.
+    const unsubAutomation = subscribe('automation_alert', (msg: any) => {
+      const data = msg.data || msg;
+      const actionType: string = data.action_type ?? '';
+      const source: string = data.source === 'officer' ? 'Officer' : 'System';
+      const label = toDisplayLabel(actionType) || actionType;
+
+      const isCritical =
+        actionType === 'trigger_welfare_check' ||
+        actionType === 'change_unit_status';
+      const severity = isCritical ? 'error' : 'warning';
+
+      // Build a compact details string from available context fields.
+      const parts: string[] = [];
+      if (data.trigger_lat != null && data.trigger_lng != null) {
+        parts.push(
+          `${Number(data.trigger_lat).toFixed(4)}, ${Number(data.trigger_lng).toFixed(4)}`,
+        );
+      }
+      const ctx = data.context ?? {};
+      if (ctx.speed != null) parts.push(`${ctx.speed} mph`);
+      if (ctx.call_id != null) parts.push(`Call #${ctx.call_id}`);
+      if (ctx.geofence_name) parts.push(ctx.geofence_name);
+
+      const detail = parts.length > 0 ? ` — ${parts.join(' | ')}` : '';
+      addToast(`[Auto / ${source}] ${label}${detail}`, severity, 8000);
+    });
+
     // [F5] Serve terminal alerts — fired by serve.ts logAttempt on served/failed.
     const unsubServeTerminal = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
@@ -1472,7 +1503,7 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); unsubServeTerminal(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); unsubGeofence(); unsubAutomation(); unsubServeTerminal(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -2922,7 +2953,7 @@ export default function DispatchPage() {
                               }}
                             />
                             {ts.value && ts.field !== 'created_at' && (
-                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                              <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp" aria-label="Clear timestamp">
                                 <X className="w-3 h-3" />
                               </button>
                             )}
@@ -3543,6 +3574,7 @@ export default function DispatchPage() {
                 onClick={() => setSearchQuery('')}
                 className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[var(--spm-text-muted)] hover:text-rmpg-100 transition-colors"
                 title="Clear search"
+                aria-label="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
               </button>
@@ -3578,7 +3610,7 @@ export default function DispatchPage() {
                   background: 'var(--surface-raised)',
                   border: '1px solid var(--spm-border)',
                   borderRadius: '2px',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                  boxShadow: '0 8px 24px rgba(0 0 0 / 0.6)',
                 }}
               >
                 {templates.length === 0 ? (
@@ -4967,7 +4999,7 @@ export default function DispatchPage() {
                                   }}
                                 />
                                 {ts.value && ts.field !== 'created_at' && (
-                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp">
+                                  <button type="button" onClick={() => handleTimelineEdit(ts.field, null)} className="text-red-400 hover:text-red-300 p-0.5 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center" title="Clear timestamp" aria-label="Clear timestamp">
                                     <X className="w-3 h-3" />
                                   </button>
                                 )}
@@ -6807,7 +6839,7 @@ export default function DispatchPage() {
         >
           <div
             className="py-1 min-w-[190px] rounded-sm"
-            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', boxShadow: '0 8px 24px rgba(0 0 0 / 0.6), 0 0 1px rgba(255,255,255,0.05) inset', WebkitBackdropFilter: 'blur(8px)', backdropFilter: 'blur(8px)' }}
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
@@ -6897,10 +6929,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -7028,8 +7060,8 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
@@ -7528,8 +7560,8 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />

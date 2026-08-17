@@ -99,9 +99,8 @@ rt.post('/channels', async (c) => {
     user?.id ?? null,
   );
   const id = Number(result.meta.last_row_id);
-  // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  return c.json({ success: true, id });
+  return c.json({ success: true, id, channel });
 });
 
 rt.patch('/channels/:id', async (c) => {
@@ -155,7 +154,8 @@ rt.get('/transmissions', async (c) => {
     // helper does the boolean OR/negation parsing on the page. We
     // narrow first to keep payloads small.
     where.push('(transcript LIKE ? OR unit_label LIKE ? OR tags LIKE ?)');
-    const like = `%${q.replace(/[%_]/g, '')}%`;
+    const safe = q.replace(/[%_]/g, '').slice(0, 48); // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const like = `%${safe}%`;
     args.push(like, like, like);
   }
   const rc = rangeClause(range);
@@ -202,7 +202,7 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  return c.json({ success: true, id });
+  return c.json({ success: true, id, transmission });
 });
 
 rt.delete('/transmissions/:id', async (c) => {

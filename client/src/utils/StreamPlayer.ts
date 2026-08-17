@@ -10,17 +10,20 @@
 // we use the Web Audio API directly:
 //
 // 1. Accumulate all received chunks into a growing buffer
-// 2. Every few chunks, decode the ENTIRE buffer with
+// 2. On every chunk, decode the ENTIRE buffer with
 //    AudioContext.decodeAudioData() — this always works
 //    because chunk #1 contains the full WebM header
 // 3. Play only the NEW portion (from where we left off)
 //    using AudioBufferSourceNode scheduled at precise times
 //
-// This approach:
-// • Works on ALL browsers (Chrome, Safari, Firefox, mobile)
-// • Doesn't require MSE support
-// • Handles autoplay by pre-creating AudioContext
-// • Has ~600ms latency (3 chunks) — acceptable for radio
+// Latency design:
+// • A concurrency guard (decoding flag) ensures at most ONE
+//   decodeAudioData call is in flight at a time. If a chunk
+//   arrives while decoding, pendingDecode is set so the
+//   latest buffer is decoded the moment the current one
+//   finishes — no chunk is dropped, no two decoders race.
+// • Every chunk triggers a decode attempt, giving ~250ms
+//   max receive-to-play latency instead of the old ~500ms.
 //
 // Used by:
 //   - usePanicAudio.ts (panic broadcast + talk-back)
@@ -47,6 +50,13 @@ export class StreamPlayer {
   /** Track active source nodes for cleanup */
   private activeSources: AudioBufferSourceNode[] = [];
 
+  /** Guard: true while a decodeAudioData call is in flight */
+  private decoding = false;
+
+  /** Set when a chunk arrived while decoding was in progress.
+   *  The post-decode path runs one more decode to pick it up. */
+  private pendingDecode = false;
+
   /** Pre-warm the audio system. Call from a user gesture context
    *  (e.g. channel join click) to ensure audio playback is allowed. */
   static preWarm(): void {
@@ -60,7 +70,6 @@ export class StreamPlayer {
       src.start();
       // Close after a moment — we just needed to unlock audio
       setTimeout(() => ctx.close().catch(() => {}), 100);
-      // Audio pre-warmed successfully
     } catch {
       // Pre-warm failed — no user gesture context yet
     }
@@ -120,9 +129,12 @@ export class StreamPlayer {
       this.audioContext.resume().catch(() => {});
     }
 
-    // Decode and play every 2 chunks (~400ms of audio)
-    // Also decode on first chunk for minimum latency
-    if (this.chunkCount === 1 || this.chunkCount % 2 === 0) {
+    // Decode on every chunk. If a decode is already running, set a
+    // pending flag so the latest buffer is decoded once it finishes —
+    // no two decoders run concurrently and no chunk is silently dropped.
+    if (this.decoding) {
+      this.pendingDecode = true;
+    } else {
       this.decodeAndPlay();
     }
   }
@@ -130,9 +142,13 @@ export class StreamPlayer {
   /** Combine all chunks, decode with Web Audio API, play new portion */
   private async decodeAndPlay() {
     if (!this.audioContext) return;
+    this.decoding = true;
+    this.pendingDecode = false;
 
-    // Slice the pre-allocated buffer to the actual data length (no concatenation needed)
-    const combined = this.buffer.subarray(0, this.totalBytes);
+    // Snapshot byte length at decode start so we play exactly what we
+    // decoded even if more bytes arrive mid-await.
+    const snapshotBytes = this.totalBytes;
+    const combined = this.buffer.subarray(0, snapshotBytes);
 
     try {
       // decodeAudioData() can decode a complete WebM file (all chunks
@@ -147,51 +163,54 @@ export class StreamPlayer {
       const totalDuration = audioBuffer.duration;
       const newDuration = totalDuration - this.playedUpTo;
 
-      if (newDuration <= 0.01) return; // Nothing new to play
+      if (newDuration > 0.01) {
+        // Create a source node for the new portion
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(this.audioContext.destination);
 
-      // Create a source node for the new portion
-      const source = this.audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(this.audioContext.destination);
-
-      // Schedule playback of just the new portion
-      if (!this.isPlaying) {
-        // First decode — start playing immediately
-        this.playbackStartTime = this.audioContext.currentTime;
-        this.isPlaying = true;
-        source.start(0, this.playedUpTo);
-      } else {
-        // Schedule the new audio to start where the last decode left off
-        const scheduledTime = this.playbackStartTime + this.playedUpTo;
-        const now = this.audioContext.currentTime;
-
-        if (scheduledTime > now) {
-          // Schedule in the future (ideal — seamless continuation)
-          source.start(scheduledTime, this.playedUpTo);
+        // Schedule playback of just the new portion
+        if (!this.isPlaying) {
+          // First decode — start playing immediately
+          this.playbackStartTime = this.audioContext.currentTime;
+          this.isPlaying = true;
+          source.start(0, this.playedUpTo);
         } else {
-          // We're behind — skip ahead to stay close to real-time
-          const skipAmount = now - scheduledTime;
-          const newOffset = this.playedUpTo + skipAmount;
-          if (newOffset < totalDuration) {
-            source.start(0, newOffset);
+          // Schedule the new audio to start where the last decode left off
+          const scheduledTime = this.playbackStartTime + this.playedUpTo;
+          const now = this.audioContext.currentTime;
+
+          if (scheduledTime > now) {
+            // Schedule in the future (ideal — seamless continuation)
+            source.start(scheduledTime, this.playedUpTo);
+          } else {
+            // We're behind — skip ahead to stay close to real-time
+            const skipAmount = now - scheduledTime;
+            const newOffset = this.playedUpTo + skipAmount;
+            if (newOffset < totalDuration) {
+              source.start(0, newOffset);
+            }
           }
         }
+
+        this.activeSources.push(source);
+        this.playedUpTo = totalDuration;
+
+        // Clean up finished sources
+        source.onended = () => {
+          const idx = this.activeSources.indexOf(source);
+          if (idx !== -1) this.activeSources.splice(idx, 1);
+        };
       }
-
-      this.activeSources.push(source);
-      this.playedUpTo = totalDuration;
-
-      // Clean up finished sources
-      source.onended = () => {
-        const idx = this.activeSources.indexOf(source);
-        if (idx !== -1) this.activeSources.splice(idx, 1);
-      };
-    } catch (err) {
-      // decodeAudioData can fail if the buffer is too short or malformed
-      // This is expected on the very first chunk sometimes — just wait
-      // for more data
+    } catch {
       // decodeAudioData failures on early chunks are expected — need more data.
-      // Later failures may indicate malformed audio data.
+    } finally {
+      this.decoding = false;
+      // If a chunk arrived while we were decoding, run one more pass now
+      // so it's not stranded in the buffer waiting for the next chunk.
+      if (this.pendingDecode) {
+        this.decodeAndPlay();
+      }
     }
   }
 
@@ -214,5 +233,7 @@ export class StreamPlayer {
     this.playedUpTo = 0;
     this.playbackStartTime = 0;
     this.isPlaying = false;
+    this.decoding = false;
+    this.pendingDecode = false;
   }
 }

@@ -80,18 +80,18 @@ export default function WelfareCheckModal() {
       aria-modal="true"
       aria-labelledby="welfare-title"
       className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.92)' }}
+      style={{ background: 'rgba(0 0 0 / 0.92)' }}
     >
       <div
         className={`w-full max-w-xl border-4 p-6 space-y-5 ${urgent ? 'animate-pulse' : ''}`}
         style={{
           background: 'var(--surface-overlay)',
-          borderColor: urgent ? '#ef4444' : '#d4a017',
+          borderColor: urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)',
           borderRadius: 2,
-          boxShadow: `0 0 50px ${urgent ? '#ef4444' : '#d4a017'}`,
+          boxShadow: `0 0 50px ${urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)'}`,
         }}
       >
-        <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? '#ef4444' : '#d4a017' }}>
+        <div className="flex items-center gap-3 border-b pb-4" style={{ borderColor: urgent ? 'var(--sev-critical)' : 'var(--accent-silver-400)' }}>
           <Activity className={`w-9 h-9 ${urgent ? 'text-red-500' : 'text-brand-gold-500'}`} />
           <div className="flex-1">
             <div id="welfare-title" className="text-2xl font-black uppercase tracking-wider text-rmpg-100">
@@ -113,7 +113,7 @@ export default function WelfareCheckModal() {
         </div>
 
         {urgent && (
-          <div className="flex items-center gap-2 px-3 py-2 border" style={{ background: 'rgba(239,68,68,0.15)', borderColor: '#ef4444', borderRadius: 2 }}>
+          <div className="flex items-center gap-2 px-3 py-2 border" style={{ background: 'rgb(var(--sev-critical-rgb) / 0.15)', borderColor: 'var(--sev-critical)', borderRadius: 2 }}>
             <ShieldAlert className="w-4 h-4 text-red-500" />
             <span className="text-[11px] font-bold uppercase tracking-wider text-red-300">
               No response after 60 s — supervisor alerted.
@@ -128,7 +128,7 @@ export default function WelfareCheckModal() {
             disabled={submitting !== null}
             autoFocus
             className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: '#22c55e', color: '#0a0a0a', borderRadius: 2 }}
+            style={{ background: 'var(--sev-ok)', color: 'black', borderRadius: 2 }}
           >
             {submitting === 'ack' ? 'SENDING…' : 'CODE 4'}
           </button>
@@ -137,7 +137,7 @@ export default function WelfareCheckModal() {
             onClick={() => handle('help')}
             disabled={submitting !== null}
             className="py-4 text-base font-black uppercase tracking-wider disabled:opacity-50"
-            style={{ background: '#ef4444', color: '#0a0a0a', borderRadius: 2 }}
+            style={{ background: 'var(--sev-critical)', color: 'black', borderRadius: 2 }}
           >
             {submitting === 'help' ? 'BROADCASTING…' : 'NEED HELP'}
           </button>

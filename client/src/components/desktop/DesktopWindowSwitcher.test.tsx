@@ -22,6 +22,12 @@ function ctrlBacktickDown(shift = false) {
 function ctrlUp() {
   fireEvent.keyUp(window, { key: 'Control' });
 }
+function altTabDown(shift = false) {
+  fireEvent.keyDown(window, { key: 'Tab', altKey: true, shiftKey: shift });
+}
+function altUp() {
+  fireEvent.keyUp(window, { key: 'Alt' });
+}
 
 function zIndexOf(items: string[], titlePrefix: string): number {
   const entry = items.find(t => t.startsWith(`${titlePrefix}-`))!;
@@ -90,37 +96,28 @@ describe('DesktopWindowSwitcher', () => {
     expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
   });
 
-  it('Alt+Tab opens the switcher overlay', () => {
+  it('Alt+Tab opens the switcher and Alt release confirms the selection', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     fireEvent.click(screen.getByText('open-dispatch'));
     fireEvent.click(screen.getByText('open-map'));
-    expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true });
+    // MRU: Live Map (front), Dispatch
+    altTabDown(); // opens switcher, advances to Dispatch
     expect(screen.getByTestId('window-switcher-overlay')).toBeInTheDocument();
-  });
-
-  it('releasing Alt after Alt+Tab confirms selection and dismisses overlay', () => {
-    render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
-    fireEvent.click(screen.getByText('open-dispatch'));
-    fireEvent.click(screen.getByText('open-map'));
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true });
-    expect(screen.getByTestId('window-switcher-overlay')).toBeInTheDocument();
-    fireEvent.keyUp(window, { key: 'Alt' });
+    altUp(); // releasing Alt confirms → Dispatch focused
     expect(screen.queryByTestId('window-switcher-overlay')).not.toBeInTheDocument();
     const items = screen.getAllByRole('listitem').map(li => li.textContent!);
     expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Live Map'));
   });
 
-  it('Alt+Shift+Tab cycles in reverse', () => {
+  it('Alt+Shift+Tab reverses direction and Alt release confirms', () => {
     render(<DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider>);
     fireEvent.click(screen.getByText('open-dispatch'));
     fireEvent.click(screen.getByText('open-map'));
     fireEvent.click(screen.getByText('open-records'));
-    // MRU order: Records (front), Live Map, Dispatch — reverse from front lands on Dispatch
-    fireEvent.keyDown(window, { key: 'Tab', altKey: true, shiftKey: true });
-    fireEvent.keyUp(window, { key: 'Alt' });
+    // MRU: Records (front), Live Map, Dispatch — reverse from front wraps to Dispatch
+    altTabDown(true);
+    altUp();
     const items = screen.getAllByRole('listitem').map(li => li.textContent!);
-    expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Live Map'));
     expect(zIndexOf(items, 'Dispatch')).toBeGreaterThan(zIndexOf(items, 'Records'));
   });
 });

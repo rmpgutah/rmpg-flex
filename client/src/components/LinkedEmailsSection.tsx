@@ -41,7 +41,7 @@ function fmtDate(s: string | null): string {
   if (!s) return '';
   const d = parseTimestamp(s);
   if (Number.isNaN(d.getTime())) return s.slice(0, 16);
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail, title = 'Linked Emails', defaultOpen = false }: Props) {

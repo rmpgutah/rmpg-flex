@@ -175,7 +175,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
           {Object.entries(catSummary).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([cat, amt]) => {
             const meta = CATEGORY_META[cat as FleetExpenseCategory];
             return (
-              <div key={cat} className="bg-surface-base p-1.5 border border-[#222222]">
+              <div key={cat} className="bg-surface-base p-1.5 border border-[color:var(--border-subtle)]">
                 <div className={`text-[8px] ${meta?.color || 'text-rmpg-400'} font-bold uppercase`}>{meta?.label || cat}</div>
                 <div className="text-xs text-white font-mono">{fmtCurrency(amt)}</div>
               </div>
@@ -197,7 +197,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
         {expenses.length > 0 && (
           <button
             onClick={handlePdfExport}
-            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-raised text-rmpg-300 border border-[#222222] hover:bg-surface-base"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] bg-surface-raised text-rmpg-300 border border-[color:var(--border-subtle)] hover:bg-surface-base"
           >
             <FileText className="w-3 h-3" /> PDF Report
           </button>
@@ -206,7 +206,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
 
       {/* Add/Edit form */}
       {showForm && (
-        <div className="panel-beveled bg-surface-raised p-3 border border-[#222222] space-y-2">
+        <div className="panel-beveled bg-surface-raised p-3 border border-[color:var(--border-subtle)] space-y-2">
           <div className="text-[10px] font-bold text-accent-silver-400 uppercase">
             {editingId ? 'Edit Expense' : 'New Expense'}
           </div>
@@ -216,13 +216,13 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Date *</label>
               <input type="date" value={form.expense_date}
                 onChange={e => setForm(f => ({ ...f, expense_date: e.target.value }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white" />
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white" />
             </div>
             <div>
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Category *</label>
               <select value={form.category}
                 onChange={e => setForm(f => ({ ...f, category: e.target.value as FleetExpenseCategory }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white">
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white">
                 {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_META[c].label}</option>)}
               </select>
             </div>
@@ -230,25 +230,25 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Amount *</label>
               <input type="number" step="0.01" value={form.amount}
                 onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white" placeholder="0.00" />
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white" placeholder="0.00" />
             </div>
             <div>
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Vendor</label>
               <input type="text" value={form.vendor}
                 onChange={e => setForm(f => ({ ...f, vendor: e.target.value }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white" />
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white" />
             </div>
             <div>
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Description</label>
               <input type="text" value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white" />
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white" />
             </div>
             <div>
               <label className="block text-[8px] text-rmpg-500 uppercase mb-0.5">Odometer</label>
               <input type="number" value={form.odometer_reading}
                 onChange={e => setForm(f => ({ ...f, odometer_reading: e.target.value }))}
-                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white" />
+                className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white" />
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -261,7 +261,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
             {form.recurring && (
               <select value={form.recurring_frequency}
                 onChange={e => setForm(f => ({ ...f, recurring_frequency: e.target.value }))}
-                className="px-1.5 py-0.5 text-xs bg-surface-sunken border border-[#222222] text-white">
+                className="px-1.5 py-0.5 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white">
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
                 <option value="semi_annual">Semi-Annual</option>
@@ -274,7 +274,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
             <textarea value={form.notes}
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
               rows={2}
-              className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[#222222] text-white resize-none" />
+              className="w-full px-1.5 py-1 text-xs bg-surface-sunken border border-[color:var(--border-subtle)] text-white resize-none" />
           </div>
           <div className="flex items-center gap-2 pt-1">
             <button onClick={handleSave} disabled={saving}
@@ -282,7 +282,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
               {saving ? 'Saving...' : editingId ? 'Update' : 'Save'}
             </button>
             <button onClick={() => { setShowForm(false); setEditingId(null); setError(''); }}
-              className="px-3 py-1 text-[10px] bg-surface-sunken text-rmpg-400 border border-[#222222] hover:bg-surface-base">
+              className="px-3 py-1 text-[10px] bg-surface-sunken text-rmpg-400 border border-[color:var(--border-subtle)] hover:bg-surface-base">
               Cancel
             </button>
           </div>
@@ -301,7 +301,7 @@ export default function FleetExpensesTab({ vehicle, canManage }: Props) {
             const meta = CATEGORY_META[expense.category as FleetExpenseCategory] || CATEGORY_META.misc;
             const Icon = meta.icon;
             return (
-              <div key={expense.id} className="panel-beveled bg-surface-raised p-2 border border-[#222222] flex items-center gap-3">
+              <div key={expense.id} className="panel-beveled bg-surface-raised p-2 border border-[color:var(--border-subtle)] flex items-center gap-3">
                 <Icon className={`w-4 h-4 ${meta.color} flex-shrink-0`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">

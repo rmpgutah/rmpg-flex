@@ -43,12 +43,12 @@ function parseMs(iso: string | null | undefined): number | null {
 function fmtClock(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '··';
-  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false }); // new-date-ok
 }
 function fmtDateShort(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '—';
-  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }); // new-date-ok
 }
 
 /** TripPoint (API breadcrumb) → FixPoint (telemetry engine). Only `time → timestamp` differs. */
@@ -67,7 +67,7 @@ function toFixPoints(points: TripPoint[] | undefined): FixPoint[] {
 const HARSH_META = [
   { key: 'A', icon: TrendingUp, color: 'var(--sev-warn)', title: 'Hard accel' },
   { key: 'B', icon: TrendingDown, color: 'var(--sev-critical)', title: 'Hard brake' },
-  { key: 'C', icon: CornerUpRight, color: '#8b5cf6', title: 'Hard corner' },
+  { key: 'C', icon: CornerUpRight, color: 'rgb(139, 92, 246)', title: 'Hard corner' },
 ] as const;
 
 // One trip in the timeline. `active` pins it at the top with a live badge.
@@ -75,7 +75,7 @@ const HARSH_META = [
 // (no unit assigned) view so each trip says which unit ran it.
 function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void; onDelete?: (trip: Trip) => void }) {
   const isResponse = trip.trip_type === 'call_response';
-  const accent = isResponse ? 'var(--brand-gold)' : '#888888';
+  const accent = isResponse ? 'var(--brand-gold)' : 'var(--text-muted)';
   const mi = tripMiles(trip);
   const durMin = tripDurationMin(trip);
   const mph = tripMaxMph(trip);

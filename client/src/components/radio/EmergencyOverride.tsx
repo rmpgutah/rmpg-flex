@@ -95,10 +95,10 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
       className="rounded-[2px] p-2"
       style={{
         background: 'var(--surface-overlay)',
-        border: isActive ? '2px solid #dc2626' : '1px solid var(--border-subtle)',
+        border: isActive ? '2px solid var(--sev-critical)' : '1px solid var(--border-subtle)',
       }}
     >
-      <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
+      <div className="text-[9px] font-semibold text-fg-muted uppercase tracking-[0.5px] mb-1.5">
         EMERGENCY
       </div>
 
@@ -108,11 +108,11 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
           <div
             className="flex items-center justify-center gap-1.5 py-1.5 px-2 mb-2 rounded-[2px]"
             style={{
-              background: 'repeating-linear-gradient(45deg, #991b1b, #991b1b 8px, #7f1d1d 8px, #7f1d1d 16px)',
+              background: `repeating-linear-gradient(45deg, rgb(var(--sev-critical-rgb) / 0.8), rgb(var(--sev-critical-rgb) / 0.8) 8px, rgb(var(--sev-critical-rgb) / 0.55) 8px, rgb(var(--sev-critical-rgb) / 0.55) 16px)`,
             }}
           >
-            <AlertTriangle className="w-3.5 h-3.5 text-[#fbbf24] shrink-0" />
-            <span className="text-[10px] font-bold text-[#fbbf24] uppercase tracking-wide">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">
               EMERGENCY OVERRIDE ACTIVE
             </span>
           </div>
@@ -122,8 +122,8 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
             className="w-full py-1.5 rounded-[2px] text-[9px] font-bold uppercase tracking-wide transition-colors border"
             style={{
               background: 'var(--surface-base)',
-              color: '#dc2626',
-              borderColor: '#dc2626',
+              color: 'var(--sev-critical)',
+              borderColor: 'var(--sev-critical)',
             }}
           >
             END EMERGENCY
@@ -141,9 +141,9 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
               onTouchEnd={endHold}
               className="w-full py-3 rounded-[2px] cursor-pointer select-none relative overflow-hidden"
               style={{
-                background: 'repeating-linear-gradient(45deg, #991b1b, #991b1b 8px, #7f1d1d 8px, #7f1d1d 16px)',
-                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
-                border: '1px solid #450a0a',
+                background: `repeating-linear-gradient(45deg, rgb(var(--sev-critical-rgb) / 0.8), rgb(var(--sev-critical-rgb) / 0.8) 8px, rgb(var(--sev-critical-rgb) / 0.55) 8px, rgb(var(--sev-critical-rgb) / 0.55) 16px)`,
+                boxShadow: 'inset 0 2px 4px rgba(0 0 0 / 0.5)',
+                border: '1px solid var(--surface-sunken)',
               }}
               title="Hold 2 seconds to activate Emergency Override"
             >
@@ -153,14 +153,14 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
                   className="absolute left-0 bottom-0 h-1"
                   style={{
                     width: `${holdProgress * 100}%`,
-                    background: '#fbbf24',
+                    background: 'var(--sev-warn)',
                     transition: 'width 50ms linear',
                   }}
                 />
               )}
               <div className="flex flex-col items-center gap-1">
-                <AlertTriangle className="w-5 h-5 text-[#fbbf24]" />
-                <span className="text-[9px] font-bold text-[#fbbf24] uppercase tracking-wide">
+                <AlertTriangle className="w-5 h-5 text-amber-400" />
+                <span className="text-[9px] font-bold text-amber-400 uppercase tracking-wide">
                   HOLD TO ACTIVATE
                 </span>
               </div>

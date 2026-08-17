@@ -18,6 +18,7 @@ import { Hono } from 'hono';
 import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
+import { getServeConfig } from '../utils/serveConfig';
 import { toDenverWallClock } from '../utils/denverTime';
 import {
   optimizeRouteForServer as optimizeRoute,
@@ -745,6 +746,7 @@ sqe.post('/schedule-attempt', async (c) => {
   if (!body.scheduledDate) return c.json({ error: 'scheduledDate required' }, 400);
 
   const db = getDb(c.env);
+  const serveConfig = await getServeConfig(db);
 
   const queue = await queryFirst<{
     id: number;
@@ -778,9 +780,19 @@ sqe.post('/schedule-attempt', async (c) => {
   const minute = scheduledDateTime.getMinutes();
   const timeDecimal = hour + minute / 60;
 
-  if (isBusinessServe && (timeDecimal < 9 || timeDecimal > 17)) {
+  const parseTimeDecimal = (t: string): number => {
+    const [h, m] = t.split(':').map(Number);
+    return h + (m || 0) / 60;
+  };
+  const bizStart = parseTimeDecimal(serveConfig.business_hours_start);
+  const bizEnd = parseTimeDecimal(serveConfig.business_hours_end);
+  const dayOfWeek = scheduledDateTime.getDay();
+  const isAllowedDay = serveConfig.business_hours_days.includes(dayOfWeek);
+  if (isBusinessServe && (!isAllowedDay || timeDecimal < bizStart || timeDecimal > bizEnd)) {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const allowedDayStr = serveConfig.business_hours_days.map(d => dayNames[d]).join('/');
     return c.json({
-      error: 'Business serves must be scheduled during business hours (09:00–17:00)',
+      error: `Business serves must be scheduled during business hours (${serveConfig.business_hours_start}–${serveConfig.business_hours_end}, ${allowedDayStr})`,
       warning: 'Time window outside business hours for this document type',
     }, 400);
   }

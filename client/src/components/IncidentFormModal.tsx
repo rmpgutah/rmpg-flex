@@ -1493,7 +1493,7 @@ export default function IncidentFormModal({
               type="button"
               className="toolbar-btn text-[9px]"
               onClick={() => {
-                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString()}\nWitness Contact: `;
+                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}\nWitness Contact: `;
                 update('narrative', formData.narrative + (formData.narrative ? '\n\n' : '') + template);
               }}
             >

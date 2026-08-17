@@ -136,7 +136,7 @@ export default function EquipmentDetailTab({
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const typeLabel = (type: string) =>

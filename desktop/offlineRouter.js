@@ -137,6 +137,23 @@ function handle(method, fullPath, body) {
       return handleGetGpsTrail(query);
     }
 
+    // ─── Process Server (serve queue + attempts) ──────────
+    if (method === 'GET' && path === '/api/process-server') {
+      return handleGetServeQueue(query);
+    }
+    if (method === 'GET' && path.match(/^\/api\/process-server\/\d+$/)) {
+      return handleGetServeJobById(path.split('/').pop());
+    }
+    if (method === 'GET' && path.match(/^\/api\/process-server\/\d+\/attempts$/)) {
+      return handleGetServeAttempts(path.split('/')[3]);
+    }
+    if (method === 'POST' && path.match(/^\/api\/process-server\/\d+\/attempt$/)) {
+      return handleCreateServeAttempt(path.split('/')[3], body);
+    }
+    if (method === 'PUT' && path.match(/^\/api\/process-server\/\d+\/status$/)) {
+      return handleUpdateServeStatus(path.split('/')[3], body);
+    }
+
     return { status: 503, error: 'Endpoint not available offline' };
   } catch (err) {
     console.error(`[OFFLINE-ROUTER] Error handling ${method} ${path}:`, err.message);
@@ -504,8 +521,17 @@ function handleClockOut(body) {
   if (!active) return { status: 404, error: 'No active time entry found' };
 
   const clockOut = body.clock_out || now;
-  const clockInMs = new Date(active.clock_in).getTime();
-  const clockOutMs = new Date(clockOut).getTime();
+  // D1 timestamps are stored as naive UTC (e.g. "2026-08-12 14:30:00") without
+  // a 'Z' suffix. new Date() on such a string parses it as LOCAL time in Node.js,
+  // causing up to 7h error vs the ISO Z-string from Date.prototype.toISOString().
+  // Normalize by replacing the space with 'T' and appending 'Z' if absent.
+  function parseD1Ts(ts) {
+    if (!ts) return NaN;
+    const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    return new Date(normalized.endsWith('Z') ? normalized : normalized + 'Z').getTime();
+  }
+  const clockInMs = parseD1Ts(active.clock_in);
+  const clockOutMs = parseD1Ts(clockOut);
   const totalHours = Math.max(0, (clockOutMs - clockInMs) / 3600000);
 
   db.prepare(`
@@ -725,6 +751,139 @@ function handleGetGpsTrail(query) {
   sql += ' ORDER BY recorded_at DESC LIMIT ?';
   params.push(parseInt(query.limit) || 500);
   return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: GET /api/process-server ────────────────────────
+
+function handleGetServeQueue(query) {
+  const db = getLocalDb();
+  const userId = getConfig('current_user_id');
+  let sql = 'SELECT * FROM serve_queue WHERE 1=1';
+  const params = [];
+
+  if (query.officer_id) {
+    sql += ' AND officer_id = ?';
+    params.push(parseInt(query.officer_id));
+  } else if (userId) {
+    // Default to the current officer's own queue so My Run works offline
+    sql += ' AND officer_id = ?';
+    params.push(parseInt(userId));
+  }
+
+  if (query.status) {
+    sql += ' AND status = ?';
+    params.push(query.status);
+  }
+
+  sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC LIMIT ?';
+  params.push(parseInt(query.limit) || 200);
+
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: GET /api/process-server/:id ────────────────────
+
+function handleGetServeJobById(id) {
+  const db = getLocalDb();
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(parseInt(id));
+  if (!job) return { status: 404, error: 'Job not found' };
+  return { status: 200, data: job };
+}
+
+// ─── Handler: GET /api/process-server/:id/attempts ───────────
+
+function handleGetServeAttempts(jobId) {
+  const db = getLocalDb();
+  const attempts = db.prepare(
+    'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at ASC'
+  ).all(parseInt(jobId));
+  return { status: 200, data: attempts };
+}
+
+// ─── Handler: POST /api/process-server/:id/attempt ───────────
+
+function handleCreateServeAttempt(jobId, body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+  const localId = `serve-attempt-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const jobIdInt = parseInt(jobId);
+
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(jobIdInt);
+  if (!job) return { status: 404, error: 'Job not found offline' };
+
+  const nextAttemptNumber = (job.attempt_count || 0) + 1;
+
+  db.prepare(`
+    INSERT INTO serve_attempts
+      (local_id, serve_queue_id, attempt_number, attempt_at, officer_id,
+       result, latitude, longitude, notes, attempt_type, photo_ids,
+       signature_data, planned_at, window, status, is_dirty, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+  `).run(
+    localId,
+    jobIdInt,
+    nextAttemptNumber,
+    body.attempt_at || now,
+    body.officer_id || getConfig('current_user_id'),
+    body.result || null,
+    body.latitude || null,
+    body.longitude || null,
+    body.notes || null,
+    body.attempt_type || null,
+    JSON.stringify(body.photo_ids || []),
+    body.signature_data || null,
+    body.planned_at || null,
+    body.window || null,
+    body.status || 'attempted',
+    now,
+  );
+
+  // Derive new queue_status from the attempt result so My Run tab sees it
+  const resultToStatus = { served: 'served', failed: 'failed', skipped: 'skipped' };
+  const newStatus = resultToStatus[body.result] || job.status;
+
+  db.prepare(`
+    UPDATE serve_queue
+    SET attempt_count = attempt_count + 1, status = ?, updated_at = ?, is_dirty = 1
+    WHERE id = ?
+  `).run(newStatus, now, jobIdInt);
+
+  enqueue(
+    'POST',
+    `/api/process-server/${jobId}/attempt`,
+    { ...body, attempt_at: body.attempt_at || now },
+    localId,
+    'serve_attempts',
+  );
+
+  const created = db.prepare('SELECT * FROM serve_attempts WHERE local_id = ?').get(localId);
+  return { status: 201, data: { ...created, queue_status: newStatus } };
+}
+
+// ─── Handler: PUT /api/process-server/:id/status ─────────────
+
+function handleUpdateServeStatus(jobId, body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+  const jobIdInt = parseInt(jobId);
+
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(jobIdInt);
+  if (!job) return { status: 404, error: 'Job not found offline' };
+
+  const newStatus = body.status || job.status;
+  db.prepare(
+    `UPDATE serve_queue SET status = ?, updated_at = ?, is_dirty = 1 WHERE id = ?`
+  ).run(newStatus, now, jobIdInt);
+
+  enqueue(
+    'PUT',
+    `/api/process-server/${jobId}/status`,
+    body,
+    null,
+    'serve_queue',
+  );
+
+  return { status: 200, data: { id: jobIdInt, status: newStatus } };
 }
 
 // ─── Utility ─────────────────────────────────────────────────

@@ -374,7 +374,7 @@ export default function FleetPersonnelTab({
                           className="h-full transition-all duration-300"
                           style={{
                             width: `${dlProgress}%`,
-                            background: dlDays != null && dlDays < 0 ? '#ef4444' : dlDays != null && dlDays < 90 ? '#f59e0b' : '#22c55e',
+                            background: dlDays != null && dlDays < 0 ? 'var(--sev-critical)' : dlDays != null && dlDays < 90 ? 'var(--sev-warn)' : 'var(--sev-ok)',
                           }}
                         />
                       </div>
@@ -462,7 +462,7 @@ export default function FleetPersonnelTab({
                     )}
                     <span className="text-[8px] text-rmpg-600 font-mono ml-auto">{formatMilitary(n.created_at)}</span>
                   </div>
-                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note || (n as any).content}</p>
+                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note || n.content}</p>
                 </div>
                 <button type="button"
                   className="flex-shrink-0 p-1 text-rmpg-600 hover:text-red-400 transition-colors"
@@ -492,7 +492,7 @@ export default function FleetPersonnelTab({
         ) : (
           <div className="p-3">
             <div className="relative">
-              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #242424)' }} />
+              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, var(--surface-sunken))' }} />
               <div className="space-y-1.5">
                 {assignments.slice(0, 10).map((a) => {
                   const isActive = !a.unassigned_at;

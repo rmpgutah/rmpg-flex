@@ -55,7 +55,12 @@ units.get('/', async (c) => {
         te.id as active_shift_id, te.clock_in,
         CAST((julianday('now') - julianday(te.clock_in)) * 24 AS REAL) as shift_hours_elapsed,
         (SELECT cpg.cpg_device_id FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_device_id,
-        (SELECT cpg.ignition_state FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_ignition_state
+        (SELECT cpg.ignition_state FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_ignition_state,
+        (SELECT json_array_length(sr.optimized_order_json)
+           FROM serve_routes sr
+          WHERE sr.officer_id = usr.id
+            AND sr.route_date = ${denverNow}
+          ORDER BY sr.id DESC LIMIT 1) as ps_route_stops
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id

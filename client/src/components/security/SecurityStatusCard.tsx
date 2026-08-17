@@ -104,10 +104,7 @@ export default function SecurityStatusCard() {
         </div>
         <div className="flex items-center gap-1.5">
           <span className={ledClass(score.led)} />
-          <span
-            className="text-[9px] font-bold uppercase tracking-wider"
-            style={{ color: score.color }}
-          >
+          <span className={`text-[9px] font-bold uppercase tracking-wider ${score.textClass}`}>
             {score.label}
           </span>
         </div>
@@ -116,13 +113,12 @@ export default function SecurityStatusCard() {
       {/* Warning banner if critical */}
       {score.warning && (
         <div
-          className="flex items-start gap-2 px-3 py-2"
-          style={{ background: 'rgba(239, 68, 68, 0.08)', borderBottom: '1px solid rgba(239, 68, 68, 0.2)' }}
+          className="flex items-start gap-2 px-3 py-2 bg-red-500/[0.08] border-b border-red-500/20"
           role="alert"
           aria-live="assertive"
         >
-          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
-          <span className="text-[10px]" style={{ color: '#fca5a5' }}>{score.warning}</span>
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-red-500" />
+          <span className="text-[10px] text-red-300">{score.warning}</span>
         </div>
       )}
 
@@ -135,7 +131,7 @@ export default function SecurityStatusCard() {
               {item.icon}
             </div>
             <div className="flex-1 min-w-0">
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#888888' }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-fg-muted">
                 {item.label}
               </span>
             </div>
@@ -144,7 +140,7 @@ export default function SecurityStatusCard() {
                 {item.value}
               </span>
               {item.detail && (
-                <div className="text-[9px]" style={{ color: '#d4a017' }}>{item.detail}</div>
+                <div className="text-[9px] text-amber-400">{item.detail}</div>
               )}
             </div>
           </div>
@@ -157,7 +153,7 @@ export default function SecurityStatusCard() {
           className="px-3 py-1.5 text-[9px] font-mono"
           style={{ borderTop: '1px solid var(--border-default)', color: 'var(--text-muted)' }}
         >
-          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
+          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
         </div>
       )}
     </div>
@@ -171,24 +167,24 @@ function formatExpiry(dateStr: string): string {
   if (days <= 0) return 'now';
   if (days === 1) return 'tomorrow';
   if (days <= 7) return `in ${days} days`;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
-function computeScore(s: SecurityStatus): { label: string; led: string; color: string; warning?: string } {
+function computeScore(s: SecurityStatus): { label: string; led: string; textClass: string; warning?: string } {
   if (s.passwordExpired) {
-    return { label: 'Critical', led: 'led-red', color: '#ef4444', warning: 'Your password has expired. Change it immediately.' };
+    return { label: 'Critical', led: 'led-red', textClass: 'text-red-500', warning: 'Your password has expired. Change it immediately.' };
   }
   if (!s.totpEnabled && !s.totpSetupRequired) {
-    return { label: 'At Risk', led: 'led-red', color: '#ef4444', warning: 'Two-factor authentication is not configured.' };
+    return { label: 'At Risk', led: 'led-red', textClass: 'text-red-500', warning: 'Two-factor authentication is not configured.' };
   }
   if (s.backupCodesRemaining === 0) {
-    return { label: 'Warning', led: 'led-amber', color: '#f59e0b', warning: 'No backup codes remaining. Regenerate them now.' };
+    return { label: 'Warning', led: 'led-amber', textClass: 'text-amber-400', warning: 'No backup codes remaining. Regenerate them now.' };
   }
   if (s.passwordExpiringSoon || s.backupCodesRemaining <= 2) {
-    return { label: 'Attention', led: 'led-amber', color: '#f59e0b' };
+    return { label: 'Attention', led: 'led-amber', textClass: 'text-amber-400' };
   }
   if (s.totpEnabled && s.backupCodesRemaining >= 5) {
-    return { label: 'Secure', led: 'led-green', color: '#22c55e' };
+    return { label: 'Secure', led: 'led-green', textClass: 'text-green-500' };
   }
-  return { label: 'Good', led: 'led-green', color: '#22c55e' };
+  return { label: 'Good', led: 'led-green', textClass: 'text-green-500' };
 }

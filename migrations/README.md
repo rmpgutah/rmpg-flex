@@ -145,3 +145,10 @@ The script scans all `migrations/*.sql`, extracts every `CREATE TABLE` and `ALTE
 CI runs this against remote D1 on every deploy to catch the `continue-on-error` trap before it drifts.
 
 If you're reading older PR descriptions or memory that references the dirty-schema state, it's historical context — the tracker is honest again.
+
+## Local-only migrations (do NOT apply to Cloudflare D1)
+
+| File | Reason |
+|------|--------|
+| `0249_sync_queue.sql` | FZ-55 local sync queue — no meaning on D1 |
+| `0250_sync_conflicts.sql` | FZ-55 conflict audit trail — no meaning on D1 |

@@ -541,7 +541,17 @@ export default function CommunicationsPage() {
     else if (activePanel === 'bolos') fetchBolos({ silent: true });
     else if (activePanel === 'activity') fetchActivity({ silent: true });
   }, [activePanel, fetchMessages, fetchBolos, fetchActivity]);
-  useLiveSync('dispatch', silentRefreshComms);
+  // Subscribe to the 'comms' WS module (server broadcasts data_changed {module:'comms'}
+  // after every send/emergency-broadcast). This is best-effort; the poll below is the
+  // guaranteed freshness path for clients in different isolates.
+  useLiveSync('comms', silentRefreshComms);
+
+  // Polling fallback — ensures cross-device freshness even when WS misses (per-isolate)
+  useEffect(() => {
+    const POLL_MS = 15_000;
+    const timer = setInterval(silentRefreshComms, POLL_MS);
+    return () => clearInterval(timer);
+  }, [silentRefreshComms]);
 
   // ============================================================
   // Actions
@@ -1139,7 +1149,7 @@ export default function CommunicationsPage() {
           )}
           <span className="text-rmpg-400 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
-            {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+            {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false })}
           </span>
         </div>
       </div>
@@ -1626,7 +1636,7 @@ export default function CommunicationsPage() {
                   // yellow-500 / green-500 in CSS, but inline-style needs a
                   // value, not a class). Kept verbatim to match the
                   // priority-badge palette used elsewhere on this page.
-                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
+                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? 'var(--sev-critical)' : bolo.priority === 'P2' ? 'var(--sev-high)' : bolo.priority === 'P3' ? 'var(--sev-caution)' : 'var(--sev-ok)' }}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">

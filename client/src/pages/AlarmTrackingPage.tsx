@@ -291,11 +291,11 @@ export default function AlarmTrackingPage() {
     if (permitSearch) {
       const q = permitSearch.toLowerCase();
       return (
-        p.permit_number.toLowerCase().includes(q) ||
-        p.location_name.toLowerCase().includes(q) ||
-        p.location_address.toLowerCase().includes(q) ||
-        p.alarm_company.toLowerCase().includes(q) ||
-        p.contact_name.toLowerCase().includes(q)
+        (p.permit_number?.toLowerCase() ?? '').includes(q) ||
+        (p.location_name?.toLowerCase() ?? '').includes(q) ||
+        (p.location_address?.toLowerCase() ?? '').includes(q) ||
+        (p.alarm_company?.toLowerCase() ?? '').includes(q) ||
+        (p.contact_name?.toLowerCase() ?? '').includes(q)
       );
     }
     return true;

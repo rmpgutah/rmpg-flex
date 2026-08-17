@@ -55,7 +55,7 @@ const emptyForm: FormState = {
   description: '',
   frequency: '',
   talkgroup: '',
-  color: '#d4a017',
+  color: 'var(--field-label-color)',
   sort_order: 0,
 };
 

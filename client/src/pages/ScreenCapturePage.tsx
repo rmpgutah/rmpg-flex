@@ -60,6 +60,7 @@ function buildFilename(): string {
 function formatTimestamp(ts: string): string {
   try {
     return parseTimestamp(ts).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
     });
   } catch {
@@ -81,6 +82,7 @@ function buildWatermarkText(): string {
     }
   })();
   const ts = new Date().toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: '2-digit', day: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
@@ -203,9 +205,18 @@ export default function ScreenCapturePage() {
 
   const handleSave = useCallback(async () => {
     if (!capturedImage) return;
+    const el = (window as any).electron;
+    // Guard: saveScreenshot must exist in the preload bridge. Without this check
+    // the optional-chain returns undefined instead of throwing, so the code falls
+    // through and reports "Saved" even though no file was written — a silent false
+    // success with real evidence-chain implications.
+    if (!el?.saveScreenshot) {
+      flash('Save is not available in this version of the desktop app.', 'err');
+      return;
+    }
     const filename = buildFilename();
     try {
-      await (window as any).electron?.saveScreenshot?.(capturedImage, filename);
+      await el.saveScreenshot(capturedImage, filename);
       const fresh: RecentCapture = { timestamp: new Date().toISOString(), filename };
       const updated = [fresh, ...recentCaptures].slice(0, MAX_RECENT);
       setRecentCaptures(updated);
@@ -220,8 +231,16 @@ export default function ScreenCapturePage() {
 
   const handleCopy = useCallback(async () => {
     if (!capturedImage) return;
+    const el = (window as any).electron;
+    // Same guard as handleSave: copyToClipboard is not in the current preload;
+    // without the check the optional-chain silently returns undefined and the
+    // flash reports "Copied to clipboard." when nothing was actually written.
+    if (!el?.copyToClipboard) {
+      flash('Clipboard copy is not available in this version of the desktop app.', 'err');
+      return;
+    }
     try {
-      await (window as any).electron?.copyToClipboard?.(capturedImage);
+      await el.copyToClipboard(capturedImage);
       flash('Copied to clipboard.', 'ok');
     } catch (err: any) {
       flash(`Copy failed: ${err?.message ?? 'unknown'}`, 'err');
@@ -407,7 +426,7 @@ export default function ScreenCapturePage() {
           fontSize: 11, padding: '4px 10px', borderRadius: 2,
           background: statusType === 'ok' ? 'var(--sev-ok-bg, rgba(34,197,94,0.12))' :
             statusType === 'err' ? 'rgba(239,68,68,0.12)' : 'var(--surface-raised)',
-          color: statusType === 'ok' ? 'var(--sev-ok, #22c55e)' :
+          color: statusType === 'ok' ? 'var(--sev-ok, var(--sev-ok))' :
             statusType === 'err' ? 'var(--sev-critical)' : 'var(--text-secondary)',
           border: '1px solid',
           borderColor: statusType === 'ok' ? 'rgba(34,197,94,0.3)' :
@@ -488,8 +507,8 @@ export default function ScreenCapturePage() {
                     style={{
                       fontSize: 11, padding: '2px 6px', borderRadius: 2,
                       border: '1px solid var(--accent-silver-400)',
-                      background: 'rgba(0,0,0,0.75)',
-                      color: '#ffffff',
+                      background: 'rgba(0 0 0 / 0.75)',
+                      color: 'var(--text-primary)',
                       outline: 'none',
                       minWidth: 100,
                     }}
@@ -498,8 +517,8 @@ export default function ScreenCapturePage() {
                   <div
                     style={{
                       display: 'flex', alignItems: 'center', gap: 4,
-                      background: 'rgba(0,0,0,0.72)',
-                      color: '#ffffff',
+                      background: 'rgba(0 0 0 / 0.72)',
+                      color: 'var(--text-primary)',
                       fontSize: 11,
                       padding: '2px 6px',
                       borderRadius: 2,
@@ -530,7 +549,7 @@ export default function ScreenCapturePage() {
                   top: `${box.y}%`,
                   width: `${box.width}%`,
                   height: `${box.height}%`,
-                  border: '2px solid #ef4444',
+                  border: '2px solid var(--sev-critical)',
                   borderRadius: 1,
                   pointerEvents: 'none',
                   zIndex: 9,
@@ -542,7 +561,7 @@ export default function ScreenCapturePage() {
                     position: 'absolute', top: -10, right: -10,
                     width: 16, height: 16,
                     borderRadius: '50%',
-                    background: '#ef4444',
+                    background: 'var(--sev-critical)',
                     color: '#fff',
                     border: 'none',
                     fontSize: 10,
@@ -566,7 +585,7 @@ export default function ScreenCapturePage() {
                   top: `${activeBox.y}%`,
                   width: `${activeBox.width}%`,
                   height: `${activeBox.height}%`,
-                  border: '2px dashed #ef4444',
+                  border: '2px dashed var(--sev-critical)',
                   borderRadius: 1,
                   pointerEvents: 'none',
                   zIndex: 11,
@@ -582,7 +601,7 @@ export default function ScreenCapturePage() {
                 left: 8,
                 fontSize: 10,
                 padding: '2px 6px',
-                background: 'rgba(0,0,0,0.6)',
+                background: 'rgba(0 0 0 / 0.6)',
                 color: 'rgba(255,255,255,0.85)',
                 borderRadius: 1,
                 pointerEvents: 'none',

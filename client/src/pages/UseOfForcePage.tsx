@@ -101,7 +101,7 @@ const CAN_DELETE_ROLES = new Set(['admin', 'manager']);
 
 // Status colour tokens — CSS variables so the chip re-themes between
 // night (steel-blue) and day (light-grey). Pre-v1061 these were hard
-// hex (#888888 / #22c55e / #f59e0b), which broke the day theme.
+// hex (var(--text-secondary) / var(--sev-ok) / var(--sev-warn)), which broke the day theme.
 // Resolves via Tailwind's text-* / bg-* utilities at runtime.
 type StatusTone = 'neutral' | 'warning' | 'success';
 const STATUS_TONE: Record<string, StatusTone> = {

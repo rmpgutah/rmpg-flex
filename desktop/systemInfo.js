@@ -110,10 +110,31 @@ function parsePmsetBatteryOutput(rawOutput) {
   return { percent: Number(match[1]), charging: match[2] === 'charging' };
 }
 
+// Sample CPU usage over a 100ms window via two os.cpus() snapshots.
+// Returns a 0-100 integer (whole-system average across all cores).
+function getCpuUsagePercent(osModule) {
+  return new Promise((resolve) => {
+    const start = osModule.cpus();
+    setTimeout(() => {
+      const end = osModule.cpus();
+      let idle = 0, total = 0;
+      for (let i = 0; i < start.length; i++) {
+        for (const type of Object.keys(end[i].times)) {
+          const delta = end[i].times[type] - start[i].times[type];
+          total += delta;
+          if (type === 'idle') idle += delta;
+        }
+      }
+      resolve(total > 0 ? Math.round(100 * (1 - idle / total)) : 0);
+    }, 100);
+  });
+}
+
 module.exports = {
   getDiskBytes,
   getDiskFreeBytes,
   formatSystemInfo,
+  getCpuUsagePercent,
   appendToLogFile,
   tailLogFile,
   getLogsDirectory,

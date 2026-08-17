@@ -704,7 +704,7 @@ export default function NavMapView({
     const pin: DroppedPin = {
       lat: position.latitude,
       lng: position.longitude,
-      label: `Pin ${new Date().toLocaleTimeString()}`,
+      label: `Pin ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })}`,
       color: palette[Math.floor(Math.random() * palette.length)],
       created_at: new Date().toISOString(),
     };
@@ -730,7 +730,7 @@ export default function NavMapView({
           <div ref={insetContainerRef} className="absolute inset-0" />
           <span
             className="absolute top-0 left-0 px-1 text-[7px] font-mono uppercase tracking-wider"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#d4a017' }}
+            style={{ background: 'rgba(0 0 0 / 0.7)', color: 'var(--field-label-color)' }}
           >
             3D
           </span>
@@ -740,14 +740,14 @@ export default function NavMapView({
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-3 text-center" style={{ background: 'rgba(10,10,10,0.85)' }}>
           <div>
-            <AlertCircle size={20} className="mx-auto mb-1" style={{ color: '#ef4444' }} />
+            <AlertCircle size={20} className="mx-auto mb-1" style={{ color: 'var(--sev-critical)' }} />
             <p className="text-[10px]" style={{ color: '#888' }}>{error}</p>
           </div>
         </div>
       )}
 
       {!position && !error && mapReady && (
-        <div className="absolute top-2 left-2 right-2 px-2 py-1 text-center rounded-sm text-[10px] font-mono" style={{ background: 'rgba(0,0,0,0.65)', color: '#888' }}>
+        <div className="absolute top-2 left-2 right-2 px-2 py-1 text-center rounded-sm text-[10px] font-mono" style={{ background: 'rgba(0 0 0 / 0.65)', color: '#888' }}>
           Waiting for GPS fix…
         </div>
       )}
@@ -822,7 +822,7 @@ export default function NavMapView({
               type="button"
               onClick={() => setStyleMenuOpen((v) => !v)}
               className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#d4a017' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--field-label-color)' }}
               title="Map style"
             >
               <Layers size={14} />
@@ -850,7 +850,7 @@ export default function NavMapView({
               type="button"
               onClick={handleDropPin}
               className="absolute bottom-2 left-12 w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#22c55e' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--sev-ok)' }}
               title="Drop a pin at your current position"
             >
               <MapPin size={14} />
@@ -863,8 +863,8 @@ export default function NavMapView({
             className="absolute right-12 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider"
             style={{ background: 'rgba(10,10,10,0.85)', color: '#888', bottom: lowPower ? 8 : 84, zIndex: 3 }}
           >
-            <span style={{ color: '#d4a017' }}>●</span> You
-            {pins.length > 0 && <span className="ml-1.5"><span style={{ color: '#22c55e' }}>●</span> Pin</span>}
+            <span style={{ color: 'var(--field-label-color)' }}>●</span> You
+            {pins.length > 0 && <span className="ml-1.5"><span style={{ color: 'var(--sev-ok)' }}>●</span> Pin</span>}
           </div>
         </>
       )}

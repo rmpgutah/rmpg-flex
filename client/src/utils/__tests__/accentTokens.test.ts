@@ -571,6 +571,26 @@ describe('bare --rmpg-500/600 occurrence ratchet', () => {
         + 'start (so that https:// survives), so this one legitimately still counts. jsPDF '
         + 'takes literal colours and the file is classifier-excluded either way.',
     },
+    'pages/intel/IntelReportDetailPage.tsx': {
+      count: 3,
+      why: 'CTA button backgrounds (GRADE, SAVE ANALYSIS, DISSEMINATE) — surface/graphic use, '
+        + 'not text colour. Replacing gold two-roles violations; var() so it re-themes.',
+    },
+    'pages/intel/IntelReportsPage.tsx': {
+      count: 1,
+      why: 'NEW REPORT CTA button background — surface/graphic use, not text colour. '
+        + 'Replacing gold two-roles violation; var() so it re-themes.',
+    },
+    'pages/intel/IntelSourcesPage.tsx': {
+      count: 1,
+      why: 'ADD SOURCE CTA button background — surface/graphic use, not text colour. '
+        + 'Replacing gold two-roles violation; var() so it re-themes.',
+    },
+    'pages/intel/NewIntelReportPage.tsx': {
+      count: 1,
+      why: 'Submit report CTA button background — surface/graphic use, not text colour. '
+        + 'Replacing gold two-roles violation; var() so it re-themes.',
+    },
     // NO 'utils/withAlpha.ts' ENTRY — deliberately, and this is the second time it
     // has been removed. Its 6 occurrences are JSDoc prose, and since #3042 taught
     // the scan to stripComments() first they no longer count, so the pin reads
@@ -715,7 +735,7 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // text-fg-muted, and de-duplicating the Blocked IPs card — it was
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
-  const PIN = 10493;
+  const PIN = 10244;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

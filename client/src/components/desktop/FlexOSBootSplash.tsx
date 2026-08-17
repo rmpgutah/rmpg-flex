@@ -45,9 +45,13 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
     return () => clearTimeout(t);
   }, [ready]);
 
-  // Notify parent once fade finishes
-  const handleTransitionEnd = () => {
-    if (fading) onFaded();
+  // Notify parent once fade finishes.
+  // Guard on propertyName + target: the child progress bar has a `width`
+  // transition that also bubbles to this handler. If fading is already true
+  // when the width transition ends (~500 ms), onFaded fires before the opacity
+  // animation (~800 ms) completes, causing the splash to disappear mid-fade.
+  const handleTransitionEnd = (e: React.TransitionEvent<HTMLDivElement>) => {
+    if (fading && e.propertyName === 'opacity' && e.target === e.currentTarget) onFaded();
   };
 
   return (
@@ -59,7 +63,7 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
         position: 'fixed',
         inset: 0,
         zIndex: 10000, // above everything including lock screen
-        background: 'var(--surface-base, #22405f)',
+        background: 'var(--surface-base)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -82,16 +86,16 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        boxShadow: '0 8px 32px var(--desktop-shell-accent-shadow)',
       }}>
-        <Shield style={{ width: 40, height: 40, color: 'var(--accent-silver-300, #d4dde6)' }} />
+        <Shield style={{ width: 40, height: 40, color: 'var(--accent-silver-300)' }} />
       </div>
 
       {/* OS name */}
-      <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary, #f0f4f9)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+      <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
         FlexOS
       </div>
-      <div style={{ fontSize: 11, color: 'var(--text-muted, #8da0b3)', marginTop: 6, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
         Rocky Mountain Protective Group
       </div>
 
@@ -110,7 +114,7 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
           left: 0,
           height: '100%',
           width: `${((phase + 1) / PHASES.length) * 100}%`,
-          background: 'var(--accent-silver-400, #c3ccd6)',
+          background: 'var(--accent-silver-400)',
           transition: 'width 500ms ease',
         }} />
       </div>
@@ -119,7 +123,7 @@ export default function FlexOSBootSplash({ ready, onFaded }: FlexOSBootSplashPro
       <div style={{
         marginTop: 12,
         fontSize: 10,
-        color: 'var(--text-muted, #8da0b3)',
+        color: 'var(--text-muted)',
         letterSpacing: '0.04em',
         minHeight: 16,
         transition: 'opacity 300ms',

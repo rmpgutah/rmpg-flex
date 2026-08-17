@@ -30,7 +30,7 @@ function daysUntil(dateStr: string | null): number | null {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   try {
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return d; }
 }
 

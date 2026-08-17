@@ -274,7 +274,7 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
   const time = useMemo(() => {
-    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
+    try { return parseTimestamp(tx.transmitted_at).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
   // The list is correctly ordered DESC by full transmitted_at, but with
   // only a bare HH:MM:SS shown, rows from different days look randomly
@@ -394,7 +394,7 @@ function PttBar({ channelSelected, voice }: {
   }
 
   const receiving = !!voice.activeSpeaker && !voice.transmitting;
-  const dot = voice.transmitting ? 'var(--rt-tx)' : receiving ? '#22c55e' : voice.connected ? 'var(--rt-accent)' : 'var(--rt-muted)';
+  const dot = voice.transmitting ? 'var(--rt-tx)' : receiving ? 'var(--rt-led-on)' : voice.connected ? 'var(--rt-accent)' : 'var(--rt-muted)';
   const status = !voice.supported ? 'MIC UNSUPPORTED'
     : !voice.connected ? 'CONNECTING…'
     : voice.transmitting ? 'ON AIR'
@@ -408,6 +408,7 @@ function PttBar({ channelSelected, voice }: {
     onMouseLeave: () => voice.pttUp(),
     onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); voice.pttDown(); },
     onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); voice.pttUp(); },
+    onTouchCancel: (e: React.TouchEvent) => { e.preventDefault(); voice.pttUp(); },
   };
   const disabled = !voice.supported || !voice.connected || receiving;
 
@@ -423,7 +424,7 @@ function PttBar({ channelSelected, voice }: {
         className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono font-bold tracking-wider uppercase select-none"
         style={{
           border: `1px solid ${voice.transmitting ? 'var(--rt-tx)' : 'var(--rt-border)'}`,
-          color: voice.transmitting ? '#000' : disabled ? 'var(--rt-muted)' : 'var(--rt-text)',
+          color: voice.transmitting ? 'black' : disabled ? 'var(--rt-muted)' : 'var(--rt-text)',
           background: voice.transmitting ? 'var(--rt-tx)' : 'transparent',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.5 : 1,

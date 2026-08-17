@@ -13,7 +13,7 @@ export default function OnFootBadge({ since, onClick }: { since?: string | null;
   return (
     <span
       className="inline-flex items-center gap-0.5 px-1 py-0 text-[9px] font-black font-mono uppercase tracking-wider cursor-pointer"
-      style={{ color: '#d4a017', border: '1px solid #d4a01740', background: '#d4a01712' }}
+      style={{ color: 'var(--field-label-color)', border: '1px solid #d4a01740', background: '#d4a01712' }}
       title={`Officer detected on foot${since ? ` since ${since}` : ''} — click for history`}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
     >

@@ -445,9 +445,26 @@ export function downloadUrl(filename: string): string {
   return import.meta.env.DEV ? `/downloads/${encoded}` : `${CF_WORKER_DIRECT_BASE}/downloads/${encoded}`;
 }
 
+// ─── Fallback URL switching (Toughbook cold standby) ──────────────────────
+export const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+let _consecutiveApiFailures = 0;
+
+export function resolveFallbackUrl(relativeUrl: string): string | null {
+  if (_consecutiveApiFailures < CONSECUTIVE_FAILURE_THRESHOLD) return null;
+  const fallback = localStorage.getItem(FALLBACK_URL_KEY);
+  return fallback ? `${fallback}${relativeUrl}` : null;
+}
+
+/** @internal — for unit tests only. Sets the failure counter without triggering real requests. */
+export function _setConsecutiveFailuresForTest(n: number): void {
+  _consecutiveApiFailures = n;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }
+  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean; _skipQueue?: boolean }
 ): Promise<T> {
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const url = options?.directWorker ? `${CF_WORKER_DIRECT_BASE}${relativeUrl}` : maybeRedirectToCfWorker(relativeUrl);
@@ -473,17 +490,37 @@ export async function apiFetch<T>(
   }
 
   const fetchInit: RequestInit = { ...options, headers };
-  const res = await fetchWithRetry(url, fetchInit);
+
+  let res: Response;
+  const fallbackUrl = resolveFallbackUrl(relativeUrl);
+  try {
+    res = await fetchWithRetry(fallbackUrl ?? url, fetchInit);
+    _consecutiveApiFailures = 0;
+  } catch (fetchErr) {
+    _consecutiveApiFailures += 1;
+    const m = method.toUpperCase();
+    if (MUTATING_METHODS.has(m) && !options?._skipQueue) {
+      console.warn('[API] Network error on mutation — enqueueing for offline replay:', m, relativeUrl);
+      const { enqueueOperation } = await import('./useOfflineQueue');
+      await enqueueOperation({
+        method: m,
+        path: relativeUrl,
+        body: options?.body ? (() => { try { return JSON.parse(options.body as string); } catch { return undefined; } })() : undefined,
+        headers: { ...(options?.headers as Record<string, string>) },
+      });
+    }
+    throw fetchErr;
+  }
 
   // On 401, attempt a transparent token refresh and retry once
   if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
+      const retryRes = await fetchWithRetry(fallbackUrl ?? url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
-        nackForApiFailure(method, url, retryRes.status);
+        nackForApiFailure(method, fallbackUrl ?? url, retryRes.status);
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
       chimeForApiSuccess(method, url);
@@ -826,5 +863,83 @@ export async function apiDeleteCompanyDocument(id: number): Promise<void> {
 }
 
 export type { UploadProgress };
+
+// ─── Dual-write for FZ-55 secondary server ───────────────────────────────────
+import { useContext } from 'react';
+import { ApiBaseContext } from './useApiBase';
+
+/**
+ * Pure dual-write function — exported for testing.
+ * Fires the same mutation at both local and cloud in parallel.
+ * Returns the local result if available; cloud result as fallback.
+ * Throws when both fail.
+ */
+export async function dualWrite<T>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number },
+  localBase: string | null,
+  cloudBase: string,
+): Promise<T> {
+  const normalizedPath = path.startsWith('/api') ? path : `/api${path}`;
+
+  if (!localBase) {
+    const res = await fetchWithTimeout(`${cloudBase}${normalizedPath}`, options);
+    if (!res.ok) throw new Error(`Cloud request failed: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
+  const [localResult, cloudResult] = await Promise.allSettled([
+    fetchWithTimeout(`${localBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Local ${r.status}`))
+    ),
+    fetchWithTimeout(`${cloudBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Cloud ${r.status}`))
+    ),
+  ]);
+
+  if (localResult.status === 'fulfilled') {
+    // Local succeeded — if cloud failed, queue the write for later replay
+    if (cloudResult.status === 'rejected') {
+      try {
+        const reqHeaders = options.headers as Record<string, string> | undefined;
+        const enqueueBody: Record<string, string> = {
+          method: options.method ?? 'POST',
+          path: normalizedPath,
+        };
+        if (options.body != null) {
+          enqueueBody.body = typeof options.body === 'string'
+            ? options.body
+            : JSON.stringify(options.body);
+        }
+        if (reqHeaders) enqueueBody.headers = JSON.stringify(reqHeaders);
+        await fetch(`${localBase}/api/sync/enqueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(reqHeaders?.Authorization ? { Authorization: reqHeaders.Authorization } : {}),
+          },
+          body: JSON.stringify(enqueueBody),
+        });
+      } catch { /* non-fatal — local write already succeeded */ }
+    }
+    return localResult.value;
+  }
+  if (cloudResult.status === 'fulfilled') return cloudResult.value;
+  throw new Error('No connectivity — both local and cloud endpoints unreachable');
+}
+
+/**
+ * Hook-based dual-write wrapper for use in React components.
+ * Reads cloud/local bases from ApiBaseContext automatically.
+ */
+export function useApiMutate() {
+  const { cloudBase, localBase } = useContext(ApiBaseContext);
+  return async function apiMutate<T>(
+    path: string,
+    options: RequestInit & { timeoutMs?: number } = {},
+  ): Promise<T> {
+    return dualWrite<T>(path, options, localBase, cloudBase);
+  };
+}
 
 export default useApi;

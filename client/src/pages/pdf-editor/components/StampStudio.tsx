@@ -394,7 +394,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
     window.setTimeout(() => setSavedMsg(null), 3000);
   };
 
-  const field = 'w-full bg-surface-base border border-border-default rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-[#d4a017]';
+  const field = 'w-full bg-surface-base border border-border-default rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:[border-color:var(--field-label-color)]';
   const lbl = 'block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5';
 
   return (
@@ -403,7 +403,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
         {/* Header + tabs */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
-            <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamp Studio
+            <Stamp className="w-4 h-4 [color:var(--panel-header-color)]" /> Stamp Studio
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
@@ -541,13 +541,13 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                     <div>
                       <span className={lbl}>White threshold — {threshold}</span>
                       <input id="ff-ss-th" type="range" min={120} max={255} value={threshold}
-                        onChange={(e) => setThreshold(Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                        onChange={(e) => setThreshold(Number(e.target.value))} className="w-full [accent-color:var(--field-label-color)]" />
                       <div className="text-[9px] text-rmpg-600">Higher keeps more of the image; lower removes more (also clears light grays).</div>
                     </div>
                     <div>
                       <span className={lbl}>Soft edge — {soft}</span>
                       <input id="ff-ss-soft" type="range" min={0} max={60} value={soft}
-                        onChange={(e) => setSoft(Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                        onChange={(e) => setSoft(Number(e.target.value))} className="w-full [accent-color:var(--field-label-color)]" />
                     </div>
                     <div>
                       <span className={lbl}>Before</span>

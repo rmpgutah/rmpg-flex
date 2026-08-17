@@ -35,13 +35,8 @@ export default function DesktopBodyCamWidget() {
         // fall through to API
       }
     }
-    // API fallback
-    try {
-      const data = await apiFetch<BodyCamStatus>('/body-cameras/my-status');
-      setStatus(data);
-    } catch {
-      setStatus(null);
-    }
+    // No web API equivalent — body cam status is Electron IPC only
+    setStatus(null);
   }, [hasElectron]);
 
   useEffect(() => {

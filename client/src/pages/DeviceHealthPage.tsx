@@ -182,8 +182,14 @@ export default function DeviceHealthPage() {
       try { sysInfo = (await el.getSystemInfo?.()) as SystemInfo | null ?? null; } catch {}
       try { cpuUsage = (await el.getCpuUsage?.()) as number | null ?? null; } catch {}
       try {
-        const ds = await el.checkDiskSpace?.();
-        diskFreeGb = (ds as number | null) ?? sysInfo?.disk_free_gb ?? null;
+        // checkDiskSpace returns { freeBytes, totalBytes, warn } — not a number.
+        // Casting it as `number | null` was silently wrong: the object is truthy,
+        // so ?? never fired, and diskFreeGb held an object whose .toFixed(1)
+        // call at render time threw TypeError.
+        const ds = await el.checkDiskSpace?.() as { freeBytes?: number | null; totalBytes?: number | null } | null | undefined;
+        diskFreeGb = ds?.freeBytes != null
+          ? Math.round((ds.freeBytes / (1024 ** 3)) * 10) / 10
+          : sysInfo?.disk_free_gb ?? null;
       } catch {
         diskFreeGb = sysInfo?.disk_free_gb ?? null;
       }
@@ -297,7 +303,7 @@ export default function DeviceHealthPage() {
           </div>
           {lastRefresh && (
             <div style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Last refreshed {lastRefresh.toLocaleTimeString()}
+              Last refreshed {lastRefresh.toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}
             </div>
           )}
         </div>

@@ -287,25 +287,34 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   }
 
   // ── Section 6: Skip Trace Results ─────────────────────────
-  if (data.skipTraces && data.skipTraces.length > 0) {
-    y = checkPageBreak(doc, y, 30);
-    const sec = openAutoSection(doc, `6. Skip Trace Results  (${data.skipTraces.length} searches)`, y); y = sec.contentY;
-
-    const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
-    const headers = [
-      { label: 'DATE',      x: cols[0] },
-      { label: 'SOURCE',    x: cols[1] },
-      { label: '# ADDRS',   x: cols[2] },
-      { label: 'ADDRESSES', x: cols[3] },
-    ];
-    const rows = (data.skipTraces || []).map(t => [
-      sanitizePdfText(t.date || '—'),
-      sanitizePdfText((t.searchType || '').toUpperCase()),
-      String(t.addressesFound),
-      sanitizePdfText(t.addressesTried.join('; ') || 'None'),
-    ]);
-    y = addTableWithShading(doc, headers, rows, y, cols);
-    y += SPACING.SM;
+  // Always rendered — skipping it entirely causes a 5→7 numbering gap on
+  // the printed form, which looks like a missing page to the recipient.
+  y = checkPageBreak(doc, y, 30);
+  { const count = data.skipTraces?.length ?? 0;
+    const sec = openAutoSection(doc, `6. Skip Trace Results  (${count} searches)`, y); y = sec.contentY;
+    if (count > 0) {
+      const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
+      const headers = [
+        { label: 'DATE',      x: cols[0] },
+        { label: 'SOURCE',    x: cols[1] },
+        { label: '# ADDRS',   x: cols[2] },
+        { label: 'ADDRESSES', x: cols[3] },
+      ];
+      const rows = data.skipTraces!.map(t => [
+        sanitizePdfText(t.date || '—'),
+        sanitizePdfText((t.searchType || '').toUpperCase()),
+        String(t.addressesFound),
+        sanitizePdfText(t.addressesTried.join('; ') || 'None'),
+      ]);
+      y = addTableWithShading(doc, headers, rows, y, cols);
+      y += SPACING.SM;
+    } else {
+      doc.setFont('Arial', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.text('No skip trace searches recorded.', getLeftX(), y);
+      y += 6;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

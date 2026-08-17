@@ -758,7 +758,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   container.appendChild(p);
                   const date = doc.createElement('p');
                   date.style.cssText = 'font-size:10px;color:#666;';
-                  date.textContent = new Date().toLocaleDateString();
+                  date.textContent = new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' });
                   container.appendChild(date);
                   doc.body.appendChild(container);
                   doc.close();

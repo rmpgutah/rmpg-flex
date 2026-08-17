@@ -57,13 +57,13 @@ interface Props {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  available: '#22c55e',
-  on_patrol: '#22c55e',
-  in_service: '#22c55e',
-  dispatched: '#f59e0b',
-  enroute: '#fbbf24',
-  onscene: '#a855f7',
-  busy: '#ef4444',
+  available: 'var(--sev-ok)',
+  on_patrol: 'var(--sev-ok)',
+  in_service: 'var(--sev-ok)',
+  dispatched: 'var(--sev-warn)',
+  enroute: 'var(--stat-accent-amber-bright)',
+  onscene: 'var(--stat-accent-purple)',
+  busy: 'var(--sev-critical)',
 };
 
 function statusColor(s: string): string {
@@ -198,7 +198,7 @@ export default function RecommendedUnitsInline({
               </span>
               <span
                 className="text-[9px] flex items-center gap-0.5"
-                style={{ color: u.gpsStale ? '#f59e0b' : '#22c55e' }}
+                style={{ color: u.gpsStale ? 'var(--sev-warn)' : 'var(--sev-ok)' }}
                 title={u.gpsStale ? 'GPS fix is stale — position uncertain' : 'Live GPS fix'}
               >
                 <Satellite className="w-2.5 h-2.5" />
@@ -211,7 +211,7 @@ export default function RecommendedUnitsInline({
               )}
               <span
                 className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5"
-                style={{ background: statusColor(u.status), color: '#0a0a0a', borderRadius: 2 }}
+                style={{ background: statusColor(u.status), color: 'var(--surface-deep)', borderRadius: 2 }}
               >
                 {toDisplayLabel(u.status)}
               </span>

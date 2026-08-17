@@ -1,12 +1,41 @@
-import React from 'react';
-import { Moon, BellOff, Wifi, RefreshCw } from 'lucide-react';
-import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap, Focus } from 'lucide-react';
+import { useOptionalDesktopSystem, type FocusAssistLevel } from '../../context/DesktopSystemContext';
+
+const VOLUME_KEY = 'rmpg_desktop_volume';
+
+function getStoredVolume(): number {
+  try { return Math.min(100, Math.max(0, parseInt(localStorage.getItem(VOLUME_KEY) ?? '100', 10))); }
+  catch { return 100; }
+}
+
+function applyVolume(pct: number) {
+  const v = pct / 100;
+  document.querySelectorAll<HTMLMediaElement>('audio, video').forEach(el => { el.volume = v; });
+  try { localStorage.setItem(VOLUME_KEY, String(pct)); } catch { /* silent */ }
+}
 
 const UNIT_STATUSES = ['available', 'busy', 'on-call', 'traffic-stop', 'out-of-service'];
 
-export default function DesktopQuickSettings({ onClose }: { onClose: () => void }) {
+export default function DesktopQuickSettings({ onClose, open }: { onClose: () => void; open?: boolean }) {
+  const [volume, setVolume] = useState(getStoredVolume);
+  const [battery, setBattery] = useState<{ percent: number | null; charging: boolean } | null>(null);
+  const [network, setNetwork] = useState<{ ssid: string | null; signal: number | null } | null>(null);
+
+  const handleVolume = useCallback((v: number) => {
+    setVolume(v);
+    applyVolume(v);
+  }, []);
+
+  useEffect(() => {
+    if (open === false) return;
+    const w = window as Window & { electron?: { getBattery?: () => Promise<unknown>; getNetwork?: () => Promise<unknown> } };
+    w.electron?.getBattery?.().then(b => setBattery(b as typeof battery)).catch(() => {});
+    w.electron?.getNetwork?.().then(n => setNetwork(n as typeof network)).catch(() => {});
+  }, [open]);
+
   const ctx = useOptionalDesktopSystem();
-  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
+  const { nightLightOn = false, nightLightIntensity = 50, dndOn = false, focusAssist = 'off', brightness = 100, syncPending = 0, unitStatus = 'available', setNightLight = () => {}, setDnd = () => {}, setFocusAssist = () => {}, setBrightness = () => {}, setUnitStatus = async () => {} } = ctx ?? {};
 
   return (
     <div
@@ -18,14 +47,14 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Night Light */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Moon className="w-3.5 h-3.5" style={{ color: nightLightOn ? 'var(--sev-warn, #f59e0b)' : 'var(--text-secondary)' }} />
+          <Moon className="w-3.5 h-3.5" style={{ color: nightLightOn ? 'var(--sev-warn)' : 'var(--text-secondary)' }} />
           <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Night Light</span>
           <button
             type="button"
             onClick={() => setNightLight(!nightLightOn)}
-            style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: nightLightOn ? 'var(--sev-warn, #f59e0b)' : 'var(--border-subtle)', position: 'relative' }}
+            style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: nightLightOn ? 'var(--sev-warn)' : 'var(--border-subtle)', position: 'relative' }}
           >
-            <span style={{ position: 'absolute', top: 2, left: nightLightOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.1s' }} />
+            <span style={{ position: 'absolute', top: 2, left: nightLightOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--text-primary)', transition: 'left 0.1s' }} />
           </button>
         </div>
         {nightLightOn && (
@@ -43,15 +72,57 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
             onClick={() => setDnd(!dndOn)}
             style={{ width: 32, height: 16, borderRadius: 8, border: 'none', cursor: 'pointer', background: dndOn ? 'var(--brand-400)' : 'var(--border-subtle)', position: 'relative' }}
           >
-            <span style={{ position: 'absolute', top: 2, left: dndOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', transition: 'left 0.1s' }} />
+            <span style={{ position: 'absolute', top: 2, left: dndOn ? 16 : 2, width: 12, height: 12, borderRadius: '50%', background: 'var(--text-primary)', transition: 'left 0.1s' }} />
           </button>
+        </div>
+
+        {/* Focus Assist */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <Focus className="w-3.5 h-3.5" style={{ color: focusAssist !== 'off' ? 'var(--brand-400)' : 'var(--text-secondary)' }} />
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Focus Assist</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['off', 'priority', 'alarms-only'] as FocusAssistLevel[]).map(level => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setFocusAssist(level)}
+                style={{
+                  flex: 1, fontSize: 8, padding: '3px 0', borderRadius: 2, border: '1px solid var(--border-subtle)', cursor: 'pointer',
+                  background: focusAssist === level ? 'var(--brand-400)' : 'var(--surface-base)',
+                  color: focusAssist === level ? '#fff' : 'var(--text-secondary)',
+                  fontWeight: focusAssist === level ? 700 : 400,
+                }}
+              >
+                {level === 'off' ? 'Off' : level === 'priority' ? 'Priority' : 'Alarms'}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Wi-Fi status */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok, #22c55e)' }} />
-          <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Wi-Fi</span>
-          <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{navigator.onLine ? 'Connected' : 'Offline'}</span>
+          <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)' }} />
+          <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {network?.ssid ?? (navigator.onLine ? 'Connected' : 'Offline')}
+          </span>
+          {network?.signal != null && (
+            <span style={{ fontSize: 9, color: 'var(--text-secondary)', flexShrink: 0 }}>{network.signal}%</span>
+          )}
+        </div>
+
+        {/* Volume */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            {volume === 0
+              ? <VolumeX className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+              : <Volume2 className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            }
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>Volume</span>
+            <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{volume}%</span>
+          </div>
+          <input type="range" min={0} max={100} value={volume} onChange={e => handleVolume(Number(e.target.value))} style={{ width: '100%', height: 4 }} aria-label="Volume" />
         </div>
 
         {/* Brightness */}
@@ -66,8 +137,8 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
         {/* Sync pending */}
         {syncPending > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <RefreshCw className="w-3.5 h-3.5" style={{ color: 'var(--sev-warn, #f59e0b)', animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 10, color: 'var(--sev-warn, #f59e0b)' }}>{syncPending} record{syncPending !== 1 ? 's' : ''} pending sync</span>
+            <RefreshCw className="w-3.5 h-3.5" style={{ color: 'var(--sev-warn)', animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: 10, color: 'var(--sev-warn)' }}>{syncPending} record{syncPending !== 1 ? 's' : ''} pending sync</span>
           </div>
         )}
 
@@ -83,6 +154,22 @@ export default function DesktopQuickSettings({ onClose }: { onClose: () => void 
               <option key={s} value={s}>{s.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
             ))}
           </select>
+        </div>
+        {/* Battery */}
+        <div>
+          <div style={{ fontSize: 9, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 4 }}>BATTERY</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {battery?.charging
+              ? <Zap className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)', flexShrink: 0 }} />
+              : <BatteryMedium className="w-3.5 h-3.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            }
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1 }}>
+              {battery?.percent != null ? `${battery.percent}%` : '—'}
+            </span>
+            {battery?.charging && (
+              <span style={{ fontSize: 9, color: 'var(--sev-ok)' }}>Charging</span>
+            )}
+          </div>
         </div>
       </div>
 

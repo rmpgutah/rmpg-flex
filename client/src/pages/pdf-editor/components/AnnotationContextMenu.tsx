@@ -81,7 +81,7 @@ export default function AnnotationContextMenu(p: Props) {
       {QUICK_LAYERS.map(l => (
         <button key={l} type="button" onClick={() => { p.onAssignLayer(l); p.onClose(); }}
           className={`${itemCls} pl-6`}>
-          {ann.layer === l && <span className="text-[#d4a017]">●</span>} {l}
+          {ann.layer === l && <span className="[color:var(--panel-header-color)]">●</span>} {l}
         </button>
       ))}
       <button type="button" onClick={() => { p.onAssignLayer(''); p.onClose(); }} className={`${itemCls} pl-6 text-rmpg-500`}>

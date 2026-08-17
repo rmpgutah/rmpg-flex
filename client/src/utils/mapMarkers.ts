@@ -163,7 +163,7 @@ export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
     border: '1.5px solid #000000',
     'border-radius': '50% 50% 50% 0',
     transform: 'rotate(-45deg)',
-    'box-shadow': '0 2px 4px rgba(0,0,0,0.6)',
+    'box-shadow': '0 2px 4px rgba(0 0 0 / 0.6)',
   });
   el.appendChild(teardrop);
 

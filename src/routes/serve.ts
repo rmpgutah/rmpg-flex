@@ -307,15 +307,15 @@ sv.post('/routes', async (c) => {
     `INSERT INTO serve_routes (
        officer_id, route_date, optimized_order_json, waypoints_json,
        total_distance_miles, total_time_minutes,
-       start_lat, start_lng, end_lat, end_lng, notes
-     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
+       start_lat, start_lng, end_lat, end_lng, notes, planned_start_time
+     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?,?)`,
     officerId, body.route_date ?? null,
     routeJsonColumn(body.optimized_order_json, body.optimized_order),
     routeJsonColumn(body.waypoints_json, body.waypoints),
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
-    body.notes ?? null,
+    body.notes ?? null, body.planned_start_time ?? null,
   );
   return c.json({ success: true, id: r.meta.last_row_id }, 201);
 });
@@ -729,7 +729,14 @@ sv.get('/assignments/settings', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const row = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
-  return c.json({ data: row ?? { id: 1, approaching_hours: 48, diligence_gap_days: 3, unassigned_window_hours: 72, renotify_hours: 24, notify_supervisor_email: 1, digest_sender_user_id: null } });
+  return c.json({ data: row ?? {
+    id: 1, approaching_hours: 48, diligence_gap_days: 3,
+    unassigned_window_hours: 72, renotify_hours: 24,
+    notify_supervisor_email: 1, digest_sender_user_id: null,
+    mileage_rate: 0.67, business_hours_start: '08:00',
+    business_hours_end: '20:00', business_hours_days: '[1,2,3,4,5]',
+    auto_geocode_on_intake: 1, geocode_confidence_min: 0.6,
+  } });
 });
 
 sv.put('/assignments/settings', async (c) => {
@@ -740,19 +747,42 @@ sv.put('/assignments/settings', async (c) => {
   const user = c.get('user') as { id: number } | undefined;
   const cur = await queryFirst<any>(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1') ?? {};
   await execute(db,
-    `INSERT INTO serve_nudge_settings (id, approaching_hours, diligence_gap_days, unassigned_window_hours, renotify_hours, notify_supervisor_email, digest_sender_user_id, updated_by)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO serve_nudge_settings
+       (id, approaching_hours, diligence_gap_days, unassigned_window_hours,
+        renotify_hours, notify_supervisor_email, digest_sender_user_id,
+        mileage_rate, business_hours_start, business_hours_end,
+        business_hours_days, auto_geocode_on_intake, geocode_confidence_min,
+        updated_by)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
-       approaching_hours = excluded.approaching_hours, diligence_gap_days = excluded.diligence_gap_days,
-       unassigned_window_hours = excluded.unassigned_window_hours, renotify_hours = excluded.renotify_hours,
-       notify_supervisor_email = excluded.notify_supervisor_email, digest_sender_user_id = excluded.digest_sender_user_id,
-       updated_at = datetime('now'), updated_by = excluded.updated_by`,
+       approaching_hours = excluded.approaching_hours,
+       diligence_gap_days = excluded.diligence_gap_days,
+       unassigned_window_hours = excluded.unassigned_window_hours,
+       renotify_hours = excluded.renotify_hours,
+       notify_supervisor_email = excluded.notify_supervisor_email,
+       digest_sender_user_id = excluded.digest_sender_user_id,
+       mileage_rate = excluded.mileage_rate,
+       business_hours_start = excluded.business_hours_start,
+       business_hours_end = excluded.business_hours_end,
+       business_hours_days = excluded.business_hours_days,
+       auto_geocode_on_intake = excluded.auto_geocode_on_intake,
+       geocode_confidence_min = excluded.geocode_confidence_min,
+       updated_at = datetime('now'),
+       updated_by = excluded.updated_by`,
     b.approaching_hours ?? cur.approaching_hours ?? 48,
     b.diligence_gap_days ?? cur.diligence_gap_days ?? 3,
     b.unassigned_window_hours ?? cur.unassigned_window_hours ?? 72,
     b.renotify_hours ?? cur.renotify_hours ?? 24,
     b.notify_supervisor_email !== undefined ? (b.notify_supervisor_email ? 1 : 0) : (cur.notify_supervisor_email ?? 1),
     b.digest_sender_user_id !== undefined ? b.digest_sender_user_id : (cur.digest_sender_user_id ?? null),
+    b.mileage_rate ?? cur.mileage_rate ?? 0.67,
+    b.business_hours_start ?? cur.business_hours_start ?? '08:00',
+    b.business_hours_end ?? cur.business_hours_end ?? '20:00',
+    b.business_hours_days !== undefined
+      ? (Array.isArray(b.business_hours_days) ? JSON.stringify(b.business_hours_days) : b.business_hours_days)
+      : (cur.business_hours_days ?? '[1,2,3,4,5]'),
+    b.auto_geocode_on_intake !== undefined ? (b.auto_geocode_on_intake ? 1 : 0) : (cur.auto_geocode_on_intake ?? 1),
+    b.geocode_confidence_min ?? cur.geocode_confidence_min ?? 0.6,
     user?.id ?? null);
   await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'update', 'serve_nudge_settings', 1, ?)`, user?.id ?? null, JSON.stringify(b));
   const after = await queryFirst(db, 'SELECT * FROM serve_nudge_settings WHERE id = 1');
@@ -919,7 +949,7 @@ sv.post('/', async (c) => {
 });
 
 // ── Bulk status update ────────────────────────────────────────────────────────
-// POST /serve/bulk-status { ids: number[], status: string }
+// PUT /serve/bulk-status { ids: number[], status: string }
 // Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
 sv.put('/bulk-status', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
@@ -995,6 +1025,73 @@ sv.get('/folder-stats', async (c) => {
   const stats: Record<string, number> = {};
   for (const r of rows) stats[r.status] = r.cnt;
   return c.json({ date, stats });
+});
+
+// GET /aging must be registered BEFORE /:id — Hono matches in order, so
+// "/aging" would match /:id first (parseInt("aging") → NaN → 400).
+sv.get('/aging', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id,
+           u.full_name AS officer_name,
+           MAX(a.attempt_at) AS last_attempt_at,
+           CAST(julianday(q.deadline) - julianday('now') AS INTEGER) AS days_remaining
+    FROM serve_queue q
+    LEFT JOIN users u   ON u.id = q.officer_id
+    LEFT JOIN serve_attempts a ON a.serve_queue_id = q.id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.deadline IS NOT NULL
+      AND julianday(q.deadline) - julianday('now') <= 5
+    GROUP BY q.id
+    HAVING last_attempt_at IS NULL
+        OR (julianday('now') - julianday(last_attempt_at)) >= COALESCE(
+             (SELECT diligence_gap_days FROM serve_nudge_settings WHERE id = 1 LIMIT 1), 3)
+    ORDER BY days_remaining ASC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
+// GET /upcoming — must be before /:id (Hono matches in registration order)
+sv.get('/upcoming', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
+           q.status, q.attempt_count, q.officer_id, u.full_name AS officer_name,
+           q.next_attempt_note
+    FROM serve_queue q
+    LEFT JOIN users u ON u.id = q.officer_id
+    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
+      AND q.next_attempt_note IS NOT NULL AND q.next_attempt_note != ''
+    ORDER BY q.deadline ASC NULLS LAST, q.priority DESC
+    LIMIT 200
+  `);
+  return c.json(rows);
+});
+
+// GET /client-breakdown — must be before /:id (same reason as above)
+sv.get('/client-breakdown', async (c) => {
+  const denied = requireRole(c, ...READ);
+  if (denied) return c.json({ error: denied }, 403);
+  const db = getDb(c.env);
+  const rows = await query<Record<string, unknown>>(db, `
+    SELECT
+      COALESCE(NULLIF(client_name, ''), NULLIF(attorney_name, ''), 'Unknown Client') AS client,
+      COUNT(*)                                                                        AS total,
+      SUM(CASE WHEN status = 'served'    THEN 1 ELSE 0 END)                          AS served,
+      SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)                          AS failed,
+      SUM(CASE WHEN status NOT IN ('served','failed','cancelled') THEN 1 ELSE 0 END) AS active
+    FROM serve_queue
+    GROUP BY 1
+    ORDER BY total DESC
+    LIMIT 50
+  `);
+  return c.json(rows);
 });
 
 sv.get('/:id', async (c) => {
@@ -1580,6 +1677,38 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
     args.push(body.longitude == null ? null : Number(body.longitude));
   }
 
+  // Photo IDs — append new IDs to the existing array (never replace/delete).
+  // Operators can attach additional field photos after the fact; the original
+  // evidence set is preserved because we only ever grow photo_ids, never shrink.
+  if ('photo_ids_append' in body && Array.isArray(body.photo_ids_append) && body.photo_ids_append.length > 0) {
+    const existingRow = await queryFirst<{ photo_ids: string | null }>(
+      db, 'SELECT photo_ids FROM serve_attempts WHERE id = ?', attemptId);
+    const current: string[] = (() => {
+      try { return JSON.parse(existingRow?.photo_ids || '[]'); } catch { return []; }
+    })();
+    const newIds = (body.photo_ids_append as string[]).filter(
+      (id) => typeof id === 'string' && id.length > 0 && !current.includes(id),
+    );
+    if (newIds.length > 0) {
+      sets.push('photo_ids = ?');
+      args.push(JSON.stringify([...current, ...newIds]));
+    }
+  }
+
+  // Physical description fields (editable for officer corrections)
+  if ('person_served_name' in body) {
+    sets.push('person_served_name = ?');
+    args.push(body.person_served_name || null);
+  }
+  if ('person_served_relationship' in body) {
+    sets.push('person_served_relationship = ?');
+    args.push(body.person_served_relationship || null);
+  }
+  if ('person_served_description' in body) {
+    sets.push('person_served_description = ?');
+    args.push(body.person_served_description || null);
+  }
+
   // Structured PS code takes precedence — derive the legacy `result`
   // and update both columns when supplied. Mirrors logAttempt.
   if ('disposition_code' in body && body.disposition_code !== undefined && hasDispositionCol) {
@@ -1867,53 +1996,9 @@ sv.get('/:id/gps-trail', async (c) => {
 // Feature pack: 30 Process Server enhancements (PR 4)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// [1] GET /aging — jobs approaching deadline with no recent activity
-// "Aging" = deadline within N days AND either no attempts ever or last attempt
-// was over diligence_gap_days ago. Returns days_remaining so UI can color-code.
-sv.get('/aging', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
-           q.status, q.attempt_count, q.officer_id,
-           u.full_name AS officer_name,
-           MAX(a.attempt_at) AS last_attempt_at,
-           CAST(julianday(q.deadline) - julianday('now') AS INTEGER) AS days_remaining
-    FROM serve_queue q
-    LEFT JOIN users u   ON u.id = q.officer_id
-    LEFT JOIN serve_attempts a ON a.serve_queue_id = q.id
-    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
-      AND q.deadline IS NOT NULL
-      AND julianday(q.deadline) - julianday('now') <= 5
-    GROUP BY q.id
-    HAVING last_attempt_at IS NULL
-        OR (julianday('now') - julianday(last_attempt_at)) >= COALESCE(
-             (SELECT diligence_gap_days FROM serve_nudge_settings WHERE id = 1 LIMIT 1), 3)
-    ORDER BY days_remaining ASC
-    LIMIT 200
-  `);
-  return c.json(rows);
-});
+// [1] GET /aging is registered above the /:id catch-all (route order matters in Hono).
 
-// [2] GET /upcoming — jobs with a scheduled attempt window in the next 48 hours
-sv.get('/upcoming', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT q.id, q.recipient_name, q.recipient_address, q.deadline, q.priority,
-           q.status, q.attempt_count, q.officer_id, u.full_name AS officer_name,
-           q.next_attempt_note
-    FROM serve_queue q
-    LEFT JOIN users u ON u.id = q.officer_id
-    WHERE q.status NOT IN ('served', 'failed', 'cancelled')
-      AND q.next_attempt_note IS NOT NULL AND q.next_attempt_note != ''
-    ORDER BY q.deadline ASC NULLS LAST, q.priority DESC
-    LIMIT 200
-  `);
-  return c.json(rows);
-});
+// [2] GET /upcoming — moved to before /:id (see route-order note above)
 
 // [3] PATCH /bulk-deadline — extend deadline on multiple jobs at once
 sv.patch('/bulk-deadline', async (c) => {
@@ -2049,25 +2134,7 @@ sv.get('/stats/velocity', async (c) => {
   return c.json({ last_7_days: last7, prior_7_days: prev7, trend: last7 - prev7 });
 });
 
-// [9] GET /client-breakdown — job counts grouped by client/attorney
-sv.get('/client-breakdown', async (c) => {
-  const denied = requireRole(c, ...READ);
-  if (denied) return c.json({ error: denied }, 403);
-  const db = getDb(c.env);
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT
-      COALESCE(NULLIF(client_name, ''), NULLIF(attorney_name, ''), 'Unknown Client') AS client,
-      COUNT(*)                                                                        AS total,
-      SUM(CASE WHEN status = 'served'    THEN 1 ELSE 0 END)                          AS served,
-      SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END)                          AS failed,
-      SUM(CASE WHEN status NOT IN ('served','failed','cancelled') THEN 1 ELSE 0 END) AS active
-    FROM serve_queue
-    GROUP BY 1
-    ORDER BY total DESC
-    LIMIT 50
-  `);
-  return c.json(rows);
-});
+// [9] GET /client-breakdown — moved before /:id; see route-order note at top of this section
 
 // [10] GET /:id/address-history — previous jobs at the same service address
 sv.get('/:id/address-history', async (c) => {

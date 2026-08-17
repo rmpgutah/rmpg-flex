@@ -28,10 +28,10 @@ function formatDate(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
 
   const isToday = d.toDateString() === now.toDateString();
-  if (isToday) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 }
 
 const PAGE_SIZE = 15;
@@ -56,7 +56,7 @@ export default function LoginHistoryTable() {
         setTotal(data.total);
       }
     } catch { /* ignore */ }
-    setLoading(false);
+    finally { setLoading(false); }
   }, [token, offset]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
@@ -100,9 +100,9 @@ export default function LoginHistoryTable() {
               <tr key={entry.id}>
                 <td className="text-center">
                   {entry.success ? (
-                    <CheckCircle className="w-3 h-3 inline-block" style={{ color: '#22c55e' }} />
+                    <CheckCircle className="w-3 h-3 inline-block text-green-500" />
                   ) : (
-                    <XCircle className="w-3 h-3 inline-block" style={{ color: '#ef4444' }} />
+                    <XCircle className="w-3 h-3 inline-block text-red-500" />
                   )}
                 </td>
                 <td className="font-mono whitespace-nowrap">{formatDate(entry.created_at)}</td>
@@ -110,9 +110,9 @@ export default function LoginHistoryTable() {
                 <td className="font-mono">{entry.ip_address}</td>
                 <td>
                   {entry.success ? (
-                    <span style={{ color: '#22c55e' }}>Success</span>
+                    <span className="text-green-500">Success</span>
                   ) : (
-                    <span style={{ color: '#ef4444' }} title={entry.failure_reason || ''}>
+                    <span className="text-red-500" title={entry.failure_reason || ''}>
                       {entry.failure_reason || 'Failed'}
                     </span>
                   )}

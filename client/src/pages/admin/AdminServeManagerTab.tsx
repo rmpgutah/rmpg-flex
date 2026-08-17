@@ -100,6 +100,19 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
     } catch (e) { console.error('Failed to fetch sync log:', e); }
   }, []);
 
+  // ── Route & Mileage settings ──
+  const [mileageRate, setMileageRate] = useState<string>('0.67');
+  const [bizHoursStart, setBizHoursStart] = useState<string>('08:00');
+  const [bizHoursEnd, setBizHoursEnd] = useState<string>('20:00');
+  const [bizHoursDays, setBizHoursDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [autoGeocodeOnIntake, setAutoGeocodeOnIntake] = useState<boolean>(true);
+  const [geocodeConfidenceMin, setGeocodeConfidenceMin] = useState<number>(0.6);
+
+  // ── Per-section save state: null = idle, 'saving', 'saved', or error string ──
+  const [routeSaveState, setRouteSaveState] = useState<null | 'saving' | 'saved' | string>(null);
+  const [notifSaveState, setNotifSaveState] = useState<null | 'saving' | 'saved' | string>(null);
+  const [intakeSaveState, setIntakeSaveState] = useState<null | 'saving' | 'saved' | string>(null);
+
   // ── Nudge settings (attempt scheduling + notification config) ──
   const [nudgeSettings, setNudgeSettings] = useState<{
     approaching_hours: number;
@@ -124,6 +137,17 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
           notify_supervisor_email: res.data.notify_supervisor_email ?? 1,
           digest_sender_user_id: res.data.digest_sender_user_id ?? null,
         });
+        if (res.data.mileage_rate !== undefined) setMileageRate(String(res.data.mileage_rate));
+        if (res.data.business_hours_start) setBizHoursStart(res.data.business_hours_start);
+        if (res.data.business_hours_end) setBizHoursEnd(res.data.business_hours_end);
+        if (res.data.business_hours_days) {
+          const days = typeof res.data.business_hours_days === 'string'
+            ? JSON.parse(res.data.business_hours_days)
+            : res.data.business_hours_days;
+          setBizHoursDays(days);
+        }
+        if (res.data.auto_geocode_on_intake !== undefined) setAutoGeocodeOnIntake(res.data.auto_geocode_on_intake !== 0);
+        if (res.data.geocode_confidence_min !== undefined) setGeocodeConfidenceMin(res.data.geocode_confidence_min);
       }
     } catch { /* settings table may not exist yet */ }
   }, []);
@@ -148,6 +172,63 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setNudgeSaving(false);
+    }
+  };
+
+  const saveRouteSettings = async () => {
+    setRouteSaveState('saving');
+    try {
+      await apiFetch('/process-server/assignments/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          mileage_rate: parseFloat(mileageRate) || 0.67,
+          business_hours_start: bizHoursStart,
+          business_hours_end: bizHoursEnd,
+          business_hours_days: bizHoursDays,
+        }),
+      });
+      setRouteSaveState('saved');
+      setTimeout(() => setRouteSaveState(null), 3000);
+    } catch (err: any) {
+      setRouteSaveState(err?.message || 'Save failed');
+    }
+  };
+
+  const saveNotifSettings = async () => {
+    if (!nudgeSettings) return;
+    setNotifSaveState('saving');
+    try {
+      await apiFetch('/process-server/assignments/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          approaching_hours: nudgeSettings.approaching_hours,
+          diligence_gap_days: nudgeSettings.diligence_gap_days,
+          unassigned_window_hours: nudgeSettings.unassigned_window_hours,
+          renotify_hours: nudgeSettings.renotify_hours,
+          notify_supervisor_email: nudgeSettings.notify_supervisor_email,
+        }),
+      });
+      setNotifSaveState('saved');
+      setTimeout(() => setNotifSaveState(null), 3000);
+    } catch (err: any) {
+      setNotifSaveState(err?.message || 'Save failed');
+    }
+  };
+
+  const saveIntakeSettings = async () => {
+    setIntakeSaveState('saving');
+    try {
+      await apiFetch('/process-server/assignments/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          auto_geocode_on_intake: autoGeocodeOnIntake,
+          geocode_confidence_min: geocodeConfidenceMin,
+        }),
+      });
+      setIntakeSaveState('saved');
+      setTimeout(() => setIntakeSaveState(null), 3000);
+    } catch (err: any) {
+      setIntakeSaveState(err?.message || 'Save failed');
     }
   };
 
@@ -844,21 +925,80 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
         </div>
       )}
 
-      {/* ═══ Section 4: Serve Nudge Settings ═══ */}
+      {/* ═══ Section: Route & Mileage ═══ */}
+      <details>
+        <summary className="text-xs font-semibold text-rmpg-200 cursor-pointer py-2 select-none list-none flex items-center gap-2">
+          <MapPin className="w-3.5 h-3.5 text-accent-silver-500" />
+          Route &amp; Mileage
+        </summary>
+        <div className="panel-beveled bg-surface-base p-3 space-y-3 mt-1">
+          <div>
+            <label className="text-[11px] text-[color:var(--field-label-color)]">Mileage Rate (USD/mi)</label>
+            <input
+              type="number" step="0.01" min="0" max="2"
+              value={mileageRate}
+              onChange={e => setMileageRate(e.target.value)}
+              className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] w-24 ml-2 focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors font-mono"
+            />
+            <span className="text-[9px] text-fg-muted ml-1">IRS standard: $0.67</span>
+          </div>
+          <div>
+            <label className="text-[11px] text-[color:var(--field-label-color)]">Business Hours</label>
+            <div className="flex items-center gap-2 mt-1">
+              <input type="time" value={bizHoursStart} onChange={e => setBizHoursStart(e.target.value)}
+                className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] w-28 focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors" />
+              <span className="text-fg-muted text-xs">–</span>
+              <input type="time" value={bizHoursEnd} onChange={e => setBizHoursEnd(e.target.value)}
+                className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1 rounded-[2px] w-28 focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 transition-colors" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] text-[color:var(--field-label-color)]">Active Days</label>
+            <div className="flex gap-1 mt-1">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map((d, i) => (
+                <button
+                  key={d} type="button"
+                  onClick={() => setBizHoursDays(prev =>
+                    prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i].sort((a, b) => a - b)
+                  )}
+                  className={`text-[10px] px-2 py-0.5 rounded-[2px] border transition-colors ${
+                    bizHoursDays.includes(i)
+                      ? 'bg-brand-600/40 border-brand-500/60 text-rmpg-100'
+                      : 'bg-surface-sunken border-border-default text-fg-muted'
+                  }`}
+                >{d}</button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button type="button" onClick={saveRouteSettings} disabled={routeSaveState === 'saving'}
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50">
+              {routeSaveState === 'saving' ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
+              Save
+            </button>
+            <SaveBadge state={routeSaveState} />
+          </div>
+        </div>
+      </details>
+
+      {/* ═══ Section: Notifications ═══ */}
       <div className="panel-beveled bg-surface-base p-3 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
             <Settings className="w-3.5 h-3.5" />
             Attempt Notification Settings
           </div>
-          <button type="button"
-            onClick={handleNudgeSave}
-            disabled={nudgeSaving || !nudgeDirty}
-            className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
-          >
-            {nudgeSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-            Save
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button"
+              onClick={saveNotifSettings}
+              disabled={notifSaveState === 'saving'}
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 disabled:opacity-50"
+            >
+              {notifSaveState === 'saving' ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
+              Save
+            </button>
+            <SaveBadge state={notifSaveState} />
+          </div>
         </div>
         {nudgeSettings && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -921,6 +1061,46 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
         )}
       </div>
 
+      {/* ═══ Section: Intake Rules ═══ */}
+      <details>
+        <summary className="text-xs font-semibold text-rmpg-200 cursor-pointer py-2 select-none list-none flex items-center gap-2">
+          <Settings className="w-3.5 h-3.5 text-accent-silver-500" />
+          Intake Rules
+        </summary>
+        <div className="panel-beveled bg-surface-base p-3 space-y-3 mt-1">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] text-[color:var(--field-label-color)]">Auto-geocode on intake</label>
+            <button type="button"
+              onClick={() => setAutoGeocodeOnIntake(v => !v)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${autoGeocodeOnIntake ? 'bg-brand-600' : 'bg-rmpg-700'}`}
+              role="switch" aria-checked={autoGeocodeOnIntake}
+            >
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoGeocodeOnIntake ? 'translate-x-5' : 'translate-x-1'}`} />
+            </button>
+          </div>
+          <div>
+            <label className="text-[11px] text-[color:var(--field-label-color)]">
+              Geocode confidence minimum: <span className="text-rmpg-100">{geocodeConfidenceMin.toFixed(2)}</span>
+            </label>
+            <input
+              type="range" min="0" max="1" step="0.05"
+              value={geocodeConfidenceMin}
+              onChange={e => setGeocodeConfidenceMin(parseFloat(e.target.value))}
+              className="w-full mt-1 accent-brand-500"
+            />
+            <div className="flex justify-between text-[9px] text-fg-muted"><span>0.0 (any)</span><span>1.0 (exact)</span></div>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button type="button" onClick={saveIntakeSettings} disabled={intakeSaveState === 'saving'}
+              className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50">
+              {intakeSaveState === 'saving' ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save className="w-3 h-3" />}
+              Save
+            </button>
+            <SaveBadge state={intakeSaveState} />
+          </div>
+        </div>
+      </details>
+
       {/* Not configured hint */}
       {!status?.configured && (
         <div className="flex items-center gap-2 text-[10px] text-rmpg-500 bg-surface-sunken p-3 rounded-[2px]">
@@ -932,7 +1112,14 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
   );
 }
 
-// ── Sub-component ────────────────────────────────────────
+// ── Sub-components ───────────────────────────────────────
+
+function SaveBadge({ state }: { state: null | 'saving' | 'saved' | string }) {
+  if (!state) return null;
+  if (state === 'saving') return <span className="text-[10px] text-fg-muted ml-2">Saving…</span>;
+  if (state === 'saved') return <span className="text-[10px] text-green-400 ml-2">✓ Saved</span>;
+  return <span className="text-[10px] text-red-400 ml-2">{state}</span>;
+}
 
 function ServiceStatusBadge({ status }: { status: string | null }) {
   if (!status) return <span className="text-rmpg-500">—</span>;

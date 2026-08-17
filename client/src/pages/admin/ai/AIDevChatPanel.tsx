@@ -118,9 +118,9 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       phase: 'INTEL RETRIEVAL — UI/DESIGN SYSTEM',
       icon: '🎨',
       detail: 'Accessing design system knowledge base...\n' +
-        'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
-        '  ├─ Surfaces: #141414 (base), #181818 (raised), #0c0c0c (sunken)\n' +
-        '  ├─ Brand: blue #888888, gold #d4a017\n' +
+        'Theme: Blue & Silver (default as of 2026-07-04) — deep navy surfaces, silver accent\n' +
+        '  ├─ Surfaces: bg-surface-base / bg-surface-raised / bg-surface-sunken / bg-surface-overlay\n' +
+        '  ├─ Brand: silver (accent-silver-*), gold restricted to field labels + panel headers only\n' +
         '  ├─ Border-radius: 2px (flat retro console)\n' +
         '  ├─ Font: system sans-serif, monospace for data\n' +
         '  └─ Layout: toolbar + dropdown menus (no sidebar)',

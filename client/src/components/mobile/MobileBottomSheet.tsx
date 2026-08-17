@@ -131,7 +131,7 @@ export default function MobileBottomSheet({
         transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.32,0.72,0,1)',
         background: 'linear-gradient(180deg, var(--surface-base) 0%, var(--surface-sunken) 100%)',
         borderTop: '1px solid var(--border-default)',
-        boxShadow: '0 -8px 32px rgba(0,0,0,0.5)',
+        boxShadow: '0 -8px 32px rgb(0 0 0 / 0.5)',
         willChange: 'height, transform',
         paddingBottom: 'env(safe-area-inset-bottom)',
       }}
@@ -187,7 +187,7 @@ export default function MobileBottomSheet({
       <div
         className="absolute top-0 left-1/4 right-1/4 h-[2px]"
         style={{
-          background: 'linear-gradient(90deg, transparent, #888888, transparent)',
+          background: 'linear-gradient(90deg, transparent, var(--text-muted), transparent)',
         }}
       />
     </div>

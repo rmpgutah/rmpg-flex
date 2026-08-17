@@ -5,6 +5,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
 import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
 import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
+import { log } from '../utils/logger';
 
 const uploads = new Hono<Env>();
 
@@ -168,7 +169,7 @@ uploads.get('/entity/:type/:id', async (c) => {
     );
     return c.json(enriched);
   } catch (err) {
-    console.error('List attachments error:', err);
+    log.error('List attachments failed', { type: c.req.param('type'), id: c.req.param('id') }, err as Error);
     return c.json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' }, 500);
   }
 });
@@ -184,7 +185,7 @@ uploads.get('/sign/:fileId', async (c) => {
     const { sig, exp } = await hmacSign(fileId, c.env.JWT_SECRET);
     return c.json({ sig, exp, file_id: fileId });
   } catch (err) {
-    console.error('Sign file error:', err);
+    log.error('Sign file failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to sign file', code: 'SIGN_FILE_ERROR' }, 500);
   }
 });
@@ -227,7 +228,7 @@ uploads.get('/:fileId/thumbnail', async (c) => {
     c.header('X-Content-Type-Options', 'nosniff');
     return c.body(data);
   } catch (err) {
-    console.error('Thumbnail error:', err);
+    log.error('Thumbnail fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Thumbnail failed', code: 'THUMBNAIL_FAILED' }, 500);
   }
 });
@@ -261,7 +262,7 @@ uploads.get('/:fileId/download', async (c) => {
     c.header('Content-Disposition', `attachment; filename="${att.original_name}"`);
     return c.body(data);
   } catch (err) {
-    console.error('Download error:', err);
+    log.error('Download fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });
@@ -298,7 +299,7 @@ uploads.get('/:fileId', async (c) => {
     c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
     return c.body(data);
   } catch (err) {
-    console.error('Download error:', err);
+    log.error('File fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });
@@ -412,7 +413,7 @@ uploads.post('/', async (c) => {
 
     return c.json(results, 201);
   } catch (err) {
-    console.error('Upload error:', err);
+    log.error('Upload failed', {}, err as Error);
     return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
   }
 });
@@ -468,7 +469,7 @@ uploads.post('/presign', async (c) => {
 
     return c.json({ file_id: fileId, upload_url: uploadUrl, key: r2Key });
   } catch (err) {
-    console.error('Presign upload error:', err);
+    log.error('Presign upload failed', {}, err as Error);
     return c.json({ error: 'Failed to create upload URL', code: 'PRESIGN_ERROR' }, 500);
   }
 });
@@ -542,7 +543,7 @@ uploads.post('/presign/:fileId/complete', async (c) => {
     const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     return c.json(row, 201);
   } catch (err) {
-    console.error('Complete presigned upload error:', err);
+    log.error('Complete presign upload failed', {}, err as Error);
     return c.json({ error: 'Failed to finalize upload', code: 'COMPLETE_UPLOAD_ERROR' }, 500);
   }
 });
@@ -585,7 +586,7 @@ uploads.post('/create', async (c) => {
     const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     return c.json(row, 201);
   } catch (err) {
-    console.error('Create file error:', err);
+    log.error('Create file failed', {}, err as Error);
     return c.json({ error: 'Failed to create file', code: 'CREATE_FILE_ERROR' }, 500);
   }
 });
@@ -636,7 +637,7 @@ uploads.put('/:fileId/content', async (c) => {
 
     return c.json({ ok: true, file_id: fileId, file_size: encoded.byteLength });
   } catch (err) {
-    console.error('Save content error:', err);
+    log.error('Save content failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to save content', code: 'SAVE_CONTENT_ERROR' }, 500);
   }
 });
@@ -674,7 +675,7 @@ uploads.put('/:fileId/link', async (c) => {
 
     return c.json(row);
   } catch (err) {
-    console.error('Link attachment error:', err);
+    log.error('Link attachment failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to link attachment', code: 'LINK_ATTACHMENT_ERROR' }, 500);
   }
 });
@@ -715,7 +716,7 @@ uploads.delete('/:fileId', async (c) => {
 
     return c.json({ message: 'File deleted' });
   } catch (err) {
-    console.error('Delete attachment error:', err);
+    log.error('Delete attachment failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' }, 500);
   }
 });

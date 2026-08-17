@@ -344,7 +344,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 style={{
                   background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(136, 136, 136, 0.15)') : 'transparent',
                   border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(136, 136, 136, 0.4)'}` : '1px solid transparent',
-                  color: environment === env ? (env === 'production' ? '#f87171' : 'var(--text-secondary)') : 'var(--text-muted)',
+                  color: environment === env ? (env === 'production' ? 'rgb(248 113 113)' : 'var(--text-secondary)') : 'var(--text-muted)',
                 }}
               >
                 {env === 'sandbox' ? 'Sandbox' : 'Production'}

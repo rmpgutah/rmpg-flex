@@ -16,9 +16,15 @@ export interface DesktopWindowState {
   maximized: boolean;
   alwaysOnTop: boolean;
   opacity: number;
-  fullscreen: boolean;
-  groupId: string | null;
-  activeInGroup: boolean;
+}
+
+interface ClosedWindowRecord {
+  path: string;
+  title: string;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
 }
 
 interface DesktopWindowManagerContextValue {
@@ -45,25 +51,17 @@ interface DesktopWindowManagerContextValue {
   tileHorizontal: (desktopW?: number, desktopH?: number) => void;
   /** Tiles all visible windows vertically (stacked). */
   tileVertical: (desktopW?: number, desktopH?: number) => void;
-  setFullscreen: (id: string, value: boolean) => void;
-  /** Merges sourceId into the same tab group as targetId. Creates a new groupId if neither is in a group. */
-  mergeWindowTab: (sourceId: string, targetId: string) => void;
-  /** Removes a window from its tab group, restoring it as a standalone window. */
-  tearOffTab: (windowId: string) => void;
-  /** Sets the active (visible) tab within a tab group. */
-  setActiveTab: (groupId: string, windowId: string) => void;
   /** ID of the topmost (highest zIndex) non-minimized window, or null. */
   focusedId: string | null;
-  /** Registers a callback that will be invoked when Win+Z snap-layouts is requested for this window. */
-  registerSnapLayoutsHandler: (id: string, handler: () => void) => void;
-  /** Unregisters the snap-layouts callback for this window (call on unmount). */
-  unregisterSnapLayoutsHandler: (id: string) => void;
-  /** Triggers the snap-layouts overlay on the given window (e.g. from Win+Z). */
-  requestSnapLayouts: (id: string) => void;
+  /** Recently closed windows (max 5), newest first. */
+  closedHistory: ClosedWindowRecord[];
+  /** Reopen the most recently closed window at its original position. */
+  reopenLastClosed: () => void;
 }
 
 const SESSION_KEY = 'rmpg_desktop_windows';
 const MAX_OPEN_WINDOWS = 10;
+const MAX_CLOSED_HISTORY = 5;
 const MIN_WINDOW_OPACITY = 0.3;
 const MAX_WINDOW_OPACITY = 1;
 
@@ -90,6 +88,7 @@ let nextZIndex = 100;
 
 export function DesktopWindowManagerProvider({ children }: { children: React.ReactNode }) {
   const [windows, setWindows] = useState<DesktopWindowState[]>(loadSession);
+  const [closedHistory, setClosedHistory] = useState<ClosedWindowRecord[]>([]);
   // Synchronous source of truth for openWindow's cap check and boolean return value.
   // React's setWindows(prev => ...) updater is NOT guaranteed to run synchronously when
   // multiple mutator calls happen inside the same event-handler batch (React 18 only
@@ -131,47 +130,48 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
       x: saved?.x ?? (80 + offset), y: saved?.y ?? (60 + offset),
       width: saved?.width ?? size?.width ?? 1050, height: saved?.height ?? size?.height ?? 800,
       zIndex: nextZIndex, minimized: false, maximized: false,
-      alwaysOnTop: false, opacity: getDefaultWindowOpacity(), fullscreen: false,
-      groupId: null, activeInGroup: true,
+      alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
     };
     commit([...prev, win]);
     playDesktopSound();
     return true;
   }, [commit]);
 
-  const snapLayoutsHandlersRef = useRef<Map<string, () => void>>(new Map());
-
-  const registerSnapLayoutsHandler = useCallback((id: string, handler: () => void) => {
-    snapLayoutsHandlersRef.current.set(id, handler);
-  }, []);
-
-  const unregisterSnapLayoutsHandler = useCallback((id: string) => {
-    snapLayoutsHandlersRef.current.delete(id);
-  }, []);
-
-  const requestSnapLayouts = useCallback((id: string) => {
-    snapLayoutsHandlersRef.current.get(id)?.();
-  }, []);
-
   const closeWindow = useCallback((id: string) => {
-    const prev = windowsRef.current;
-    const closing = prev.find(w => w.id === id);
-    const groupId = closing?.groupId ?? null;
-    const filtered = prev.filter(w => w.id !== id);
-
-    // If closing a grouped window leaves only one member in the group,
-    // clear the stale groupId from that survivor so it behaves as a standalone window.
-    if (groupId) {
-      const remaining = filtered.filter(w => w.groupId === groupId);
-      if (remaining.length === 1) {
-        commit(filtered.map(w => w.groupId === groupId ? { ...w, groupId: null, activeInGroup: true } : w));
-        playDesktopSound();
-        return;
-      }
+    const closing = windowsRef.current.find(w => w.id === id);
+    if (closing) {
+      saveWindowPosition(closing.path, { x: closing.x, y: closing.y, width: closing.width, height: closing.height });
+      const record: ClosedWindowRecord = { path: closing.path, title: closing.title, width: closing.width, height: closing.height, x: closing.x, y: closing.y };
+      setClosedHistory(prev => [record, ...prev].slice(0, MAX_CLOSED_HISTORY));
     }
-
-    commit(filtered);
+    commit(windowsRef.current.filter(w => w.id !== id));
     playDesktopSound();
+  }, [commit]);
+
+  const reopenLastClosed = useCallback(() => {
+    setClosedHistory(prev => {
+      if (prev.length === 0) return prev;
+      const [top, ...rest] = prev;
+      // openWindow focuses the window if it's already open; otherwise creates it
+      const prev2 = windowsRef.current;
+      const existing = prev2.find(w => w.path === top.path);
+      if (existing) {
+        nextZIndex += 1;
+        commit(prev2.map(w => w.id === existing.id ? { ...w, minimized: false, zIndex: nextZIndex } : w));
+      } else if (prev2.length < MAX_OPEN_WINDOWS) {
+        nextZIndex += 1;
+        const win: DesktopWindowState = {
+          id: `win_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          path: top.path, title: top.title,
+          x: top.x, y: top.y, width: top.width, height: top.height,
+          zIndex: nextZIndex, minimized: false, maximized: false,
+          alwaysOnTop: false, opacity: getDefaultWindowOpacity(),
+        };
+        commit([...prev2, win]);
+        playDesktopSound();
+      }
+      return rest;
+    });
   }, [commit]);
 
   const focusWindow = useCallback((id: string) => {
@@ -225,50 +225,6 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
     commit(windowsRef.current.map(w => w.id === id ? { ...w, opacity: clamped } : w));
   }, [commit]);
 
-  const setFullscreen = useCallback((id: string, value: boolean) => {
-    commit(windowsRef.current.map(w => w.id === id ? { ...w, fullscreen: value } : w));
-  }, [commit]);
-
-  const mergeWindowTab = useCallback((sourceId: string, targetId: string) => {
-    const prev = windowsRef.current;
-    const target = prev.find(w => w.id === targetId);
-    if (!target) return;
-    const groupId = target.groupId ?? `group_${Date.now()}`;
-    commit(prev.map(w => {
-      if (w.id === targetId) return { ...w, groupId, activeInGroup: true };
-      if (w.id === sourceId) return { ...w, groupId, activeInGroup: false };
-      return w;
-    }));
-  }, [commit]);
-
-  const tearOffTab = useCallback((windowId: string) => {
-    const prev = windowsRef.current;
-    const targetWin = prev.find(w => w.id === windowId);
-    const groupId = targetWin?.groupId ?? null;
-
-    const updated = prev.map(w => w.id === windowId ? { ...w, groupId: null, activeInGroup: true } : w);
-
-    // If only one member remains in the group after the tear-off, clear its groupId too —
-    // a solo window in a group leaves a stale groupId that causes the next mergeWindowTab
-    // call to inherit the old group instead of forming a new one.
-    if (groupId) {
-      const remaining = updated.filter(w => w.groupId === groupId);
-      if (remaining.length === 1) {
-        commit(updated.map(w => w.groupId === groupId ? { ...w, groupId: null, activeInGroup: true } : w));
-        return;
-      }
-    }
-
-    commit(updated);
-  }, [commit]);
-
-  const setActiveTab = useCallback((groupId: string, windowId: string) => {
-    commit(windowsRef.current.map(w => {
-      if (w.groupId !== groupId) return w;
-      return { ...w, activeInGroup: w.id === windowId };
-    }));
-  }, [commit]);
-
   const minimizeOthers = useCallback((exceptId: string) => {
     commit(windowsRef.current.map(w => w.id === exceptId ? w : { ...w, minimized: true }));
   }, [commit]);
@@ -318,7 +274,7 @@ export function DesktopWindowManagerProvider({ children }: { children: React.Rea
 
   return (
     <DesktopWindowManagerContext.Provider
-      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, setFullscreen, mergeWindowTab, tearOffTab, setActiveTab, focusedId, registerSnapLayoutsHandler, unregisterSnapLayoutsHandler, requestSnapLayouts }}
+      value={{ windows, openWindow, closeWindow, focusWindow, minimizeWindow, toggleMaximize, moveResize, updateWindowTitle, minimizeAll, restoreAll, toggleAlwaysOnTop, setWindowOpacity, minimizeOthers, cascade, tileHorizontal, tileVertical, focusedId, closedHistory, reopenLastClosed }}
     >
       {children}
     </DesktopWindowManagerContext.Provider>

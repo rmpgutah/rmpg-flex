@@ -577,7 +577,7 @@ export default function NavigationPage() {
           type: 'line',
           source: 'rmpg-route-source',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0 0 0 / 0)'] },
         });
         map.addLayer({
           id: 'rmpg-route-layer',
@@ -604,7 +604,7 @@ export default function NavigationPage() {
     try {
       map.setPaintProperty('rmpg-route-traveled', 'line-gradient', [
         'step', ['line-progress'],
-        'rgba(58,58,58,0.55)', Math.max(routeProgress.fraction, 0.0001), 'rgba(0,0,0,0)',
+        'rgba(58,58,58,0.55)', Math.max(routeProgress.fraction, 0.0001), 'rgba(0 0 0 / 0)',
       ]);
     } catch { /* style not ready */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1691,7 +1691,7 @@ export default function NavigationPage() {
             'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 12, 16, 28],
             'heatmap-opacity': 0.45,
             'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)', 0.3, 'rgba(212,160,23,0.35)', 0.6, 'rgba(245,158,11,0.6)', 1, 'rgba(239,68,68,0.9)'],
+              0, 'rgba(0 0 0 / 0)', 0.3, 'rgba(212,160,23,0.35)', 0.6, 'rgba(245,158,11,0.6)', 1, 'rgba(239,68,68,0.9)'],
           },
         });
         map.addLayer({
@@ -1742,7 +1742,7 @@ export default function NavigationPage() {
           id: 'rmpg-crash-pts', type: 'circle', source: SRC,
           paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.6, 17, 6],
-            'circle-color': 'rgba(0,0,0,0)',           // hollow center → reads as a ring
+            'circle-color': 'rgba(0 0 0 / 0)',           // hollow center → reads as a ring
             'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 17, 1.8],
             'circle-stroke-color': ['get', 'scolor'],
             'circle-opacity': 1,
@@ -1992,7 +1992,7 @@ export default function NavigationPage() {
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
-  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
+  const clock = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
   const course = gps.course ?? null;
@@ -2471,7 +2471,7 @@ export default function NavigationPage() {
     if (hM) mins += parseInt(hM[1], 10) * 60;
     if (mM) mins += parseInt(mM[1], 10);
     if (!hM && !mM) { const cM = etaStr.match(/^(\d+):(\d{2})$/); if (cM) mins = parseInt(cM[1], 10) + (parseInt(cM[2], 10) >= 30 ? 1 : 0); }
-    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
+    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
     return { upcomingSteps: upcoming, arrivalClock };
   }, [activeRoute, routeProgress, displayPrefs.clock]);
 

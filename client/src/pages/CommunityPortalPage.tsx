@@ -59,7 +59,7 @@ const STATUS_COLORS: Record<string, string> = {
   reviewing: 'bg-blue-900/40 text-blue-400 border border-blue-700/40',
   assigned: 'bg-purple-900/40 text-purple-400 border border-purple-700/40',
   resolved: 'bg-green-900/40 text-green-400 border border-green-700/40',
-  closed: 'bg-gray-900/40 text-gray-400 border border-gray-700/40',
+  closed: 'bg-gray-900/40 text-rmpg-400 border border-gray-700/40',
   rejected: 'bg-red-900/40 text-red-400 border border-red-700/40',
 };
 
@@ -188,19 +188,19 @@ export default function CommunityPortalPage() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-rmpg-500" />
           <input
             type="text"
             placeholder="Search tracking #, reporter, location…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-200 placeholder-gray-600 focus:border-[#d4a017] focus:outline-none"
+            className="w-full pl-8 pr-3 py-1.5 bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-200 placeholder-rmpg-500 focus:[border-color:var(--field-label-color)] focus:outline-none"
           />
         </div>
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 focus:border-[#d4a017] focus:outline-none"
+          className="bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 focus:[border-color:var(--field-label-color)] focus:outline-none"
         >
           <option value="">All Statuses</option>
           {STATUS_OPTIONS.map(s => (
@@ -210,7 +210,7 @@ export default function CommunityPortalPage() {
         <select
           value={typeFilter}
           onChange={e => setTypeFilter(e.target.value)}
-          className="bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 focus:border-[#d4a017] focus:outline-none"
+          className="bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 focus:[border-color:var(--field-label-color)] focus:outline-none"
         >
           <option value="">All Types</option>
           {Object.entries(REPORT_TYPE_LABELS).map(([k, v]) => (
@@ -221,14 +221,14 @@ export default function CommunityPortalPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-gray-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
+        <div className="flex items-center justify-center py-16 text-rmpg-500"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>
       ) : filtered.length === 0 ? (
         <EmptyState icon={Users} title="No community reports found" />
       ) : (
-        <div className="overflow-x-auto border border-[#222] rounded-sm">
+        <div className="overflow-x-auto border border-border-default rounded-sm">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="bg-[#141414] border-b border-[#222] text-gray-400 font-semibold text-[9px] uppercase tracking-wider">
+              <tr className="bg-surface-base border-b border-border-default text-rmpg-400 font-semibold text-[9px] uppercase tracking-wider">
                 <th className="text-left px-2 py-[3px]">Tracking #</th>
                 <th className="text-left px-2 py-[3px]">Date</th>
                 <th className="text-left px-2 py-[3px]">Type</th>
@@ -244,20 +244,20 @@ export default function CommunityPortalPage() {
                 <tr
                   key={r.id}
                   onClick={() => openDetail(r)}
-                  className="border-b border-[#1a1a1a] hover:bg-[#1a1a1a] cursor-pointer transition-colors"
+                  className="border-b border-border-default hover:bg-surface-raised cursor-pointer transition-colors"
                 >
-                  <td className="px-2 py-[2px] text-[#d4a017] font-mono">{r.tracking_number}</td>
-                  <td className="px-2 py-[2px] text-gray-400">{safeDateStr(r.created_at)}</td>
-                  <td className="px-2 py-[2px] text-gray-300">{REPORT_TYPE_LABELS[r.report_type] || r.report_type}</td>
-                  <td className="px-2 py-[2px] text-gray-300">{r.anonymous ? 'Anonymous' : r.reporter_name}</td>
-                  <td className="px-2 py-[2px] text-gray-400 max-w-[160px] truncate">{r.location}</td>
-                  <td className="px-2 py-[2px] text-gray-400 max-w-[200px] truncate">{r.description}</td>
+                  <td className="px-2 py-[2px] [color:var(--panel-header-color)] font-mono">{r.tracking_number}</td>
+                  <td className="px-2 py-[2px] text-rmpg-400">{safeDateStr(r.created_at)}</td>
+                  <td className="px-2 py-[2px] text-rmpg-300">{REPORT_TYPE_LABELS[r.report_type] || r.report_type}</td>
+                  <td className="px-2 py-[2px] text-rmpg-300">{r.anonymous ? 'Anonymous' : r.reporter_name}</td>
+                  <td className="px-2 py-[2px] text-rmpg-400 max-w-[160px] truncate">{r.location}</td>
+                  <td className="px-2 py-[2px] text-rmpg-400 max-w-[200px] truncate">{r.description}</td>
                   <td className="px-2 py-[2px]">
-                    <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] ${STATUS_COLORS[r.status] || 'text-gray-400'}`}>
+                    <span className={`inline-block px-1.5 py-0.5 rounded-sm text-[10px] ${STATUS_COLORS[r.status] || 'text-rmpg-400'}`}>
                       {toDisplayLabel(r.status).toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-2 py-[2px] text-gray-400">{r.assigned_to || '—'}</td>
+                  <td className="px-2 py-[2px] text-rmpg-400">{r.assigned_to || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -268,65 +268,65 @@ export default function CommunityPortalPage() {
       {/* Detail Panel */}
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#0a0a0a] border border-[#222] rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-lg">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222] bg-gradient-to-r from-[#1a1a1a] to-[#242424]">
+          <div className="bg-surface-sunken border border-border-default rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-lg">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-default bg-surface-raised">
               <div className="flex items-center gap-2">
                 <IconButton aria-label="Close detail" onClick={() => setSelected(null)}>
                   <ChevronLeft className="w-4 h-4" />
                 </IconButton>
-                <span className="text-[#d4a017] text-xs font-semibold">{selected.tracking_number}</span>
+                <span className="[color:var(--panel-header-color)] text-xs font-semibold">{selected.tracking_number}</span>
               </div>
               <IconButton aria-label="Close detail panel" onClick={() => setSelected(null)}>
                 <X className="w-4 h-4" />
               </IconButton>
             </div>
 
-            <div className="p-4 space-y-3 text-xs text-gray-300">
+            <div className="p-4 space-y-3 text-xs text-rmpg-300">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Type</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Type</label>
                   <p>{REPORT_TYPE_LABELS[selected.report_type] || selected.report_type}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Priority</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Priority</label>
                   <p>{selected.priority || '—'}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Reporter</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Reporter</label>
                   <p>{selected.anonymous ? 'Anonymous' : selected.reporter_name}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Contact</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Contact</label>
                   <p>{selected.reporter_phone || selected.reporter_email || '—'}</p>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Location</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Location</label>
                   <p>{selected.location}</p>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Description</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Description</label>
                   <p className="whitespace-pre-wrap">{selected.description}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Submitted</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Submitted</label>
                   <p>{safeDateTimeStr(selected.created_at)}</p>
                 </div>
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Last Updated</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Last Updated</label>
                   <p>{safeDateTimeStr(selected.updated_at)}</p>
                 </div>
               </div>
 
-              <hr className="border-[#222]" />
+              <hr className="border-border-default" />
 
               {/* Status change */}
               <div className="space-y-2">
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Status</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Status</label>
                   <select
                     value={editStatus}
                     onChange={e => setEditStatus(e.target.value as ReportStatus)}
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 mt-1 focus:[border-color:var(--field-label-color)] focus:outline-none"
                   >
                     {STATUS_OPTIONS.map(s => (
                       <option key={s} value={s}>{toDisplayLabel(s).toUpperCase()}</option>
@@ -335,11 +335,11 @@ export default function CommunityPortalPage() {
                 </div>
 
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Assign To Officer</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Assign To Officer</label>
                   <select
                     value={editAssignee}
                     onChange={e => setEditAssignee(e.target.value)}
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none"
+                    className="w-full bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 mt-1 focus:[border-color:var(--field-label-color)] focus:outline-none"
                   >
                     <option value="">— Unassigned —</option>
                     {officers.map(o => (
@@ -351,12 +351,12 @@ export default function CommunityPortalPage() {
                 </div>
 
                 <div>
-                  <label className="text-[9px] uppercase text-gray-500 font-semibold">Resolution Notes</label>
+                  <label className="text-[9px] uppercase text-rmpg-500 font-semibold">Resolution Notes</label>
                   <textarea
                     value={editResolution}
                     onChange={e => setEditResolution(e.target.value)}
                     rows={3}
-                    className="w-full bg-[#141414] border border-[#222] rounded-sm text-xs text-gray-300 px-2 py-1.5 mt-1 focus:border-[#d4a017] focus:outline-none resize-none"
+                    className="w-full bg-surface-base border border-border-default rounded-sm text-xs text-rmpg-300 px-2 py-1.5 mt-1 focus:[border-color:var(--field-label-color)] focus:outline-none resize-none"
                   />
                 </div>
               </div>
@@ -364,14 +364,14 @@ export default function CommunityPortalPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setSelected(null)}
-                  className="px-3 py-1.5 text-xs text-gray-400 bg-[#141414] border border-[#222] rounded-sm hover:bg-[#1a1a1a]"
+                  className="px-3 py-1.5 text-xs text-rmpg-400 bg-surface-base border border-border-default rounded-sm hover:bg-surface-raised"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={saveChanges}
                   disabled={saving}
-                  className="px-3 py-1.5 text-xs text-black bg-[#d4a017] rounded-sm hover:bg-[#b8891a] disabled:opacity-50 flex items-center gap-1"
+                  className="px-3 py-1.5 text-xs text-white bg-brand-600 rounded-sm hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1"
                 >
                   {saving && <Loader2 className="w-3 h-3 animate-spin" />}
                   Save Changes

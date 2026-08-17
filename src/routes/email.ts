@@ -197,8 +197,10 @@ email.get('/connect/authorize', async (c) => {
   for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
   await setCfg(c.env.DB, `email_connect_state_${state}`, String(userId));
 
-  const host = new URL(c.req.url).host;
-  const redirectUri = `https://${host}/api/email/connect/callback`;
+  // Always use the canonical API domain for the redirect URI. Using
+  // c.req.url.host returns 'rmpgutah.us' when the request is proxied
+  // through the SPA origin, causing AADSTS50011 (redirect URI mismatch).
+  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
@@ -255,7 +257,7 @@ email.get('/connect/callback', async (c) => {
     return c.redirect('/email?connect_status=error&message=Credentials+missing');
   }
 
-  const redirectUri = `https://${url.host}/api/email/connect/callback`;
+  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -287,6 +289,24 @@ email.get('/connect/callback', async (c) => {
         mailbox = payload.upn || payload.preferred_username || payload.unique_name || undefined;
       }
     } catch { /* best-effort */ }
+
+    // Enforce that the Microsoft account being connected matches the email
+    // address assigned to this user in the RMPG users table. Email addresses
+    // are case-insensitive (RFC 5321 §2.4) so compare lowercased.
+    const userRow = await queryFirst<{ email: string | null }>(
+      c.env.DB,
+      'SELECT email FROM users WHERE id = ?',
+      userId,
+    );
+    const assignedEmail = userRow?.email?.toLowerCase() ?? null;
+    if (assignedEmail && mailbox && mailbox.toLowerCase() !== assignedEmail) {
+      log.warn('email connect blocked: Microsoft account does not match assigned address', {
+        userId,
+        attempted: mailbox,
+        assigned: assignedEmail,
+      });
+      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
+    }
 
     const expiresIn = Number(data.expires_in) || 3600;
     await saveUserGraphToken(c.env.DB, c.env, userId, {

@@ -57,7 +57,8 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   }
   const obj = got.obj;
 
-  const mime = downloadMime(filename);
+  const basename = filename.includes('/') ? filename.split('/').pop()! : filename;
+  const mime = downloadMime(basename);
   const headers: Record<string, string> = {
     'Content-Type': mime,
     // Lets clients resume instead of starting a large download over.
@@ -71,8 +72,8 @@ export async function serveDownloadFile(bucket: R2Bucket, filename: string, c: a
   // Anything that is not plain text is a file to save, not something to render.
   // Without this a browser may display a .txt or, worse, sniff and render an
   // archive as a page.
-  if (!filename.endsWith('.txt')) {
-    headers['Content-Disposition'] = `attachment; filename="${filename}"`;
+  if (!basename.endsWith('.txt')) {
+    headers['Content-Disposition'] = `attachment; filename="${basename}"`;
   }
 
   if (range) {
@@ -136,8 +137,9 @@ function verLt(a: string, b: string): boolean {
 
 export async function serveUpdatesYaml(bucket: R2Bucket, platform: 'win' | 'mac', c: any) {
   try {
-    const list = await bucket.list();
-    const manifestName = platform === 'win' ? 'latest.yml' : 'latest-mac.yml';
+    const list = await bucket.list({ prefix: 'updates/' });
+    // CI publishes manifests and installers under the updates/ prefix.
+    const manifestName = platform === 'win' ? 'updates/latest.yml' : 'updates/latest-mac.yml';
 
     const existing = list.objects.find((o: R2Object) => o.key === manifestName);
     if (existing) {
@@ -178,7 +180,7 @@ export async function serveUpdatesYaml(bucket: R2Bucket, platform: 'win' | 'mac'
     c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     return c.text(yaml);
   } catch (err) {
-    console.error(`${platform} YAML error:`, err);
+    log.error(`${platform} YAML generation failed`, { platform }, err as Error);
     return c.text('Failed to generate manifest', 500);
   }
 }
@@ -402,7 +404,7 @@ downloads.get('/downloads/check', async (c) => {
       downloadBytes: target.bytes,
     });
   } catch (err) {
-    console.error('downloads/check error:', err);
+    log.error('downloads/check failed', { route: '/api/downloads/check' }, err as Error);
     return c.json({ error: 'Check failed' }, 500);
   }
 });
@@ -416,7 +418,7 @@ downloads.get('/downloads/changelog', async (c) => {
     const rows = result.results as unknown as Array<{ version: string; release_date: string; notes: string }>;
     return c.json(rows.map(parseReleaseNoteRow));
   } catch (err) {
-    console.error('downloads/changelog error:', err);
+    log.error('downloads/changelog failed', { route: '/api/downloads/changelog' }, err as Error);
     return c.json({ error: 'Failed to read changelog' }, 500);
   }
 });
@@ -437,7 +439,7 @@ export const updates = new Hono<{ Bindings: { DOWNLOADS: R2Bucket } }>();
 
 updates.get('/latest.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
 updates.get('/latest-mac.yml', (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
-updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, c.req.param('filename'), c));
+updates.get('/:filename', (c) => serveDownloadFile(c.env.DOWNLOADS, `updates/${c.req.param('filename')}`, c));
 
 // ─── /downloads/:filename — the actual file downloads ────────────────────────
 //

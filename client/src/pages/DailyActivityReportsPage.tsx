@@ -456,7 +456,7 @@ export default function DailyActivityReportsPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <Calendar style={{ width: 9, height: 9 }} />
-                  {dar.shift_date ? parseTimestamp(dar.shift_date).toLocaleDateString() : '—'}
+                  {dar.shift_date ? parseTimestamp(dar.shift_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'}
                   {dar.officer_name && (
                     <span className="flex items-center gap-1">
                       <User style={{ width: 9, height: 9 }} />
@@ -486,7 +486,7 @@ export default function DailyActivityReportsPage() {
       <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
-            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
+            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}`} icon={ClipboardCheck}>
               <button type="button" onClick={() => generateDarPdf(selected)} className="toolbar-btn print:hidden" title="Export client/court-ready PDF">
                 <FileText style={{ width: 11, height: 11 }} /> PDF
               </button>
@@ -545,7 +545,7 @@ export default function DailyActivityReportsPage() {
 
               {/* Shift Info */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-rmpg-100">{selected.shift_start || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-rmpg-100">{selected.shift_end || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Total Hours</div><div className="text-xs font-bold text-brand-400">{(() => {
@@ -740,7 +740,7 @@ export default function DailyActivityReportsPage() {
             {selected.officer_name && (
               <div><span className="text-rmpg-500">Officer</span> <span className="text-rmpg-100">{selected.officer_name}</span></div>
             )}
-            <div><span className="text-rmpg-500">Shift</span> <span className="text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString() : '—'}</span></div>
+            <div><span className="text-rmpg-500">Shift</span> <span className="text-rmpg-100">{selected.shift_date ? parseTimestamp(selected.shift_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'}</span></div>
             <div className="mt-2">
               <label htmlFor="dar-return-notes" className="text-[9px] font-mono text-rmpg-500 uppercase">Review Notes *</label>
               <textarea

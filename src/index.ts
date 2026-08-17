@@ -36,6 +36,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 import { log, logErrorToDb } from './utils/logger';
+import { initTursoSingleton } from './utils/tursoClient';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
@@ -51,6 +52,10 @@ export { WelfareWatchDO, VoiceHubDO, AlertHubDO, DeepResearchDO, PersonIntelDO, 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ─── Global middleware ───────────────────────────────────────
+app.use('*', async (c, next) => {
+  initTursoSingleton(c.env);
+  await next();
+});
 app.use('*', logger());
 app.use('*', secureHeaders());
 app.use('*', cors({
@@ -242,9 +247,9 @@ export default {
       ctx.waitUntil(
         import('./utils/warrantSources/runScan').then((m) =>
           m.runAllSourceScans(env.DB).then((result) =>
-            import('./utils/warrantSources/logScanResult').then((log) =>
-              log.logScanResult(env.DB, result, 'cron').catch((err) => {
-                console.error('scraper_runs logging failed:', err);
+            import('./utils/warrantSources/logScanResult').then((scanLog) =>
+              scanLog.logScanResult(env.DB, result, 'cron').catch((err) => {
+                log.error('scraper_runs logging failed:', {}, err);
                 logErrorToDb(env.DB, {
                   severity: 'error',
                   category: 'cron',
@@ -274,7 +279,7 @@ export default {
         ).catch((err) => {
           // The dynamic import()s themselves failed (module load/eval error) —
           // this path previously swallowed the error entirely with no trace.
-          console.error('[cron] warrant scan module import failed:', err);
+          log.error('[cron] warrant scan module import failed:', {}, err);
           logErrorToDb(env.DB, {
             severity: 'error',
             category: 'cron',
@@ -286,14 +291,14 @@ export default {
       );
       ctx.waitUntil(
         detectDispatchAnomalies(env.DB)
-          .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
-          .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
+          .then((r) => log.info(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
+          .catch((err) => log.error('Dispatch anomaly detection failed:', {}, err)),
       );
       // Serve nudge sweep — 4-hourly supervisor digest + officer notifications
       ctx.waitUntil(
         import('./utils/serveNudgeSweep').then((m) =>
           m.sweepServeNudges(env.DB, env).catch((err) =>
-            console.error('Serve nudge sweep failed:', err),
+            log.error('Serve nudge sweep failed:', {}, err),
           ),
         ).catch(() => {}),
       );
@@ -306,9 +311,9 @@ export default {
       ctx.waitUntil(
         import('./utils/caseTaskNudges').then((m) =>
           m.sweepCaseTaskNudges(env.DB, env)
-            .then((n) => console.log(`[case-task-nudges] inserted ${n} notification(s)`))
+            .then((n) => log.info(`[case-task-nudges] inserted ${n} notification(s)`))
             .catch((err) => {
-              console.error('Case task nudge sweep failed:', err);
+              log.error('Case task nudge sweep failed:', {}, err);
               logErrorToDb(env.DB, {
                 severity: 'error',
                 category: 'cron',
@@ -318,7 +323,7 @@ export default {
               }, ctx);
             }),
         ).catch((err) => {
-          console.error('[cron] case task nudges module import failed:', err);
+          log.error('[cron] case task nudges module import failed:', {}, err);
           logErrorToDb(env.DB, {
             severity: 'error',
             category: 'cron',
@@ -334,8 +339,8 @@ export default {
       ctx.waitUntil(
         import('./utils/warrantStatus').then((m) =>
           m.expireOverdueWarrants(env.DB)
-            .then((n) => console.log(`[warrant-expiry] flipped ${n} overdue warrant(s) to expired`))
-            .catch((err) => console.error('Warrant auto-expiry sweep failed:', err)),
+            .then((n) => log.info(`[warrant-expiry] flipped ${n} overdue warrant(s) to expired`))
+            .catch((err) => log.error('Warrant auto-expiry sweep failed:', {}, err)),
         ).catch(() => {}),
       );
     }
@@ -353,19 +358,19 @@ export default {
       ctx.waitUntil(
         import('./utils/utahWarrantPoller').then((m) =>
           m.reapStaleWatchRuns(env.DB)
-            .then((n) => { if (n > 0) console.log(`[warrant-watch-reaper] closed out ${n} stale run(s)`); })
-            .catch((err) => console.error('Stale warrant-watch-run reaper failed:', err)),
-        ).catch((err) => console.error('Stale warrant-watch-run reaper import failed:', err)),
+            .then((n) => { if (n > 0) log.info(`[warrant-watch-reaper] closed out ${n} stale run(s)`); })
+            .catch((err) => log.error('Stale warrant-watch-run reaper failed:', {}, err)),
+        ).catch((err) => log.error('Stale warrant-watch-run reaper import failed:', {}, err)),
       );
       // ServeManager job poller — syncs jobs from ServeManager into CFS dispatch
       ctx.waitUntil(
         import('./utils/serveManagerPoller').then((m) =>
           m.pollServeManagerJobs(env).then((r) => {
             if (r.synced > 0 || r.callsCreated > 0) {
-              console.log(`[sm-poller] synced ${r.synced} jobs, created ${r.callsCreated} calls`);
+              log.info(`[sm-poller] synced ${r.synced} jobs, created ${r.callsCreated} calls`);
             }
-            if (r.error) console.error('[sm-poller]', r.error);
-          }).catch((err) => console.error('[sm-poller] failed:', err)),
+            if (r.error) log.error('[sm-poller]', { detail: String(r.error) });
+          }).catch((err) => log.error('[sm-poller] failed:', {}, err)),
         ).catch(() => {}),
       );
       // SOR per-state detail-page enrichment — backfills offense/risk_level
@@ -374,9 +379,9 @@ export default {
         import('./utils/sorEnrichment/runner').then((m) =>
           m.enrichPendingOffenders(env.DB).then((r) => {
             if (r.attempted > 0) {
-              console.log(`[sor-enrich] attempted ${r.attempted}, succeeded ${r.succeeded}, failed ${r.failed}`);
+              log.info(`[sor-enrich] attempted ${r.attempted}, succeeded ${r.succeeded}, failed ${r.failed}`);
             }
-          }).catch((err) => console.error('[sor-enrich] failed:', err)),
+          }).catch((err) => log.error('[sor-enrich] failed:', {}, err)),
         ).catch(() => {}),
       );
       // Fleet.io outbound reconciliation — drains `fleetio_events` rows
@@ -408,13 +413,13 @@ export default {
           };
           return syncMod.applyOutbound({ db: env.DB, adapter, config }).then((r) => {
             if (r.attempted > 0) {
-              console.log(`[fleetio-sync] attempted=${r.attempted} completed=${r.completed} failed=${r.failed} skipped=${r.skipped}`);
+              log.info(`[fleetio-sync] attempted=${r.attempted} completed=${r.completed} failed=${r.failed} skipped=${r.skipped}`);
             }
           });
         }).catch((err) => {
           // FleetioConfigError (secrets unset) is expected until the
           // operator provisions FLEETIO_API_KEY/FLEETIO_ACCOUNT_TOKEN.
-          if (err?.name !== 'FleetioConfigError') console.error('[fleetio-sync] applyOutbound failed:', err);
+          if (err?.name !== 'FleetioConfigError') log.error('[fleetio-sync] applyOutbound failed:', {}, err);
         }),
       );
       // Fleet.io health sweep — dead-letter + stuck-queue notifications.
@@ -425,10 +430,10 @@ export default {
         import('./utils/fleetio/healthSweep').then((m) =>
           m.sweepFleetioHealth(env.DB, env).then((r) => {
             if (r.deadLetterNotified > 0 || r.queueAlertFired) {
-              console.log(`[fleetio-health-sweep] deadLetterNotified=${r.deadLetterNotified} queueUnhealthy=${r.queueUnhealthy} queueAlertFired=${r.queueAlertFired} failedTotal=${r.failedTotal}`);
+              log.info(`[fleetio-health-sweep] deadLetterNotified=${r.deadLetterNotified} queueUnhealthy=${r.queueUnhealthy} queueAlertFired=${r.queueAlertFired} failedTotal=${r.failedTotal}`);
             }
           }),
-        ).catch((err) => console.error('[fleetio-health-sweep] failed:', err)),
+        ).catch((err) => log.error('[fleetio-health-sweep] failed:', {}, err)),
       );
       // Email outbox drain — pops pending `email_outbox` rows (Graph send
       // failed inline, e.g. because the owning user hadn't connected their
@@ -442,10 +447,10 @@ export default {
         import('./routes/email').then((m) =>
           m.drainEmailOutbox(env).then((r) => {
             if (r.sent > 0 || r.failed > 0 || r.deferred > 0) {
-              console.log(`[email-outbox-drain] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`);
+              log.info(`[email-outbox-drain] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`);
             }
           }),
-        ).catch((err) => console.error('[email-outbox-drain] failed:', err)),
+        ).catch((err) => log.error('[email-outbox-drain] failed:', {}, err)),
       );
       // Per-user mailbox inbox poll — syncs each connected user's inbox
       // (rules engine, autolinker). Skips cleanly when no user has
@@ -454,11 +459,11 @@ export default {
         import('./routes/email').then((m) =>
           m.runEmailPoll(env, ctx).then((r) => {
             if (!r.skipped) {
-              console.log(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
+              log.info(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
             }
-            if (r.error) console.error('[email-poll]', r.error);
+            if (r.error) log.error('[email-poll]', { detail: String(r.error) });
           }),
-        ).catch((err) => console.error('[email-poll] failed:', err)),
+        ).catch((err) => log.error('[email-poll] failed:', {}, err)),
       );
     }
 
@@ -478,16 +483,16 @@ export default {
       ctx.waitUntil(
         import('./utils/utahWarrantPoller').then((m) =>
           m.resumePartialWatchRun(env.DB)
-            .then((r) => { if (r) console.log(`[warrant-resume] continued pass: ${r.persons_checked} checked, ${r.new_warrants_found} found`); })
-            .catch((err) => console.error('Warrant partial-pass resume failed:', err)),
-        ).catch((err) => console.error('Warrant partial-pass resume import failed:', err)),
+            .then((r) => { if (r) log.info(`[warrant-resume] continued pass: ${r.persons_checked} checked, ${r.new_warrants_found} found`); })
+            .catch((err) => log.error('Warrant partial-pass resume failed:', {}, err)),
+        ).catch((err) => log.error('Warrant partial-pass resume import failed:', {}, err)),
       );
       // Unified scheduler reminders (scheduler_events.notify_at) — mirrors
       // the serve-attempt sweep below; fires scheduler_reminder alerts.
       ctx.waitUntil(
         import('./utils/schedulerReminders').then((m) =>
           m.sweepSchedulerReminders(env.DB, env).catch((err) =>
-            console.error('Scheduler reminder sweep failed:', err),
+            log.error('Scheduler reminder sweep failed:', {}, err),
           ),
         ).catch(() => {}),
       );
@@ -495,7 +500,7 @@ export default {
       ctx.waitUntil(
         import('./utils/serveAttemptScheduler').then((m) =>
           m.sweepAttemptNotifications(env.DB, env).catch((err) =>
-            console.error('Serve attempt notification sweep failed:', err),
+            log.error('Serve attempt notification sweep failed:', {}, err),
           ),
         ).catch(() => {}),
       );
@@ -505,8 +510,8 @@ export default {
       ctx.waitUntil(
         import('./utils/panicEscalationSweep').then((m) =>
           m.sweepPanicEscalation(env.DB).then((r) => {
-            if (r.escalated > 0) console.log(`[panic-escalation] escalated ${r.escalated}`);
-          }).catch((err) => console.error('Panic escalation sweep failed:', err)),
+            if (r.escalated > 0) log.info(`[panic-escalation] escalated ${r.escalated}`);
+          }).catch((err) => log.error('Panic escalation sweep failed:', {}, err)),
         ).catch(() => {}),
       );
       // Intel watchlist sweep (person/vehicle/warrant) — alerts a watcher
@@ -516,8 +521,8 @@ export default {
       ctx.waitUntil(
         import('./utils/intelWatchlist').then((m) =>
           m.sweepWatchlist(env.DB).then((count) => {
-            if (count > 0) console.log(`[intel-watchlist] fired ${count} alert(s)`);
-          }).catch((err) => console.error('Intel watchlist sweep failed:', err)),
+            if (count > 0) log.info(`[intel-watchlist] fired ${count} alert(s)`);
+          }).catch((err) => log.error('Intel watchlist sweep failed:', {}, err)),
         ).catch(() => {}),
       );
       // [12] Serve priority auto-escalation — jobs with a deadline ≤ 3 days
@@ -538,8 +543,8 @@ export default {
              AND priority NOT IN ('urgent','rush')
            LIMIT 100
         `).run()
-          .then((r) => { if (r.meta.changes > 0) console.log(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
-          .catch((err) => console.error('Serve priority auto-escalation failed:', err)),
+          .then((r) => { if (r.meta.changes > 0) log.info(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
+          .catch((err) => log.error('Serve priority auto-escalation failed:', {}, err)),
       );
       // Geocode backfill — populate lat/lng for calls that have an address but
       // null coordinates (created before the forward-geocode-on-create fix).
@@ -547,8 +552,8 @@ export default {
       ctx.waitUntil(
         import('./utils/geocodeBackfill').then((m) =>
           m.backfillCallCoordinates(env.DB, env).then((r) => {
-            if (r.updated > 0) console.log(`[geocode-backfill] geocoded ${r.updated} call(s); done=${r.done}`);
-          }).catch((err) => console.error('Geocode backfill failed:', err)),
+            if (r.updated > 0) log.info(`[geocode-backfill] geocoded ${r.updated} call(s); done=${r.done}`);
+          }).catch((err) => log.error('Geocode backfill failed:', {}, err)),
         ).catch(() => {}),
       );
       // Daily tasks at 04:00 America/Denver. The cron fires every minute, so
@@ -572,8 +577,8 @@ export default {
           import('./utils/serveRebalance').then((m) => {
             const nowIso = new Date().toISOString();
             return m.runDailyRebalance(env.DB, nowIso).then((r) =>
-              console.log(`[rebalance] tiers=${r.tiers_recomputed} critical=${r.tiers_promoted_critical} escalated=${r.priority_escalated}`),
-            ).catch((err) => console.error('Daily rebalance failed:', err));
+              log.info(`[rebalance] tiers=${r.tiers_recomputed} critical=${r.tiers_promoted_critical} escalated=${r.priority_escalated}`),
+            ).catch((err) => log.error('Daily rebalance failed:', {}, err));
           }).catch(() => {}),
         );
         // Fleet maintenance reminders — nobody has to remember to check the
@@ -583,8 +588,8 @@ export default {
         ctx.waitUntil(
           import('./utils/fleetMaintenanceSweep').then((m) =>
             m.sweepFleetMaintenanceReminders(env.DB, env).then((r) =>
-              console.log(`[fleet-maintenance] overdue=${r.overdue} critical=${r.critical} notified=${r.notified}`),
-            ).catch((err) => console.error('Fleet maintenance sweep failed:', err)),
+              log.info(`[fleet-maintenance] overdue=${r.overdue} critical=${r.critical} notified=${r.notified}`),
+            ).catch((err) => log.error('Fleet maintenance sweep failed:', {}, err)),
           ).catch(() => {}),
         );
         // Officer certification expiration reminders — same on-demand-
@@ -593,8 +598,8 @@ export default {
         ctx.waitUntil(
           import('./utils/certExpirationSweep').then((m) =>
             m.sweepCertExpirations(env.DB, env).then((r) =>
-              console.log(`[cert-expiration] expired=${r.expired} expiringSoon=${r.expiringSoon} notified=${r.notified}`),
-            ).catch((err) => console.error('Certification expiration sweep failed:', err)),
+              log.info(`[cert-expiration] expired=${r.expired} expiringSoon=${r.expiringSoon} notified=${r.notified}`),
+            ).catch((err) => log.error('Certification expiration sweep failed:', {}, err)),
           ).catch(() => {}),
         );
         // Serve queue stale auto-close — src/routes/serveQueueEnhanced.ts's
@@ -608,8 +613,8 @@ export default {
         ctx.waitUntil(
           import('./utils/serveStaleAutoCloseSweep').then((m) =>
             m.sweepStaleServeJobs(env.DB, env).then((r) => {
-              if (r.closed > 0) console.log(`[serve-auto-close] closed=${r.closed}`);
-            }).catch((err) => console.error('Serve stale auto-close sweep failed:', err)),
+              if (r.closed > 0) log.info(`[serve-auto-close] closed=${r.closed}`);
+            }).catch((err) => log.error('Serve stale auto-close sweep failed:', {}, err)),
           ).catch(() => {}),
         );
         // Shift Plans understaffed/no-plan reminders — same on-demand-
@@ -620,8 +625,8 @@ export default {
         ctx.waitUntil(
           import('./utils/shiftPlanNotifySweep').then((m) =>
             m.sweepShiftPlanNotifications(env.DB, env).then((r) =>
-              console.log(`[shift-plan-notify] understaffed=${r.understaffed} noPlan=${r.noPlan} notified=${r.notified}`),
-            ).catch((err) => console.error('Shift plan notification sweep failed:', err)),
+              log.info(`[shift-plan-notify] understaffed=${r.understaffed} noPlan=${r.noPlan} notified=${r.notified}`),
+            ).catch((err) => log.error('Shift plan notification sweep failed:', {}, err)),
           ).catch(() => {}),
         );
         // Shift swap escalation reminders — a swap stuck awaiting target
@@ -631,8 +636,8 @@ export default {
         ctx.waitUntil(
           import('./utils/shiftSwapEscalationSweep').then((m) =>
             m.sweepShiftSwapEscalations(env.DB, env).then((r) =>
-              console.log(`[shift-swap-escalation] escalated=${r.escalated} notified=${r.notified}`),
-            ).catch((err) => console.error('Shift swap escalation sweep failed:', err)),
+              log.info(`[shift-swap-escalation] escalated=${r.escalated} notified=${r.notified}`),
+            ).catch((err) => log.error('Shift swap escalation sweep failed:', {}, err)),
           ).catch(() => {}),
         );
       }
@@ -644,14 +649,14 @@ export default {
         ctx.waitUntil(
           (async () => {
             if (!env.DOWNLOADS) {
-              console.warn('[blotter] DOWNLOADS bucket unbound; skipping nightly run');
+              log.warn('[blotter] DOWNLOADS bucket unbound; skipping nightly run');
               return;
             }
             const { runNightlyBlotter } = await import('./utils/dailyReport/nightly');
             const res = await runNightlyBlotter(env.DB, env.DOWNLOADS, Date.now());
-            console.log(`[blotter] generated=${res.generated.join(',') || 'none'} skipped=${res.skipped.length}`);
+            log.info(`[blotter] generated=${res.generated.join(',') || 'none'} skipped=${res.skipped.length}`);
           })().catch((err) => {
-            console.error('[blotter] nightly run failed:', err);
+            log.error('[blotter] nightly run failed:', {}, err);
             logErrorToDb(env.DB, {
               severity: 'error',
               category: 'cron',
@@ -675,8 +680,8 @@ export default {
       ctx.waitUntil(
         import('./utils/retentionReminderSweep').then((m) =>
           m.sweepRetentionReminders(env.DB, env).then((r) =>
-            console.log(`[retention-reminder] eligible=${JSON.stringify(r.eligible)} notified=${r.notified}`),
-          ).catch((err) => console.error('Retention reminder sweep failed:', err)),
+            log.info(`[retention-reminder] eligible=${JSON.stringify(r.eligible)} notified=${r.notified}`),
+          ).catch((err) => log.error('Retention reminder sweep failed:', {}, err)),
         ).catch(() => {}),
       );
     }

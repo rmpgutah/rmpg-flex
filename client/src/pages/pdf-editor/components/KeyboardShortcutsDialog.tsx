@@ -47,7 +47,7 @@ export default function KeyboardShortcutsDialog({ open, onClose }: Props) {
       <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[600px] w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
-            <Keyboard className="w-4 h-4 text-[#d4a017]" /> Keyboard shortcuts
+            <Keyboard className="w-4 h-4 [color:var(--panel-header-color)]" /> Keyboard shortcuts
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>

@@ -370,26 +370,26 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
   return (
     <div className="bg-surface-base border border-border-default flex flex-col">
       <div className="px-3 py-2 border-b border-border-default flex items-center gap-2">
-        <Icon className="w-4 h-4 text-[#d4a017]" />
+        <Icon className="w-4 h-4 text-[color:var(--panel-header-color)]" />
         <div className="text-rmpg-200 text-xs font-semibold flex-1">{tool.title}</div>
         {binaryName && installed !== null && (
           <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border flex items-center gap-1 ${
-            installed ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#d4a017] border-[#d4a017]/60'
+            installed ? 'text-green-400 border-green-800' : 'text-accent-silver-400 border-accent-silver-500/60'
           }`}>
             {installed ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertCircle className="w-2.5 h-2.5" />}
             {installed ? 'INSTALLED' : 'NOT INSTALLED'}
           </div>
         )}
         <div className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 border ${
-          running ? 'text-[#7fd38a] border-[#2e7d32]' : 'text-[#888] border-rmpg-700'
+          running ? 'text-green-400 border-green-800' : 'text-[color:var(--text-muted)] border-rmpg-700'
         }`}>
           {running ? 'RUNNING' : 'IDLE'}
         </div>
       </div>
       <div className="p-3 space-y-2">
-        <div className="text-[#888] text-[11px] leading-snug">{tool.description}</div>
+        <div className="text-[color:var(--text-muted)] text-[11px] leading-snug">{tool.description}</div>
         {tool.requiresAuthorization && (
-          <div className="text-[#d4a017] text-[10px] border border-[#d4a017]/40 bg-[#d4a017]/5 px-2 py-1">
+          <div className="text-[color:var(--text-muted)] text-[10px] border border-[color:var(--border-strong)] px-2 py-1">
             ⚠ {tool.requiresAuthorization}
           </div>
         )}
@@ -397,12 +397,12 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           <div className="flex items-center gap-2 text-[10px]">
             <button
               onClick={() => setBulkMode(false)}
-              className={`px-2 py-0.5 border ${!bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-rmpg-700 text-[#888] hover:text-[#d4a017]'}`}
+              className={`px-2 py-0.5 border ${!bulkMode ? 'bg-rmpg-700 text-rmpg-50 border-rmpg-700' : 'border-rmpg-700 text-[color:var(--text-muted)] hover:text-rmpg-100'}`}
             >Single</button>
             {tool.args.length === 1 && (
               <button
                 onClick={() => setBulkMode(true)}
-                className={`px-2 py-0.5 border flex items-center gap-1 ${bulkMode ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'border-rmpg-700 text-[#888] hover:text-[#d4a017]'}`}
+                className={`px-2 py-0.5 border flex items-center gap-1 ${bulkMode ? 'bg-rmpg-700 text-rmpg-50 border-rmpg-700' : 'border-rmpg-700 text-[color:var(--text-muted)] hover:text-rmpg-100'}`}
                 title="Run this tool against multiple targets sequentially"
               >
                 <Layers className="w-3 h-3" /> Bulk
@@ -415,7 +415,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           const suggestions = targetHistory[arg.name] || [];
           return (
             <div key={arg.name} className="flex flex-col gap-1">
-              <label htmlFor="ff-toolcard-0" className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
+              <label htmlFor="ff-toolcard-0" className="text-[9px] text-[color:var(--text-muted)] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
               <input id="ff-toolcard-0"
                 type="text"
                 placeholder={arg.placeholder}
@@ -423,7 +423,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                 value={formValues[arg.name] || ''}
                 onChange={(e) => setFormValues((f) => ({ ...f, [arg.name]: e.target.value }))}
                 disabled={running}
-                className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50"
+                className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-brand-400 outline-none disabled:opacity-50"
               />
               {suggestions.length > 0 && (
                 <datalist id={listId}>
@@ -435,7 +435,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
         })}
         {bulkMode && tool.args?.[0] && (
           <div className="flex flex-col gap-1">
-            <label className="text-[9px] text-[#888] uppercase tracking-wider">
+            <label className="text-[9px] text-[color:var(--text-muted)] uppercase tracking-wider">
               {tool.args[0].label} — one per line
             </label>
             <RichTextArea
@@ -444,10 +444,10 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
               onChange={(e) => setBulkTargets(e.target.value)}
               disabled={running}
               rows={4}
-              className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-[#d4a017] outline-none disabled:opacity-50 resize-y"
+              className="bg-surface-overlay border border-rmpg-700 text-rmpg-200 text-[11px] font-mono px-2 py-1 focus:border-brand-400 outline-none disabled:opacity-50 resize-y"
             />
             {bulkProgress && (
-              <div className="text-[10px] text-[#d4a017]">
+              <div className="text-[10px] text-[color:var(--text-muted)]">
                 {bulkProgress.done} / {bulkProgress.total} complete
               </div>
             )}
@@ -457,14 +457,14 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           <button
             onClick={bulkMode ? runBulk : run}
             disabled={disabled || running}
-            className="px-3 py-1.5 bg-[#d4a017] text-black text-xs font-semibold hover:bg-[#e5b128] disabled:opacity-40 flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-[color:var(--accent-silver-500)] text-rmpg-50 text-xs font-semibold hover:bg-[color:var(--accent-silver-400)] disabled:opacity-40 flex items-center gap-1.5"
           >
             <Play className="w-3.5 h-3.5" /> {bulkMode ? 'Run Bulk' : (tool.runLabel || 'Run')}
           </button>
           <button
             onClick={stop}
             disabled={!running}
-            className="px-3 py-1.5 bg-surface-raised border border-[#b33] text-[#ff8888] text-xs hover:bg-[#2a1414] disabled:opacity-40 flex items-center gap-1.5"
+            className="px-3 py-1.5 bg-surface-raised border border-[#b33] text-red-400 text-xs hover:bg-red-950 disabled:opacity-40 flex items-center gap-1.5"
           >
             <Square className="w-3.5 h-3.5" /> Stop
           </button>
@@ -472,7 +472,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <button
               onClick={installPkg}
               disabled={running}
-              className="px-3 py-1.5 bg-surface-raised border border-[#d4a017] text-[#d4a017] text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-surface-raised border border-accent-silver-500 text-accent-silver-400 text-xs hover:bg-surface-raised disabled:opacity-40 flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" /> Install {tool.installPkg}
             </button>
@@ -480,7 +480,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           {history.length > 0 && (
             <button
               onClick={() => setHistoryOpen((o) => !o)}
-              className={`ml-auto px-2 py-1.5 text-[10px] flex items-center gap-1 ${historyOpen ? 'text-[#d4a017]' : 'text-[#888] hover:text-[#d4a017]'}`}
+              className={`ml-auto px-2 py-1.5 text-[10px] flex items-center gap-1 ${historyOpen ? 'text-accent-silver-400' : 'text-[color:var(--text-muted)] hover:text-rmpg-100'}`}
               title={`${history.length} past runs`}
             >
               <History className="w-3 h-3" /> History ({history.length})
@@ -499,28 +499,28 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                   a.href = url; a.download = fname; a.click();
                   setTimeout(() => URL.revokeObjectURL(url), 2000);
                 }}
-                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                className="px-2 py-1.5 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                 title="Save output as .txt"
               >
                 <Save className="w-3 h-3" /> .txt
               </button>
               <button
                 onClick={exportPdf}
-                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                className="px-2 py-1.5 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                 title="Export as PDF"
               >
                 <FileText className="w-3 h-3" /> PDF
               </button>
               <button
                 onClick={() => { setCaseModalOpen(true); loadCases(); }}
-                className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] flex items-center gap-1"
+                className="px-2 py-1.5 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 flex items-center gap-1"
                 title="Attach to an existing case as a note"
               >
                 <Link2 className="w-3 h-3" /> Link to Case
               </button>
               <button
                 onClick={() => setScheduleOpen((s) => !s)}
-                className={`px-2 py-1.5 text-[10px] flex items-center gap-1 ${scheduleOpen ? 'text-[#d4a017]' : 'text-[#888] hover:text-[#d4a017]'}`}
+                className={`px-2 py-1.5 text-[10px] flex items-center gap-1 ${scheduleOpen ? 'text-accent-silver-400' : 'text-[color:var(--text-muted)] hover:text-rmpg-100'}`}
                 title="Schedule this scan via cron"
               >
                 <Calendar className="w-3 h-3" /> Schedule
@@ -531,25 +531,25 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <button
               onClick={() => { setOutput([]); setLastExit(null); }}
               disabled={running}
-              className="px-2 py-1.5 text-[#888] text-[10px] hover:text-[#d4a017] disabled:opacity-40"
+              className="px-2 py-1.5 text-[color:var(--text-muted)] text-[10px] hover:text-rmpg-100 disabled:opacity-40"
             >
               Clear
             </button>
           )}
         </div>
         {linkStatus && (
-          <div className="text-[11px] px-2 py-1 border border-[#2e7d32] bg-[#0f1f10] text-[#7fd38a]">
+          <div className="text-[11px] px-2 py-1 border border-green-800 bg-green-950 text-green-400">
             {linkStatus}
           </div>
         )}
         {scheduleOpen && (
           <div className="border border-rmpg-700 bg-surface-sunken p-2 text-[10px] space-y-1.5">
-            <div className="text-[#888]">Copy this line into your crontab (<code className="text-[#d4a017]">crontab -e</code>) to run every 6 hours:</div>
+            <div className="text-[color:var(--text-muted)]">Copy this line into your crontab (<code className="text-accent-silver-400">crontab -e</code>) to run every 6 hours:</div>
             <div className="flex gap-2 items-start">
               <code className="flex-1 bg-surface-overlay border border-border-default px-2 py-1 text-rmpg-200 font-mono break-all">{cronCommand}</code>
               <button
                 onClick={() => navigator.clipboard?.writeText(cronCommand)}
-                className="px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] text-[10px] hover:bg-surface-raised flex items-center gap-1 shrink-0"
+                className="px-2 py-1 bg-surface-raised border border-rmpg-700 text-accent-silver-400 text-[10px] hover:bg-surface-raised flex items-center gap-1 shrink-0"
               >
                 <Copy className="w-3 h-3" /> Copy
               </button>
@@ -558,14 +558,14 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         {caseModalOpen && (
-          <div className="border border-[#d4a017] bg-surface-sunken p-2 space-y-1.5">
+          <div className="border border-[color:var(--border-strong)] bg-surface-sunken p-2 space-y-1.5">
             <div className="flex items-center gap-2">
-              <Link2 className="w-3.5 h-3.5 text-[#d4a017]" />
-              <div className="text-[10px] text-[#d4a017] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
-              <button aria-label="Close" onClick={() => setCaseModalOpen(false)} className="text-[#888] hover:text-[#ff8888]"><X className="w-3 h-3" /></button>
+              <Link2 className="w-3.5 h-3.5 text-[color:var(--panel-header-color)]" />
+              <div className="text-[10px] text-[color:var(--panel-header-color)] uppercase tracking-wider font-semibold flex-1">Attach this scan to a case</div>
+              <button aria-label="Close" onClick={() => setCaseModalOpen(false)} className="text-[color:var(--text-muted)] hover:text-red-400"><X className="w-3 h-3" /></button>
             </div>
-            {cases === null && <div className="text-[11px] text-[#888]">Loading cases…</div>}
-            {cases !== null && cases.length === 0 && <div className="text-[11px] text-[#888]">No cases available. Create one in Case Management first.</div>}
+            {cases === null && <div className="text-[11px] text-[color:var(--text-muted)]">Loading cases…</div>}
+            {cases !== null && cases.length === 0 && <div className="text-[11px] text-[color:var(--text-muted)]">No cases available. Create one in Case Management first.</div>}
             {cases && cases.length > 0 && (
               <div className="max-h-48 overflow-auto divide-y divide-[var(--border-subtle)]">
                 {cases.map((c) => (
@@ -574,9 +574,9 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                     onClick={() => linkToCase(c.id, c.case_number)}
                     className="w-full text-left px-2 py-1.5 hover:bg-surface-raised flex items-baseline gap-2"
                   >
-                    <span className="text-[#d4a017] text-[10px] font-mono">{c.case_number}</span>
+                    <span className="text-accent-silver-400 text-[10px] font-mono">{c.case_number}</span>
                     {c.title && <span className="text-rmpg-200 text-[11px] min-w-0 truncate flex-1">{c.title}</span>}
-                    {c.status && <span className="text-[#888] text-[9px] uppercase">{toDisplayLabel(c.status)}</span>}
+                    {c.status && <span className="text-[color:var(--text-muted)] text-[9px] uppercase">{toDisplayLabel(c.status)}</span>}
                   </button>
                 ))}
               </div>
@@ -589,13 +589,13 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
               <div key={i} className="px-2 py-1.5 flex items-start gap-2 text-[10px]">
                 <button
                   onClick={() => { setFormValues(h.args); setOutput([{ kind: 'stdout', text: h.preview }]); setHistoryOpen(false); }}
-                  className="flex-1 text-left hover:text-[#d4a017] font-mono"
+                  className="flex-1 text-left hover:text-rmpg-100 font-mono"
                 >
-                  <span className={h.exit === 0 ? 'text-[#7fd38a]' : 'text-[#ff8888]'}>
+                  <span className={h.exit === 0 ? 'text-green-400' : 'text-red-400'}>
                     {h.exit === 0 ? '✓' : '✗'}
                   </span>
                   {' '}
-                  <span className="text-[#888]">{new Date(h.ts).toLocaleString()}</span>
+                  <span className="text-[color:var(--text-muted)]">{new Date(h.ts).toLocaleString()/* new-date-ok epoch number from Date.now() */}</span>
                   {Object.entries(h.args).filter(([, v]) => v).map(([k, v]) => (
                     <span key={k} className="text-rmpg-200 ml-2">{k}={v}</span>
                   ))}
@@ -606,7 +606,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                     localStorage.setItem(`rmpg:recon:history:${tool.id}`, JSON.stringify(next));
                     setHistory(next);
                   }}
-                  className="text-rmpg-500 hover:text-[#ff8888]"
+                  className="text-rmpg-500 hover:text-red-400"
                   title="Remove entry"
                 >
                   <X className="w-3 h-3" />
@@ -616,7 +616,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           </div>
         )}
         {diagnostic && (
-          <div className="border border-[#d4a017]/60 bg-[#d4a017]/10 text-[#d4a017] text-[11px] px-2 py-1.5 flex items-start gap-1.5">
+          <div className="border border-[color:var(--border-strong)] bg-surface-raised text-[color:var(--text-muted)] text-[11px] px-2 py-1.5 flex items-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{diagnostic}</span>
           </div>
@@ -630,8 +630,8 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           ) : (
             output.map((line, i) => (
               <span key={i} className={
-                line.kind === 'stderr' ? 'text-[#ff8888]' :
-                line.kind === 'meta'   ? 'text-[#d4a017]' :
+                line.kind === 'stderr' ? 'text-red-400' :
+                line.kind === 'meta'   ? 'text-[color:var(--text-muted)]' :
                                          'text-rmpg-200'
               }>{line.text}</span>
             ))

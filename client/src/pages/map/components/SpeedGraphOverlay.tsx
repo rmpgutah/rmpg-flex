@@ -18,21 +18,21 @@ interface TrailResponse {
 }
 
 const speedToColor = (mph: number): string => {
-  if (mph < 3) return '#999999';
-  if (mph < 25) return '#22c55e';
-  if (mph < 35) return '#84cc16';
-  if (mph < 45) return '#eab308';
-  if (mph < 55) return '#f97316';
-  if (mph < 75) return '#ef4444';
-  return '#dc2626';
+  if (mph < 3) return 'var(--text-muted)';
+  if (mph < 25) return 'var(--sev-ok)';
+  if (mph < 35) return 'var(--sev-ok)';
+  if (mph < 45) return 'var(--sev-warn)';
+  if (mph < 55) return 'var(--sev-high)';
+  if (mph < 75) return 'var(--sev-critical)';
+  return 'var(--sev-critical)';
 };
 
 // Band thresholds for background stripes (mph)
 const BANDS = [
-  { min: 0, max: 25, color: '#22c55e' },
-  { min: 25, max: 45, color: '#eab308' },
-  { min: 45, max: 75, color: '#f97316' },
-  { min: 75, max: 120, color: '#ef4444' },
+  { min: 0, max: 25, color: 'var(--sev-ok)' },
+  { min: 25, max: 45, color: 'var(--sev-warn)' },
+  { min: 45, max: 75, color: 'var(--sev-high)' },
+  { min: 75, max: 120, color: 'var(--sev-critical)' },
 ];
 
 const SVG_WIDTH = 280;
@@ -143,18 +143,18 @@ export default function SpeedGraphOverlay({ unitId, callSign, hours, onClose }: 
 
           {gridLines.map((v) => (
             <g key={v}>
-              <line x1={PAD_LEFT} y1={toY(v)} x2={PAD_LEFT + PLOT_W} y2={toY(v)} stroke="#444444" strokeWidth={0.5} strokeDasharray="3,3" />
-              <text x={PAD_LEFT + PLOT_W + 3} y={toY(v) + 3} fill="#666666" fontSize={8} fontFamily="monospace">{v}</text>
+              <line x1={PAD_LEFT} y1={toY(v)} x2={PAD_LEFT + PLOT_W} y2={toY(v)} stroke="var(--border-default)" strokeWidth={0.5} strokeDasharray="3,3" />
+              <text x={PAD_LEFT + PLOT_W + 3} y={toY(v) + 3} fill="var(--text-muted)" fontSize={8} fontFamily="monospace">{v}</text>
             </g>
           ))}
 
           <path d={pathD} fill="none" stroke={currentColor} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
 
-          <circle cx={toX(points.length - 1)} cy={toY(currentSpeed)} r={3} fill={currentColor} stroke="#ffffff" strokeWidth={1} />
+          <circle cx={toX(points.length - 1)} cy={toY(currentSpeed)} r={3} fill={currentColor} stroke="var(--text-primary)" strokeWidth={1} />
 
-          <text x={PAD_LEFT} y={SVG_HEIGHT - 1} fill="#666666" fontSize={8} fontFamily="monospace" textAnchor="start">{startTime}</text>
-          <text x={PAD_LEFT + PLOT_W} y={SVG_HEIGHT - 1} fill="#666666" fontSize={8} fontFamily="monospace" textAnchor="end">{endTime}</text>
-          <text x={SVG_WIDTH - 2} y={PAD_TOP + 8} fill="#666666" fontSize={8} fontFamily="monospace" textAnchor="end">max {Math.round(maxSpeed)}</text>
+          <text x={PAD_LEFT} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="start">{startTime}</text>
+          <text x={PAD_LEFT + PLOT_W} y={SVG_HEIGHT - 1} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="end">{endTime}</text>
+          <text x={SVG_WIDTH - 2} y={PAD_TOP + 8} fill="var(--text-muted)" fontSize={8} fontFamily="monospace" textAnchor="end">max {Math.round(maxSpeed)}</text>
         </svg>
       </div>
     </div>
@@ -166,7 +166,7 @@ function formatTime(isoStr: string): string {
   try {
     const d = parseTimestamp(isoStr);
     if (isNaN(d.getTime())) return '--:--';
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
   } catch {
     return '--:--';
   }

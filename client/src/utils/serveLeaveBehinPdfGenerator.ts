@@ -23,7 +23,6 @@ import {
   setActiveSectionStyle,
   sanitizePdfText,
   stampGenerationTime,
-  drawBarcodeCornerStamp,
 } from './pdfGenerator';
 import {
   SPACING, FONT,
@@ -76,6 +75,23 @@ const NOTICE_BODY =
   'Failure to respond within the required time may result in a default judgment or ' +
   'other adverse legal consequences. Contact the attorney or court listed above ' +
   'immediately for guidance on your next required steps and applicable deadlines.';
+
+// General information bullet text — fills page 1 and gives recipients actionable guidance
+const GENERAL_INFO_ITEMS = [
+  'READ THE DOCUMENTS CAREFULLY. Review every page of the documents handed to you. ' +
+    'The filing date, response deadline, and case number printed on those documents ' +
+    'are the controlling dates — not the date of service.',
+  'CONTACT AN ATTORNEY PROMPTLY. The attorney or law firm listed in Section 1 of this ' +
+    'notice represents the opposing party and cannot give you legal advice. You should ' +
+    'contact your own attorney or a legal aid organization as soon as possible.',
+  'RESPOND BY THE DEADLINE. In Utah small claims and civil matters, failure to file a ' +
+    'written response or appear at a scheduled hearing by the deadline may result in a ' +
+    'default judgment being entered against you without further notice.',
+  'KEEP THIS DOCUMENT. This notice is your record of service. Keep it with the served ' +
+    'documents in a safe place. You may need it if you contest the service in court.',
+  'UTAH LEGAL RESOURCES. Utah Courts Self-Help: utcourts.gov · Utah Legal Services: ' +
+    'utahlegalservices.org · State Bar Lawyer Referral: utahbar.org',
+];
 
 // ── Header helper (shared across both pages) ─────────────────
 
@@ -190,9 +206,23 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Barcode stamp (job ID as the scannable value)
-  const barcodeValue = `JOB-${data.jobId}${data.caseNumber ? ' ' + data.caseNumber : ''}`;
-  drawBarcodeCornerStamp(doc, sanitizePdfText(barcodeValue));
+  // General information — fills remainder of page 1 and gives recipients actionable guidance.
+  // Without this section ~60% of page 1 is blank for simple individual service.
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'GENERAL INFORMATION', y); y = sec.contentY;
+    for (let i = 0; i < GENERAL_INFO_ITEMS.length; i++) {
+      y = checkPageBreak(doc, y, 10);
+      // Bullet number
+      doc.setFont('Arial', 'bold');
+      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${i + 1}.`, lx, y);
+      // Bullet text — inset 5mm from left to clear the number
+      y = addWrappedText(doc, GENERAL_INFO_ITEMS[i], lx + 5, y, ffw - 5);
+      y += SPACING.SM;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
 
   drawFooter(doc, 1, 2);
 
@@ -252,7 +282,6 @@ export async function generateServeLeaveBehin(data: LeaveBehindData): Promise<js
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  drawBarcodeCornerStamp(doc, sanitizePdfText(barcodeValue));
   drawFooter(doc, 2, 2);
 
   return doc;

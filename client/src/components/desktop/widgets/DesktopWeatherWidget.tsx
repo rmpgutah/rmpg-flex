@@ -163,7 +163,7 @@ export default function DesktopWeatherWidget() {
 
           {/* Low-vis warning */}
           {wx && isLowVis(wx) && (
-            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--sev-warn, #f59e0b)', marginTop: 2 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--sev-warn)', marginTop: 2 }}>
               ⚠ Low visibility
             </div>
           )}

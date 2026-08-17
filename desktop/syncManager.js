@@ -4,7 +4,12 @@
 // pushes locally-created records back when connectivity returns.
 // ============================================================
 
-const { net } = require('electron');
+// Lazy: require('electron') is only valid inside the Electron runtime.
+// The test suite runs in plain Node.js and must not trigger this at module
+// load time — doing so throws "Electron failed to install correctly" on CI
+// where the Electron binary is absent. The real `net` object is only needed
+// inside pullAll/pullTable (lines below), which are never called from tests.
+function getElectronNet() { return require('electron').net; }
 const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
         getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
 const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
@@ -45,6 +50,12 @@ const PULL_INTERVALS = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
+  // Process Server — pulled on the same cadence as incidents so an officer's
+  // job list is fresh when they go offline mid-shift. serve_attempts is slower
+  // because it's an append-only log the officer consults but rarely edits in
+  // the field; 10 min covers any supervisor re-assignment.
+  serve_queue:        120_000,  // 2 min
+  serve_attempts:     600_000,  // 10 min
 };
 
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];
@@ -416,7 +427,7 @@ function serverFetch(endpoint, options = {}) {
         return;
       }
 
-      const request = net.request({
+      const request = getElectronNet().request({
         url,
         method: options.method || 'GET',
       });
@@ -513,7 +524,7 @@ async function refreshAndRetry(endpoint, options) {
         return;
       }
 
-      const request = net.request({
+      const request = getElectronNet().request({
         url: refreshUrl,
         method: 'POST',
       });

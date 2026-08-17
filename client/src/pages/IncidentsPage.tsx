@@ -469,7 +469,7 @@ export default function IncidentsPage() {
         method: 'PUT',
         body: JSON.stringify({ narrative }),
       }).then(() => {
-        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        setNarrativeLastSaved(new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' }));
       }).catch(() => { /* silent fail — unmount save is the fallback */ });
     }, 10000);
     return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
@@ -2157,7 +2157,7 @@ export default function IncidentsPage() {
                   case: 'var(--sev-special-soft)',
                   warrant: 'var(--sev-critical)',
                   citation: 'var(--sev-warn)',
-                  arrest: 'var(--pink-400, #ec4899)',
+                  arrest: 'var(--pink-400, var(--sev-high))',
                 };
                 const typeColorRgb: Record<string, string> = {
                   incident: 'var(--spm-text-muted-rgb)',

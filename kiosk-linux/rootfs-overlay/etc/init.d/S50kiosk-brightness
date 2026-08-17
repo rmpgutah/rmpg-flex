@@ -1,0 +1,40 @@
+#!/bin/sh
+# S50kiosk-brightness — set initial display brightness on boot.
+#
+# The FZ-55 exposes backlight control at /sys/class/backlight/. On Mk1/Mk2 the
+# interface is intel_backlight (driven by i915); on Mk3 it may additionally
+# appear via the PANASONIC_LAPTOP ACPI interface (panasonic). Both are tried.
+#
+# Officers can adjust brightness after login via:
+#   - The Fn+brightness keys (handled by PANASONIC_LAPTOP hotkeys → acpid)
+#   - The rmpg-shell brightness slider (reads the same sysfs node)
+#   - iio-sensor-proxy auto-brightness (reads ALS from the ISH sensor hub)
+#
+# 70% on boot: bright enough to be readable in a parked vehicle at midday,
+# not blinding on a dark residential street at 0200.
+set -u
+
+BRIGHTNESS_PCT="${RMPG_BOOT_BRIGHTNESS_PCT:-70}"
+
+case "$1" in
+  start)
+    found=0
+    for bl in /sys/class/backlight/*/; do
+      [ -f "${bl}max_brightness" ] || continue
+      max=$(cat "${bl}max_brightness" 2>/dev/null) || continue
+      [ "$max" -gt 0 ] 2>/dev/null || continue
+      target=$(( max * BRIGHTNESS_PCT / 100 ))
+      if echo "$target" > "${bl}brightness" 2>/dev/null; then
+        echo "[kiosk-brightness] ${bl##*/}: ${target}/${max} (${BRIGHTNESS_PCT}%)"
+        found=1
+        break
+      fi
+    done
+    [ "$found" -eq 0 ] && echo "[kiosk-brightness] No writable backlight sysfs node found"
+    ;;
+  stop) ;;
+  *)
+    echo "Usage: $0 {start|stop}" >&2
+    exit 1
+    ;;
+esac

@@ -482,6 +482,9 @@ export interface Unit {
    *  ignition_state ('on'/'off'/etc.) is the last-synced vehicle state. */
   camera_device_id?: string | null;
   camera_ignition_state?: string | null;
+  /** Number of stops in the officer's active Process Server route plan for today.
+   *  Null/undefined means no route has been planned. */
+  ps_route_stops?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -1509,6 +1512,23 @@ export interface FleetVehicle {
   notes?: string;
   created_at: string;
   updated_at: string;
+  // Extended fields (migrations 0136, 0164)
+  next_service_mileage?: number | null;
+  next_service_type?: string | null;
+  fuel_level?: number | null;
+  is_pursuit_rated?: number | null;
+  fuel_volume_units?: string | null;
+  primary_meter_unit?: string | null;
+  secondary_meter_value?: number | null;
+  secondary_meter_unit?: string | null;
+  secondary_meter_label?: string | null;
+  watch_list?: number | null;
+  default_image_url?: string | null;
+  fuel_type_id?: number | null;
+  oil_type_id?: number | null;
+  oil_capacity_qts?: number | null;
+  coolant_capacity_qts?: number | null;
+  gvwr_lbs?: number | null;
 }
 
 export interface FleetMaintenance {
@@ -1525,6 +1545,9 @@ export interface FleetMaintenance {
   next_due_date?: string;
   next_due_mileage?: number;
   created_at: string;
+  // Extended fields present in DB but not originally typed
+  labor_cost?: number | null;
+  service_tasks?: string | null;
 }
 
 // --- Fleet Work Orders ---
@@ -1678,6 +1701,7 @@ export interface FleetInsurancePolicy {
   carrier?: string;
   policy_number?: string;
   premium?: number;
+  premium_amount?: number;
   [key: string]: any;
 }
 
@@ -1855,6 +1879,7 @@ export interface FleetPersonnelNote {
   officer_id?: string;
   officer_name?: string;
   note: string;
+  content?: string;
   created_by: string;
   created_by_name?: string;
   created_at: string;
@@ -2194,7 +2219,11 @@ export type WSMessageType =
   // Speed tracking
   | 'speed:alert'
   | 'geofence:alert'
-  | 'officer_on_foot_overdue';
+  | 'officer_on_foot_overdue'
+  // Smart automation engine — fired by server or client-side rule evaluation.
+  // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
+  //            trigger_lat?, trigger_lng?, context? }
+  | 'automation_alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -3354,6 +3383,28 @@ export interface ServeJob {
   // Raw JSON blob written by commitIntake. Parsed client-side to extract
   // _intake.address_class.{klass, confirmed} for the scheduling UI.
   parsed_data?: string | null;
+  // Recipient type toggle (migration 0237_serve_queue_recipient_type)
+  recipient_type?: 'individual' | 'business' | null;
+  // Address unit line (migration 0092_address_unit_serve_properties)
+  recipient_address_2?: string | null;
+  // Business entity fields (migration 0237_serve_queue_recipient_type)
+  business_name?: string | null;
+  business_dba?: string | null;
+  business_ein?: string | null;
+  business_sos_filing?: string | null;
+  business_state_of_inc?: string | null;
+  registered_agent_name?: string | null;
+  registered_agent_title?: string | null;
+  registered_office_address?: string | null;
+  // Geocoding metadata (migration 0241_serve_queue_geocode_source)
+  geocode_source?: string | null;
+  // Relationships to parent contract/business records
+  contract_id?: number | null;
+  business_id?: number | null;
+  // Quality/intake review columns
+  quality_status?: string | null;
+  quality_reviewed_by?: string | null;
+  quality_reviewed_at?: string | null;
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────
@@ -3467,6 +3518,8 @@ export interface ServeRoute {
   start_lng: number | null;
   start_time: string | null;
   end_time: string | null;
+  // Planned start time (migration 0253_serve_routes_planned_start_time)
+  planned_start_time?: string | null;
 }
 
 export interface ServeRouteStop {

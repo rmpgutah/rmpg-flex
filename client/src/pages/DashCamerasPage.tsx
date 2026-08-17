@@ -80,6 +80,7 @@ function channelBg(ch?: string): string {
 function formatDate(d?: string): string {
   if (!d) return '-';
   return parseTimestamp(d).toLocaleDateString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -256,16 +257,18 @@ export default function DashCamerasPage() {
     const path = opts?.force
       ? `/fleet/dashcam-videos/${vidId}?force=true`
       : `/fleet/dashcam-videos/${vidId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     if (selectedVideo?.id === vidId) setSelectedVideo(null);
     setVideoToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await fetchVideos(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
@@ -1108,7 +1111,7 @@ export default function DashCamerasPage() {
         recordType="dashcam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -1118,7 +1121,7 @@ export default function DashCamerasPage() {
               {videoToDelete.officer_name && <div>Officer: {videoToDelete.officer_name}</div>}
               {videoToDelete.vehicle_number && <div>Vehicle #{videoToDelete.vehicle_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</div>
               )}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}

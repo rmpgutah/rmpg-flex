@@ -45,6 +45,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
   const formatDateTime = (d?: string) => {
     if (!d) return '-';
     return parseTimestamp(d).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -52,7 +53,7 @@ export default function DashCameraDetailTab({ events, deviceMapping, loading }: 
 
   const formatDate = (d?: string | null) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const eventLabel = (t: string) => toDisplayLabel(t);

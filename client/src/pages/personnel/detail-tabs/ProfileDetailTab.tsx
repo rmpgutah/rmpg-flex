@@ -37,7 +37,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
 
   const formatDate = (d?: string) => {
     if (!d) return undefined;
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const credDotColor = (status: string) => {
@@ -136,7 +136,7 @@ export default function ProfileDetailTab({ officer, credentials }: Props) {
                     <span className="text-rmpg-100 min-w-0 flex-1 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className="text-rmpg-400 font-mono">
                       {days > 0
-                        ? parseTimestamp(cred.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                        ? parseTimestamp(cred.expiry_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: '2-digit' })
                         : 'EXP'}
                     </span>
                   </div>

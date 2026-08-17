@@ -215,7 +215,7 @@ export default function DocumentWriterPage() {
   const handleTemplateSelect = useCallback((template: DocumentTemplate, values: Record<string, string>) => {
     if (!editor) return;
     editor.commands.setContent(populateTemplate(template, values, headerCfgRef.current));
-    setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString()}`);
+    setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
     setMode('edit');
   }, [editor]);
 
@@ -272,7 +272,7 @@ export default function DocumentWriterPage() {
     const cssSize = page.orientation === 'landscape' ? `${dim.css} landscape` : dim.css;
     const m = page.margins;
     const headerHtml = header.enabled ? `<div class="rh">${escapeHtml(header.text)}${header.showPageNumber ? '<span class="pn"></span>' : ''}</div>` : '';
-    const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString() : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
+    const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
     const footerHtml = footer.enabled ? `<div class="rf">${footerParts}</div>` : '';
     const watermarkHtml = watermark.text ? `<div class="wm" style="opacity:${watermark.opacity}">${escapeHtml(watermark.text)}</div>` : '';
     const letterheadHtml = docSettings.letterhead
@@ -983,7 +983,7 @@ export default function DocumentWriterPage() {
               {docSettings.footer.enabled && (
                 <div className="doc-running-footer">
                   <span>{docSettings.footer.text}</span>
-                  <span>{[docSettings.footer.showDate ? new Date().toLocaleDateString() : '', docSettings.footer.showAuthor ? author : ''].filter(Boolean).join(' • ')}</span>
+                  <span>{[docSettings.footer.showDate ? new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '', docSettings.footer.showAuthor ? author : ''].filter(Boolean).join(' • ')}</span>
                 </div>
               )}
             </div>
@@ -1057,7 +1057,7 @@ export default function DocumentWriterPage() {
 
       {!reading && !focusMode && (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[9px] text-rmpg-600 px-1">
-          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString()}` : ''}</span>
+          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}` : ''}</span> // new-date-ok
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
           <span>{author}</span>
         </div>

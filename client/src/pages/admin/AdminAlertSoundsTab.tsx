@@ -251,7 +251,7 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
             silences every category at once and overrides these settings.
           </p>
           {globalMuted && (
-            <div className="mt-2 px-2 py-1 bg-[#3a1818] border border-red-700/50 text-red-300 text-[11px]" style={{ borderRadius: 2 }}>
+            <div className="mt-2 px-2 py-1 bg-red-900/20 border border-red-700/50 text-red-300 text-[11px]" style={{ borderRadius: 2 }}>
               <VolumeX className="inline w-3 h-3 mr-1" />
               Global sound is currently MUTED. Per-category settings below have no effect until you re-enable sounds.
             </div>

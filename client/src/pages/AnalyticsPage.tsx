@@ -65,7 +65,7 @@ const fmtTrust = (v: unknown): string => {
 const fmtTs = (v: unknown): string => {
   if (!v) return '—';
   const d = parseTimestamp(String(v));
-  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString('en-US', { timeZone: 'America/Denver' });
 };
 const vehDesc = (s: PlateSighting): string =>
   [s.color, s.make, s.model, s.vehicle_type].filter(Boolean).join(' ') || '—';

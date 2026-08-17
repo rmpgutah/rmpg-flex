@@ -42,6 +42,7 @@ function useCadClock(): string {
     return () => clearInterval(iv);
   }, []);
   return now.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     weekday: 'short', month: 'short', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
@@ -228,6 +229,17 @@ export default function SpillmanCadBoard(props: SpillmanCadBoardProps) {
   // a capability indicator ("footage exists for this unit if requested"), not
   // a live recording toggle, since there isn't one to show.
   const renderUnitCell = (r: CadUnitRow, col: StatusColumn): React.ReactNode => {
+    if (col.key === 'ps_route' && r.unit.ps_route_stops) {
+      return (
+        <span
+          className="inline-flex items-center gap-0.5 font-mono tabular-nums"
+          title={`PS Route: ${r.unit.ps_route_stops} stop${r.unit.ps_route_stops === 1 ? '' : 's'} planned today`}
+          style={{ color: 'var(--accent-gold-300)' }}
+        >
+          {r.unit.ps_route_stops}
+        </span>
+      );
+    }
     if (col.key === 'call_sign' && r.unit.camera_device_id) {
       return (
         <span className="inline-flex items-center gap-1" title={`Dashcam mapped${r.unit.camera_ignition_state ? ` — ignition ${r.unit.camera_ignition_state}` : ''}`}>

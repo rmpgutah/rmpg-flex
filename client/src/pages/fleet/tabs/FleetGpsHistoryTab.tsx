@@ -48,16 +48,16 @@ interface Props {
 }
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  hard_brake: '#ef4444',
-  hard_accel: '#f59e0b',
-  hard_turn: '#f97316',
-  speeding: '#dc2626',
-  impact: '#dc2626',
-  video_start: '#888888',
-  video_stop: '#6b7280',
-  panic: '#dc2626',
-  sos: '#dc2626',
-  camera_motion: '#8b5cf6',
+  hard_brake: 'var(--sev-critical)',
+  hard_accel: 'var(--sev-warn)',
+  hard_turn: 'var(--sev-high)',
+  speeding: 'var(--sev-critical)',
+  impact: 'var(--sev-critical)',
+  video_start: 'var(--text-muted)',
+  video_stop: 'var(--text-muted)',
+  panic: 'var(--sev-critical)',
+  sos: 'var(--sev-critical)',
+  camera_motion: 'var(--sev-special)',
 };
 
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -97,11 +97,11 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
 
   const formatTime = (dt: string) => {
     const d = parseTimestamp(dt);
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   const formatDate = (dt: string) => {
     const d = parseTimestamp(dt);
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
+    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: '2-digit', day: '2-digit' });
   };
 
   if (!unitId && !loading) {
@@ -182,7 +182,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
                   </td>
                   <td className="px-2 py-1">
                     <span className="text-[8px] font-bold uppercase px-1 py-0.5" style={{
-                      color: bc.unit_status === 'available' ? '#22c55e' : bc.unit_status === 'enroute' ? '#888888' : 'var(--text-secondary)',
+                      color: bc.unit_status === 'available' ? 'var(--sev-ok)' : bc.unit_status === 'enroute' ? 'var(--text-muted)' : 'var(--text-secondary)',
                     }}>
                       {bc.unit_status || '-'}
                     </span>
@@ -210,7 +210,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
             </thead>
             <tbody>
               {events.map(ev => {
-                const color = EVENT_TYPE_COLORS[ev.event_type] || '#6b7280';
+                const color = EVENT_TYPE_COLORS[ev.event_type] || 'var(--text-muted)';
                 const icon = EVENT_TYPE_ICONS[ev.event_type] || <Radio style={{ width: 10, height: 10 }} />;
                 return (
                   <tr key={ev.id} className="border-b border-rmpg-800/50 hover:bg-rmpg-800/30">

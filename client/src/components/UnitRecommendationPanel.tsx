@@ -22,11 +22,11 @@ interface UnitRecommendationPanelProps {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  available: '#22c55e',
-  dispatched: '#f59e0b',
-  enroute: '#888888',
-  onscene: '#a855f7',
-  busy: '#ef4444',
+  available: 'var(--sev-ok)',
+  dispatched: 'var(--sev-warn)',
+  enroute: 'var(--text-secondary)',
+  onscene: 'var(--stat-accent-purple)',
+  busy: 'var(--sev-critical)',
 };
 
 export default function UnitRecommendationPanel({
@@ -66,7 +66,7 @@ export default function UnitRecommendationPanel({
       {/* Header */}
       <div className="unit-rec-header">
         <div className="flex items-center gap-1.5">
-          <Navigation style={{ width: 10, height: 10, color: '#4ade80' }} />
+          <Navigation style={{ width: 10, height: 10, color: 'var(--sev-ok-soft)' }} />
           <span className="text-[10px] font-bold text-green-400 uppercase tracking-wider">
             Recommended Units
           </span>
@@ -78,7 +78,7 @@ export default function UnitRecommendationPanel({
       <div className="unit-rec-list">
         {ranked.map((item: RankedUnit) => {
           const isTopPick = item.rank === 1 && item.unit.status === 'available';
-          const statusColor = STATUS_COLORS[item.unit.status] || '#888888';
+          const statusColor = STATUS_COLORS[item.unit.status] || 'var(--text-secondary)';
 
           return (
             <div
@@ -86,9 +86,9 @@ export default function UnitRecommendationPanel({
               className={`unit-rec-item ${isTopPick ? 'unit-rec-top-pick' : ''}`}
             >
               {/* Rank badge */}
-              <div className="unit-rec-rank" style={{ color: isTopPick ? '#4ade80' : 'var(--text-muted)' }}>
+              <div className="unit-rec-rank" style={{ color: isTopPick ? 'var(--sev-ok-soft)' : 'var(--text-muted)' }}>
                 {isTopPick ? (
-                  <Star style={{ width: 10, height: 10, fill: '#4ade80' }} />
+                  <Star style={{ width: 10, height: 10, fill: 'var(--sev-ok-soft)' }} />
                 ) : (
                   <span className="text-[9px] font-bold">#{item.rank}</span>
                 )}

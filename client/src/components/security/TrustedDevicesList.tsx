@@ -24,7 +24,7 @@ function timeAgo(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return parseTimestamp(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver' });
 }
 
 function daysUntil(dateStr: string): string {
@@ -94,7 +94,7 @@ export default function TrustedDevicesList() {
           style={{ background:"var(--surface-sunken)" }}
         >
           {/* Device icon */}
-          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(136,136,136,0.1)' }}>
+          <div className="p-1.5 panel-inset text-fg-muted bg-white/[0.06]">
             {deviceIcon(device.device_name)}
           </div>
 
@@ -115,7 +115,7 @@ export default function TrustedDevicesList() {
 
           {/* Expiry */}
           <div className="text-right flex-shrink-0">
-            <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
+            <div className="text-[9px] font-mono text-fg-muted">
               {daysUntil(device.trusted_until)} left
             </div>
           </div>
@@ -124,8 +124,7 @@ export default function TrustedDevicesList() {
           <button type="button"
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
-            className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? 'var(--text-muted)' : '#ef4444' }}
+            className={`toolbar-btn flex items-center gap-1 text-[9px] ${revoking === device.id ? 'text-fg-muted' : 'text-red-500'}`}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />
