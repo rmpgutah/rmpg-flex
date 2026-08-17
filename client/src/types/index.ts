@@ -622,6 +622,9 @@ export interface Person {
   voice_description?: string;
   religion?: string;
   dietary_restrictions?: string;
+  sex?: string;
+  nationality?: string;
+  aliases?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
   photo_url?: string;

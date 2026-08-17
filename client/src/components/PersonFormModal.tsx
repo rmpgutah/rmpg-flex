@@ -484,8 +484,8 @@ export default function PersonFormModal({
     { id: 'physical' as const, label: 'Physical' },
     { id: 'id' as const, label: 'Identification' },
     { id: 'contact' as const, label: 'Contact' },
-    { id: 'law' as const, label: 'Law Enforcement' },
-    { id: 'other' as const, label: 'Other' },
+    { id: 'law' as const, label: 'Background' },
+    { id: 'other' as const, label: 'Alerts & Notes' },
   ];
 
   return (
@@ -575,7 +575,7 @@ export default function PersonFormModal({
       {/* ── BASIC INFO ── */}
       {activeSection === 'basic' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <FormField label="First Name" required>
               <input name="first_name" type="text" required className="input-dark mt-1" value={form.first_name} onChange={handleChange} />
             </FormField>
@@ -584,6 +584,9 @@ export default function PersonFormModal({
             </FormField>
             <FormField label="Last Name" required>
               <input name="last_name" type="text" required className="input-dark mt-1" value={form.last_name} onChange={handleChange} />
+            </FormField>
+            <FormField label="Suffix">
+              <input name="suffix" type="text" className="input-dark mt-1" placeholder="Jr / Sr / III" value={form.suffix} onChange={handleChange} />
             </FormField>
           </div>
 
@@ -606,40 +609,52 @@ export default function PersonFormModal({
                 {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
             </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <FormField label="Sex (Birth/Legal)">
+              <select name="sex" className="select-dark mt-1" value={form.sex} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                <option value="M">M</option>
+                <option value="F">F</option>
+                <option value="X">X / Non-binary</option>
+                <option value="U">Unknown</option>
+              </select>
+            </FormField>
             <FormField label="Race / Ethnicity">
               <select name="race" className="select-dark mt-1" value={form.race} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {RACE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <FormField label="Language">
               <select name="language" className="select-dark mt-1" value={form.language} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {LANGUAGE_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
             </FormField>
+            <FormField label="Nationality">
+              <input name="nationality" type="text" className="input-dark mt-1" placeholder="e.g. American, Mexican, Filipino" value={form.nationality} onChange={handleChange} />
+            </FormField>
             <FormField label="SSN (Last 4)">
               <input name="ssn_last4" type="text" maxLength={4} className="input-dark mt-1" placeholder="XXXX" value={form.ssn_last4} onChange={handleChange} />
             </FormField>
           </div>
 
-           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-             <FormField label="Place of Birth">
-               <AddressAutocomplete
-                 name="place_of_birth"
-                 className="input-dark mt-1 w-full"
-                 placeholder="City, State or Country"
-                 value={form.place_of_birth}
-                 onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
-                 types="place,region,country"
-               />
-             </FormField>
-             <FormField label="Citizenship">
-               <select name="citizenship" className="select-dark mt-1" value={form.citizenship} onChange={handleChange}>
-                 <option value="">-- Select --</option>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <FormField label="Place of Birth">
+              <AddressAutocomplete
+                name="place_of_birth"
+                className="input-dark mt-1 w-full"
+                placeholder="City, State or Country"
+                value={form.place_of_birth}
+                onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
+                types="place,region,country"
+              />
+            </FormField>
+            <FormField label="Citizenship">
+              <select name="citizenship" className="select-dark mt-1" value={form.citizenship} onChange={handleChange}>
+                <option value="">-- Select --</option>
                 {CITIZENSHIP_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormField>
@@ -648,18 +663,6 @@ export default function PersonFormModal({
                 <option value="">-- Select --</option>
                 {MARITAL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-            </FormField>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Blood Type">
-              <select name="blood_type" className="select-dark mt-1" value={form.blood_type} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {BLOOD_TYPE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Social Media">
-              <input name="social_media" type="text" className="input-dark mt-1" placeholder="@handle, profiles, etc." value={form.social_media} onChange={handleChange} />
             </FormField>
           </div>
         </>
@@ -744,7 +747,13 @@ export default function PersonFormModal({
             <FormField label="Shoe Size">
               <input name="shoe_size" type="text" className="input-dark mt-1" placeholder="e.g. 10.5" value={form.shoe_size} onChange={handleChange} />
             </FormField>
-            <FormField label="Aliases (comma-separated)">
+            <FormField label="Blood Type">
+              <select name="blood_type" className="select-dark mt-1" value={form.blood_type} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {BLOOD_TYPE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Aliases (comma-separated)" className="col-span-2">
               <input
                 name="aliases"
                 type="text"
@@ -1090,6 +1099,12 @@ export default function PersonFormModal({
             </FormField>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Social Media">
+              <input name="social_media" type="text" className="input-dark mt-1" placeholder="@handle, profiles, etc." value={form.social_media} onChange={handleChange} />
+            </FormField>
+          </div>
+
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Emergency Contact</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -1100,7 +1115,10 @@ export default function PersonFormModal({
                 <input name="emergency_contact_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={(e) => setForm(prev => ({ ...prev, emergency_contact_phone: formatPhoneInput(e.target.value) }))} />
               </FormField>
               <FormField label="Relationship">
-                <input name="emergency_contact_relationship" type="text" className="input-dark mt-1" placeholder="e.g. Spouse, Parent" value={form.emergency_contact_relationship} onChange={handleChange} />
+                <select name="emergency_contact_relationship" className="select-dark mt-1" value={form.emergency_contact_relationship} onChange={handleChange}>
+                  <option value="">-- Select --</option>
+                  {EMERGENCY_CONTACT_RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
               </FormField>
             </div>
           </div>
@@ -1143,44 +1161,6 @@ export default function PersonFormModal({
                 <option value="">-- Select --</option>
                 {TRIBAL_AFFILIATION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
-            </FormField>
-          </div>
-
-          {/* ── Additional Identifiers ─────────────────────────────────
-              suffix / sex / nationality fields are all accepted by the live
-              Worker's PERSON_FIELD_MAP and have corresponding columns on
-              persons (verified 2026-05-24). Religion + dietary_restrictions
-              were removed because PERSON_FIELD_MAP doesn't include them —
-              the live Worker silently dropped them on save. */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField label="Suffix">
-              <input
-                name="suffix"
-                type="text"
-                className="input-dark mt-1"
-                placeholder="Jr / Sr / III"
-                value={form.suffix}
-                onChange={handleChange}
-              />
-            </FormField>
-            <FormField label="Sex (Birth/Legal)">
-              <select name="sex" className="select-dark mt-1" value={form.sex} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                <option value="M">M</option>
-                <option value="F">F</option>
-                <option value="X">X / Non-binary</option>
-                <option value="U">Unknown</option>
-              </select>
-            </FormField>
-            <FormField label="Nationality">
-              <input
-                name="nationality"
-                type="text"
-                className="input-dark mt-1"
-                placeholder="e.g. American, Mexican, Filipino"
-                value={form.nationality}
-                onChange={handleChange}
-              />
             </FormField>
           </div>
 
