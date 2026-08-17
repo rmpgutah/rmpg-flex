@@ -7,7 +7,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
 import { humanizeType } from '../../../utils/statusLabels';
 import { coded } from '../../../utils/searchText';
-import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS } from './dispatchConstants';
+import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, COMPLETED_STATUSES } from './dispatchConstants';
 import type { CallForService } from '../../../types';
 import type { WarningTag } from '../../../components/WarningTags';
 
@@ -124,6 +124,46 @@ const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'nil', 'n/a']);
  * This is a "does this call need a second look" glance, not the full detail
  * — that still lives on the call's own record.
  */
+/**
+ * Format a millisecond duration as HH:MM:SS (decimal hours).
+ */
+export function formatCallDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
+  const totalSec = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+  const decimalHours = (ms / 3600000).toFixed(2);
+  return `${clock} (${decimalHours}h)`;
+}
+
+/** Elapsed ms from call creation to resolution (or live). */
+export function computeCallDuration(call: CallForService): number {
+  const endTime = call.status === 'archived'
+    ? (call.archived_at || call.cleared_at || call.closed_at)
+    : COMPLETED_STATUSES.has(call.status)
+      ? (call.cleared_at || call.closed_at || call.created_at)
+      : null;
+  return (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(call.created_at).getTime();
+}
+
+/** Elapsed ms from dispatch to on-scene arrival, or null if not applicable. */
+export function computeResponseTime(call: CallForService): number | null {
+  if (!call.dispatched_at || !call.onscene_at) return null;
+  const diff = parseTimestamp(call.onscene_at).getTime() - parseTimestamp(call.dispatched_at).getTime();
+  return (diff > 0 && isFinite(diff)) ? diff : null;
+}
+
+/** Elapsed ms on scene (to clearance or live), or null if not applicable. */
+export function computeOnSceneTime(call: CallForService): number | null {
+  if (!call.onscene_at) return null;
+  const endTime = call.cleared_at || call.closed_at || (call.status === 'archived' ? call.archived_at : null);
+  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(call.onscene_at).getTime();
+  return (diff > 0 && isFinite(diff)) ? diff : null;
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {
