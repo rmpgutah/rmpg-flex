@@ -59,7 +59,6 @@ import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
 import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
@@ -67,10 +66,11 @@ import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
-  formatServiceType, formatDocumentType, type FilterTab,
+  formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
+  computeResponseTime, computeOnSceneTime, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
-  SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
+  SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
   TERMINAL_STATUSES, COMPLETED_STATUSES, INACTIVE_STATUSES, ACTIVE_FIELD_STATUSES,
   POST_DISPATCH_STATUSES, RESOLVED_STATUSES, FINISHED_STATUSES, ACTIONABLE_STATUSES,
   OPEN_STATUSES, REMOVED_STATUSES,
@@ -117,16 +117,84 @@ import {
 
 const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
 
-function formatCallDuration(ms: number): string {
-  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
-  const totalSec = Math.floor(ms / 1000);
-  const hrs = Math.floor(totalSec / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  const secs = totalSec % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
-  const decimalHours = (ms / 3600000).toFixed(2);
-  return `${clock} (${decimalHours}h)`;
+
+const PRIORITY_ORDER: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+const SEARCH_DEBOUNCE_MS = 300;
+const MAX_SEARCH_RESULTS = 10;
+const FETCH_TIMEOUT_MS = 15000;
+const DEDUP_CLEANUP_MS = 5000;
+const ALARM_CHECK_INTERVAL_MS = 5000;
+
+const MOBILE_ACTION_BTN_STYLE: React.CSSProperties = { minHeight: 48, minWidth: 80, touchAction: 'manipulation' };
+
+function buildCallEditBody(
+  ed: Record<string, any>,
+  selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null,
+): Record<string, any> {
+  const sameLoc = ed.location === selectedFor?.location;
+  return {
+    incident_type: ed.incident_type,
+    priority: ed.priority,
+    client_id: ed.client_id || null,
+    property_id: ed.property_id || null,
+    caller_name: ed.caller_name,
+    caller_phone: ed.caller_phone,
+    caller_relationship: ed.caller_relationship,
+    caller_address: ed.caller_address,
+    location_address: ed.location,
+    latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
+    longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
+    description: ed.description,
+    source: ed.source,
+    disposition: ed.disposition,
+    cross_street: ed.cross_street,
+    location_building: ed.location_building,
+    location_floor: ed.location_floor,
+    location_room: ed.location_room,
+    zone_beat: ed.zone_beat,
+    sector_id: ed.sector_id,
+    zone_id: ed.zone_id,
+    beat_id: ed.beat_id,
+    dispatch_code: ed.dispatch_code,
+    weapons_involved: ed.weapons_involved,
+    injuries_reported: ed.injuries_reported,
+    num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
+    num_victims: ed.num_victims ? Number(ed.num_victims) : null,
+    subject_description: ed.subject_description,
+    vehicle_description: ed.vehicle_description,
+    direction_of_travel: ed.direction_of_travel,
+    scene_safety: ed.scene_safety,
+    weather_conditions: ed.weather_conditions,
+    lighting_conditions: ed.lighting_conditions,
+    alcohol_involved: ed.alcohol_involved,
+    drugs_involved: ed.drugs_involved,
+    domestic_violence: ed.domestic_violence,
+    supervisor_notified: ed.supervisor_notified,
+    le_notified: ed.le_notified,
+    le_agency: ed.le_agency,
+    le_case_number: ed.le_case_number,
+    damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
+    damage_description: ed.damage_description,
+    action_taken: ed.action_taken,
+    responding_officer: ed.responding_officer,
+    starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
+    ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
+    pso_requestor_name: ed.pso_requestor_name || null,
+    pso_requestor_phone: ed.pso_requestor_phone || null,
+    pso_requestor_email: ed.pso_requestor_email || null,
+    pso_service_type: ed.pso_service_type || null,
+    pso_billing_code: ed.pso_billing_code || null,
+    pso_authorization: ed.pso_authorization || null,
+    contract_id: ed.contract_id || null,
+    process_service_type: ed.process_service_type || null,
+    process_served_to: ed.process_served_to || null,
+    process_served_address: ed.process_served_address || null,
+    process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
+    process_served_at: ed.process_served_at || null,
+    process_service_result: ed.process_service_result || null,
+    court_name: ed.court_name || null,
+    case_number: ed.case_number || null,
+  };
 }
 
 export default function DispatchPage() {
@@ -458,12 +526,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         personAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setPersonSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowPersonDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setPersonSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
 
   const searchVehicles = useCallback((query: string) => {
@@ -475,12 +543,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         vehicleAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setVehicleSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowVehicleDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setVehicleSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
   // ── Linked Persons / Vehicles on call ──
   const [callPersons, setCallPersons] = useState<any[]>([]);
@@ -577,12 +645,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         businessAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowBusinessDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setBusinessSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
 
   const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
@@ -837,7 +905,7 @@ export default function DispatchPage() {
   const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
     const controller = options?.signal ? undefined : new AbortController();
     const signal = options?.signal || controller!.signal;
-    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
+    const timeout = controller ? setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS) : undefined;
     apiFetch<{ call_ids: number[] }>('/dispatch/calls/hits', { signal })
       .then((res) => setHitCallIds(new Set((res?.call_ids || []).map(String))))
       .catch(() => { /* best-effort — badges just don't show this cycle */ });
@@ -1634,8 +1702,7 @@ export default function DispatchPage() {
       const bOrder = serveRouteSortMap[b.id] ?? 9999;
       if (aOrder !== bOrder) return aOrder - bOrder;
       // Fallback: priority then time for unordered serve calls
-      const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-      const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+      const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
       if (pDiff !== 0) return pDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -1660,14 +1727,12 @@ export default function DispatchPage() {
       const geoKey = (c: typeof a) => [c.sector_name || '￿', c.zone_id || '￿', c.beat_id || '￿'].join('|');
       const gDiff = geoKey(a).localeCompare(geoKey(b), undefined, { numeric: true });
       if (gDiff !== 0) return gDiff;
-      const pOrderGeo: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-      const pDiffGeo = (pOrderGeo[a.priority] ?? 3) - (pOrderGeo[b.priority] ?? 3);
+      const pDiffGeo = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
       if (pDiffGeo !== 0) return pDiffGeo;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Default: priority then newest first
-    const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-    const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+    const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
@@ -1981,7 +2046,7 @@ export default function DispatchPage() {
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
       rememberRecentId(newCall.id);
-      setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), 5000); // cleanup after 5s
+      setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), DEDUP_CLEANUP_MS);
       setCalls((prev) => [newCall, ...prev]);
       setSelectedCall(newCall);
       setShowNewCallModal(false);
@@ -2045,76 +2110,6 @@ export default function DispatchPage() {
   // for the "did the user change location?" → clear lat/lng heuristic.
   // Pass `selectedCall` from saveEditing and `selectedCallRef.current`
   // from the unmount cleanup.
-  const buildCallEditBody = (ed: Record<string, any>, selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null): Record<string, any> => {
-    const sameLoc = ed.location === selectedFor?.location;
-    return {
-      incident_type: ed.incident_type,
-      priority: ed.priority,
-      client_id: ed.client_id || null,
-      property_id: ed.property_id || null,
-      caller_name: ed.caller_name,
-      caller_phone: ed.caller_phone,
-      caller_relationship: ed.caller_relationship,
-      caller_address: ed.caller_address,
-      location_address: ed.location,
-      // If location changed from original and user didn't pick a new autocomplete
-      // result (lat/lng still hold old values), clear them to trigger server re-geocode.
-      latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
-      longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
-      description: ed.description,
-      source: ed.source,
-      disposition: ed.disposition,
-      cross_street: ed.cross_street,
-      location_building: ed.location_building,
-      location_floor: ed.location_floor,
-      location_room: ed.location_room,
-      zone_beat: ed.zone_beat,
-      sector_id: ed.sector_id,
-      zone_id: ed.zone_id,
-      beat_id: ed.beat_id,
-      dispatch_code: ed.dispatch_code,
-      weapons_involved: ed.weapons_involved,
-      injuries_reported: ed.injuries_reported,
-      num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
-      num_victims: ed.num_victims ? Number(ed.num_victims) : null,
-      subject_description: ed.subject_description,
-      vehicle_description: ed.vehicle_description,
-      direction_of_travel: ed.direction_of_travel,
-      scene_safety: ed.scene_safety,
-      weather_conditions: ed.weather_conditions,
-      lighting_conditions: ed.lighting_conditions,
-      alcohol_involved: ed.alcohol_involved,
-      drugs_involved: ed.drugs_involved,
-      domestic_violence: ed.domestic_violence,
-      supervisor_notified: ed.supervisor_notified,
-      le_notified: ed.le_notified,
-      le_agency: ed.le_agency,
-      le_case_number: ed.le_case_number,
-      // 0 is a valid damage estimate; falsy guard would wrongly drop it.
-      damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
-      damage_description: ed.damage_description,
-      action_taken: ed.action_taken,
-      responding_officer: ed.responding_officer,
-      starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
-      ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
-      pso_requestor_name: ed.pso_requestor_name || null,
-      pso_requestor_phone: ed.pso_requestor_phone || null,
-      pso_requestor_email: ed.pso_requestor_email || null,
-      pso_service_type: ed.pso_service_type || null,
-      pso_billing_code: ed.pso_billing_code || null,
-      pso_authorization: ed.pso_authorization || null,
-      contract_id: ed.contract_id || null,
-      // Process Service fields
-      process_service_type: ed.process_service_type || null,
-      process_served_to: ed.process_served_to || null,
-      process_served_address: ed.process_served_address || null,
-      process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
-      process_served_at: ed.process_served_at || null,
-      process_service_result: ed.process_service_result || null,
-      court_name: ed.court_name || null,
-      case_number: ed.case_number || null,
-    };
-  };
 
   const startEditing = async () => {
     if (!selectedCall) return;
@@ -2392,7 +2387,7 @@ export default function DispatchPage() {
       }
     };
     check();
-    const interval = setInterval(check, 5000);
+    const interval = setInterval(check, ALARM_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [calls]);
 
@@ -2545,34 +2540,21 @@ export default function DispatchPage() {
                   <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                   <span className="text-rmpg-400">Duration:</span>
                   <span className="text-rmpg-200 font-bold">
-                    {(() => {
-                      const endTime = TERMINAL_STATUSES.has(selectedCall.status) ? (selectedCall.cleared_at || selectedCall.closed_at || selectedCall.created_at) : null;
-                      const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
-                      return formatCallDuration(elapsed);
-                    })()}
+                    {formatCallDuration(computeCallDuration(selectedCall))}
                   </span>
                 </div>
-                {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                  const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                  if (diff <= 0 || !isFinite(diff)) return null;
-                  return (
-                    <div className="flex items-center gap-1">
-                      <span className="text-rmpg-400">Response:</span>
-                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                    </div>
-                  );
-                })()}
-                {selectedCall.onscene_at && (() => {
-                  const endTime = selectedCall.cleared_at || selectedCall.closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
-                  if (diff <= 0 || !isFinite(diff)) return null;
-                  return (
-                    <div className="flex items-center gap-1">
-                      <span className="text-rmpg-400">On-Scene:</span>
-                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                    </div>
-                  );
-                })()}
+                {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-400">Response:</span>
+                    <span className="text-rmpg-400 font-bold">{formatCallDuration(rt)}</span>
+                  </div>
+                ); })()}
+                {(() => { const ost = computeOnSceneTime(selectedCall); return ost == null ? null : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-400">On-Scene:</span>
+                    <span className="text-rmpg-400 font-bold">{formatCallDuration(ost)}</span>
+                  </div>
+                ); })()}
               </div>
 
               {/* Safety Flag Badges — mobile */}
@@ -2601,7 +2583,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2610,7 +2592,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2619,7 +2601,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
@@ -2629,21 +2611,21 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
                     >
                       ⏸ Hold
                     </button>
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2653,7 +2635,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: 'var(--surface-base)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--sev-warn)', color: 'var(--surface-base)' }}
                   >
                     ▶ Resume
                   </button>
@@ -2663,7 +2645,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)' }}
                     >
                       Close
                     </button>
@@ -2671,7 +2653,7 @@ export default function DispatchPage() {
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2683,7 +2665,7 @@ export default function DispatchPage() {
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
@@ -2693,7 +2675,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
@@ -2702,7 +2684,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2711,7 +2693,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -4584,38 +4566,25 @@ export default function DispatchPage() {
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                     <span className="text-rmpg-400">Duration:</span>
                     <span className="text-rmpg-200 font-bold">
-                      {(() => {
-                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || selectedCall.closed_at) : COMPLETED_STATUSES.has(selectedCall.status) ? (selectedCall.cleared_at || selectedCall.closed_at || selectedCall.created_at) : null;
-                        const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
-                        return formatCallDuration(elapsed);
-                      })()}
+                      {formatCallDuration(computeCallDuration(selectedCall))}
                     </span>
                   </div>
                   {/* Response time — dispatched to on scene */}
-                  {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                    const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                    if (diff <= 0 || !isFinite(diff)) return null;
-                    return (
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-                        <span className="text-rmpg-400">Response:</span>
-                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                      </div>
-                    );
-                  })()}
+                  {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                      <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                      <span className="text-rmpg-400">Response:</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(rt)}</span>
+                    </div>
+                  ); })()}
                   {/* On-scene time — onscene to cleared (or live if still on scene) */}
-                  {selectedCall.onscene_at && (() => {
-                    const endTime = selectedCall.cleared_at || selectedCall.closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                    const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
-                    if (diff <= 0 || !isFinite(diff)) return null;
-                    return (
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-                        <span className="text-rmpg-400">On-Scene:</span>
-                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                      </div>
-                    );
-                  })()}
+                  {(() => { const ost = computeOnSceneTime(selectedCall); return ost == null ? null : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                      <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                      <span className="text-rmpg-400">On-Scene:</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(ost)}</span>
+                    </div>
+                  ); })()}
                   {/* Safety flag summary — compact inline */}
                   {(() => {
                     const flags: string[] = [];
