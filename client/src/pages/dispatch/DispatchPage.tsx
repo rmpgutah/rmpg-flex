@@ -4100,6 +4100,78 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
+                {/* Workflow status pipeline — compact horizontal progress track showing
+                    the call lifecycle. Clickable steps advance the status directly so
+                    a dispatcher can progress a call without hunting for a button in
+                    the overflow toolbar. Archived/cancelled/closed are terminal and
+                    shown with a distinct visual treatment. */}
+                {!isEditing && (() => {
+                  const PIPELINE = [
+                    { status: 'pending',    label: 'Pending',    short: 'PEND' },
+                    { status: 'dispatched', label: 'Dispatched', short: 'DISP' },
+                    { status: 'enroute',    label: 'En Route',   short: 'ER'   },
+                    { status: 'onscene',    label: 'On Scene',   short: 'OS'   },
+                    { status: 'cleared',    label: 'Cleared',    short: 'CLR'  },
+                    { status: 'closed',     label: 'Closed',     short: 'CLSD' },
+                  ] as const;
+                  const TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
+                  const currentIdx = PIPELINE.findIndex(p => p.status === selectedCall.status);
+                  const isTerminal = TERMINAL_STATUSES.has(selectedCall.status);
+                  const NEXT_STATUS: Record<string, string> = {
+                    pending: 'dispatched', dispatched: 'enroute', enroute: 'onscene',
+                    onscene: 'cleared', cleared: 'closed',
+                  };
+                  return (
+                    <div
+                      className="flex items-center px-2 py-1 border-b border-[var(--spm-border)] gap-0 overflow-x-auto"
+                      style={{ background: 'var(--surface-deep)' }}
+                      role="progressbar"
+                      aria-label={`Call status: ${selectedCall.status}`}
+                    >
+                      {isTerminal ? (
+                        <span className="text-[8px] font-bold font-mono uppercase tracking-wider px-2 py-0.5"
+                          style={{ color: selectedCall.status === 'cancelled' ? 'var(--sev-critical)' : selectedCall.status === 'on_hold' ? 'var(--sev-warn)' : 'var(--spm-text-muted)' }}>
+                          ● {selectedCall.status.toUpperCase().replace('_', ' ')}
+                        </span>
+                      ) : PIPELINE.map((step, idx) => {
+                        const isPast = currentIdx > idx;
+                        const isCurrent = currentIdx === idx;
+                        const canAdvance = isCurrent && NEXT_STATUS[step.status] && !['cleared', 'closed'].includes(step.status);
+                        const color = isCurrent
+                          ? step.status === 'pending' ? 'var(--sev-warn)' : step.status === 'onscene' ? 'var(--sev-special)' : 'var(--brand-gold)'
+                          : isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)';
+                        return (
+                          <React.Fragment key={step.status}>
+                            <button
+                              type="button"
+                              disabled={!canAdvance}
+                              onClick={canAdvance ? () => handleStatusChange(selectedCall.id, NEXT_STATUS[step.status] as any) : undefined}
+                              title={canAdvance ? `Advance to ${NEXT_STATUS[step.status]}` : step.label}
+                              className="flex items-center gap-1 px-1.5 py-0.5 text-[7px] font-bold font-mono uppercase tracking-wider whitespace-nowrap transition-all flex-shrink-0"
+                              style={{
+                                color,
+                                background: isCurrent ? `rgb(var(--brand-gold-rgb) / 0.08)` : 'transparent',
+                                border: isCurrent ? `1px solid ${color}` : '1px solid transparent',
+                                opacity: !isPast && !isCurrent ? 0.35 : 1,
+                                cursor: canAdvance ? 'pointer' : 'default',
+                              }}
+                            >
+                              {isPast && <span style={{ fontSize: '9px' }}>✓</span>}
+                              {isCurrent && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color, flexShrink: 0 }} />}
+                              {step.short}
+                            </button>
+                            {idx < PIPELINE.length - 1 && (
+                              <span className="text-[8px] flex-shrink-0" style={{ color: isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)', opacity: 0.4 }}>›</span>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      <span className="ml-auto text-[7px] font-mono text-rmpg-600 flex-shrink-0 pl-2">
+                        {currentIdx >= 0 ? `${currentIdx + 1}/${PIPELINE.length}` : ''}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {/* Row 2: Action buttons — separate row to prevent cramping.
                     This row used to be `overflow-x-auto` with a mask-image fade
                     hinting that more buttons existed off to the right. The
@@ -5026,26 +5098,32 @@ export default function DispatchPage() {
                             <Navigation style={{ width: 8, height: 8 }} /> Suggest
                           </button>
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
-                          {(selectedCall.assigned_units || []).length > 0 && (
-                            <div className="relative">
+                          {(selectedCall.assigned_units || []).length > 0 && (() => {
+                            const availableUnits = units.filter(u =>
+                              u.status === 'available' && !selectedCall.assigned_units.includes(u.id)
+                            );
+                            if (availableUnits.length === 0) return null;
+                            return (
                               <select
                                 className="input-dark text-[8px] py-0 px-1"
-                                style={{ maxWidth: 120 }}
-                                defaultValue=""
+                                style={{ maxWidth: 160 }}
+                                value=""
                                 onChange={(e) => {
                                   if (e.target.value && selectedCall.assigned_units.length > 0) {
                                     handleTransferCall(selectedCall.id, String(selectedCall.assigned_units[0]), e.target.value);
-                                    e.target.value = '';
+                                    e.currentTarget.value = '';
                                   }
                                 }}
                               >
-                                <option value="" disabled>Transfer to...</option>
-                                {units.filter(u => u.status === 'available' && !selectedCall.assigned_units.includes(u.id)).map(u => (
-                                  <option key={u.id} value={u.id}>{u.call_sign}</option>
+                                <option value="" disabled>⇄ Transfer to…</option>
+                                {availableUnits.map(u => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ''}
+                                  </option>
                                 ))}
                               </select>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                       {(selectedCall.assigned_units || []).length > 0 ? (
