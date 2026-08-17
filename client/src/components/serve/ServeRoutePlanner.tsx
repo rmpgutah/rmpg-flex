@@ -4,7 +4,6 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
@@ -19,6 +18,7 @@ import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
   type LastKnownFix,
 } from '../../utils/serveRouteOrigin';
+import { exportServeMapSheet } from '../../utils/serveMapExport';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -1240,102 +1240,28 @@ export default function ServeRoutePlanner({
     return () => clearInterval(id);
   }, [routeAccepted, isOpen, stops, serverEtas]);
 
-  // F3: print route sheet
+  // F3: print route sheet — delegates to the unified exportServeMapSheet
   const printRouteSheet = useCallback(() => {
-    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
     const selected = stops.filter(s => s.selected);
-    const margin = 40;
-    let y = margin;
-    const pageW = doc.internal.pageSize.getWidth();
-
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ROUTE PLANNER — ROCKY MOUNTAIN PROTECTIVE GROUP', margin, y);
-    y += 18;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    const now = new Date();
-    const officerLabel = officers?.find(o => o.id === selectedOfficerId)?.name ?? 'Officer';
-    doc.text(`${officerLabel} · ${routeDate} · Printed ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, margin, y);
-    y += 8;
-    doc.setDrawColor(180, 180, 180);
-    doc.line(margin, y, pageW - margin, y);
-    y += 14;
-
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-    doc.setFont('helvetica', 'normal');
-    const summaryLine = [
-      `${selected.length} stops`,
-      totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : null,
-      totalDuration > 0 ? `${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m` : null,
-      totalDistance > 0 ? `$${(totalDistance * IRS_MILEAGE_RATE).toFixed(2)} IRS reimbursement` : null,
-    ].filter(Boolean).join('  ·  ');
-    doc.text(summaryLine, margin, y);
-    y += 18;
-
-    selected.forEach((stop, idx) => {
-      if (y > doc.internal.pageSize.getHeight() - 60) {
-        doc.addPage();
-        y = margin;
-      }
+    exportServeMapSheet(selected.map((stop) => {
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
         ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
-        : '';
-      const deadlinePart = stop.job.deadline
-        ? ` — deadline ${parseTimestamp(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        : '';
-      const missed = missedDeadlineIds.includes(stop.job.id);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(missed ? 180 : 30, missed ? 30 : 30, 30);
-      doc.setFontSize(10);
-      doc.text(`${idx + 1}. ${stop.job.recipient_name ?? 'Unknown'}`, margin, y);
+        : null;
       const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
       const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
-      if (etaStr) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`ETA ${etaStr}  (~${dwellMin} min)`, pageW - margin, y, { align: 'right' });
-      } else {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.setTextColor(120, 120, 120);
-        doc.text(`~${dwellMin} min buffer`, pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(80, 80, 80);
-      const typeLabel = dtype === 'business' ? 'BUSINESS' : dtype === 'apartment' ? 'APT/COMPLEX' : '';
-      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, typeLabel, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
-      doc.text(addrLine || 'No address', margin + 10, y);
-      if (missed) {
-        doc.setTextColor(180, 30, 30);
-        doc.text('DEADLINE MISSED', pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setDrawColor(220, 220, 220);
-      doc.line(margin + 10, y - 4, pageW - margin, y - 4);
-    });
-
-    if (returnToStart && returnLegMiles > 0) {
-      if (y > doc.internal.pageSize.getHeight() - 30) {
-        doc.addPage();
-        y = margin;
-      }
-      y += 4;
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`↩ Return to start — ${returnLegMiles.toFixed(1)} mi`, margin, y);
-    }
-
-    doc.save(`route-${routeDate}-${officerLabel.replace(/\s+/g, '-').toLowerCase()}.pdf`);
-  }, [stops, stopArrivalTimes, missedDeadlineIds, totalDistance, totalDuration, returnLegMiles, returnToStart, selectedOfficerId, officers, routeDate]);
+      return {
+        id: stop.job.id,
+        recipient_name: stop.job.recipient_name,
+        recipient_address: stop.job.recipient_address,
+        priority: stop.job.priority ?? 'normal',
+        deadline: stop.job.deadline ?? null,
+        status: stop.job.status,
+        eta: etaStr,
+        bufferMinutes: dwellMin,
+      };
+    })).catch(() => { window.alert('Failed to export route sheet.'); });
+  }, [stops, stopArrivalTimes]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {
