@@ -1004,11 +1004,12 @@ export default function ServePage() {
         method: 'PUT',
         body: JSON.stringify({ notes: 'BAD ADDRESS \u2014 needs verification', status: 'skipped' }),
       });
+      addToast('Address flagged for verification', 'success');
       refreshJobs();
     } catch {
       addToast('Could not flag address — please try again', 'error');
     }
-  }, [refreshJobs]);
+  }, [refreshJobs, addToast]);
 
   // Opens the in-page ConfirmDialog (replaces the v480 native window.confirm
   // and its window.alert on failure — both broke the day/night surface and
@@ -2469,7 +2470,7 @@ export default function ServePage() {
                           setBulkDeadlineDate('');
                           fetchJobs();
                         } catch {
-                          // toast not available at this scope; silent fail
+                          addToast('Could not update deadline — please try again', 'error');
                         } finally {
                           setBulkDeadlineSubmitting(false);
                         }

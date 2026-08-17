@@ -949,7 +949,7 @@ sv.post('/', async (c) => {
 });
 
 // ── Bulk status update ────────────────────────────────────────────────────────
-// POST /serve/bulk-status { ids: number[], status: string }
+// PUT /serve/bulk-status { ids: number[], status: string }
 // Lets dispatchers batch-move selected jobs between folders (Queue → Archive, etc.)
 sv.put('/bulk-status', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor');
