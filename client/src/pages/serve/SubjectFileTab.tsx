@@ -4,7 +4,7 @@ import {
   Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
   DollarSign, Camera, MessageSquare, RefreshCw, Search, Download, QrCode,
 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import type { ServeJob, ServeAttempt, ServeSkipTrace } from '../../types';
 import { formatEnumValue } from '../../utils/formatters';
@@ -135,7 +135,24 @@ function AttemptRow({ attempt, index }: { attempt: ServeAttempt; index: number }
           <Field label="Description" value={attempt.person_served_description} />
           <Field label="GPS" value={attempt.latitude != null ? `${Number(attempt.latitude).toFixed(5)}, ${Number(attempt.longitude).toFixed(5)}` : null} mono />
           <Field label="Address Verified" value={attempt.address_verified ? 'Yes' : 'No'} />
-          <Field label="Photos" value={attempt.photo_ids?.length ? `${attempt.photo_ids.length} attached` : null} />
+          {(attempt.photo_ids?.length ?? 0) > 0 && (
+            <div className="col-span-2 flex flex-col gap-1">
+              <span className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: 'var(--field-label-color)' }}>
+                Photos ({attempt.photo_ids!.length})
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {attempt.photo_ids!.map((fileId) => (
+                  <a key={fileId} href={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`)}
+                      alt="Attempt photo"
+                      className="w-14 h-14 object-cover rounded-[2px] border border-border-subtle hover:border-brand-400 transition-colors"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <Field label="Signature" value={attempt.signature_data ? 'Captured' : null} />
           {attempt.notes && <div className="col-span-2"><Field label="Notes" value={attempt.notes} /></div>}
         </div>
@@ -236,13 +253,12 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const load = useCallback(async (id: number) => {
     setLoading(true);
     try {
-      const [jobRes, attRes, commRes] = await Promise.all([
+      const [jobRes, commRes] = await Promise.all([
         apiFetch<SubjectFileJob>(`/process-server/${id}`),
-        apiFetch<ServeAttempt[]>(`/serve-intake/${id}/attempts`).catch(() => [] as ServeAttempt[]),
         apiFetch<ServeComment[]>(`/process-server/${id}/comments`).catch(() => [] as ServeComment[]),
       ]);
       setJob(jobRes);
-      setAttempts(attRes ?? []);
+      setAttempts(jobRes.attempts ?? []);
       setComments(commRes ?? []);
 
       const [stRes, scanRes] = await Promise.all([

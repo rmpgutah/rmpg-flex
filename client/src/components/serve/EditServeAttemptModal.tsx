@@ -11,8 +11,8 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool, Clock } from 'lucide-react';
-import { apiFetch, authedImageUrl } from '../../hooks/useApi';
+import { X, Save, Loader2, AlertTriangle, Trash2, Camera, PenTool, Clock, Plus } from 'lucide-react';
+import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeAttempt } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -50,11 +50,22 @@ const ATTEMPT_TYPES: AttemptTypeOption[] = ['personal', 'substitute', 'posting',
 // Use the canonical DST-aware helpers instead — same pair the other 15+
 // timestamp editors in the app use.
 
+const AGE_RANGES = ['Under 18', '18-25', '26-35', '36-45', '46-55', '56-65', 'Over 65'];
+const HAIR_COLORS = ['Black', 'Brown', 'Blonde', 'Red', 'Gray', 'White', 'Bald', 'Other'];
+const RELATIONSHIPS = ['Spouse', 'Roommate', 'Coworker', 'Family Member', 'Other'];
+
 interface EditAttemptForm {
   attemptAt: string;
   attemptType: AttemptTypeOption;
   dispositionCode: string;
   notes: string;
+  ageRange: string;
+  height: string;
+  weight: string;
+  hairColor: string;
+  clothing: string;
+  personServedName: string;
+  relationship: string;
 }
 
 const EMPTY_EDIT_FORM: EditAttemptForm = {
@@ -62,6 +73,13 @@ const EMPTY_EDIT_FORM: EditAttemptForm = {
   attemptType: 'failed',
   dispositionCode: '',
   notes: '',
+  ageRange: '',
+  height: '',
+  weight: '',
+  hairColor: '',
+  clothing: '',
+  personServedName: '',
+  relationship: '',
 };
 
 export default function EditServeAttemptModal({
@@ -79,11 +97,25 @@ export default function EditServeAttemptModal({
     defaultValue: EMPTY_EDIT_FORM,
     isActive: isOpen,
   });
-  const { attemptAt, attemptType, dispositionCode, notes } = form;
+  const {
+    attemptAt, attemptType, dispositionCode, notes,
+    ageRange, height, weight, hairColor, clothing, personServedName, relationship,
+  } = form;
   const setAttemptAt = (v: string) => setForm({ ...form, attemptAt: v });
   const setAttemptType = (v: AttemptTypeOption) => setForm({ ...form, attemptType: v });
   const setDispositionCode = (v: string) => setForm({ ...form, dispositionCode: v });
   const setNotes = (v: string) => setForm({ ...form, notes: v });
+  const setAgeRange = (v: string) => setForm({ ...form, ageRange: v });
+  const setHeight = (v: string) => setForm({ ...form, height: v });
+  const setWeight = (v: string) => setForm({ ...form, weight: v });
+  const setHairColor = (v: string) => setForm({ ...form, hairColor: v });
+  const setClothing = (v: string) => setForm({ ...form, clothing: v });
+  const setPersonServedName = (v: string) => setForm({ ...form, personServedName: v });
+  const setRelationship = (v: string) => setForm({ ...form, relationship: v });
+
+  // New photos added during this edit session (not yet persisted).
+  const [newPhotos, setNewPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -94,13 +126,27 @@ export default function EditServeAttemptModal({
   useEffect(() => {
     if (!isOpen) return;
     if (!wasRestored) {
+      // Parse existing description back into individual fields if possible.
+      const descParts: Record<string, string> = {};
+      (attempt.person_served_description || '').split(', ').forEach((part) => {
+        const [k, ...v] = part.split(': ');
+        if (k && v.length) descParts[k.toLowerCase()] = v.join(': ');
+      });
       setForm({
         attemptAt: toDatetimeLocalValue(attempt.attempt_at),
         attemptType: attempt.attempt_type || 'failed',
         dispositionCode: attempt.disposition_code || '',
         notes: attempt.notes || '',
+        ageRange: descParts['age'] || '',
+        height: descParts['height'] || '',
+        weight: descParts['weight'] || '',
+        hairColor: descParts['hair'] || '',
+        clothing: descParts['clothing'] || '',
+        personServedName: attempt.person_served_name || '',
+        relationship: attempt.person_served_relationship || '',
       });
     }
+    setNewPhotos([]);
     setError(null);
     setTimeout(() => snapshot(), 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,6 +163,46 @@ export default function EditServeAttemptModal({
 
   const resolvedCode = dispositionCode ? lookupPsoCode(dispositionCode) : null;
 
+  const handlePhotoAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const totalExisting = (attempt.photo_ids?.length ?? 0) + newPhotos.length;
+    const remaining = Math.max(0, 10 - totalExisting);
+    const toUpload = Array.from(files).slice(0, remaining);
+    if (toUpload.length === 0) return;
+    setUploadingPhoto(true);
+    try {
+      for (const file of toUpload) {
+        const formData = new FormData();
+        formData.append('files', file);
+        const rows = await apiPostForm<{ file_id: string }[]>('/uploads', formData);
+        const row = Array.isArray(rows) ? rows[0] : (rows as any);
+        if (row?.file_id) {
+          const fileId = row.file_id;
+          setNewPhotos((prev) => [
+            ...prev,
+            { id: fileId, url: authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`) },
+          ]);
+        }
+      }
+    } catch {
+      setError('Photo upload failed — try again');
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const buildDescription = (): string => {
+    const parts: string[] = [];
+    if (ageRange) parts.push(`Age: ${ageRange}`);
+    if (height) parts.push(`Height: ${height}`);
+    if (weight) parts.push(`Weight: ${weight}`);
+    if (hairColor) parts.push(`Hair: ${hairColor}`);
+    if (clothing) parts.push(`Clothing: ${clothing}`);
+    return parts.join(', ');
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -126,11 +212,18 @@ export default function EditServeAttemptModal({
         attempt_type: attemptType,
         notes: notes.trim() || null,
       };
-      // Send disposition_code when set — server derives `result` from it.
-      // Send the legacy `result` only when no disposition_code is picked, so
-      // the server's whitelist path keeps the existing result on a notes-only
-      // edit (we omit it from the body entirely).
       if (dispositionCode) body.disposition_code = dispositionCode;
+      if (newPhotos.length > 0) body.photo_ids_append = newPhotos.map((p) => p.id);
+
+      // Physical description fields
+      const desc = buildDescription();
+      if (attemptType === 'personal' || attemptType === 'substitute') {
+        body.person_served_description = desc || null;
+      }
+      if (attemptType === 'substitute') {
+        body.person_served_name = personServedName.trim() || null;
+        body.person_served_relationship = relationship || null;
+      }
 
       await apiFetch(`/process-server/${queueId}/attempt/${attempt.id}`, {
         method: 'PUT',
@@ -254,41 +347,137 @@ export default function EditServeAttemptModal({
             />
           </div>
 
-          {/* Immutable evidence reminder + thumbnails */}
-          <div className="flex items-start gap-1.5 text-[10px] text-rmpg-400 mb-1">
-            <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
-            <span>
-              GPS coordinates, photos, signature, and the officer who logged the attempt are immutable — they're evidence.
-            </span>
-          </div>
-
-          {/* Photo thumbnails */}
-          {attempt.photo_ids && attempt.photo_ids.length > 0 && (
-            <div>
-              <div className="flex items-center gap-1 text-[10px] text-amber-400 mb-1">
-                <Camera className="w-3 h-3" />
-                <span>Field Photos ({attempt.photo_ids.length})</span>
+          {/* Physical description (personal / substitute) */}
+          {(attemptType === 'personal' || attemptType === 'substitute') && (
+            <fieldset className="space-y-2 border border-rmpg-700 rounded-[2px] p-2">
+              <legend className="text-[10px] font-semibold text-amber-400 uppercase px-1">Physical Description</legend>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-age-range">Age Range</label>
+                  <select
+                    id="edit-age-range"
+                    className="input-dark text-xs w-full"
+                    value={ageRange}
+                    onChange={(e) => setAgeRange(e.target.value)}
+                  >
+                    <option value="">Select…</option>
+                    {AGE_RANGES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-hair-color">Hair Color</label>
+                  <select
+                    id="edit-hair-color"
+                    className="input-dark text-xs w-full"
+                    value={hairColor}
+                    onChange={(e) => setHairColor(e.target.value)}
+                  >
+                    <option value="">Select…</option>
+                    {HAIR_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-height">Height</label>
+                  <input id="edit-height" type="text" className="input-dark text-xs w-full"
+                    value={height} onChange={(e) => setHeight(e.target.value)} placeholder="e.g., 5'10" />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-weight">Weight</label>
+                  <input id="edit-weight" type="text" className="input-dark text-xs w-full"
+                    value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="e.g., 180 lbs" />
+                </div>
               </div>
+              <div>
+                <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-clothing">Clothing</label>
+                <input id="edit-clothing" type="text" className="input-dark text-xs w-full"
+                  value={clothing} onChange={(e) => setClothing(e.target.value)} placeholder="Clothing worn" />
+              </div>
+              {attemptType === 'substitute' && (
+                <>
+                  <div>
+                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-person-name">Person Served Name</label>
+                    <input id="edit-person-name" type="text" className="input-dark text-xs w-full"
+                      value={personServedName} onChange={(e) => setPersonServedName(e.target.value)}
+                      placeholder="Full name" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5" htmlFor="edit-relationship">Relationship</label>
+                    <select id="edit-relationship" className="input-dark text-xs w-full"
+                      value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+                      <option value="">Select…</option>
+                      {RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+            </fieldset>
+          )}
+
+          {/* Photos — existing (immutable) + new additions */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1 text-[10px] text-amber-400">
+                <Camera className="w-3 h-3" />
+                <span>Field Photos ({(attempt.photo_ids?.length ?? 0) + newPhotos.length})</span>
+              </div>
+              {(attempt.photo_ids?.length ?? 0) + newPhotos.length < 10 && (
+                <label className="flex items-center gap-1 cursor-pointer text-[10px] text-brand-400 hover:text-brand-300">
+                  {uploadingPhoto
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Plus className="w-3 h-3" />}
+                  <span>{uploadingPhoto ? 'Uploading…' : 'Add Photo'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    disabled={uploadingPhoto}
+                    onChange={handlePhotoAdd}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+            {((attempt.photo_ids?.length ?? 0) + newPhotos.length > 0) && (
               <div className="flex flex-wrap gap-1.5">
-                {attempt.photo_ids.map((photoId) => (
+                {(attempt.photo_ids ?? []).map((photoId) => (
                   <a
                     key={photoId}
                     href={authedImageUrl(`/api/uploads/${encodeURIComponent(photoId)}`)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    title="Original evidence photo"
                     className="block w-16 h-16 border border-rmpg-700 rounded-[2px] overflow-hidden hover:border-brand-400/50 transition-colors"
                   >
                     <img
                       src={authedImageUrl(`/api/uploads/${encodeURIComponent(photoId)}`)}
-                      alt={`Attempt photo ${photoId}`}
+                      alt="Attempt photo"
                       className="w-full h-full object-cover"
                       loading="lazy"
                     />
                   </a>
                 ))}
+                {newPhotos.map((p) => (
+                  <div key={p.id} className="relative w-16 h-16 border border-brand-600 rounded-[2px] overflow-hidden group">
+                    <img src={p.url} alt="New photo" className="w-full h-full object-cover" loading="lazy" />
+                    <button
+                      type="button"
+                      onClick={() => setNewPhotos((prev) => prev.filter((x) => x.id !== p.id))}
+                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
+                      aria-label="Remove new photo"
+                    >
+                      <Trash2 className="w-2.5 h-2.5 text-rmpg-100" />
+                    </button>
+                    <span className="absolute bottom-0 left-0 right-0 bg-brand-900/80 text-[8px] text-brand-300 text-center py-0.5">NEW</span>
+                  </div>
+                ))}
               </div>
+            )}
+            <div className="flex items-start gap-1.5 text-[10px] text-rmpg-400 mt-1.5">
+              <AlertTriangle className="w-3 h-3 text-amber-400 mt-0.5 flex-shrink-0" />
+              <span>Original photos and GPS are immutable evidence. New photos are appended.</span>
             </div>
-          )}
+          </div>
 
           {/* Signature preview */}
           {attempt.signature_data && (

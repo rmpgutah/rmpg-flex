@@ -881,6 +881,15 @@ export default React.memo(function ServeJobCard({
           <AlertTriangle className="w-3 h-3" />
           Flag
         </button>
+        <button type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(job.id); }}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
+          title="Edit Job"
+          aria-label={`Edit job for ${job.recipient_name}`}
+        >
+          <Pencil className="w-3 h-3" />
+          Edit
+        </button>
       </div>
     </div>
   );
