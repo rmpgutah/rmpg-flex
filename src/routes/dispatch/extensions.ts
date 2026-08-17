@@ -439,7 +439,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           AND w.subject_person_id IN (
             SELECT ip.person_id FROM incident_persons ip
             JOIN incidents i ON ip.incident_id = i.id
-            WHERE i.call_id = ?
+            WHERE i.call_id = ? AND ip.role IN ('suspect','arrestee','involved','defendant')
           )
         LIMIT 50`, id);
       for (const w of warrants) {
@@ -1812,14 +1812,26 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
     if (existing) return c.json(existing, 200);
 
+    // Read ext table for PSO/process-service overflow fields
+    const ext = await queryFirst<Record<string, any>>(db,
+      'SELECT * FROM calls_for_service_ext WHERE id = ?', id).catch(() => null);
+    const merged: Record<string, any> = { ...call, ...(ext || {}) };
+
+    const recipientName = merged.process_served_to || merged.pso_requestor_name || null;
+    const documentType = merged.process_service_type || merged.pso_service_type || null;
+    const caseNumber = merged.process_case_number || null;
+    const clientName = merged.client_name || merged.pso_requestor_name || null;
+    const deadline = merged.process_deadline || merged.pso_deadline || null;
+
     const result = await execute(db,
       `INSERT INTO serve_queue (
-         call_id, officer_id, created_by, recipient_address, recipient_lat, recipient_lng,
-         property_id, priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+         call_id, officer_id, created_by, recipient_name, recipient_address, recipient_lat, recipient_lng,
+         property_id, document_type, case_number, client_name, deadline,
+         priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       id, userId, userId,
-      call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
-      call.property_id ?? null,
+      recipientName, call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
+      call.property_id ?? null, documentType, caseNumber, clientName, deadline,
       `Created from dispatch call ${call.call_number}`);
 
     try {

@@ -220,6 +220,7 @@ let rendererRecoveryTimestamps = [];
 // per boot/relaunch), so it composes correctly with the self-revert boot
 // counter in createMainWindow — it never bypasses or races that counter.
 let isRunningAsKioskShell = false;
+let kioskBootStabilityTimer = null;
 // kioskDeliberatelyReverting is set just before the registry is reverted to
 // explorer.exe via an intentional admin action (disabling Kiosk Mode from
 // Settings, or the Ctrl+Alt+Shift+F12 escape hatch) so that a subsequent
@@ -929,6 +930,18 @@ async function createMainWindow() {
     }
   }
 
+  // Fallback: if ready-to-show never fires (renderer crash, GPU hang, load
+  // timeout), reset the boot counter after 60 s of the process staying alive.
+  // This prevents transient startup hiccups from accumulating across reboots
+  // and eventually self-reverting a machine that IS recovering each time.
+  if (isKioskShell && !kioskRevertSucceeded) {
+    kioskBootStabilityTimer = setTimeout(() => {
+      kioskBootStabilityTimer = null;
+      setConfig('kiosk_boot_attempts', resetBootAttemptState());
+      console.log('[KIOSK] boot stability timer elapsed — counter reset');
+    }, 60_000);
+  }
+
   // ─── Escape hatch shortcut (registered BEFORE entering kiosk chrome) ──
   // Ordering matters: never enter a mode the operator cannot leave. If no
   // accelerator can be claimed, useKioskChrome below stays false and this
@@ -1098,7 +1111,10 @@ async function createMainWindow() {
       mainWindow.show();
       mainWindow.focus();
     }
-    if (useKioskChrome) setConfig('kiosk_boot_attempts', resetBootAttemptState());
+    if (isKioskShell && !kioskRevertSucceeded) {
+      setConfig('kiosk_boot_attempts', resetBootAttemptState());
+      if (kioskBootStabilityTimer) { clearTimeout(kioskBootStabilityTimer); kioskBootStabilityTimer = null; }
+    }
   });
 
   // Handle page load failures (server down, network error).

@@ -84,6 +84,7 @@ interface UnitStatusBoardProps {
   onDeleteUnit?: (unit: Unit) => void;
   selectedCallId?: string | number | null;
   assignedUnitIds?: string[];
+  unitWorkload?: Map<string, number>;
   compact?: boolean;
 }
 
@@ -107,6 +108,7 @@ export default React.memo(function UnitStatusBoard({
   onDeleteUnit,
   selectedCallId,
   assignedUnitIds = [],
+  unitWorkload,
   compact = false,
 }: UnitStatusBoardProps) {
   const canAssign = !!selectedCallId && !!onAssignUnit;
@@ -287,8 +289,17 @@ export default React.memo(function UnitStatusBoard({
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
                 <div className="flex flex-col gap-0.5">
-                  <span>
+                  <span className="flex items-center gap-1">
                     {unit.current_call_number || <span className="text-fg-muted italic text-[10px]">Unassigned</span>}
+                    {unitWorkload && (unitWorkload.get(String(unit.id)) ?? 0) > 1 && (
+                      <span
+                        className="text-[8px] font-bold px-1 py-px rounded-sm tabular-nums"
+                        style={{ background: 'color-mix(in srgb, var(--sev-warn) 18%, transparent)', color: 'var(--sev-warn)' }}
+                        title={`${unitWorkload.get(String(unit.id))} active calls assigned`}
+                      >
+                        {unitWorkload.get(String(unit.id))}
+                      </span>
+                    )}
                   </span>
                   {(() => {
                     const trip = getTrip(unit.id);

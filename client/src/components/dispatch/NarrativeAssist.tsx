@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Brain, Check, X, Loader2, ScanLine } from 'lucide-react';
+import { apiFetch } from '../../hooks/useApi';
 
 interface NarrativeAssistProps {
   notes: string;
@@ -21,27 +22,18 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
     setError(null);
     setPreview(null);
     try {
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch('/api/ai/narrative', {
+      const data = await apiFetch<any>('/ai/narrative', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ notes, incident_type: incidentType, location_address: locationAddress }),
       });
-      if (!res.ok) {
-        if (res.status === 503 || res.status === 501) {
-          setAiUnavailable(true);
-          setError('AI service unavailable');
-        } else {
-          const data = await res.json().catch(() => ({}));
-          setError(data.error || 'Failed to generate narrative');
-        }
-        return;
-      }
-      const data = await res.json();
       setPreview(data.narrative || data.text || '');
-    } catch {
-      setError('Network error — could not reach AI service');
-      setAiUnavailable(true);
+    } catch (err: any) {
+      if (err?.status === 503 || err?.status === 501) {
+        setAiUnavailable(true);
+        setError('AI service unavailable');
+      } else {
+        setError(err?.message || 'Failed to generate narrative');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -62,22 +54,17 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
     if (!onExtractFields || notes.length < 20) return;
     setExtracting(true);
     try {
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch('/api/ai/extract-fields', {
+      const data = await apiFetch<any>('/ai/extract-fields', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ text: notes }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.result) onExtractFields(data.result);
-      }
+      if (data?.result) onExtractFields(data.result);
     } catch { /* best-effort */ }
     finally { setExtracting(false); }
   };
 
   return (
-    <div className="mt-1">
+    <div className="mt-1 flex flex-wrap items-start gap-1.5">
       {/* Generate button */}
       <button
         onClick={handleGenerate}
@@ -98,7 +85,7 @@ export default function NarrativeAssist({ notes, incidentType, locationAddress, 
         <button
           onClick={handleExtractFields}
           disabled={extracting || !notes?.trim() || notes.length < 20}
-          className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors ml-1.5"
+          className="flex items-center gap-1 px-2 py-1 text-[9px] font-semibold rounded-sm border transition-colors"
           style={{ background: 'color-mix(in srgb, var(--sev-info) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 25%, transparent)', color: 'var(--sev-info)' }}
           title={notes.length < 20 ? 'Enter at least 20 characters of text first' : 'Extract caller name, address, persons, and incident type from notes'}
         >

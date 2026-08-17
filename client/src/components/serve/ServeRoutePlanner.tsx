@@ -4,7 +4,6 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
@@ -19,6 +18,7 @@ import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
   type LastKnownFix,
 } from '../../utils/serveRouteOrigin';
+import { exportServeMapSheet } from '../../utils/serveMapExport';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ interface RouteStopPayload {
   lng: number;
   geocodeSource: 'point' | 'centroid' | null;
   deadlineAt: string | null;
-  defendantType: 'individual' | 'business';
+  defendantType: 'individual' | 'apartment' | 'business';
   addressHash: string;
   defendant: string;
   address: string;
@@ -206,7 +206,12 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 // reasonably-spaced deadlines and flag genuine infeasibility via
 // missedDeadlineJobIds, but it does not guarantee a globally optimal route.
 const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
-const STOP_DWELL_MS = 5 * 60 * 1000; // 5 minutes — knock, serve, paperwork
+const DWELL_BY_TYPE_MS: Record<string, number> = {
+  individual: 7 * 60 * 1000,
+  apartment: 10 * 60 * 1000,
+  business: 13 * 60 * 1000,
+};
+const STOP_DWELL_MS = 7 * 60 * 1000; // fallback
 
 /** Greedy nearest-neighbor reorder from an optional origin, biased toward
  *  approaching deadlines. Returns the reordered stops, the total
@@ -266,7 +271,8 @@ export function nearestNeighborOrder(
     if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
     perStopArrivalMs.push(chosen.arrivalMs);
-    elapsedMs = chosen.arrivalMs + STOP_DWELL_MS;
+    const stopDwell = DWELL_BY_TYPE_MS[inferDefendantType(next.job.recipient_address, next.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs = chosen.arrivalMs + stopDwell;
     ordered.push(next);
   }
 
@@ -359,7 +365,27 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 
 // ─── Server-Route Helpers ────────────────────────────────────────────────
 
+const APARTMENT_RE = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:oor)?|#)\b|\s#\d/i;
+
+function inferDefendantType(
+  address: string | null | undefined,
+  businessId: number | null | undefined,
+): 'individual' | 'apartment' | 'business' {
+  if (businessId) return 'business';
+  if (address && APARTMENT_RE.test(address)) return 'apartment';
+  return 'individual';
+}
+
 /** Convert client StopItems to the shape the server optimizer expects. */
+function timeWindowToServeWindow(tw: string | null | undefined): { serveStart: string; serveEnd: string } | null {
+  switch (tw) {
+    case 'morning': return { serveStart: '06:00', serveEnd: '12:00' };
+    case 'afternoon': return { serveStart: '12:00', serveEnd: '17:00' };
+    case 'evening': return { serveStart: '17:00', serveEnd: '21:00' };
+    default: return null;
+  }
+}
+
 export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
   return stops
     .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
@@ -367,14 +393,13 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
       jobId: s.job.id,
       lat: s.job.recipient_lat!,
       lng: s.job.recipient_lng!,
-      geocodeSource: null,
+      geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
-      // ServeJob has no defendant_type column yet; individual is the safer default
-      defendantType: 'individual' as const,
+      defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
       addressHash: '',
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
-      locationNote: null,
+      locationNote: timeWindowToServeWindow(s.job.time_window),
     }));
 }
 
@@ -1000,7 +1025,7 @@ export default function ServeRoutePlanner({
         if (!token) throw new Error('No Mapbox token');
 
         const coordStr = allCoords.map(c => c.join(',')).join(';');
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
 
         // A cluster that fails to route must NOT drop its stops. `newStops`
         // below is built from allOrderedStops + the UNSELECTED stops, so any
@@ -1062,7 +1087,7 @@ export default function ServeRoutePlanner({
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
         try {
           const token = await getMapboxAccessToken();
-          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
           const retRes = await fetch(retUrl);
           if (retRes.ok) {
             const retData = await retRes.json();
@@ -1224,94 +1249,28 @@ export default function ServeRoutePlanner({
     return () => clearInterval(id);
   }, [routeAccepted, isOpen, stops, serverEtas]);
 
-  // F3: print route sheet
+  // F3: print route sheet — delegates to the unified exportServeMapSheet
   const printRouteSheet = useCallback(() => {
-    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
     const selected = stops.filter(s => s.selected);
-    const margin = 40;
-    let y = margin;
-    const pageW = doc.internal.pageSize.getWidth();
-
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ROUTE PLANNER — ROCKY MOUNTAIN PROTECTIVE GROUP', margin, y);
-    y += 18;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    const now = new Date();
-    const officerLabel = officers?.find(o => o.id === selectedOfficerId)?.name ?? 'Officer';
-    doc.text(`${officerLabel} · ${routeDate} · Printed ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, margin, y);
-    y += 8;
-    doc.setDrawColor(180, 180, 180);
-    doc.line(margin, y, pageW - margin, y);
-    y += 14;
-
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-    doc.setFont('helvetica', 'normal');
-    const summaryLine = [
-      `${selected.length} stops`,
-      totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : null,
-      totalDuration > 0 ? `${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m` : null,
-      totalDistance > 0 ? `$${(totalDistance * IRS_MILEAGE_RATE).toFixed(2)} IRS reimbursement` : null,
-    ].filter(Boolean).join('  ·  ');
-    doc.text(summaryLine, margin, y);
-    y += 18;
-
-    selected.forEach((stop, idx) => {
-      if (y > doc.internal.pageSize.getHeight() - 60) {
-        doc.addPage();
-        y = margin;
-      }
+    exportServeMapSheet(selected.map((stop) => {
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
         ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
-        : '';
-      const deadlinePart = stop.job.deadline
-        ? ` — deadline ${parseTimestamp(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        : '';
-      const missed = missedDeadlineIds.includes(stop.job.id);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(missed ? 180 : 30, missed ? 30 : 30, 30);
-      doc.setFontSize(10);
-      doc.text(`${idx + 1}. ${stop.job.recipient_name ?? 'Unknown'}`, margin, y);
-      if (etaStr) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`ETA ${etaStr}`, pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(80, 80, 80);
-      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
-      doc.text(addrLine || 'No address', margin + 10, y);
-      if (missed) {
-        doc.setTextColor(180, 30, 30);
-        doc.text('DEADLINE MISSED', pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setDrawColor(220, 220, 220);
-      doc.line(margin + 10, y - 4, pageW - margin, y - 4);
-    });
-
-    if (returnToStart && returnLegMiles > 0) {
-      if (y > doc.internal.pageSize.getHeight() - 30) {
-        doc.addPage();
-        y = margin;
-      }
-      y += 4;
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`↩ Return to start — ${returnLegMiles.toFixed(1)} mi`, margin, y);
-    }
-
-    doc.save(`route-${routeDate}-${officerLabel.replace(/\s+/g, '-').toLowerCase()}.pdf`);
-  }, [stops, stopArrivalTimes, missedDeadlineIds, totalDistance, totalDuration, returnLegMiles, returnToStart, selectedOfficerId, officers, routeDate]);
+        : null;
+      const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
+      const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
+      return {
+        id: stop.job.id,
+        recipient_name: stop.job.recipient_name,
+        recipient_address: stop.job.recipient_address,
+        priority: stop.job.priority ?? 'normal',
+        deadline: stop.job.deadline ?? null,
+        status: stop.job.status,
+        eta: etaStr,
+        bufferMinutes: dwellMin,
+      };
+    })).catch(() => { window.alert('Failed to export route sheet.'); });
+  }, [stops, stopArrivalTimes]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {
