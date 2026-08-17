@@ -3791,7 +3791,7 @@ export default function DispatchPage() {
                   return (
                     <button type="button" onClick={() => setSearchQuery(isFiltered ? '' : topSection)}
                       className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] hover:brightness-125 transition-all"
-                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgba(212,160,23,0.3)' }}
+                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.3)' }}
                       title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
                     >
                       <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
@@ -4724,17 +4724,17 @@ export default function DispatchPage() {
                         onClick={() => setDetailTab(tab)}
                         className="relative px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-all duration-150 flex-shrink-0 whitespace-nowrap"
                         style={{
-                          color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
+                          color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)',
                           background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
                           borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
                         }}
-                        onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
+                        onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
                         onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                       >
                         <span className="flex items-center gap-1">
                           {icons[tab]}
                           {labels[tab]}
-                          {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
+                          {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--brand-gold) 20%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                         </span>
                       </button>
                     );
@@ -6693,9 +6693,18 @@ export default function DispatchPage() {
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text)' }}>
+              {units.filter((u) => u.status === 'dispatched').length} DISP
+            </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--sev-special-soft)' }}>
+              {units.filter((u) => u.status === 'enroute').length} ENR
+            </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--sev-special-soft)' }}>
+              {units.filter((u) => u.status === 'onscene').length} ONS
+            </span>
             <span className="toolbar-separator" />
             <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text-muted)' }}>
-              {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
+              {units.filter((u) => u.status !== 'off_duty').length}/{units.length} ON DUTY
             </span>
             <span className="toolbar-separator" />
             <button type="button" onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
@@ -7575,6 +7584,32 @@ export default function DispatchPage() {
             return stackedCount > 0 ? (
               <span style={{ color: 'var(--sev-high)' }}>STACKED: {stackedCount}</span>
             ) : null;
+          })()}
+          {(() => {
+            const todayCalls = calls.filter(c => {
+              if (!c.created_at) return false;
+              const d = parseTimestamp(c.created_at);
+              return d.toDateString() === new Date().toDateString();
+            });
+            const cleared = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            const responseTimes = todayCalls
+              .filter(c => c.onscene_at && c.created_at)
+              .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
+              .filter(m => m > 0 && m < 480);
+            const avg = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+            return (
+              <>
+                <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+                <span style={{ color: 'var(--spm-text-muted)' }}>
+                  CLR: <span style={{ color: 'var(--spm-text)' }}>{cleared}</span>
+                </span>
+                {avg !== null && (
+                  <span style={{ color: avg <= 8 ? 'var(--sev-ok-soft)' : avg <= 15 ? 'var(--sev-caution)' : 'var(--sev-critical-soft)' }}>
+                    RESP: {avg}m
+                  </span>
+                )}
+              </>
+            );
           })()}
         </div>
 
