@@ -3089,6 +3089,10 @@ interface IncidentData {
   linked_persons?: { first_name: string; last_name: string; role: string; dob?: string }[];
   linked_vehicles?: { plate_number?: string; state?: string; year?: string; color?: string; make?: string; model?: string; role: string }[];
   evidence?: { evidence_number: string; evidence_type: string; description: string; storage_location?: string }[];
+  assigned_units_detail?: { call_sign: string; officer_name: string; badge_number: string; status: string }[];
+  action_taken?: string;
+  cross_street?: string;
+  description?: string;
   // Attachment images (pre-fetched as base64 data URLs)
   attachment_images?: { dataUrl: string; width: number; height: number; format: 'JPEG' | 'PNG'; name: string }[];
   // Extended operational flags
@@ -3369,7 +3373,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy9 = addFieldPair(doc, 'Priority', data.priority || '', lx + w6 * 4, y, w6);
     const fy10 = addFieldPair(doc, 'Disposition', data.disposition || '', lx + w6 * 5, y, w6);
     y = Math.max(fy5, fy6, fy7, fy8, fy9, fy10);
-    // Row 3: Reporting Officer, Badge #
+    // Row 3: Description (full width, when present)
+    if (data.description) {
+      const fy_desc = addFieldPair(doc, 'Description', data.description, lx, y, ffw);
+      y = fy_desc;
+    }
+    // Row 4: Reporting Officer, Badge #
     const fy11 = addFieldPair(doc, 'Reporting Officer', data.officer_name || '', lx, y, ffw * 0.75);
     const fy12 = addFieldPair(doc, 'Badge #', data.badge_number || '', lx + ffw * 0.75, y, ffw * 0.25);
     y = Math.max(fy11, fy12);
@@ -3399,6 +3408,32 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const fy1 = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const fy2 = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(fy1, fy2);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1B½ — RESPONDING UNITS
+  // ═══════════════════════════════════════════════════════════
+  const unitDetails = data.assigned_units_detail || [];
+  if (unitDetails.length > 0) {
+    y = checkPageBreak(doc, y, 20);
+    { const sec = openAutoSection(doc, `Responding Units (${unitDetails.length})`, y); y = sec.contentY;
+      const colPositions = [lx, lx + ffw * 0.20, lx + ffw * 0.60, lx + ffw * 0.80];
+      const tableHeaders = [
+        { label: 'UNIT', x: colPositions[0] },
+        { label: 'OFFICER', x: colPositions[1] },
+        { label: 'BADGE #', x: colPositions[2] },
+        { label: 'STATUS', x: colPositions[3] },
+      ];
+      const tableRows = unitDetails.map((u) => [
+        u.call_sign || '—',
+        u.officer_name || '—',
+        u.badge_number || '—',
+        displayStatus(u.status || ''),
+      ]);
+      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+      y += SPACING.MD;
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
   }
@@ -3615,6 +3650,16 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       if (data.hazard_code) {
         const fy6 = addFieldPair(doc, 'Hazard Code', data.hazard_code, lx, y, ffw);
         y = fy6;
+      }
+      // Row 4: Cross Street (when available)
+      if (data.cross_street) {
+        const fy_cross = addFieldPair(doc, 'Cross Street', data.cross_street, lx, y, ffw);
+        y = fy_cross;
+      }
+      // Row 5: Action Taken (when available)
+      if (data.action_taken) {
+        const fy_action = addFieldPair(doc, 'Action Taken', data.action_taken, lx, y, ffw);
+        y = fy_action;
       }
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
