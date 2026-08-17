@@ -366,14 +366,14 @@ export default function ServePage() {
     const attempts = (job.attempts || [])
       .filter((a) => {
         if ((a.result || '').toLowerCase() === 'served') return false;
-        const code = String((a as any).disposition_code || '').toUpperCase();
+        const code = String(a.disposition_code || '').toUpperCase();
         if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
         return true;
       })
       .map((a, i) => {
         const ts = a.attempt_at || a.created_at || null;
         const at = ts ? parseTimestamp(ts) : null;
-        const resultText = (a as any).disposition_code || a.result || 'other';
+        const resultText = a.disposition_code || a.result || 'other';
         return {
           number: a.attempt_number ?? i + 1,
           date: at && !isNaN(at.getTime())
@@ -487,7 +487,7 @@ export default function ServePage() {
           date: ts ? formatDate(ts) : '',
           time: ts ? formatShortTime(ts) : '',
           type: toDisplayLabel(a.attempt_type),
-          result: (a as any).disposition_code || a.result || 'other',
+          result: a.disposition_code || a.result || 'other',
           officerName: a.officer_name || '',
           notes: a.notes || '',
           gpsLat: a.latitude ?? null,
@@ -599,7 +599,7 @@ export default function ServePage() {
 
       // Find the attempt that resulted in service
       const serviceAttempt = (job.attempts || []).find((a) => {
-        const code = String((a as any).disposition_code || '').toUpperCase();
+        const code = String(a.disposition_code || '').toUpperCase();
         return (a.result || '').toLowerCase() === 'served' || code.startsWith('PS/05') || code.startsWith('PS/10');
       });
 
@@ -662,13 +662,13 @@ export default function ServePage() {
       const attempts = (job.attempts || [])
         .filter((a) => {
           if ((a.result || '').toLowerCase() === 'served') return false;
-          const code = String((a as any).disposition_code || '').toUpperCase();
+          const code = String(a.disposition_code || '').toUpperCase();
           if (code.startsWith('PS/05') || code.startsWith('PS/10') || code.startsWith('PS/25')) return false;
           return true;
         })
         .map((a, i) => {
           const ts = a.attempt_at || a.created_at || null;
-          const resultText = (a as any).disposition_code || a.result || 'other';
+          const resultText = a.disposition_code || a.result || 'other';
           return {
             number: a.attempt_number ?? i + 1,
             date: ts ? formatDate(ts) : '',
@@ -2557,6 +2557,8 @@ export default function ServePage() {
                                 onAudit={setAuditJobId}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
+                                isSelected={selectedJobIds.has(job.id)}
+                                onToggleSelect={() => setSelectedJobIds(prev => { const next = new Set(prev); if (next.has(job.id)) next.delete(job.id); else next.add(job.id); return next; })}
                               />
                             </div>
                           ))}
@@ -2604,6 +2606,8 @@ export default function ServePage() {
                           onAudit={setAuditJobId}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
+                          isSelected={selectedJobIds.has(job.id)}
+                          onToggleSelect={() => setSelectedJobIds(prev => { const next = new Set(prev); if (next.has(job.id)) next.delete(job.id); else next.add(job.id); return next; })}
                         />
                       </div>
                     ))
