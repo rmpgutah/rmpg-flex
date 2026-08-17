@@ -377,6 +377,15 @@ function inferDefendantType(
 }
 
 /** Convert client StopItems to the shape the server optimizer expects. */
+function timeWindowToServeWindow(tw: string | null | undefined): { serveStart: string; serveEnd: string } | null {
+  switch (tw) {
+    case 'morning': return { serveStart: '06:00', serveEnd: '12:00' };
+    case 'afternoon': return { serveStart: '12:00', serveEnd: '17:00' };
+    case 'evening': return { serveStart: '17:00', serveEnd: '21:00' };
+    default: return null;
+  }
+}
+
 export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
   return stops
     .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
@@ -384,13 +393,13 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
       jobId: s.job.id,
       lat: s.job.recipient_lat!,
       lng: s.job.recipient_lng!,
-      geocodeSource: null,
+      geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
       defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
       addressHash: '',
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
-      locationNote: null,
+      locationNote: timeWindowToServeWindow(s.job.time_window),
     }));
 }
 
