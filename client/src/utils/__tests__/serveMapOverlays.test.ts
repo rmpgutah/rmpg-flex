@@ -103,24 +103,28 @@ describe('matchesDeadlineFilter', () => {
     expect(matchesDeadlineFilter('2026-09-01T00:00:00Z', 'all', now)).toBe(true);
   });
 
-  it('"overdue" only matches past deadlines', () => {
+  it('"overdue" matches past deadlines but not served jobs', () => {
     expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'overdue', now)).toBe(true);
     expect(matchesDeadlineFilter('2026-07-29T00:00:00Z', 'overdue', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'overdue', now, 'served')).toBe(false);
   });
 
-  it('"today" matches deadlines within 24 hours', () => {
+  it('"today" matches deadlines within 24 hours including overdue', () => {
     expect(matchesDeadlineFilter('2026-07-29T06:00:00Z', 'today', now)).toBe(true);
     expect(matchesDeadlineFilter('2026-07-30T06:00:00Z', 'today', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-28T00:00:00Z', 'today', now)).toBe(true);
   });
 
-  it('"three_days" matches within 72 hours', () => {
+  it('"three_days" matches within 72 hours including overdue', () => {
     expect(matchesDeadlineFilter('2026-07-31T00:00:00Z', 'three_days', now)).toBe(true);
     expect(matchesDeadlineFilter('2026-08-02T00:00:00Z', 'three_days', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'three_days', now)).toBe(true);
   });
 
-  it('"week" matches within 7 days', () => {
+  it('"week" matches within 7 days including overdue', () => {
     expect(matchesDeadlineFilter('2026-08-03T00:00:00Z', 'week', now)).toBe(true);
     expect(matchesDeadlineFilter('2026-08-10T00:00:00Z', 'week', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'week', now)).toBe(true);
   });
 
   it('no-deadline items only match "all"', () => {

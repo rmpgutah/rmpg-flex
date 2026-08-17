@@ -42,10 +42,10 @@ export function matchesDeadlineFilter(
   if (Number.isNaN(deadlineMs)) return false;
   const hoursLeft = (deadlineMs - now) / HOUR_MS;
   switch (filter) {
-    case 'overdue': return hoursLeft < 0;
-    case 'today': return hoursLeft >= 0 && hoursLeft <= 24;
-    case 'three_days': return hoursLeft >= 0 && hoursLeft <= 72;
-    case 'week': return hoursLeft >= 0 && hoursLeft <= 168;
+    case 'overdue': return hoursLeft < 0 && status !== 'served';
+    case 'today': return hoursLeft <= 24;
+    case 'three_days': return hoursLeft <= 72;
+    case 'week': return hoursLeft <= 168;
     default: return true;
   }
 }
