@@ -46,7 +46,7 @@
     "@cloudflare/vitest-pool-workers": "^0.21.3",
     "@cloudflare/workers-types": "^5.20260804.1",
     "@types/bcryptjs": "^2.4.6",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "@types/uuid": "^10.0.0",
     "husky": "^9.1.7",
     "sharp": "^0.35.3",
