@@ -7,6 +7,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
 import { humanizeType } from '../../../utils/statusLabels';
 import { coded } from '../../../utils/searchText';
+import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS } from './dispatchConstants';
 import type { CallForService } from '../../../types';
 import type { WarningTag } from '../../../components/WarningTags';
 
@@ -201,6 +202,16 @@ export function callMatchesSearch(call: CallForService, query: string): boolean 
     (call.beat_id || '').toLowerCase().includes(q) ||
     (call.beat_name || '').toLowerCase().includes(q)
   );
+}
+
+export function formatServiceType(val: string | undefined | null): string {
+  if (!val) return '';
+  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
+}
+
+export function formatDocumentType(val: string | undefined | null): string {
+  if (!val) return '';
+  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 // Values that mean "no weapon", not "unknown weapon" — a plain truthy check

@@ -355,6 +355,14 @@ export interface CallForService {
   process_served_at?: string;
   process_service_result?: string;
   court_name?: string;
+  attorney_name?: string;
+  jurisdiction?: string;
+  deadline?: string;
+  time_window?: string;
+  service_instructions?: string;
+  pso_72hr_deadline?: string;
+  pso_72hr_notified?: number | boolean;
+  parent_call_id?: number | string | null;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
