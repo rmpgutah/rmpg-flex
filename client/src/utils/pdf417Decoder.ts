@@ -41,6 +41,12 @@ export function getModuleError(): string | null {
   return moduleError;
 }
 
+function extractText(r: { isValid: boolean; bytes: Uint8Array }): string | null {
+  if (!r?.isValid) return null;
+  const text = new TextDecoder('latin1').decode(r.bytes);
+  return text.length > 20 ? text : null;
+}
+
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -51,7 +57,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   });
 }
 
-type ContrastMode = 'none' | 'linear' | 'minmax' | 'binarize' | 'sharpen' | 'adaptive';
+type ContrastMode = 'sharpen' | 'linear' | 'adaptive' | 'minmax' | 'binarize';
 
 function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): ImageData {
   const w = Math.max(1, Math.round(img.naturalWidth * scale));
@@ -66,15 +72,12 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
   const data = ctx.getImageData(0, 0, w, h);
   const px = data.data;
 
-  if (mode === 'none') return data;
-
   const lum = new Float32Array(w * h);
   for (let i = 0, p = 0; i < px.length; i += 4, p++) {
     lum[p] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
   }
 
   if (mode === 'sharpen') {
-    // Unsharp-mask: sharpens module edges that phone blur smears.
     const blurred = new Float32Array(w * h);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -128,8 +131,6 @@ function toImageData(img: HTMLImageElement, scale: number, mode: ContrastMode): 
       px[i] = px[i + 1] = px[i + 2] = v;
     }
   } else if (mode === 'adaptive') {
-    // Adaptive threshold with integral image — handles local shadows
-    // across the card surface from doorstep lighting.
     const blockSize = Math.max(15, Math.round(Math.min(w, h) / 20) | 1);
     const half = blockSize >> 1;
     const integral = new Float64Array((w + 1) * (h + 1));
@@ -181,8 +182,6 @@ export async function decodePdf417Frame(imageData: ImageData): Promise<string | 
     });
     const r = results[0];
     if (!r?.isValid) return null;
-    // AAMVA uses Latin-1 encoded bytes with raw control chars (\x1e, \r).
-    // Decode from r.bytes rather than r.text to preserve every byte exactly.
     const raw = new TextDecoder('latin1').decode(r.bytes);
     return raw.length > 20 ? raw : null;
   } catch {
@@ -215,28 +214,70 @@ export async function decodeQrFrame(imageData: ImageData): Promise<string | null
 
 export interface Pdf417DecodeOutcome {
   text: string;
-  passes: number; // how many attempts it took (diagnostics)
+  passes: number;
+}
+
+// Phase 1: pass raw file bytes to ZXing's native C++ decoder with each
+// built-in binarizer. This skips the lossy File→Image→Canvas→ImageData
+// round-trip — ZXing decodes the JPEG/PNG natively at full fidelity.
+type ZxingBinarizer = 'LocalAverage' | 'GlobalHistogram' | 'FixedThreshold' | 'BoolCast';
+const NATIVE_BINARIZERS: ZxingBinarizer[] = ['LocalAverage', 'GlobalHistogram', 'FixedThreshold'];
+
+async function tryNativeDecode(
+  input: Blob | ImageData,
+  binarizer: ZxingBinarizer,
+  tryDenoise: boolean,
+): Promise<string | null> {
+  try {
+    const results = await readBarcodes(input, {
+      formats: ['PDF417'],
+      tryHarder: true,
+      tryRotate: true,
+      tryInvert: true,
+      tryDownscale: true,
+      tryDenoise,
+      binarizer,
+      textMode: 'Plain',
+      maxNumberOfSymbols: 1,
+    });
+    return extractText(results[0] as any);
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Decode a PDF417 barcode from an uploaded/captured photo.
  * Returns null if no barcode could be found after all passes.
  *
- * ZXing already tries rotations, inversion and downscaling
- * internally (tryRotate/tryInvert/tryDownscale); our outer passes
- * vary what it can't — working resolution and contrast — to cope
- * with blurry or washed-out phone photos.
+ * Strategy (ordered by likelihood of success and cost):
+ *
+ * Phase 1 — Native decode: pass the raw Blob to ZXing with each
+ * built-in binarizer. ZXing's C++ core handles JPEG decode natively,
+ * avoiding the lossy browser canvas pipeline entirely.
+ *
+ * Phase 2 — Preprocessed decode: if native decode fails (e.g. severe
+ * glare, shadow, blur), load the image into a canvas and try our
+ * custom preprocessing modes at multiple scales.
  */
 export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | null> {
   ensureModule();
-  const img = await loadImage(file);
+  let passes = 0;
 
+  // ── Phase 1: native Blob decode ──
+  for (const binarizer of NATIVE_BINARIZERS) {
+    for (const denoise of [false, true]) {
+      passes++;
+      const text = await tryNativeDecode(file, binarizer, denoise);
+      if (text) return { text, passes };
+    }
+  }
+
+  // ── Phase 2: canvas preprocessing fallback ──
+  const img = await loadImage(file);
   const maxDim = Math.max(img.naturalWidth, img.naturalHeight);
   if (!maxDim) return null;
 
-  // Full native resolution first — modern phones (4032x3024) need every
-  // pixel to resolve the fine module grid on a PDF417 barcode. Only cap
-  // at 4800px for extremely high-res sensors to bound WASM memory.
   const baseScale = maxDim > 4800 ? 4800 / maxDim : 1;
   const scales: number[] = [
     baseScale,
@@ -245,30 +286,20 @@ export async function decodePdf417(file: File): Promise<Pdf417DecodeOutcome | nu
     baseScale * 0.5,
   ].filter((s, i, a) => a.indexOf(s) === i);
 
-  const modes: ContrastMode[] = ['none', 'sharpen', 'linear', 'adaptive', 'minmax', 'binarize'];
+  const modes: ContrastMode[] = ['sharpen', 'linear', 'adaptive', 'minmax', 'binarize'];
 
-  let passes = 0;
   for (const mode of modes) {
     for (const scale of scales) {
       passes++;
       try {
-        const results = await readBarcodes(toImageData(img, scale, mode), {
-          formats: ['PDF417'],
-          tryHarder: true,
-          tryRotate: true,
-          tryInvert: true,
-          tryDownscale: true,
-          textMode: 'Plain',
-          maxNumberOfSymbols: 1,
-        });
-        const r = results[0];
-        if (!r?.isValid) continue;
-        const text = new TextDecoder('latin1').decode(r.bytes);
-        if (text.length > 20) return { text, passes };
+        const imageData = toImageData(img, scale, mode);
+        const text = await tryNativeDecode(imageData, 'LocalAverage', false);
+        if (text) return { text, passes };
       } catch {
-        // decode error on this pass — try the next configuration
+        // preprocessing or decode error — try next
       }
     }
   }
+
   return null;
 }
