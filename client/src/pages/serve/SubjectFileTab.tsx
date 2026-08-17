@@ -479,7 +479,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     {/* Scan header */}
                     <div className="flex items-center justify-between px-3 py-2 bg-rmpg-900/60 border-b border-border-subtle">
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400">Scan #{idx + 1}</span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-fg-muted">Scan #{idx + 1}</span>
                         {scan.device_type && (
                           <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-[1px] rounded-[2px] bg-rmpg-800 text-rmpg-200">
                             {formatEnumValue(scan.device_type)}
