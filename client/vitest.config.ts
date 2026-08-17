@@ -8,19 +8,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.ts'],
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    // threads pool: each worker thread transforms lazily (on-demand) rather than
-    // the parent pre-transforming all shard files eagerly. This prevents the
-    // ~6 GB transform-cache accumulation in the parent that caused GC thrash after
-    // all tests completed under pool:'forks'. maxThreads:2 limits concurrency so
-    // the shared V8 heap stays within the 6144 MB ceiling on the 7 GB CI runner.
-    // Same fix applied to vitest.desktop.config.ts (commit 6b8f775e49).
+    // Vitest 4 removed poolOptions — use top-level maxWorkers instead.
+    // Limits concurrency so the V8 heap stays within the 6144 MB ceiling
+    // on the 7 GB CI runner.
     pool: 'threads',
-    poolOptions: {
-      threads: {
-        minThreads: 1,
-        maxThreads: 2,
-      },
-    },
+    maxWorkers: 2,
     // Vitest's 5s default is too tight here. Rendering a heavy page under jsdom
     // (MdtPage, the document-writer action suite) can exceed it purely from
     // parallel-worker contention — these files pass comfortably in isolation
