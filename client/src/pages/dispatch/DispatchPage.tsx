@@ -69,7 +69,12 @@ import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, type FilterTab,
 } from './utils/dispatchFormatters';
-import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS } from './utils/dispatchConstants';
+import {
+  SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
+  TERMINAL_STATUSES, COMPLETED_STATUSES, INACTIVE_STATUSES, ACTIVE_FIELD_STATUSES,
+  POST_DISPATCH_STATUSES, RESOLVED_STATUSES, FINISHED_STATUSES, ACTIONABLE_STATUSES,
+  OPEN_STATUSES, REMOVED_STATUSES,
+} from './utils/dispatchConstants';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
@@ -1380,7 +1385,7 @@ export default function DispatchPage() {
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
   useEffect(() => {
-    if (!selectedCall?.onscene_at || ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) {
+    if (!selectedCall?.onscene_at || TERMINAL_STATUSES.has(selectedCall.status)) {
       setOnSceneElapsed('');
       return;
     }
@@ -1599,12 +1604,12 @@ export default function DispatchPage() {
 
   const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
-      case 'queue': return !['cleared', 'closed', 'cancelled'].includes(call.status);
+      case 'queue': return !COMPLETED_STATUSES.has(call.status);
       case 'pending': return call.status === 'pending';
-      case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
+      case 'active': return ACTIVE_FIELD_STATUSES.has(call.status);
       case 'hold': return call.status === 'on_hold';
       case 'serve': return PROCESS_SERVICE_INCIDENT_TYPES.has(call.incident_type);
-      case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
+      case 'cleared': return COMPLETED_STATUSES.has(call.status);
       case 'archived': return true;
       default: return true;
     }
@@ -1727,7 +1732,7 @@ export default function DispatchPage() {
         handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
-      if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.key === 'F7' && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
@@ -1741,7 +1746,7 @@ export default function DispatchPage() {
         if (cadInput) cadInput.focus();
         return;
       }
-      if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.key === 'F9' && selectedCall && ACTIONABLE_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleHoldCallRef.current(selectedCall.id);
         return;
@@ -1771,7 +1776,7 @@ export default function DispatchPage() {
       // Shift+C — quick clear on selected call (mirrors F7, faster muscle
       // memory). MUST sit below the input guard above; otherwise typing a
       // capital C in a note/narrative textarea pops the disposition modal.
-      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
@@ -1845,14 +1850,14 @@ export default function DispatchPage() {
       }
 
       // C - Clear call (opens disposition prompt)
-      if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if ((e.key === 'c' || e.key === 'C') && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
       // H - Hold call
-      if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if ((e.key === 'h' || e.key === 'H') && selectedCall && ACTIONABLE_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleHoldCallRef.current(selectedCall.id);
         return;
@@ -2257,7 +2262,7 @@ export default function DispatchPage() {
   // Feature 5: Stacked calls count by address
   const stackedCallCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+    calls.filter(c => OPEN_STATUSES.has(c.status)).forEach(c => {
       if (c.location) {
         const loc = c.location.toLowerCase().trim();
         counts.set(loc, (counts.get(loc) || 0) + 1);
@@ -2271,7 +2276,7 @@ export default function DispatchPage() {
   // section code (from the composite zone_id) with sector_name fallback.
   const districtLoad = useMemo(() => {
     const counts = new Map<string, number>();
-    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+    calls.filter(c => OPEN_STATUSES.has(c.status)).forEach(c => {
       const key = sectionPrefix(c.zone_id) || c.sector_name || '';
       if (key) counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -2286,7 +2291,7 @@ export default function DispatchPage() {
     const loc = selectedCall.location.toLowerCase().trim();
     return calls.filter(c =>
       c.id !== selectedCall.id &&
-      ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status) &&
+      OPEN_STATUSES.has(c.status) &&
       (c.location || '').toLowerCase().trim() === loc
     );
   }, [calls, selectedCall?.id, selectedCall?.location]);
@@ -2311,7 +2316,7 @@ export default function DispatchPage() {
 
   // Feature 9: Call type statistics
   const callTypeStats = useMemo(() => {
-    const active = calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status));
+    const active = calls.filter(c => OPEN_STATUSES.has(c.status));
     const typeCounts = new Map<string, number>();
     active.forEach(c => {
       const type = c.incident_type || 'other';
@@ -2326,7 +2331,7 @@ export default function DispatchPage() {
   // Feature 13: Unit workload — count active calls per unit
   const unitWorkload = useMemo(() => {
     const workload = new Map<string, number>();
-    calls.filter(c => ['dispatched', 'enroute', 'onscene'].includes(c.status)).forEach(c => {
+    calls.filter(c => ACTIVE_FIELD_STATUSES.has(c.status)).forEach(c => {
       (c.assigned_units || []).forEach(uid => {
         workload.set(String(uid), (workload.get(String(uid)) || 0) + 1);
       });
@@ -2394,13 +2399,13 @@ export default function DispatchPage() {
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
-    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length;
+    const active = calls.filter((c) => ACTIVE_FIELD_STATUSES.has(c.status)).length;
     const hold = calls.filter((c) => c.status === 'on_hold').length;
-    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    const cleared = calls.filter((c) => COMPLETED_STATUSES.has(c.status)).length;
     // Queue tab = everything still open (mirrors the filteredCalls 'queue'
     // predicate at line ~1243). This definition was dropped in a prior
     // squash-merge, leaving `queue` undefined and breaking client typecheck.
-    const queue = calls.filter((c) => !['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    const queue = calls.filter((c) => !COMPLETED_STATUSES.has(c.status)).length;
     return {
       queue,
       pending,
@@ -2541,7 +2546,7 @@ export default function DispatchPage() {
                   <span className="text-rmpg-400">Duration:</span>
                   <span className="text-rmpg-200 font-bold">
                     {(() => {
-                      const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                      const endTime = TERMINAL_STATUSES.has(selectedCall.status) ? (selectedCall.cleared_at || selectedCall.closed_at || selectedCall.created_at) : null;
                       const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                       return formatCallDuration(elapsed);
                     })()}
@@ -2558,7 +2563,7 @@ export default function DispatchPage() {
                   );
                 })()}
                 {selectedCall.onscene_at && (() => {
-                  const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                  const endTime = selectedCall.cleared_at || selectedCall.closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
                   const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
                   return (
@@ -2574,10 +2579,10 @@ export default function DispatchPage() {
               {(() => {
                 const flags: Array<{ label: string; color: string }> = [];
                 if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: 'var(--sev-critical-soft)' });
-                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
-                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
-                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
+                if (selectedCall.domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
+                if (selectedCall.mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
+                if (selectedCall.officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
+                if (selectedCall.vehicle_pursuit || selectedCall.foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
                 if (flags.length === 0) return null;
                 return (
                   <div className="flex flex-wrap gap-1">
@@ -2619,7 +2624,7 @@ export default function DispatchPage() {
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
                 )}
-                {['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
+                {ACTIVE_FIELD_STATUSES.has(selectedCall.status) && (
                   <>
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
@@ -2684,7 +2689,7 @@ export default function DispatchPage() {
                     Report
                   </button>
                 )}
-                {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
+                {POST_DISPATCH_STATUSES.has(selectedCall.status) && (
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
@@ -2832,7 +2837,7 @@ export default function DispatchPage() {
                       { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
                       { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
                       { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                      { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -3237,7 +3242,7 @@ export default function DispatchPage() {
                     })()}
 
                     {/* 72-hour countdown (mobile) */}
-                    {['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                    {RESOLVED_STATUSES.has(selectedCall.status) && (() => {
                       const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                       if (!terminalTime) return null;
                       const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -3260,7 +3265,7 @@ export default function DispatchPage() {
                     })()}
 
                     {/* Schedule Return Visit button (mobile) */}
-                    {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
@@ -3294,7 +3299,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
-                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -3607,7 +3612,7 @@ export default function DispatchPage() {
         {/* Operational Status Strip — consolidated single row */}
         <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: 'var(--surface-deep)' }}>
           {(() => {
-            const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
+            const workingCalls = calls.filter(c => !COMPLETED_STATUSES.has(c.status));
             const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
             const p2Count = workingCalls.filter(c => c.priority === 'P2').length;
             // Stacked calls
@@ -3630,7 +3635,7 @@ export default function DispatchPage() {
               const d = parseTimestamp(c.created_at);
               return d.toDateString() === new Date().toDateString();
             });
-            const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            const clearedToday = todayCalls.filter(c => FINISHED_STATUSES.has(c.status)).length;
             // Avg response
             const responseTimes = todayCalls
               .filter(c => c.onscene_at && c.created_at)
@@ -4005,7 +4010,7 @@ export default function DispatchPage() {
                       <input
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
-                        defaultValue={(selectedCall as any).incident_number || ''}
+                        defaultValue={selectedCall.incident_number || ''}
                         placeholder="Incident #"
                         autoFocus
                         onKeyDown={async (e) => {
@@ -4033,7 +4038,7 @@ export default function DispatchPage() {
                         }}
                         onBlur={async (e) => {
                           const val = e.target.value.trim();
-                          if (val !== ((selectedCall as any).incident_number || '')) {
+                          if (val !== (selectedCall.incident_number || '')) {
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
@@ -4083,7 +4088,7 @@ export default function DispatchPage() {
                     </span>
                   )}
                   {/* Total elapsed timer (since call creation) */}
-                  {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
+                  {selectedCall.created_at && !TERMINAL_STATUSES.has(selectedCall.status) && (
                     <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
                       (() => {
                         const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
@@ -4182,8 +4187,8 @@ export default function DispatchPage() {
                           created_at: n.timestamp || '',
                         })),
                         // Pass action_taken, cross_street, description for PDF
-                        action_taken: (selectedCall as any)?.action_taken || '',
-                        cross_street: (selectedCall as any)?.cross_street || '',
+                        action_taken: selectedCall?.action_taken || '',
+                        cross_street: selectedCall?.cross_street || '',
                         description: selectedCall?.description || '',
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
@@ -4239,7 +4244,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
-                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
@@ -4274,7 +4279,7 @@ export default function DispatchPage() {
                     {/* Notice of Communication — PSO client requests with a failed attempt
                         being re-dispatched. Autofills from this call (client, service,
                         attempt) into a printable client notice. */}
-                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -4377,7 +4382,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Revert status button — go back one step */}
-                    {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
+                    {!isEditing && POST_DISPATCH_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
@@ -4403,7 +4408,7 @@ export default function DispatchPage() {
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
-                    {!isEditing && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
+                    {!isEditing && ACTIVE_FIELD_STATUSES.has(selectedCall.status) && (
                       <>
                         <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
@@ -4508,7 +4513,7 @@ export default function DispatchPage() {
                     <span className="text-rmpg-400">Duration:</span>
                     <span className="text-rmpg-200 font-bold">
                       {(() => {
-                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
+                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || selectedCall.closed_at) : COMPLETED_STATUSES.has(selectedCall.status) ? (selectedCall.cleared_at || selectedCall.closed_at || selectedCall.created_at) : null;
                         const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                         return formatCallDuration(elapsed);
                       })()}
@@ -4528,7 +4533,7 @@ export default function DispatchPage() {
                   })()}
                   {/* On-scene time — onscene to cleared (or live if still on scene) */}
                   {selectedCall.onscene_at && (() => {
-                    const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                    const endTime = selectedCall.cleared_at || selectedCall.closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
                     const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
@@ -4543,13 +4548,13 @@ export default function DispatchPage() {
                   {(() => {
                     const flags: string[] = [];
                     if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push('ARMED');
-                    if ((selectedCall as any).domestic_violence) flags.push('DV');
-                    if ((selectedCall as any).mental_health_crisis) flags.push('MH');
-                    if ((selectedCall as any).officer_safety_caution) flags.push('SAFETY');
-                    if ((selectedCall as any).felony_in_progress) flags.push('FELONY');
-                    if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push('PURSUIT');
-                    if ((selectedCall as any).ems_requested) flags.push('EMS');
-                    if ((selectedCall as any).injuries_reported) flags.push('INJ');
+                    if (selectedCall.domestic_violence) flags.push('DV');
+                    if (selectedCall.mental_health_crisis) flags.push('MH');
+                    if (selectedCall.officer_safety_caution) flags.push('SAFETY');
+                    if (selectedCall.felony_in_progress) flags.push('FELONY');
+                    if (selectedCall.vehicle_pursuit || selectedCall.foot_pursuit) flags.push('PURSUIT');
+                    if (selectedCall.ems_requested) flags.push('EMS');
+                    if (selectedCall.injuries_reported) flags.push('INJ');
                     if (flags.length === 0) return null;
                     return (
                       <div className="flex items-center gap-1 ml-auto">
@@ -4716,10 +4721,10 @@ export default function DispatchPage() {
                           {selectedCall.client_name}
                         </p>
                       )}
-                      {!isEditing && (selectedCall as any).cross_street && (
+                      {!isEditing && selectedCall.cross_street && (
                         <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
                           <Navigation style={{ width: 10, height: 10 }} />
-                          <span className="text-rmpg-300">X-St: {(selectedCall as any).cross_street}</span>
+                          <span className="text-rmpg-300">X-St: {selectedCall.cross_street}</span>
                         </p>
                       )}
                       {/* Weather at call location — officer safety indicator */}
@@ -4895,7 +4900,7 @@ export default function DispatchPage() {
                           { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
                           { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
                           { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                          { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
                           { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: 'var(--spm-text-muted)' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
@@ -4960,7 +4965,7 @@ export default function DispatchPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="field-label">Assigned Units:</label>
-                        {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                           <div className="relative" ref={attachUnitDropdownRef} style={{ display: 'inline-block' }}>
                             <button type="button"
                               onClick={() => setShowAttachUnitDropdown((prev) => !prev)}
@@ -4994,7 +4999,7 @@ export default function DispatchPage() {
                         )}
                       </div>
                       {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
-                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                      {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                         <div className="mt-1 mb-1">
                           <RecommendedUnitsInline
                             callId={selectedCall.id}
@@ -5007,7 +5012,7 @@ export default function DispatchPage() {
                         </div>
                       )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
-                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                      {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
                           <button type="button"
                             onClick={() => handleAutoAssign(selectedCall.id)}
@@ -5076,7 +5081,7 @@ export default function DispatchPage() {
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
-                                {!isEditing && unitObj && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                                {!isEditing && unitObj && !TERMINAL_STATUSES.has(selectedCall.status) && (
                                   <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
                                     className="ml-0.5 hover:text-red-400 transition-colors"
@@ -5126,7 +5131,7 @@ export default function DispatchPage() {
                               onClick={async () => {
                                 try {
                                   const unitId = (() => {
-                                    const a = (selectedCall as any)?.assigned_units;
+                                    const a = selectedCall?.assigned_units;
                                     const id = Array.isArray(a) && a.length > 0 ? a[0] : null;
                                     return id != null ? Number(id) : null;
                                   })();
@@ -5674,7 +5679,7 @@ export default function DispatchPage() {
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
-                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && RESOLVED_STATUSES.has(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
                         const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -5695,7 +5700,7 @@ export default function DispatchPage() {
                         }
                         return null;
                       })()}
-                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
@@ -5805,7 +5810,7 @@ export default function DispatchPage() {
                           {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
-                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && selectedCall.status !== 'archived' && (() => {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
@@ -6575,7 +6580,7 @@ export default function DispatchPage() {
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               unitWorkload={unitWorkload}
-              onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
+              onAssignUnit={selectedCall && !TERMINAL_STATUSES.has(selectedCall.status) ? handleAssignUnit : undefined}
             />
           </div>
         </div>
@@ -6660,7 +6665,7 @@ export default function DispatchPage() {
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
-            {['dispatched', 'enroute', 'onscene'].includes(contextMenu.call.status) && (
+            {ACTIVE_FIELD_STATUSES.has(contextMenu.call.status) && (
               <>
                 <button type="button" className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
                   <CheckCircle style={{ width: 12, height: 12 }} /> Clear
@@ -7150,8 +7155,8 @@ export default function DispatchPage() {
               }
               case 'voice_summary': {
                 // Shift summary — compute stats from current calls and units
-                const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
-                const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
+                const activeCalls = calls.filter(c => !REMOVED_STATUSES.has(c.status));
+                const completed = calls.filter(c => RESOLVED_STATUSES.has(c.status));
                 const pending = calls.filter(c => c.status === 'pending');
                 const psoServes = completed.filter(c => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type));
                 const totalMi = activeCalls.reduce((sum, c) => {
@@ -7228,7 +7233,7 @@ export default function DispatchPage() {
                 // Announce stacked calls at the selected call's location
                 if (selectedCall?.location) {
                   const locKey = selectedCall.location.toLowerCase().trim();
-                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !['archived', 'cancelled'].includes(c.status));
+                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !REMOVED_STATUSES.has(c.status));
                   if (stacked.length > 1) {
                     const unitSet = new Set<string>();
                     stacked.forEach(c => (c.assigned_units || []).forEach(u => unitSet.add(u)));
@@ -7265,7 +7270,7 @@ export default function DispatchPage() {
               }
               case 'voice_priority': {
                 // Announce priority breakdown
-                const active = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const active = calls.filter(c => !REMOVED_STATUSES.has(c.status));
                 const p1 = active.filter(c => c.priority === 'P1').length;
                 const p2 = active.filter(c => c.priority === 'P2').length;
                 const p3 = active.filter(c => c.priority === 'P3').length;
@@ -7406,26 +7411,26 @@ export default function DispatchPage() {
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
-            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !TERMINAL_STATUSES.has(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
+            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !TERMINAL_STATUSES.has(c.status)).length}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !TERMINAL_STATUSES.has(c.status)).length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
             PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
-            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ACTIVE_FIELD_STATUSES.has(c.status)).length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
             HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? 'var(--sev-high)' : 'var(--spm-text-muted)' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
             const stacked = new Map<string, number>();
-            calls.filter(c => !['cleared','closed','archived','cancelled'].includes(c.status) && c.location).forEach(c => {
+            calls.filter(c => !TERMINAL_STATUSES.has(c.status) && c.location).forEach(c => {
               const key = c.location.toLowerCase().trim();
               stacked.set(key, (stacked.get(key) || 0) + 1);
             });
@@ -7440,7 +7445,7 @@ export default function DispatchPage() {
               const d = parseTimestamp(c.created_at);
               return d.toDateString() === new Date().toDateString();
             });
-            const cleared = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            const cleared = todayCalls.filter(c => FINISHED_STATUSES.has(c.status)).length;
             const responseTimes = todayCalls
               .filter(c => c.onscene_at && c.created_at)
               .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
