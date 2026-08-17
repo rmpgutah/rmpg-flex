@@ -21,26 +21,21 @@ import { useCallback, useState } from 'react';
 import type { CallForService, Unit } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { mapDbCall, mapDbUnit, looksLikeCallRow } from '../utils/dispatchMappers';
+import { mapDbCall, looksLikeCallRow } from '../utils/dispatchMappers';
 
 export interface UseDispatchMultiUnitActionsArgs {
   setCalls: React.Dispatch<React.SetStateAction<CallForService[]>>;
   setSelectedCall: React.Dispatch<React.SetStateAction<CallForService | null>>;
   setUnits: React.Dispatch<React.SetStateAction<Unit[]>>;
+  refreshUnits: () => Promise<void>;
 }
 
 export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArgs) {
-  const { setCalls, setSelectedCall, setUnits } = args;
+  const { setCalls, setSelectedCall, setUnits, refreshUnits } = args;
   const { addToast } = useToast();
 
   // ── Owned state ───────────────────────────────────────────
   const [multiSelectUnits, setMultiSelectUnits] = useState<string[]>([]);
-
-  // ── Internal helper: refresh units (mirrors sister hooks) ──
-  const refreshUnits = useCallback(async () => {
-    const unitsRes = await apiFetch<any[]>('/dispatch/units');
-    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-  }, [setUnits]);
 
   // ── Handlers ──────────────────────────────────────────────
 

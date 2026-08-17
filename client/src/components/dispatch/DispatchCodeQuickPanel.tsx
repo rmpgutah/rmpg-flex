@@ -38,10 +38,12 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
 }) {
   const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-rmpg-500';
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onApply(code.code)}
-      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-white/[0.03] transition-colors border-b border-border-default/50"
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApply(code.code); } }}
+      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-white/[0.03] transition-colors border-b border-border-default/50 cursor-pointer"
       title={`${code.code} — ${code.description}\nCategory: ${code.category} · Priority: ${code.priority}${code.notes ? `\nNotes: ${code.notes}` : ''}`}
     >
       <button
@@ -71,7 +73,7 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
           <Check className="w-2.5 h-2.5" />
         </button>
       </div>
-    </button>
+    </div>
   );
 }
 

@@ -101,33 +101,47 @@ export async function reverseGeocodeAddress(
 // and never block their write on it. Used by the dispatch call-create flow so
 // every CFS gets map coordinates even when the client didn't supply lat/lng
 // (created via API, the CAD command line, or a path that skipped autocomplete).
+export type GeocodeSource = 'point' | 'centroid';
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  geocodeSource: GeocodeSource;
+}
+
 export async function geocodeAddress(
   env: { KV: KVNamespace },
   address: string,
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<GeocodeResult | null> {
   const q = (address || '').trim();
   if (q.length < 3) return null;
   const cacheKey = `geocode:fwd:${q.toLowerCase()}`;
   try {
-    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as { lat: number; lng: number } | null;
-    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) return cached;
+    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as GeocodeResult | { lat: number; lng: number } | null;
+    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) {
+      return { lat: cached.lat, lng: cached.lng, geocodeSource: (cached as GeocodeResult).geocodeSource ?? 'point' };
+    }
     const params = new URLSearchParams({
-      q, format: 'json', addressdetails: '0', limit: '1', countrycodes: 'us',
+      q, format: 'json', addressdetails: '1', limit: '1', countrycodes: 'us',
       viewbox: '-114.052,42.001,-109.041,36.998', bounded: '1',
     });
     const resp = await fetch(`${NOMINATIM_BASE}?${params}`, {
       headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
     });
     if (!resp.ok) return null;
-    const raw = await resp.json<Array<{ lat?: string; lon?: string }>>();
+    const raw = await resp.json<Array<{ lat?: string; lon?: string; type?: string; class?: string }>>();
     const first = raw?.[0];
     if (!first?.lat || !first?.lon) return null;
     const lat = parseFloat(first.lat);
     const lng = parseFloat(first.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    const coords = { lat, lng };
-    await env.KV.put(cacheKey, JSON.stringify(coords), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
-    return coords;
+    const geocodeSource: GeocodeSource =
+      first.type === 'administrative' || first.type === 'county' || first.type === 'city'
+        ? 'centroid'
+        : 'point';
+    const result: GeocodeResult = { lat, lng, geocodeSource };
+    await env.KV.put(cacheKey, JSON.stringify(result), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
+    return result;
   } catch {
     return null;
   }

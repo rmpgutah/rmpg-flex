@@ -104,6 +104,57 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=6144
 
+  client-pdf-tests:
+    name: Client PDF tests
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --config vitest.pdf.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+  client-map-tests:
+    name: Client map tests
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --config vitest.maps.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+  client-desktop-tests:
+    name: Client desktop tests
+    needs: [client-typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: cd client && npm ci --legacy-peer-deps
+      - run: cd client && npx vitest run --config vitest.desktop.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
   client-build:
     name: Client build
     needs: [client-typecheck]

@@ -887,9 +887,10 @@ sv.post('/', async (c) => {
   // Backfill geocode when recipient_address is provided but coords are not
   let lat = body.recipient_lat != null ? body.recipient_lat : null;
   let lng = body.recipient_lng != null ? body.recipient_lng : null;
+  let geocodeSource: string | null = body.recipient_lat != null ? 'point' : null;
   if ((lat == null || lng == null) && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
     const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
-    if (coords) { lat = coords.lat; lng = coords.lng; }
+    if (coords) { lat = coords.lat; lng = coords.lng; geocodeSource = coords.geocodeSource; }
   }
 
   // Schema-guard mig 0237 columns on CREATE too
@@ -938,6 +939,10 @@ sv.post('/', async (c) => {
       body.registered_agent_name ?? null, body.registered_agent_title ?? null,
       body.registered_office_address ?? null,
     );
+  }
+  if (geocodeSource && await columnExists(dbPost, 'serve_queue', 'geocode_source')) {
+    insertCols.push('geocode_source');
+    insertVals.push(geocodeSource);
   }
   const placeholders = insertVals.map(() => '?').join(',');
   const r = await execute(
@@ -1201,6 +1206,10 @@ sv.put('/:id', async (c) => {
     if (coords) {
       sets.push('recipient_lat = ?', 'recipient_lng = ?');
       args.push(coords.lat, coords.lng);
+      if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
+        sets.push('geocode_source = ?');
+        args.push(coords.geocodeSource);
+      }
     }
   }
 

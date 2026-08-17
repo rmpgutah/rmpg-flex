@@ -13,6 +13,9 @@ export interface QueueMapItemForExport {
   recipient_address: string | null;
   priority: string;
   deadline: string | null;
+  status?: string | null;
+  eta?: string | null;
+  bufferMinutes?: number | null;
 }
 
 // Priority display config — colour bands match the serve queue UI
@@ -79,9 +82,28 @@ function drawTableRow(
     doc.text(item.recipient_address, nameX, y + 7.2, { maxWidth: nameW });
   }
 
-  // Deadline — right-aligned
-  if (item.deadline) {
-    const dueX = lx + rw - deadlineW;
+  // ETA + buffer — just left of deadline
+  if (item.eta || item.bufferMinutes) {
+    const etaX = lx + rw - deadlineW - 30;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(90, 100, 115);
+    if (item.eta) {
+      doc.text(`ETA ${item.eta}`, etaX, y + 3.2);
+    }
+    if (item.bufferMinutes) {
+      doc.text(`~${item.bufferMinutes} min buffer`, etaX, y + 7.2);
+    }
+  }
+
+  // Deadline or served date — right-aligned
+  const dueX = lx + rw - deadlineW;
+  if (item.status === 'served') {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(34, 139, 34);
+    doc.text('SERVED', dueX, y + 5);
+  } else if (item.deadline) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(90, 100, 115);
@@ -145,6 +167,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     doc.text('PRIORITY', lx + 2, y + 4);
     doc.text('#', lx + 24, y + 4);
     doc.text('RECIPIENT / ADDRESS', lx + 32, y + 4);
+    doc.text('ETA / BUFFER', pageW - lx - 54, y + 4);
     doc.text('DEADLINE', pageW - lx - 24, y + 4);
     return y + 6;
   };

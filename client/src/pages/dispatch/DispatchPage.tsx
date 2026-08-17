@@ -7,7 +7,7 @@ import {
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
-import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
+import type { CallForService, Unit, CallStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
 import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
@@ -48,6 +48,8 @@ import WarningTags from '../../components/WarningTags';
 import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
+import { Combobox } from '../../components/Combobox';
+import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -57,15 +59,22 @@ import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
 import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
+  formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
+  computeResponseTime, computeOnSceneTime, type FilterTab,
 } from './utils/dispatchFormatters';
+import {
+  SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
+  TERMINAL_STATUSES, COMPLETED_STATUSES, INACTIVE_STATUSES, ACTIVE_FIELD_STATUSES,
+  POST_DISPATCH_STATUSES, RESOLVED_STATUSES, FINISHED_STATUSES, ACTIONABLE_STATUSES,
+  OPEN_STATUSES, REMOVED_STATUSES,
+} from './utils/dispatchConstants';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
@@ -106,165 +115,86 @@ import {
   formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
-// Label maps for human-readable display of stored values
-const SERVICE_TYPE_LABELS: Record<string, string> = {
-  // Process Service
-  process_service: 'Process Service (General)',
-  subpoena_service: 'Subpoena Service',
-  summons_service: 'Summons & Complaint',
-  eviction_service: 'Eviction / Unlawful Detainer',
-  restraining_order_service: 'Protective Order Service',
-  writ_service: 'Writ Service',
-  court_filing: 'Court Filing / Delivery',
-  court_order_service: 'Court Order Service',
-  notice_service: 'Notice / Demand Service',
-  posting_service: 'Posting Service (Nail & Mail)',
-  // Investigative
-  skip_trace: 'Skip Trace & Locate',
-  stake_out: 'Stake Out / Surveillance',
-  rush_service: 'Rush / Same-Day Service',
-  asset_search: 'Asset Search',
-  background_check: 'Background Check / Due Diligence',
-  witness_interview: 'Witness Interview / Statement',
-  witness_locate: 'Witness Locate',
-  record_retrieval: 'Record Retrieval',
-  document_retrieval: 'Document Retrieval',
-  field_investigation: 'Field Investigation',
-  insurance_investigation: 'Insurance Investigation',
-  // Security Services
-  patrol: 'Patrol',
-  static_guard: 'Static Guard',
-  escort: 'Escort',
-  event_security: 'Event Security',
-  surveillance: 'Surveillance',
-  access_control: 'Access Control',
-  alarm_response: 'Alarm Response',
-  fire_watch: 'Fire Watch',
-  construction_security: 'Construction Site Security',
-  executive_protection: 'Executive Protection',
-  loss_prevention: 'Loss Prevention',
-  // Administrative
-  notary_service: 'Notary Service',
-  certified_copy: 'Certified Copy Service',
-  courier: 'Courier / Messenger',
-  document_preparation: 'Document Preparation',
-  affidavit_preparation: 'Affidavit Preparation',
-  other: 'Other',
-};
+const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
 
-const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  // Civil Process — General
-  subpoena: 'Subpoena',
-  subpoena_duces_tecum: 'Subpoena Duces Tecum',
-  subpoena_deposition: 'Subpoena (Deposition)',
-  federal_subpoena: 'Federal Subpoena',
-  summons: 'Summons & Complaint',
-  complaint: 'Complaint',
-  civil_summons: 'Civil Summons',
-  third_party_complaint: 'Third-Party Complaint',
-  cross_complaint: 'Cross-Complaint',
-  counterclaim: 'Counterclaim',
-  amended_complaint: 'Amended Complaint',
-  small_claims: 'Small Claims',
-  // Writs & Garnishments
-  garnishment: 'Garnishment',
-  writ_of_execution: 'Writ of Execution',
-  writ_of_restitution: 'Writ of Restitution',
-  writ_of_garnishment: 'Writ of Garnishment',
-  writ_of_attachment: 'Writ of Attachment',
-  writ_of_possession: 'Writ of Possession',
-  writ_of_assistance: 'Writ of Assistance',
-  writ_of_mandate: 'Writ of Mandate / Mandamus',
-  wage_garnishment: 'Wage Garnishment',
-  bank_levy: 'Bank Levy / Account Garnishment',
-  // Family / Domestic
-  restraining_order: 'Protective / Restraining Order',
-  temporary_protective_order: 'Temporary Protective Order',
-  cohabitant_abuse_order: 'Cohabitant Abuse Protective Order',
-  divorce_papers: 'Divorce Papers',
-  divorce_petition: 'Divorce Petition',
-  divorce_summons: 'Divorce Summons',
-  custody_order: 'Custody Order',
-  custody_modification: 'Custody Modification',
-  child_support: 'Child Support Order',
-  child_support_modification: 'Child Support Modification',
-  paternity_action: 'Paternity Action',
-  adoption_papers: 'Adoption Papers',
-  guardianship: 'Guardianship Petition',
-  termination_of_parental_rights: 'Termination of Parental Rights',
-  stalking_injunction: 'Stalking Injunction',
-  // Real Property
-  eviction: 'Eviction Notice',
-  unlawful_detainer: 'Unlawful Detainer',
-  notice_to_quit: 'Notice to Quit',
-  three_day_notice: '3-Day Notice to Pay or Quit',
-  five_day_notice: '5-Day Notice (Commercial)',
-  fifteen_day_notice: '15-Day Notice (Month-to-Month)',
-  foreclosure: 'Foreclosure Notice',
-  notice_of_default: 'Notice of Default',
-  lis_pendens: 'Lis Pendens',
-  quiet_title: 'Quiet Title Action',
-  // Court Orders & Motions
-  court_order: 'Court Order',
-  temporary_order: 'Temporary Order',
-  temporary_restraining_order: 'Temporary Restraining Order',
-  preliminary_injunction: 'Preliminary Injunction',
-  permanent_injunction: 'Permanent Injunction',
-  motion: 'Motion / Petition',
-  motion_for_contempt: 'Motion for Contempt',
-  motion_to_compel: 'Motion to Compel',
-  motion_for_summary_judgment: 'Motion for Summary Judgment',
-  notice_of_hearing: 'Notice of Hearing',
-  order_to_show_cause: 'Order to Show Cause',
-  judgment: 'Judgment',
-  default_judgment: 'Default Judgment',
-  // Probate & Estate
-  probate_petition: 'Probate Petition',
-  letters_testamentary: 'Letters Testamentary',
-  creditor_claim: 'Creditor Claim (Probate)',
-  // Bankruptcy
-  bankruptcy_notice: 'Bankruptcy Notice',
-  adversary_proceeding: 'Adversary Proceeding',
-  // Administrative
-  demand_letter: 'Demand Letter',
-  cease_and_desist: 'Cease & Desist',
-  notice_of_deposition: 'Notice of Deposition',
-  interrogatories: 'Interrogatories',
-  request_for_production: 'Request for Production',
-  request_for_admission: 'Request for Admission',
-  // General
-  civil: 'Civil Papers',
-  writ: 'Writ',
-  order: 'Court Order',
-  notice: 'Notice',
-  petition: 'Petition',
-  levy: 'Levy',
-  affidavit: 'Affidavit',
-  declaration: 'Declaration',
-  stipulation: 'Stipulation',
-  other: 'Other',
-};
 
-function formatServiceType(val: string | undefined | null): string {
-  if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
-}
+const PRIORITY_ORDER: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+const SEARCH_DEBOUNCE_MS = 300;
+const MAX_SEARCH_RESULTS = 10;
+const FETCH_TIMEOUT_MS = 15000;
+const DEDUP_CLEANUP_MS = 5000;
+const ALARM_CHECK_INTERVAL_MS = 5000;
 
-function formatCallDuration(ms: number): string {
-  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
-  const totalSec = Math.floor(ms / 1000);
-  const hrs = Math.floor(totalSec / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  const secs = totalSec % 60;
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
-  const decimalHours = (ms / 3600000).toFixed(2);
-  return `${clock} (${decimalHours}h)`;
-}
+const MOBILE_ACTION_BTN_STYLE: React.CSSProperties = { minHeight: 48, minWidth: 80, touchAction: 'manipulation' };
 
-function formatDocumentType(val: string | undefined | null): string {
-  if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
+function buildCallEditBody(
+  ed: Record<string, any>,
+  selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null,
+): Record<string, any> {
+  const sameLoc = ed.location === selectedFor?.location;
+  return {
+    incident_type: ed.incident_type,
+    priority: ed.priority,
+    client_id: ed.client_id || null,
+    property_id: ed.property_id || null,
+    caller_name: ed.caller_name,
+    caller_phone: ed.caller_phone,
+    caller_relationship: ed.caller_relationship,
+    caller_address: ed.caller_address,
+    location_address: ed.location,
+    latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
+    longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
+    description: ed.description,
+    source: ed.source,
+    disposition: ed.disposition,
+    cross_street: ed.cross_street,
+    location_building: ed.location_building,
+    location_floor: ed.location_floor,
+    location_room: ed.location_room,
+    zone_beat: ed.zone_beat,
+    sector_id: ed.sector_id,
+    zone_id: ed.zone_id,
+    beat_id: ed.beat_id,
+    dispatch_code: ed.dispatch_code,
+    weapons_involved: ed.weapons_involved,
+    injuries_reported: ed.injuries_reported,
+    num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
+    num_victims: ed.num_victims ? Number(ed.num_victims) : null,
+    subject_description: ed.subject_description,
+    vehicle_description: ed.vehicle_description,
+    direction_of_travel: ed.direction_of_travel,
+    scene_safety: ed.scene_safety,
+    weather_conditions: ed.weather_conditions,
+    lighting_conditions: ed.lighting_conditions,
+    alcohol_involved: ed.alcohol_involved,
+    drugs_involved: ed.drugs_involved,
+    domestic_violence: ed.domestic_violence,
+    supervisor_notified: ed.supervisor_notified,
+    le_notified: ed.le_notified,
+    le_agency: ed.le_agency,
+    le_case_number: ed.le_case_number,
+    damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
+    damage_description: ed.damage_description,
+    action_taken: ed.action_taken,
+    responding_officer: ed.responding_officer,
+    starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
+    ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
+    pso_requestor_name: ed.pso_requestor_name || null,
+    pso_requestor_phone: ed.pso_requestor_phone || null,
+    pso_requestor_email: ed.pso_requestor_email || null,
+    pso_service_type: ed.pso_service_type || null,
+    pso_billing_code: ed.pso_billing_code || null,
+    pso_authorization: ed.pso_authorization || null,
+    contract_id: ed.contract_id || null,
+    process_service_type: ed.process_service_type || null,
+    process_served_to: ed.process_served_to || null,
+    process_served_address: ed.process_served_address || null,
+    process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
+    process_served_at: ed.process_served_at || null,
+    process_service_result: ed.process_service_result || null,
+    court_name: ed.court_name || null,
+    case_number: ed.case_number || null,
+  };
 }
 
 export default function DispatchPage() {
@@ -338,6 +268,10 @@ export default function DispatchPage() {
     }
   }, []);
   const [units, setUnits] = useState<Unit[]>([]);
+  const refreshUnits = useCallback(async () => {
+    const unitsRes = await apiFetch<any[]>('/dispatch/units');
+    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+  }, []);
   // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
   // exclude `units` to avoid re-arming the interval on every position tick) can
   // read current on-duty state.
@@ -524,7 +458,9 @@ export default function DispatchPage() {
       const data = await apiFetch<any>('/dispatch/shift-handoff');
       setHandoffNotes(data?.text || '');
       setHandoffMeta({ updated_by: data?.updated_by, updated_at: data?.updated_at });
-    } catch { /* ignore */ }
+    } catch {
+      console.error('[Dispatch] Failed to fetch handoff notes');
+    }
   }, []);
 
   const saveHandoffNotes = useCallback(async () => {
@@ -590,12 +526,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         personAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/records/persons/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setPersonSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setPersonSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowPersonDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setPersonSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
 
   const searchVehicles = useCallback((query: string) => {
@@ -607,12 +543,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         vehicleAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/records/vehicles/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setVehicleSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setVehicleSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowVehicleDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setVehicleSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
   // ── Linked Persons / Vehicles on call ──
   const [callPersons, setCallPersons] = useState<any[]>([]);
@@ -627,15 +563,21 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/persons`);
       setCallPersons(Array.isArray(data) ? data : []);
-    } catch { setCallPersons([]); }
-  }, []);
+    } catch (err: any) {
+      setCallPersons([]);
+      addToast(err?.message || 'Failed to load linked persons', 'error');
+    }
+  }, [addToast]);
 
   const fetchCallVehicles = useCallback(async (callId: string | number) => {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/vehicles`);
       setCallVehicles(Array.isArray(data) ? data : []);
-    } catch { setCallVehicles([]); }
-  }, []);
+    } catch (err: any) {
+      setCallVehicles([]);
+      addToast(err?.message || 'Failed to load linked vehicles', 'error');
+    }
+  }, [addToast]);
 
   const linkPersonToCall = useCallback(async (callId: string | number, personId: string | number, role: string) => {
     try {
@@ -687,8 +629,11 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
       setCallBusinesses(Array.isArray(data) ? data : []);
-    } catch { setCallBusinesses([]); }
-  }, []);
+    } catch (err: any) {
+      setCallBusinesses([]);
+      addToast(err?.message || 'Failed to load linked businesses', 'error');
+    }
+  }, [addToast]);
 
   const searchBusinesses = useCallback((query: string) => {
     setBusinessQuery(query);
@@ -700,12 +645,12 @@ export default function DispatchPage() {
         const controller = new AbortController();
         businessAbortRef.current = controller;
         const results = await apiFetch<any[]>(`/dispatch/business-search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, 10) : []);
+        setBusinessSearchResults(Array.isArray(results) ? results.slice(0, MAX_SEARCH_RESULTS) : []);
         setShowBusinessDropdown(true);
       } catch (e: any) {
         if (e?.name !== 'AbortError') setBusinessSearchResults([]);
       }
-    }, 300);
+    }, SEARCH_DEBOUNCE_MS);
   }, []);
 
   const linkBusinessToCall = useCallback(async (callId: string | number, businessId: string | number, role: string) => {
@@ -906,7 +851,7 @@ export default function DispatchPage() {
     handleDragUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
-    units, setCalls, setUnits,
+    units, setCalls, setUnits, refreshUnits,
     onAssignSuccess: () => setShowAttachUnitDropdown(false),
   });
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
@@ -960,7 +905,7 @@ export default function DispatchPage() {
   const fetchData = useCallback(async (options?: { silent?: boolean; signal?: AbortSignal }) => {
     const controller = options?.signal ? undefined : new AbortController();
     const signal = options?.signal || controller!.signal;
-    const timeout = controller ? setTimeout(() => controller.abort(), 15000) : undefined;
+    const timeout = controller ? setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS) : undefined;
     apiFetch<{ call_ids: number[] }>('/dispatch/calls/hits', { signal })
       .then((res) => setHitCallIds(new Set((res?.call_ids || []).map(String))))
       .catch(() => { /* best-effort — badges just don't show this cycle */ });
@@ -1187,7 +1132,7 @@ export default function DispatchPage() {
     handlePriorityChange, handleLeNotify, handleGenerateIncident,
   } = useDispatchCallActions({
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
-    setUnits, setArchivedLoaded, refetchAll: silentRefresh,
+    setUnits, refreshUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
@@ -1219,7 +1164,7 @@ export default function DispatchPage() {
     handleAutoAssign,
     handleMultiUnitDispatch,
     handleTransferCall,
-  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits });
+  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits, refreshUnits });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {
@@ -1508,7 +1453,7 @@ export default function DispatchPage() {
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
   useEffect(() => {
-    if (!selectedCall?.onscene_at || ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) {
+    if (!selectedCall?.onscene_at || TERMINAL_STATUSES.has(selectedCall.status)) {
       setOnSceneElapsed('');
       return;
     }
@@ -1636,6 +1581,17 @@ export default function DispatchPage() {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
+      // Fetch AI analysis if not already cached from a WebSocket event
+      if (!aiAnalyses[selectedCall.id]) {
+        apiFetch<any>('/ai/analyze', {
+          method: 'POST',
+          body: JSON.stringify({ callId: selectedCall.id }),
+        }).then(data => {
+          if (!cancelled && data && (data.safetyBriefing || data.suggestedFlags || data.severityOverride)) {
+            setAiAnalyses(prev => ({ ...prev, [selectedCall.id]: data }));
+          }
+        }).catch(() => {});
+      }
       // Fetch serve queue link for PSO calls
       if (PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) {
         try {
@@ -1687,6 +1643,27 @@ export default function DispatchPage() {
     return dispositionGroupsForIncident(selectedCall?.incident_type);
   }, [dispositionCodes, selectedCall?.incident_type]);
 
+  // Populate serveRouteSortMap when the serve tab is active so filtered
+  // calls sort by optimized route order instead of falling through to
+  // priority-then-time.
+  useEffect(() => {
+    if (filterTab !== 'serve') return;
+    let cancelled = false;
+    apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes')
+      .then(data => {
+        if (cancelled || !data?.jobs) return;
+        const map: Record<string, number> = {};
+        data.jobs.forEach((j: any) => {
+          if (j.call_id != null && j.sort_order != null) {
+            map[String(j.call_id)] = j.sort_order;
+          }
+        });
+        setServeRouteSortMap(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [filterTab, calls.length]);
+
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
   // Effective queue sort mode (server pref → local fallback → default). Hoisted
@@ -1695,12 +1672,12 @@ export default function DispatchPage() {
 
   const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
-      case 'queue': return !['cleared', 'closed', 'cancelled'].includes(call.status);
+      case 'queue': return !COMPLETED_STATUSES.has(call.status);
       case 'pending': return call.status === 'pending';
-      case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
+      case 'active': return ACTIVE_FIELD_STATUSES.has(call.status);
       case 'hold': return call.status === 'on_hold';
       case 'serve': return PROCESS_SERVICE_INCIDENT_TYPES.has(call.incident_type);
-      case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
+      case 'cleared': return COMPLETED_STATUSES.has(call.status);
       case 'archived': return true;
       default: return true;
     }
@@ -1725,8 +1702,7 @@ export default function DispatchPage() {
       const bOrder = serveRouteSortMap[b.id] ?? 9999;
       if (aOrder !== bOrder) return aOrder - bOrder;
       // Fallback: priority then time for unordered serve calls
-      const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-      const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+      const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
       if (pDiff !== 0) return pDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -1751,17 +1727,15 @@ export default function DispatchPage() {
       const geoKey = (c: typeof a) => [c.sector_name || '￿', c.zone_id || '￿', c.beat_id || '￿'].join('|');
       const gDiff = geoKey(a).localeCompare(geoKey(b), undefined, { numeric: true });
       if (gDiff !== 0) return gDiff;
-      const pOrderGeo: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-      const pDiffGeo = (pOrderGeo[a.priority] ?? 3) - (pOrderGeo[b.priority] ?? 3);
+      const pDiffGeo = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
       if (pDiffGeo !== 0) return pDiffGeo;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Default: priority then newest first
-    const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-    const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+    const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
 
   // The "Search calls" box lives in the shared toolbar above both the CAD
   // board and the classic list, but was only ever wired into filteredCalls
@@ -1823,7 +1797,7 @@ export default function DispatchPage() {
         handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
-      if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.key === 'F7' && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
@@ -1837,7 +1811,7 @@ export default function DispatchPage() {
         if (cadInput) cadInput.focus();
         return;
       }
-      if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.key === 'F9' && selectedCall && ACTIONABLE_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleHoldCallRef.current(selectedCall.id);
         return;
@@ -1867,7 +1841,7 @@ export default function DispatchPage() {
       // Shift+C — quick clear on selected call (mirrors F7, faster muscle
       // memory). MUST sit below the input guard above; otherwise typing a
       // capital C in a note/narrative textarea pops the disposition modal.
-      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
@@ -1941,14 +1915,14 @@ export default function DispatchPage() {
       }
 
       // C - Clear call (opens disposition prompt)
-      if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if ((e.key === 'c' || e.key === 'C') && selectedCall && ACTIVE_FIELD_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
       // H - Hold call
-      if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+      if ((e.key === 'h' || e.key === 'H') && selectedCall && ACTIONABLE_STATUSES.has(selectedCall.status)) {
         e.preventDefault();
         handleHoldCallRef.current(selectedCall.id);
         return;
@@ -2072,7 +2046,7 @@ export default function DispatchPage() {
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
       rememberRecentId(newCall.id);
-      setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), 5000); // cleanup after 5s
+      setTimeout(() => recentlyCreatedIdsRef.current.delete(newCall.id), DEDUP_CLEANUP_MS);
       setCalls((prev) => [newCall, ...prev]);
       setSelectedCall(newCall);
       setShowNewCallModal(false);
@@ -2136,76 +2110,6 @@ export default function DispatchPage() {
   // for the "did the user change location?" → clear lat/lng heuristic.
   // Pass `selectedCall` from saveEditing and `selectedCallRef.current`
   // from the unmount cleanup.
-  const buildCallEditBody = (ed: Record<string, any>, selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null): Record<string, any> => {
-    const sameLoc = ed.location === selectedFor?.location;
-    return {
-      incident_type: ed.incident_type,
-      priority: ed.priority,
-      client_id: ed.client_id || null,
-      property_id: ed.property_id || null,
-      caller_name: ed.caller_name,
-      caller_phone: ed.caller_phone,
-      caller_relationship: ed.caller_relationship,
-      caller_address: ed.caller_address,
-      location_address: ed.location,
-      // If location changed from original and user didn't pick a new autocomplete
-      // result (lat/lng still hold old values), clear them to trigger server re-geocode.
-      latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
-      longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
-      description: ed.description,
-      source: ed.source,
-      disposition: ed.disposition,
-      cross_street: ed.cross_street,
-      location_building: ed.location_building,
-      location_floor: ed.location_floor,
-      location_room: ed.location_room,
-      zone_beat: ed.zone_beat,
-      sector_id: ed.sector_id,
-      zone_id: ed.zone_id,
-      beat_id: ed.beat_id,
-      dispatch_code: ed.dispatch_code,
-      weapons_involved: ed.weapons_involved,
-      injuries_reported: ed.injuries_reported,
-      num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
-      num_victims: ed.num_victims ? Number(ed.num_victims) : null,
-      subject_description: ed.subject_description,
-      vehicle_description: ed.vehicle_description,
-      direction_of_travel: ed.direction_of_travel,
-      scene_safety: ed.scene_safety,
-      weather_conditions: ed.weather_conditions,
-      lighting_conditions: ed.lighting_conditions,
-      alcohol_involved: ed.alcohol_involved,
-      drugs_involved: ed.drugs_involved,
-      domestic_violence: ed.domestic_violence,
-      supervisor_notified: ed.supervisor_notified,
-      le_notified: ed.le_notified,
-      le_agency: ed.le_agency,
-      le_case_number: ed.le_case_number,
-      // 0 is a valid damage estimate; falsy guard would wrongly drop it.
-      damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
-      damage_description: ed.damage_description,
-      action_taken: ed.action_taken,
-      responding_officer: ed.responding_officer,
-      starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
-      ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
-      pso_requestor_name: ed.pso_requestor_name || null,
-      pso_requestor_phone: ed.pso_requestor_phone || null,
-      pso_requestor_email: ed.pso_requestor_email || null,
-      pso_service_type: ed.pso_service_type || null,
-      pso_billing_code: ed.pso_billing_code || null,
-      pso_authorization: ed.pso_authorization || null,
-      contract_id: ed.contract_id || null,
-      // Process Service fields
-      process_service_type: ed.process_service_type || null,
-      process_served_to: ed.process_served_to || null,
-      process_served_address: ed.process_served_address || null,
-      process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
-      process_served_at: ed.process_served_at || null,
-      process_service_result: ed.process_service_result || null,
-      court_name: ed.court_name || null,
-      case_number: ed.case_number || null,
-    };
-  };
 
   const startEditing = async () => {
     if (!selectedCall) return;
@@ -2353,7 +2257,7 @@ export default function DispatchPage() {
   // Feature 5: Stacked calls count by address
   const stackedCallCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+    calls.filter(c => OPEN_STATUSES.has(c.status)).forEach(c => {
       if (c.location) {
         const loc = c.location.toLowerCase().trim();
         counts.set(loc, (counts.get(loc) || 0) + 1);
@@ -2367,7 +2271,7 @@ export default function DispatchPage() {
   // section code (from the composite zone_id) with sector_name fallback.
   const districtLoad = useMemo(() => {
     const counts = new Map<string, number>();
-    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+    calls.filter(c => OPEN_STATUSES.has(c.status)).forEach(c => {
       const key = sectionPrefix(c.zone_id) || c.sector_name || '';
       if (key) counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -2382,7 +2286,7 @@ export default function DispatchPage() {
     const loc = selectedCall.location.toLowerCase().trim();
     return calls.filter(c =>
       c.id !== selectedCall.id &&
-      ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status) &&
+      OPEN_STATUSES.has(c.status) &&
       (c.location || '').toLowerCase().trim() === loc
     );
   }, [calls, selectedCall?.id, selectedCall?.location]);
@@ -2407,7 +2311,7 @@ export default function DispatchPage() {
 
   // Feature 9: Call type statistics
   const callTypeStats = useMemo(() => {
-    const active = calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status));
+    const active = calls.filter(c => OPEN_STATUSES.has(c.status));
     const typeCounts = new Map<string, number>();
     active.forEach(c => {
       const type = c.incident_type || 'other';
@@ -2422,7 +2326,7 @@ export default function DispatchPage() {
   // Feature 13: Unit workload — count active calls per unit
   const unitWorkload = useMemo(() => {
     const workload = new Map<string, number>();
-    calls.filter(c => ['dispatched', 'enroute', 'onscene'].includes(c.status)).forEach(c => {
+    calls.filter(c => ACTIVE_FIELD_STATUSES.has(c.status)).forEach(c => {
       (c.assigned_units || []).forEach(uid => {
         workload.set(String(uid), (workload.get(String(uid)) || 0) + 1);
       });
@@ -2483,20 +2387,20 @@ export default function DispatchPage() {
       }
     };
     check();
-    const interval = setInterval(check, 5000);
+    const interval = setInterval(check, ALARM_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [calls]);
 
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
-    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length;
+    const active = calls.filter((c) => ACTIVE_FIELD_STATUSES.has(c.status)).length;
     const hold = calls.filter((c) => c.status === 'on_hold').length;
-    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    const cleared = calls.filter((c) => COMPLETED_STATUSES.has(c.status)).length;
     // Queue tab = everything still open (mirrors the filteredCalls 'queue'
     // predicate at line ~1243). This definition was dropped in a prior
     // squash-merge, leaving `queue` undefined and breaking client typecheck.
-    const queue = calls.filter((c) => !['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    const queue = calls.filter((c) => !COMPLETED_STATUSES.has(c.status)).length;
     return {
       queue,
       pending,
@@ -2506,7 +2410,7 @@ export default function DispatchPage() {
       archived: archivedCalls.length,
       serve: calls.filter((c) => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type)).length,
     };
-  }, [calls, archivedCalls, user?.id]);
+  }, [calls, archivedCalls]);
 
   if (isLoading) {
     return (
@@ -2636,44 +2540,31 @@ export default function DispatchPage() {
                   <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                   <span className="text-rmpg-400">Duration:</span>
                   <span className="text-rmpg-200 font-bold">
-                    {(() => {
-                      const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                      const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
-                      return formatCallDuration(elapsed);
-                    })()}
+                    {formatCallDuration(computeCallDuration(selectedCall))}
                   </span>
                 </div>
-                {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                  const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                  if (diff <= 0 || !isFinite(diff)) return null;
-                  return (
-                    <div className="flex items-center gap-1">
-                      <span className="text-rmpg-400">Response:</span>
-                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                    </div>
-                  );
-                })()}
-                {selectedCall.onscene_at && (() => {
-                  const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
-                  if (diff <= 0 || !isFinite(diff)) return null;
-                  return (
-                    <div className="flex items-center gap-1">
-                      <span className="text-rmpg-400">On-Scene:</span>
-                      <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                    </div>
-                  );
-                })()}
+                {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-400">Response:</span>
+                    <span className="text-rmpg-400 font-bold">{formatCallDuration(rt)}</span>
+                  </div>
+                ); })()}
+                {(() => { const ost = computeOnSceneTime(selectedCall); return ost == null ? null : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-rmpg-400">On-Scene:</span>
+                    <span className="text-rmpg-400 font-bold">{formatCallDuration(ost)}</span>
+                  </div>
+                ); })()}
               </div>
 
               {/* Safety Flag Badges — mobile */}
               {(() => {
                 const flags: Array<{ label: string; color: string }> = [];
                 if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: 'var(--sev-critical-soft)' });
-                if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
-                if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
-                if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
+                if (selectedCall.domestic_violence) flags.push({ label: 'DV', color: 'var(--sev-caution)' });
+                if (selectedCall.mental_health_crisis) flags.push({ label: 'MH', color: 'var(--sev-special-soft)' });
+                if (selectedCall.officer_safety_caution) flags.push({ label: 'SAFETY', color: 'var(--sev-critical)' });
+                if (selectedCall.vehicle_pursuit || selectedCall.foot_pursuit) flags.push({ label: 'PURSUIT', color: 'var(--sev-high)' });
                 if (flags.length === 0) return null;
                 return (
                   <div className="flex flex-wrap gap-1">
@@ -2692,7 +2583,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Send style={{ width: 16, height: 16 }} /> Dispatch
                   </button>
@@ -2701,7 +2592,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'enroute')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Navigation style={{ width: 16, height: 16 }} /> En Route
                   </button>
@@ -2710,31 +2601,31 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleStatusChange(selectedCall.id, 'onscene')}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     <Eye style={{ width: 16, height: 16 }} /> On Scene
                   </button>
                 )}
-                {['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
+                {ACTIVE_FIELD_STATUSES.has(selectedCall.status) && (
                   <>
                     <button type="button"
                       onClick={() => handleClearWithDisposition(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-ok) 31%, transparent)', color: 'var(--sev-ok)' }}
                     >
                       <CheckCircle style={{ width: 16, height: 16 }} /> Clear
                     </button>
                     <button type="button"
                       onClick={() => handleHoldCall(selectedCall.id)}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
                     >
                       ⏸ Hold
                     </button>
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2744,7 +2635,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: '#000', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--sev-warn)', color: 'var(--surface-base)' }}
                   >
                     ▶ Resume
                   </button>
@@ -2754,7 +2645,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'closed')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-border)', border: '1px solid var(--spm-text-muted)', color: 'var(--spm-text)' }}
                     >
                       Close
                     </button>
@@ -2762,7 +2653,7 @@ export default function DispatchPage() {
                       onClick={handleGenerateIncident}
                       disabled={isGenerating}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                     >
                       {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                       Report
@@ -2774,17 +2665,17 @@ export default function DispatchPage() {
                     onClick={handleGenerateIncident}
                     disabled={isGenerating}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
                   >
                     {isGenerating ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <FileText style={{ width: 16, height: 16 }} />}
                     Report
                   </button>
                 )}
-                {['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
+                {POST_DISPATCH_STATUSES.has(selectedCall.status) && (
                   <button type="button"
                     onClick={() => handleRevertStatus(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn)' }}
                   >
                     <Undo2 style={{ width: 16, height: 16 }} /> Back
                   </button>
@@ -2793,7 +2684,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleArchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)' }}
                   >
                     <Archive style={{ width: 16, height: 16 }} /> Archive
                   </button>
@@ -2802,7 +2693,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleUnarchive(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)', touchAction: 'manipulation' }}
+                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--spm-border) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', color: 'var(--spm-text-muted)' }}
                   >
                     <RotateCcw style={{ width: 16, height: 16 }} /> Restore
                   </button>
@@ -2832,7 +2723,7 @@ export default function DispatchPage() {
                         title="Copy address"
                         aria-label="Copy address"
                         onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(selectedCall.location || ''); addToast('Address copied', 'success'); }}
-                        className="text-rmpg-500 hover:text-brand-gold-500 transition-colors"
+                        className="text-rmpg-500 hover:text-[color:var(--field-label-color)] transition-colors"
                       >
                         <Copy className="w-3 h-3" />
                       </button>
@@ -2928,7 +2819,7 @@ export default function DispatchPage() {
                       { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
                       { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
                       { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                      { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                      { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
                     ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
@@ -3221,7 +3112,7 @@ export default function DispatchPage() {
                                 border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)',
                                 color: 'var(--brand-gold)',
                               }}
-                              onClick={() => navigate('/serve')}
+                              onClick={() => navigate(serveLink?.id ? `/serve?job_id=${serveLink.id}` : '/serve')}
                               aria-label="View in Process Server"
                             >
                               <Briefcase style={{ width: 10, height: 10 }} />
@@ -3333,7 +3224,7 @@ export default function DispatchPage() {
                     })()}
 
                     {/* 72-hour countdown (mobile) */}
-                    {['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                    {RESOLVED_STATUSES.has(selectedCall.status) && (() => {
                       const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                       if (!terminalTime) return null;
                       const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -3356,7 +3247,7 @@ export default function DispatchPage() {
                     })()}
 
                     {/* Schedule Return Visit button (mobile) */}
-                    {['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-3 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
@@ -3390,7 +3281,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
-                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -3402,7 +3293,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Undo Return Visit button (mobile) — only on pending child calls */}
-                    {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                    {selectedCall.parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
@@ -3655,7 +3546,7 @@ export default function DispatchPage() {
               borderColor: 'var(--sev-special)',
               borderBottomColor: 'var(--spm-border)',
               borderRightColor: 'var(--spm-border)',
-              color: '#fff',
+              color: 'var(--text-primary)',
             }}
           >
             <Shield style={{ width: 10, height: 10 }} />
@@ -3703,7 +3594,7 @@ export default function DispatchPage() {
         {/* Operational Status Strip — consolidated single row */}
         <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: 'var(--surface-deep)' }}>
           {(() => {
-            const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
+            const workingCalls = calls.filter(c => !COMPLETED_STATUSES.has(c.status));
             const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
             const p2Count = workingCalls.filter(c => c.priority === 'P2').length;
             // Stacked calls
@@ -3726,7 +3617,7 @@ export default function DispatchPage() {
               const d = parseTimestamp(c.created_at);
               return d.toDateString() === new Date().toDateString();
             });
-            const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            const clearedToday = todayCalls.filter(c => FINISHED_STATUSES.has(c.status)).length;
             // Avg response
             const responseTimes = todayCalls
               .filter(c => c.onscene_at && c.created_at)
@@ -3765,7 +3656,7 @@ export default function DispatchPage() {
                   return (
                     <button type="button" onClick={() => setSearchQuery(isFiltered ? '' : topSection)}
                       className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] hover:brightness-125 transition-all"
-                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgba(212,160,23,0.3)' }}
+                      style={{ background: isFiltered ? 'rgb(var(--brand-gold-rgb) / 0.3)' : 'rgb(var(--brand-gold-rgb) / 0.12)', color: 'var(--brand-gold)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.3)' }}
                       title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
                     >
                       <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
@@ -3851,6 +3742,9 @@ export default function DispatchPage() {
             );
           })()}
         </div>
+
+        {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
+        <DispatchAnalyticsStrip />
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
@@ -4098,7 +3992,7 @@ export default function DispatchPage() {
                       <input
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
-                        defaultValue={(selectedCall as any).incident_number || ''}
+                        defaultValue={selectedCall.incident_number || ''}
                         placeholder="Incident #"
                         autoFocus
                         onKeyDown={async (e) => {
@@ -4126,7 +4020,7 @@ export default function DispatchPage() {
                         }}
                         onBlur={async (e) => {
                           const val = e.target.value.trim();
-                          if (val !== ((selectedCall as any).incident_number || '')) {
+                          if (val !== (selectedCall.incident_number || '')) {
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ incident_number: val || null }) });
                               const updated = mergeCallUpdate(selectedCall, result);
@@ -4176,7 +4070,7 @@ export default function DispatchPage() {
                     </span>
                   )}
                   {/* Total elapsed timer (since call creation) */}
-                  {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
+                  {selectedCall.created_at && !TERMINAL_STATUSES.has(selectedCall.status) && (
                     <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
                       (() => {
                         const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
@@ -4193,6 +4087,78 @@ export default function DispatchPage() {
                     </span>
                   )}
                 </div>
+                {/* Workflow status pipeline — compact horizontal progress track showing
+                    the call lifecycle. Clickable steps advance the status directly so
+                    a dispatcher can progress a call without hunting for a button in
+                    the overflow toolbar. Archived/cancelled/closed are terminal and
+                    shown with a distinct visual treatment. */}
+                {!isEditing && (() => {
+                  const PIPELINE = [
+                    { status: 'pending',    label: 'Pending',    short: 'PEND' },
+                    { status: 'dispatched', label: 'Dispatched', short: 'DISP' },
+                    { status: 'enroute',    label: 'En Route',   short: 'ER'   },
+                    { status: 'onscene',    label: 'On Scene',   short: 'OS'   },
+                    { status: 'cleared',    label: 'Cleared',    short: 'CLR'  },
+                    { status: 'closed',     label: 'Closed',     short: 'CLSD' },
+                  ] as const;
+                  const TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
+                  const currentIdx = PIPELINE.findIndex(p => p.status === selectedCall.status);
+                  const isTerminal = TERMINAL_STATUSES.has(selectedCall.status);
+                  const NEXT_STATUS: Record<string, string> = {
+                    pending: 'dispatched', dispatched: 'enroute', enroute: 'onscene',
+                    onscene: 'cleared', cleared: 'closed',
+                  };
+                  return (
+                    <div
+                      className="flex items-center px-2 py-1 border-b border-[var(--spm-border)] gap-0 overflow-x-auto"
+                      style={{ background: 'var(--surface-deep)' }}
+                      role="progressbar"
+                      aria-label={`Call status: ${selectedCall.status}`}
+                    >
+                      {isTerminal ? (
+                        <span className="text-[8px] font-bold font-mono uppercase tracking-wider px-2 py-0.5"
+                          style={{ color: selectedCall.status === 'cancelled' ? 'var(--sev-critical)' : selectedCall.status === 'on_hold' ? 'var(--sev-warn)' : 'var(--spm-text-muted)' }}>
+                          ● {selectedCall.status.toUpperCase().replace('_', ' ')}
+                        </span>
+                      ) : PIPELINE.map((step, idx) => {
+                        const isPast = currentIdx > idx;
+                        const isCurrent = currentIdx === idx;
+                        const canAdvance = isCurrent && NEXT_STATUS[step.status] && !['cleared', 'closed'].includes(step.status);
+                        const color = isCurrent
+                          ? step.status === 'pending' ? 'var(--sev-warn)' : step.status === 'onscene' ? 'var(--sev-special)' : 'var(--brand-gold)'
+                          : isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)';
+                        return (
+                          <React.Fragment key={step.status}>
+                            <button
+                              type="button"
+                              disabled={!canAdvance}
+                              onClick={canAdvance ? () => handleStatusChange(selectedCall.id, NEXT_STATUS[step.status] as any) : undefined}
+                              title={canAdvance ? `Advance to ${NEXT_STATUS[step.status]}` : step.label}
+                              className="flex items-center gap-1 px-1.5 py-0.5 text-[7px] font-bold font-mono uppercase tracking-wider whitespace-nowrap transition-all flex-shrink-0"
+                              style={{
+                                color,
+                                background: isCurrent ? `rgb(var(--brand-gold-rgb) / 0.08)` : 'transparent',
+                                border: isCurrent ? `1px solid ${color}` : '1px solid transparent',
+                                opacity: !isPast && !isCurrent ? 0.35 : 1,
+                                cursor: canAdvance ? 'pointer' : 'default',
+                              }}
+                            >
+                              {isPast && <span style={{ fontSize: '9px' }}>✓</span>}
+                              {isCurrent && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color, flexShrink: 0 }} />}
+                              {step.short}
+                            </button>
+                            {idx < PIPELINE.length - 1 && (
+                              <span className="text-[8px] flex-shrink-0" style={{ color: isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)', opacity: 0.4 }}>›</span>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      <span className="ml-auto text-[7px] font-mono text-rmpg-600 flex-shrink-0 pl-2">
+                        {currentIdx >= 0 ? `${currentIdx + 1}/${PIPELINE.length}` : ''}
+                      </span>
+                    </div>
+                  );
+                })()}
                 {/* Row 2: Action buttons — separate row to prevent cramping.
                     This row used to be `overflow-x-auto` with a mask-image fade
                     hinting that more buttons existed off to the right. The
@@ -4274,6 +4240,10 @@ export default function DispatchPage() {
                           content: n.text || '',
                           created_at: n.timestamp || '',
                         })),
+                        // Pass action_taken, cross_street, description for PDF
+                        action_taken: selectedCall?.action_taken || '',
+                        cross_street: selectedCall?.cross_street || '',
+                        description: selectedCall?.description || '',
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
                           `[${n.timestamp ? formatTime(n.timestamp) : ''}] ${n.author || 'System'}: ${n.text || ''}`
@@ -4328,7 +4298,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
-                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
@@ -4363,7 +4333,7 @@ export default function DispatchPage() {
                     {/* Notice of Communication — PSO client requests with a failed attempt
                         being re-dispatched. Autofills from this call (client, service,
                         attempt) into a printable client notice. */}
-                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                    {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-info) 15%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-info) 31%, transparent)', color: 'var(--sev-info)' }}
@@ -4374,7 +4344,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Undo Return Visit — only on pending child calls */}
-                    {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                    {!isEditing && selectedCall.parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
@@ -4466,7 +4436,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Revert status button — go back one step */}
-                    {!isEditing && ['dispatched', 'enroute', 'onscene', 'cleared', 'closed'].includes(selectedCall.status) && (
+                    {!isEditing && POST_DISPATCH_STATUSES.has(selectedCall.status) && (
                       <button type="button"
                         onClick={() => handleRevertStatus(selectedCall.id)}
                         className="toolbar-btn"
@@ -4492,7 +4462,7 @@ export default function DispatchPage() {
                         <Eye style={{ width: 10, height: 10 }} /> On Scene
                       </button>
                     )}
-                    {!isEditing && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status) && (
+                    {!isEditing && ACTIVE_FIELD_STATUSES.has(selectedCall.status) && (
                       <>
                         <button type="button" onClick={() => handleClearWithDisposition(selectedCall.id)} className="toolbar-btn">
                           <CheckCircle style={{ width: 10, height: 10 }} /> Clear
@@ -4506,7 +4476,7 @@ export default function DispatchPage() {
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: 'var(--surface-base)' }}>
                         ▶ Resume
                       </button>
                     )}
@@ -4596,49 +4566,36 @@ export default function DispatchPage() {
                     <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
                     <span className="text-rmpg-400">Duration:</span>
                     <span className="text-rmpg-200 font-bold">
-                      {(() => {
-                        const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                        const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
-                        return formatCallDuration(elapsed);
-                      })()}
+                      {formatCallDuration(computeCallDuration(selectedCall))}
                     </span>
                   </div>
                   {/* Response time — dispatched to on scene */}
-                  {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                    const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                    if (diff <= 0 || !isFinite(diff)) return null;
-                    return (
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-                        <span className="text-rmpg-400">Response:</span>
-                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                      </div>
-                    );
-                  })()}
+                  {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                      <Navigation style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                      <span className="text-rmpg-400">Response:</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(rt)}</span>
+                    </div>
+                  ); })()}
                   {/* On-scene time — onscene to cleared (or live if still on scene) */}
-                  {selectedCall.onscene_at && (() => {
-                    const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                    const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
-                    if (diff <= 0 || !isFinite(diff)) return null;
-                    return (
-                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
-                        <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
-                        <span className="text-rmpg-400">On-Scene:</span>
-                        <span className="text-rmpg-400 font-bold">{formatCallDuration(diff)}</span>
-                      </div>
-                    );
-                  })()}
+                  {(() => { const ost = computeOnSceneTime(selectedCall); return ost == null ? null : (
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                      <Clock style={{ width: 10, height: 10 }} className="text-rmpg-500" />
+                      <span className="text-rmpg-400">On-Scene:</span>
+                      <span className="text-rmpg-400 font-bold">{formatCallDuration(ost)}</span>
+                    </div>
+                  ); })()}
                   {/* Safety flag summary — compact inline */}
                   {(() => {
                     const flags: string[] = [];
                     if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push('ARMED');
-                    if ((selectedCall as any).domestic_violence) flags.push('DV');
-                    if ((selectedCall as any).mental_health_crisis) flags.push('MH');
-                    if ((selectedCall as any).officer_safety_caution) flags.push('SAFETY');
-                    if ((selectedCall as any).felony_in_progress) flags.push('FELONY');
-                    if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push('PURSUIT');
-                    if ((selectedCall as any).ems_requested) flags.push('EMS');
-                    if ((selectedCall as any).injuries_reported) flags.push('INJ');
+                    if (selectedCall.domestic_violence) flags.push('DV');
+                    if (selectedCall.mental_health_crisis) flags.push('MH');
+                    if (selectedCall.officer_safety_caution) flags.push('SAFETY');
+                    if (selectedCall.felony_in_progress) flags.push('FELONY');
+                    if (selectedCall.vehicle_pursuit || selectedCall.foot_pursuit) flags.push('PURSUIT');
+                    if (selectedCall.ems_requested) flags.push('EMS');
+                    if (selectedCall.injuries_reported) flags.push('INJ');
                     if (flags.length === 0) return null;
                     return (
                       <div className="flex items-center gap-1 ml-auto">
@@ -4695,17 +4652,17 @@ export default function DispatchPage() {
                         onClick={() => setDetailTab(tab)}
                         className="relative px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-all duration-150 flex-shrink-0 whitespace-nowrap"
                         style={{
-                          color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)',
+                          color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)',
                           background: isActive ? 'color-mix(in srgb, var(--surface-sunken) 60%, transparent)' : 'transparent',
                           borderBottom: isActive ? '2px solid var(--brand-gold)' : '2px solid transparent',
                         }}
-                        onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
+                        onMouseEnter={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text)'; (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--surface-sunken) 40%, transparent)'; } }}
                         onMouseLeave={(e) => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = 'var(--spm-text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
                       >
                         <span className="flex items-center gap-1">
                           {icons[tab]}
                           {labels[tab]}
-                          {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--spm-text-muted) 15%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
+                          {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--brand-gold) 20%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                         </span>
                       </button>
                     );
@@ -4749,11 +4706,14 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
-                          {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
-                            <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
-                          ))}
-                        </select>
+                        <Combobox<{ value: string; label: string }>
+                          value={editData.incident_type ? INCIDENT_TYPE_OPTIONS.find(o => o.value === editData.incident_type) ?? null : null}
+                          onChange={(opt) => updateEditField('incident_type', opt?.value ?? '')}
+                          options={INCIDENT_TYPE_OPTIONS}
+                          getLabel={(o) => o.label}
+                          getKey={(o) => o.value}
+                          placeholder="Search incident type..."
+                        />
                       ) : (
                         <p className="text-sm text-brand-400 font-medium">{formatIncidentType(selectedCall.incident_type)}</p>
                       )}
@@ -4800,6 +4760,12 @@ export default function DispatchPage() {
                         <p className="text-[10px] text-brand-400 ml-5 flex items-center gap-1">
                           <Building2 className="w-3 h-3" />
                           {selectedCall.client_name}
+                        </p>
+                      )}
+                      {!isEditing && selectedCall.cross_street && (
+                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
+                          <Navigation style={{ width: 10, height: 10 }} />
+                          <span className="text-rmpg-300">X-St: {selectedCall.cross_street}</span>
                         </p>
                       )}
                       {/* Weather at call location — officer safety indicator */}
@@ -4975,7 +4941,7 @@ export default function DispatchPage() {
                           { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
                           { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
                           { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                          { label: 'Closed', field: 'closed_at', value: (selectedCall as any).closed_at, color: 'var(--spm-text-muted)' },
+                          { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
                           { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: 'var(--spm-text-muted)' },
                         ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
@@ -5040,7 +5006,7 @@ export default function DispatchPage() {
                     <div>
                       <div className="flex items-center justify-between">
                         <label className="field-label">Assigned Units:</label>
-                        {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                           <div className="relative" ref={attachUnitDropdownRef} style={{ display: 'inline-block' }}>
                             <button type="button"
                               onClick={() => setShowAttachUnitDropdown((prev) => !prev)}
@@ -5074,7 +5040,7 @@ export default function DispatchPage() {
                         )}
                       </div>
                       {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
-                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                      {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                         <div className="mt-1 mb-1">
                           <RecommendedUnitsInline
                             callId={selectedCall.id}
@@ -5087,7 +5053,7 @@ export default function DispatchPage() {
                         </div>
                       )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
-                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                      {!isEditing && (isGodMode || !TERMINAL_STATUSES.has(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
                           <button type="button"
                             onClick={() => handleAutoAssign(selectedCall.id)}
@@ -5106,26 +5072,32 @@ export default function DispatchPage() {
                             <Navigation style={{ width: 8, height: 8 }} /> Suggest
                           </button>
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
-                          {(selectedCall.assigned_units || []).length > 0 && (
-                            <div className="relative">
+                          {(selectedCall.assigned_units || []).length > 0 && (() => {
+                            const availableUnits = units.filter(u =>
+                              u.status === 'available' && !selectedCall.assigned_units.includes(u.id)
+                            );
+                            if (availableUnits.length === 0) return null;
+                            return (
                               <select
                                 className="input-dark text-[8px] py-0 px-1"
-                                style={{ maxWidth: 120 }}
-                                defaultValue=""
+                                style={{ maxWidth: 160 }}
+                                value=""
                                 onChange={(e) => {
                                   if (e.target.value && selectedCall.assigned_units.length > 0) {
                                     handleTransferCall(selectedCall.id, String(selectedCall.assigned_units[0]), e.target.value);
-                                    e.target.value = '';
+                                    e.currentTarget.value = '';
                                   }
                                 }}
                               >
-                                <option value="" disabled>Transfer to...</option>
-                                {units.filter(u => u.status === 'available' && !selectedCall.assigned_units.includes(u.id)).map(u => (
-                                  <option key={u.id} value={u.id}>{u.call_sign}</option>
+                                <option value="" disabled>⇄ Transfer to…</option>
+                                {availableUnits.map(u => (
+                                  <option key={u.id} value={u.id}>
+                                    {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ''}
+                                  </option>
                                 ))}
                               </select>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       )}
                       {(selectedCall.assigned_units || []).length > 0 ? (
@@ -5156,7 +5128,7 @@ export default function DispatchPage() {
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
-                                {!isEditing && unitObj && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) && (
+                                {!isEditing && unitObj && !TERMINAL_STATUSES.has(selectedCall.status) && (
                                   <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
                                     className="ml-0.5 hover:text-red-400 transition-colors"
@@ -5198,7 +5170,7 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Starting Mileage <span className="text-red-400">*</span></label>
                           <div className="flex gap-1">
                             <input type="number" step="0.1" min="0" className="input-dark text-xs flex-1" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
                             <button
@@ -5206,7 +5178,7 @@ export default function DispatchPage() {
                               onClick={async () => {
                                 try {
                                   const unitId = (() => {
-                                    const a = (selectedCall as any)?.assigned_units;
+                                    const a = selectedCall?.assigned_units;
                                     const id = Array.isArray(a) && a.length > 0 ? a[0] : null;
                                     return id != null ? Number(id) : null;
                                   })();
@@ -5232,7 +5204,7 @@ export default function DispatchPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Ending Mileage</label>
                           <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
@@ -5267,14 +5239,14 @@ export default function DispatchPage() {
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Section</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Section</label>
                               <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
@@ -5288,7 +5260,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Zone</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Zone</label>
                               <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
@@ -5298,7 +5270,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Beat</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Beat</label>
                               <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
@@ -5331,7 +5303,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Dispatch Code</label>
                               <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
@@ -5416,10 +5388,10 @@ export default function DispatchPage() {
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Weapons</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Weapons</label>
                             <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
@@ -5431,7 +5403,7 @@ export default function DispatchPage() {
                         {/* ── Linked Persons ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Individuals</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Individuals</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               {linkOptions.person_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5442,7 +5414,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cp.role || '')}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cp.role || '')}</span>
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
@@ -5479,7 +5451,7 @@ export default function DispatchPage() {
                         {/* ── Linked Vehicles ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Vehicles</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
                               {linkOptions.vehicle_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5490,7 +5462,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callVehicles.map((cv: any) => (
                                 <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
                                   <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove vehicle from call">&times;</button>
@@ -5526,7 +5498,7 @@ export default function DispatchPage() {
                         {/* ── Linked Businesses ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Businesses</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Businesses</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkBusinessRole} onChange={(e) => setLinkBusinessRole(e.target.value)}>
                               {linkOptions.business_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5537,7 +5509,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callBusinesses.map((cb: any) => (
                                 <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
                                   {cb.name}
                                   {cb.business_type && <span className="text-rmpg-500">{toDisplayLabel(cb.business_type)}</span>}
                                   <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove business from call">&times;</button>
@@ -5568,7 +5540,7 @@ export default function DispatchPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Direction of Travel</label>
                           <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
@@ -5595,10 +5567,10 @@ export default function DispatchPage() {
                         {/* Linked persons */}
                         {callPersons.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Persons ({callPersons.length})</span>
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">Linked Persons ({callPersons.length})</span>
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
+                                <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
@@ -5611,10 +5583,10 @@ export default function DispatchPage() {
                         {/* Linked vehicles */}
                         {callVehicles.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cv.role || '')}</span>
+                                <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cv.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{toDisplayLabel(cv.stolen_status)}</span>}
@@ -5639,19 +5611,19 @@ export default function DispatchPage() {
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Scene Safety</label>
                             <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Weather</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Weather</label>
                             <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Lighting</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Lighting</label>
                             <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
@@ -5667,7 +5639,7 @@ export default function DispatchPage() {
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">LE Agency</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">LE Agency</label>
                               <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
@@ -5675,16 +5647,16 @@ export default function DispatchPage() {
                                 <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-[color:var(--field-label-color)]">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Responding Officer</label>
                           <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
@@ -5754,7 +5726,7 @@ export default function DispatchPage() {
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
-                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && RESOLVED_STATUSES.has(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
                         const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
@@ -5775,7 +5747,7 @@ export default function DispatchPage() {
                         }
                         return null;
                       })()}
-                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
                         <button type="button"
                           className="toolbar-btn px-2 py-0.5 text-[9px] font-semibold"
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
@@ -5817,7 +5789,7 @@ export default function DispatchPage() {
                       const auth = editData.pso_authorization || selectedCall.pso_authorization;
                       return (
                         <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
-                          <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
+                          <span className="text-[color:var(--field-label-color)] uppercase font-black text-[8px] tracking-wide">Client</span>
                           <span className="text-rmpg-100 font-semibold">{cli?.name || `#${cid}`}</span>
                           {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
                           {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
@@ -5828,68 +5800,29 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Service Type</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
-                              <optgroup label="Process Service">
-                                <option value="process_service">Process Service (General)</option>
-                                <option value="subpoena_service">Subpoena Service</option>
-                                <option value="summons_service">Summons &amp; Complaint</option>
-                                <option value="eviction_service">Eviction / Unlawful Detainer</option>
-                                <option value="restraining_order_service">Protective Order Service</option>
-                                <option value="writ_service">Writ Service</option>
-                                <option value="court_filing">Court Filing / Delivery</option>
-                                <option value="court_order_service">Court Order Service</option>
-                                <option value="notice_service">Notice / Demand Service</option>
-                                <option value="posting_service">Posting Service (Nail &amp; Mail)</option>
-                                <option value="rush_service">Rush / Same-Day Service</option>
-                              </optgroup>
-                              <optgroup label="Investigative">
-                                <option value="skip_trace">Skip Trace &amp; Locate</option>
-                                <option value="stake_out">Stake Out / Surveillance</option>
-                                <option value="asset_search">Asset Search</option>
-                                <option value="background_check">Background Check / Due Diligence</option>
-                                <option value="witness_interview">Witness Interview / Statement</option>
-                                <option value="witness_locate">Witness Locate</option>
-                                <option value="record_retrieval">Record Retrieval</option>
-                                <option value="document_retrieval">Document Retrieval</option>
-                                <option value="field_investigation">Field Investigation</option>
-                                <option value="insurance_investigation">Insurance Investigation</option>
-                              </optgroup>
-                              <optgroup label="Security Services">
-                                <option value="patrol">Patrol</option>
-                                <option value="static_guard">Static Guard</option>
-                                <option value="escort">Escort</option>
-                                <option value="event_security">Event Security</option>
-                                <option value="surveillance">Surveillance</option>
-                                <option value="access_control">Access Control</option>
-                                <option value="alarm_response">Alarm Response</option>
-                                <option value="fire_watch">Fire Watch</option>
-                                <option value="construction_security">Construction Site Security</option>
-                                <option value="executive_protection">Executive Protection</option>
-                                <option value="loss_prevention">Loss Prevention</option>
-                              </optgroup>
-                              <optgroup label="Administrative">
-                                <option value="notary_service">Notary Service</option>
-                                <option value="certified_copy">Certified Copy Service</option>
-                                <option value="courier">Courier / Messenger</option>
-                                <option value="document_preparation">Document Preparation</option>
-                                <option value="affidavit_preparation">Affidavit Preparation</option>
-                                <option value="other">Other</option>
-                              </optgroup>
+                              {SERVICE_TYPE_GROUPS.map(group => (
+                                <optgroup key={group.label} label={group.label}>
+                                  {group.keys.map(key => (
+                                    <option key={key} value={key}>{SERVICE_TYPE_LABELS[key]}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -5924,7 +5857,7 @@ export default function DispatchPage() {
                           {selectedCall.pso_service_type && <span className="text-rmpg-200"><span className="text-rmpg-400">Service:</span> {formatServiceType(selectedCall.pso_service_type)}</span>}
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
-                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
+                        {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && selectedCall.status !== 'archived' && (() => {
                           const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
@@ -6025,102 +5958,14 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select Document Type —</option>
-                              <optgroup label="Civil Process — General">
-                                <option value="subpoena">Subpoena</option>
-                                <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
-                                <option value="subpoena_deposition">Subpoena (Deposition)</option>
-                                <option value="federal_subpoena">Federal Subpoena</option>
-                                <option value="summons">Summons &amp; Complaint</option>
-                                <option value="complaint">Complaint</option>
-                                <option value="third_party_complaint">Third-Party Complaint</option>
-                                <option value="cross_complaint">Cross-Complaint</option>
-                                <option value="counterclaim">Counterclaim</option>
-                                <option value="amended_complaint">Amended Complaint</option>
-                                <option value="civil_summons">Civil Summons</option>
-                                <option value="small_claims">Small Claims</option>
-                              </optgroup>
-                              <optgroup label="Writs &amp; Garnishments">
-                                <option value="garnishment">Garnishment</option>
-                                <option value="wage_garnishment">Wage Garnishment</option>
-                                <option value="bank_levy">Bank Levy / Account Garnishment</option>
-                                <option value="writ_of_execution">Writ of Execution</option>
-                                <option value="writ_of_restitution">Writ of Restitution</option>
-                                <option value="writ_of_garnishment">Writ of Garnishment</option>
-                                <option value="writ_of_attachment">Writ of Attachment</option>
-                                <option value="writ_of_possession">Writ of Possession</option>
-                                <option value="writ_of_assistance">Writ of Assistance</option>
-                                <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
-                                <option value="levy">Levy</option>
-                              </optgroup>
-                              <optgroup label="Family / Domestic">
-                                <option value="restraining_order">Protective / Restraining Order</option>
-                                <option value="temporary_protective_order">Temporary Protective Order</option>
-                                <option value="cohabitant_abuse_order">Cohabitant Abuse Protective Order</option>
-                                <option value="divorce_papers">Divorce Papers</option>
-                                <option value="divorce_petition">Divorce Petition</option>
-                                <option value="divorce_summons">Divorce Summons</option>
-                                <option value="custody_order">Custody Order</option>
-                                <option value="custody_modification">Custody Modification</option>
-                                <option value="child_support">Child Support Order</option>
-                                <option value="child_support_modification">Child Support Modification</option>
-                                <option value="paternity_action">Paternity Action</option>
-                                <option value="adoption_papers">Adoption Papers</option>
-                                <option value="guardianship">Guardianship Petition</option>
-                                <option value="termination_of_parental_rights">Termination of Parental Rights</option>
-                                <option value="stalking_injunction">Stalking Injunction</option>
-                              </optgroup>
-                              <optgroup label="Real Property">
-                                <option value="eviction">Eviction Notice</option>
-                                <option value="unlawful_detainer">Unlawful Detainer</option>
-                                <option value="notice_to_quit">Notice to Quit</option>
-                                <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
-                                <option value="five_day_notice">5-Day Notice (Commercial)</option>
-                                <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
-                                <option value="foreclosure">Foreclosure Notice</option>
-                                <option value="notice_of_default">Notice of Default</option>
-                                <option value="lis_pendens">Lis Pendens</option>
-                                <option value="quiet_title">Quiet Title Action</option>
-                              </optgroup>
-                              <optgroup label="Court Orders &amp; Motions">
-                                <option value="court_order">Court Order</option>
-                                <option value="temporary_order">Temporary Order</option>
-                                <option value="temporary_restraining_order">Temporary Restraining Order</option>
-                                <option value="preliminary_injunction">Preliminary Injunction</option>
-                                <option value="permanent_injunction">Permanent Injunction</option>
-                                <option value="motion">Motion / Petition</option>
-                                <option value="motion_for_contempt">Motion for Contempt</option>
-                                <option value="motion_to_compel">Motion to Compel</option>
-                                <option value="notice_of_hearing">Notice of Hearing</option>
-                                <option value="order_to_show_cause">Order to Show Cause</option>
-                                <option value="judgment">Judgment</option>
-                                <option value="default_judgment">Default Judgment</option>
-                              </optgroup>
-                              <optgroup label="Probate &amp; Estate">
-                                <option value="probate_petition">Probate Petition</option>
-                                <option value="letters_testamentary">Letters Testamentary</option>
-                                <option value="creditor_claim">Creditor Claim (Probate)</option>
-                              </optgroup>
-                              <optgroup label="Bankruptcy">
-                                <option value="bankruptcy_notice">Bankruptcy Notice</option>
-                                <option value="adversary_proceeding">Adversary Proceeding</option>
-                              </optgroup>
-                              <optgroup label="Discovery">
-                                <option value="notice_of_deposition">Notice of Deposition</option>
-                                <option value="interrogatories">Interrogatories</option>
-                                <option value="request_for_production">Request for Production</option>
-                                <option value="request_for_admission">Request for Admission</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="demand_letter">Demand Letter</option>
-                                <option value="cease_and_desist">Cease &amp; Desist</option>
-                                <option value="affidavit">Affidavit</option>
-                                <option value="declaration">Declaration</option>
-                                <option value="stipulation">Stipulation</option>
-                                <option value="other">Other</option>
-                              </optgroup>
-                            </select>
+                            <Combobox<{ value: string; label: string }>
+                              value={editData.process_service_type ? DOCUMENT_TYPE_OPTIONS.find(o => o.value === editData.process_service_type) ?? null : null}
+                              onChange={(opt) => updateEditField('process_service_type', opt?.value ?? '')}
+                              options={DOCUMENT_TYPE_OPTIONS}
+                              getLabel={(o) => o.label}
+                              getKey={(o) => o.value}
+                              placeholder="Search document type..."
+                            />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
@@ -6749,9 +6594,18 @@ export default function DispatchPage() {
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-ok)', boxShadow: '0 0 4px color-mix(in srgb, var(--sev-ok) 50%, transparent)' }} />
               {units.filter((u) => u.status === 'available').length} AVAIL
             </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text)' }}>
+              {units.filter((u) => u.status === 'dispatched').length} DISP
+            </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--sev-special-soft)' }}>
+              {units.filter((u) => u.status === 'enroute').length} ENR
+            </span>
+            <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--sev-special-soft)' }}>
+              {units.filter((u) => u.status === 'onscene').length} ONS
+            </span>
             <span className="toolbar-separator" />
             <span className="text-[9px] font-mono tabular-nums" style={{ color: 'var(--spm-text-muted)' }}>
-              {units.filter((u) => u.status !== 'off_duty').length} ON DUTY
+              {units.filter((u) => u.status !== 'off_duty').length}/{units.length} ON DUTY
             </span>
             <span className="toolbar-separator" />
             <button type="button" onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
@@ -6772,7 +6626,8 @@ export default function DispatchPage() {
               onDeleteUnit={(unit) => setDeletingUnit(unit)}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
-              onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
+              unitWorkload={unitWorkload}
+              onAssignUnit={selectedCall && !TERMINAL_STATUSES.has(selectedCall.status) ? handleAssignUnit : undefined}
             />
           </div>
         </div>
@@ -6857,7 +6712,7 @@ export default function DispatchPage() {
                 <Eye style={{ width: 12, height: 12 }} /> On Scene
               </button>
             )}
-            {['dispatched', 'enroute', 'onscene'].includes(contextMenu.call.status) && (
+            {ACTIVE_FIELD_STATUSES.has(contextMenu.call.status) && (
               <>
                 <button type="button" className="context-menu-item" onClick={() => { handleClearWithDisposition(contextMenu.call.id); setContextMenu(null); }}>
                   <CheckCircle style={{ width: 12, height: 12 }} /> Clear
@@ -6887,7 +6742,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: 'var(--text-primary)' }}>
                   {pri}
                 </button>
               ))}
@@ -7347,8 +7202,8 @@ export default function DispatchPage() {
               }
               case 'voice_summary': {
                 // Shift summary — compute stats from current calls and units
-                const activeCalls = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
-                const completed = calls.filter(c => ['cleared', 'closed'].includes(c.status));
+                const activeCalls = calls.filter(c => !REMOVED_STATUSES.has(c.status));
+                const completed = calls.filter(c => RESOLVED_STATUSES.has(c.status));
                 const pending = calls.filter(c => c.status === 'pending');
                 const psoServes = completed.filter(c => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type));
                 const totalMi = activeCalls.reduce((sum, c) => {
@@ -7425,7 +7280,7 @@ export default function DispatchPage() {
                 // Announce stacked calls at the selected call's location
                 if (selectedCall?.location) {
                   const locKey = selectedCall.location.toLowerCase().trim();
-                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !['archived', 'cancelled'].includes(c.status));
+                  const stacked = calls.filter(c => c.location && c.location.toLowerCase().trim() === locKey && !REMOVED_STATUSES.has(c.status));
                   if (stacked.length > 1) {
                     const unitSet = new Set<string>();
                     stacked.forEach(c => (c.assigned_units || []).forEach(u => unitSet.add(u)));
@@ -7462,7 +7317,7 @@ export default function DispatchPage() {
               }
               case 'voice_priority': {
                 // Announce priority breakdown
-                const active = calls.filter(c => !['archived', 'cancelled'].includes(c.status));
+                const active = calls.filter(c => !REMOVED_STATUSES.has(c.status));
                 const p1 = active.filter(c => c.priority === 'P1').length;
                 const p2 = active.filter(c => c.priority === 'P2').length;
                 const p3 = active.filter(c => c.priority === 'P3').length;
@@ -7603,26 +7458,26 @@ export default function DispatchPage() {
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
-            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--sev-critical)', boxShadow: calls.filter(c => c.priority === 'P1' && !TERMINAL_STATUSES.has(c.status)).length > 0 ? '0 0 6px var(--sev-critical)' : 'none' }} />
+            <span style={{ color: 'var(--sev-critical-soft)' }}>P1: {calls.filter(c => c.priority === 'P1' && !TERMINAL_STATUSES.has(c.status)).length}</span>
           </span>
           <span className="flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !['cleared','closed','archived','cancelled'].includes(c.status)).length}</span>
+            <span style={{ color: 'var(--sev-caution)' }}>P2: {calls.filter(c => c.priority === 'P2' && !TERMINAL_STATUSES.has(c.status)).length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
             PENDING: <span style={{ color: calls.filter(c => c.status === 'pending').length > 0 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>{calls.filter(c => c.status === 'pending').length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
-            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ['dispatched','enroute','onscene'].includes(c.status)).length}</span>
+            ACTIVE: <span style={{ color: 'var(--spm-text)' }}>{calls.filter(c => ACTIVE_FIELD_STATUSES.has(c.status)).length}</span>
           </span>
           <span style={{ color: 'var(--spm-text-muted)' }}>
             HOLD: <span style={{ color: calls.filter(c => c.status === 'on_hold').length > 0 ? 'var(--sev-high)' : 'var(--spm-text-muted)' }}>{calls.filter(c => c.status === 'on_hold').length}</span>
           </span>
           {(() => {
             const stacked = new Map<string, number>();
-            calls.filter(c => !['cleared','closed','archived','cancelled'].includes(c.status) && c.location).forEach(c => {
+            calls.filter(c => !TERMINAL_STATUSES.has(c.status) && c.location).forEach(c => {
               const key = c.location.toLowerCase().trim();
               stacked.set(key, (stacked.get(key) || 0) + 1);
             });
@@ -7630,6 +7485,32 @@ export default function DispatchPage() {
             return stackedCount > 0 ? (
               <span style={{ color: 'var(--sev-high)' }}>STACKED: {stackedCount}</span>
             ) : null;
+          })()}
+          {(() => {
+            const todayCalls = calls.filter(c => {
+              if (!c.created_at) return false;
+              const d = parseTimestamp(c.created_at);
+              return d.toDateString() === new Date().toDateString();
+            });
+            const cleared = todayCalls.filter(c => FINISHED_STATUSES.has(c.status)).length;
+            const responseTimes = todayCalls
+              .filter(c => c.onscene_at && c.created_at)
+              .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
+              .filter(m => m > 0 && m < 480);
+            const avg = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+            return (
+              <>
+                <span style={{ color: 'var(--spm-text-muted)' }}>|</span>
+                <span style={{ color: 'var(--spm-text-muted)' }}>
+                  CLR: <span style={{ color: 'var(--spm-text)' }}>{cleared}</span>
+                </span>
+                {avg !== null && (
+                  <span style={{ color: avg <= 8 ? 'var(--sev-ok-soft)' : avg <= 15 ? 'var(--sev-caution)' : 'var(--sev-critical-soft)' }}>
+                    RESP: {avg}m
+                  </span>
+                )}
+              </>
+            );
           })()}
         </div>
 

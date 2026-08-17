@@ -14,13 +14,24 @@ import { query, queryFirst, queryInChunks } from './db';
 
 // ── Phase-1 route-planner types (added 2026-08-12) ─────────
 
+const APARTMENT_PATTERNS = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:oor)?|#)\b|\s#\d/i;
+
+export function inferDefendantType(
+  address: string | null | undefined,
+  businessId: number | null | undefined,
+): 'individual' | 'apartment' | 'business' {
+  if (businessId) return 'business';
+  if (address && APARTMENT_PATTERNS.test(address)) return 'apartment';
+  return 'individual';
+}
+
 export interface RouteStop {
   jobId: number;
   lat: number;
   lng: number;
   geocodeSource: 'point' | 'centroid' | null;
   deadlineAt: string | null;
-  defendantType: 'individual' | 'business';
+  defendantType: 'individual' | 'apartment' | 'business';
   addressHash: string;
   defendant: string;
   address: string;
@@ -680,7 +691,6 @@ export function applyTimeWindowPenalties(
   departAt: string,
   dwellSeconds: number[]
 ): number[][] {
-  // dwellSeconds not accumulated per-stop in arrival estimate (Phase 1 simplification)
   const n = stops.length;
   const flat = matrix.flat();
   const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
@@ -696,8 +706,48 @@ export function applyTimeWindowPenalties(
 
     for (let i = 0; i < n; i++) {
       if (i === j) continue;
-      const arrivalMs = departMs + matrix[i][j] * 1000;
+      const travelS = matrix[i][j] ?? 0;
+      const dwellS = dwellSeconds[i] ?? 0;
+      const arrivalMs = departMs + (travelS + dwellS) * 1000;
       if (arrivalMs < windowStart || arrivalMs > windowEnd) {
+        result[i][j] += PENALTY;
+      }
+    }
+  }
+  return result;
+}
+
+const BUSINESS_HOURS_START = 8;  // 8 AM
+const BUSINESS_HOURS_END = 17;   // 5 PM
+
+export function isWithinBusinessHours(arrivalIso: string): boolean {
+  const denverFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hour12: false });
+  const hour = Number(denverFmt.format(new Date(arrivalIso)));
+  return hour >= BUSINESS_HOURS_START && hour < BUSINESS_HOURS_END;
+}
+
+export function applyBusinessHoursPenalties(
+  matrix: number[][],
+  stops: RouteStop[],
+  departAt: string,
+  dwellSeconds: number[]
+): number[][] {
+  const n = stops.length;
+  const flat = matrix.flat();
+  const maxCost = Math.max(...flat.filter(v => isFinite(v)), 1);
+  const PENALTY = 5 * maxCost;
+  const result = matrix.map(row => [...row]);
+  const departMs = new Date(departAt).getTime();
+
+  for (let j = 0; j < n; j++) {
+    if (stops[j].defendantType !== 'business') continue;
+    for (let i = 0; i < n; i++) {
+      if (i === j) continue;
+      const travelS = matrix[i][j] ?? 0;
+      const dwellS = dwellSeconds[i] ?? 0;
+      const arrivalMs = departMs + (travelS + dwellS) * 1000;
+      const arrivalIso = new Date(arrivalMs).toISOString();
+      if (!isWithinBusinessHours(arrivalIso)) {
         result[i][j] += PENALTY;
       }
     }
@@ -768,6 +818,9 @@ export function optimizeRoute(
   // Apply time-window penalties on top of weighted costs
   const penalized = applyTimeWindowPenalties(weighted, stops, departAt, dwellSeconds);
 
+  // Penalize business stops arriving outside 8 AM – 5 PM Denver time
+  const bizPenalized = applyBusinessHoursPenalties(penalized, stops, departAt, dwellSeconds);
+
   // Start from the most urgent stop (lowest deadline coefficient = highest priority)
   let startIdx = 0;
   let lowestCoeff = deadlineCoefficient(stops[0], now);
@@ -776,8 +829,8 @@ export function optimizeRoute(
     if (c < lowestCoeff) { lowestCoeff = c; startIdx = i; }
   }
 
-  const seed = nearestNeighborOrder(penalized, n, startIdx);
-  return twoOpt(penalized, seed);
+  const seed = nearestNeighborOrder(bizPenalized, n, startIdx);
+  return twoOpt(bizPenalized, seed);
 }
 
 export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
@@ -839,8 +892,9 @@ export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
 // ── Dwell-time read path + ETA computation ─────────────────
 
 const DEFAULT_DWELL: Record<RouteStop['defendantType'], number> = {
-  individual: 300,
-  business: 600,
+  individual: 420,   // 7 minutes — house: knock, ID, serve, brief exchange
+  apartment: 600,    // 10 minutes — complex: navigate building/gate, find unit, wait for access
+  business: 780,     // 13 minutes — lobby/reception, wait for agent, verify authority
 };
 
 /**

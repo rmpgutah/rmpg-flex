@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { CallForService, Unit, CallNote } from '../../../types';
+import { TERMINAL_STATUSES } from './dispatchConstants';
 
 /**
  * True when a backend response actually looks like a full calls_for_service
@@ -102,7 +103,7 @@ export function mapDbCall(row: any): CallForService {
     // off status === 'on_hold', so synthesize it here from held_at while the call
     // is still active. A terminal call (cleared/closed/cancelled/archived) keeps
     // its real status even if a stale held_at lingers.
-    status: (row.held_at && !['cleared', 'closed', 'cancelled', 'archived'].includes(row.status))
+    status: (row.held_at && !TERMINAL_STATUSES.has(row.status))
       ? 'on_hold'
       : (row.status || 'pending'),
     caller_name: row.caller_name || undefined,
@@ -245,28 +246,16 @@ export function mapDbCall(row: any): CallForService {
     serve_queue_id: row.serve_queue_id ?? undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
-    // ── PDF-required fields (carried so PrintRecordButton spread sees them) ──
-    // These are user-entered values that previously dropped silently between
-    // the server row and the PDF generator because the mapper only copied
-    // explicitly-listed columns. Cast through `any` because CallForService
-    // doesn't (yet) declare them — PDF generator reads via spread and is
-    // tolerant of extras.
-    ...({
-      attorney_name: row.attorney_name || undefined,
-      jurisdiction: row.jurisdiction || undefined,
-      deadline: row.deadline || undefined,
-      time_window: row.time_window || undefined,
-      service_instructions: row.service_instructions || undefined,
-      pso_72hr_deadline: row.pso_72hr_deadline || undefined,
-      pso_72hr_notified: row.pso_72hr_notified || undefined,
-      dispatcher_name: row.dispatcher_name || undefined,
-      case_id: row.case_id ?? undefined,
-      // Redispatch chain linkage (calls_for_service_ext.parent_call_id) — the
-      // "Undo Return Visit" button gates on this via `(selectedCall as any)
-      // .parent_call_id`; without mapping it here it's always undefined and
-      // the button never shows even once the server persists the value.
-      parent_call_id: row.parent_call_id ?? undefined,
-    } as any),
+    // PDF-required + ext-table fields
+    attorney_name: row.attorney_name || undefined,
+    jurisdiction: row.jurisdiction || undefined,
+    deadline: row.deadline || undefined,
+    time_window: row.time_window || undefined,
+    service_instructions: row.service_instructions || undefined,
+    pso_72hr_deadline: row.pso_72hr_deadline || undefined,
+    pso_72hr_notified: row.pso_72hr_notified || undefined,
+    case_id: row.case_id ?? undefined,
+    parent_call_id: row.parent_call_id ?? undefined,
   };
 }
 

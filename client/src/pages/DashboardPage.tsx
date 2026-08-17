@@ -64,6 +64,7 @@ import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
 import { withAlpha } from '../utils/withAlpha';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { SERVICE_TYPE_LABELS } from './dispatch/utils/dispatchConstants';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -595,6 +596,11 @@ export default function DashboardPage() {
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
 
+  const [fleetStats, setFleetStats] = useState<{ total: number; active: number; in_maintenance: number; service_overdue: number } | null>(null);
+  const [trainingStats, setTrainingStats] = useState<{ active_certs: number; expiring_certs: number; courses: number; enrollments: number } | null>(null);
+  const [alarmStats, setAlarmStats] = useState<{ totalAlarms: number; permitsActive: number; permitsExpired: number } | null>(null);
+  const [iaStats, setIaStats] = useState<{ total_complaints: number; open_complaints: number; unresolved_flags: number } | null>(null);
+
   // Last-successful-sync timestamp drives the title-bar freshness chip.
   // Updated by every silent and non-silent dashboard fetch. Null until first
   // success — used by the title LED to flip red if the very first load errored.
@@ -737,7 +743,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); failures++; return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz, us_] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz, us_, intDash, trn, alm, ia] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -751,6 +757,10 @@ export default function DashboardPage() {
       safe<any>('/dispatch/call-volume?days=7'),
       safe<any>('/dispatch/by-zone?days=7'),
       safe<any>('/reports/dashboard-unified-stats'),
+      safe<any>('/dispatch/integration-dashboard'),
+      safe<any>('/training/stats'),
+      safe<any>('/alarms/stats'),
+      safe<any>('/affairs/stats'),
     ]);
     setWidgetErrorCount(failures);
     if (sc) setShiftComparison(sc);
@@ -766,6 +776,10 @@ export default function DashboardPage() {
     if (cv?.by_day) setCallVolume(cv.by_day);
     if (cz?.by_zone) setCallsByZone(cz.by_zone);
     if (us_) setUnifiedStats(us_);
+    if (intDash?.fleet?.summary) setFleetStats(intDash.fleet.summary);
+    if (trn) setTrainingStats(trn);
+    if (alm) setAlarmStats(alm);
+    if (ia) setIaStats(ia);
   }, []);
 
   // Fetch enhanced dashboard data (weekly trend, calls by type, unit status)
@@ -2520,17 +2534,6 @@ export default function DashboardPage() {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
-        const SERVICE_TYPE_LABELS: Record<string, string> = {
-          patrol_service: 'Patrol Service',
-          standing_guard: 'Standing Guard',
-          event_security: 'Event Security',
-          escort: 'Escort',
-          process_service: 'Process Service',
-          investigation: 'Investigation',
-          surveillance: 'Surveillance',
-          alarm_response: 'Alarm Response',
-          other: 'Other',
-        };
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="PSO Operations this month">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
@@ -2783,8 +2786,8 @@ export default function DashboardPage() {
           <SlaCompliance
             complianceRate={clearanceRate?.rate ?? Math.round((stats.calls_by_priority.P1 + stats.calls_by_priority.P2) / Math.max(stats.active_calls, 1) * 100)}
             avgResponseMinutes={stats.avg_response_time_minutes || 8}
-            totalCalls={stats.calls_today}
-            metTarget={Math.round(stats.calls_today * 0.78)}
+            totalCalls={clearanceRate?.total ?? stats.calls_today}
+            metTarget={clearanceRate?.cleared ?? 0}
           />
         </GlassPanel>
       </div>
@@ -2820,8 +2823,8 @@ export default function DashboardPage() {
           <ShiftComparison
             dayShift={stats.officers_on_duty}
             nightShift={Math.max(0, stats.units_total - stats.officers_on_duty)}
-            dayCalls={Math.round(stats.calls_today * 0.6)}
-            nightCalls={Math.round(stats.calls_today * 0.4)}
+            dayCalls={shiftComparison?.shifts?.find((s: any) => s.shift === 'Day')?.calls ?? 0}
+            nightCalls={shiftComparison?.shifts?.find((s: any) => s.shift === 'Night')?.calls ?? 0}
           />
         </GlassPanel>
       </div>
@@ -2834,7 +2837,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <WeatherWidget condition={weather?.description || 'Clear'} temp={weather?.temperature || 72} tempHigh={82} tempLow={62} humidity={weather?.humidity || 35} windSpeed={weather?.windSpeed || 8} />
         <CourtCountdown dates={upcomingCourt?.upcoming?.length ? upcomingCourt.upcoming.slice(0, 1).map((c: any) => ({ id: c.id || '0', case_number: c.case_number || 'N/A', court_name: c.court_name, court_date: c.date || c.court_date, purpose: c.description })) : []} />
-        <FleetSummary total={12} inService={9} inMaintenance={2} overdueService={1} />
+        <FleetSummary total={fleetStats?.total ?? 0} inService={fleetStats?.active ?? 0} inMaintenance={fleetStats?.in_maintenance ?? 0} overdueService={fleetStats?.service_overdue ?? 0} />
         <EvidenceSummary total={evidencePending?.total ?? 0} checkedOut={evidencePending?.checked_out ?? 0} pendingDisposal={evidencePending?.pending_disposal ?? 0} />
         <PersonnelRoster onDuty={officerActivity.slice(0, 5).map(o => ({ name: o.full_name, badge: o.badge_number, status: 'available' }))} total={stats.units_total} />
         <CitationTracker today={shiftStats?.citations ?? 0} thisWeek={Math.round((shiftStats?.citations ?? 0) * 4.5)} thisMonth={Math.round((shiftStats?.citations ?? 0) * 18)} pendingReview={0} />
@@ -2846,9 +2849,9 @@ export default function DashboardPage() {
       {hasPanel('adminExtras') && (
       <StaggerWrapper index={14} type="fade">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <TrainingCompliance completed={48} total={52} overdue={2} expiringSoon={4} />
-        <AlarmStatus totalMonitored={18} activeAlerts={0} pendingResponse={0} />
-        <IASummary openCases={2} underInvestigation={1} closedThisMonth={3} />
+        <TrainingCompliance completed={trainingStats?.active_certs ?? 0} total={(trainingStats?.active_certs ?? 0) + (trainingStats?.expiring_certs ?? 0)} overdue={0} expiringSoon={trainingStats?.expiring_certs ?? 0} />
+        <AlarmStatus totalMonitored={alarmStats?.permitsActive ?? 0} activeAlerts={alarmStats?.permitsExpired ?? 0} pendingResponse={0} />
+        <IASummary openCases={iaStats?.open_complaints ?? 0} underInvestigation={iaStats?.unresolved_flags ?? 0} closedThisMonth={Math.max(0, (iaStats?.total_complaints ?? 0) - (iaStats?.open_complaints ?? 0))} />
         {psoStats && psoStats.serveManager.totalJobs > 0 && (
         <GlassPanel>
           <SpmGroup title="Serve Summary">
