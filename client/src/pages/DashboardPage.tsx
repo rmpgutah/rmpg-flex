@@ -64,6 +64,7 @@ import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
 import { withAlpha } from '../utils/withAlpha';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { SERVICE_TYPE_LABELS } from './dispatch/utils/dispatchConstants';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -2533,17 +2534,6 @@ export default function DashboardPage() {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
-        const SERVICE_TYPE_LABELS: Record<string, string> = {
-          patrol_service: 'Patrol Service',
-          standing_guard: 'Standing Guard',
-          event_security: 'Event Security',
-          escort: 'Escort',
-          process_service: 'Process Service',
-          investigation: 'Investigation',
-          surveillance: 'Surveillance',
-          alarm_response: 'Alarm Response',
-          other: 'Other',
-        };
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="PSO Operations this month">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />

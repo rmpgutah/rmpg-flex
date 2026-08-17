@@ -28,12 +28,13 @@ export interface UseDispatchUnitActionsArgs {
   units: Unit[];
   setCalls: React.Dispatch<React.SetStateAction<CallForService[]>>;
   setUnits: React.Dispatch<React.SetStateAction<Unit[]>>;
+  refreshUnits: () => Promise<void>;
   /** Called after handleAssignUnit succeeds — typically closes the attach-unit dropdown. */
   onAssignSuccess?: () => void;
 }
 
 export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
-  const { selectedCall, setSelectedCall, units, setCalls, setUnits, onAssignSuccess } = args;
+  const { selectedCall, setSelectedCall, units, setCalls, setUnits, refreshUnits, onAssignSuccess } = args;
   const { addToast } = useToast();
 
   // ── Modal state (create/edit) ──────────────────────────────
@@ -63,12 +64,6 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
     setNewUnitAudioMode('audible');
     setEditingUnit(null);
   }, []);
-
-  // ── Refresh helper (replaces 5 inline copies of the same fetch) ──
-  const refreshUnits = useCallback(async () => {
-    const unitsRes = await apiFetch<any[]>('/dispatch/units');
-    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-  }, [setUnits]);
 
   // ── Handlers ───────────────────────────────────────────────
 

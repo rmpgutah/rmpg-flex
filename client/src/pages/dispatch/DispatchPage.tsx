@@ -66,8 +66,10 @@ import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
-  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings, type FilterTab,
+  formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
+  formatServiceType, formatDocumentType, type FilterTab,
 } from './utils/dispatchFormatters';
+import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS } from './utils/dispatchConstants';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
@@ -108,152 +110,7 @@ import {
   formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
-// Label maps for human-readable display of stored values
-const SERVICE_TYPE_LABELS: Record<string, string> = {
-  // Process Service
-  process_service: 'Process Service (General)',
-  subpoena_service: 'Subpoena Service',
-  summons_service: 'Summons & Complaint',
-  eviction_service: 'Eviction / Unlawful Detainer',
-  restraining_order_service: 'Protective Order Service',
-  writ_service: 'Writ Service',
-  court_filing: 'Court Filing / Delivery',
-  court_order_service: 'Court Order Service',
-  notice_service: 'Notice / Demand Service',
-  posting_service: 'Posting Service (Nail & Mail)',
-  // Investigative
-  skip_trace: 'Skip Trace & Locate',
-  stake_out: 'Stake Out / Surveillance',
-  rush_service: 'Rush / Same-Day Service',
-  asset_search: 'Asset Search',
-  background_check: 'Background Check / Due Diligence',
-  witness_interview: 'Witness Interview / Statement',
-  witness_locate: 'Witness Locate',
-  record_retrieval: 'Record Retrieval',
-  document_retrieval: 'Document Retrieval',
-  field_investigation: 'Field Investigation',
-  insurance_investigation: 'Insurance Investigation',
-  // Security Services
-  patrol: 'Patrol',
-  static_guard: 'Static Guard',
-  escort: 'Escort',
-  event_security: 'Event Security',
-  surveillance: 'Surveillance',
-  access_control: 'Access Control',
-  alarm_response: 'Alarm Response',
-  fire_watch: 'Fire Watch',
-  construction_security: 'Construction Site Security',
-  executive_protection: 'Executive Protection',
-  loss_prevention: 'Loss Prevention',
-  // Administrative
-  notary_service: 'Notary Service',
-  certified_copy: 'Certified Copy Service',
-  courier: 'Courier / Messenger',
-  document_preparation: 'Document Preparation',
-  affidavit_preparation: 'Affidavit Preparation',
-  other: 'Other',
-};
-
-const DOCUMENT_TYPE_LABELS: Record<string, string> = {
-  // Civil Process — General
-  subpoena: 'Subpoena',
-  subpoena_duces_tecum: 'Subpoena Duces Tecum',
-  subpoena_deposition: 'Subpoena (Deposition)',
-  federal_subpoena: 'Federal Subpoena',
-  summons: 'Summons & Complaint',
-  complaint: 'Complaint',
-  civil_summons: 'Civil Summons',
-  third_party_complaint: 'Third-Party Complaint',
-  cross_complaint: 'Cross-Complaint',
-  counterclaim: 'Counterclaim',
-  amended_complaint: 'Amended Complaint',
-  small_claims: 'Small Claims',
-  // Writs & Garnishments
-  garnishment: 'Garnishment',
-  writ_of_execution: 'Writ of Execution',
-  writ_of_restitution: 'Writ of Restitution',
-  writ_of_garnishment: 'Writ of Garnishment',
-  writ_of_attachment: 'Writ of Attachment',
-  writ_of_possession: 'Writ of Possession',
-  writ_of_assistance: 'Writ of Assistance',
-  writ_of_mandate: 'Writ of Mandate / Mandamus',
-  wage_garnishment: 'Wage Garnishment',
-  bank_levy: 'Bank Levy / Account Garnishment',
-  // Family / Domestic
-  restraining_order: 'Protective / Restraining Order',
-  temporary_protective_order: 'Temporary Protective Order',
-  cohabitant_abuse_order: 'Cohabitant Abuse Protective Order',
-  divorce_papers: 'Divorce Papers',
-  divorce_petition: 'Divorce Petition',
-  divorce_summons: 'Divorce Summons',
-  custody_order: 'Custody Order',
-  custody_modification: 'Custody Modification',
-  child_support: 'Child Support Order',
-  child_support_modification: 'Child Support Modification',
-  paternity_action: 'Paternity Action',
-  adoption_papers: 'Adoption Papers',
-  guardianship: 'Guardianship Petition',
-  termination_of_parental_rights: 'Termination of Parental Rights',
-  stalking_injunction: 'Stalking Injunction',
-  // Real Property
-  eviction: 'Eviction Notice',
-  unlawful_detainer: 'Unlawful Detainer',
-  notice_to_quit: 'Notice to Quit',
-  three_day_notice: '3-Day Notice to Pay or Quit',
-  five_day_notice: '5-Day Notice (Commercial)',
-  fifteen_day_notice: '15-Day Notice (Month-to-Month)',
-  foreclosure: 'Foreclosure Notice',
-  notice_of_default: 'Notice of Default',
-  lis_pendens: 'Lis Pendens',
-  quiet_title: 'Quiet Title Action',
-  // Court Orders & Motions
-  court_order: 'Court Order',
-  temporary_order: 'Temporary Order',
-  temporary_restraining_order: 'Temporary Restraining Order',
-  preliminary_injunction: 'Preliminary Injunction',
-  permanent_injunction: 'Permanent Injunction',
-  motion: 'Motion / Petition',
-  motion_for_contempt: 'Motion for Contempt',
-  motion_to_compel: 'Motion to Compel',
-  motion_for_summary_judgment: 'Motion for Summary Judgment',
-  notice_of_hearing: 'Notice of Hearing',
-  order_to_show_cause: 'Order to Show Cause',
-  judgment: 'Judgment',
-  default_judgment: 'Default Judgment',
-  // Probate & Estate
-  probate_petition: 'Probate Petition',
-  letters_testamentary: 'Letters Testamentary',
-  creditor_claim: 'Creditor Claim (Probate)',
-  // Bankruptcy
-  bankruptcy_notice: 'Bankruptcy Notice',
-  adversary_proceeding: 'Adversary Proceeding',
-  // Administrative
-  demand_letter: 'Demand Letter',
-  cease_and_desist: 'Cease & Desist',
-  notice_of_deposition: 'Notice of Deposition',
-  interrogatories: 'Interrogatories',
-  request_for_production: 'Request for Production',
-  request_for_admission: 'Request for Admission',
-  // General
-  civil: 'Civil Papers',
-  writ: 'Writ',
-  order: 'Court Order',
-  notice: 'Notice',
-  petition: 'Petition',
-  levy: 'Levy',
-  affidavit: 'Affidavit',
-  declaration: 'Declaration',
-  stipulation: 'Stipulation',
-  other: 'Other',
-};
-
-const DOCUMENT_TYPE_OPTIONS = Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
-
-function formatServiceType(val: string | undefined | null): string {
-  if (!val) return '';
-  return SERVICE_TYPE_LABELS[val] || toDisplayLabel(val);
-}
 
 function formatCallDuration(ms: number): string {
   if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
@@ -265,11 +122,6 @@ function formatCallDuration(ms: number): string {
   const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
   const decimalHours = (ms / 3600000).toFixed(2);
   return `${clock} (${decimalHours}h)`;
-}
-
-function formatDocumentType(val: string | undefined | null): string {
-  if (!val) return '';
-  return DOCUMENT_TYPE_LABELS[val] || toDisplayLabel(val);
 }
 
 export default function DispatchPage() {
@@ -343,6 +195,10 @@ export default function DispatchPage() {
     }
   }, []);
   const [units, setUnits] = useState<Unit[]>([]);
+  const refreshUnits = useCallback(async () => {
+    const unitsRes = await apiFetch<any[]>('/dispatch/units');
+    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+  }, []);
   // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
   // exclude `units` to avoid re-arming the interval on every position tick) can
   // read current on-duty state.
@@ -529,7 +385,9 @@ export default function DispatchPage() {
       const data = await apiFetch<any>('/dispatch/shift-handoff');
       setHandoffNotes(data?.text || '');
       setHandoffMeta({ updated_by: data?.updated_by, updated_at: data?.updated_at });
-    } catch { /* ignore */ }
+    } catch {
+      console.error('[Dispatch] Failed to fetch handoff notes');
+    }
   }, []);
 
   const saveHandoffNotes = useCallback(async () => {
@@ -632,15 +490,21 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/persons`);
       setCallPersons(Array.isArray(data) ? data : []);
-    } catch { setCallPersons([]); }
-  }, []);
+    } catch (err: any) {
+      setCallPersons([]);
+      addToast(err?.message || 'Failed to load linked persons', 'error');
+    }
+  }, [addToast]);
 
   const fetchCallVehicles = useCallback(async (callId: string | number) => {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/vehicles`);
       setCallVehicles(Array.isArray(data) ? data : []);
-    } catch { setCallVehicles([]); }
-  }, []);
+    } catch (err: any) {
+      setCallVehicles([]);
+      addToast(err?.message || 'Failed to load linked vehicles', 'error');
+    }
+  }, [addToast]);
 
   const linkPersonToCall = useCallback(async (callId: string | number, personId: string | number, role: string) => {
     try {
@@ -692,8 +556,11 @@ export default function DispatchPage() {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/businesses`);
       setCallBusinesses(Array.isArray(data) ? data : []);
-    } catch { setCallBusinesses([]); }
-  }, []);
+    } catch (err: any) {
+      setCallBusinesses([]);
+      addToast(err?.message || 'Failed to load linked businesses', 'error');
+    }
+  }, [addToast]);
 
   const searchBusinesses = useCallback((query: string) => {
     setBusinessQuery(query);
@@ -911,7 +778,7 @@ export default function DispatchPage() {
     handleDragUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
-    units, setCalls, setUnits,
+    units, setCalls, setUnits, refreshUnits,
     onAssignSuccess: () => setShowAttachUnitDropdown(false),
   });
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
@@ -1192,7 +1059,7 @@ export default function DispatchPage() {
     handlePriorityChange, handleLeNotify, handleGenerateIncident,
   } = useDispatchCallActions({
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
-    setUnits, setArchivedLoaded, refetchAll: silentRefresh,
+    setUnits, refreshUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
@@ -1224,7 +1091,7 @@ export default function DispatchPage() {
     handleAutoAssign,
     handleMultiUnitDispatch,
     handleTransferCall,
-  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits });
+  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits, refreshUnits });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {
@@ -1641,6 +1508,17 @@ export default function DispatchPage() {
         const warnings = await apiFetch<WarningTag[]>(`/dispatch/calls/${selectedCall.id}/warnings`);
         if (!cancelled) setCallWarnings(Array.isArray(warnings) ? warnings.filter((w: any) => typeof w?.label === 'string') : []);
       } catch { if (!cancelled) setCallWarnings([]); }
+      // Fetch AI analysis if not already cached from a WebSocket event
+      if (!aiAnalyses[selectedCall.id]) {
+        apiFetch<any>('/ai/analyze', {
+          method: 'POST',
+          body: JSON.stringify({ callId: selectedCall.id }),
+        }).then(data => {
+          if (!cancelled && data && (data.safetyBriefing || data.suggestedFlags || data.severityOverride)) {
+            setAiAnalyses(prev => ({ ...prev, [selectedCall.id]: data }));
+          }
+        }).catch(() => {});
+      }
       // Fetch serve queue link for PSO calls
       if (PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type)) {
         try {
@@ -3428,7 +3306,7 @@ export default function DispatchPage() {
                     )}
 
                     {/* Undo Return Visit button (mobile) — only on pending child calls */}
-                    {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                    {selectedCall.parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="w-full mt-2 py-2 px-4 text-xs font-semibold rounded-sm"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
@@ -4403,7 +4281,7 @@ export default function DispatchPage() {
                       </button>
                     )}
                     {/* Undo Return Visit — only on pending child calls */}
-                    {!isEditing && (selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
+                    {!isEditing && selectedCall.parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
                         className="toolbar-btn"
                         style={{ background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', borderColor: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
@@ -5869,52 +5747,13 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-[color:var(--field-label-color)]">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
-                              <optgroup label="Process Service">
-                                <option value="process_service">Process Service (General)</option>
-                                <option value="subpoena_service">Subpoena Service</option>
-                                <option value="summons_service">Summons &amp; Complaint</option>
-                                <option value="eviction_service">Eviction / Unlawful Detainer</option>
-                                <option value="restraining_order_service">Protective Order Service</option>
-                                <option value="writ_service">Writ Service</option>
-                                <option value="court_filing">Court Filing / Delivery</option>
-                                <option value="court_order_service">Court Order Service</option>
-                                <option value="notice_service">Notice / Demand Service</option>
-                                <option value="posting_service">Posting Service (Nail &amp; Mail)</option>
-                                <option value="rush_service">Rush / Same-Day Service</option>
-                              </optgroup>
-                              <optgroup label="Investigative">
-                                <option value="skip_trace">Skip Trace &amp; Locate</option>
-                                <option value="stake_out">Stake Out / Surveillance</option>
-                                <option value="asset_search">Asset Search</option>
-                                <option value="background_check">Background Check / Due Diligence</option>
-                                <option value="witness_interview">Witness Interview / Statement</option>
-                                <option value="witness_locate">Witness Locate</option>
-                                <option value="record_retrieval">Record Retrieval</option>
-                                <option value="document_retrieval">Document Retrieval</option>
-                                <option value="field_investigation">Field Investigation</option>
-                                <option value="insurance_investigation">Insurance Investigation</option>
-                              </optgroup>
-                              <optgroup label="Security Services">
-                                <option value="patrol">Patrol</option>
-                                <option value="static_guard">Static Guard</option>
-                                <option value="escort">Escort</option>
-                                <option value="event_security">Event Security</option>
-                                <option value="surveillance">Surveillance</option>
-                                <option value="access_control">Access Control</option>
-                                <option value="alarm_response">Alarm Response</option>
-                                <option value="fire_watch">Fire Watch</option>
-                                <option value="construction_security">Construction Site Security</option>
-                                <option value="executive_protection">Executive Protection</option>
-                                <option value="loss_prevention">Loss Prevention</option>
-                              </optgroup>
-                              <optgroup label="Administrative">
-                                <option value="notary_service">Notary Service</option>
-                                <option value="certified_copy">Certified Copy Service</option>
-                                <option value="courier">Courier / Messenger</option>
-                                <option value="document_preparation">Document Preparation</option>
-                                <option value="affidavit_preparation">Affidavit Preparation</option>
-                                <option value="other">Other</option>
-                              </optgroup>
+                              {SERVICE_TYPE_GROUPS.map(group => (
+                                <optgroup key={group.label} label={group.label}>
+                                  {group.keys.map(key => (
+                                    <option key={key} value={key}>{SERVICE_TYPE_LABELS[key]}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
                           <div><label className="text-[9px] text-[color:var(--field-label-color)]">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
