@@ -3125,7 +3125,7 @@ export default function DispatchPage() {
                                 border: '1px solid rgb(var(--brand-gold-rgb) / 0.25)',
                                 color: 'var(--brand-gold)',
                               }}
-                              onClick={() => navigate('/serve')}
+                              onClick={() => navigate(serveLink?.id ? `/serve?job_id=${serveLink.id}` : '/serve')}
                               aria-label="View in Process Server"
                             >
                               <Briefcase style={{ width: 10, height: 10 }} />

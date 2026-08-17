@@ -126,4 +126,10 @@ describe('matchesDeadlineFilter', () => {
   it('no-deadline items only match "all"', () => {
     expect(matchesDeadlineFilter(null, 'today', now)).toBe(false);
   });
+
+  it('"served" matches only items with status "served"', () => {
+    expect(matchesDeadlineFilter(null, 'served', now, 'served')).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-01T00:00:00Z', 'served', now, 'pending')).toBe(false);
+    expect(matchesDeadlineFilter(null, 'served', now)).toBe(false);
+  });
 });

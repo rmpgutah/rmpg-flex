@@ -60,7 +60,8 @@ export async function crossLinkPsoCloseToServe(
     db, 'SELECT * FROM calls_for_service WHERE id = ?', callId,
   );
   if (!call) return { ...empty, skipReason: 'call_not_found' };
-  if (call.incident_type !== 'pso_client_request') return { ...empty, skipReason: 'not_pso' };
+  const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+  if (!PSO_TYPES.has(call.incident_type)) return { ...empty, skipReason: 'not_pso' };
   if (!TERMINAL_STATUSES.has(String(call.status))) return { ...empty, skipReason: 'non_terminal_status' };
 
   // Ext row carries the PSO/process-service fields that overflow past the

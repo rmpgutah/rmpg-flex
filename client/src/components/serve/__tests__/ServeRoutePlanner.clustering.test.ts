@@ -83,13 +83,12 @@ describe('nearestNeighborOrder', () => {
     expect(one.ordered).toHaveLength(1);
   });
 
-  it('duration is drive time PLUS a fixed per-stop dwell time (5 min/stop)', () => {
-    // Duration now includes a per-stop dwell (knock/serve/paperwork) on top of
-    // drive time, so it's no longer a pure function of totalDistanceMiles —
-    // two stops means 10 minutes of dwell added to the drive-time estimate.
+  it('duration is drive time PLUS per-stop dwell time (7 min/individual stop)', () => {
+    // Duration includes a per-stop dwell (knock/serve/paperwork) on top of
+    // drive time. Individual stops default to 7 minutes each.
     const stops = [stop(1, 40.5, -111.9), stop(2, 40.9, -111.9)];
     const r = nearestNeighborOrder(stops, null);
-    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 5, 6);
+    expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 7, 6);
   });
 
   it('never flags a job with no deadline as missed', () => {
