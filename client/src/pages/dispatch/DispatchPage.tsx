@@ -48,6 +48,8 @@ import WarningTags from '../../components/WarningTags';
 import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
+import { Combobox } from '../../components/Combobox';
+import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -244,6 +246,9 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   stipulation: 'Stipulation',
   other: 'Other',
 };
+
+const DOCUMENT_TYPE_OPTIONS = Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
@@ -3852,6 +3857,9 @@ export default function DispatchPage() {
           })()}
         </div>
 
+        {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
+        <DispatchAnalyticsStrip />
+
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
@@ -4749,11 +4757,14 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
-                          {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
-                            <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
-                          ))}
-                        </select>
+                        <Combobox<{ value: string; label: string }>
+                          value={editData.incident_type ? INCIDENT_TYPE_OPTIONS.find(o => o.value === editData.incident_type) ?? null : null}
+                          onChange={(opt) => updateEditField('incident_type', opt?.value ?? '')}
+                          options={INCIDENT_TYPE_OPTIONS}
+                          getLabel={(o) => o.label}
+                          getKey={(o) => o.value}
+                          placeholder="Search incident type..."
+                        />
                       ) : (
                         <p className="text-sm text-brand-400 font-medium">{formatIncidentType(selectedCall.incident_type)}</p>
                       )}
@@ -6025,102 +6036,14 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select Document Type —</option>
-                              <optgroup label="Civil Process — General">
-                                <option value="subpoena">Subpoena</option>
-                                <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
-                                <option value="subpoena_deposition">Subpoena (Deposition)</option>
-                                <option value="federal_subpoena">Federal Subpoena</option>
-                                <option value="summons">Summons &amp; Complaint</option>
-                                <option value="complaint">Complaint</option>
-                                <option value="third_party_complaint">Third-Party Complaint</option>
-                                <option value="cross_complaint">Cross-Complaint</option>
-                                <option value="counterclaim">Counterclaim</option>
-                                <option value="amended_complaint">Amended Complaint</option>
-                                <option value="civil_summons">Civil Summons</option>
-                                <option value="small_claims">Small Claims</option>
-                              </optgroup>
-                              <optgroup label="Writs &amp; Garnishments">
-                                <option value="garnishment">Garnishment</option>
-                                <option value="wage_garnishment">Wage Garnishment</option>
-                                <option value="bank_levy">Bank Levy / Account Garnishment</option>
-                                <option value="writ_of_execution">Writ of Execution</option>
-                                <option value="writ_of_restitution">Writ of Restitution</option>
-                                <option value="writ_of_garnishment">Writ of Garnishment</option>
-                                <option value="writ_of_attachment">Writ of Attachment</option>
-                                <option value="writ_of_possession">Writ of Possession</option>
-                                <option value="writ_of_assistance">Writ of Assistance</option>
-                                <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
-                                <option value="levy">Levy</option>
-                              </optgroup>
-                              <optgroup label="Family / Domestic">
-                                <option value="restraining_order">Protective / Restraining Order</option>
-                                <option value="temporary_protective_order">Temporary Protective Order</option>
-                                <option value="cohabitant_abuse_order">Cohabitant Abuse Protective Order</option>
-                                <option value="divorce_papers">Divorce Papers</option>
-                                <option value="divorce_petition">Divorce Petition</option>
-                                <option value="divorce_summons">Divorce Summons</option>
-                                <option value="custody_order">Custody Order</option>
-                                <option value="custody_modification">Custody Modification</option>
-                                <option value="child_support">Child Support Order</option>
-                                <option value="child_support_modification">Child Support Modification</option>
-                                <option value="paternity_action">Paternity Action</option>
-                                <option value="adoption_papers">Adoption Papers</option>
-                                <option value="guardianship">Guardianship Petition</option>
-                                <option value="termination_of_parental_rights">Termination of Parental Rights</option>
-                                <option value="stalking_injunction">Stalking Injunction</option>
-                              </optgroup>
-                              <optgroup label="Real Property">
-                                <option value="eviction">Eviction Notice</option>
-                                <option value="unlawful_detainer">Unlawful Detainer</option>
-                                <option value="notice_to_quit">Notice to Quit</option>
-                                <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
-                                <option value="five_day_notice">5-Day Notice (Commercial)</option>
-                                <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
-                                <option value="foreclosure">Foreclosure Notice</option>
-                                <option value="notice_of_default">Notice of Default</option>
-                                <option value="lis_pendens">Lis Pendens</option>
-                                <option value="quiet_title">Quiet Title Action</option>
-                              </optgroup>
-                              <optgroup label="Court Orders &amp; Motions">
-                                <option value="court_order">Court Order</option>
-                                <option value="temporary_order">Temporary Order</option>
-                                <option value="temporary_restraining_order">Temporary Restraining Order</option>
-                                <option value="preliminary_injunction">Preliminary Injunction</option>
-                                <option value="permanent_injunction">Permanent Injunction</option>
-                                <option value="motion">Motion / Petition</option>
-                                <option value="motion_for_contempt">Motion for Contempt</option>
-                                <option value="motion_to_compel">Motion to Compel</option>
-                                <option value="notice_of_hearing">Notice of Hearing</option>
-                                <option value="order_to_show_cause">Order to Show Cause</option>
-                                <option value="judgment">Judgment</option>
-                                <option value="default_judgment">Default Judgment</option>
-                              </optgroup>
-                              <optgroup label="Probate &amp; Estate">
-                                <option value="probate_petition">Probate Petition</option>
-                                <option value="letters_testamentary">Letters Testamentary</option>
-                                <option value="creditor_claim">Creditor Claim (Probate)</option>
-                              </optgroup>
-                              <optgroup label="Bankruptcy">
-                                <option value="bankruptcy_notice">Bankruptcy Notice</option>
-                                <option value="adversary_proceeding">Adversary Proceeding</option>
-                              </optgroup>
-                              <optgroup label="Discovery">
-                                <option value="notice_of_deposition">Notice of Deposition</option>
-                                <option value="interrogatories">Interrogatories</option>
-                                <option value="request_for_production">Request for Production</option>
-                                <option value="request_for_admission">Request for Admission</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="demand_letter">Demand Letter</option>
-                                <option value="cease_and_desist">Cease &amp; Desist</option>
-                                <option value="affidavit">Affidavit</option>
-                                <option value="declaration">Declaration</option>
-                                <option value="stipulation">Stipulation</option>
-                                <option value="other">Other</option>
-                              </optgroup>
-                            </select>
+                            <Combobox<{ value: string; label: string }>
+                              value={editData.process_service_type ? DOCUMENT_TYPE_OPTIONS.find(o => o.value === editData.process_service_type) ?? null : null}
+                              onChange={(opt) => updateEditField('process_service_type', opt?.value ?? '')}
+                              options={DOCUMENT_TYPE_OPTIONS}
+                              getLabel={(o) => o.label}
+                              getKey={(o) => o.value}
+                              placeholder="Search document type..."
+                            />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
