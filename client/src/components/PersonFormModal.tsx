@@ -60,6 +60,9 @@ export interface PersonFormData {
   dl_state: string;
   dl_expiry: string;
   dl_class: string;
+  dl_issue_date: string;
+  dl_restrictions: string;
+  dl_endorsements: string;
   ssn_last4: string;
   ssn_full: string;
   id_image_url: string;
@@ -111,6 +114,9 @@ export interface PersonFormData {
   piercing_description: string;
   distinguishing_features: string;
   identifying_marks_location: string;
+  voice_description: string;
+  religion: string;
+  dietary_restrictions: string;
   notes: string;
   email_secondary: string;
   date_last_seen: string;
@@ -155,6 +161,9 @@ const EMPTY_FORM: PersonFormData = {
   dl_state: '',
   dl_expiry: '',
   dl_class: '',
+  dl_issue_date: '',
+  dl_restrictions: '',
+  dl_endorsements: '',
   ssn_last4: '',
   ssn_full: '',
   id_image_url: '',
@@ -206,6 +215,9 @@ const EMPTY_FORM: PersonFormData = {
   piercing_description: '',
   distinguishing_features: '',
   identifying_marks_location: '',
+  voice_description: '',
+  religion: '',
+  dietary_restrictions: '',
   notes: '',
   email_secondary: '',
   date_last_seen: '',
@@ -285,7 +297,7 @@ export default function PersonFormModal({
           scars_marks_tattoos: editingPerson.scars_marks_tattoos || '',
           clothing_description: editingPerson.clothing_description || '',
           address: editingPerson.address || '',
-          address_2: (editingPerson as any).address_2 || '',
+          address_2: editingPerson.address_2 || '',
           city: editingPerson.city || '',
           state: editingPerson.state || '',
           zip: editingPerson.zip || '',
@@ -295,6 +307,9 @@ export default function PersonFormModal({
           dl_state: editingPerson.dl_state || '',
           dl_expiry: editingPerson.dl_expiry || '',
           dl_class: editingPerson.dl_class || '',
+          dl_issue_date: editingPerson.dl_issue_date || '',
+          dl_restrictions: editingPerson.dl_restrictions || '',
+          dl_endorsements: editingPerson.dl_endorsements || '',
           ssn_last4: editingPerson.ssn_last4 || '',
           ssn_full: editingPerson.ssn_full || '',
           id_image_url: editingPerson.id_image_url || '',
@@ -346,18 +361,21 @@ export default function PersonFormModal({
           piercing_description: editingPerson.piercing_description || '',
           distinguishing_features: editingPerson.distinguishing_features || '',
           identifying_marks_location: editingPerson.identifying_marks_location || '',
+          voice_description: editingPerson.voice_description || '',
+          religion: editingPerson.religion || '',
+          dietary_restrictions: editingPerson.dietary_restrictions || '',
           notes: editingPerson.notes || '',
-          email_secondary: (editingPerson as any).email_secondary || '',
-          date_last_seen: (editingPerson as any).date_last_seen || '',
-          location_last_seen: (editingPerson as any).location_last_seen || '',
-          alias_dob: (editingPerson as any).alias_dob || '',
-          home_phone: (editingPerson as any).home_phone || '',
-          work_phone: (editingPerson as any).work_phone || '',
-          suffix: (editingPerson as any).suffix || '',
-          sex: (editingPerson as any).sex || '',
-          nationality: (editingPerson as any).nationality || '',
-          aliases: (editingPerson as any).aliases || '',
-          photo_url: (editingPerson as any).photo_url || '',
+          email_secondary: editingPerson.email_secondary || '',
+          date_last_seen: editingPerson.date_last_seen || '',
+          location_last_seen: editingPerson.location_last_seen || '',
+          alias_dob: editingPerson.alias_dob || '',
+          home_phone: editingPerson.home_phone || '',
+          work_phone: editingPerson.work_phone || '',
+          suffix: editingPerson.suffix || '',
+          sex: editingPerson.sex || '',
+          nationality: editingPerson.nationality || '',
+          aliases: editingPerson.aliases || '',
+          photo_url: editingPerson.photo_url || '',
         };
         setForm(initial);
         snapshot();
@@ -590,10 +608,16 @@ export default function PersonFormModal({
             </FormField>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <FormField label="Alias / Nickname">
               <input name="alias_nickname" type="text" className="input-dark mt-1" placeholder="AKA, street name" value={form.alias_nickname} onChange={handleChange} />
             </FormField>
+            <FormField label="Other Aliases" className="col-span-1 sm:col-span-1 md:col-span-2">
+              <input name="aliases" type="text" className="input-dark mt-1" placeholder="Comma-separated: Doc Holiday, JT, Slim" value={form.aliases} onChange={handleChange} />
+            </FormField>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <FormField label="Date of Birth">
               <input name="dob" type="date" className="input-dark mt-1" value={form.dob} onChange={handleChange} />
             </FormField>
@@ -753,15 +777,8 @@ export default function PersonFormModal({
                 {BLOOD_TYPE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </FormField>
-            <FormField label="Aliases (comma-separated)" className="col-span-2">
-              <input
-                name="aliases"
-                type="text"
-                className="input-dark mt-1"
-                placeholder="Doc Holiday, JT, Slim"
-                value={form.aliases}
-                onChange={handleChange}
-              />
+            <FormField label="Voice Description">
+              <input name="voice_description" type="text" className="input-dark mt-1" placeholder="e.g. Deep, raspy, accent" value={form.voice_description} onChange={handleChange} />
             </FormField>
           </div>
 
@@ -814,9 +831,20 @@ export default function PersonFormModal({
             </FormField>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <FormField label="DL Issue Date">
+              <input name="dl_issue_date" type="date" className="input-dark mt-1" value={form.dl_issue_date} onChange={handleChange} />
+            </FormField>
             <FormField label="DL Expiry">
               <input name="dl_expiry" type="date" className="input-dark mt-1" value={form.dl_expiry} onChange={handleChange} />
+            </FormField>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="DL Restrictions">
+              <input name="dl_restrictions" type="text" className="input-dark mt-1" placeholder="e.g. Corrective lenses" value={form.dl_restrictions} onChange={handleChange} />
+            </FormField>
+            <FormField label="DL Endorsements">
+              <input name="dl_endorsements" type="text" className="input-dark mt-1" placeholder="e.g. Motorcycle, Hazmat" value={form.dl_endorsements} onChange={handleChange} />
             </FormField>
           </div>
 
@@ -973,17 +1001,6 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Employer">
-              <input name="employer" type="text" className="input-dark mt-1" value={form.employer} onChange={handleChange} />
-            </FormField>
-            <FormField label="Occupation">
-              <select name="occupation" className="select-dark mt-1" value={form.occupation} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {OCCUPATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </FormField>
-          </div>
         </>
       )}
 
@@ -1106,6 +1123,21 @@ export default function PersonFormModal({
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Employment</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Employer">
+                <input name="employer" type="text" className="input-dark mt-1" value={form.employer} onChange={handleChange} />
+              </FormField>
+              <FormField label="Occupation">
+                <select name="occupation" className="select-dark mt-1" value={form.occupation} onChange={handleChange}>
+                  <option value="">-- Select --</option>
+                  {OCCUPATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </FormField>
+            </div>
+          </div>
+
+          <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Emergency Contact</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               <FormField label="Contact Name">
@@ -1182,6 +1214,18 @@ export default function PersonFormModal({
           <FormField label="Medication Notes">
             <RichTextArea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
           </FormField>
+
+          <div className="border-t border-rmpg-700 pt-3">
+            <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Custody / Intake</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FormField label="Religion">
+                <input name="religion" type="text" className="input-dark mt-1" placeholder="Religious affiliation" value={form.religion} onChange={handleChange} />
+              </FormField>
+              <FormField label="Dietary Restrictions">
+                <input name="dietary_restrictions" type="text" className="input-dark mt-1" placeholder="e.g. Halal, Kosher, Vegetarian, Allergies" value={form.dietary_restrictions} onChange={handleChange} />
+              </FormField>
+            </div>
+          </div>
         </>
       )}
 
