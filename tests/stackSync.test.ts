@@ -10,26 +10,27 @@ import {
 // Minimal D1-shaped stub. Each method records calls and returns configurable rows.
 function makeDb(rows: Record<string, unknown>[][] = []) {
   let callIndex = 0;
-  const executions: { sql: string; bindings: unknown[] }[] = [];
+  const _rows = rows;
+  const _executions: { sql: string; bindings: unknown[] }[] = [];
   const stub = {
-    _rows: rows,
-    _executions: executions,
+    get _rows() { return _rows; },
+    get _executions() { return _executions; },
     prepare(sql: string) {
       return {
         bind(...bindings: unknown[]) {
           return {
             async first<T>() {
-              const result = (rows[callIndex++] ?? [])[0] ?? null;
-              executions.push({ sql, bindings });
+              const result = (_rows[callIndex++] ?? [])[0] ?? null;
+              _executions.push({ sql, bindings });
               return result as T | null;
             },
             async all<T>() {
-              const result = rows[callIndex++] ?? [];
-              executions.push({ sql, bindings });
+              const result = _rows[callIndex++] ?? [];
+              _executions.push({ sql, bindings });
               return { results: result as T[] };
             },
             async run() {
-              executions.push({ sql, bindings });
+              _executions.push({ sql, bindings });
               callIndex++;
               return { meta: { changes: 1 } };
             },
@@ -38,7 +39,7 @@ function makeDb(rows: Record<string, unknown>[][] = []) {
       };
     },
   };
-  return stub as unknown as D1Database;
+  return stub as unknown as D1Database & { _rows: typeof _rows; _executions: typeof _executions };
 }
 
 describe('assignStackGroup', () => {
