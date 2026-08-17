@@ -1677,6 +1677,38 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
     args.push(body.longitude == null ? null : Number(body.longitude));
   }
 
+  // Photo IDs — append new IDs to the existing array (never replace/delete).
+  // Operators can attach additional field photos after the fact; the original
+  // evidence set is preserved because we only ever grow photo_ids, never shrink.
+  if ('photo_ids_append' in body && Array.isArray(body.photo_ids_append) && body.photo_ids_append.length > 0) {
+    const existingRow = await queryFirst<{ photo_ids: string | null }>(
+      db, 'SELECT photo_ids FROM serve_attempts WHERE id = ?', attemptId);
+    const current: string[] = (() => {
+      try { return JSON.parse(existingRow?.photo_ids || '[]'); } catch { return []; }
+    })();
+    const newIds = (body.photo_ids_append as string[]).filter(
+      (id) => typeof id === 'string' && id.length > 0 && !current.includes(id),
+    );
+    if (newIds.length > 0) {
+      sets.push('photo_ids = ?');
+      args.push(JSON.stringify([...current, ...newIds]));
+    }
+  }
+
+  // Physical description fields (editable for officer corrections)
+  if ('person_served_name' in body) {
+    sets.push('person_served_name = ?');
+    args.push(body.person_served_name || null);
+  }
+  if ('person_served_relationship' in body) {
+    sets.push('person_served_relationship = ?');
+    args.push(body.person_served_relationship || null);
+  }
+  if ('person_served_description' in body) {
+    sets.push('person_served_description = ?');
+    args.push(body.person_served_description || null);
+  }
+
   // Structured PS code takes precedence — derive the legacy `result`
   // and update both columns when supplied. Mirrors logAttempt.
   if ('disposition_code' in body && body.disposition_code !== undefined && hasDispositionCol) {

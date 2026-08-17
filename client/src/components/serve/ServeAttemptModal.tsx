@@ -5,7 +5,7 @@ import {
   Loader2, Navigation, Trash2, Clock,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
-import { apiFetch, apiPostForm } from '../../hooks/useApi';
+import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
 import ServeReceiptActions from './ServeReceiptActions';
@@ -326,8 +326,16 @@ export default function ServeAttemptModal({
       for (const file of toUpload) {
         const formData = new FormData();
         formData.append('files', file);
-        const result = await apiPostForm<{ id: string; url: string }>('/uploads', formData);
-        setPhotos(prev => [...prev, { id: result.id, url: result.url }]);
+        // Server returns an array of attachment rows; take the first one.
+        const rows = await apiPostForm<{ file_id: string }[]>('/uploads', formData);
+        const row = Array.isArray(rows) ? rows[0] : (rows as any);
+        if (row?.file_id) {
+          const fileId = row.file_id;
+          setPhotos(prev => [
+            ...prev,
+            { id: fileId, url: authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`) },
+          ]);
+        }
       }
     } catch {
       // upload failed silently — user can retry
