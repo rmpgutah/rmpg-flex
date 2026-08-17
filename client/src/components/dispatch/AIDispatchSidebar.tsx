@@ -16,10 +16,10 @@ interface AIDispatchSidebarProps {
 }
 
 const SEVERITY_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  low: { bg: '#22c55e20', border: '#22c55e50', text: '#4ade80', label: 'LOW' },
-  medium: { bg: '#f59e0b20', border: '#f59e0b50', text: '#fbbf24', label: 'MEDIUM' },
-  high: { bg: '#ef444420', border: '#ef444450', text: '#f87171', label: 'HIGH' },
-  critical: { bg: '#dc262620', border: '#dc262680', text: '#ef4444', label: 'CRITICAL' },
+  low: { bg: 'color-mix(in srgb, var(--sev-ok) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', text: 'var(--sev-ok-soft)', label: 'LOW' },
+  medium: { bg: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', text: 'var(--sev-warn-soft)', label: 'MEDIUM' },
+  high: { bg: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', text: 'var(--sev-critical-soft)', label: 'HIGH' },
+  critical: { bg: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: 'color-mix(in srgb, var(--sev-critical) 50%, transparent)', text: 'var(--sev-critical)', label: 'CRITICAL' },
 };
 
 export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFlag, onDismiss }: AIDispatchSidebarProps) {
@@ -35,7 +35,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           <Brain className="w-3.5 h-3.5 text-purple-400" />
           <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">AI Analysis</span>
         </div>
-        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-[#ffffff10] transition-colors" title="Close AI panel">
+        <button onClick={onDismiss} className="p-0.5 rounded hover:bg-white/[0.06] transition-colors" title="Close AI panel">
           <X className="w-3.5 h-3.5 text-fg-muted" />
         </button>
       </div>
@@ -55,7 +55,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
         <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
           {/* Safety Briefing */}
           <div>
-            <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#d4a017' }}>
+            <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--field-label-color)' }}>
               <Shield className="w-3 h-3" /> Safety Briefing
             </label>
             {analysis.severityOverride && SEVERITY_COLORS[analysis.severityOverride] && (
@@ -78,7 +78,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
           {/* Suggested Flags */}
           {analysis.suggestedFlags && analysis.suggestedFlags.length > 0 && (
             <div>
-              <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#a78bfa' }}>
+              <label className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--sev-special)' }}>
                 <AlertTriangle className="w-3 h-3" /> Suggested Flags
               </label>
               <div className="flex flex-wrap gap-1">
@@ -91,8 +91,8 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                       onClick={() => onAcceptFlag(selectedCall.id, flag)}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold rounded-sm border transition-colors"
                       style={alreadySet
-                        ? { background: '#22c55e15', borderColor: '#22c55e40', color: '#4ade80', cursor: 'default', opacity: 0.7 }
-                        : { background: '#a855f715', borderColor: '#a855f740', color: '#c084fc', cursor: 'pointer' }
+                        ? { background: 'rgb(var(--sev-ok-rgb) / 0.08)', borderColor: 'rgb(var(--sev-ok-rgb) / 0.25)', color: 'var(--sev-ok-soft)', cursor: 'default', opacity: 0.7 }
+                        : { background: 'rgb(var(--sev-special-rgb) / 0.08)', borderColor: 'rgb(var(--sev-special-rgb) / 0.25)', color: 'var(--sev-special)', cursor: 'pointer' }
                       }
                       title={alreadySet ? `${flag} already set` : `Accept flag: ${flag}`}
                     >
@@ -117,7 +117,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${Math.min(100, Math.max(0, analysis.confidence))}%`,
-                    background: analysis.confidence >= 75 ? '#4ade80' : analysis.confidence >= 50 ? '#fbbf24' : '#f87171',
+                    background: analysis.confidence >= 75 ? 'var(--sev-ok)' : analysis.confidence >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                   }}
                 />
               </div>

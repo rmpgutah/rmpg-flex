@@ -80,7 +80,7 @@ export default function DesktopNotificationCenter({ onClose }: DesktopNotificati
       setTotal(res?.pagination?.total ?? rows.length);
       setUnread(rows.filter(n => !n.is_read).length);
     } catch { /* silent */ }
-    setLoading(false);
+    finally { setLoading(false); }
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);

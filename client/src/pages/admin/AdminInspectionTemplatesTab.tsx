@@ -269,11 +269,11 @@ function TemplateModal({ mode, templateId, onClose, onSaved }: TemplateModalProp
       } else {
         await apiFetch('/inspection-templates', { method: 'POST', body: JSON.stringify(body) });
       }
-      setSaving(false);
       onSaved();
     } catch (e) {
-      setSaving(false);
       setErr(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
     }
   };
 

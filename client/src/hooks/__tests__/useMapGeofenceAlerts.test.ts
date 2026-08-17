@@ -13,7 +13,7 @@ describe('useMapGeofenceAlerts', () => {
       id: 7,
       zone_name: 'HQ Perimeter',
       zone_type: 'exclusion',
-      color: '#ef4444',
+      color: 'var(--sev-critical)',
       is_active: 1,
       geojson_data: JSON.stringify({
         type: 'FeatureCollection',

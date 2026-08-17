@@ -40,7 +40,7 @@ const DEFAULT_LIGHT: mapboxgl.FlatLightSpecification = {
   id: 'default_light',
   type: 'flat',
   properties: {
-    anchor: 'viewport', color: '#ffffff', intensity: 0.5, position: [1.15, 210, 30],
+    anchor: 'viewport', color: 'var(--text-primary)', intensity: 0.5, position: [1.15, 210, 30],
   },
 };
 

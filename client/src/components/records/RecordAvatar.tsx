@@ -96,7 +96,7 @@ export default function RecordAvatar({
         >
           <span
             className="font-bold uppercase tracking-tight px-0.5 truncate"
-            style={{ fontSize: ribbonFont, color: '#fff', textShadow: '0 1px 1px rgba(0,0,0,0.55)' }}
+            style={{ fontSize: ribbonFont, color: 'var(--text-primary)', textShadow: '0 1px 1px rgba(0 0 0 / 0.55)' }}
           >
             {cornerBadge.code}
           </span>

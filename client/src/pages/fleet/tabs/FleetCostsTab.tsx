@@ -505,7 +505,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
   return (
     <div className="space-y-2">
       <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy"
-        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum((p as any).premium_amount ?? (p as any).premium), 0))} prem.`} />
+        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum(p.premium_amount ?? (p as any).premium), 0))} prem.`} />
       <div className="space-y-1.5">
         {records.map((p) => {
           const expSoon = soon(p.expires_at);

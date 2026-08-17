@@ -182,17 +182,17 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
   return (
     <div className="fixed inset-0 z-[60] bg-black flex flex-col">
       {/* Header + step indicator */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[#0a0a0a] border-b border-border-default flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-surface-overlay border-b border-border-default flex-shrink-0">
         <div className="flex items-center gap-2">
-          <ScanLine size={14} className="text-[#d4a017]" />
+          <ScanLine size={14} className="[color:var(--panel-header-color)]" />
           <span className="text-[11px] font-bold text-rmpg-100 uppercase tracking-widest">ID Scanner</span>
         </div>
         <div className="flex items-center gap-1.5">
           <StepDot active={step === 'front'} done={!!frontPreview} label="FRONT" />
-          <div className="w-4 h-px bg-[#2e2e2e]" />
+          <div className="w-4 h-px bg-rmpg-700" />
           <StepDot active={step === 'back'} done={false} label="BACK" />
         </div>
-        <button type="button" onClick={() => { stopStream(); onClose(); }} aria-label="Close scanner" className="text-[#888888] hover:text-rmpg-100 p-1">
+        <button type="button" onClick={() => { stopStream(); onClose(); }} aria-label="Close scanner" className="text-fg-muted hover:text-rmpg-100 p-1">
           <X size={18} />
         </button>
       </div>
@@ -204,16 +204,16 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
 
         {starting && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex items-center gap-2 text-[11px] text-[#888888]"><Loader2 size={16} className="animate-spin" /> Starting camera...</div>
+            <div className="flex items-center gap-2 text-[11px] text-fg-muted"><Loader2 size={16} className="animate-spin" /> Starting camera...</div>
           </div>
         )}
 
         {error ? (
           <div className="absolute inset-0 flex items-center justify-center p-6">
-            <div className="bg-[#141414] border border-red-700/50 rounded-sm p-4 max-w-xs text-center space-y-3">
+            <div className="bg-surface-deep border border-red-700/50 rounded-sm p-4 max-w-xs text-center space-y-3">
               <Camera size={22} className="mx-auto text-red-400" />
               <p className="text-[11px] text-red-400">{error}</p>
-              <button type="button" onClick={() => { stopStream(); onUploadInstead(); }} className="flex items-center gap-2 mx-auto px-4 py-2 bg-[#d4a017] hover:bg-[#b88a12] rounded-sm text-[11px] font-bold text-black">
+              <button type="button" onClick={() => { stopStream(); onUploadInstead(); }} className="flex items-center gap-2 mx-auto px-4 py-2 bg-brand-600 hover:bg-brand-700 rounded-sm text-[11px] font-bold text-rmpg-100">
                 <Upload size={13} /> Upload Photo
               </button>
             </div>
@@ -222,9 +222,9 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
           <>
             {/* Dimmed surround + ID-1 card cutout overlay */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="relative w-[88%] max-w-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]" style={{ aspectRatio: `${CARD_ASPECT}` }}>
+              <div className="relative w-[88%] max-w-lg" style={{ aspectRatio: `${CARD_ASPECT}`, boxShadow: '0 0 0 9999px rgba(var(--surface-overlay-rgb) / 0.7)' }}>
                 {/* card frame */}
-                <div className="absolute inset-0 border-2 border-[#d4a017] rounded-[6px]" />
+                <div className="absolute inset-0 border-2 border-accent-silver-400 rounded-[6px]" />
                 {/* corner ticks */}
                 <div className="absolute -top-px -left-px w-7 h-7 border-t-2 border-l-2 border-white rounded-tl-[6px]" />
                 <div className="absolute -top-px -right-px w-7 h-7 border-t-2 border-r-2 border-white rounded-tr-[6px]" />
@@ -246,9 +246,9 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
                 ) : (
                   // Back template hint: PDF417 strip zone + scan line
                   <>
-                    <div className="absolute inset-x-[6%] top-[14%] h-[34%] border border-dashed border-[#d4a017]/70 rounded-[3px] flex items-center justify-center overflow-hidden">
-                      <span className="text-[8px] font-mono uppercase tracking-wider text-[#d4a017]/80">PDF417 barcode here</span>
-                      <div className="absolute inset-x-0 top-1/2 h-px bg-[#d4a017]/70 animate-pulse" />
+                    <div className="absolute inset-x-[6%] top-[14%] h-[34%] border border-dashed border-accent-silver-400/70 rounded-[3px] flex items-center justify-center overflow-hidden">
+                      <span className="text-[8px] font-mono uppercase tracking-wider text-accent-silver-400/80">PDF417 barcode here</span>
+                      <div className="absolute inset-x-0 top-1/2 h-px bg-accent-silver-400/70 animate-pulse" />
                     </div>
                   </>
                 )}
@@ -270,12 +270,12 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
               {step === 'front' ? (
                 <>
                   <p className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider drop-shadow">Step 1 — FRONT of the ID</p>
-                  <p className="text-[9px] text-[#c0ccdd] mt-0.5 drop-shadow">Rest the front of the card inside the frame, then capture</p>
+                  <p className="text-[9px] text-rmpg-200 mt-0.5 drop-shadow">Rest the front of the card inside the frame, then capture</p>
                 </>
               ) : (
                 <>
                   <p className="text-[12px] font-bold text-rmpg-100 uppercase tracking-wider drop-shadow">Step 2 — BACK of the ID</p>
-                  <p className="text-[9px] text-[#c0ccdd] mt-0.5 drop-shadow">Align the PDF417 barcode — reads automatically{attempts > 10 ? ' · move closer or add light' : ''}</p>
+                  <p className="text-[9px] text-rmpg-200 mt-0.5 drop-shadow">Align the PDF417 barcode — reads automatically{attempts > 10 ? ' · move closer or add light' : ''}</p>
                 </>
               )}
             </div>
@@ -284,37 +284,37 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
       </div>
 
       {/* Footer controls — step-specific */}
-      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-[#0a0a0a] border-t border-border-default flex-shrink-0 flex-wrap">
+      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-surface-overlay border-t border-border-default flex-shrink-0 flex-wrap">
         {torchAvailable && (
-          <button type="button" onClick={toggleTorch} className={`flex items-center gap-1.5 px-3 py-2 rounded-sm text-[10px] font-bold border transition-colors ${torchOn ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-[#141414] text-[#c0ccdd] border-rmpg-700 hover:text-rmpg-100'}`}>
+          <button type="button" onClick={toggleTorch} className={`flex items-center gap-1.5 px-3 py-2 rounded-sm text-[10px] font-bold border transition-colors ${torchOn ? 'bg-brand-600 text-rmpg-100 border-brand-600' : 'bg-surface-deep text-rmpg-200 border-rmpg-700 hover:text-rmpg-100'}`}>
             <Flashlight size={13} /> {torchOn ? 'Light On' : 'Light'}
           </button>
         )}
 
         {step === 'front' ? (
           <>
-            <button type="button" onClick={captureFront} disabled={starting || !!error} className="flex items-center gap-2 px-5 py-2.5 bg-[#d4a017] hover:bg-[#b88a12] disabled:opacity-40 rounded-sm text-[12px] font-bold text-black uppercase tracking-wider">
+            <button type="button" onClick={captureFront} disabled={starting || !!error} className="flex items-center gap-2 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-40 rounded-sm text-[12px] font-bold text-rmpg-100 uppercase tracking-wider">
               <CreditCard size={15} /> Capture Front
             </button>
-            <button type="button" onClick={skipFront} className="px-3 py-2 bg-[#141414] border border-rmpg-700 rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-rmpg-100">Skip</button>
+            <button type="button" onClick={skipFront} className="px-3 py-2 bg-surface-deep border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-400 hover:text-rmpg-100">Skip</button>
           </>
         ) : (
           <>
             {frontPreview && (
-              <button type="button" onClick={retakeFront} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-rmpg-700 rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-rmpg-100">
+              <button type="button" onClick={retakeFront} className="flex items-center gap-1.5 px-3 py-2 bg-surface-deep border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-200 hover:text-rmpg-100">
                 <RotateCcw size={12} /> Retake Front
               </button>
             )}
-            <button type="button" onClick={captureBackNoBarcode} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-rmpg-700 rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-rmpg-100">
+            <button type="button" onClick={captureBackNoBarcode} className="flex items-center gap-1.5 px-3 py-2 bg-surface-deep border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-200 hover:text-rmpg-100">
               <CreditCard size={13} /> Capture Back (no barcode)
             </button>
           </>
         )}
 
-        <button type="button" onClick={() => { stopStream(); onUploadInstead(); }} className="flex items-center gap-1.5 px-3 py-2 bg-[#141414] border border-rmpg-700 rounded-sm text-[10px] font-bold text-[#c0ccdd] hover:text-rmpg-100">
+        <button type="button" onClick={() => { stopStream(); onUploadInstead(); }} className="flex items-center gap-1.5 px-3 py-2 bg-surface-deep border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-200 hover:text-rmpg-100">
           <Upload size={13} /> Upload
         </button>
-        <button type="button" onClick={() => { stopStream(); onClose(); }} className="px-3 py-2 bg-[#141414] border border-rmpg-700 rounded-sm text-[10px] font-bold text-[#8899aa] hover:text-rmpg-100">Cancel</button>
+        <button type="button" onClick={() => { stopStream(); onClose(); }} className="px-3 py-2 bg-surface-deep border border-rmpg-700 rounded-sm text-[10px] font-bold text-rmpg-400 hover:text-rmpg-100">Cancel</button>
       </div>
     </div>
   );
@@ -323,10 +323,10 @@ export default function LiveDlScanner({ onComplete, onClose, onUploadInstead }: 
 function StepDot({ active, done, label }: { active: boolean; done: boolean; label: string }) {
   return (
     <div className="flex items-center gap-1">
-      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold ${done ? 'bg-green-600 text-rmpg-100' : active ? 'bg-[#d4a017] text-black' : 'bg-[#1a1a1a] text-[#556677] border border-rmpg-700'}`}>
+      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[7px] font-bold ${done ? 'bg-green-600 text-rmpg-100' : active ? 'bg-brand-600 text-rmpg-100' : 'bg-surface-raised text-fg-muted border border-rmpg-700'}`}>
         {done ? <Check size={9} /> : label[0]}
       </span>
-      <span className={`text-[8px] font-bold uppercase tracking-wider ${active ? 'text-[#d4a017]' : 'text-[#556677]'}`}>{label}</span>
+      <span className={`text-[8px] font-bold uppercase tracking-wider ${active ? '[color:var(--panel-header-color)]' : 'text-fg-muted'}`}>{label}</span>
     </div>
   );
 }

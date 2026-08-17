@@ -121,7 +121,7 @@ export default function DesktopColorPicker({ onClose }: DesktopColorPickerProps)
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px rgba(0 0 0 / 0.45)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}

@@ -46,7 +46,7 @@ function StatusBar({
       {/* 26: Connection Status with uppercase tracking */}
       <div className="status-bar-section" style={{ letterSpacing: '0.04em' }}>
         <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+        <span style={{ color: isConnected ? 'var(--sev-ok)' : 'var(--sev-critical)', fontWeight: 700 }}>
           {isConnected ? 'CONNECTED' : 'OFFLINE'}
         </span>
       </div>
@@ -59,7 +59,7 @@ function StatusBar({
 
       {/* 28: Active Calls with tabular-nums and color highlight + priority breakdown */}
       <div className="status-bar-section">
-        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: '#ef7a7a', fontWeight: 700 } : undefined}>{activeCallCount}</span>
+        <span>CALLS: <span className="tabular-nums" style={activeCallCount > 0 ? { color: 'var(--sev-critical-soft)', fontWeight: 700 } : undefined}>{activeCallCount}</span>
         {callsByPriority && callsByPriority.length > 0 && activeCallCount > 0 && (
           <span style={{ color: 'var(--text-muted)', marginLeft: 4 }}>
             ({callsByPriority.filter(p => p.count > 0).map(p => `${p.count} ${p.priority}`).join(', ')})
@@ -73,7 +73,7 @@ function StatusBar({
         {activeBOLOs > 0 && (
           <span className="led-dot led-red animate-led-blink" />
         )}
-        <span style={activeBOLOs > 0 ? { color: '#ef4444', fontWeight: 700 } : undefined}>
+        <span style={activeBOLOs > 0 ? { color: 'var(--sev-critical)', fontWeight: 700 } : undefined}>
           BOLO: <span className="tabular-nums">{activeBOLOs}</span>
         </span>
       </div>
@@ -85,7 +85,7 @@ function StatusBar({
           const isLost = ageSec > 600;     // >10 min
           const isStale = ageSec > 120;    // >2 min
           const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
-          const gpsColor = isLost ? '#ef4444' : isStale ? '#f59e0b' : '#22c55e';
+          const gpsColor = isLost ? 'var(--sev-critical)' : isStale ? 'var(--sev-warn)' : 'var(--sev-ok)';
           return (
             <>
               <span className={`led-dot ${ledClass} animate-led-blink`} />
@@ -123,7 +123,7 @@ function StatusBar({
 
       {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
-        <span className="tabular-nums" style={{ color: '#22c55e', fontWeight: 700, letterSpacing: '0.02em' }}>
+        <span className="tabular-nums" style={{ color: 'var(--sev-ok)', fontWeight: 700, letterSpacing: '0.02em' }}>
           {now.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false })}
         </span>
         <span style={{ color: 'var(--text-muted)', marginLeft: 8 }}>

@@ -124,7 +124,7 @@ export default function ResetPasswordPage() {
           aria-label="Password reset form"
         >
           {/* Accent line */}
-          <div style={{ height: '2px', background: 'linear-gradient(90deg, transparent, var(--rmpg-400-raw, #888888), transparent)' }} />
+          <div style={{ height: '2px', background: 'linear-gradient(90deg, transparent, var(--border-strong), transparent)' }} />
 
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">

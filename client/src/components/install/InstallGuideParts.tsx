@@ -191,7 +191,7 @@ export function Screenshots({ shots }: { shots: { src: string; caption: string }
           tabIndex={-1}
           ref={(el) => el?.focus()}
           className="fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out"
-          style={{ background: 'rgba(0,0,0,0.85)' }}
+          style={{ background: 'rgba(0 0 0 / 0.85)' }}
         >
           <img
             src={open}

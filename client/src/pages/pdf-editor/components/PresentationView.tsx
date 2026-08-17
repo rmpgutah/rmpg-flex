@@ -76,7 +76,7 @@ export default function PresentationView({ open, bytes, pageOrder, startPage, fi
   return (
     <div className="fixed inset-0 z-[60] bg-black flex flex-col" role="dialog" aria-modal="true" aria-label="Presentation view">
       <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-rmpg-400 bg-surface-overlay border-b border-border-default">
-        <span className="text-[#d4a017] font-semibold uppercase tracking-wider">Presenting</span>
+        <span className="[color:var(--panel-header-color)] font-semibold uppercase tracking-wider">Presenting</span>
         <span className="truncate">{fileName}</span>
         <span className="ml-auto">Page {page} / {total}</span>
         <button type="button" onClick={onClose} aria-label="Exit presentation (Esc)" title="Exit (Esc)"

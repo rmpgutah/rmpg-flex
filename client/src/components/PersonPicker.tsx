@@ -217,7 +217,7 @@ export default function PersonPicker({
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Searching…</div>
           )}
           {error && (
-            <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>
+            <div className="px-3 py-2 text-[11px] text-[color:var(--sev-critical)]">{error}</div>
           )}
           {!loading && !error && results.length === 0 && query.trim().length >= 2 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
@@ -234,10 +234,10 @@ export default function PersonPicker({
                 type="button"
                 onClick={() => select(p)}
                 {...optionProps(i, selected)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
-                style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-surface-deep' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
+                style={{ borderLeft: selected ? '2px solid var(--field-label-color)' : '2px solid transparent' }}
               >
-                <User className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                <User className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : '#666' }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-semibold text-rmpg-100">{name}</div>
                   <div className="text-[10px] text-rmpg-400 mt-0.5 flex gap-2 flex-wrap">

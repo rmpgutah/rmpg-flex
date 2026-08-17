@@ -105,9 +105,9 @@ export default function Tooltip({ content, children, position = 'top', delay = 3
           style={{
             ...positionStyles[position],
             background: 'var(--surface-overlay)',
-            color: '#d4a017',
+            color: 'var(--field-label-color)',
             border: '1px solid var(--border-default)',
-            borderLeft: '2px solid #d4a017',
+            borderLeft: '2px solid var(--field-label-color)',
             letterSpacing: '0.04em',
           }}
         >

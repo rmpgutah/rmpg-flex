@@ -70,6 +70,7 @@ initTabScrollbars();
 // and trigger the same one-time bounded reload — operators stop having to
 // hard-refresh after every deploy.
 import { isChunkLoadError, tryReloadForChunkFailure } from './utils/chunkRetry';
+import { ApiBaseProvider } from './hooks/useApiBase';
 window.addEventListener('unhandledrejection', (event) => {
   if (!isChunkLoadError(event.reason)) return;
   // tryReloadForChunkFailure honors a 30s window: a second failure inside it
@@ -91,8 +92,10 @@ if (preSplash) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ApiBaseProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ApiBaseProvider>
   </React.StrictMode>
 );

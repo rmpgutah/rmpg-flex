@@ -206,7 +206,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       hasPoints = true;
 
       const el = document.createElement('div');
-      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--text-muted)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
+      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--text-muted)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0 0 0 / 0.4);`;
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
         .addTo(map);

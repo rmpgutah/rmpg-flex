@@ -40,7 +40,7 @@ test('renders annotation form fields', () => {
 
 test('loads existing annotations on mount', async () => {
   (apiFetch as any).mockResolvedValueOnce([
-    { id: 1, title: 'Test', lat: 40.7, lng: -111.9, color: '#d4a017', icon: 'pin', body: null },
+    { id: 1, title: 'Test', lat: 40.7, lng: -111.9, color: 'var(--field-label-color)', icon: 'pin', body: null },
   ]);
   render(<AnnotationTool map={mockMap} onClose={vi.fn()} />);
   await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining('/map/annotations')));

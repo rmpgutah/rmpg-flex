@@ -30,23 +30,23 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
     return (
       <div style={{
         background: 'rgba(220, 38, 38, 0.12)',
-        borderBottom: '1px solid #991b1b',
+        borderBottom: '1px solid var(--sev-critical)',
         padding: '8px 16px',
         display: 'flex',
         alignItems: 'center',
         gap: 10,
         fontSize: 11,
       }}>
-        <AlertTriangle size={14} color="#ef4444" style={{ flexShrink: 0 }} />
+        <AlertTriangle size={14} color="var(--sev-critical)" style={{ flexShrink: 0 }} />
         <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
-          <strong style={{ color: '#ef4444' }}>Location disabled</strong>
+          <strong style={{ color: 'var(--sev-critical)' }}>Location disabled</strong>
           {' — '}GPS tracking is not active. Enable location access in your browser or device settings for full functionality.
         </span>
         <button type="button"
           onClick={onRetry}
           style={{
             padding: '3px 10px',
-            background: '#dc2626',
+            background: 'var(--sev-critical)',
             color: '#fff',
             border: 'none',
             fontSize: 10,
@@ -91,9 +91,9 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
         gap: 8,
         fontSize: 10,
       }}>
-        <Wifi size={12} color="#888888" style={{ flexShrink: 0 }} />
-        <span style={{ color: '#888888', flex: 1 }}>
-          Tracking via <strong style={{ color: '#888888' }}>WiFi positioning</strong> — accuracy may be reduced
+        <Wifi size={12} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+        <span style={{ color: 'var(--text-secondary)', flex: 1 }}>
+          Tracking via <strong style={{ color: 'var(--text-secondary)' }}>WiFi positioning</strong> — accuracy may be reduced
         </span>
         <button type="button"
           onClick={() => setWifiDismissed(true)}

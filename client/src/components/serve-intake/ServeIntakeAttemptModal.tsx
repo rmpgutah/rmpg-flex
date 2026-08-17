@@ -155,8 +155,9 @@ export default function ServeIntakeAttemptModal({
       onSuccess?.(body);
     } catch (err: any) {
       setSubmitError(err?.message || 'Failed to log attempt');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }, [result, attemptType, notes, gps, queueId, onSuccess]);
 
   if (!isOpen) return null;
@@ -166,7 +167,7 @@ export default function ServeIntakeAttemptModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }}
+      style={{ background: 'rgba(0 0 0 / 0.65)' }}
       onClick={guardedClose}
     >
       <div

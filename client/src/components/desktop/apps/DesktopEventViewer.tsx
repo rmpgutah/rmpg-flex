@@ -138,7 +138,7 @@ function ApiErrorsTab({ isAdmin }: { isAdmin: boolean }) {
             <tbody>
               {filtered.map(r => (
                 <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10 }}>{r.created_at.slice(0, 19).replace('T', ' ')}</td>
+                  <td style={{ padding: '3px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: 10 }}>{r.created_at?.slice(0, 19).replace('T', ' ') ?? '—'}</td>
                   <td style={{ padding: '3px 8px' }}><SeverityBadge sev={r.severity} /></td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-secondary)' }}>{r.category}</td>
                   <td style={{ padding: '3px 8px', color: 'var(--text-primary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.message}>{r.message}</td>
@@ -232,7 +232,7 @@ export default function DesktopEventViewer({ onClose }: DesktopEventViewerProps)
     <div style={{
       position: 'fixed', left: pos.x, top: pos.y, width: W, height: H,
       background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
-      borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20100,
+      borderRadius: 2, boxShadow: '0 8px 32px rgba(0 0 0 / 0.45)', zIndex: 20100,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* Title bar */}

@@ -343,7 +343,7 @@ export default function GangIntelPage() {
       {formOpen && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
-          style={{ background: 'rgba(0,0,0,0.70)' }}
+          style={{ background: 'rgba(0 0 0 / 0.70)' }}
           onClick={() => setFormOpen(false)}
         >
           <div

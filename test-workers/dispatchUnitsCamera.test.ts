@@ -41,6 +41,10 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, cpg_device_id TEXT NOT NULL, unit_id INTEGER,
     is_active INTEGER NOT NULL DEFAULT 1, ignition_state TEXT
   )`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS serve_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER NOT NULL,
+    route_date TEXT, optimized_order_json TEXT DEFAULT '[]'
+  )`);
 
   await execute(db, "INSERT INTO units (call_sign, status) VALUES ('D190', 'available')");
   await execute(db, "INSERT INTO units (call_sign, status) VALUES ('C580', 'off_duty')");

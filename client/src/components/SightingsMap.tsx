@@ -134,7 +134,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       const el = buildDotMarker({
         color: src.color,
         size: 11,
-        halo: s.hit ? { color: '#ef4444', width: 2, shadowSpread: 8 } : undefined,
+        halo: s.hit ? { color: 'var(--sev-critical)', width: 2, shadowSpread: 8 } : undefined,
       });
       el.style.cursor = 'pointer';
       el.title = `${s.plate} · ${src.label}`;
@@ -276,7 +276,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   }, [located.map((s) => `${s.id}:${s.lat},${s.lng}:${s.hit ? 1 : 0}`).join(','), loaded, clustered, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) {
-    return <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-[#888888]">{error}</div>;
+    return <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-fg-muted">{error}</div>;
   }
 
   return (

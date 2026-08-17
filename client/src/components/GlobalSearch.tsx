@@ -86,11 +86,14 @@ export const GlobalSearch: React.FC = () => {
     setIsLoading(true);
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await knowledgeBaseSearch(query, 40);
-      if (cancelled) return;
-      setResults(r);
-      setSelectedIndex(0);
-      setIsLoading(false);
+      try {
+        const r = await knowledgeBaseSearch(query, 40);
+        if (cancelled) return;
+        setResults(r);
+        setSelectedIndex(0);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
   }, [query]);
@@ -143,7 +146,7 @@ export const GlobalSearch: React.FC = () => {
     >
       <div
         className="bg-surface-base border border-rmpg-600 shadow-md w-full max-w-2xl max-h-[64vh] flex flex-col animate-scale-in"
-        style={{ borderTop: '2px solid #d4a017' }}
+        style={{ borderTop: '2px solid var(--field-label-color)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}
@@ -210,7 +213,7 @@ export const GlobalSearch: React.FC = () => {
               <button
                 type="button"
                 onClick={() => { navigate(`/intel?q=${encodeURIComponent(query)}`); handleClose(); }}
-                className="text-[#d4a017] hover:underline"
+                className="[color:var(--panel-header-color)] hover:underline"
               >
                 Open in Intel Search →
               </button>

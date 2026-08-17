@@ -16,7 +16,14 @@ const { decryptPasswordHashOrFallback, decryptSecretForStorage, encryptDiagnosti
 const { isJwtExpiredLocally, extractSessionIdentity, getOrCreateDeviceId, isPinSessionBoundToDevice, pruneOldPinAttempts, invalidateAllActivePinSessions, isReconLaunchAuthorized, detectClockSkew, looksLikeSecretValue, assertWebPreferencesNotWeaker } = require('./security/sessionAuth');
 const { buildSandboxedChildEnv, scheduleChildProcessTimeout, resolveChildProcessTimeoutMs, DEFAULT_CHILD_PROCESS_TIMEOUT_MS, isAtConcurrencyLimit, MAX_CONCURRENT_TOOLS, isAllowedBinaryName, isAllowedApiHost, parseIpLocateResponse, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS, OFFLINE_TRIGGER_SYNC_TIMEOUT_MS, formatSecurityAuditLine, appendSecurityAuditLog, evaluateInsecureElectronFlagsEscalation, runHardeningSelfTest } = require('./security/childProcessGuard');
 const { getDiskBytes, getDiskFreeBytes, formatSystemInfo, getCpuUsagePercent, appendToLogFile, tailLogFile, getLogsDirectory, buildDiagnosticsBundleText, listCrashReports, evaluateDiskSpace, formatNetworkInterfaces, parsePmsetBatteryOutput } = require('./systemInfo');
-const { parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput, parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown } = require('./hardwareFz55');
+const { createFaceAuth } = require('./faceAuth');
+const { CameraScanner } = require('./cameraScanner');
+const {
+  parseWindowsBatteryOutput, parseWindowsDockOutput, parseWindowsWwanOutput,
+  parseWindowsTpmOutput, classifyKeystrokeBurst, filterPrintableKeydown,
+  parseWindowsThermalOutput, parseWindowsSmartCardOutput, parseWindowsFingerprintOutput,
+  parseWindowsWwanSignalOutput, parseBodyCamHidReport,
+} = require('./hardwareFz55');
 const { buildSaveDialogOptions, buildOpenDialogOptions, resolveAllowedRoots, isLocalDbPath, formatPrinters, isKnownPrinterName, encodeBackupForExport, decodeBackupForImport, swapInLocalDbWithRollback } = require('./fileOps');
 const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresence, formatDisplays } = require('./deviceInfo');
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
@@ -193,6 +200,8 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+let faceAuth = null; // initialized after localDb is ready
+let cameraScanner = null;
 
 // Rolling-window crash-recovery timestamps for the main window's renderer
 // and GPU-process crashes — see crashRecovery.js. Kept at module scope
@@ -303,6 +312,37 @@ process.on('uncaughtException', (err) => {
 });
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
+
+// ── WWAN live push ────────────────────────────────────────────
+let _lastWwanState = null;
+const WWAN_PUSH_INTERVAL = 30_000;
+function pushWwanIfChanged() {
+  if (process.platform !== 'win32') return;
+  const { execFile } = require('child_process');
+  execFile(
+    'powershell.exe',
+    ['-NoProfile', '-Command',
+      "Get-NetAdapter | Where-Object {$_.InterfaceDescription -match 'Sierra|EM74|EM75|EM91'} | Select-Object Name, Status | ConvertTo-Json"],
+    { timeout: 3000 },
+    (err, stdout) => {
+      if (err) return;
+      const state = parseWindowsWwanOutput(stdout);
+      const changed = !_lastWwanState ||
+        state.present !== _lastWwanState.present ||
+        state.connected !== _lastWwanState.connected;
+      if (changed) {
+        _lastWwanState = state;
+        mainWindow?.webContents.send('hardware:wwan-changed', state);
+      }
+    }
+  );
+}
+let _wwanPushTimer = null;
+function startWwanPush() {
+  if (_wwanPushTimer) return;
+  pushWwanIfChanged();
+  _wwanPushTimer = setInterval(pushWwanIfChanged, WWAN_PUSH_INTERVAL);
+}
 
 // ─── Single Instance Lock ────────────────────────────────────
 // Prevent multiple instances from racing and crashing with
@@ -1011,6 +1051,34 @@ async function createMainWindow() {
     console.warn('[APP] Cache clear timed out or failed — continuing:', err && err.message);
   }
 
+  // ── WWAN live push timer ──────────────────────────────────
+  startWwanPush();
+
+  // ── USB hot-plug GPS re-detect ────────────────────────────
+  try {
+    const usbDetect = require('usb-detection');
+    usbDetect.startMonitoring();
+    usbDetect.on('add', async () => {
+      // Any USB insertion — re-probe for GPS
+      setTimeout(async () => {
+        const found = await findGpsPort();
+        if (found) {
+          mainWindow?.webContents.send('hardware:gps-plugged', found);
+          // If GPS reader is not currently active, auto-start
+          if (!internalGpsReader) {
+            internalGpsReader = new InternalGps();
+            internalGpsReader.on('position', (pos) => mainWindow?.webContents.send('geo:position', pos));
+            internalGpsReader.on('gps:constellation', (c) => mainWindow?.webContents.send('gps:constellation', c));
+            await internalGpsReader.start(found.path);
+          }
+        }
+      }, 1500); // brief delay for device driver init
+    });
+    app.on('before-quit', () => usbDetect.stopMonitoring());
+  } catch (err) {
+    console.warn('[APP] usb-detection unavailable:', err.message);
+  }
+
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
   // Promise rejection here is handled by the did-fail-load listener
@@ -1161,7 +1229,7 @@ async function createMainWindow() {
       const result = classifyKeystrokeBurst(barcodeBuffer);
       resetBarcodeBuffer();
       if (result.isScan) {
-        mainWindow.webContents.send('hardware:barcode-scanned', result.payload);
+        mainWindow.webContents.send('hardware:barcode-scan', { payload: result.payload, source: 'xpak' });
       }
     }
   });
@@ -1501,16 +1569,67 @@ guardedHandle('sys:battery', async () => {
 
   return null;
 });
-guardedHandle('sys:body-cam-status', () => {
-  // Return null when no body cam is physically present — widget treats non-null
-  // as "camera connected" and shows Ready/Recording state accordingly.
+const BODY_CAM_VIDS = new Map([
+  [0x2B0E, 'Axon'],     // Axon Body 3/4
+  [0x22B8, 'Motorola'], // Motorola Si500
+]);
+let bodyCamHidDevice = null;
+
+function detectBodyCam() {
+  if (process.platform !== 'win32') return null;
+  try {
+    const HID = require('node-hid');
+    const devices = HID.devices();
+    for (const [vid, vendor] of BODY_CAM_VIDS) {
+      const d = devices.find((dev) => dev.vendorId === vid);
+      if (d) return { present: true, vendor, model: d.product || null, vid, path: d.path };
+    }
+  } catch (err) {
+    console.warn('[BODY-CAM] HID enumeration failed:', err.message);
+  }
   return null;
+}
+
+guardedHandle('sys:body-cam-status', () => {
+  const cam = detectBodyCam();
+  if (!cam) return { present: false, vendor: null, model: null, batteryPct: null };
+  // Attempt to read HID state
+  let batteryPct = null;
+  try {
+    const HID = require('node-hid');
+    const dev = new HID.HID(cam.path);
+    const report = dev.readTimeout(200);
+    dev.close();
+    const parsed = parseBodyCamHidReport(Buffer.from(report));
+    batteryPct = parsed.batteryPct;
+  } catch { /* HID read failed — return presence only */ }
+  return { present: true, vendor: cam.vendor, model: cam.model, batteryPct };
 });
+
 guardedHandle('sys:body-cam-start', () => {
-  return { ok: false, reason: 'not_supported' };
+  const cam = detectBodyCam();
+  if (!cam) return { ok: false, reason: 'no_camera' };
+  try {
+    const HID = require('node-hid');
+    bodyCamHidDevice = new HID.HID(cam.path);
+    // Axon record command: write report [0x01, 0x01] (report ID 1, flag record=1)
+    bodyCamHidDevice.write([0x01, 0x01]);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
+
 guardedHandle('sys:body-cam-stop', () => {
-  return { ok: false, reason: 'not_supported' };
+  if (!bodyCamHidDevice) return { ok: false, reason: 'not_started' };
+  try {
+    bodyCamHidDevice.write([0x01, 0x00]); // clear recording flag
+    bodyCamHidDevice.close();
+    bodyCamHidDevice = null;
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
 });
 guardedHandle('sys:tpm-status', async () => {
   if (process.platform !== 'win32') return null;
@@ -1527,6 +1646,142 @@ guardedHandle('sys:tpm-status', async () => {
   } catch (err) {
     console.error('[SYS:TPM-STATUS] Get-Tpm failed:', err.message);
     return null;
+  }
+});
+guardedHandle('sys:thermal-status', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-WmiObject -Namespace root/WMI -Class MSAcpi_ThermalZoneTemperature | Select-Object CurrentTemperature | ConvertTo-Json'],
+      { timeout: 5000 }
+    );
+    const result = parseWindowsThermalOutput(stdout);
+    if (result && result.maxTempF > 185) {
+      mainWindow?.webContents.send('hardware:thermal-alert', result);
+    }
+    return result;
+  } catch (err) {
+    console.error('[SYS:THERMAL-STATUS]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:smartcard-status', async () => {
+  if (process.platform !== 'win32') return { present: false, cardInserted: false, atr: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class SmartCard | Select-Object FriendlyName, Status, ATR | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsSmartCardOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:SMARTCARD-STATUS]', err.message);
+    return { present: false, cardInserted: false, atr: null };
+  }
+});
+guardedHandle('device:fingerprint-status', async () => {
+  if (process.platform !== 'win32') return { present: false, ready: false };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-PnpDevice -Class Biometric | Select-Object FriendlyName, Status | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsFingerprintOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:FINGERPRINT-STATUS]', err.message);
+    return { present: false, ready: false };
+  }
+});
+guardedHandle('sys:battery-detail', async () => {
+  if (process.platform !== 'win32') return null;
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        'Get-CimInstance Win32_Battery | Select-Object EstimatedChargeRemaining, BatteryStatus, EstimatedRunTime | ConvertTo-Json'],
+      { timeout: 3000 }
+    );
+    return parseWindowsBatteryOutput(stdout);
+  } catch (err) {
+    console.error('[SYS:BATTERY-DETAIL]', err.message);
+    return null;
+  }
+});
+guardedHandle('device:wwan-signal', async () => {
+  if (process.platform !== 'win32') return { rssi: null, bars: 0 };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'signal', 'interface=*'],
+      { timeout: 3000 }
+    );
+    return parseWindowsWwanSignalOutput(stdout);
+  } catch (err) {
+    console.error('[DEVICE:WWAN-SIGNAL]', err.message);
+    return { rssi: null, bars: 0 };
+  }
+});
+guardedHandle('device:wwan-carrier', async () => {
+  if (process.platform !== 'win32') return { carrier: null, apn: null };
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'netsh.exe',
+      ['mbn', 'show', 'connection', 'interface=*'],
+      { timeout: 3000 }
+    );
+    const carrierMatch = stdout.match(/Provider Name\s*:\s*(.+)/i);
+    const apnMatch = stdout.match(/Access String\s*:\s*(.+)/i);
+    return {
+      carrier: carrierMatch ? carrierMatch[1].trim() : null,
+      apn: apnMatch ? apnMatch[1].trim() : null,
+    };
+  } catch (err) {
+    console.error('[DEVICE:WWAN-CARRIER]', err.message);
+    return { carrier: null, apn: null };
+  }
+});
+guardedHandle('device:usb-devices', async () => {
+  if (process.platform !== 'win32') return [];
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        "Get-PnpDevice | Where-Object {$_.Class -eq 'USB'} | Select-Object FriendlyName, Status | ConvertTo-Json"],
+      { timeout: 5000 }
+    );
+    let parsed;
+    try { parsed = JSON.parse(stdout); } catch { return []; }
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    return entries.filter(Boolean).map((e) => ({ name: e.FriendlyName || '', status: e.Status || '' }));
+  } catch (err) {
+    console.error('[DEVICE:USB-DEVICES]', err.message);
+    return [];
   }
 });
 guardedHandle('sys:idle-time', () => {
@@ -3869,6 +4124,37 @@ guardedHandle('app:force-refresh', async () => {
 
 let internalGpsReader = null;
 
+// ── Geofence engine ──────────────────────────────────────────
+let _geofenceZones = []; // [{ id, lat, lng, radiusM, label }]
+let _activeZoneIds = new Set(); // currently inside zones
+
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function checkGeofences(latitude, longitude) {
+  for (const zone of _geofenceZones) {
+    const dist = haversineM(latitude, longitude, zone.lat, zone.lng);
+    const inside = dist <= zone.radiusM;
+    const wasInside = _activeZoneIds.has(zone.id);
+    if (inside && !wasInside) {
+      _activeZoneIds.add(zone.id);
+      mainWindow?.webContents.send('geo:geofence-enter', { zoneId: zone.id, label: zone.label });
+    } else if (!inside && wasInside) {
+      _activeZoneIds.delete(zone.id);
+      mainWindow?.webContents.send('geo:geofence-exit', { zoneId: zone.id, label: zone.label });
+    }
+  }
+}
+
 /**
  * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
  *
@@ -3968,6 +4254,7 @@ guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('geo:internal-gps-update', pos);
     }
+    if (!pos.estimated) checkGeofences(pos.latitude, pos.longitude);
   });
   internalGpsReader.on('error', (err) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3987,6 +4274,17 @@ guardedHandle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
+});
+
+// ── Geofence zone loader (called by renderer after server sync) ──
+guardedHandle('geo:set-geofence-zones', (_event, zones) => {
+  if (!Array.isArray(zones)) return { ok: false };
+  _geofenceZones = zones.filter(
+    (z) => z && typeof z.id !== 'undefined' &&
+    Number.isFinite(z.lat) && Number.isFinite(z.lng) && Number.isFinite(z.radiusM)
+  );
+  _activeZoneIds = new Set(); // reset membership on zone reload
+  return { ok: true, count: _geofenceZones.length };
 });
 
 // ─── Power management (keep navigation alive off-screen) ─────
@@ -4357,6 +4655,79 @@ guardedHandle('offline:get-cached-user', (_event, { username }) => {
   }
 });
 
+// ─── Face Recognition Auth ──────────────────────────────────
+// Enrollment: renderer captures N frames, extracts embeddings via face-api.js
+// (runs in renderer — has canvas + camera access), sends averaged embedding here.
+guardedHandle('face:enroll', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, error: 'invalid_params' };
+  try {
+    faceAuth.storeEmbedding(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:enroll', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    logSecurityAuditEvent('face:enroll', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+// Verify: renderer sends a live embedding (extracted by face-api.js in renderer).
+guardedHandle('face:verify', (_event, { userId, embedding }) => {
+  if (!faceAuth) return { ok: false, reason: 'face_auth_unavailable' };
+  if (!userId || !Array.isArray(embedding) || embedding.length !== 128) return { ok: false, reason: 'invalid_params' };
+  try {
+    const result = faceAuth.verify(userId, new Float32Array(embedding));
+    logSecurityAuditEvent('face:verify', result.match ? 'success' : 'denied', {
+      targetUserId: userId, confidence: result.confidence,
+    });
+    return { ok: result.match, confidence: result.confidence, reason: result.reason };
+  } catch (err) {
+    logSecurityAuditEvent('face:verify', 'error', { targetUserId: userId, error: err.message });
+    return { ok: false, reason: err.message };
+  }
+});
+
+guardedHandle('face:clear', (_event, { userId }) => {
+  if (!faceAuth) return { ok: false, error: 'face_auth_unavailable' };
+  try {
+    faceAuth.deleteEmbedding(userId);
+    logSecurityAuditEvent('face:clear', 'success', { targetUserId: userId });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+guardedHandle('face:enrollment-status', (_event, { userId }) => {
+  if (!faceAuth) return { enrolled: false };
+  const embedding = faceAuth.getEmbedding(userId);
+  return { enrolled: embedding !== null };
+});
+
+// ── Face unlock success (from splash lock screen renderer) ──
+// Uses ipcMain.on (not guardedHandle) — this is a fire-and-forget send from the
+// trusted local file splash.html, not an invoke requiring a response.
+ipcMain.on('face:unlock-success', () => {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+  }
+  mainWindow?.show();
+  mainWindow?.focus();
+  logSecurityAuditEvent('face:unlock-success', 'success', {});
+});
+
+// ── Camera QR / Barcode Scanner ──
+guardedHandle('device:camera-scan-start', () => {
+  if (!cameraScanner) cameraScanner = new CameraScanner();
+  const started = cameraScanner.start(mainWindow, BrowserWindow);
+  return { ok: started };
+});
+
+guardedHandle('device:camera-scan-stop', () => {
+  cameraScanner?.stop();
+  return { ok: true };
+});
+
 // ── System info: battery (Windows only) ──
 guardedHandle('system:get-battery', async () => {
   if (process.platform !== 'win32') return null;
@@ -4394,11 +4765,51 @@ guardedHandle('system:get-network', async () => {
   } catch { return null; }
 });
 
-// ── System: set app volume (placeholder — real OS volume requires nircmd) ──
-guardedHandle('system:set-volume', async (_event, _level) => {
-  // Controls in-app audio gain via the renderer's Web Audio context.
-  // True OS master volume requires an external tool (nircmd) — deferred.
-  return { ok: true };
+// ── System: set OS master volume ──────────────────────────────
+guardedHandle('system:set-volume', async (_event, level) => {
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    if (process.platform === 'win32') {
+      // nircmd setsysvolume takes 0–65535
+      const nircmdPath = path.join(
+        process.resourcesPath || path.join(__dirname, 'vendor'),
+        'nircmd.exe'
+      );
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)(nircmdPath, ['setsysvolume', String(Math.round(clamped / 100 * 65535))], { timeout: 2000 });
+    } else if (process.platform === 'darwin') {
+      const { execFile } = require('child_process');
+      const { promisify } = require('util');
+      await promisify(execFile)('osascript', ['-e', `set volume output volume ${clamped}`], { timeout: 2000 });
+    } else {
+      return { ok: false, reason: 'unsupported_platform' };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYSTEM:SET-VOLUME]', err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── Device: set display brightness (Windows only — WMI) ───────
+guardedHandle('device:set-brightness', async (_event, level) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  const clamped = Math.max(0, Math.min(100, Number(level) || 0));
+  try {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    await promisify(execFile)(
+      'powershell.exe',
+      ['-NoProfile', '-Command',
+        `(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(0, ${clamped})`],
+      { timeout: 3000 }
+    );
+    return { ok: true };
+  } catch (err) {
+    console.error('[DEVICE:SET-BRIGHTNESS]', err.message);
+    return { ok: false, reason: err.message };
+  }
 });
 
 // ─── Application Menu ───────────────────────────────────────
@@ -4638,6 +5049,15 @@ app.whenReady().then(async () => {
           console.warn(`[APP] System lock-screen detected — invalidated ${changes} active PIN session(s)`);
         });
       }
+      try {
+        const localDb = getLocalDb();
+        if (localDb) {
+          faceAuth = createFaceAuth({ db: localDb, safeStorage });
+          console.log('[FACE-AUTH] Initialized');
+        }
+      } catch (err) {
+        console.error('[FACE-AUTH] Failed to initialize:', err.message);
+      }
     } catch (dbErr) {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
@@ -4842,6 +5262,11 @@ app.whenReady().then(async () => {
             console.error('[APP] Push sync on reconnect failed:', err.message);
           });
         }
+        // Detect WWAN failover
+        const currentWwan = _lastWwanState;
+        if (currentWwan?.connected) {
+          mainWindow?.webContents.send('connectivity:failover', { from: 'wifi', to: 'wwan' });
+        }
       }
     });
 
@@ -4877,6 +5302,8 @@ app.on('before-quit', () => {
   appUpdater.destroy();
   globalShortcut.unregisterAll();
 
+  // Clean up WWAN push timer
+  if (_wwanPushTimer) { clearInterval(_wwanPushTimer); _wwanPushTimer = null; }
   // Clean up offline modules
   if (connectivityMonitor) connectivityMonitor.stop();
   if (syncManager && syncManager.stopPullSchedule) syncManager.stopPullSchedule();

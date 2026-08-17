@@ -96,7 +96,7 @@ jobs:
 
       - name: Open issue on failure
         if: failure() && steps.typecheck.conclusion == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         env:
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
@@ -163,7 +163,7 @@ jobs:
 
       - name: Open issue on failure
         if: failure() && steps.client-typecheck.conclusion == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         env:
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
@@ -208,11 +208,14 @@ jobs:
               labels: ['ci-broken', 'urgent'],
             });
 
+  # Post-merge client tests run the same suite as pr-tests.yml's sharded jobs,
+  # but in a single job — acceptable because this is a detection step, not the
+  # primary gate. PDF/maps/desktop configs are run separately so their large
+  # parsed ASTs (mapbox-gl ~10 MB, jsPDF ~10 MB each) don't OOM the runner.
+  # NODE_OPTIONS caps the heap at the same ceiling as the sharded pre-merge jobs.
   client-tests:
     name: Client tests (post-merge)
     runs-on: ubuntu-latest
-    # The suite is ~460 files / ~3200 tests, around 4-5 min on a runner. 20 gives
-    # headroom without letting a hung run sit on main's queue indefinitely.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -226,13 +229,30 @@ jobs:
       - name: Install client deps
         run: cd client && npm ci --legacy-peer-deps
 
-      - name: Client tests (vitest run)
+      - name: Client tests — main suite
         id: client-tests
         run: cd client && npx vitest run
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Client tests — PDF suite
+        run: cd client && npx vitest run --config vitest.pdf.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Client tests — map suite
+        run: cd client && npx vitest run --config vitest.maps.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Client tests — desktop components
+        run: cd client && npx vitest run --config vitest.desktop.config.ts
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Open issue on failure
         if: failure() && steps.client-tests.conclusion == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@v7
         env:
           COMMIT_SHA: ${{ github.sha }}
           COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}

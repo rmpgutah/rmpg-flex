@@ -88,13 +88,13 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
       aria-live="assertive"
       style={{
         background: 'rgba(220, 38, 38, 0.15)',
-        border: '1px solid #dc2626',
+        border: '1px solid var(--sev-critical)',
         padding: '6px 8px',
         marginTop: 4,
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
-        <Siren style={{ width: 12, height: 12, color: '#ef4444' }} />
+        <Siren style={{ width: 12, height: 12, color: 'var(--sev-critical)' }} />
         <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">
           BOLO MATCH — {matches.length} Active Alert{matches.length !== 1 ? 's' : ''}
         </span>
@@ -105,7 +105,7 @@ export default function BoloAlertBanner({ address, subject, vehicle, onViewBolo 
             <span
               className="font-black px-1 py-px text-[8px] flex-shrink-0"
               style={{
-                background: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : '#eab308',
+                background: bolo.priority === 'P1' ? 'var(--sev-critical)' : bolo.priority === 'P2' ? 'var(--sev-high)' : 'var(--sev-warn)',
                 color: '#fff',
               }}
             >

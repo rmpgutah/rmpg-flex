@@ -23,7 +23,7 @@ function EmptyState({ icon: Icon, title, description, action, className = '' }: 
         }}
         aria-hidden="true"
       >
-        <Icon size={24} color="#d4a017" style={{ opacity: 0.5 }} />
+        <Icon size={24} color="var(--panel-header-color)" style={{ opacity: 0.5 }} />
       </div>
       <h3 className="text-[10px] font-bold uppercase tracking-wider text-fg-muted mb-1.5">{title}</h3>
       {description && (

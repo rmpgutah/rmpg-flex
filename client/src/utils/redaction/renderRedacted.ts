@@ -71,7 +71,7 @@ function drawStamp(ctx: CanvasRenderingContext2D, lines: string[], W: number, H:
   if (!lines.length) return;
   const fs = Math.max(11, Math.round(H * 0.022));
   const stripH = fs * (lines.length + 0.6) + 10;
-  ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, H - stripH, W, stripH);
+  ctx.fillStyle = 'rgba(0 0 0 / 0.7)'; ctx.fillRect(0, H - stripH, W, stripH);
   ctx.textBaseline = 'top';
   lines.forEach((l, i) => {
     ctx.font = `${i === 0 ? 'bold ' : ''}${fs}px sans-serif`;

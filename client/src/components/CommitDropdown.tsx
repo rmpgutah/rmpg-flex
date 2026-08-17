@@ -22,7 +22,7 @@ export function CommitDropdown({ allowedActions, onSelect }: Props) {
       <button
         type="button"
         onClick={() => onSelect(primary)}
-        className="px-3 py-1 bg-[#d4a017] text-black font-bold border-r border-black/30"
+        className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-black font-bold border-r border-black/30"
       >
         Commit: {LABELS[primary]}
       </button>
@@ -30,7 +30,7 @@ export function CommitDropdown({ allowedActions, onSelect }: Props) {
         type="button"
         aria-label="More commit options"
         onClick={() => setOpen((v) => !v)}
-        className="px-2 py-1 bg-[#d4a017] text-black font-bold"
+        className="px-2 py-1 bg-brand-600 hover:bg-brand-700 text-black font-bold"
       >
         ▼
       </button>

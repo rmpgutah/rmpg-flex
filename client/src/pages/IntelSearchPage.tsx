@@ -54,21 +54,21 @@ export default function IntelSearchPage() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search persons, vehicles, plates, phones, DOBs, case numbers…"
-        className="w-full bg-surface-overlay border border-border-default px-3 py-2 text-sm text-rmpg-200 focus:border-[#d4a017] outline-none"
+        className="w-full bg-surface-overlay border border-border-default px-3 py-2 text-sm text-rmpg-200 focus:[border-color:var(--field-label-color)] outline-none"
       />
       <div className="flex gap-1 flex-wrap">
         {Object.entries(TYPE_LABELS).map(([t, label]) => (
           <button key={t}
             onClick={() => setTypeFilter(typeFilter === t ? null : t)}
-            className={`text-[9px] px-2 py-[3px] border ${typeFilter === t ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#888888]'}`}>
+            className={`text-[9px] px-2 py-[3px] border ${typeFilter === t ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)]' : 'border-border-default text-fg-muted'}`}>
             {label}
           </button>
         ))}
       </div>
-      {loading && <div className="text-[11px] text-[#888888]">Searching…</div>}
+      {loading && <div className="text-[11px] text-fg-muted">Searching…</div>}
       {[...grouped.entries()].map(([type, hits]) => (
         <div key={type} className="bg-surface-base border border-border-default">
-          <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default">
+          <div className="px-2 py-[3px] text-[9px] font-semibold [color:var(--panel-header-color)] border-b border-border-default">
             {TYPE_LABELS[type] || type.toUpperCase()} ({hits.length})
           </div>
           {hits.map((h) => (
@@ -76,12 +76,12 @@ export default function IntelSearchPage() {
               onClick={() => navigate(recordPath(h))}
               className="w-full text-left px-2 py-[2px] text-[11px] text-rmpg-200 hover:bg-surface-raised flex items-center gap-2 border-b border-border-default last:border-b-0">
               <span className="flex-1">{h.label}</span>
-              {h.snippet && <span className="text-[#888888] truncate max-w-[300px]">{h.snippet}</span>}
+              {h.snippet && <span className="text-fg-muted truncate max-w-[300px]">{h.snippet}</span>}
               {h.flags.map((f) => (
                 <span key={f} className="text-[9px] font-semibold text-red-500">{f}</span>
               ))}
               {h.cluster && h.cluster.pending_suggestions > 0 && (
-                <span className="text-[9px] text-[#d4a017]">
+                <span className="text-[9px] [color:var(--panel-header-color)]">
                   {h.cluster.pending_suggestions} possible match{h.cluster.pending_suggestions > 1 ? 'es' : ''}
                 </span>
               )}
@@ -90,7 +90,7 @@ export default function IntelSearchPage() {
         </div>
       ))}
       {!loading && q.trim().length >= 2 && results.length === 0 && (
-        <div className="text-[11px] text-[#888888]">No results.</div>
+        <div className="text-[11px] text-fg-muted">No results.</div>
       )}
     </div>
   );

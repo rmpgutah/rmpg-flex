@@ -13,7 +13,7 @@ interface Props {
   onApply: (cfg: HeaderFooterConfig | null) => void;
 }
 
-const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]';
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
 
 export default function HeaderFooterDialog({ open, value, onClose, onApply }: Props) {
@@ -32,19 +32,19 @@ export default function HeaderFooterDialog({ open, value, onClose, onApply }: Pr
     <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
       <div className="bg-surface-base border border-border-default rounded-[2px] w-[460px] max-w-full p-4 my-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3">
-          <Heading className="w-4 h-4 text-[#d4a017]" />
+          <Heading className="w-4 h-4 [color:var(--panel-header-color)]" />
           <div className="text-sm text-rmpg-100 font-semibold">Header & Footer</div>
           <button type="button" onClick={onClose} aria-label="Close" className="ml-auto text-rmpg-400 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
-        <div className="text-[9px] text-[#d4a017] uppercase tracking-wider mb-1 font-semibold">Header</div>
+        <div className="text-[9px] [color:var(--panel-header-color)] uppercase tracking-wider mb-1 font-semibold">Header</div>
         <div className="grid grid-cols-3 gap-1.5 mb-3">
           <div><label htmlFor="ff-hf-hl" className={labelCls}>Left</label><input id="ff-hf-hl" value={cfg.headerLeft ?? ''} onChange={e => set('headerLeft', e.target.value)} className={inputCls} /></div>
           <div><label htmlFor="ff-hf-hc" className={labelCls}>Center</label><input id="ff-hf-hc" value={cfg.headerCenter ?? ''} onChange={e => set('headerCenter', e.target.value)} className={inputCls} /></div>
           <div><label htmlFor="ff-hf-hr" className={labelCls}>Right</label><input id="ff-hf-hr" value={cfg.headerRight ?? ''} onChange={e => set('headerRight', e.target.value)} className={inputCls} /></div>
         </div>
 
-        <div className="text-[9px] text-[#d4a017] uppercase tracking-wider mb-1 font-semibold">Footer</div>
+        <div className="text-[9px] [color:var(--panel-header-color)] uppercase tracking-wider mb-1 font-semibold">Footer</div>
         <div className="grid grid-cols-3 gap-1.5 mb-3">
           <div><label htmlFor="ff-hf-fl" className={labelCls}>Left</label><input id="ff-hf-fl" value={cfg.footerLeft ?? ''} onChange={e => set('footerLeft', e.target.value)} className={inputCls} /></div>
           <div><label htmlFor="ff-hf-fc" className={labelCls}>Center</label><input id="ff-hf-fc" value={cfg.footerCenter ?? ''} onChange={e => set('footerCenter', e.target.value)} className={inputCls} /></div>

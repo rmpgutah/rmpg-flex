@@ -77,7 +77,7 @@ describe('ServeIntakeMap marker DOM composition', () => {
         position:absolute;top:-3px;right:-3px;
         width:9px;height:9px;
         border-radius:50%;
-        background:#d4a017;
+        background:#d9bd72;
         border:1px solid #000;
         box-shadow:0 0 4px rgba(212,160,23,0.8);
       `;

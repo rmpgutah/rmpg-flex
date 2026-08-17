@@ -475,7 +475,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
             type: 'line',
             source: ROUTE_SOURCE_ID,
             layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0 0 0 / 0)'] },
           });
           map.addLayer({
             id: ROUTE_LAYER_ID,
@@ -639,7 +639,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         try {
           map.setPaintProperty(TRAVELED_LAYER_ID, 'line-gradient', [
             'step', ['line-progress'],
-            'rgba(58,58,58,0.55)', Math.max(fraction, 0.0001), 'rgba(0,0,0,0)',
+            'rgba(58,58,58,0.55)', Math.max(fraction, 0.0001), 'rgba(0 0 0 / 0)',
           ]);
         } catch { /* style not ready */ }
       }
@@ -799,7 +799,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
       'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
       "color:#d4a017;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0,0,0,0.6);' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0 0 0 / 0.6);' +
       'cursor:default;';
     el.textContent = String(order);
     return el;

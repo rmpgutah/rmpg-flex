@@ -218,7 +218,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
   };
 
   // Speed → color + subtle background for evidence strip
-  const spdClr = displaySpeed == null ? '#666666' : displaySpeed > 80 ? '#f87171' : displaySpeed > 60 ? '#fbbf24' : '#4ade80';
+  const spdClr = displaySpeed == null ? 'var(--text-muted)' : displaySpeed > 80 ? 'var(--sev-critical-soft)' : displaySpeed > 60 ? 'var(--sev-warn-soft)' : 'var(--sev-ok-soft)';
   const speedBg = (mph: number | null | undefined): string => {
     if (mph == null) return '';
     if (mph > 80) return 'bg-red-500/10';
@@ -236,7 +236,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header Bar ── */}
-        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-[#2b2b2b]">
+        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-border-subtle">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[9px] font-mono font-bold text-amber-500/80 uppercase tracking-widest truncate">
               {video.title}
@@ -283,13 +283,13 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
 
               {/* ── Top-left: Agency Watermark (burned-in text, no box) ── */}
               <p className="absolute top-3 left-4 font-mono text-[10px] text-white/40 uppercase tracking-[0.15em] leading-none"
-                 style={{ textShadow: '0 0 6px rgba(0,0,0,1), 0 1px 8px rgba(0,0,0,0.9)' }}>
+                 style={{ textShadow: '0 0 6px rgba(0 0 0 / 1), 0 1px 8px rgba(0 0 0 / 0.9)' }}>
                 ROCKY MOUNTAIN PROTECTIVE GROUP
               </p>
 
               {/* ── Top-right: REC indicator + Case (raw LED, no box) ── */}
               <div className="absolute top-3 right-4 flex items-center gap-1.5"
-                   style={{ textShadow: '0 0 6px rgba(0,0,0,1), 0 1px 8px rgba(0,0,0,0.9)' }}>
+                   style={{ textShadow: '0 0 6px rgba(0 0 0 / 1), 0 1px 8px rgba(0 0 0 / 0.9)' }}>
                 <span className="led-dot led-red animate-led-blink" style={{ width: 6, height: 6 }} />
                 <span className="font-mono text-[11px] text-red-400 font-bold tracking-[0.15em]">REC</span>
                 {video.case_number && (
@@ -301,9 +301,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
               </div>
 
               {/* ── Bottom: Evidence Strip (full-width, 2-row, solid) ── */}
-              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-[#2b2b2b]`}>
+              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-border-subtle`}>
                 {/* Row 1 — Primary evidence data */}
-                <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
+                <div className="flex items-center h-6 divide-x divide-border-subtle">
                   {/* Timestamp */}
                   <div className="px-2 font-mono text-[11px] text-white/80 font-bold tabular-nums tracking-wider whitespace-nowrap">
                     {formatHudTime(currentTime)}
@@ -335,7 +335,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
                 </div>
 
                 {/* Row 2 — Secondary context */}
-                <div className="flex items-center h-5 divide-x divide-[#2b2b2b] border-t border-[#2b2b2b]/50">
+                <div className="flex items-center h-5 divide-x divide-border-subtle border-t border-border-subtle/50">
                   {/* Vehicle */}
                   <div className="min-w-0 flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
                     VEH #{video.vehicle_number || '--'} {vehDesc}
@@ -369,7 +369,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
         {/* ── Metadata Bar (below video) ── */}
         <div className="panel-inset bg-[var(--surface-sunken)]">
           {/* Primary data row */}
-          <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
+          <div className="flex items-center h-6 divide-x divide-border-subtle">
             <span className="px-2 text-[9px] font-mono text-white/30 uppercase tracking-wider">
               <span className="text-white/15 mr-1">VEH</span>
               <span className="text-white/50">{video.vehicle_number ? `#${video.vehicle_number}` : '--'}</span>
@@ -403,7 +403,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
 
           {/* Detail lines */}
           {(displayAddress || video.notes || hasLiveGps) && (
-            <div className="px-2 pb-1.5 space-y-0.5 border-t border-[#2b2b2b]/50">
+            <div className="px-2 pb-1.5 space-y-0.5 border-t border-border-subtle/50">
               {displayAddress && (
                 <div className="flex items-center gap-1 text-[8px] font-mono text-white/25 pt-1">
                   <span className="text-white/12">LOC</span>

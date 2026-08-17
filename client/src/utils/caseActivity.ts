@@ -19,7 +19,7 @@ export interface FormattedActivity {
 
 const GREEN = '#22c55e';
 const AMBER = '#f59e0b';
-const GOLD = '#d4a017';
+const GOLD = '#d9bd72'  // brand gold — WCAG AA on surface-base;
 const GRAY = '#888888';
 const RED = '#ef4444';
 const PURPLE = '#8b5cf6';

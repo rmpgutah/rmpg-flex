@@ -631,7 +631,7 @@ function fleetAnalyticsSummary(over: Partial<FleetAnalytics['fleet_summary']> = 
   return {
     maintenance_cost_trend: [{ month: '2026-06', total_cost: 2140.0, count: 3 }],
     mileage_distribution: [{ range: '0-25000', count: 5 }, { range: '25001-50000', count: 8 }],
-    status_breakdown: [{ status: 'in_service', count: 11, color: '#10b981' }, { status: 'out_of_service', count: 2, color: '#ef4444' }],
+    status_breakdown: [{ status: 'in_service', count: 11, color: '#10b981' }, { status: 'out_of_service', count: 2, color: 'var(--sev-critical)' }],
     fuel_economy_trend: [{ month: '2026-06', avg_mpg: 19.2, total_gallons: 168.5, total_cost: 576.42 }],
     fleet_summary: {
       total_vehicles: 13,

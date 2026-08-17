@@ -15,7 +15,7 @@ interface Props {
   onInsert: (file: File, position: number) => void;
 }
 
-const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-rmpg-100 px-2 py-1 rounded-sm focus:outline-none focus:[border-color:var(--field-label-color)]';
 const labelCls = 'text-[9px] uppercase tracking-wider text-rmpg-500 block mb-0.5';
 
 export default function InsertFromPdfDialog({ open, pageCount, activePage, busy, onClose, onInsert }: Props) {
@@ -43,7 +43,7 @@ export default function InsertFromPdfDialog({ open, pageCount, activePage, busy,
       <div className="bg-surface-base border border-border-default rounded-[2px] p-4 max-w-[440px] w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
-            <FilePlus2 className="w-4 h-4 text-[#d4a017]" /> Insert pages from another PDF
+            <FilePlus2 className="w-4 h-4 [color:var(--panel-header-color)]" /> Insert pages from another PDF
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>

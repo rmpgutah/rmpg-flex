@@ -16,4 +16,9 @@ contextBridge.exposeInMainWorld('splashBridge', {
   // Receive auth result from main.
   // Payload: { ok: boolean, error?: string, officer?: { name, role } }
   onAuthResult: (cb) => ipcRenderer.on('splash:auth-result', (_e, data) => cb(data)),
+
+  // Face unlock channels (Task 12)
+  faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
+  faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
+  faceUnlockSuccess: () => ipcRenderer.send('face:unlock-success'),
 });

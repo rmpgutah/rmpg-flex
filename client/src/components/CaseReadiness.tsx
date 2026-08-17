@@ -33,7 +33,7 @@ export function CaseReadinessCard({ caseId, refreshKey }: { caseId: number | str
   if (loading) return <div className="panel-beveled p-3 flex items-center gap-2 text-[10px] text-fg-muted"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Evaluating readiness...</div>;
   if (!data) return null;
 
-  const color = data.percent >= 100 ? '#22c55e' : data.percent >= 60 ? '#d4a017' : '#ef4444';
+  const color = data.percent >= 100 ? 'var(--sev-ok)' : data.percent >= 60 ? 'var(--sev-warn)' : 'var(--sev-critical)';
 
   return (
     <div className="panel-beveled p-4">
@@ -41,7 +41,7 @@ export function CaseReadinessCard({ caseId, refreshKey }: { caseId: number | str
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16 flex-shrink-0">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--surface-raised)" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${data.percent}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">

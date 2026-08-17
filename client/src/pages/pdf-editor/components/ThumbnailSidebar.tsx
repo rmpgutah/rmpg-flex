@@ -129,16 +129,16 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             }}
             onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
             className={`group relative rounded-sm border ${
-              isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
-              batchSelected ? 'border-[#d4a017] ring-1 ring-[#d4a017]' :
-              active ? 'border-[#d4a017]' : 'border-border-default'
+              isDropTarget ? '[border-color:var(--field-label-color)] border-dashed bg-[#d4a017]/10' :
+              batchSelected ? '[border-color:var(--field-label-color)] ring-1 ring-[#d4a017]' :
+              active ? '[border-color:var(--field-label-color)]' : 'border-border-default'
             } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
 
             {onTogglePageSelect && (
               <button type="button" onClick={(e) => { e.stopPropagation(); onTogglePageSelect(idx); }}
                 aria-label={batchSelected ? `Deselect page ${pageNumber}` : `Select page ${pageNumber} for batch ops`}
                 title="Select for batch rotate / crop-all"
-                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-rmpg-600 text-transparent'}`}>
+                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] [border-color:var(--field-label-color)] text-black' : 'bg-black/70 border-rmpg-600 text-transparent'}`}>
                 ✓
               </button>
             )}
@@ -185,7 +185,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
               )}
               {meta?.crop && onClearCrop && (
                 <IconButton onClick={() => onClearCrop(idx)} aria-label="Clear crop" title="Clear crop"
-                  className="p-0.5 text-[#d4a017] hover:text-rmpg-100"><Crop className="w-3 h-3" /></IconButton>
+                  className="p-0.5 [color:var(--panel-header-color)] hover:text-rmpg-100"><Crop className="w-3 h-3" /></IconButton>
               )}
               <IconButton onClick={() => onDelete(idx)} aria-label="Delete page" title="Delete page"
                 className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></IconButton>

@@ -11,9 +11,10 @@ import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
-  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy,
+  FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
+import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useToast } from '../components/ToastProvider';
@@ -21,6 +22,8 @@ import AssignTab from './serve/AssignTab';
 import MyRunTab from './serve/MyRunTab';
 import PerformanceTab from './serve/PerformanceTab';
 import AnalyticsTab from './serve/AnalyticsTab';
+import SubjectFileTab from './serve/SubjectFileTab';
+import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -58,7 +61,7 @@ import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics'] as const;
+const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -110,8 +113,8 @@ function buildServeJobMarkerElement(job: ServeJob, selected: boolean): HTMLEleme
   const el = document.createElement('div');
   const border = selected ? '3px solid #22c55e' : '2px solid #fff';
   const boxShadow = risk
-    ? '0 1px 4px rgba(0,0,0,0.4), 0 0 0 3px rgba(239,68,68,0.6)'
-    : '0 1px 4px rgba(0,0,0,0.4)';
+    ? '0 1px 4px rgba(0 0 0 / 0.4), 0 0 0 3px rgba(239,68,68,0.6)'
+    : '0 1px 4px rgba(0 0 0 / 0.4)';
   el.style.cssText = `position:relative;width:12px;height:12px;border-radius:50%;background:${color};border:${border};box-shadow:${boxShadow};cursor:pointer;`;
 
   if (tier === 'critical' || tier === 'warning') {
@@ -352,7 +355,7 @@ export default function ServePage() {
   const buildNoticeOfAttemptData = async (jobId: number): Promise<(import('../utils/servePdfGenerator').NoticeOfAttemptData & { filename: string }) | null> => {
     // GET /:id returns the job row + its serve_attempts (joined w/ officer).
     const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-    const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+    const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     // Only unsuccessful attempts belong on a Notice of Attempt. Filter on
     // both the legacy result enum AND the new disposition_code: a PS/05.*
@@ -471,7 +474,7 @@ export default function ServePage() {
 
       const fullAddress = [
         job.recipient_address,
-        (job as any).recipient_address_2,
+        job.recipient_address_2,
         job.recipient_city,
         job.recipient_state,
         job.recipient_zip,
@@ -546,7 +549,7 @@ export default function ServePage() {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
       const fullAddress = [
-        job.recipient_address, (job as any).recipient_address_2,
+        job.recipient_address, job.recipient_address_2,
         job.recipient_city, job.recipient_state, job.recipient_zip,
       ].filter(Boolean).join(', ');
 
@@ -563,17 +566,17 @@ export default function ServePage() {
         attorneyName: job.attorney_name || null,
         serviceInstructions: job.service_instructions || null,
         serveDate: job.serve_date || null,
-        recipientType: ((job as any).recipient_type as 'individual' | 'business' | null) || null,
+        recipientType: job.recipient_type || null,
         recipientName: job.recipient_name,
         recipientAddress: fullAddress || job.recipient_address || 'N/A',
-        businessName: (job as any).business_name || null,
-        businessDba: (job as any).business_dba || null,
-        businessEin: (job as any).business_ein || null,
-        businessSosFiling: (job as any).business_sos_filing || null,
-        businessStateOfInc: (job as any).business_state_of_inc || null,
-        registeredAgentName: (job as any).registered_agent_name || null,
-        registeredAgentTitle: (job as any).registered_agent_title || null,
-        registeredOfficeAddress: (job as any).registered_office_address || null,
+        businessName: job.business_name || null,
+        businessDba: job.business_dba || null,
+        businessEin: job.business_ein || null,
+        businessSosFiling: job.business_sos_filing || null,
+        businessStateOfInc: job.business_state_of_inc || null,
+        registeredAgentName: job.registered_agent_name || null,
+        registeredAgentTitle: job.registered_agent_title || null,
+        registeredOfficeAddress: job.registered_office_address || null,
         officerName: user?.full_name || user?.username || 'Process Server',
         officerBadge: user?.badge_number || '',
       });
@@ -590,7 +593,7 @@ export default function ServePage() {
   const handleAffidavitOfService = async (jobId: number) => {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+      const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
       const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
@@ -651,7 +654,7 @@ export default function ServePage() {
   const handleAffidavitOfNonService = async (jobId: number) => {
     try {
       const job = await apiFetch<ServeJob & { attempts?: any[]; skipTraces?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+      const fullAddress = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
       const { formatDate, formatShortTime } = await importWithRetry(() => import('../utils/dateUtils'));
 
@@ -908,8 +911,9 @@ export default function ServePage() {
   }, []);
 
   // ── Fetch saved route for today ──────────────────────────────────
-  const fetchSavedRoute = useCallback(async () => {
+  const fetchSavedRoute = useCallback(async (dateOverride?: string) => {
     if (!user?.id) return;
+    const date = dateOverride ?? selectedDate;
     try {
       // GET /routes/:date returns a ROW ARRAY (src/routes/serve.ts uses
       // query(), i.e. `T[]`), newest first. Assigning the array straight to
@@ -918,7 +922,7 @@ export default function ServePage() {
       // route existed — unconditionally, for every date and officer. Take the
       // newest row (ORDER BY id DESC) and keep the object fallback in case the
       // endpoint is ever narrowed to a single row.
-      const resp = await apiFetch<any>(`/process-server/routes/${selectedDate}?officer_id=${Number(user.id)}`);
+      const resp = await apiFetch<any>(`/process-server/routes/${date}?officer_id=${Number(user.id)}`);
       setSavedRoute(Array.isArray(resp) ? (resp[0] ?? null) : (resp ?? null));
     } catch { setSavedRoute(null); }
   }, [selectedDate, user?.id]);
@@ -951,7 +955,7 @@ export default function ServePage() {
     }
     if (!job.recipient_address) return;
     const addr = [
-      job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
+      job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip,
     ].filter(Boolean).join(', ');
     try {
       const geo = await apiFetch<{ results: Array<{ lat: string; lon: string }> }>(`/geocode/search?q=${encodeURIComponent(addr)}&limit=1`);
@@ -1103,9 +1107,17 @@ export default function ServePage() {
 
   const handleRouteOptimized = useCallback(async (
     orderedJobIds: number[],
-    data: { totalDistance: number; totalDuration: number; fuelCost: number },
+    data: { totalDistance: number; totalDuration: number; fuelCost: number; routeDate?: string },
   ) => {
     setRouteData({ orderedIds: orderedJobIds, ...data });
+    // Sync the page date to the planner's route date so fetchSavedRoute reads
+    // the right row — the user can change the date inside the planner, and if
+    // the page's selectedDate still points at a different day, the Route tab
+    // would fetch the old route and appear not to update.
+    if (data.routeDate && data.routeDate !== selectedDate) {
+      setSelectedDate(data.routeDate);
+    }
+    setActiveTab('Route');
     // Persist sort order to server
     try {
       await apiFetch('/process-server/reorder', {
@@ -1113,11 +1125,11 @@ export default function ServePage() {
         body: JSON.stringify({ items: orderedJobIds.map((id, i) => ({ id, sort_order: i })) }),
       });
       refreshJobs();
-      fetchSavedRoute(); // Refresh saved route for Route tab
+      fetchSavedRoute(data.routeDate); // pass planner date so GET targets the right row
     } catch {
       addToast('Could not save route order on server', 'error');
     }
-  }, [refreshJobs, fetchSavedRoute]);
+  }, [refreshJobs, fetchSavedRoute, selectedDate]);
 
   const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
     // Could update the job's address — for now just close and refresh
@@ -1140,7 +1152,7 @@ export default function ServePage() {
     setFormData({
       recipient_name: job.recipient_name,
       recipient_address: job.recipient_address || '',
-      recipient_address_2: (job as any).recipient_address_2 || '',
+      recipient_address_2: job.recipient_address_2 || '',
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
@@ -1184,15 +1196,15 @@ export default function ServePage() {
       contact_restrictions: job.contact_restrictions || '',
       building_access_notes: job.building_access_notes || '',
       // Recipient type fields (mig 0237)
-      recipient_type: ((job as any).recipient_type as '' | 'individual' | 'business') || '',
-      business_name: (job as any).business_name || '',
-      business_dba: (job as any).business_dba || '',
-      business_ein: (job as any).business_ein || '',
-      business_sos_filing: (job as any).business_sos_filing || '',
-      business_state_of_inc: (job as any).business_state_of_inc || '',
-      registered_agent_name: (job as any).registered_agent_name || '',
-      registered_agent_title: (job as any).registered_agent_title || '',
-      registered_office_address: (job as any).registered_office_address || '',
+      recipient_type: (job.recipient_type as '' | 'individual' | 'business') || '',
+      business_name: job.business_name || '',
+      business_dba: job.business_dba || '',
+      business_ein: job.business_ein || '',
+      business_sos_filing: job.business_sos_filing || '',
+      business_state_of_inc: job.business_state_of_inc || '',
+      registered_agent_name: job.registered_agent_name || '',
+      registered_agent_title: job.registered_agent_title || '',
+      registered_office_address: job.registered_office_address || '',
     });
     setCreateJobOpen(true);
     snapshotForm();
@@ -1240,7 +1252,7 @@ export default function ServePage() {
         body: JSON.stringify({
           recipient_name: source.recipient_name,
           recipient_address: source.recipient_address,
-          recipient_address_2: (source as any).recipient_address_2 ?? undefined,
+          recipient_address_2: source.recipient_address_2 ?? undefined,
           recipient_city: source.recipient_city,
           recipient_state: source.recipient_state,
           recipient_zip: source.recipient_zip,
@@ -1700,7 +1712,7 @@ export default function ServePage() {
 
         // Popup on click
         el.addEventListener('click', () => {
-          const fullAddr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+          const fullAddr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
             .filter(Boolean).join(', ');
           if (popupRef.current) {
             popupRef.current.setLngLat(lngLat).setHTML(`
@@ -2077,7 +2089,7 @@ export default function ServePage() {
 
   // ── Build a serve-job row context menu ──
   const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
-    const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
+    const addr = [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
     return [
@@ -2250,7 +2262,8 @@ export default function ServePage() {
           if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
           if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
           if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
-          // Queue, Route, Map, Stats, My Run — visible to all
+          if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
+          // Queue, Route, Map, Stats, My Run, Subject File — visible to all
           return true;
         }).map(tab => {
           const Icon =
@@ -2261,6 +2274,8 @@ export default function ServePage() {
             tab === 'Assign' ? Users :
             tab === 'Performance' ? BarChart3 :
             tab === 'Analytics' ? LineChart :
+            tab === 'Subject File' ? ScrollText :
+            tab === 'Collections' ? DollarSign :
             Route; // My Run
           return (
             <button type="button"
@@ -2601,13 +2616,17 @@ export default function ServePage() {
         {/* ── Route Tab (Step 3.4) ──────────────────────────────── */}
         {activeTab === 'Route' && (
           <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
-            {savedRoute && savedRoute.optimized_order_json ? (() => {
+            {/* Use routeData as an immediate fallback before savedRoute arrives from DB */}
+            {(savedRoute?.optimized_order_json || routeData) ? (() => {
               const orderIds: number[] = (() => {
-                try {
-                  return typeof savedRoute.optimized_order_json === 'string'
-                    ? JSON.parse(savedRoute.optimized_order_json)
-                    : savedRoute.optimized_order_json;
-                } catch { return []; }
+                if (savedRoute?.optimized_order_json) {
+                  try {
+                    return typeof savedRoute.optimized_order_json === 'string'
+                      ? JSON.parse(savedRoute.optimized_order_json)
+                      : savedRoute.optimized_order_json;
+                  } catch { /* fall through to routeData */ }
+                }
+                return routeData?.orderedIds ?? [];
               })();
               const routeJobs = orderIds
                 .map(id => jobs.find(j => j.id === id))
@@ -2616,21 +2635,50 @@ export default function ServePage() {
               const totalStops = routeJobs.length;
               const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
 
+              // Per-stop ETA estimates: run haversine nearest-neighbor on the
+              // ordered job list so the Route tab shows arrival times without
+              // another API call. Plain IIFE (not useMemo) because this runs
+              // inside a conditional render expression where hooks are banned.
+              // Anchor ETAs to the saved planned start time when available so
+              // the Route tab shows future wall-clock times rather than
+              // "from now". Parse as local time (same logic as ServeRoutePlanner).
+              const routeStartMs = (() => {
+                const t = savedRoute?.planned_start_time;
+                const d = savedRoute?.route_date;
+                if (t && d && /^\d{2}:\d{2}$/.test(t)) {
+                  const [h, m] = t.split(':').map(Number);
+                  const dt = new Date(d + 'T00:00:00'); // new-date-ok — local-time parse intentional
+                  dt.setHours(h, m, 0, 0);
+                  return dt.getTime();
+                }
+                return Date.now(); // new-date-ok — fallback to now when no saved start
+              })();
+              const stopEtas: Map<number, number> = (() => {
+                const geocoded = routeJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
+                if (geocoded.length < 1) return new Map<number, number>();
+                const stopItems = geocoded.map((j, i) => ({ job: j, selected: true, order: i }));
+                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null, routeStartMs);
+                const map = new Map<number, number>();
+                ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) map.set(s.job.id, perStopArrivalMs[i]); });
+                return map;
+              })();
+
               return (
                 <>
                   {/* Stats bar */}
-                  <div className="flex items-center gap-4 flex-wrap px-3 py-2 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
-                      <MapPin size={12} className="text-rmpg-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span> stops
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-4 sm:flex-wrap px-3 py-2.5 bg-surface-sunken border border-rmpg-700 rounded-[2px]" role="status" aria-label="Route statistics">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                      <MapPin size={12} className="text-fg-secondary" />
+                      <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span>
+                      <span>stops</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Navigation size={12} className="text-emerald-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs">
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                       <Calendar size={12} className="text-amber-400" />
                       <span className="font-mono tabular-nums text-rmpg-100">
                         {savedRoute.total_time_minutes
@@ -2638,8 +2686,26 @@ export default function ServePage() {
                           : '--'}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-rmpg-400 text-xs ml-auto">
-                      <span className="font-mono tabular-nums text-brand-gold-500">
+                    {savedRoute?.total_distance_miles && (
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                        <span className="text-[color:var(--field-label-color)] font-mono">$</span>
+                        <span className="font-mono tabular-nums text-rmpg-100">
+                          ${(Number(savedRoute.total_distance_miles) * serveMileageRate).toFixed(2)}
+                        </span>
+                        <span className="text-fg-muted text-[9px]">fuel</span>
+                      </div>
+                    )}
+                    {savedRoute?.total_distance_miles && totalStops > 0 && (
+                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                        <Gauge size={11} className="text-fg-muted" />
+                        <span className="font-mono tabular-nums text-rmpg-100">
+                          {(totalStops / Number(savedRoute.total_distance_miles)).toFixed(1)}
+                        </span>
+                        <span className="text-fg-muted text-[9px]">stops/mi</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs sm:ml-auto col-span-2 sm:col-span-1">
+                      <span className="font-mono tabular-nums text-[color:var(--field-label-color)]">
                         {completedCount}/{totalStops} done ({progressPct}%)
                       </span>
                     </div>
@@ -2658,57 +2724,103 @@ export default function ServePage() {
                     {routeJobs.map((job, idx) => {
                       const isCompleted = job.status === 'served';
                       const isFailed = job.status === 'failed';
+                      const deadlineDate = job.deadline ? parseTimestamp(job.deadline) : null;
+                      const isOverdue = deadlineDate && deadlineDate < new Date(); // new-date-ok — wall-clock comparison
+                      const priorityColors: Record<string, string> = {
+                        urgent: 'bg-red-900/40 text-red-400 border-red-700/50',
+                        rush: 'bg-orange-900/40 text-orange-400 border-orange-700/50',
+                        normal: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
+                        routine: 'bg-rmpg-800/30 text-fg-muted border-rmpg-700/30',
+                      };
+                      const twColors: Record<string, string> = {
+                        morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+                        afternoon: 'bg-surface-sunken/40 text-fg-secondary border-border-default/50',
+                        evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
+                        anytime: 'bg-rmpg-800/40 text-fg-secondary border-rmpg-700/50',
+                      };
                       return (
                         <div
                           key={job.id}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
+                          className={`flex items-start gap-2.5 px-3 py-2.5 rounded-[2px] border transition-all duration-150 ${
                             isCompleted
                               ? 'bg-green-900/10 border-green-800/30 opacity-60'
                               : isFailed
                                 ? 'bg-red-900/10 border-red-800/30 opacity-60'
-                                : 'bg-surface-raised border-rmpg-700 hover:border-rmpg-400/30'
+                                : 'bg-surface-raised border-rmpg-700 hover:border-rmpg-500/40'
                           }`}
                         >
                           {/* Stop number */}
                           <span
-                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 ${
+                            className={`w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold text-rmpg-100 flex-shrink-0 mt-0.5 ${
                               isCompleted ? 'bg-green-500' : isFailed ? 'bg-red-500' : job.status === 'in_progress' ? 'bg-amber-500' : 'bg-rmpg-500'
                             }`}
                           >
                             {idx + 1}
                           </span>
 
-                          {/* Completion indicator */}
-                          {isCompleted ? (
-                            <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
-                          ) : (
-                            <Circle size={14} className="text-rmpg-600 flex-shrink-0" />
-                          )}
-
                           {/* Info */}
                           <div className="flex-1 min-w-0">
-                            <div className={`text-xs font-medium truncate ${isCompleted ? 'text-rmpg-400 line-through' : 'text-rmpg-100'}`}>
-                              {job.recipient_name}
+                            <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                              <span className={`text-xs font-medium truncate ${isCompleted ? 'text-fg-muted line-through' : 'text-rmpg-100'}`}>
+                                {job.recipient_name}
+                              </span>
+                              {job.priority && job.priority !== 'normal' && (
+                                <span className={`text-[9px] px-1 py-0.5 rounded-[2px] border font-mono uppercase flex-shrink-0 ${priorityColors[job.priority] ?? priorityColors.normal}`}>
+                                  {job.priority}
+                                </span>
+                              )}
+                              {job.time_window && job.time_window !== 'anytime' && (
+                                <span className={`text-[9px] px-1 py-0.5 rounded-[2px] border font-mono flex-shrink-0 ${twColors[job.time_window] ?? twColors.anytime}`}>
+                                  {job.time_window}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[10px] text-rmpg-500 truncate">
+                            <div className="text-[10px] text-fg-muted truncate">
                               {job.recipient_address || 'No address'}
-                              {(job as any).recipient_address_2 ? `, ${(job as any).recipient_address_2}` : ''}
+                              {job.recipient_address_2 ? `, ${job.recipient_address_2}` : ''}
                               {job.recipient_city ? `, ${job.recipient_city}` : ''}
                             </div>
+                            {stopEtas.has(job.id) && (
+                              <div className={`text-[9px] font-mono mt-0.5 ${isCompleted ? 'text-fg-muted' : 'text-fg-secondary'}`}>
+                                ETA {new Date(stopEtas.get(job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms */}
+                              </div>
+                            )}
+                            {deadlineDate && (
+                              <div className={`text-[9px] font-mono mt-0.5 ${isOverdue ? 'text-red-400' : 'text-fg-muted'}`}>
+                                {isOverdue ? '⚠ ' : ''}Deadline: {deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {/* new-date-ok — from DB */}
+                              </div>
+                            )}
+                            {(job as any).case_number && (
+                              <div className="text-[9px] text-fg-muted font-mono mt-0.5">
+                                Case #{(job as any).case_number}
+                              </div>
+                            )}
                           </div>
 
-                          {/* Status badge */}
-                          <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] flex-shrink-0 border ${
-                            isCompleted
-                              ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                              : isFailed
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                : job.status === 'in_progress'
-                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                  : 'bg-rmpg-500/10 text-rmpg-400 border-rmpg-500/20'
-                          }`}>
-                            {toDisplayLabel(job.status)}
-                          </span>
+                          {/* Right side: status + navigate */}
+                          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                            <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded-[2px] border ${
+                              isCompleted
+                                ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                                : isFailed
+                                  ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                  : job.status === 'in_progress'
+                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    : 'bg-rmpg-500/10 text-fg-secondary border-rmpg-500/20'
+                            }`}>
+                              {toDisplayLabel(job.status)}
+                            </span>
+                            {!isCompleted && !isFailed && (job.recipient_lat != null || job.recipient_address) && (
+                              <button
+                                type="button"
+                                onClick={() => handleNavigate(job.id)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono text-emerald-400 bg-emerald-900/20 border border-emerald-700/40 rounded-[2px] hover:bg-emerald-900/40 transition-colors"
+                                aria-label={`Navigate to ${job.recipient_name}`}
+                              >
+                                <Navigation size={9} /> Nav
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -2907,9 +3019,9 @@ export default function ServePage() {
                   {routeData?.totalDistance
                     ? `${routeData.totalDistance.toFixed(1)} mi`
                     : stats?.mileage
-                      ? `${stats.mileage.toFixed(1)} mi`
+                      ? `${Number(stats.mileage).toFixed(1)} mi`
                       : stats?.planned_mileage
-                        ? `${stats.planned_mileage.toFixed(1)} mi`
+                        ? `${Number(stats.planned_mileage).toFixed(1)} mi`
                         : '--'
                   }
                 </div>
@@ -3063,10 +3175,27 @@ export default function ServePage() {
             officerId={Number(user.id)}
             sharedJobs={jobs}
             onJobsChange={setJobs}
+            routeOrderIds={(() => {
+              if (savedRoute?.optimized_order_json) {
+                try {
+                  const ids = typeof savedRoute.optimized_order_json === 'string'
+                    ? JSON.parse(savedRoute.optimized_order_json)
+                    : savedRoute.optimized_order_json;
+                  return Array.isArray(ids) ? ids : undefined;
+                } catch { return undefined; }
+              }
+              return routeData?.orderedIds;
+            })()}
           />
         )}
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
         {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
+        {activeTab === 'Subject File' && (
+          <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+        )}
+        {activeTab === 'Collections' && ['admin','manager','supervisor'].includes(user?.role ?? '') && (
+          <CollectionDatabaseTab />
+        )}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════ */}
@@ -3111,6 +3240,7 @@ export default function ServePage() {
         // default (every non-served/failed geocoded job).
         preselectedJobIds={selectedJobIds}
         mileageRate={serveMileageRate}
+        initialDate={selectedDate}
       />
 
       {/* Skip Trace Panel */}

@@ -239,7 +239,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         // followed by the small top-down aerial for context. The street/
         // perspective frame is a button that opens the interactive lightbox.
         if (hasImg) {
-          const expandHint = `<div style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,0.6);color:#d4a017;font-size:7px;font-weight:bold;letter-spacing:0.06em;padding:1px 4px;border-radius:2px;">⤢ EXPAND</div>`;
+          const expandHint = `<div style="position:absolute;top:3px;right:3px;background:rgba(0 0 0 / 0.6);color:#d4a017;font-size:7px;font-weight:bold;letter-spacing:0.06em;padding:1px 4px;border-radius:2px;">⤢ EXPAND</div>`;
           if (street?.thumbUrl) {
             const ago = street.capturedAt ? new Date(street.capturedAt).toISOString().slice(0, 10) : '';
             const meta = [ago, street.distanceM != null ? `${street.distanceM}m` : ''].filter(Boolean).join(' · ');

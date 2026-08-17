@@ -176,6 +176,12 @@ for f in "$MIGRATIONS_DIR"/*.sql; do
   fname=$(basename "$f")
   sql=$(cat "$f")
 
+  # Skip migrations explicitly marked local-only (e.g. FZ-55 local DB tables).
+  if head -3 "$f" | grep -qi 'local-only'; then
+    log "skipping local-only migration: $fname"
+    continue
+  fi
+
   # Extract CREATE TABLE statements. Last file wins per table name,
   # matching the original associative-array overwrite semantics.
   while IFS= read -r tname; do

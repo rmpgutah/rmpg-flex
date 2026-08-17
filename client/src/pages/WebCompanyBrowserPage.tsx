@@ -104,7 +104,7 @@ const S = {
   panel: { position: 'fixed' as const, top: 0, right: 0, bottom: 0, width: 280, background: 'var(--surface-raised)', borderLeft: '1px solid var(--border-subtle)', zIndex: 50, display: 'flex', flexDirection: 'column' as const, overflowY: 'auto' as const },
   panelHeader: { padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', color: 'var(--field-label-color)', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   panelRow: { padding: '4px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' as const, fontSize: 10 },
-  modal: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  modal: { position: 'fixed' as const, inset: 0, background: 'rgba(0 0 0 / 0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   modalBox: { background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, padding: 16, minWidth: 340, maxWidth: '90vw', maxHeight: '80vh', overflowY: 'auto' as const },
 };
 
@@ -564,7 +564,7 @@ export default function WebCompanyBrowserPage() {
               display: 'flex', alignItems: 'center', gap: 3,
               padding: tab.pinned ? '2px 6px' : '2px 8px',
               background: tab.id === activeTabId ? 'var(--surface-raised)' : 'transparent',
-              borderTop: tab.id === activeTabId ? '2px solid var(--accent-silver-400, #c3ccd6)' : '2px solid transparent',
+              borderTop: tab.id === activeTabId ? '2px solid var(--accent-silver-400)' : '2px solid transparent',
               borderLeft: '1px solid var(--border-subtle)',
               borderRight: '1px solid var(--border-subtle)',
               cursor: 'pointer', fontSize: 10, minWidth: 0,
@@ -615,7 +615,7 @@ export default function WebCompanyBrowserPage() {
       {/* Feature 50: loading progress bar */}
       {loadProgress > 0 && (
         <div style={{ height: 2, background: 'var(--border-subtle)', flexShrink: 0 }}>
-          <div style={{ height: '100%', width: `${loadProgress}%`, background: 'var(--accent-silver-400, #c3ccd6)', transition: 'width 0.2s ease' }} />
+          <div style={{ height: '100%', width: `${loadProgress}%`, background: 'var(--accent-silver-400)', transition: 'width 0.2s ease' }} />
         </div>
       )}
 
@@ -675,7 +675,7 @@ export default function WebCompanyBrowserPage() {
         {/* Feature 30: dark mode */}
         <button onClick={toggleDarkMode} style={S.iconBtn} title="Dark mode" aria-label="Dark mode">🌙</button>
         {/* Feature 31: mobile viewport */}
-        <button onClick={toggleMobileViewport} style={{ ...S.iconBtn, color: mobileViewport ? 'var(--accent-gold-300, #d9bd72)' : 'var(--text-secondary)' }} title="Mobile viewport" aria-label="Mobile viewport">📱</button>
+        <button onClick={toggleMobileViewport} style={{ ...S.iconBtn, color: mobileViewport ? 'var(--accent-gold-300)' : 'var(--text-secondary)' }} title="Mobile viewport" aria-label="Mobile viewport">📱</button>
         {/* Feature 32/33/34: zoom */}
         <button onClick={() => sendToActive({ type: 'zoom_out' })} style={S.iconBtn} aria-label="Zoom out">−</button>
         <button onClick={() => sendToActive({ type: 'zoom_reset' })} style={S.btn} aria-label="Zoom reset">100%</button>

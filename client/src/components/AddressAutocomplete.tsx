@@ -138,10 +138,10 @@ function injectAutocompleteStyles() {
   style.id = AUTOCOMPLETE_STYLE_ID;
   style.textContent = `
     .rmpg-geocoder-dropdown {
-      background: #141414 !important;
-      border: 1px solid #404040 !important;
+      background: var(--surface-sunken) !important;
+      border: 1px solid var(--border-default) !important;
       border-radius: 2px !important;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+      box-shadow: 0 8px 24px rgba(0 0 0 / 0.6) !important;
       font-family: 'Courier New', monospace !important;
       z-index: 99999 !important;
       margin-top: 2px !important;
@@ -152,9 +152,9 @@ function injectAutocompleteStyles() {
       overflow-y: auto;
     }
     .rmpg-geocoder-item {
-      background: #141414 !important;
-      border-top: 1px solid #2b2b2b !important;
-      color: #d1d5db !important;
+      background: var(--surface-sunken) !important;
+      border-top: 1px solid var(--border-subtle) !important;
+      color: var(--text-secondary) !important;
       padding: 6px 10px !important;
       font-size: 11px !important;
       cursor: pointer !important;
@@ -164,19 +164,19 @@ function injectAutocompleteStyles() {
       border-top: none !important;
     }
     .rmpg-geocoder-item:hover, .rmpg-geocoder-item-selected {
-      background: #181818 !important;
+      background: var(--surface-raised) !important;
     }
     .rmpg-geocoder-item strong {
-      color: #e5e7eb !important;
+      color: var(--text-primary) !important;
       font-weight: 700 !important;
     }
     .rmpg-geocoder-item .rmpg-geocoder-secondary {
-      color: #6b7280 !important;
+      color: var(--text-muted) !important;
       font-size: 10px !important;
     }
     .rmpg-geocoder-no-results {
-      background: #141414 !important;
-      color: #6b7280 !important;
+      background: var(--surface-sunken) !important;
+      color: var(--text-muted) !important;
       padding: 6px 10px !important;
       font-size: 11px !important;
       font-style: italic;
@@ -548,7 +548,7 @@ export default function AddressAutocomplete({
       {tokenReady && (
         <MapPin
           className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
-          style={{ width: 12, height: 12, color: value ? '#888888' : '#505050' }}
+          style={{ width: 12, height: 12, color: value ? 'var(--text-muted)' : 'rgb(var(--text-muted-rgb) / 0.5)' }}
           aria-hidden="true"
         />
       )}

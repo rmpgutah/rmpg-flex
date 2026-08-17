@@ -142,7 +142,7 @@ export default function EmergencyOverride({ onActivate, onDeactivate }: Emergenc
               className="w-full py-3 rounded-[2px] cursor-pointer select-none relative overflow-hidden"
               style={{
                 background: `repeating-linear-gradient(45deg, rgb(var(--sev-critical-rgb) / 0.8), rgb(var(--sev-critical-rgb) / 0.8) 8px, rgb(var(--sev-critical-rgb) / 0.55) 8px, rgb(var(--sev-critical-rgb) / 0.55) 16px)`,
-                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
+                boxShadow: 'inset 0 2px 4px rgba(0 0 0 / 0.5)',
                 border: '1px solid var(--surface-sunken)',
               }}
               title="Hold 2 seconds to activate Emergency Override"

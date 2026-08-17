@@ -182,20 +182,20 @@ type SysSection = 'incident_types' | 'dispositions' | 'priorities' | 'call_sourc
 
 const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
-  { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
-  { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
+  { level: 'P2', label: 'Urgent', color: 'var(--sev-warn)', target: '< 5 min' },
+  { level: 'P3', label: 'Routine', color: 'var(--text-muted)', target: '< 10 min' },
   { level: 'P4', label: 'Scheduled', color: 'var(--text-muted)', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
 
 const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
-  { type: 'patrol', label: 'Patrol', color: '#888888' },
-  { type: 'supervisor', label: 'Supervisor', color: '#f59e0b' },
+  { type: 'patrol', label: 'Patrol', color: 'var(--text-muted)' },
+  { type: 'supervisor', label: 'Supervisor', color: 'var(--sev-warn)' },
   { type: 'k9', label: 'K9', color: '#8b5cf6' },
-  { type: 'medical', label: 'Medical', color: '#ef4444' },
+  { type: 'medical', label: 'Medical', color: 'var(--sev-critical)' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
-  { type: 'foot', label: 'Foot Patrol', color: '#888888' },
+  { type: 'foot', label: 'Foot Patrol', color: 'var(--text-muted)' },
   { type: 'vehicle', label: 'Vehicle', color: 'var(--text-muted)' },
 ];
 
@@ -219,7 +219,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
-  accent_color: '#d4a017',
+  accent_color: 'var(--field-label-color)',
   header_bg_color: 'var(--surface-raised)',
 };
 
@@ -757,7 +757,7 @@ export default function AdminSystemTab({
 
   // Start editing a disposition row (shared by the inline pencil + context menu).
   const startEditDisposition = (item: ConfigItem) => {
-    let parsed = { code: '', description: '', color: '#888888' };
+    let parsed = { code: '', description: '', color: 'var(--text-muted)' };
     try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
     setEditingDispId(item.id);
     setEditDispDesc(parsed.description);
@@ -768,7 +768,7 @@ export default function AdminSystemTab({
     try {
       const item = dispositionCodes.find((d) => d.id === id);
       if (!item) return;
-      let parsed = { code: '', description: '', color: '#888888' };
+      let parsed = { code: '', description: '', color: 'var(--text-muted)' };
       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
 
       await apiFetch(`/admin/config/${id}`, {
@@ -1365,7 +1365,7 @@ export default function AdminSystemTab({
   ];
 
   const buildDispositionMenu = (item: ConfigItem): ContextMenuItem[] => {
-    let parsed = { code: '', description: '', color: '#888888' };
+    let parsed = { code: '', description: '', color: 'var(--text-muted)' };
     try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
     return [
       m.action('Edit disposition', () => startEditDisposition(item), { icon: <Edit size={12} /> }),
@@ -1571,7 +1571,7 @@ export default function AdminSystemTab({
                   </thead>
                   <tbody>
                     {dispositionCodes.map((item) => {
-                      let parsed = { code: '', description: '', color: '#888888' };
+                      let parsed = { code: '', description: '', color: 'var(--text-muted)' };
                       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
                       const isEditing = editingDispId === item.id;
                       return (

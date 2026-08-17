@@ -19,7 +19,7 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
       {value.map((v, i) => (
         <div key={v.id} className="border border-border-default p-3 bg-surface-sunken">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] uppercase font-bold text-[#d4a017]">Violation {i + 1}</span>
+            <span className="text-[10px] uppercase font-bold [color:var(--panel-header-color)]">Violation {i + 1}</span>
             <button
               type="button"
               onClick={() => onChange(value.filter((x) => x.id !== v.id))}
@@ -97,13 +97,13 @@ export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
       <button
         type="button"
         onClick={() => onChange([...value, newDraft()])}
-        className="w-full py-2 text-xs border border-dashed border-rmpg-600 text-[#888] hover:text-[#d4a017] hover:border-[#d4a017]"
+        className="w-full py-2 text-xs border border-dashed border-rmpg-600 text-[#888] hover:[color:var(--panel-header-color)] hover:[border-color:var(--field-label-color)]"
       >
         + Add Violation
       </button>
       <div className="flex justify-between border-t border-border-default pt-2">
         <span className="text-[10px] uppercase font-bold">Total Fine</span>
-        <span className="text-xs font-bold text-[#d4a017]">${totalFineOf(value).toFixed(2)}</span>
+        <span className="text-xs font-bold [color:var(--panel-header-color)]">${totalFineOf(value).toFixed(2)}</span>
       </div>
     </div>
   );

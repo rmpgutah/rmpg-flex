@@ -139,8 +139,8 @@ export default function CrimeAnalysisPage() {
   const BlueGradient = (
     <defs>
       <linearGradient id="blueBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="var(--rmpg-600, #1e4a7a)" />
-        <stop offset="100%" stopColor="var(--rmpg-400, #3a7fc1)" />
+        <stop offset="0%" stopColor="var(--rmpg-600)" />
+        <stop offset="100%" stopColor="var(--rmpg-400)" />
       </linearGradient>
     </defs>
   );
@@ -148,8 +148,8 @@ export default function CrimeAnalysisPage() {
   const OrangeGradient = (
     <defs>
       <linearGradient id="orangeBar" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="var(--amber-900, #92400e)" />
-        <stop offset="100%" stopColor="var(--amber-500, #d97706)" />
+        <stop offset="0%" stopColor="var(--sev-high)" />
+        <stop offset="100%" stopColor="var(--sev-warn)" />
       </linearGradient>
     </defs>
   );
@@ -246,9 +246,9 @@ export default function CrimeAnalysisPage() {
         <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3 mb-4`}>
           {[
             { label: 'Total Incidents', value: totalIncidents, color: 'text-rmpg-100', spark: 'var(--text-secondary)' },
-            { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: 'var(--green-500, #10b981)' },
-            { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400', spark: 'var(--amber-500, #d97706)' },
-            { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: 'var(--red-500, #ef4444)' },
+            { label: 'Clearance Rate', value: `${data?.clearanceRate?.rate ?? 0}%`, color: 'text-green-400', spark: 'var(--sev-ok)' },
+            { label: 'Avg Response', value: `${data?.responseMetrics?.[0]?.avg_minutes ?? '—'} min`, color: 'text-amber-400', spark: 'var(--sev-warn)' },
+            { label: 'Repeat Offenders', value: data?.repeatOffenders?.length || 0, color: 'text-red-400', spark: 'var(--sev-critical)' },
           ].map(card => (
             <div key={card.label} className="panel-beveled p-3 text-center relative overflow-hidden">
               <div className="text-[9px] font-mono text-rmpg-500 uppercase">{card.label}</div>
@@ -315,7 +315,7 @@ export default function CrimeAnalysisPage() {
                     <AreaChart data={todData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                       <defs>
                         <linearGradient id="todGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--purple-600, #7c3aed)" stopOpacity={0.5} />
+                          <stop offset="0%" stopColor="var(--sev-special-soft)" stopOpacity={0.5} />
                           <stop offset="50%" stopColor="var(--rmpg-400)" stopOpacity={0.3} />
                           <stop offset="100%" stopColor="var(--rmpg-400)" stopOpacity={0.05} />
                         </linearGradient>
@@ -325,8 +325,8 @@ export default function CrimeAnalysisPage() {
                         interval={isMobile ? 5 : 3} />
                       <YAxis tick={AXIS_STYLE} axisLine={false} tickLine={false} width={28} />
                       <Tooltip content={<ChartTooltip formatter={(l: string, v: number) => `${v} calls`} />} />
-                      <Area type="monotone" dataKey="count" stroke="var(--purple-600, #7c3aed)" strokeWidth={2}
-                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: 'var(--purple-400, #a78bfa)', stroke: 'var(--purple-600, #7c3aed)' }} />
+                      <Area type="monotone" dataKey="count" stroke="var(--sev-special-soft)" strokeWidth={2}
+                        fill="url(#todGrad)" dot={false} activeDot={{ r: 3, fill: 'var(--sev-special)', stroke: 'var(--sev-special-soft)' }} />
                     </AreaChart>
                   </ResponsiveContainer>
                   <div className="flex items-center justify-center gap-4 mt-2">
@@ -334,7 +334,7 @@ export default function CrimeAnalysisPage() {
                       <div className="w-3 h-2 bg-rmpg-400" /> Day (06-18)
                     </span>
                     <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                      <div className="w-3 h-2" style={{ background: 'var(--purple-600, #7c3aed)' }} /> Night
+                      <div className="w-3 h-2" style={{ background: 'var(--sev-special-soft)' }} /> Night
                     </span>
                   </div>
                 </>
@@ -353,12 +353,12 @@ export default function CrimeAnalysisPage() {
                   <BarChart data={dowData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
                     <defs>
                       <linearGradient id="greenBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--green-400, #10b981)" />
-                        <stop offset="100%" stopColor="var(--green-600, #059669)" />
+                        <stop offset="0%" stopColor="var(--sev-ok-soft)" />
+                        <stop offset="100%" stopColor="var(--sev-ok)" />
                       </linearGradient>
                       <linearGradient id="purpleBar" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--purple-400, #a855f7)" />
-                        <stop offset="100%" stopColor="var(--purple-600, #7c3aed)" />
+                        <stop offset="0%" stopColor="var(--sev-special)" />
+                        <stop offset="100%" stopColor="var(--sev-special-soft)" />
                       </linearGradient>
                     </defs>
                     <CartesianGrid {...GRID_PROPS} vertical={false} />
@@ -378,7 +378,7 @@ export default function CrimeAnalysisPage() {
                   <div className="w-3 h-2 rounded-[1px] bg-green-400" /> Weekday
                 </span>
                 <span className="flex items-center gap-1 text-[9px] text-rmpg-400">
-                  <div className="w-3 h-2 rounded-[1px]" style={{ background: 'var(--purple-400, #a855f7)' }} /> Weekend
+                  <div className="w-3 h-2 rounded-[1px]" style={{ background: 'var(--sev-special)' }} /> Weekend
                 </span>
               </div>
             </div>
@@ -423,7 +423,7 @@ export default function CrimeAnalysisPage() {
                     const target = responseTargets[metric.priority] ?? 15;
                     const pct = Math.min(100, ((metric.avg_minutes ?? 0) / target) * 100);
                     const overTarget = (metric.avg_minutes ?? 0) > target;
-                    const barColor = overTarget ? 'var(--red-500, #ef4444)' : metric.priority === 'critical' ? 'var(--amber-500, #f59e0b)' : 'var(--green-500, #10b981)';
+                    const barColor = overTarget ? 'var(--sev-critical)' : metric.priority === 'critical' ? 'var(--sev-warn)' : 'var(--sev-ok)';
                     const labelColor = metric.priority === 'critical' ? 'var(--sev-critical)' : metric.priority === 'high' ? 'var(--sev-warn-soft)' : 'var(--text-secondary)';
                     return (
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">

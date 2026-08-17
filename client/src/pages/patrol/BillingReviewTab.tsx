@@ -133,7 +133,7 @@ export default function BillingReviewTab() {
       {voidChargeId != null && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          style={{ background: 'rgba(0 0 0 / 0.55)' }}
           onClick={() => setVoidChargeId(null)}
         >
           <div
@@ -176,7 +176,7 @@ export default function BillingReviewTab() {
       {showInvoiceModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.55)' }}
+          style={{ background: 'rgba(0 0 0 / 0.55)' }}
           onClick={() => setShowInvoiceModal(false)}
         >
           <div

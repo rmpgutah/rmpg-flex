@@ -85,6 +85,7 @@ export const UNIT_COLUMNS: StatusColumn[] = [
   { key: 'status', label: 'St', width: 52, align: 'center' },
   { key: 'call_number', label: 'Call #', width: 96 },
   { key: 'beat', label: 'Beat', width: 64 },
+  { key: 'ps_route', label: 'PS Rt', width: 52, align: 'center' },
   { key: 'time', label: 'Last', width: 52, align: 'right' },
 ];
 
@@ -125,6 +126,7 @@ export function unitToRow(
     status: cadUnitStatusLabel(unit.status),
     call_number: callNumberById(unit.current_call_id) || unit.current_call_number || '',
     beat: unit.assigned_beat || '',
+    ps_route: unit.ps_route_stops ? `${unit.ps_route_stops}` : '',
     time: timeHHMM(unit.last_status_change),
   };
 }

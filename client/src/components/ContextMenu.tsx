@@ -127,7 +127,7 @@ function ContextMenu({ items, children }: ContextMenuProps) {
           ref={menuRef}
           role="menu"
           style={{ position: 'fixed', left: pos.x, top: pos.y, zIndex: 9999, minWidth: MENU_MIN_WIDTH }}
-          className="bg-[#141414] border border-[#2a2a2a] rounded-sm py-1 shadow-lg"
+          className="bg-surface-deep border border-[#2a2a2a] rounded-sm py-1 shadow-lg"
         >
           {items.map((item, i) => {
             if (item.divider) {

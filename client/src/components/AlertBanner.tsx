@@ -37,8 +37,8 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
                 ? 'rgba(220, 38, 38, 0.3)'
                 : 'rgba(180, 120, 0, 0.2)',
               border: isCritical
-                ? '1px solid #991b1b'
-                : '1px solid #a07000',
+                ? '1px solid var(--sev-critical)'
+                : '1px solid var(--sev-warn)',
               borderRadius: 0,
             }}
           >
@@ -54,7 +54,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
             {/* Type icon */}
             <Icon
               className="w-4 h-4 flex-shrink-0"
-              style={{ color: isCritical ? '#ef4444' : '#f59e0b' }}
+              style={{ color: isCritical ? 'var(--sev-critical)' : 'var(--sev-warn)' }}
             />
 
             {/* Alert content */}
@@ -67,7 +67,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
                 {alert.entity_id && (
                   <span
                     className="font-mono ml-2"
-                    style={{ color: isCritical ? '#fca5a5' : '#fcd34d' }}
+                    style={{ color: isCritical ? 'var(--sev-critical-soft)' : 'var(--stat-accent-amber-bright)' }}
                   >
                     {alert.entity_id}
                   </span>
@@ -95,7 +95,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
               >
                 <X
                   className="w-3.5 h-3.5"
-                  style={{ color: isCritical ? '#fca5a5' : '#fcd34d' }}
+                  style={{ color: isCritical ? 'var(--sev-critical-soft)' : 'var(--stat-accent-amber-bright)' }}
                 />
               </button>
             )}
