@@ -4303,6 +4303,10 @@ export default function DispatchPage() {
                           content: n.text || '',
                           created_at: n.timestamp || '',
                         })),
+                        // Pass action_taken, cross_street, description for PDF
+                        action_taken: (selectedCall as any)?.action_taken || '',
+                        cross_street: (selectedCall as any)?.cross_street || '',
+                        description: selectedCall?.description || '',
                         // Build narrative from notes for PDF
                         narrative: selectedCall?.notes?.map((n: any) =>
                           `[${n.timestamp ? formatTime(n.timestamp) : ''}] ${n.author || 'System'}: ${n.text || ''}`
@@ -4832,6 +4836,12 @@ export default function DispatchPage() {
                         <p className="text-[10px] text-brand-400 ml-5 flex items-center gap-1">
                           <Building2 className="w-3 h-3" />
                           {selectedCall.client_name}
+                        </p>
+                      )}
+                      {!isEditing && (selectedCall as any).cross_street && (
+                        <p className="text-[10px] text-rmpg-400 ml-5 flex items-center gap-1">
+                          <Navigation style={{ width: 10, height: 10 }} />
+                          <span className="text-rmpg-300">X-St: {(selectedCall as any).cross_street}</span>
                         </p>
                       )}
                       {/* Weather at call location — officer safety indicator */}

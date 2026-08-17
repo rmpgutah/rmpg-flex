@@ -27,6 +27,10 @@ import { isFlagSet } from '../../utils/sentinel';
 
 const links = new Hono<Env>();
 
+const SAFETY_RELEVANT_ROLES = new Set([
+  'suspect', 'defendant', 'involved', 'serve_recipient', 'serve_recipient_agent', 'subject',
+]);
+
 // ── Shared: officers assigned to the call, for targeted MDT push ──
 async function getOfficerUserIdsForCall(
   db: ReturnType<typeof getDb>,
@@ -110,54 +114,44 @@ links.post('/calls/:id/persons', requireRole('dispatcher', 'supervisor', 'manage
     link: created,
   });
 
-  // OFFICER SAFETY: if the linked subject has active warrants, fire the
-  // call:warrant_alert the dispatch board + voice-alert hook subscribe to.
-  // This channel had NO producer, so the warrant-hit banner/voice never fired.
-  // Best-effort: a warrants-query failure must not break the link.
-  try {
-    // migration 0200 dropped warrants.person_id entirely — subject_person_id
-    // is now the sole canonical column, so query it alone.
-    const wc = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM warrants WHERE subject_person_id = ? AND status = 'active'", body.person_id,
-    );
-    if ((wc?.n ?? 0) > 0) {
-      const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
-      // Deliver via AlertHubDO (emitAlert), NOT broadcastAll: the live /api/ws
-      // socket is served by the legacy worker, so broadcastAll() fans out in an
-      // EMPTY rewrite isolate and the warrant-hit banner/voice NEVER reached any
-      // dispatcher in prod — a wanted subject linked to a call silently raised no
-      // alarm. emitAlert routes through the /api/alerts-ws DO the client also
-      // subscribes to (same pattern panic.ts uses).
-      await emitAlert(c.env, 'call:warrant_alert', {
-        call_id: Number(callId),
-        person_id: body.person_id,
-        personName: subjectName,
-        subject_name: subjectName,
-        warrantCount: wc?.n ?? 0,
-      });
-    }
-  } catch (err) {
-    log.warn('warrant-alert check failed (non-fatal)', { err });
-  }
+  const linkedRole = body.role || 'subject';
+  const isSafetyRelevant = SAFETY_RELEVANT_ROLES.has(linkedRole);
 
-  // OFFICER SAFETY: also screen this subject against NSOPW. Fires
-  // in the background; a confirmed national SOR hit lands in
-  // screening_hits, which the dispatch board picks up via the existing
-  // call:warrant_alert / dispatch_update channels through the dossier
-  // integration. A pre-existing `is_sex_offender=1` flag on the local
-  // persons row already triggers the caution-flag voice cue below;
-  // the NSOPW path supplements that with up-to-date cross-jurisdiction
-  // data for subjects who were registered out of state.
-  c.executionCtx.waitUntil(
-    screenPersonForSor(c.env, body.person_id, { triggeredBy: 'cfs_subject_add' })
-      .catch((err) => log.warn('[nsopw] cfs_subject_add screen failed', { err })),
-  );
+  // OFFICER SAFETY: if the linked person has active warrants AND their
+  // role is safety-relevant (suspect, defendant, subject, etc.), fire the
+  // call:warrant_alert. Non-threat roles (process_server, witness, victim,
+  // attorney, etc.) are excluded — a process server having a warrant does
+  // not constitute an officer safety concern on the call they're serving.
+  if (isSafetyRelevant) {
+    try {
+      const wc = await queryFirst<{ n: number }>(
+        db, "SELECT COUNT(*) AS n FROM warrants WHERE subject_person_id = ? AND status = 'active'", body.person_id,
+      );
+      if ((wc?.n ?? 0) > 0) {
+        const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
+        await emitAlert(c.env, 'call:warrant_alert', {
+          call_id: Number(callId),
+          person_id: body.person_id,
+          personName: subjectName,
+          subject_name: subjectName,
+          warrantCount: wc?.n ?? 0,
+        });
+      }
+    } catch (err) {
+      log.warn('warrant-alert check failed (non-fatal)', { err });
+    }
+
+    c.executionCtx.waitUntil(
+      screenPersonForSor(c.env, body.person_id, { triggeredBy: 'cfs_subject_add' })
+        .catch((err) => log.warn('[nsopw] cfs_subject_add screen failed', { err })),
+    );
+  }
 
   // Officer MDT voice — "Subject added: <last name>". Person flags
   // (caution / sex_offender / gang) deserve an officer-safety push,
-  // not a generic "person added" prompt.
+  // not a generic "person added" prompt — but only for safety-relevant roles.
   const officerIds = await getOfficerUserIdsForCall(db, callId);
-  if (officerIds.length > 0) {
+  if (officerIds.length > 0 && isSafetyRelevant) {
     const flag = created;
     const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
@@ -319,21 +313,20 @@ links.post('/calls/:id/persons/quick-add', requireRole('dispatcher', 'supervisor
   });
 
   // Same officer-safety push the regular POST does — quick-add path
-  // shouldn't bypass the MDT voice warning.
-  const officerIds = await getOfficerUserIdsForCall(db, callId);
-  if (officerIds.length > 0 && link) {
-    const flag = link;
-    const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
-    const short = hasSafety
-      ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
-      : `Subject added: ${flag?.last_name ?? ''}`;
-    for (const uid of officerIds) {
-      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
-      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
-      // caution-flag voice cue reached the officer never.
-      await emitAlert(c.env, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
-      });
+  // shouldn't bypass the MDT voice warning. Only for safety-relevant roles.
+  if (SAFETY_RELEVANT_ROLES.has(role)) {
+    const officerIds = await getOfficerUserIdsForCall(db, callId);
+    if (officerIds.length > 0 && link) {
+      const flag = link;
+      const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
+      const short = hasSafety
+        ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
+        : `Subject added: ${flag?.last_name ?? ''}`;
+      for (const uid of officerIds) {
+        await emitAlert(c.env, 'call_status_for_officer', {
+          action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
+        });
+      }
     }
   }
 

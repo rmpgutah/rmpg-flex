@@ -439,7 +439,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           AND w.subject_person_id IN (
             SELECT ip.person_id FROM incident_persons ip
             JOIN incidents i ON ip.incident_id = i.id
-            WHERE i.call_id = ?
+            WHERE i.call_id = ? AND ip.role IN ('suspect','arrestee','involved','defendant')
           )
         LIMIT 50`, id);
       for (const w of warrants) {
