@@ -265,7 +265,7 @@ function LiveCaptureTab({ callId }: { callId: number | null }) {
                   <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" aria-label={s.caution_flags ?? undefined} />
                 )}
               </div>
-              <button onClick={() => removeSubject(s.id)} className="text-slate-500 hover:text-red-400 shrink-0">
+              <button aria-label="Remove subject" onClick={() => removeSubject(s.id)} className="text-slate-500 hover:text-red-400 shrink-0">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
