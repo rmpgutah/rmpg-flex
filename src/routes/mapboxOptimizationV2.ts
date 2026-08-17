@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { notConfigured } from '../utils/notConfigured';
 import { log } from '../utils/logger';
+import { queryInChunks } from '../utils/db';
 import {
   buildServeRunProblem,
   buildPatrolBeatProblem,
@@ -92,17 +93,17 @@ app.post('/submit', async (c) => {
       if (!serve_queue_ids?.length || !officer_unit_id || !shift_start || !shift_end || !ref_id) {
         return c.json({ error: 'serve_run requires serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id' }, 400);
       }
-      const placeholders = serve_queue_ids.map(() => '?').join(',');
-      const { results: stopRows } = await db
-        .prepare(`SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority FROM serve_queue WHERE id IN (${placeholders}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`)
-        .bind(...serve_queue_ids)
-        .all();
+      const stopRows = await queryInChunks<ServeStop>(
+        db,
+        serve_queue_ids,
+        (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
+      );
       const officerRow = await db
         .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? LIMIT 1')
         .bind(officer_unit_id)
         .first();
       if (!officerRow) return c.json({ error: 'officer unit not found' }, 404);
-      problem = buildServeRunProblem(stopRows as unknown as ServeStop[], officerRow as unknown as UnitRow, shift_start, shift_end);
+      problem = buildServeRunProblem(stopRows, officerRow as unknown as UnitRow, shift_start, shift_end);
       refId = ref_id;
     } else if (job_type === 'patrol_beat') {
       const { beat_ids, unit_ids, shift_start, shift_end } = body as {
@@ -114,33 +115,33 @@ app.post('/submit', async (c) => {
       if (!beat_ids?.length || !unit_ids?.length || !shift_start || !shift_end) {
         return c.json({ error: 'patrol_beat requires beat_ids, unit_ids, shift_start, shift_end' }, 400);
       }
-      const bPlaceholders = beat_ids.map(() => '?').join(',');
-      const uPlaceholders = unit_ids.map(() => '?').join(',');
-      const { results: beatRows } = await db
-        .prepare(`SELECT id, beat_code, min_lat, max_lat, min_lng, max_lng FROM dispatch_beats WHERE id IN (${bPlaceholders}) AND active = 1`)
-        .bind(...beat_ids)
-        .all();
-      const { results: unitRows } = await db
-        .prepare(`SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${uPlaceholders})`)
-        .bind(...unit_ids)
-        .all();
-      problem = buildPatrolBeatProblem(beatRows as unknown as BeatRow[], unitRows as unknown as UnitRow[], shift_start, shift_end);
+      const beatRows = await queryInChunks<BeatRow>(
+        db,
+        beat_ids,
+        (ph) => `SELECT id, beat_code, min_lat, max_lat, min_lng, max_lng FROM dispatch_beats WHERE id IN (${ph}) AND active = 1`,
+      );
+      const unitRows = await queryInChunks<UnitRow>(
+        db,
+        unit_ids,
+        (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph})`,
+      );
+      problem = buildPatrolBeatProblem(beatRows, unitRows, shift_start, shift_end);
     } else {
       const { call_ids, unit_ids } = body as { call_ids: number[]; unit_ids: number[] };
       if (!call_ids?.length || !unit_ids?.length) {
         return c.json({ error: 'multi_unit_dispatch requires call_ids and unit_ids' }, 400);
       }
-      const cPlaceholders = call_ids.map(() => '?').join(',');
-      const uPlaceholders = unit_ids.map(() => '?').join(',');
-      const { results: callRows } = await db
-        .prepare(`SELECT id, incident_number, latitude, longitude, priority FROM calls_for_service WHERE id IN (${cPlaceholders}) AND latitude IS NOT NULL AND longitude IS NOT NULL`)
-        .bind(...call_ids)
-        .all();
-      const { results: unitRows } = await db
-        .prepare(`SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${uPlaceholders}) AND status IN ('available','on_scene')`)
-        .bind(...unit_ids)
-        .all();
-      problem = buildDispatchProblem(callRows as unknown as CallRow[], unitRows as unknown as UnitRow[]);
+      const callRows = await queryInChunks<CallRow>(
+        db,
+        call_ids,
+        (ph) => `SELECT id, incident_number, latitude, longitude, priority FROM calls_for_service WHERE id IN (${ph}) AND latitude IS NOT NULL AND longitude IS NOT NULL`,
+      );
+      const unitRows = await queryInChunks<UnitRow>(
+        db,
+        unit_ids,
+        (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
+      );
+      problem = buildDispatchProblem(callRows, unitRows);
     }
   } catch (err) {
     log.error('[optimization-v2] problem build failed', { job_type }, err as Error);
@@ -180,9 +181,6 @@ app.post('/submit', async (c) => {
 
 // ── GET /:jobId ───────────────────────────────────────────────────────────────
 app.get('/:jobId', async (c) => {
-  const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
-
   const db = c.env.DB;
   const { jobId } = c.req.param();
 
@@ -193,12 +191,17 @@ app.get('/:jobId', async (c) => {
 
   if (!row) return c.json({ error: 'Job not found' }, 404);
 
+  // Cached terminal states — no Mapbox token needed
   if (row.status === 'complete') {
     return c.json({ job_id: jobId, status: 'complete', solution: JSON.parse(row.solution_json as string) });
   }
   if (row.status === 'error') {
     return c.json({ job_id: jobId, status: 'error', error: row.error_message });
   }
+
+  // Still in-flight — need the token to poll Mapbox
+  const tk = getToken(c);
+  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
 
   // Check timeout
   const updatedAt = new Date((row.updated_at as string) + 'Z').getTime();
