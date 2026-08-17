@@ -7,7 +7,7 @@ import {
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
-import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
+import type { CallForService, Unit, CallStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
 import { applyFillBlanks, autofillFromClient, type ClientRecord } from '../../utils/clientAutofill';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
@@ -48,6 +48,8 @@ import WarningTags from '../../components/WarningTags';
 import WarrantBadge from '../../components/WarrantBadge';
 import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
+import { Combobox } from '../../components/Combobox';
+import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -244,6 +246,9 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   stipulation: 'Stipulation',
   other: 'Other',
 };
+
+const DOCUMENT_TYPE_OPTIONS = Object.entries(DOCUMENT_TYPE_LABELS).map(([value, label]) => ({ value, label }));
+const INCIDENT_TYPE_OPTIONS = Object.values(INCIDENT_TYPE_CATEGORIES).flat();
 
 function formatServiceType(val: string | undefined | null): string {
   if (!val) return '';
@@ -1687,6 +1692,27 @@ export default function DispatchPage() {
     return dispositionGroupsForIncident(selectedCall?.incident_type);
   }, [dispositionCodes, selectedCall?.incident_type]);
 
+  // Populate serveRouteSortMap when the serve tab is active so filtered
+  // calls sort by optimized route order instead of falling through to
+  // priority-then-time.
+  useEffect(() => {
+    if (filterTab !== 'serve') return;
+    let cancelled = false;
+    apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes')
+      .then(data => {
+        if (cancelled || !data?.jobs) return;
+        const map: Record<string, number> = {};
+        data.jobs.forEach((j: any) => {
+          if (j.call_id != null && j.sort_order != null) {
+            map[String(j.call_id)] = j.sort_order;
+          }
+        });
+        setServeRouteSortMap(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [filterTab, calls.length]);
+
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
   // Effective queue sort mode (server pref → local fallback → default). Hoisted
@@ -1761,7 +1787,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
 
   // The "Search calls" box lives in the shared toolbar above both the CAD
   // board and the classic list, but was only ever wired into filteredCalls
@@ -2506,7 +2532,7 @@ export default function DispatchPage() {
       archived: archivedCalls.length,
       serve: calls.filter((c) => PROCESS_SERVICE_INCIDENT_TYPES.has(c.incident_type)).length,
     };
-  }, [calls, archivedCalls, user?.id]);
+  }, [calls, archivedCalls]);
 
   if (isLoading) {
     return (
@@ -2744,7 +2770,7 @@ export default function DispatchPage() {
                   <button type="button"
                     onClick={() => handleResumeCall(selectedCall.id)}
                     className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: '#000', touchAction: 'manipulation' }}
+                    style={{ minHeight: 48, minWidth: 80, background: 'var(--sev-warn)', color: 'var(--surface-base)', touchAction: 'manipulation' }}
                   >
                     ▶ Resume
                   </button>
@@ -2832,7 +2858,7 @@ export default function DispatchPage() {
                         title="Copy address"
                         aria-label="Copy address"
                         onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(selectedCall.location || ''); addToast('Address copied', 'success'); }}
-                        className="text-rmpg-500 hover:text-brand-gold-500 transition-colors"
+                        className="text-rmpg-500 hover:text-[color:var(--field-label-color)] transition-colors"
                       >
                         <Copy className="w-3 h-3" />
                       </button>
@@ -3655,7 +3681,7 @@ export default function DispatchPage() {
               borderColor: 'var(--sev-special)',
               borderBottomColor: 'var(--spm-border)',
               borderRightColor: 'var(--spm-border)',
-              color: '#fff',
+              color: 'var(--text-primary)',
             }}
           >
             <Shield style={{ width: 10, height: 10 }} />
@@ -3851,6 +3877,9 @@ export default function DispatchPage() {
             );
           })()}
         </div>
+
+        {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
+        <DispatchAnalyticsStrip />
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
@@ -4506,7 +4535,7 @@ export default function DispatchPage() {
                       </>
                     )}
                     {!isEditing && selectedCall.status === 'on_hold' && (
-                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: '#000' }}>
+                      <button type="button" onClick={() => handleResumeCall(selectedCall.id)} className="toolbar-btn toolbar-btn-primary" style={{ background: 'var(--sev-warn)', color: 'var(--surface-base)' }}>
                         ▶ Resume
                       </button>
                     )}
@@ -4749,11 +4778,14 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
-                          {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
-                            <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
-                          ))}
-                        </select>
+                        <Combobox<{ value: string; label: string }>
+                          value={editData.incident_type ? INCIDENT_TYPE_OPTIONS.find(o => o.value === editData.incident_type) ?? null : null}
+                          onChange={(opt) => updateEditField('incident_type', opt?.value ?? '')}
+                          options={INCIDENT_TYPE_OPTIONS}
+                          getLabel={(o) => o.label}
+                          getKey={(o) => o.value}
+                          placeholder="Search incident type..."
+                        />
                       ) : (
                         <p className="text-sm text-brand-400 font-medium">{formatIncidentType(selectedCall.incident_type)}</p>
                       )}
@@ -5198,7 +5230,7 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Starting Mileage <span className="text-red-400">*</span></label>
                           <div className="flex gap-1">
                             <input type="number" step="0.1" min="0" className="input-dark text-xs flex-1" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
                             <button
@@ -5232,7 +5264,7 @@ export default function DispatchPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Ending Mileage</label>
                           <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
@@ -5267,14 +5299,14 @@ export default function DispatchPage() {
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Section</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Section</label>
                               <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
@@ -5288,7 +5320,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Zone</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Zone</label>
                               <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
@@ -5298,7 +5330,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Beat</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Beat</label>
                               <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
@@ -5331,7 +5363,7 @@ export default function DispatchPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">Dispatch Code</label>
                               <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
@@ -5416,10 +5448,10 @@ export default function DispatchPage() {
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Weapons</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Weapons</label>
                             <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
@@ -5431,7 +5463,7 @@ export default function DispatchPage() {
                         {/* ── Linked Persons ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Individuals</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Individuals</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               {linkOptions.person_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5442,7 +5474,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cp.role || '')}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cp.role || '')}</span>
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
@@ -5479,7 +5511,7 @@ export default function DispatchPage() {
                         {/* ── Linked Vehicles ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Vehicles</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
                               {linkOptions.vehicle_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5490,7 +5522,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callVehicles.map((cv: any) => (
                                 <span key={cv.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cv.role || '')}</span>
                                   {[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}
                                   {cv.plate_number && <span className="text-brand-400 ml-0.5">PLT:{cv.plate_number}</span>}
                                   <button type="button" onClick={() => unlinkVehicleFromCall(selectedCall.id, cv.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove vehicle from call">&times;</button>
@@ -5526,7 +5558,7 @@ export default function DispatchPage() {
                         {/* ── Linked Businesses ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Businesses</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Linked Businesses</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkBusinessRole} onChange={(e) => setLinkBusinessRole(e.target.value)}>
                               {linkOptions.business_role.map((o) => (
                                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -5537,7 +5569,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callBusinesses.map((cb: any) => (
                                 <span key={cb.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
+                                  <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black">{toDisplayLabel(cb.role)}</span>
                                   {cb.name}
                                   {cb.business_type && <span className="text-rmpg-500">{toDisplayLabel(cb.business_type)}</span>}
                                   <button type="button" onClick={() => unlinkBusinessFromCall(selectedCall.id, cb.id)} className="text-red-500 hover:text-red-300 ml-0.5" aria-label="Remove business from call">&times;</button>
@@ -5568,7 +5600,7 @@ export default function DispatchPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Direction of Travel</label>
                           <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
@@ -5595,10 +5627,10 @@ export default function DispatchPage() {
                         {/* Linked persons */}
                         {callPersons.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Persons ({callPersons.length})</span>
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">Linked Persons ({callPersons.length})</span>
                             {callPersons.map((cp: any) => (
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
+                                <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
                                 <WarrantBadge flags={cp.flags} size="sm" />
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
@@ -5611,10 +5643,10 @@ export default function DispatchPage() {
                         {/* Linked vehicles */}
                         {callVehicles.length > 0 && (
                           <div className="mt-2 space-y-1">
-                            <span className="text-[9px] text-brand-gold-500 font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">Linked Vehicles ({callVehicles.length})</span>
                             {callVehicles.map((cv: any) => (
                               <div key={cv.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
-                                <span className="text-brand-gold-500 uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cv.role || '')}</span>
+                                <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cv.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{[cv.color, cv.year, cv.make, cv.model].filter(Boolean).join(' ')}</span>
                                 {cv.plate_number && <span className="text-brand-400">PLT: {cv.plate_number}{cv.plate_state ? `/${cv.plate_state}` : ''}</span>}
                                 {cv.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(cv.stolen_status.toLowerCase()) && <span className="text-red-400 font-bold uppercase">{toDisplayLabel(cv.stolen_status)}</span>}
@@ -5639,19 +5671,19 @@ export default function DispatchPage() {
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Scene Safety</label>
                             <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Weather</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Weather</label>
                             <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Lighting</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Lighting</label>
                             <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
@@ -5667,7 +5699,7 @@ export default function DispatchPage() {
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
-                              <label className="text-[9px] text-brand-gold-500">LE Agency</label>
+                              <label className="text-[9px] text-[color:var(--field-label-color)]">LE Agency</label>
                               <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
@@ -5675,16 +5707,16 @@ export default function DispatchPage() {
                                 <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-[color:var(--field-label-color)]">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-[color:var(--field-label-color)]">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
-                          <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
+                          <label className="text-[9px] text-[color:var(--field-label-color)]">Responding Officer</label>
                           <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
@@ -5817,7 +5849,7 @@ export default function DispatchPage() {
                       const auth = editData.pso_authorization || selectedCall.pso_authorization;
                       return (
                         <div className="mb-2 inline-flex flex-wrap items-center gap-2 px-2 py-1 bg-brand-900/20 border border-brand-700/40 rounded-sm text-[10px]">
-                          <span className="text-brand-gold-500 uppercase font-black text-[8px] tracking-wide">Client</span>
+                          <span className="text-[color:var(--field-label-color)] uppercase font-black text-[8px] tracking-wide">Client</span>
                           <span className="text-rmpg-100 font-semibold">{cli?.name || `#${cid}`}</span>
                           {contractId && <span className="text-rmpg-300">Contract: {contractId}</span>}
                           {billing && <span className="text-rmpg-300">Billing: {billing}</span>}
@@ -5828,13 +5860,13 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
-                            <label className="text-[9px] text-brand-gold-500">Service Type</label>
+                            <label className="text-[9px] text-[color:var(--field-label-color)]">Service Type</label>
                             <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
                               <optgroup label="Process Service">
@@ -5885,11 +5917,11 @@ export default function DispatchPage() {
                               </optgroup>
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-[color:var(--field-label-color)]">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -6025,102 +6057,14 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
-                              <option value="">— Select Document Type —</option>
-                              <optgroup label="Civil Process — General">
-                                <option value="subpoena">Subpoena</option>
-                                <option value="subpoena_duces_tecum">Subpoena Duces Tecum</option>
-                                <option value="subpoena_deposition">Subpoena (Deposition)</option>
-                                <option value="federal_subpoena">Federal Subpoena</option>
-                                <option value="summons">Summons &amp; Complaint</option>
-                                <option value="complaint">Complaint</option>
-                                <option value="third_party_complaint">Third-Party Complaint</option>
-                                <option value="cross_complaint">Cross-Complaint</option>
-                                <option value="counterclaim">Counterclaim</option>
-                                <option value="amended_complaint">Amended Complaint</option>
-                                <option value="civil_summons">Civil Summons</option>
-                                <option value="small_claims">Small Claims</option>
-                              </optgroup>
-                              <optgroup label="Writs &amp; Garnishments">
-                                <option value="garnishment">Garnishment</option>
-                                <option value="wage_garnishment">Wage Garnishment</option>
-                                <option value="bank_levy">Bank Levy / Account Garnishment</option>
-                                <option value="writ_of_execution">Writ of Execution</option>
-                                <option value="writ_of_restitution">Writ of Restitution</option>
-                                <option value="writ_of_garnishment">Writ of Garnishment</option>
-                                <option value="writ_of_attachment">Writ of Attachment</option>
-                                <option value="writ_of_possession">Writ of Possession</option>
-                                <option value="writ_of_assistance">Writ of Assistance</option>
-                                <option value="writ_of_mandate">Writ of Mandate / Mandamus</option>
-                                <option value="levy">Levy</option>
-                              </optgroup>
-                              <optgroup label="Family / Domestic">
-                                <option value="restraining_order">Protective / Restraining Order</option>
-                                <option value="temporary_protective_order">Temporary Protective Order</option>
-                                <option value="cohabitant_abuse_order">Cohabitant Abuse Protective Order</option>
-                                <option value="divorce_papers">Divorce Papers</option>
-                                <option value="divorce_petition">Divorce Petition</option>
-                                <option value="divorce_summons">Divorce Summons</option>
-                                <option value="custody_order">Custody Order</option>
-                                <option value="custody_modification">Custody Modification</option>
-                                <option value="child_support">Child Support Order</option>
-                                <option value="child_support_modification">Child Support Modification</option>
-                                <option value="paternity_action">Paternity Action</option>
-                                <option value="adoption_papers">Adoption Papers</option>
-                                <option value="guardianship">Guardianship Petition</option>
-                                <option value="termination_of_parental_rights">Termination of Parental Rights</option>
-                                <option value="stalking_injunction">Stalking Injunction</option>
-                              </optgroup>
-                              <optgroup label="Real Property">
-                                <option value="eviction">Eviction Notice</option>
-                                <option value="unlawful_detainer">Unlawful Detainer</option>
-                                <option value="notice_to_quit">Notice to Quit</option>
-                                <option value="three_day_notice">3-Day Notice to Pay or Quit</option>
-                                <option value="five_day_notice">5-Day Notice (Commercial)</option>
-                                <option value="fifteen_day_notice">15-Day Notice (Month-to-Month)</option>
-                                <option value="foreclosure">Foreclosure Notice</option>
-                                <option value="notice_of_default">Notice of Default</option>
-                                <option value="lis_pendens">Lis Pendens</option>
-                                <option value="quiet_title">Quiet Title Action</option>
-                              </optgroup>
-                              <optgroup label="Court Orders &amp; Motions">
-                                <option value="court_order">Court Order</option>
-                                <option value="temporary_order">Temporary Order</option>
-                                <option value="temporary_restraining_order">Temporary Restraining Order</option>
-                                <option value="preliminary_injunction">Preliminary Injunction</option>
-                                <option value="permanent_injunction">Permanent Injunction</option>
-                                <option value="motion">Motion / Petition</option>
-                                <option value="motion_for_contempt">Motion for Contempt</option>
-                                <option value="motion_to_compel">Motion to Compel</option>
-                                <option value="notice_of_hearing">Notice of Hearing</option>
-                                <option value="order_to_show_cause">Order to Show Cause</option>
-                                <option value="judgment">Judgment</option>
-                                <option value="default_judgment">Default Judgment</option>
-                              </optgroup>
-                              <optgroup label="Probate &amp; Estate">
-                                <option value="probate_petition">Probate Petition</option>
-                                <option value="letters_testamentary">Letters Testamentary</option>
-                                <option value="creditor_claim">Creditor Claim (Probate)</option>
-                              </optgroup>
-                              <optgroup label="Bankruptcy">
-                                <option value="bankruptcy_notice">Bankruptcy Notice</option>
-                                <option value="adversary_proceeding">Adversary Proceeding</option>
-                              </optgroup>
-                              <optgroup label="Discovery">
-                                <option value="notice_of_deposition">Notice of Deposition</option>
-                                <option value="interrogatories">Interrogatories</option>
-                                <option value="request_for_production">Request for Production</option>
-                                <option value="request_for_admission">Request for Admission</option>
-                              </optgroup>
-                              <optgroup label="Other">
-                                <option value="demand_letter">Demand Letter</option>
-                                <option value="cease_and_desist">Cease &amp; Desist</option>
-                                <option value="affidavit">Affidavit</option>
-                                <option value="declaration">Declaration</option>
-                                <option value="stipulation">Stipulation</option>
-                                <option value="other">Other</option>
-                              </optgroup>
-                            </select>
+                            <Combobox<{ value: string; label: string }>
+                              value={editData.process_service_type ? DOCUMENT_TYPE_OPTIONS.find(o => o.value === editData.process_service_type) ?? null : null}
+                              onChange={(opt) => updateEditField('process_service_type', opt?.value ?? '')}
+                              options={DOCUMENT_TYPE_OPTIONS}
+                              getLabel={(o) => o.label}
+                              getKey={(o) => o.value}
+                              placeholder="Search document type..."
+                            />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
@@ -6772,6 +6716,7 @@ export default function DispatchPage() {
               onDeleteUnit={(unit) => setDeletingUnit(unit)}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
+              unitWorkload={unitWorkload}
               onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
             />
           </div>
@@ -6887,7 +6832,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? 'var(--sev-critical)' : pri === 'P2' ? 'var(--sev-warn)' : pri === 'P3' ? 'var(--spm-text-muted)' : 'var(--spm-text-muted)', color: 'var(--text-primary)' }}>
                   {pri}
                 </button>
               ))}
