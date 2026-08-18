@@ -23,6 +23,18 @@ import { importWithRetry } from '../utils/importWithRetry';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
+// Maps server CRITICAL_FIELDS human-readable labels → PUT /api/serve-intake/:id body keys.
+// Labels that don't have a corresponding PUT field (e.g. "DOB", "phone") are omitted —
+// the server doesn't accept those columns via this endpoint, so we skip them rather than
+// silently dropping data.
+const MISSING_FIELD_TO_PUT_KEY: Record<string, string> = {
+  'recipient name': 'recipient_name',
+  'address': 'recipient_address',
+  'case number': 'case_number',
+  'court': 'court_name',
+  'service deadline': 'deadline',
+};
+
 interface UploadedFile {
   name: string;
   type: string;
@@ -384,6 +396,12 @@ export default function ServeIntakePage() {
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
   // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
   const [confirmReset, setConfirmReset] = useState(false);
+  // Actionable missing-field inputs on the success screen.
+  // Keyed by the human-readable CRITICAL_FIELDS label so they stay in sync
+  // with result.missing_critical without an extra mapping step.
+  const [missingFieldValues, setMissingFieldValues] = useState<Record<string, string>>({});
+  const [missingFieldSaving, setMissingFieldSaving] = useState(false);
+  const [missingFieldSaved, setMissingFieldSaved] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
   useEffect(() => {
     setClientsLoading(true);
@@ -982,6 +1000,26 @@ export default function ServeIntakePage() {
     setEditOverrides(prev => ({ ...prev, [key]: value }));
     setOcrSourced(prev => { const n = new Set(prev); n.delete(key); return n; });
   }, []);
+
+  // Saves the operator-filled missing-critical fields to the queue entry via PATCH.
+  const handleMissingFieldSave = useCallback(async (queueId: number) => {
+    const body: Record<string, string> = {};
+    for (const [label, value] of Object.entries(missingFieldValues)) {
+      const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+      if (putKey && value.trim()) body[putKey] = value.trim();
+    }
+    if (Object.keys(body).length === 0) return;
+    setMissingFieldSaving(true);
+    try {
+      await apiFetch(`/serve-intake/${queueId}`, { method: 'PUT', body: JSON.stringify(body) });
+      setMissingFieldSaved(true);
+    } catch {
+      // Keep the inputs so the operator can retry; addToast isn't available in
+      // this callback scope — error is surfaced by the button staying active.
+    } finally {
+      setMissingFieldSaving(false);
+    }
+  }, [missingFieldValues]);
 
   // Operator-facing batch summary: count + combined size of the documents the
   // user actually dropped (rasterized scan pages are excluded — they're hidden
@@ -1616,6 +1654,12 @@ export default function ServeIntakePage() {
       {/* Process Button */}
       {files.length > 0 && !result && (
         <>
+          {editOverrides['service_deadline'] && isNaN(Date.parse(editOverrides['service_deadline'])) && (
+            <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-400">
+              <AlertTriangle className="w-3 h-3 inline mr-1" />
+              Service deadline "{editOverrides['service_deadline']}" doesn't look like a valid date — update it before submitting.
+            </div>
+          )}
           <button
             onClick={processIntake}
             disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
@@ -1648,11 +1692,19 @@ export default function ServeIntakePage() {
             </div>
 
             {result.duplicate_of && (
-              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
-                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
-                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
-                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
-                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300 flex items-start justify-between gap-2">
+                <span>
+                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                  Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                  {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                  recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+                </span>
+                <button
+                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
+                >
+                  View Entry →
+                </button>
               </div>
             )}
 
@@ -1731,10 +1783,58 @@ export default function ServeIntakePage() {
                   </div>
                 ))}
                 {result.missing_critical && result.missing_critical.length > 0 && (
-                  <p className="text-[10px] text-amber-400 mt-1.5">
-                    <AlertTriangle className="w-3 h-3 inline mr-1" />
-                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
-                  </p>
+                  <div className="mt-2 border border-amber-700/50 rounded-sm p-2 bg-amber-900/20">
+                    <p className="text-[9px] text-amber-400 uppercase font-bold mb-1.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Not found in documents — fill in before dispatch
+                    </p>
+                    <div className="space-y-1.5">
+                      {result.missing_critical.map((label) => {
+                        const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+                        if (!putKey) {
+                          // No PUT-body mapping (e.g. DOB, phone) — show read-only note
+                          return (
+                            <p key={label} className="text-[10px] text-amber-300/70 italic">
+                              {label} — verify manually before service
+                            </p>
+                          );
+                        }
+                        return (
+                          <div key={label} className="flex items-center gap-2">
+                            <label className="text-[9px] text-amber-400 uppercase font-semibold w-24 shrink-0">
+                              {label}
+                            </label>
+                            <input
+                              type="text"
+                              value={missingFieldValues[label] ?? ''}
+                              onChange={(e) => setMissingFieldValues(prev => ({ ...prev, [label]: e.target.value }))}
+                              placeholder={`Enter ${label}`}
+                              disabled={missingFieldSaved}
+                              className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-[2px] text-[10px] text-rmpg-100 px-2 py-[3px] placeholder-rmpg-500 focus:outline-none focus:border-brand-500 disabled:opacity-50"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {result.serve_queue_id != null && (
+                      <div className="mt-2 flex items-center gap-2">
+                        {missingFieldSaved ? (
+                          <span className="text-[10px] text-green-400 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Saved to queue entry
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleMissingFieldSave(result.serve_queue_id!)}
+                            disabled={missingFieldSaving || Object.values(missingFieldValues).every(v => !v.trim())}
+                            className="toolbar-btn py-1 text-[10px] border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-40"
+                          >
+                            {missingFieldSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            Save Missing Fields
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ) : null}
@@ -1797,7 +1897,7 @@ export default function ServeIntakePage() {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); }}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); }}
         title="Start New Intake?"
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"
