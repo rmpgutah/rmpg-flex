@@ -335,13 +335,13 @@ self.addEventListener('activate', (event) => {
 // Purely cosmetic — these are fetch()/XHR POSTs with no Subresource
 // Integrity check, so an empty synthetic body is safe.
 //
-// static.cloudflareinsights.com/beacon.min.js is NOT intercepted here —
+// static.cloudflareinsights.com/beacon.min.js is NOT in TELEMETRY_HOSTS —
 // Cloudflare auto-injects that <script> tag with an `integrity="sha512-…"`
-// attribute. Answering with an empty 204 would fail the SRI check, swapping
-// ERR_CONNECTION_REFUSED for an equally noisy "Failed to find a valid digest"
-// error. Instead, the beacon domain is excluded from `script-src` in the CSP
-// meta tag (client/index.html). The browser blocks the request at the CSP
-// layer — before any network connection — so no ERR_CONNECTION_REFUSED fires.
+// attribute. A 204 response from TELEMETRY_HOSTS would fail the SRI check,
+// swapping one console error for another. Instead, the navigation handler
+// below strips the beacon <script> tag from the HTML response before the
+// browser ever parses it — no tag means no fetch, no SRI check, no console
+// error of any kind.
 const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
 
 // Self-heal for the stale-chunk wedge (live incident 2026-07-30).
@@ -559,6 +559,25 @@ self.addEventListener('fetch', (event) => {
       fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
+            const ct = response.headers.get('Content-Type') || '';
+            if (ct.includes('text/html')) {
+              // Strip the Cloudflare beacon <script> tag before the browser
+              // parses the HTML. CF Pages injects it with an integrity="sha512-…"
+              // attribute; a SW 204 response fails the SRI check (empty body
+              // hash mismatch), so interception is not an option. Stripping the
+              // tag here means no element exists to CSP-check or fetch, so no
+              // console error of any kind fires regardless of CSP policy.
+              return response.text().then((html) => {
+                var stripped = html.replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '');
+                var headers = {};
+                response.headers.forEach(function(v, k) {
+                  if (k.toLowerCase() !== 'content-length') headers[k] = v;
+                });
+                var clean = new Response(stripped, { status: response.status, statusText: response.statusText, headers: headers });
+                cachePut(CACHE_NAME, event.request, clean.clone());
+                return clean;
+              });
+            }
             cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
@@ -638,6 +657,36 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => cacheMatch(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+    );
+    return;
+  }
+
+  // GeoJSON district overlay files (/geojson/*.geojson) — loaded by the
+  // dispatch map on every visit. These files are up to 9 MB each so they are
+  // NOT in STATIC_ASSETS (that would bloat every install). Instead, cache
+  // network-first on the first successful fetch, then serve cache-first with
+  // a background refresh on repeat visits. When both network and cache fail
+  // (true offline, first visit), return an empty FeatureCollection so the map
+  // renders without overlays rather than logging a 503 console error.
+  if (url.pathname.startsWith('/geojson/') && url.pathname.endsWith('.geojson')) {
+    event.respondWith(
+      cacheMatch(event.request).then((cached) => {
+        var networkFetch = fetchWithRetry(event.request)
+          .then((response) => {
+            if (response.ok) cachePut(CACHE_NAME, event.request, response.clone());
+            return response;
+          })
+          .catch(() => cached || new Response(
+            JSON.stringify({ type: 'FeatureCollection', features: [] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          ));
+        if (cached) {
+          // Serve the cached version immediately; refresh in the background.
+          event.waitUntil(networkFetch);
+          return cached;
+        }
+        return networkFetch;
+      })
     );
     return;
   }
