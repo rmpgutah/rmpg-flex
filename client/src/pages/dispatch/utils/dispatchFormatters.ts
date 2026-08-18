@@ -208,6 +208,25 @@ export function computeActiveDeadline(createdAt: string): DeadlineResult {
   return { status, hoursLeft: hrs, minsLeft: mins };
 }
 
+export interface PsoServiceWindows {
+  early_morning: boolean;
+  daytime: boolean;
+  evening: boolean;
+  weekend: boolean;
+}
+
+export function parsePsoServiceWindows(raw: unknown): PsoServiceWindows {
+  const w = typeof raw === 'string'
+    ? (() => { try { return JSON.parse(raw); } catch { return null; } })()
+    : raw;
+  return {
+    early_morning: !!w?.early_morning,
+    daytime: !!w?.daytime,
+    evening: !!w?.evening,
+    weekend: !!w?.weekend,
+  };
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {

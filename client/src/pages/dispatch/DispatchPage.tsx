@@ -68,7 +68,7 @@ import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
   computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal,
-  computeResolvedDeadline, computeActiveDeadline, type FilterTab,
+  computeResolvedDeadline, computeActiveDeadline, parsePsoServiceWindows, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
   SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
@@ -189,6 +189,68 @@ const KEYBOARD_SHORTCUT_GROUPS = [
   { group: 'Navigate / Filter', items: [
     ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
     ['Esc', 'Close modals'], ['?', 'This help'],
+  ] },
+] as const;
+
+const SERVICE_WINDOW_SLOTS = [
+  { key: 'early_morning', label: '6AM – 9AM' },
+  { key: 'daytime', label: '9AM – 6PM' },
+  { key: 'evening', label: '6PM – 9PM' },
+  { key: 'weekend', label: 'Weekend' },
+] as const;
+
+const PROCESS_SERVICE_RESULT_GROUPS = [
+  { label: 'Successful Service', options: [
+    { value: 'served', text: 'Personal Service' },
+    { value: 'substitute_service', text: 'Substitute Service' },
+    { value: 'abode_service', text: 'Abode / Dwelling Service' },
+    { value: 'posted', text: 'Posted (Nail & Mail)' },
+    { value: 'left_with', text: 'Left With (Co-Resident / Co-Worker)' },
+    { value: 'left_at_door', text: 'Left at Door (Conspicuous Place)' },
+    { value: 'served_agent', text: 'Served on Agent / Registered Agent' },
+    { value: 'served_attorney', text: 'Served on Attorney of Record' },
+    { value: 'served_corporate', text: 'Served on Corporate Officer' },
+    { value: 'served_manager', text: 'Served on Manager / Supervisor' },
+    { value: 'served_secretary_of_state', text: 'Served via Secretary of State' },
+    { value: 'acknowledged', text: 'Acknowledged / Accepted Service' },
+    { value: 'certified_mail', text: 'Certified Mail (Return Receipt)' },
+  ] },
+  { label: 'Unsuccessful — Attempt Made', options: [
+    { value: 'no_answer', text: 'No Answer / Not Home' },
+    { value: 'no_contact', text: 'No Contact Made' },
+    { value: 'refused', text: 'Refused Service' },
+    { value: 'evasion', text: 'Evasion / Avoiding Service' },
+    { value: 'gate_locked', text: 'Gated / Locked — No Access' },
+    { value: 'aggressive_animal', text: 'Aggressive Animal / Dog' },
+    { value: 'unsafe_conditions', text: 'Unsafe Conditions' },
+    { value: 'wrong_person', text: 'Wrong Person at Address' },
+    { value: 'not_recognized', text: 'Subject Not Recognized at Location' },
+  ] },
+  { label: 'Unsuccessful — Cannot Serve', options: [
+    { value: 'unable_to_locate', text: 'Unable to Locate' },
+    { value: 'bad_address', text: 'Bad / Invalid Address' },
+    { value: 'address_vacant', text: 'Address Vacant / Abandoned' },
+    { value: 'address_commercial', text: 'Address is Commercial (Need Residential)' },
+    { value: 'moved', text: 'Subject Moved' },
+    { value: 'moved_out_of_state', text: 'Subject Moved Out of State' },
+    { value: 'deceased', text: 'Subject Deceased' },
+    { value: 'incarcerated', text: 'Subject Incarcerated' },
+    { value: 'military', text: 'Subject on Active Military Duty' },
+    { value: 'non_est', text: 'Non Est Inventus (Not Found)' },
+    { value: 'due_diligence_exhausted', text: 'Due Diligence Exhausted' },
+  ] },
+  { label: 'Administrative', options: [
+    { value: 'unable_to_serve', text: 'Unable to Serve (General)' },
+    { value: 'returned_to_attorney', text: 'Returned to Attorney' },
+    { value: 'returned_to_court', text: 'Returned to Court' },
+    { value: 'returned_to_client', text: 'Returned to Client' },
+    { value: 'expired', text: 'Documents Expired' },
+    { value: 'recalled', text: 'Service Recalled / Cancelled' },
+    { value: 'duplicate', text: 'Duplicate / Already Served' },
+    { value: 'insufficient_info', text: 'Insufficient Information' },
+    { value: 'jurisdiction_issue', text: 'Jurisdiction Issue' },
+    { value: 'referred_out', text: 'Referred to Another Server' },
+    { value: 'other', text: 'Other' },
   ] },
 ] as const;
 
@@ -3223,14 +3285,10 @@ export default function DispatchPage() {
 
                     {/* PSO Service Window Compliance Checklist (mobile) */}
                     {(() => {
-                      const w = typeof selectedCall.pso_service_windows === 'string'
-                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows); } catch { return null; } })()
-                        : selectedCall.pso_service_windows;
-                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
-                      // Only show when at least one window is configured
+                      const windows = parsePsoServiceWindows(selectedCall.pso_service_windows);
+                      const metCount = SERVICE_WINDOW_SLOTS.filter(s => windows[s.key]).length;
                       if (metCount === 0) return null;
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const allMet = metCount === SERVICE_WINDOW_SLOTS.length;
                       return (
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
@@ -3240,24 +3298,22 @@ export default function DispatchPage() {
                               border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
                               color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
-                              {metCount}/4
+                              {metCount}/{SERVICE_WINDOW_SLOTS.length}
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-1">
-                            {([
-                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
-                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
-                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
-                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
-                            ] as const).map(({ key, label, met }) => (
-                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
-                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
-                              }}>
-                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
-                                <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
-                              </div>
-                            ))}
+                            {SERVICE_WINDOW_SLOTS.map(({ key, label }) => {
+                              const met = windows[key];
+                              return (
+                                <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
+                                  background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                  border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                }}>
+                                  <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
+                                  <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                           {allMet && (
                             <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>
@@ -5888,14 +5944,10 @@ export default function DispatchPage() {
 
                     {/* PSO Service Window Compliance Checklist (desktop) */}
                     {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (() => {
-                      const w = typeof selectedCall.pso_service_windows === 'string'
-                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
-                        : selectedCall.pso_service_windows;
-                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
-                      // Only show when at least one window is configured
+                      const windows = parsePsoServiceWindows(selectedCall.pso_service_windows);
+                      const metCount = SERVICE_WINDOW_SLOTS.filter(s => windows[s.key]).length;
                       if (metCount === 0) return null;
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const allMet = metCount === SERVICE_WINDOW_SLOTS.length;
                       return (
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">
@@ -5905,26 +5957,24 @@ export default function DispatchPage() {
                               border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
                               color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
-                              {metCount}/4
+                              {metCount}/{SERVICE_WINDOW_SLOTS.length}
                             </span>
                             {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>✓ Due Diligence Complete</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {([
-                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
-                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
-                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
-                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
-                            ] as const).map(({ key, label, met }) => (
-                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
-                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
-                                color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
-                              }}>
-                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
-                                {label}
-                              </span>
-                            ))}
+                            {SERVICE_WINDOW_SLOTS.map(({ key, label }) => {
+                              const met = windows[key];
+                              return (
+                                <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
+                                  background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                  border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                  color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
+                                }}>
+                                  <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
+                                  {label}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -6018,58 +6068,11 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <optgroup label="Successful Service">
-                                <option value="served">Personal Service</option>
-                                <option value="substitute_service">Substitute Service</option>
-                                <option value="abode_service">Abode / Dwelling Service</option>
-                                <option value="posted">Posted (Nail &amp; Mail)</option>
-                                <option value="left_with">Left With (Co-Resident / Co-Worker)</option>
-                                <option value="left_at_door">Left at Door (Conspicuous Place)</option>
-                                <option value="served_agent">Served on Agent / Registered Agent</option>
-                                <option value="served_attorney">Served on Attorney of Record</option>
-                                <option value="served_corporate">Served on Corporate Officer</option>
-                                <option value="served_manager">Served on Manager / Supervisor</option>
-                                <option value="served_secretary_of_state">Served via Secretary of State</option>
-                                <option value="acknowledged">Acknowledged / Accepted Service</option>
-                                <option value="certified_mail">Certified Mail (Return Receipt)</option>
-                              </optgroup>
-                              <optgroup label="Unsuccessful — Attempt Made">
-                                <option value="no_answer">No Answer / Not Home</option>
-                                <option value="no_contact">No Contact Made</option>
-                                <option value="refused">Refused Service</option>
-                                <option value="evasion">Evasion / Avoiding Service</option>
-                                <option value="gate_locked">Gated / Locked — No Access</option>
-                                <option value="aggressive_animal">Aggressive Animal / Dog</option>
-                                <option value="unsafe_conditions">Unsafe Conditions</option>
-                                <option value="wrong_person">Wrong Person at Address</option>
-                                <option value="not_recognized">Subject Not Recognized at Location</option>
-                              </optgroup>
-                              <optgroup label="Unsuccessful — Cannot Serve">
-                                <option value="unable_to_locate">Unable to Locate</option>
-                                <option value="bad_address">Bad / Invalid Address</option>
-                                <option value="address_vacant">Address Vacant / Abandoned</option>
-                                <option value="address_commercial">Address is Commercial (Need Residential)</option>
-                                <option value="moved">Subject Moved</option>
-                                <option value="moved_out_of_state">Subject Moved Out of State</option>
-                                <option value="deceased">Subject Deceased</option>
-                                <option value="incarcerated">Subject Incarcerated</option>
-                                <option value="military">Subject on Active Military Duty</option>
-                                <option value="non_est">Non Est Inventus (Not Found)</option>
-                                <option value="due_diligence_exhausted">Due Diligence Exhausted</option>
-                              </optgroup>
-                              <optgroup label="Administrative">
-                                <option value="unable_to_serve">Unable to Serve (General)</option>
-                                <option value="returned_to_attorney">Returned to Attorney</option>
-                                <option value="returned_to_court">Returned to Court</option>
-                                <option value="returned_to_client">Returned to Client</option>
-                                <option value="expired">Documents Expired</option>
-                                <option value="recalled">Service Recalled / Cancelled</option>
-                                <option value="duplicate">Duplicate / Already Served</option>
-                                <option value="insufficient_info">Insufficient Information</option>
-                                <option value="jurisdiction_issue">Jurisdiction Issue</option>
-                                <option value="referred_out">Referred to Another Server</option>
-                                <option value="other">Other</option>
-                              </optgroup>
+                              {PROCESS_SERVICE_RESULT_GROUPS.map(g => (
+                                <optgroup key={g.label} label={g.label}>
+                                  {g.options.map(o => <option key={o.value} value={o.value}>{o.text}</option>)}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
                         </div>
