@@ -100,7 +100,8 @@ enrichment.post('/search', async (c) => {
   );
 
   // Run hard-lock matcher on every record from every source
-  const allRecords: EnrichedRecord[] = [];
+  const confirmedRecords: EnrichedRecord[] = [];
+  const unconfirmedRecords: EnrichedRecord[] = [];
   let confirmedCount = 0;
   const allAnchors = new Set<string>();
 
@@ -110,12 +111,13 @@ enrichment.post('/search', async (c) => {
       if (lock.confirmed) {
         confirmedCount++;
         lock.anchors.forEach(a => allAnchors.add(a));
-        allRecords.unshift(rec); // confirmed first
+        confirmedRecords.push(rec);
       } else {
-        allRecords.push(rec);
+        unconfirmedRecords.push(rec);
       }
     }
   }
+  const allRecords = [...confirmedRecords, ...unconfirmedRecords];
 
   const matchTier = confirmedCount > 0 ? 'CONFIRMED' : 'UNCONFIRMED';
   const searchedAt = now.toISOString();
@@ -140,7 +142,8 @@ enrichment.post('/search', async (c) => {
      ON CONFLICT(cache_key) DO UPDATE SET
        results_json=excluded.results_json, match_tier=excluded.match_tier,
        anchors_json=excluded.anchors_json, source_count=excluded.source_count,
-       searched_at=excluded.searched_at, expires_at=excluded.expires_at`,
+       searched_at=excluded.searched_at, expires_at=excluded.expires_at,
+       searched_by=excluded.searched_by`,
     cacheKey, JSON.stringify(seed), JSON.stringify(response),
     matchTier, JSON.stringify(Array.from(allAnchors)), sources.length,
     searchedAt, expiresAt, actorId(c),
