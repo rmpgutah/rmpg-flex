@@ -24,6 +24,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { darNumber, nextDarSeq, parseArr, summarizeDar, type AutoPopulate } from '../utils/dar';
+import { containsAnyClause } from '../utils/searchText';
 
 const dar = new Hono<Env>();
 const REVIEW_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -82,8 +83,8 @@ dar.get('/', async (c): Promise<Response> => {
   if (officer_id) { where.push('d.officer_id = ?'); p.push(parseInt(officer_id, 10)); }
   if (shift_date) { where.push('d.shift_date = ?'); p.push(shift_date); }
   if (search) {
-    where.push('(d.dar_number LIKE ? OR u.full_name LIKE ?)');
-    p.push(`%${search}%`, `%${search}%`);
+    const m = containsAnyClause(['d.dar_number', 'u.full_name']);
+    where.push(m.sql); p.push(...m.binds(search));
   }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const lim = Math.min(parseInt(limitQ ?? per_page ?? '50', 10) || 50, 200);
