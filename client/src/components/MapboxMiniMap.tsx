@@ -13,8 +13,6 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
-import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
@@ -137,7 +135,6 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const geocoderRef = useRef<MapboxGeocoder | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -205,23 +202,6 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
             setLoaded(true);
             setError(null);
 
-            // Add compact geocoder control
-            if (!geocoderRef.current) {
-              const geocoder = new MapboxGeocoder({
-                accessToken: token!,
-                mapboxgl: mapboxgl as any,
-                marker: true,
-                placeholder: 'Search…',
-                proximity: { longitude: DEFAULT_CENTER[0], latitude: DEFAULT_CENTER[1] },
-                countries: 'US',
-                limit: 3,
-                collapsed: true,
-                clearOnBlur: true,
-                flyTo: { speed: 1.4, zoom: 16 },
-              });
-              map.addControl(geocoder, 'bottom-right');
-              geocoderRef.current = geocoder;
-            }
           }
         });
 
@@ -274,7 +254,6 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
       }
       for (const m of markersRef.current) m.remove();
       markersRef.current = [];
-      geocoderRef.current = null;
       webglRecoveryCleanupRef.current?.();
       webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
@@ -365,55 +344,6 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
           mounted it tinted EVERY Mapbox canvas in the document, the Map module
           included, and the tint appeared/vanished as mini-maps mounted and
           unmounted. Do not reintroduce canvas filters; change MAP_PALETTE. */}
-
-      {/* Geocoder compact dark theme override */}
-      <style>{`
-        .mapboxgl-ctrl-geocoder {
-          background: rgba(var(--surface-overlay-rgb) / 0.92) !important;
-          border: 1px solid var(--border-default) !important;
-          border-radius: 2px !important;
-          font-size: 9px !important;
-          min-width: 28px !important;
-          max-width: 180px !important;
-          box-shadow: none !important;
-        }
-        .mapboxgl-ctrl-geocoder--input {
-          color: var(--text-secondary) !important;
-          font-size: 9px !important;
-          height: 24px !important;
-          padding: 2px 24px !important;
-        }
-        .mapboxgl-ctrl-geocoder--input::placeholder {
-          color: var(--text-muted) !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions {
-          background: var(--surface-overlay) !important;
-          border: 1px solid var(--border-default) !important;
-          font-size: 9px !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions > li > a {
-          color: var(--text-secondary) !important;
-          font-size: 9px !important;
-          padding: 4px 8px !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions > .active > a,
-        .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-          background: var(--surface-raised) !important;
-          color: var(--panel-header-color) !important;
-        }
-        .mapboxgl-ctrl-geocoder--icon-search {
-          fill: var(--panel-header-color) !important;
-          width: 14px !important;
-          height: 14px !important;
-        }
-        .mapboxgl-ctrl-geocoder--icon-close {
-          fill: var(--text-muted) !important;
-        }
-        .mapboxgl-ctrl-geocoder--collapsed {
-          min-width: 28px !important;
-          width: 28px !important;
-        }
-      `}</style>
 
       {/* Top bar */}
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-2 py-1 bg-gradient-to-b from-surface-overlay/90 to-transparent z-10">

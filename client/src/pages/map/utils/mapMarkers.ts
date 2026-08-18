@@ -572,7 +572,7 @@ export interface UnitMarkerOpts {
 }
 
 const _UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
-  + '<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="#0d1520"/></svg>';
+  + `<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="${TACTICAL_BADGE_SURFACE}"/></svg>`;
 
 /** Bold solid-badge unit marker for mini-maps: status-colored disc + vehicle glyph + label. */
 export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
@@ -596,7 +596,7 @@ export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
     'align-items': 'center',
     'justify-content': 'center',
     background: color,
-    border: '2px solid #0d1520',
+    border: `2px solid ${TACTICAL_BADGE_SURFACE}`,
     'box-shadow': `0 0 8px ${withAlpha(color, 'b3')}`,
   });
   badge.innerHTML = _UNIT_GLYPH_SVG;
