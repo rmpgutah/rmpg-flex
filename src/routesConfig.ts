@@ -266,6 +266,7 @@ import drivingEvents from './routes/drivingEvents';
 import adminRepair from './routes/admin/repair';
 import crypto from './routes/crypto';
 import browserSearch from './routes/browserSearch';
+import enrichment from './routes/enrichment';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -559,6 +560,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
+  { prefix: '/api/enrichment', router: enrichment, auth: 'required',
+    note: 'Open-source skip-trace enrichment: NSOPW, SL Assessor, OpenSanctions, USPS, OpenCorporates, Numverify. Hard-lock DOB±1yr + secondary anchor. Results cached 24h in enrichment_cache.' },
   { prefix: '/api/tips', router: tips, auth: 'required',
     note: 'Detective-facing investigative tip queue (distinct from the anonymous /api/community tips table). TipsPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
