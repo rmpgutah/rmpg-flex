@@ -197,7 +197,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
-  // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
@@ -215,8 +214,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const callsRef = useRef<ActiveCall[]>([]);
   // selfMarkerRef is now managed by useMapGps
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  // searchTimeoutRef removed — geocoder plugin handles debounce internally
-
   // ── Map Core (init, token fetch, MapLibre fallback, style switching) ──────
 
   const onStyleFallback = useCallback((style: MapStyleId) => {
