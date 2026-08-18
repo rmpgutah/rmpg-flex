@@ -67,7 +67,7 @@ import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
-  computeResponseTime, computeOnSceneTime, type FilterTab,
+  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
   SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
@@ -126,6 +126,7 @@ const DEDUP_CLEANUP_MS = 5000;
 const ALARM_CHECK_INTERVAL_MS = 5000;
 
 const MOBILE_ACTION_BTN_STYLE: React.CSSProperties = { minHeight: 48, minWidth: 80, touchAction: 'manipulation' };
+const RECENT_IDS_CAP = 500;
 
 function buildCallEditBody(
   ed: Record<string, any>,
@@ -247,13 +248,6 @@ export default function DispatchPage() {
   // state — e.g. priority-escalation detection in the call_updated handler.
   const callsRef = useRef<CallForService[]>([]);
   useEffect(() => { callsRef.current = calls; }, [calls]);
-  // Synchronous dedup for POST + WebSocket race (a dispatcher's own POST resolves
-  // around the same time the WS `call_created` echo arrives — without dedup the
-  // call appears twice). Cap at 500 entries via FIFO eviction so a long shift
-  // doesn't grow this Set unbounded. 500 is generous: the longest active call
-  // window the dedup needs to cover is the ~5-10s between POST resolve and the
-  // WS echo, so 500 IDs is more than a day of busy dispatch.
-  const RECENT_IDS_CAP = 500;
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set());
   const rememberRecentId = useCallback((id: string | number) => {
     const set = recentlyCreatedIdsRef.current;
@@ -2882,18 +2876,12 @@ export default function DispatchPage() {
                       </div>
                     ))}
                     {/* Enhancement 26: Response time (dispatched → onscene) */}
-                    {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                      const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                      if (diff <= 0 || !isFinite(diff)) return null;
-                      const mins = Math.floor(diff / 60000);
-                      const secs = Math.floor((diff % 60000) / 1000);
-                      return (
-                        <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
-                          <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                          <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
-                        </div>
-                      );
-                    })()}
+                    {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                      <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                        <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                        <span className="text-rmpg-400 font-mono font-bold text-[10px]">{formatResponseTimeShort(rt)}</span>
+                      </div>
+                    ); })()}
                   </div>
                 </div>
 
@@ -4070,22 +4058,18 @@ export default function DispatchPage() {
                     </span>
                   )}
                   {/* Total elapsed timer (since call creation) */}
-                  {selectedCall.created_at && !TERMINAL_STATUSES.has(selectedCall.status) && (
-                    <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
-                      (() => {
-                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
-                        if (mins > 60) return 'text-red-400 bg-red-900/20 border border-red-700/30';
-                        if (mins > 30) return 'text-amber-400 bg-amber-900/20 border border-amber-700/30';
-                        return 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
-                      })()
-                    }`} title="Total call duration">
-                      <Clock style={{ width: 9, height: 9 }} />
-                      {(() => {
-                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
-                        return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
-                      })()}
-                    </span>
-                  )}
+                  {selectedCall.created_at && !TERMINAL_STATUSES.has(selectedCall.status) && (() => {
+                    const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
+                    const colorCls = mins > 60 ? 'text-red-400 bg-red-900/20 border border-red-700/30'
+                      : mins > 30 ? 'text-amber-400 bg-amber-900/20 border border-amber-700/30'
+                      : 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
+                    return (
+                      <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${colorCls}`} title="Total call duration">
+                        <Clock style={{ width: 9, height: 9 }} />
+                        {mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`}
+                      </span>
+                    );
+                  })()}
                 </div>
                 {/* Workflow status pipeline — compact horizontal progress track showing
                     the call lifecycle. Clickable steps advance the status directly so
@@ -4101,9 +4085,9 @@ export default function DispatchPage() {
                     { status: 'cleared',    label: 'Cleared',    short: 'CLR'  },
                     { status: 'closed',     label: 'Closed',     short: 'CLSD' },
                   ] as const;
-                  const TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
+                  const PIPELINE_TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
                   const currentIdx = PIPELINE.findIndex(p => p.status === selectedCall.status);
-                  const isTerminal = TERMINAL_STATUSES.has(selectedCall.status);
+                  const isTerminal = PIPELINE_TERMINAL_STATUSES.has(selectedCall.status);
                   const NEXT_STATUS: Record<string, string> = {
                     pending: 'dispatched', dispatched: 'enroute', enroute: 'onscene',
                     onscene: 'cleared', cleared: 'closed',
@@ -4987,18 +4971,12 @@ export default function DispatchPage() {
                           </div>
                         ))}
                         {/* Enhancement 26: Response time (dispatched → onscene) */}
-                        {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                          const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
-                          if (diff <= 0 || !isFinite(diff)) return null;
-                          const mins = Math.floor(diff / 60000);
-                          const secs = Math.floor((diff % 60000) / 1000);
-                          return (
-                            <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
-                              <span className="text-rmpg-400 text-[10px]">Response Time</span>
-                              <span className="text-rmpg-400 font-mono font-bold text-[10px]">{mins}m {secs}s</span>
-                            </div>
-                          );
-                        })()}
+                        {(() => { const rt = computeResponseTime(selectedCall); return rt == null ? null : (
+                          <div className="flex justify-between items-center mt-1 pt-1 border-t border-rmpg-700/30">
+                            <span className="text-rmpg-400 text-[10px]">Response Time</span>
+                            <span className="text-rmpg-400 font-mono font-bold text-[10px]">{formatResponseTimeShort(rt)}</span>
+                          </div>
+                        ); })()}
                       </div>
                     </div>
 
