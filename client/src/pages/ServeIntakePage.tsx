@@ -1508,6 +1508,60 @@ export default function ServeIntakePage() {
               />
               {judgeVerdicts['service_instructions'] && <JudgeFlagChip verdict={judgeVerdicts['service_instructions']} />}
             </div>
+
+            {/* Scheduling constraints — only shown when the server extracted them or
+                the operator wants to set them manually before creating the entry. */}
+            <div className="space-y-2">
+              <p className="text-[9px] text-rmpg-500 uppercase font-bold">Scheduling Constraints</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Address Class
+                    {ocrSourced.has('address_class') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <select
+                    value={editOverrides['address_class'] ?? ''}
+                    onChange={e => overrideField('address_class', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('address_class') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  >
+                    <option value="">— unknown —</option>
+                    <option value="residential">Residential</option>
+                    <option value="commercial">Commercial</option>
+                    <option value="gated">Gated / HOA</option>
+                    <option value="po_box">PO Box</option>
+                  </select>
+                  {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Not Before
+                    {ocrSourced.has('attempt_start_not_before') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="date"
+                    value={editOverrides['attempt_start_not_before'] ?? ''}
+                    onChange={e => overrideField('attempt_start_not_before', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('attempt_start_not_before') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['attempt_start_not_before'] && <JudgeFlagChip verdict={judgeVerdicts['attempt_start_not_before']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Allowed Days
+                    {ocrSourced.has('service_days_allowed') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={editOverrides['service_days_allowed'] ?? ''}
+                    onChange={e => overrideField('service_days_allowed', e.target.value)}
+                    placeholder="e.g. Mon-Fri"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('service_days_allowed') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['service_days_allowed'] && <JudgeFlagChip verdict={judgeVerdicts['service_days_allowed']} />}
+                </div>
+              </div>
+            </div>
+
             <ServeRecordMatchPanel
               address={editOverrides['recipient_address'] || ''}
               businessName={editOverrides['recipient_business_name'] || ''}
@@ -1542,7 +1596,7 @@ export default function ServeIntakePage() {
                   style={{ width: `${Math.min(100, Number(ocrPreview.confidence ?? 0) * 100)}%` }} />
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                {previewFields.slice(0, 30).map(([key, field]) => (
+                {previewFields.map(([key, field]) => (
                   <div key={key} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-sm">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
@@ -1841,7 +1895,7 @@ export default function ServeIntakePage() {
 
             {/* Diligence planner — dated attempt windows. Mirrors the
                 RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
-            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+            {result.attempt_plan && result.attempt_plan.length > 0 && (
               <div className="mt-3 pt-3 border-t border-rmpg-700">
                 <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
                 {result.attempt_plan.map((w) => (
