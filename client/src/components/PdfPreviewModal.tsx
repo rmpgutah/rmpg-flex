@@ -145,7 +145,7 @@ export default function PdfPreviewModal({
       aria-modal="true"
       aria-label={`${title} — ${targetLabel} preview`}
     >
-      <div className="w-full max-w-5xl h-[90vh] bg-surface-sunken border border-rmpg-700 flex flex-col">
+      <div className="w-full max-w-5xl h-[90dvh] bg-surface-sunken border border-rmpg-700 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between bg-gradient-to-r from-[#1a1a1a] to-[#242424] border-b border-rmpg-700 px-4 py-2">
           <div className="flex items-center gap-2 [color:var(--panel-header-color)]">

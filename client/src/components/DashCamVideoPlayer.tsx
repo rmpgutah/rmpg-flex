@@ -232,7 +232,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, on
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95" role="dialog" aria-modal="true" onClick={onClose}>
       <div
         ref={containerRef}
-        className={`bg-black overflow-hidden ${isFullscreen ? 'w-full h-full' : 'w-[960px] max-h-[92vh]'}`}
+        className={`bg-black overflow-hidden ${isFullscreen ? 'w-full h-full' : 'w-[960px] max-w-[calc(100vw-2rem)] max-h-[88dvh]'}`}
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header Bar ── */}
