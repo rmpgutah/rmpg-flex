@@ -67,7 +67,8 @@ import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
-  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal, type FilterTab,
+  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal,
+  computeResolvedDeadline, computeActiveDeadline, parsePsoServiceWindows, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
   SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
@@ -174,6 +175,104 @@ const QUICK_FLAGS = [
   { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
   { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
   { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+] as const;
+
+const KEYBOARD_SHORTCUT_GROUPS = [
+  { group: 'Selected Call', items: [
+    ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
+    ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
+  ] },
+  { group: 'Create / Panels', items: [
+    ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
+    ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
+  ] },
+  { group: 'Navigate / Filter', items: [
+    ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
+    ['Esc', 'Close modals'], ['?', 'This help'],
+  ] },
+] as const;
+
+const SERVICE_WINDOW_SLOTS = [
+  { key: 'early_morning', label: '6AM – 9AM' },
+  { key: 'daytime', label: '9AM – 6PM' },
+  { key: 'evening', label: '6PM – 9PM' },
+  { key: 'weekend', label: 'Weekend' },
+] as const;
+
+const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+const PRIORITY_LEVELS = ['P1', 'P2', 'P3', 'P4'];
+const STATUS_SORT_ORDER: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
+const SORT_CYCLE: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
+const SORT_LABELS: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
+const SORT_TITLES: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
+const ATTEMPT_NUMBERS = Array.from({ length: 10 }, (_, i) => i + 1);
+const SOURCE_OPTIONS = [
+  { value: 'phone', label: 'Phone' }, { value: 'radio', label: 'Radio' }, { value: 'walk_in', label: 'Walk-In' },
+  { value: 'alarm', label: 'Alarm' }, { value: 'patrol', label: 'Patrol' }, { value: 'online', label: 'Online' },
+  { value: 'dispatch', label: 'Dispatch' }, { value: 'other', label: 'Other' },
+] as const;
+const PRIORITY_OPTIONS = [
+  { value: 'P1', label: 'P1 - Emergency' }, { value: 'P2', label: 'P2 - Urgent' },
+  { value: 'P3', label: 'P3 - Routine' }, { value: 'P4', label: 'P4 - Scheduled' },
+] as const;
+const SERVE_PRIORITY_OPTIONS = ['normal', 'rush', 'urgent'] as const;
+const MODAL_BACKDROP_STYLE: React.CSSProperties = { background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' };
+const MODAL_PANEL_STYLE: React.CSSProperties = { border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' };
+const DETAIL_TAB_LABELS: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+
+const PROCESS_SERVICE_RESULT_GROUPS = [
+  { label: 'Successful Service', options: [
+    { value: 'served', text: 'Personal Service' },
+    { value: 'substitute_service', text: 'Substitute Service' },
+    { value: 'abode_service', text: 'Abode / Dwelling Service' },
+    { value: 'posted', text: 'Posted (Nail & Mail)' },
+    { value: 'left_with', text: 'Left With (Co-Resident / Co-Worker)' },
+    { value: 'left_at_door', text: 'Left at Door (Conspicuous Place)' },
+    { value: 'served_agent', text: 'Served on Agent / Registered Agent' },
+    { value: 'served_attorney', text: 'Served on Attorney of Record' },
+    { value: 'served_corporate', text: 'Served on Corporate Officer' },
+    { value: 'served_manager', text: 'Served on Manager / Supervisor' },
+    { value: 'served_secretary_of_state', text: 'Served via Secretary of State' },
+    { value: 'acknowledged', text: 'Acknowledged / Accepted Service' },
+    { value: 'certified_mail', text: 'Certified Mail (Return Receipt)' },
+  ] },
+  { label: 'Unsuccessful — Attempt Made', options: [
+    { value: 'no_answer', text: 'No Answer / Not Home' },
+    { value: 'no_contact', text: 'No Contact Made' },
+    { value: 'refused', text: 'Refused Service' },
+    { value: 'evasion', text: 'Evasion / Avoiding Service' },
+    { value: 'gate_locked', text: 'Gated / Locked — No Access' },
+    { value: 'aggressive_animal', text: 'Aggressive Animal / Dog' },
+    { value: 'unsafe_conditions', text: 'Unsafe Conditions' },
+    { value: 'wrong_person', text: 'Wrong Person at Address' },
+    { value: 'not_recognized', text: 'Subject Not Recognized at Location' },
+  ] },
+  { label: 'Unsuccessful — Cannot Serve', options: [
+    { value: 'unable_to_locate', text: 'Unable to Locate' },
+    { value: 'bad_address', text: 'Bad / Invalid Address' },
+    { value: 'address_vacant', text: 'Address Vacant / Abandoned' },
+    { value: 'address_commercial', text: 'Address is Commercial (Need Residential)' },
+    { value: 'moved', text: 'Subject Moved' },
+    { value: 'moved_out_of_state', text: 'Subject Moved Out of State' },
+    { value: 'deceased', text: 'Subject Deceased' },
+    { value: 'incarcerated', text: 'Subject Incarcerated' },
+    { value: 'military', text: 'Subject on Active Military Duty' },
+    { value: 'non_est', text: 'Non Est Inventus (Not Found)' },
+    { value: 'due_diligence_exhausted', text: 'Due Diligence Exhausted' },
+  ] },
+  { label: 'Administrative', options: [
+    { value: 'unable_to_serve', text: 'Unable to Serve (General)' },
+    { value: 'returned_to_attorney', text: 'Returned to Attorney' },
+    { value: 'returned_to_court', text: 'Returned to Court' },
+    { value: 'returned_to_client', text: 'Returned to Client' },
+    { value: 'expired', text: 'Documents Expired' },
+    { value: 'recalled', text: 'Service Recalled / Cancelled' },
+    { value: 'duplicate', text: 'Duplicate / Already Served' },
+    { value: 'insufficient_info', text: 'Insufficient Information' },
+    { value: 'jurisdiction_issue', text: 'Jurisdiction Issue' },
+    { value: 'referred_out', text: 'Referred to Another Server' },
+    { value: 'other', text: 'Other' },
+  ] },
 ] as const;
 
 function buildCallEditBody(
@@ -1133,7 +1232,6 @@ export default function DispatchPage() {
 
   useEffect(() => {
     const LIVE_UNIT_POLL_MS = 5000; // aligned with the ~5s client GPS batch interval (useGpsTracking.ts)
-    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
     const iv = setInterval(() => {
       if (!pollEligible()) return;
       if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();
@@ -1246,8 +1344,7 @@ export default function DispatchPage() {
         const mapped = mapDbCall(data.call);
         const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
-          const priorities = ['P1', 'P2', 'P3', 'P4'];
-          if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
+          if (PRIORITY_LEVELS.indexOf(mapped.priority) < PRIORITY_LEVELS.indexOf(prevCall.priority)) {
             announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
           }
         }
@@ -1757,8 +1854,7 @@ export default function DispatchPage() {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     if (sortMode === 'status') {
-      const sOrder: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
-      const sDiff = (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
+      const sDiff = (STATUS_SORT_ORDER[a.status] ?? 5) - (STATUS_SORT_ORDER[b.status] ?? 5);
       if (sDiff !== 0) return sDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -3006,7 +3102,7 @@ export default function DispatchPage() {
                               } catch { addToast('Failed to update visit number', 'error'); }
                             }}
                           >
-                            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
+                            {ATTEMPT_NUMBERS.map(n => <option key={n} value={n}>VISIT #{n}</option>)}
                           </select>
                         ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
                           <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
@@ -3127,7 +3223,7 @@ export default function DispatchPage() {
                                     } catch { addToast('Priority change failed', 'error'); }
                                   }}
                                 >
-                                  {['normal','rush','urgent'].map((p) => (
+                                  {SERVE_PRIORITY_OPTIONS.map((p) => (
                                     <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
                                   ))}
                                 </select>
@@ -3207,14 +3303,10 @@ export default function DispatchPage() {
 
                     {/* PSO Service Window Compliance Checklist (mobile) */}
                     {(() => {
-                      const w = typeof selectedCall.pso_service_windows === 'string'
-                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows); } catch { return null; } })()
-                        : selectedCall.pso_service_windows;
-                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
-                      // Only show when at least one window is configured
+                      const windows = parsePsoServiceWindows(selectedCall.pso_service_windows);
+                      const metCount = SERVICE_WINDOW_SLOTS.filter(s => windows[s.key]).length;
                       if (metCount === 0) return null;
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const allMet = metCount === SERVICE_WINDOW_SLOTS.length;
                       return (
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
@@ -3224,24 +3316,22 @@ export default function DispatchPage() {
                               border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
                               color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
-                              {metCount}/4
+                              {metCount}/{SERVICE_WINDOW_SLOTS.length}
                             </span>
                           </div>
                           <div className="grid grid-cols-2 gap-1">
-                            {([
-                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
-                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
-                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
-                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
-                            ] as const).map(({ key, label, met }) => (
-                              <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
-                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
-                              }}>
-                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
-                                <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
-                              </div>
-                            ))}
+                            {SERVICE_WINDOW_SLOTS.map(({ key, label }) => {
+                              const met = windows[key];
+                              return (
+                                <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
+                                  background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                  border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                }}>
+                                  <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>{met ? '✓' : '✗'}</span>
+                                  <span style={{ color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)' }}>{label}</span>
+                                </div>
+                              );
+                            })}
                           </div>
                           {allMet && (
                             <div className="mt-1.5 text-[9px] text-center font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>
@@ -3254,24 +3344,18 @@ export default function DispatchPage() {
 
                     {/* 72-hour countdown (mobile) */}
                     {RESOLVED_STATUSES.has(selectedCall.status) && (() => {
-                      const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
-                      if (!terminalTime) return null;
-                      const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
-                      const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
-                      if (elapsed >= 72 * 3600000) {
-                        return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
-                            72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
-                          </div>
-                        );
-                      }
-                      if (elapsed >= 48 * 3600000) {
-                        return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                            {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
-                          </div>
-                        );
-                      }
+                      const dl = computeResolvedDeadline(selectedCall.closed_at || selectedCall.cleared_at);
+                      if (!dl) return null;
+                      if (dl.status === 'overdue') return (
+                        <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
+                          72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
+                        </div>
+                      );
+                      if (dl.status === 'warning') return (
+                        <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
+                          {dl.hoursLeft} HOURS UNTIL 72-HR DEADLINE
+                        </div>
+                      );
                       return null;
                     })()}
 
@@ -3707,13 +3791,10 @@ export default function DispatchPage() {
                 {/* Sort toggle */}
                 {(() => {
                   const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
-                  const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
-                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
-                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
                   return (
-                    <button type="button" title={`Sort: ${titles[current]} (click to cycle)`}
+                    <button type="button" title={`Sort: ${SORT_TITLES[current]} (click to cycle)`}
                       onClick={() => {
-                        const target = next[current];
+                        const target = SORT_CYCLE[current];
                         setLocalSort(target);
                         localStorage.setItem('rmpg_dispatch_sort', target);
                         apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ dispatch_sort: target }) })
@@ -3722,7 +3803,7 @@ export default function DispatchPage() {
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: 'var(--surface-sunken)', color: 'var(--brand-gold)' }}
                     >
-                      SORT: {labels[current]}
+                      SORT: {SORT_LABELS[current]}
                     </button>
                   );
                 })()}
@@ -4637,7 +4718,6 @@ export default function DispatchPage() {
                   style={{ scrollbarWidth: 'none' }}
                 >
                   {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                    const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                     const icons: Record<string, React.ReactNode> = {
                       info: <FileText style={{ width: 9, height: 9 }} />,
                       persons: <User style={{ width: 9, height: 9 }} />,
@@ -4660,7 +4740,7 @@ export default function DispatchPage() {
                       <button type="button"
                         key={tab}
                         ref={(el) => { if (el) detailTabRefs.current[tab] = el; }}
-                        aria-label={`${labels[tab]} tab`}
+                        aria-label={`${DETAIL_TAB_LABELS[tab]} tab`}
                         onClick={() => setDetailTab(tab)}
                         className="relative px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-all duration-150 flex-shrink-0 whitespace-nowrap"
                         style={{
@@ -4673,7 +4753,7 @@ export default function DispatchPage() {
                       >
                         <span className="flex items-center gap-1">
                           {icons[tab]}
-                          {labels[tab]}
+                          {DETAIL_TAB_LABELS[tab]}
                           {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--brand-gold) 20%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                         </span>
                       </button>
@@ -4811,16 +4891,13 @@ export default function DispatchPage() {
                           <div>
                             <label className="field-label">Source:</label>
                             <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
-                              <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
-                              <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
-                              <option value="dispatch">Dispatch</option><option value="other">Other</option>
+                              {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
                             <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
-                              <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
-                              <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
+                              {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                           </div>
                         </div>
@@ -5720,37 +5797,31 @@ export default function DispatchPage() {
                               }}
                               title="Admin: change attempt number"
                             >
-                              {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                                <option key={n} value={n}>{n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} ATTEMPT</option>
+                              {ATTEMPT_NUMBERS.map(n => (
+                                <option key={n} value={n}>{formatOrdinal(n)} ATTEMPT</option>
                               ))}
                             </select>
                           ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
                             <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                              {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
+                              {formatOrdinal(selectedCall.pso_attempt_number || 1)} ATTEMPT
                             </span>
                           ) : null
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
                       {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && RESOLVED_STATUSES.has(selectedCall.status) && (() => {
-                        const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
-                        if (!terminalTime) return null;
-                        const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
-                        const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
-                        if (elapsed >= 72 * 3600000) {
-                          return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
-                              72HR OVERDUE — RE-DISPATCH REQUIRED
-                            </span>
-                          );
-                        }
-                        if (elapsed >= 48 * 3600000) {
-                          return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                              {Math.floor(hoursLeft)}HR UNTIL DEADLINE
-                            </span>
-                          );
-                        }
+                        const dl = computeResolvedDeadline(selectedCall.closed_at || selectedCall.cleared_at);
+                        if (!dl) return null;
+                        if (dl.status === 'overdue') return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
+                            72HR OVERDUE — RE-DISPATCH REQUIRED
+                          </span>
+                        );
+                        if (dl.status === 'warning') return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
+                            {dl.hoursLeft}HR UNTIL DEADLINE
+                          </span>
+                        );
                         return null;
                       })()}
                       {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
@@ -5864,18 +5935,15 @@ export default function DispatchPage() {
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
                         {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && selectedCall.status !== 'archived' && (() => {
-                          const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
-                          const remaining = deadline.getTime() - Date.now();
-                          if (remaining <= 0) return (
+                          const dl = computeActiveDeadline(selectedCall.created_at);
+                          if (dl.status === 'overdue') return (
                             <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: 'var(--sev-critical)' }}>
                               72HR DEADLINE PASSED
                             </div>
                           );
-                          const hrs = Math.floor(remaining / 3600000);
-                          const mins = Math.floor((remaining % 3600000) / 60000);
                           return (
-                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? 'var(--sev-critical)' : hrs < 24 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
-                              {hrs}h {mins}m until 72hr deadline
+                            <div className="text-[10px] font-mono" style={{ color: dl.status === 'warning' ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
+                              {dl.hoursLeft}h {dl.minsLeft}m until 72hr deadline
                             </div>
                           );
                         })()}
@@ -5887,14 +5955,10 @@ export default function DispatchPage() {
 
                     {/* PSO Service Window Compliance Checklist (desktop) */}
                     {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && (() => {
-                      const w = typeof selectedCall.pso_service_windows === 'string'
-                        ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
-                        : selectedCall.pso_service_windows;
-                      const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
-                      // Only show when at least one window is configured
+                      const windows = parsePsoServiceWindows(selectedCall.pso_service_windows);
+                      const metCount = SERVICE_WINDOW_SLOTS.filter(s => windows[s.key]).length;
                       if (metCount === 0) return null;
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
+                      const allMet = metCount === SERVICE_WINDOW_SLOTS.length;
                       return (
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">
@@ -5904,26 +5968,24 @@ export default function DispatchPage() {
                               border: `1px solid ${allMet ? 'color-mix(in srgb, var(--sev-ok) 25%, transparent)' : 'color-mix(in srgb, var(--sev-warn) 25%, transparent)'}`,
                               color: allMet ? 'var(--sev-ok)' : 'var(--sev-warn-soft)',
                             }}>
-                              {metCount}/4
+                              {metCount}/{SERVICE_WINDOW_SLOTS.length}
                             </span>
                             {allMet && <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: 'var(--sev-ok)' }}>✓ Due Diligence Complete</span>}
                           </div>
                           <div className="flex flex-wrap gap-1.5">
-                            {([
-                              { key: 'early_morning', label: '6AM – 9AM', met: windows.early_morning },
-                              { key: 'daytime', label: '9AM – 6PM', met: windows.daytime },
-                              { key: 'evening', label: '6PM – 9PM', met: windows.evening },
-                              { key: 'weekend', label: 'Weekend', met: windows.weekend },
-                            ] as const).map(({ key, label, met }) => (
-                              <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
-                                border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
-                                color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
-                              }}>
-                                <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
-                                {label}
-                              </span>
-                            ))}
+                            {SERVICE_WINDOW_SLOTS.map(({ key, label }) => {
+                              const met = windows[key];
+                              return (
+                                <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
+                                  background: met ? 'color-mix(in srgb, var(--sev-ok) 6%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 6%, transparent)',
+                                  border: `1px solid ${met ? 'color-mix(in srgb, var(--sev-ok) 19%, transparent)' : 'color-mix(in srgb, var(--sev-critical) 19%, transparent)'}`,
+                                  color: met ? 'var(--sev-ok-soft)' : 'var(--sev-critical-soft)',
+                                }}>
+                                  <span style={{ color: met ? 'var(--sev-ok)' : 'var(--sev-critical)', fontSize: '8px' }}>{met ? '●' : '○'}</span>
+                                  {label}
+                                </span>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -6017,58 +6079,11 @@ export default function DispatchPage() {
                             <label className="text-[9px] text-amber-400">Service Result</label>
                             <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
-                              <optgroup label="Successful Service">
-                                <option value="served">Personal Service</option>
-                                <option value="substitute_service">Substitute Service</option>
-                                <option value="abode_service">Abode / Dwelling Service</option>
-                                <option value="posted">Posted (Nail &amp; Mail)</option>
-                                <option value="left_with">Left With (Co-Resident / Co-Worker)</option>
-                                <option value="left_at_door">Left at Door (Conspicuous Place)</option>
-                                <option value="served_agent">Served on Agent / Registered Agent</option>
-                                <option value="served_attorney">Served on Attorney of Record</option>
-                                <option value="served_corporate">Served on Corporate Officer</option>
-                                <option value="served_manager">Served on Manager / Supervisor</option>
-                                <option value="served_secretary_of_state">Served via Secretary of State</option>
-                                <option value="acknowledged">Acknowledged / Accepted Service</option>
-                                <option value="certified_mail">Certified Mail (Return Receipt)</option>
-                              </optgroup>
-                              <optgroup label="Unsuccessful — Attempt Made">
-                                <option value="no_answer">No Answer / Not Home</option>
-                                <option value="no_contact">No Contact Made</option>
-                                <option value="refused">Refused Service</option>
-                                <option value="evasion">Evasion / Avoiding Service</option>
-                                <option value="gate_locked">Gated / Locked — No Access</option>
-                                <option value="aggressive_animal">Aggressive Animal / Dog</option>
-                                <option value="unsafe_conditions">Unsafe Conditions</option>
-                                <option value="wrong_person">Wrong Person at Address</option>
-                                <option value="not_recognized">Subject Not Recognized at Location</option>
-                              </optgroup>
-                              <optgroup label="Unsuccessful — Cannot Serve">
-                                <option value="unable_to_locate">Unable to Locate</option>
-                                <option value="bad_address">Bad / Invalid Address</option>
-                                <option value="address_vacant">Address Vacant / Abandoned</option>
-                                <option value="address_commercial">Address is Commercial (Need Residential)</option>
-                                <option value="moved">Subject Moved</option>
-                                <option value="moved_out_of_state">Subject Moved Out of State</option>
-                                <option value="deceased">Subject Deceased</option>
-                                <option value="incarcerated">Subject Incarcerated</option>
-                                <option value="military">Subject on Active Military Duty</option>
-                                <option value="non_est">Non Est Inventus (Not Found)</option>
-                                <option value="due_diligence_exhausted">Due Diligence Exhausted</option>
-                              </optgroup>
-                              <optgroup label="Administrative">
-                                <option value="unable_to_serve">Unable to Serve (General)</option>
-                                <option value="returned_to_attorney">Returned to Attorney</option>
-                                <option value="returned_to_court">Returned to Court</option>
-                                <option value="returned_to_client">Returned to Client</option>
-                                <option value="expired">Documents Expired</option>
-                                <option value="recalled">Service Recalled / Cancelled</option>
-                                <option value="duplicate">Duplicate / Already Served</option>
-                                <option value="insufficient_info">Insufficient Information</option>
-                                <option value="jurisdiction_issue">Jurisdiction Issue</option>
-                                <option value="referred_out">Referred to Another Server</option>
-                                <option value="other">Other</option>
-                              </optgroup>
+                              {PROCESS_SERVICE_RESULT_GROUPS.map(g => (
+                                <optgroup key={g.label} label={g.label}>
+                                  {g.options.map(o => <option key={o.value} value={o.value}>{o.text}</option>)}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
                         </div>
@@ -6636,20 +6651,7 @@ export default function DispatchPage() {
               </button>
             </div>
             <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {([
-                { group: 'Selected Call', items: [
-                  ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
-                  ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
-                ] },
-                { group: 'Create / Panels', items: [
-                  ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
-                  ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
-                ] },
-                { group: 'Navigate / Filter', items: [
-                  ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
-                  ['Esc', 'Close modals'], ['?', 'This help'],
-                ] },
-              ] as const).map(({ group, items }) => (
+              {KEYBOARD_SHORTCUT_GROUPS.map(({ group, items }) => (
                 <div key={group}>
                   <div className="text-[9px] font-bold uppercase tracking-wide text-rmpg-400 mb-1.5">{group}</div>
                   <div className="space-y-1">
@@ -6768,10 +6770,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={MODAL_BACKDROP_STYLE} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', ...MODAL_PANEL_STYLE }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -6899,8 +6901,8 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={MODAL_BACKDROP_STYLE}>
+          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', ...MODAL_PANEL_STYLE }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
@@ -7399,8 +7401,8 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={MODAL_BACKDROP_STYLE} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={MODAL_PANEL_STYLE} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
