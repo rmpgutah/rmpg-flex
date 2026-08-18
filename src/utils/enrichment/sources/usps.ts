@@ -2,7 +2,7 @@ import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
 
 function escXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
