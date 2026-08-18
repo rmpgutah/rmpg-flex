@@ -1660,6 +1660,11 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   const hasDispositionCol = 'disposition_code' in body
     ? await columnExists(db, 'serve_attempts', 'disposition_code')
     : true;
+  // person_served_* guarded — migration 0256 adds these columns; the deploy
+  // step is continue-on-error so they may not exist on a fresh deploy.
+  const hasPersonServedCols = ('person_served_name' in body || 'person_served_relationship' in body || 'person_served_description' in body)
+    ? await columnExists(db, 'serve_attempts', 'person_served_name')
+    : true;
   const sets: string[] = [];
   const args: any[] = [];
   let resultChanged = false;
@@ -1704,18 +1709,21 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
     }
   }
 
-  // Physical description fields (editable for officer corrections)
-  if ('person_served_name' in body) {
-    sets.push('person_served_name = ?');
-    args.push(body.person_served_name || null);
-  }
-  if ('person_served_relationship' in body) {
-    sets.push('person_served_relationship = ?');
-    args.push(body.person_served_relationship || null);
-  }
-  if ('person_served_description' in body) {
-    sets.push('person_served_description = ?');
-    args.push(body.person_served_description || null);
+  // Physical description fields (editable for officer corrections).
+  // Guarded by hasPersonServedCols — migration 0256 may not be applied yet.
+  if (hasPersonServedCols) {
+    if ('person_served_name' in body) {
+      sets.push('person_served_name = ?');
+      args.push(body.person_served_name || null);
+    }
+    if ('person_served_relationship' in body) {
+      sets.push('person_served_relationship = ?');
+      args.push(body.person_served_relationship || null);
+    }
+    if ('person_served_description' in body) {
+      sets.push('person_served_description = ?');
+      args.push(body.person_served_description || null);
+    }
   }
 
   // Structured PS code takes precedence — derive the legacy `result`
