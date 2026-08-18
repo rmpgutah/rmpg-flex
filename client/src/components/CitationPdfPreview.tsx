@@ -56,7 +56,7 @@ export function CitationPdfPreview({ form, mode, onModeChange }: Props) {
         <iframe
           src={blobUrl}
           title="Citation preview"
-          className="w-full h-[600px] border border-border-default bg-white"
+          className="w-full h-[600px] max-h-[70dvh] border border-border-default bg-white"
         />
       )}
 

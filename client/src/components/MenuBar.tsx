@@ -1185,7 +1185,7 @@ export default function MenuBar({
       {show10Codes && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShow10Codes(false)} role="dialog" aria-modal="true" aria-label="10-Codes Quick Reference">
           <div
-            className="panel-beveled w-[700px] max-h-[80vh] overflow-hidden flex flex-col animate-dropdown-appear"
+            className="panel-beveled w-[700px] max-w-[calc(100vw-1rem)] max-h-[80dvh] overflow-hidden flex flex-col animate-dropdown-appear"
             style={{ background:"var(--surface-sunken)" }}
             onClick={(e) => e.stopPropagation()}
           >
