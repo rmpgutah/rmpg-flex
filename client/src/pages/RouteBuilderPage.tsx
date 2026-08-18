@@ -36,7 +36,7 @@ import IconButton from '../components/IconButton';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { escapeHtml } from '../utils/sanitize';
 import { withAlpha } from '../utils/withAlpha';
-import { isValidLngLat } from '../utils/mapMarkers';
+import { isValidLngLat } from './map/utils/mapMarkers';
 
 // ─── Types ──────────────────────────────────────────────────
 

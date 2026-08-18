@@ -15,7 +15,7 @@ import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 import LocationNoteModal from './LocationNoteModal';
 import { escapeHtml } from '../../utils/sanitize';
 import { withAlpha } from '../../utils/withAlpha';
-import { isValidLngLat } from '../../utils/mapMarkers';
+import { isValidLngLat } from '../../pages/map/utils/mapMarkers';
 import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '../../utils/serveMapClustering';
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../../utils/mapboxRouting';

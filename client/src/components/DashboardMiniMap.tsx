@@ -19,7 +19,7 @@ import { injectMapboxStyles } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
-import { isValidLngLat } from '../utils/mapMarkers';
+import { isValidLngLat } from '../pages/map/utils/mapMarkers';
 import type { MapUnit, ActiveCall } from '../pages/map/utils/mapConstants';
 import IconButton from './IconButton';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
