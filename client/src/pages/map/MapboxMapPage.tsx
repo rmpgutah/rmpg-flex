@@ -62,6 +62,7 @@ import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
 import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
 import { useMapboxPursuitSegments } from '../../hooks/useMapboxPursuitSegments';
 import { useSpeedZoneStats } from './hooks/useSpeedZoneStats';
+import { useMapIsochrone } from './hooks/useMapIsochrone';
 import SpeedAnalyticsPanel from './components/SpeedAnalyticsPanel';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
@@ -196,7 +197,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
-  const [isochroneEnabled, setIsochroneEnabled] = useState(false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
   // showMeasureMenu / showDrawMenu drive the distance/area and polygon/polyline/circle
   // dropdown bodies — their launcher buttons now live in the Right Dock's Analysis
@@ -567,6 +567,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // session track (CSV/GeoJSON) for the GPS HUD's export/clear footer — off by
   // default on useGpsTracking so the always-on Layout tracker doesn't accumulate.
   const gps = useGpsTracking({ upload: false, capture: true });
+  const { isochroneEnabled, toggleIsochrone } = useMapIsochrone({
+    map: mapRef.current,
+    mapLoaded,
+    gpsLatitude: gps.latitude,
+    gpsLongitude: gps.longitude,
+    addToast,
+  });
   const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
@@ -1356,66 +1363,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     map.flyTo({ center: [gps.longitude, gps.latitude], zoom: 16, duration: 800 });
   }, [gps.latitude, gps.longitude, addToast]);
 
-  // ── Isochrone Overlay ──────────────────────────────────────────────────────
-
-  const toggleIsochrone = useCallback(async () => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded) return;
-
-    if (isochroneEnabled) {
-      // Remove existing isochrone layers
-      ['isochrone-fill-0', 'isochrone-fill-1', 'isochrone-fill-2',
-       'isochrone-border-0', 'isochrone-border-1', 'isochrone-border-2'].forEach(id => {
-        safeRemoveLayer(map, id);
-      });
-      safeRemoveSource(map, 'isochrone');
-      setIsochroneEnabled(false);
-      return;
-    }
-
-    // Use GPS position or map center as origin
-    const lng = gps.longitude ?? map.getCenter().lng;
-    const lat = gps.latitude ?? map.getCenter().lat;
-
-    try {
-      const data = await mapboxIsochrone(lng, lat, {
-        profile: 'driving',
-        minutes: [5, 10, 15],
-      });
-
-      if (!data?.features) { console.error('Isochrone response missing features'); return; }
-      upsertGeoJsonSource(map, 'isochrone', data as any);
-
-      const colors = ISOCHRONE_COLORS; // 5min=green, 10min=yellow, 15min=red
-      data.features.forEach((_, idx) => {
-        const fillId = `isochrone-fill-${idx}`;
-        const borderId = `isochrone-border-${idx}`;
-        if (!hasLayer(map, fillId)) {
-          map.addLayer({
-            id: fillId,
-            type: 'fill',
-            source: 'isochrone',
-            paint: { 'fill-color': colors[idx] || TACTICAL_TEXT_MUTED, 'fill-opacity': 0.1 },
-            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
-          });
-        }
-        if (!hasLayer(map, borderId)) {
-          map.addLayer({
-            id: borderId,
-            type: 'line',
-            source: 'isochrone',
-            paint: { 'line-color': colors[idx] || TACTICAL_TEXT_MUTED, 'line-width': 1.5, 'line-opacity': 0.6 },
-            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
-          });
-        }
-      });
-
-      setIsochroneEnabled(true);
-      addToast('Response time zones: 5/10/15 min driving', 'info');
-    } catch (err) {
-      addToast('Failed to load isochrone data', 'error');
-    }
-  }, [mapLoaded, isochroneEnabled, gps.longitude, gps.latitude, addToast]);
+  // ── Isochrone Overlay ── extracted to useMapIsochrone hook ─────────────────
 
   // ── Dock Section Data (Layers left dock + Info & Tools right dock) ──────────
   // Re-bucketed from the former flat `layerGroups`/Advanced Toolbar into the new
