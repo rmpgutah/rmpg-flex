@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEnrichment } from '../../hooks/useEnrichment';
+import type { EnrichmentSeed, EnrichmentAddress } from '../../hooks/useEnrichment';
 import {
   User, FileText, MapPin, Phone, Mail, Calendar, Briefcase, Scale,
   Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
@@ -250,6 +252,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [qrScans, setQrScans] = useState<QrScan[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+
   const load = useCallback(async (id: number) => {
     setLoading(true);
     try {
@@ -274,12 +278,28 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   }, []);
 
   useEffect(() => {
+    enrichReset();
     if (selectedId != null) load(selectedId);
-  }, [selectedId, load]);
+  }, [selectedId, load, enrichReset]);
 
   useEffect(() => {
     if (selectedJobId != null) setSelectedId(selectedJobId);
   }, [selectedJobId]);
+
+  const handleLocateSubject = useCallback(() => {
+    if (!job) return;
+    const parts = (job.recipient_name ?? '').split(' ');
+    const seed: EnrichmentSeed = {
+      first_name: parts[0] ?? '',
+      last_name:  parts.slice(1).join(' '),
+      dob:        (job.recipient_dob as string | undefined) ?? undefined,
+      address:    job.recipient_address ?? undefined,
+      city:       job.recipient_city ?? undefined,
+      state:      job.recipient_state ?? undefined,
+      phone:      job.recipient_phone ?? undefined,
+    };
+    enrichSearch(seed);
+  }, [job, enrichSearch]);
 
   const priorityColor: Record<string, string> = {
     urgent: 'text-red-400', rush: 'text-orange-400', normal: 'text-amber-400', routine: 'text-text-secondary',
@@ -452,6 +472,68 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               ) : (
                 <div className="space-y-2">
                   {attempts.map((a, i) => <AttemptRow key={a.id} attempt={a} index={i} />)}
+                </div>
+              )}
+            </div>
+
+            {/* Locate Subject — open-source enrichment */}
+            <div className="border border-border-subtle rounded bg-surface-raised p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                  Locate Subject
+                </span>
+                <button
+                  onClick={handleLocateSubject}
+                  disabled={enrichLoading || !job}
+                  className="px-2 py-1 text-[10px] font-medium rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors"
+                >
+                  {enrichLoading ? 'Locating…' : 'Locate Subject'}
+                </button>
+              </div>
+
+              {enrichResult && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${
+                      enrichResult.match_tier === 'CONFIRMED'
+                        ? 'bg-green-900/40 text-green-400 border-green-700'
+                        : 'bg-amber-900/40 text-amber-400 border-amber-700'
+                    }`}>
+                      {enrichResult.match_tier}
+                    </span>
+                    {enrichResult.stale && (
+                      <span className="text-[9px] text-amber-400">Cached result — may be stale</span>
+                    )}
+                    {enrichResult.match_tier === 'UNCONFIRMED' && (
+                      <span className="text-[9px] text-amber-400">Officer review required before use</span>
+                    )}
+                  </div>
+
+                  {enrichResult.records.flatMap((r: { addresses: EnrichmentAddress[] }) => r.addresses).slice(0, 5).map((addr: EnrichmentAddress, i: number) => (
+                    <div key={i} className="flex items-center justify-between gap-2 py-1 border-b border-border-subtle last:border-0">
+                      <span className="text-[11px] text-text-primary">
+                        {[addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')}
+                        {addr.source && (
+                          <span className="ml-1 text-[9px] text-text-secondary">({addr.source})</span>
+                        )}
+                      </span>
+                      {enrichResult.match_tier === 'CONFIRMED' && (
+                        <button
+                          onClick={() => {
+                            // TODO: wire to attempt pre-fill when attempt form supports it
+                            window.dispatchEvent(new CustomEvent('serve:prefill-attempt', { detail: addr }));
+                          }}
+                          className="shrink-0 px-1.5 py-0.5 text-[9px] rounded bg-surface-sunken hover:bg-brand-700 text-text-secondary hover:text-white border border-border-subtle transition-colors"
+                        >
+                          Add as Attempt
+                        </button>
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="text-[9px] text-text-secondary">
+                    {enrichResult.confirmed_count} confirmed · {enrichResult.sources.filter(s => s.ok).length} sources responded
+                  </div>
                 </div>
               )}
             </div>
