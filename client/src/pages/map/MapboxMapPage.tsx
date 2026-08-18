@@ -1159,6 +1159,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   useMapBeatOverlay({
     map: mapRef.current,
     mapLoaded,
+    // Beat GeoJSON is managed by useGeoJsonLayers, not held as state here.
+    // This seam accepts a beats array for future per-beat marker logic.
     beats: [],
     beatLayerVisible: geoJsonLayers.layerStates['beat']?.visible ?? false,
   });
