@@ -117,7 +117,6 @@ import { MapDensityProvider } from './hooks/useMapDensity';
 import { MapContext } from './MapContext';
 import MapLayout from './MapLayout';
 import MapTopToolbar from './components/MapTopToolbar';
-import PatrolBeatPlannerModal from '../../components/PatrolBeatPlannerModal';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import UnifiedMapLegend from './components/UnifiedMapLegend';
 import OsmFeatureEditor from '../../components/OsmFeatureEditor';
@@ -1613,12 +1612,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             </span>
           )}
         </div>
-      )}
-      {showBeatPlanner && (
-        <PatrolBeatPlannerModal
-          onClose={() => setShowBeatPlanner(false)}
-          onSolutionReady={(routes) => { setBeatRoutes(routes); setShowBeatPlanner(false); }}
-        />
       )}
 
       {/* ── Middle row: Roster dock · Layers dock · Map canvas · Info & Tools dock ── */}
