@@ -49,6 +49,8 @@ export interface OptimizeResult {
   orderedStops: RouteStop[];
   etaPerStop: string[];
   matrixFallback: boolean;
+  /** Human-readable reason the Matrix API was unavailable, when matrixFallback is true. */
+  fallbackReason?: string;
   geocodeWarnings: GeocodeWarning[];
 }
 
@@ -59,6 +61,7 @@ export interface TrafficCheckResult {
   newEtas: string[];
   degradedSegments: Array<{ fromJobId: number; toJobId: number; addedSeconds: number }>;
   matrixFallback: boolean;
+  fallbackReason?: string;
 }
 
 /**
@@ -93,9 +96,9 @@ export async function buildCostMatrix(
   stops: RouteStop[],
   departAt: string,
   mapboxToken: string
-): Promise<{ matrix: number[][]; fallback: boolean }> {
+): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   if (!mapboxToken) {
-    return { matrix: haversineMatrix(stops), fallback: true };
+    return { matrix: haversineMatrix(stops), fallback: true, reason: 'no token configured' };
   }
 
   if (stops.length <= MATRIX_CHUNK_SIZE) {
@@ -106,16 +109,17 @@ export async function buildCostMatrix(
   const n = stops.length;
   const result: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
   let fallback = false;
+  let firstReason: string | undefined;
 
   for (let start = 0; start < n; start += MATRIX_CHUNK_SIZE) {
     const end = Math.min(start + MATRIX_CHUNK_SIZE, n);
     const chunk = stops.slice(start, end);
-    const { matrix: chunkMatrix, fallback: chunkFallback } = await fetchMatrixChunk(
+    const { matrix: chunkMatrix, fallback: chunkFallback, reason } = await fetchMatrixChunk(
       chunk,
       departAt,
       mapboxToken
     );
-    if (chunkFallback) fallback = true;
+    if (chunkFallback) { fallback = true; if (!firstReason) firstReason = reason; }
     for (let i = start; i < end; i++) {
       for (let j = start; j < end; j++) {
         result[i][j] = chunkMatrix[i - start][j - start];
@@ -126,6 +130,7 @@ export async function buildCostMatrix(
     // cross-chunk) are unavoidable in the chunked path, so mark fallback true
     // unconditionally whenever any cross-chunk cells are filled.
     if (start > 0) {
+      if (!fallback) firstReason = 'route too large for single API call';
       fallback = true;
       for (let i = 0; i < start; i++) {
         for (let j = start; j < end; j++) {
@@ -137,32 +142,58 @@ export async function buildCostMatrix(
       }
     }
   }
-  return { matrix: result, fallback };
+  return { matrix: result, fallback, reason: firstReason };
 }
 
 async function fetchMatrixChunk(
   stops: RouteStop[],
   departAt: string,
   mapboxToken: string
-): Promise<{ matrix: number[][]; fallback: boolean }> {
+): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-  const url = new URL(
-    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
-  );
-  url.searchParams.set('sources', 'all');
-  url.searchParams.set('destinations', 'all');
-  url.searchParams.set('depart_at', departAt);
-  url.searchParams.set('access_token', mapboxToken);
+  const buildUrl = (withDepartAt: boolean) => {
+    const url = new URL(
+      `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
+    );
+    url.searchParams.set('sources', 'all');
+    url.searchParams.set('destinations', 'all');
+    if (withDepartAt) url.searchParams.set('depart_at', departAt);
+    url.searchParams.set('access_token', mapboxToken);
+    return url.toString();
+  };
 
-  try {
-    const res = await fetch(url.toString(), {
+  const attempt = async (withDepartAt: boolean) => {
+    const res = await fetch(buildUrl(withDepartAt), {
       signal: AbortSignal.timeout(8_000),
     });
-    if (!res.ok) throw new Error(`Mapbox Matrix HTTP ${res.status}`);
+    return res;
+  };
+
+  try {
+    let res = await attempt(true);
+
+    // 422 often means `depart_at` is malformed or unsupported on this plan.
+    // Retry without it — current-conditions traffic is still better than haversine.
+    if (res.status === 422) {
+      console.warn('[serveRouteOptimizer] Matrix API 422 with depart_at — retrying without');
+      res = await attempt(false);
+    }
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[serveRouteOptimizer] Matrix API HTTP ${res.status}`, body);
+      const reason = res.status === 401 ? 'token rejected (401)'
+        : res.status === 429 ? 'rate limited (429)'
+        : `HTTP ${res.status}`;
+      return { matrix: haversineMatrix(stops), fallback: true, reason };
+    }
+
     const data = await (res.json() as Promise<{ durations: number[][] }>);
     return { matrix: data.durations, fallback: false };
-  } catch {
-    return { matrix: haversineMatrix(stops), fallback: true };
+  } catch (err) {
+    const reason = err instanceof Error && err.name === 'TimeoutError' ? 'request timed out' : 'network error';
+    console.error('[serveRouteOptimizer] Matrix API fetch failed', err);
+    return { matrix: haversineMatrix(stops), fallback: true, reason };
   }
 }
 
@@ -862,12 +893,12 @@ export async function optimizeRouteFullPipeline(
   const now = new Date();
   const geocodeWarnings = collectGeocodeWarnings(stops);
   const dwellSecs = await fetchDwellSeconds(db, stops);
-  const { matrix, fallback } = await buildCostMatrix(stops, departAt, mapboxToken);
+  const { matrix, fallback, reason } = await buildCostMatrix(stops, departAt, mapboxToken);
   const orderedIndices = optimizeRoute(stops, matrix, departAt, now, dwellSecs);
   const orderedStops = orderedIndices.map(i => stops[i]);
   const etaPerStop = computeEtas(orderedIndices, matrix, dwellSecs, departAt);
 
-  return { orderedStops, etaPerStop, matrixFallback: fallback, geocodeWarnings };
+  return { orderedStops, etaPerStop, matrixFallback: fallback, fallbackReason: reason, geocodeWarnings };
 }
 
 export async function hashAddress(address: string): Promise<string> {
@@ -1029,7 +1060,7 @@ export async function checkTrafficDegradation(
 
   const allStops = [origin, ...remainingStops];
   const nowIso = new Date().toISOString();
-  const { matrix, fallback } = await buildCostMatrix(allStops, nowIso, mapboxToken);
+  const { matrix, fallback, reason } = await buildCostMatrix(allStops, nowIso, mapboxToken);
 
   if (fallback) {
     return {
@@ -1039,6 +1070,7 @@ export async function checkTrafficDegradation(
       newEtas: originalEtas,
       degradedSegments: [],
       matrixFallback: true,
+      fallbackReason: reason,
     };
   }
 
