@@ -19,20 +19,21 @@ const SOUNDS = join(__dirname, '..', 'client', 'public', 'sounds');
 interface Wav { samples: Float64Array; sampleRate: number; bits: number; channels: number }
 
 function readWav(name: string): Wav {
-  const b = readFileSync(join(SOUNDS, name + '.wav')) as Buffer;
+  const raw = readFileSync(join(SOUNDS, name + '.wav'));
+  const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   let off = 12, sampleRate = 44100, bits = 16, channels = 1;
   let samples = new Float64Array(0);
-  while (off < b.length - 8) {
-    const id = b.toString('ascii', off, off + 4);
-    const size = b.readUInt32LE(off + 4);
+  while (off < raw.length - 8) {
+    const id = String.fromCharCode(raw[off], raw[off + 1], raw[off + 2], raw[off + 3]);
+    const size = dv.getUint32(off + 4, true);
     if (id === 'fmt ') {
-      channels = b.readUInt16LE(off + 10);
-      sampleRate = b.readUInt32LE(off + 12);
-      bits = b.readUInt16LE(off + 22);
+      channels = dv.getUint16(off + 10, true);
+      sampleRate = dv.getUint32(off + 12, true);
+      bits = dv.getUint16(off + 22, true);
     } else if (id === 'data') {
       const n = Math.floor(size / (bits / 8) / channels);
       samples = new Float64Array(n);
-      for (let i = 0; i < n; i++) samples[i] = b.readInt16LE(off + 8 + i * channels * 2) / 32768;
+      for (let i = 0; i < n; i++) samples[i] = dv.getInt16(off + 8 + i * channels * 2, true) / 32768;
       break;
     }
     off += 8 + size + (size % 2);
