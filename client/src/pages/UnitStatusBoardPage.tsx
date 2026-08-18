@@ -16,6 +16,7 @@ interface DispatchUnit {
   current_call_id?: number | null;
   current_call_number?: string | null;
   location_description?: string | null;
+  queued_call_ids?: number[];
 }
 
 type FilterMode = 'ALL' | 'AVAILABLE' | 'ON-CALL' | 'OUT';
