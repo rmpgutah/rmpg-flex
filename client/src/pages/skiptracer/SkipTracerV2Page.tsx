@@ -22,6 +22,8 @@ import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuC
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { withAlpha } from '../../utils/withAlpha';
 import { INPUT_BADGE_COLORS, CATEGORY_COLORS, ENGINE_COLORS, SECTION_COLORS, STATS_COLORS, categoryColor, sourceColor } from '../../utils/skipTracerPalette';
+import { useEnrichment } from '../../hooks/useEnrichment';
+import type { EnrichmentSeed } from '../../hooks/useEnrichment';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -729,6 +731,25 @@ export default function SkipTracerV2Page() {
     finally { setExporting(false); }
   }, [selected, handleExportPdf]);
 
+  // ─── Enrichment ─────────────────────────────────────────
+
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+
+  const enrichSeed = useCallback((): EnrichmentSeed | null => {
+    if (!selected) return null;
+    return {
+      first_name: selected.firstName ?? '',
+      last_name:  selected.lastName  ?? '',
+      dob:        selected.dob        ?? undefined,
+      city:       selected.city       ?? undefined,
+      state:      selected.state      ?? undefined,
+      phone:      selected.phones?.[0]?.number ?? undefined,
+    };
+  }, [selected]);
+
+  // Reset enrichment when selected person changes
+  useEffect(() => { enrichReset(); }, [selected, enrichReset]);
+
   // ─── Timeline builder ───────────────────────────────────
 
   const buildTimeline = useCallback((profile: Profile) => {
@@ -1284,6 +1305,59 @@ export default function SkipTracerV2Page() {
                   rows={3}
                   className="w-full px-2 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] text-rmpg-100 font-mono placeholder-fg-muted focus:outline-none focus:border-rmpg-500 resize-y"
                 />
+              </div>
+            )}
+          </div>
+
+          {/* Enrichment panel */}
+          <div className="border border-border-subtle rounded bg-surface-raised p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                Open-Source Enrichment
+              </span>
+              <div className="flex items-center gap-2">
+                {enrichResult?.stale && (
+                  <span className="text-[9px] text-text-secondary">Cached — stale</span>
+                )}
+                <button
+                  onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s); }}
+                  disabled={enrichLoading || !selected}
+                  className="px-2 py-1 text-[10px] font-medium rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors"
+                >
+                  {enrichLoading ? 'Searching…' : enrichResult ? 'Refresh' : 'Enrich from open sources'}
+                </button>
+              </div>
+            </div>
+
+            {enrichResult && (
+              <div className="space-y-2">
+                {/* Match tier badge */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    enrichResult.match_tier === 'CONFIRMED'
+                      ? 'bg-green-900/40 text-green-400 border border-green-700'
+                      : 'bg-amber-900/40 text-amber-400 border border-amber-700'
+                  }`}>
+                    {enrichResult.match_tier}
+                  </span>
+                  {enrichResult.anchors.map(a => (
+                    <span key={a} className="px-1.5 py-0.5 rounded text-[9px] bg-surface-sunken text-text-secondary border border-border-subtle">
+                      {a === 'dob_match' ? 'DOB ✓' : a === 'address_anchor' ? 'Address ✓' : a === 'dl_number' ? 'DL# ✓' : a === 'ssn_last4' ? 'SSN-4 ✓' : a}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Confirmed addresses */}
+                {enrichResult.records.flatMap(r => r.addresses).slice(0, 5).map((addr, i) => (
+                  <div key={i} className="text-[11px] text-text-primary">
+                    {[addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')}
+                    <span className="ml-1 text-[9px] text-text-secondary">({addr.source})</span>
+                  </div>
+                ))}
+
+                <div className="text-[9px] text-text-secondary">
+                  {enrichResult.confirmed_count} confirmed · {enrichResult.sources.filter(s => s.ok).length}/{enrichResult.sources.length} sources · {enrichResult.cached ? 'cached' : 'live'}
+                </div>
               </div>
             )}
           </div>
