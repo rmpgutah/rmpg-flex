@@ -110,16 +110,28 @@ export async function syncServeCompletionToCfs(
   // ── Step 6: update base calls_for_service ─────────────────
   // Only fields that exist on the base table — avoids ALTER on
   // the near-cap table. The ext table carries the full detail.
+  // Also transition the CFS status to cleared/closed so the dispatch
+  // board reflects the serve outcome without manual dispatcher action.
+  const cfsStatus = queue.status === 'served' ? 'cleared' : 'closed';
+  const cfsDisposition = queue.status === 'served' ? 'Served' : 'Service Failed';
   await db.prepare(
     `UPDATE calls_for_service SET
        process_served_to = ?,
        process_served_address = ?,
-       process_attempts = ?
+       process_attempts = ?,
+       status = CASE WHEN status IN ('pending','dispatched','enroute','onscene','on_hold') THEN ? ELSE status END,
+       disposition = CASE WHEN disposition IS NULL OR disposition = '' THEN ? ELSE disposition END,
+       cleared_at = CASE WHEN cleared_at IS NULL AND ? = 'cleared' THEN datetime('now') ELSE cleared_at END,
+       closed_at = CASE WHEN closed_at IS NULL AND ? = 'closed' THEN datetime('now') ELSE closed_at END
      WHERE id = ?`,
   ).bind(
     queue.recipient_name ?? null,
     queue.recipient_address ?? null,
     queue.attempt_count ?? 0,
+    cfsStatus,
+    cfsDisposition,
+    cfsStatus,
+    cfsStatus,
     queue.call_id,
   ).run();
 

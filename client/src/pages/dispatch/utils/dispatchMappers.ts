@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { CallForService, Unit, CallNote } from '../../../types';
+import { TERMINAL_STATUSES } from './dispatchConstants';
 
 /**
  * True when a backend response actually looks like a full calls_for_service
@@ -102,7 +103,7 @@ export function mapDbCall(row: any): CallForService {
     // off status === 'on_hold', so synthesize it here from held_at while the call
     // is still active. A terminal call (cleared/closed/cancelled/archived) keeps
     // its real status even if a stale held_at lingers.
-    status: (row.held_at && !['cleared', 'closed', 'cancelled', 'archived'].includes(row.status))
+    status: (row.held_at && !TERMINAL_STATUSES.has(row.status))
       ? 'on_hold'
       : (row.status || 'pending'),
     caller_name: row.caller_name || undefined,

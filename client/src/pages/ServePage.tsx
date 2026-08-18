@@ -1715,7 +1715,7 @@ export default function ServePage() {
 
     const mappableJobs = jobs
       .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
-      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now(), j.status));
 
     const clusterInput: ClusterableItem[] = mappableJobs.map((j) => ({
       id: j.id,
@@ -1876,7 +1876,7 @@ export default function ServePage() {
     if (!map || !mapReady) return;
     const mappable = jobs
       .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
-      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now(), j.status));
     if (mappable.length === 0) return;
     const bounds = new mapboxgl.LngLatBounds();
     for (const j of mappable) bounds.extend([j.recipient_lng!, j.recipient_lat!]);
@@ -1998,13 +1998,14 @@ export default function ServePage() {
   const handleMapExport = () => {
     const filtered = jobs
       .filter((j) => j.recipient_lat != null && j.recipient_lng != null)
-      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now()));
+      .filter((j) => matchesDeadlineFilter(j.deadline, mapDeadlineFilter, Date.now(), j.status));
     exportServeMapSheet(filtered.map((j) => ({
       id: j.id,
       recipient_name: j.recipient_name,
       recipient_address: j.recipient_address,
       priority: j.priority,
       deadline: j.deadline,
+      status: j.status,
     }))).catch(() => { window.alert('Failed to export route sheet.'); });
   };
 
@@ -2953,7 +2954,7 @@ export default function ServePage() {
             {/* Map toolbar: deadline filter + export */}
             <div className="flex items-center justify-between gap-2 px-2 py-1 bg-surface-raised border-b border-border-subtle flex-wrap">
               <div className="flex items-center gap-1">
-                {(['all', 'today', 'three_days', 'week', 'overdue'] as DeadlineFilter[]).map((f) => (
+                {(['all', 'today', 'three_days', 'week', 'overdue', 'served'] as DeadlineFilter[]).map((f) => (
                   <button
                     key={f}
                     type="button"

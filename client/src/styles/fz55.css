@@ -1,6 +1,8 @@
 /* client/src/styles/fz55.css
    Panasonic Toughbook FZ-55 layout fixes.
-   All rules scoped under .device-fz55 — zero effect on any other viewport. */
+   All rules scoped under .device-fz55 — zero effect on any other viewport.
+   FZ-55 at 125% Windows DPI scaling → logical viewport 1536×864px.
+   Content area after dual toolbar (~90px) is ~774px tall. */
 
 /* ── Touch targets — WCAG 2.5.5 / 44px gloved-hand minimum ── */
 .device-fz55 button,
@@ -35,17 +37,26 @@
 }
 
 /* ── Modal height containment ── */
-/* Prevents Save/Cancel buttons from falling below the 768px effective
-   viewport at 125% Windows scaling. Targets the outer dialog backdrop. */
+/* At 864px logical height, 90dvh = 778px. The dual toolbar takes ~90px,
+   so modals must leave room for the browser chrome too.
+   80dvh = 691px is safe for any fixed-chrome layout. */
 .device-fz55 [role="dialog"] {
-  max-height: 90dvh;
+  max-height: 84dvh;
 }
 
 /* Inner scroll body — allows content to scroll while footer buttons stay
    visible. Apply to the first div child of the dialog. */
 .device-fz55 [role="dialog"] > div {
-  max-height: 90dvh;
+  max-height: 84dvh;
   overflow-y: auto;
+}
+
+/* ── Fixed-width overlay containment ── */
+/* Prevent any wide panel (video players, PDF viewers, menus) from
+   exceeding the 1536px logical viewport. 2rem gutter on each side. */
+.device-fz55 [role="dialog"] > *,
+.device-fz55 .panel-beveled {
+  max-width: min(100vw - 2rem, var(--panel-max-w, 9999px));
 }
 
 /* ── Z-index stacking ladder ── */
@@ -56,3 +67,40 @@
 .device-fz55 [role="dialog"]  { z-index: 60; }
 .device-fz55 [role="tooltip"] { z-index: 65; }
 .device-fz55 .toast-container { z-index: 70; }
+
+/* ── Toolbar row 2 height — save 4px of vertical real-estate ── */
+/* Default height: 46px. FZ-55 effective viewport height: 864px.
+   Reducing to 42px saves 4px without shrinking touch targets
+   (the inner buttons are already 44px min-height). */
+.device-fz55 [role="toolbar"] {
+  height: 42px !important;
+}
+
+/* ── Table dense mode ── */
+/* Tighten row padding on all data tables so more rows fit in 774px. */
+.device-fz55 table th,
+.device-fz55 table td {
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+/* ── Scrollbar visibility ── */
+/* Ensure auto-overflow elements always show their scrollbar track
+   on the FZ-55 (Windows hides scrollbars by default in overlay mode). */
+.device-fz55 * {
+  scrollbar-width: thin;
+}
+
+/* ── Iframe / embed sizing ── */
+/* PDF iframes with fixed pixel dimensions need viewport capping. */
+.device-fz55 iframe {
+  max-width: 100%;
+  max-height: 75dvh;
+}
+
+/* ── Content area page padding ── */
+/* Reduce the default 1rem page padding to 0.75rem to recover
+   horizontal whitespace at 1536px. */
+.device-fz55 .spm-page {
+  padding: 0.75rem !important;
+}

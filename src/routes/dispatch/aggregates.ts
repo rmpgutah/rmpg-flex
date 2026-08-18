@@ -777,6 +777,70 @@ aggregates.get('/by-zone', async (c) => {
   } catch { return c.json({ by_zone: [], days: 7 }); }
 });
 
+// GET /dispatch/aggregates/priority-distribution?days=7
+// P1/P2/P3/P4 call counts for the analytics strip priority donut chart.
+aggregates.get('/priority-distribution', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
+    const rows = await query<{ priority: string; count: number }>(db,
+      `SELECT COALESCE(priority, 'Unknown') AS priority, COUNT(*) AS count
+       FROM calls_for_service
+       WHERE created_at >= datetime('now', '-${days} days')
+         AND priority IS NOT NULL AND priority != ''
+       GROUP BY priority
+       ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
+    return c.json({ by_priority: rows, days });
+  } catch { return c.json({ by_priority: [], days: 7 }); }
+});
+
+// GET /dispatch/aggregates/hourly-today
+// Call counts grouped by hour of day for the current Denver calendar day.
+// Uses the same MT day-boundary offset as other Denver-aware endpoints.
+aggregates.get('/hourly-today', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Use MT day boundary (UTC-6 standard / UTC-7 MDT). Cloudflare Workers run
+    // UTC — a bare date('now') boundary skips calls 00:00–06:00 MT that landed
+    // before UTC midnight. Offset 6h shifts the boundary to match midnight MT.
+    const rows = await query<{ hour: number; count: number }>(db,
+      `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS hour, COUNT(*) AS count
+       FROM calls_for_service
+       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
+       GROUP BY hour
+       ORDER BY hour`);
+    // Fill all 24 hours so the chart never has gaps
+    const byHour: Record<number, number> = {};
+    for (const r of rows) byHour[r.hour] = r.count;
+    const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour[h] ?? 0 }));
+    return c.json({ hours });
+  } catch { return c.json({ hours: [] }); }
+});
+
+// GET /dispatch/aggregates/response-times?days=7
+// Average response time in minutes by priority for cleared/closed calls.
+// response_time_seconds is set when calls transition out of pending/dispatched.
+aggregates.get('/response-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
+    const rows = await query<{ priority: string; avg_minutes: number; count: number }>(db,
+      `SELECT COALESCE(priority, 'Unknown') AS priority,
+              ROUND(AVG(response_time_seconds) / 60.0, 1) AS avg_minutes,
+              COUNT(*) AS count
+       FROM calls_for_service
+       WHERE response_time_seconds IS NOT NULL
+         AND response_time_seconds > 0
+         AND created_at >= datetime('now', '-${days} days')
+         AND status IN ('cleared', 'closed')
+       GROUP BY priority
+       ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
+    return c.json({ by_priority: rows, days });
+  } catch { return c.json({ by_priority: [], days: 7 }); }
+});
+
 // GET /dispatch/ambient-stats — lightweight screensaver data (active calls, unit counts).
 // Auth required (gated in routesConfig under /api/dispatch). Returns gracefully
 // on any DB error so the screensaver never crashes from a bad query.

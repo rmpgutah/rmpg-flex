@@ -168,7 +168,8 @@ export default function DocumentWriterPage() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (StarterKit as any).configure({ heading: { levels: [1, 2, 3, 4] } }),
       Table.configure({ resizable: true }),
       TableRow, TableCell, TableHeader, TableFormatting,
       ImageExt.configure({ inline: false, allowBase64: true }),

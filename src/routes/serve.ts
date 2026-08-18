@@ -887,9 +887,10 @@ sv.post('/', async (c) => {
   // Backfill geocode when recipient_address is provided but coords are not
   let lat = body.recipient_lat != null ? body.recipient_lat : null;
   let lng = body.recipient_lng != null ? body.recipient_lng : null;
+  let geocodeSource: string | null = body.recipient_lat != null ? 'point' : null;
   if ((lat == null || lng == null) && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
     const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
-    if (coords) { lat = coords.lat; lng = coords.lng; }
+    if (coords) { lat = coords.lat; lng = coords.lng; geocodeSource = coords.geocodeSource; }
   }
 
   // Schema-guard mig 0237 columns on CREATE too
@@ -938,6 +939,10 @@ sv.post('/', async (c) => {
       body.registered_agent_name ?? null, body.registered_agent_title ?? null,
       body.registered_office_address ?? null,
     );
+  }
+  if (geocodeSource && await columnExists(dbPost, 'serve_queue', 'geocode_source')) {
+    insertCols.push('geocode_source');
+    insertVals.push(geocodeSource);
   }
   const placeholders = insertVals.map(() => '?').join(',');
   const r = await execute(
@@ -1201,6 +1206,10 @@ sv.put('/:id', async (c) => {
     if (coords) {
       sets.push('recipient_lat = ?', 'recipient_lng = ?');
       args.push(coords.lat, coords.lng);
+      if (await columnExists(getDb(c.env), 'serve_queue', 'geocode_source')) {
+        sets.push('geocode_source = ?');
+        args.push(coords.geocodeSource);
+      }
     }
   }
 
@@ -1651,6 +1660,11 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   const hasDispositionCol = 'disposition_code' in body
     ? await columnExists(db, 'serve_attempts', 'disposition_code')
     : true;
+  // person_served_* guarded — migration 0256 adds these columns; the deploy
+  // step is continue-on-error so they may not exist on a fresh deploy.
+  const hasPersonServedCols = ('person_served_name' in body || 'person_served_relationship' in body || 'person_served_description' in body)
+    ? await columnExists(db, 'serve_attempts', 'person_served_name')
+    : true;
   const sets: string[] = [];
   const args: any[] = [];
   let resultChanged = false;
@@ -1695,18 +1709,21 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
     }
   }
 
-  // Physical description fields (editable for officer corrections)
-  if ('person_served_name' in body) {
-    sets.push('person_served_name = ?');
-    args.push(body.person_served_name || null);
-  }
-  if ('person_served_relationship' in body) {
-    sets.push('person_served_relationship = ?');
-    args.push(body.person_served_relationship || null);
-  }
-  if ('person_served_description' in body) {
-    sets.push('person_served_description = ?');
-    args.push(body.person_served_description || null);
+  // Physical description fields (editable for officer corrections).
+  // Guarded by hasPersonServedCols — migration 0256 may not be applied yet.
+  if (hasPersonServedCols) {
+    if ('person_served_name' in body) {
+      sets.push('person_served_name = ?');
+      args.push(body.person_served_name || null);
+    }
+    if ('person_served_relationship' in body) {
+      sets.push('person_served_relationship = ?');
+      args.push(body.person_served_relationship || null);
+    }
+    if ('person_served_description' in body) {
+      sets.push('person_served_description = ?');
+      args.push(body.person_served_description || null);
+    }
   }
 
   // Structured PS code takes precedence — derive the legacy `result`

@@ -27,19 +27,25 @@ export function isRiskFlagged(item: {
   return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
 }
 
-export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue';
+export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue' | 'served';
 
-export function matchesDeadlineFilter(deadline: string | null, filter: DeadlineFilter, now: number): boolean {
+export function matchesDeadlineFilter(
+  deadline: string | null,
+  filter: DeadlineFilter,
+  now: number,
+  status?: string | null,
+): boolean {
+  if (filter === 'served') return status === 'served';
   if (filter === 'all') return true;
   if (!deadline) return false;
   const deadlineMs = parseTimestamp(deadline).getTime();
   if (Number.isNaN(deadlineMs)) return false;
   const hoursLeft = (deadlineMs - now) / HOUR_MS;
   switch (filter) {
-    case 'overdue': return hoursLeft < 0;
-    case 'today': return hoursLeft >= 0 && hoursLeft <= 24;
-    case 'three_days': return hoursLeft >= 0 && hoursLeft <= 72;
-    case 'week': return hoursLeft >= 0 && hoursLeft <= 168;
+    case 'overdue': return hoursLeft < 0 && status !== 'served';
+    case 'today': return hoursLeft <= 24;
+    case 'three_days': return hoursLeft <= 72;
+    case 'week': return hoursLeft <= 168;
     default: return true;
   }
 }

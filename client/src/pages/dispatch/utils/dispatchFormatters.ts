@@ -7,7 +7,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { displayTimeZone } from '../../../utils/timeZoneMode';
 import { humanizeType } from '../../../utils/statusLabels';
 import { coded } from '../../../utils/searchText';
-import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS } from './dispatchConstants';
+import { SERVICE_TYPE_LABELS, DOCUMENT_TYPE_LABELS, COMPLETED_STATUSES } from './dispatchConstants';
 import type { CallForService } from '../../../types';
 import type { WarningTag } from '../../../components/WarningTags';
 
@@ -69,116 +69,6 @@ export function formatActivityDetails(details: string): string {
 }
 
 /**
- * Label a call's age bucket based on time since creation.
- */
-export function formatCallAge(createdAt: string): string {
-  const diff = Date.now() - parseTimestamp(createdAt).getTime();
-  if (isNaN(diff) || diff < 0) return 'NEW';
-  const mins = diff / 60_000;
-  if (mins < 5) return 'NEW';
-  if (mins < 60) return 'ACTIVE';
-  if (mins < 240) return 'AGING';
-  return 'STALE';
-}
-
-/**
- * Return a priority string with an emoji badge prefix.
- */
-export function formatPriorityBadge(priority: string): string {
-  switch (priority) {
-    case 'P1': return '🔴 P1';
-    case 'P2': return '🟠 P2';
-    case 'P3': return '🟡 P3';
-    case 'P4': return '🟢 P4';
-    default:   return priority;
-  }
-}
-
-/**
- * Humanize a status transition (e.g. "dispatched" → "En Route" becomes
- * "Dispatched → En Route").
- */
-export function getStatusTransitionLabel(from: string, to: string): string {
-  return `${toDisplayLabel(from)} → ${toDisplayLabel(to)}`;
-}
-
-// ── Upgrade: Handoff Summary Formatter ──
-export function formatHandoffSummary(handoff: {
-  active_calls_summary?: string;
-  held_calls_summary?: string;
-  pending_backups?: string;
-  officer_notes?: string;
-  priority_items?: string;
-}): string {
-  const parts: string[] = [];
-
-  try {
-    const active = JSON.parse(handoff.active_calls_summary || '[]');
-    if (active.length > 0) {
-      parts.push(`ACTIVE CALLS (${active.length}):`);
-      active.slice(0, 10).forEach((c: any) => {
-        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type} @ ${c.location_address || 'Unknown'} [${c.status}]`);
-      });
-      if (active.length > 10) parts.push(`  ... and ${active.length - 10} more`);
-    }
-  } catch { /* ignore parse errors */ }
-
-  try {
-    const held = JSON.parse(handoff.held_calls_summary || '[]');
-    if (held.length > 0) {
-      parts.push(`\nHELD CALLS (${held.length}):`);
-      held.forEach((c: any) => {
-        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type}`);
-      });
-    }
-  } catch { /* ignore */ }
-
-  try {
-    const backups = JSON.parse(handoff.pending_backups || '[]');
-    if (backups.length > 0) {
-      parts.push(`\nPENDING BACKUPS (${backups.length}):`);
-      backups.forEach((c: any) => {
-        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type} @ ${c.location_address || 'Unknown'}`);
-      });
-    }
-  } catch { /* ignore */ }
-
-  if (handoff.priority_items) parts.push(`\nPRIORITY ITEMS: ${handoff.priority_items}`);
-  if (handoff.officer_notes) parts.push(`\nNOTES: ${handoff.officer_notes}`);
-
-  return parts.join('\n') || 'No active items to hand off.';
-}
-
-// ── Upgrade: Mutual Aid Status Formatter ──
-export function formatMutualAidStatus(request: {
-  responding_agency: string;
-  status: string;
-  units_requested: number;
-  units_provided: number;
-  priority: string;
-}): string {
-  const statusLabels: Record<string, string> = {
-    pending: '⏳ PENDING',
-    approved: '✅ APPROVED',
-    denied: '❌ DENIED',
-    completed: '✔ COMPLETED',
-    cancelled: '⊘ CANCELLED',
-  };
-  return `${statusLabels[request.status] || request.status.toUpperCase()} — ${request.responding_agency} | ${request.priority} | Units: ${request.units_provided}/${request.units_requested}`;
-}
-
-// ── Upgrade: Quality Score Formatter ──
-export function formatQualityScore(compliance: {
-  priority: string;
-  total: number;
-  within_target: number;
-}): string {
-  const pct = compliance.total > 0 ? Math.round((compliance.within_target / compliance.total) * 100) : 0;
-  const grade = pct >= 95 ? 'A' : pct >= 85 ? 'B' : pct >= 75 ? 'C' : pct >= 60 ? 'D' : 'F';
-  return `${compliance.priority}: ${pct}% (${grade}) — ${compliance.within_target}/${compliance.total} within target`;
-}
-
-/**
  * Case-insensitive substring match for the Dispatch page's "Search calls" box
  * — call #, location, incident type (raw or humanized/coded), description,
  * caller name, and geography (dispatch code, sector/zone/beat). Shared by
@@ -234,6 +124,109 @@ const NO_WEAPON_VALUES = new Set(['', '0', 'none', 'nil', 'n/a']);
  * This is a "does this call need a second look" glance, not the full detail
  * — that still lives on the call's own record.
  */
+/**
+ * Format a millisecond duration as HH:MM:SS (decimal hours).
+ */
+export function formatCallDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
+  const totalSec = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+  const decimalHours = (ms / 3600000).toFixed(2);
+  return `${clock} (${decimalHours}h)`;
+}
+
+/** Elapsed ms from call creation to resolution (or live). */
+export function computeCallDuration(call: CallForService): number {
+  const endTime = call.status === 'archived'
+    ? (call.archived_at || call.cleared_at || call.closed_at)
+    : COMPLETED_STATUSES.has(call.status)
+      ? (call.cleared_at || call.closed_at || call.created_at)
+      : null;
+  return (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(call.created_at).getTime();
+}
+
+/** Elapsed ms from dispatch to on-scene arrival, or null if not applicable. */
+export function computeResponseTime(call: CallForService): number | null {
+  if (!call.dispatched_at || !call.onscene_at) return null;
+  const diff = parseTimestamp(call.onscene_at).getTime() - parseTimestamp(call.dispatched_at).getTime();
+  return (diff > 0 && isFinite(diff)) ? diff : null;
+}
+
+/** Elapsed ms on scene (to clearance or live), or null if not applicable. */
+export function computeOnSceneTime(call: CallForService): number | null {
+  if (!call.onscene_at) return null;
+  const endTime = call.cleared_at || call.closed_at || (call.status === 'archived' ? call.archived_at : null);
+  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(call.onscene_at).getTime();
+  return (diff > 0 && isFinite(diff)) ? diff : null;
+}
+
+/** Format a millisecond duration as compact "{m}m {s}s" for inline response-time badges. */
+export function formatResponseTimeShort(ms: number): string {
+  const mins = Math.floor(ms / 60000);
+  const secs = Math.floor((ms % 60000) / 1000);
+  return `${mins}m ${secs}s`;
+}
+
+/** Format an attempt number as an ordinal: 1→"1st", 2→"2nd", 3→"3rd", 4→"4th", etc. */
+export function formatOrdinal(n: number): string {
+  if (n === 1) return '1st';
+  if (n === 2) return '2nd';
+  if (n === 3) return '3rd';
+  return `${n}th`;
+}
+
+export type DeadlineStatus = 'overdue' | 'warning' | 'ok' | null;
+
+export interface DeadlineResult {
+  status: DeadlineStatus;
+  hoursLeft: number;
+  minsLeft: number;
+}
+
+/** Compute 72-hour deadline status from a resolved call's terminal timestamp. */
+export function computeResolvedDeadline(terminalTime: string | null | undefined): DeadlineResult | null {
+  if (!terminalTime) return null;
+  const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
+  const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
+  if (elapsed >= 72 * 3600000) return { status: 'overdue', hoursLeft: 0, minsLeft: 0 };
+  if (elapsed >= 48 * 3600000) return { status: 'warning', hoursLeft: Math.floor(hoursLeft), minsLeft: 0 };
+  return null;
+}
+
+/** Compute 72-hour deadline status from an active call's creation timestamp. */
+export function computeActiveDeadline(createdAt: string): DeadlineResult {
+  const deadline = parseTimestamp(createdAt).getTime() + 72 * 3600000;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { status: 'overdue', hoursLeft: 0, minsLeft: 0 };
+  const hrs = Math.floor(remaining / 3600000);
+  const mins = Math.floor((remaining % 3600000) / 60000);
+  const status: DeadlineStatus = hrs < 12 ? 'overdue' : hrs < 24 ? 'warning' : 'ok';
+  return { status, hoursLeft: hrs, minsLeft: mins };
+}
+
+export interface PsoServiceWindows {
+  early_morning: boolean;
+  daytime: boolean;
+  evening: boolean;
+  weekend: boolean;
+}
+
+export function parsePsoServiceWindows(raw: unknown): PsoServiceWindows {
+  const w = typeof raw === 'string'
+    ? (() => { try { return JSON.parse(raw); } catch { return null; } })()
+    : raw;
+  return {
+    early_morning: !!w?.early_morning,
+    daytime: !!w?.daytime,
+    evening: !!w?.evening,
+    weekend: !!w?.weekend,
+  };
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {

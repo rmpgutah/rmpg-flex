@@ -2,6 +2,19 @@
 // Dispatch Page — Shared Label Maps & Option Constants
 // ============================================================
 
+// --------------- Call Status Groupings ---------------
+
+export const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+export const COMPLETED_STATUSES = new Set(['cleared', 'closed', 'cancelled']);
+export const INACTIVE_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'on_hold', 'archived']);
+export const ACTIVE_FIELD_STATUSES = new Set(['dispatched', 'enroute', 'onscene']);
+export const POST_DISPATCH_STATUSES = new Set(['dispatched', 'enroute', 'onscene', 'cleared', 'closed']);
+export const RESOLVED_STATUSES = new Set(['cleared', 'closed']);
+export const FINISHED_STATUSES = new Set(['cleared', 'closed', 'archived']);
+export const ACTIONABLE_STATUSES = new Set(['pending', 'dispatched', 'enroute', 'onscene']);
+export const OPEN_STATUSES = new Set(['pending', 'dispatched', 'enroute', 'onscene', 'on_hold']);
+export const REMOVED_STATUSES = new Set(['archived', 'cancelled']);
+
 export const SERVICE_TYPE_LABELS: Record<string, string> = {
   // Process Service
   process_service: 'Process Service (General)',

@@ -290,6 +290,11 @@ export function getEventEnabled(category: VoiceEventCategory): boolean {
  * branch to reflect the policy you want.
  */
 export function isEventEnabled(category: VoiceEventCategory): boolean {
+  // Panic / officer-down alerts always speak regardless of the per-event toggle.
+  // The toggle is a quality-of-life setting; silencing a real officer-down call
+  // is a life-safety risk in an active field operation. Option (a) from the
+  // design comment above — user preference is cosmetic for this category only.
+  if (category === 'panic') return true;
   return getEventEnabled(category);
 }
 

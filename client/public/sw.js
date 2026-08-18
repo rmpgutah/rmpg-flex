@@ -335,14 +335,13 @@ self.addEventListener('activate', (event) => {
 // Purely cosmetic — these are fetch()/XHR POSTs with no Subresource
 // Integrity check, so an empty synthetic body is safe.
 //
-// static.cloudflareinsights.com/beacon.min.js is deliberately NOT here —
+// static.cloudflareinsights.com/beacon.min.js is NOT intercepted here —
 // Cloudflare auto-injects that <script> tag with an `integrity="sha512-…"`
-// attribute. A script load DOES enforce SRI, so answering it with an empty
-// body doesn't silence the console — it swaps ERR_CONNECTION_REFUSED for a
-// more confusing "Failed to find a valid digest in the integrity attribute"
-// block (confirmed: the browser's reported hash is the SHA-512 of an empty
-// string, i.e. our synthetic response). Net effect is identical either way
-// (script never loads), so just let it fail its normal, less confusing way.
+// attribute. Answering with an empty 204 would fail the SRI check, swapping
+// ERR_CONNECTION_REFUSED for an equally noisy "Failed to find a valid digest"
+// error. Instead, the beacon domain is excluded from `script-src` in the CSP
+// meta tag (client/index.html). The browser blocks the request at the CSP
+// layer — before any network connection — so no ERR_CONNECTION_REFUSED fires.
 const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
 
 // Self-heal for the stale-chunk wedge (live incident 2026-07-30).

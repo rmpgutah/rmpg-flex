@@ -4,7 +4,6 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
   Printer, RotateCcw, CalendarDays, AlertTriangle,
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
@@ -19,6 +18,7 @@ import {
   resolveRouteOrigin, describeOrigin, describeOriginProblem,
   type LastKnownFix,
 } from '../../utils/serveRouteOrigin';
+import { exportServeMapSheet } from '../../utils/serveMapExport';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ interface RouteStopPayload {
   lng: number;
   geocodeSource: 'point' | 'centroid' | null;
   deadlineAt: string | null;
-  defendantType: 'individual' | 'business';
+  defendantType: 'individual' | 'apartment' | 'business';
   addressHash: string;
   defendant: string;
   address: string;
@@ -206,7 +206,12 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 // reasonably-spaced deadlines and flag genuine infeasibility via
 // missedDeadlineJobIds, but it does not guarantee a globally optimal route.
 const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
-const STOP_DWELL_MS = 5 * 60 * 1000; // 5 minutes — knock, serve, paperwork
+const DWELL_BY_TYPE_MS: Record<string, number> = {
+  individual: 7 * 60 * 1000,
+  apartment: 10 * 60 * 1000,
+  business: 13 * 60 * 1000,
+};
+const STOP_DWELL_MS = 7 * 60 * 1000; // fallback
 
 /** Greedy nearest-neighbor reorder from an optional origin, biased toward
  *  approaching deadlines. Returns the reordered stops, the total
@@ -266,7 +271,8 @@ export function nearestNeighborOrder(
     if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
     perStopArrivalMs.push(chosen.arrivalMs);
-    elapsedMs = chosen.arrivalMs + STOP_DWELL_MS;
+    const stopDwell = DWELL_BY_TYPE_MS[inferDefendantType(next.job.recipient_address, next.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs = chosen.arrivalMs + stopDwell;
     ordered.push(next);
   }
 
@@ -359,7 +365,27 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
 
 // ─── Server-Route Helpers ────────────────────────────────────────────────
 
+const APARTMENT_RE = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:oor)?|#)\b|\s#\d/i;
+
+function inferDefendantType(
+  address: string | null | undefined,
+  businessId: number | null | undefined,
+): 'individual' | 'apartment' | 'business' {
+  if (businessId) return 'business';
+  if (address && APARTMENT_RE.test(address)) return 'apartment';
+  return 'individual';
+}
+
 /** Convert client StopItems to the shape the server optimizer expects. */
+function timeWindowToServeWindow(tw: string | null | undefined): { serveStart: string; serveEnd: string } | null {
+  switch (tw) {
+    case 'morning': return { serveStart: '06:00', serveEnd: '12:00' };
+    case 'afternoon': return { serveStart: '12:00', serveEnd: '17:00' };
+    case 'evening': return { serveStart: '17:00', serveEnd: '21:00' };
+    default: return null;
+  }
+}
+
 export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
   return stops
     .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
@@ -367,15 +393,61 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
       jobId: s.job.id,
       lat: s.job.recipient_lat!,
       lng: s.job.recipient_lng!,
-      geocodeSource: null,
+      geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
-      // ServeJob has no defendant_type column yet; individual is the safer default
-      defendantType: 'individual' as const,
+      defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
       addressHash: '',
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
-      locationNote: null,
+      locationNote: timeWindowToServeWindow(s.job.time_window),
     }));
+}
+
+// ─── In-Order Arrival Computation ───────────────────────────────────────
+// Used by the auto-compute effect to produce per-stop ETAs that follow the
+// user's CURRENT stop ordering rather than re-sorting by nearest-neighbor.
+// nearestNeighborOrder stays for the "Optimize Route" action; this is the
+// lighter pass that just walks the list as-is.
+function computeArrivalsInOrder(
+  selected: StopItem[],
+  origin: { lat: number; lng: number } | null,
+  startTimeMs: number,
+): {
+  arrivals: Map<number, number>;
+  totalDistanceMiles: number;
+  totalDurationMinutes: number;
+  missedDeadlineJobIds: number[];
+} {
+  let cursor = origin;
+  let elapsedMs = startTimeMs;
+  let totalDistanceMiles = 0;
+  const arrivals = new Map<number, number>();
+  const missedDeadlineJobIds: number[] = [];
+
+  for (const stop of selected) {
+    const distanceMiles = cursor
+      ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
+      : 0;
+    const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+    arrivals.set(stop.job.id, arrivalMs);
+
+    const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
+    if (!Number.isNaN(deadlineMs) && arrivalMs > deadlineMs) {
+      missedDeadlineJobIds.push(stop.job.id);
+    }
+
+    if (cursor) totalDistanceMiles += distanceMiles;
+    cursor = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
+    const dwell = DWELL_BY_TYPE_MS[inferDefendantType(stop.job.recipient_address, stop.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs = arrivalMs + dwell;
+  }
+
+  return {
+    arrivals,
+    totalDistanceMiles,
+    totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
+    missedDeadlineJobIds,
+  };
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
@@ -405,9 +477,13 @@ export default function ServeRoutePlanner({
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     })(),
   );
-  const [plannedStartTime, setPlannedStartTime] = useState(
-    () => localStorage.getItem('rmpg_route_start_time') ?? '08:00',
-  );
+  const [plannedStartTime, setPlannedStartTime] = useState(() => {
+    const stored = localStorage.getItem('rmpg_route_start_time');
+    if (stored) return stored;
+    // Default to current wall-clock time so ETAs are anchored to NOW.
+    const now = new Date(); // new-date-ok — local wall-clock for initial default
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
   const [savedRouteLoaded, setSavedRouteLoaded] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -451,9 +527,17 @@ export default function ServeRoutePlanner({
   const [statsIsEstimate, setStatsIsEstimate] = useState(true);
 
   // Reset derived stats when planner opens; sync date to the page's current date.
+  // Re-anchor the start time to now so ETAs always start from the current moment
+  // rather than a stale stored value from a previous session.
   useEffect(() => {
     if (!isOpen) return;
     if (initialDate) setRouteDate(initialDate);
+    setPlannedStartTime(() => {
+      const stored = localStorage.getItem('rmpg_route_start_time');
+      if (stored) return stored;
+      const now = new Date(); // new-date-ok — local wall-clock on planner open
+      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    });
     setReturnLegMiles(0);
     setStopArrivalTimes(new Map());
     setShowSplitBanner(false);
@@ -606,9 +690,10 @@ export default function ServeRoutePlanner({
     : null;
 
   // Auto-compute haversine stats whenever stops are reordered or selection changes.
-  // Gives immediate feedback without requiring "Optimize Route". Skips when the
-  // current order key matches lastDirectionsOrderKeyRef (Directions result still valid)
-  // or when a Directions optimize is actively running (it sets its own stats).
+  // Gives immediate feedback without requiring "Optimize Route". Uses the CURRENT
+  // stop ordering (not NN-reordered) so ETAs track the user's manual arrangement.
+  // Skips when the current order key matches lastDirectionsOrderKeyRef (Directions
+  // result still valid) or when a Directions optimize is actively running.
   useEffect(() => {
     if (optimizing) return;
     const selected = stops.filter(s => s.selected);
@@ -621,11 +706,11 @@ export default function ServeRoutePlanner({
       setStopArrivalTimes(new Map());
       return;
     }
-    const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds, perStopArrivalMs } =
-      nearestNeighborOrder(selected, routeOrigin, plannedStartMs);
+    const { arrivals, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } =
+      computeArrivalsInOrder(selected, routeOrigin, plannedStartMs);
     let returnMi = 0;
-    if (returnToStart && routeOrigin && ordered.length > 0) {
-      const last = ordered[ordered.length - 1];
+    if (returnToStart && routeOrigin && selected.length > 0) {
+      const last = selected[selected.length - 1];
       returnMi = haversineMiles(last.job.recipient_lat!, last.job.recipient_lng!, routeOrigin.lat, routeOrigin.lng);
     }
     const totalDur = totalDurationMinutes + estimateDriveMinutes(returnMi);
@@ -633,8 +718,6 @@ export default function ServeRoutePlanner({
     setTotalDuration(totalDur);
     setReturnLegMiles(returnMi);
     setStatsIsEstimate(true);
-    const arrivals = new Map<number, number>();
-    ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) arrivals.set(s.job.id, perStopArrivalMs[i]); });
     setStopArrivalTimes(arrivals);
     setMissedDeadlineIds(missedDeadlineJobIds);
     setShowSplitBanner(totalDur > 480);
@@ -1000,7 +1083,7 @@ export default function ServeRoutePlanner({
         if (!token) throw new Error('No Mapbox token');
 
         const coordStr = allCoords.map(c => c.join(',')).join(';');
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
 
         // A cluster that fails to route must NOT drop its stops. `newStops`
         // below is built from allOrderedStops + the UNSELECTED stops, so any
@@ -1062,7 +1145,7 @@ export default function ServeRoutePlanner({
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
         try {
           const token = await getMapboxAccessToken();
-          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
           const retRes = await fetch(retUrl);
           if (retRes.ok) {
             const retData = await retRes.json();
@@ -1224,94 +1307,28 @@ export default function ServeRoutePlanner({
     return () => clearInterval(id);
   }, [routeAccepted, isOpen, stops, serverEtas]);
 
-  // F3: print route sheet
+  // F3: print route sheet — delegates to the unified exportServeMapSheet
   const printRouteSheet = useCallback(() => {
-    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
     const selected = stops.filter(s => s.selected);
-    const margin = 40;
-    let y = margin;
-    const pageW = doc.internal.pageSize.getWidth();
-
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ROUTE PLANNER — ROCKY MOUNTAIN PROTECTIVE GROUP', margin, y);
-    y += 18;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    const now = new Date();
-    const officerLabel = officers?.find(o => o.id === selectedOfficerId)?.name ?? 'Officer';
-    doc.text(`${officerLabel} · ${routeDate} · Printed ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`, margin, y);
-    y += 8;
-    doc.setDrawColor(180, 180, 180);
-    doc.line(margin, y, pageW - margin, y);
-    y += 14;
-
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-    doc.setFont('helvetica', 'normal');
-    const summaryLine = [
-      `${selected.length} stops`,
-      totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : null,
-      totalDuration > 0 ? `${Math.floor(totalDuration / 60)}h ${Math.round(totalDuration % 60)}m` : null,
-      totalDistance > 0 ? `$${(totalDistance * IRS_MILEAGE_RATE).toFixed(2)} IRS reimbursement` : null,
-    ].filter(Boolean).join('  ·  ');
-    doc.text(summaryLine, margin, y);
-    y += 18;
-
-    selected.forEach((stop, idx) => {
-      if (y > doc.internal.pageSize.getHeight() - 60) {
-        doc.addPage();
-        y = margin;
-      }
+    exportServeMapSheet(selected.map((stop) => {
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
         ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
-        : '';
-      const deadlinePart = stop.job.deadline
-        ? ` — deadline ${parseTimestamp(stop.job.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        : '';
-      const missed = missedDeadlineIds.includes(stop.job.id);
-
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(missed ? 180 : 30, missed ? 30 : 30, 30);
-      doc.setFontSize(10);
-      doc.text(`${idx + 1}. ${stop.job.recipient_name ?? 'Unknown'}`, margin, y);
-      if (etaStr) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(80, 80, 80);
-        doc.text(`ETA ${etaStr}`, pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8.5);
-      doc.setTextColor(80, 80, 80);
-      const addrLine = [stop.job.recipient_address, stop.job.priority !== 'normal' ? stop.job.priority?.toUpperCase() : null, stop.job.time_window !== 'anytime' ? stop.job.time_window : null].filter(Boolean).join('  ·  ') + deadlinePart;
-      doc.text(addrLine || 'No address', margin + 10, y);
-      if (missed) {
-        doc.setTextColor(180, 30, 30);
-        doc.text('DEADLINE MISSED', pageW - margin, y, { align: 'right' });
-      }
-      y += 13;
-      doc.setDrawColor(220, 220, 220);
-      doc.line(margin + 10, y - 4, pageW - margin, y - 4);
-    });
-
-    if (returnToStart && returnLegMiles > 0) {
-      if (y > doc.internal.pageSize.getHeight() - 30) {
-        doc.addPage();
-        y = margin;
-      }
-      y += 4;
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(8.5);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`↩ Return to start — ${returnLegMiles.toFixed(1)} mi`, margin, y);
-    }
-
-    doc.save(`route-${routeDate}-${officerLabel.replace(/\s+/g, '-').toLowerCase()}.pdf`);
-  }, [stops, stopArrivalTimes, missedDeadlineIds, totalDistance, totalDuration, returnLegMiles, returnToStart, selectedOfficerId, officers, routeDate]);
+        : null;
+      const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
+      const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
+      return {
+        id: stop.job.id,
+        recipient_name: stop.job.recipient_name,
+        recipient_address: stop.job.recipient_address,
+        priority: stop.job.priority ?? 'normal',
+        deadline: stop.job.deadline ?? null,
+        status: stop.job.status,
+        eta: etaStr,
+        bufferMinutes: dwellMin,
+      };
+    })).catch(() => { window.alert('Failed to export route sheet.'); });
+  }, [stops, stopArrivalTimes]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {
@@ -1403,7 +1420,7 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[94dvh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-accent-silver-400" />

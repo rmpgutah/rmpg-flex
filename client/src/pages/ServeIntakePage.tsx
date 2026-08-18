@@ -23,6 +23,18 @@ import { importWithRetry } from '../utils/importWithRetry';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
+// Maps server CRITICAL_FIELDS human-readable labels → PUT /api/serve-intake/:id body keys.
+// Labels that don't have a corresponding PUT field (e.g. "DOB", "phone") are omitted —
+// the server doesn't accept those columns via this endpoint, so we skip them rather than
+// silently dropping data.
+const MISSING_FIELD_TO_PUT_KEY: Record<string, string> = {
+  'recipient name': 'recipient_name',
+  'address': 'recipient_address',
+  'case number': 'case_number',
+  'court': 'court_name',
+  'service deadline': 'deadline',
+};
+
 interface UploadedFile {
   name: string;
   type: string;
@@ -365,6 +377,9 @@ export default function ServeIntakePage() {
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  // Tracks which field keys were populated by OCR (vs. typed by the operator).
+  // Used to show a subtle "OCR" badge so operators know what was auto-filled.
+  const [ocrSourced, setOcrSourced] = useState<Set<string>>(new Set());
   const [showIdScanner, setShowIdScanner] = useState(false);
   const { addToast } = useToast();
   // Active clients for the client selector dropdown.
@@ -381,6 +396,12 @@ export default function ServeIntakePage() {
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
   // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
   const [confirmReset, setConfirmReset] = useState(false);
+  // Actionable missing-field inputs on the success screen.
+  // Keyed by the human-readable CRITICAL_FIELDS label so they stay in sync
+  // with result.missing_critical without an extra mapping step.
+  const [missingFieldValues, setMissingFieldValues] = useState<Record<string, string>>({});
+  const [missingFieldSaving, setMissingFieldSaving] = useState(false);
+  const [missingFieldSaved, setMissingFieldSaved] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
   useEffect(() => {
     setClientsLoading(true);
@@ -389,6 +410,23 @@ export default function ServeIntakePage() {
       .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
       .finally(() => setClientsLoading(false));
   }, []);
+  // Auto-match client from OCR-extracted plaintiff/client_name when no client is
+  // selected yet. Uses simple substring matching (case-insensitive, both directions)
+  // to avoid false positives from partial names.
+  useEffect(() => {
+    if (selectedClientId !== null || clients.length === 0) return;
+    const candidate = (editOverrides['client_name'] || editOverrides['plaintiff'] || '').trim().toLowerCase();
+    if (!candidate || candidate.length < 4) return;
+    const match = clients.find(c => {
+      const n = c.name.toLowerCase();
+      return n.includes(candidate) || candidate.includes(n);
+    });
+    if (match) {
+      setSelectedClientId(match.id);
+      setEditOverrides(prev => ({ ...prev, client_name: match.name }));
+    }
+  }, [editOverrides, clients, selectedClientId]);
+
   const navigate = useNavigate();
   const { user } = useAuth();
   // Roles that may create new intake records.
@@ -477,8 +515,12 @@ export default function ServeIntakePage() {
     if (Object.keys(best).length === 0) return;
     setEditOverrides(prev => {
       const next = { ...prev };
+      const newlySourced: string[] = [];
       for (const [k, { value }] of Object.entries(best)) {
-        if (!next[k]) next[k] = value;
+        if (!next[k]) { next[k] = value; newlySourced.push(k); }
+      }
+      if (newlySourced.length > 0) {
+        setOcrSourced(s => { const n = new Set(s); newlySourced.forEach(k => n.add(k)); return n; });
       }
       return next;
     });
@@ -931,7 +973,17 @@ export default function ServeIntakePage() {
       const { parseAamva, looksLikeAamva } = await importWithRetry(() => import('../utils/aamvaParser'));
       if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
       const parsed = parseAamva(barcodeText);
-      setEditOverrides((prev) => ({ ...prev, ...aamvaToServeOverrides(parsed) }));
+      const scanFields = aamvaToServeOverrides(parsed);
+      setEditOverrides((prev) => {
+        const next = { ...prev };
+        const newlySourced: string[] = [];
+        for (const [k, v] of Object.entries(scanFields)) {
+          if (v && !next[k]) { next[k] = v; newlySourced.push(k); }
+          else if (v) next[k] = v;
+        }
+        setOcrSourced(s => { const n = new Set(s); newlySourced.forEach(k => n.add(k)); return n; });
+        return next;
+      });
       addToast('Recipient fields filled from ID scan — review before submitting', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Scan failed to parse — enter manually', 'error');
@@ -941,6 +993,33 @@ export default function ServeIntakePage() {
   const previewFields = ocrPreview?.fields
     ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
     : [];
+
+  // Field change handler: update value and clear the OCR-sourced indicator so
+  // a manually-edited field no longer shows the "OCR" autofill badge.
+  const overrideField = useCallback((key: string, value: string) => {
+    setEditOverrides(prev => ({ ...prev, [key]: value }));
+    setOcrSourced(prev => { const n = new Set(prev); n.delete(key); return n; });
+  }, []);
+
+  // Saves the operator-filled missing-critical fields to the queue entry via PATCH.
+  const handleMissingFieldSave = useCallback(async (queueId: number) => {
+    const body: Record<string, string> = {};
+    for (const [label, value] of Object.entries(missingFieldValues)) {
+      const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+      if (putKey && value.trim()) body[putKey] = value.trim();
+    }
+    if (Object.keys(body).length === 0) return;
+    setMissingFieldSaving(true);
+    try {
+      await apiFetch(`/serve-intake/${queueId}`, { method: 'PUT', body: JSON.stringify(body) });
+      setMissingFieldSaved(true);
+    } catch {
+      // Keep the inputs so the operator can retry; addToast isn't available in
+      // this callback scope — error is surfaced by the button staying active.
+    } finally {
+      setMissingFieldSaving(false);
+    }
+  }, [missingFieldValues]);
 
   // Operator-facing batch summary: count + combined size of the documents the
   // user actually dropped (rasterized scan pages are excluded — they're hidden
@@ -1193,39 +1272,71 @@ export default function ServeIntakePage() {
                 <ScanLine className="w-3 h-3" /> Scan ID
               </button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
               {[
-                { key: 'recipient_first_name', label: 'First Name' },
-                { key: 'recipient_last_name',  label: 'Last Name' },
-                { key: 'recipient_middle_name',label: 'Middle Name' },
-                { key: 'recipient_dob',         label: 'Date of Birth' },
+                { key: 'recipient_first_name',    label: 'First Name' },
+                { key: 'recipient_last_name',     label: 'Last Name' },
+                { key: 'recipient_middle_name',   label: 'Middle Name' },
+                { key: 'recipient_dob',            label: 'Date of Birth' },
+                { key: 'recipient_phone',          label: 'Phone' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
                   {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
+            {/* Business name — shown when the recipient is a company/agent (extracted or typed) */}
+            {(editOverrides['recipient_business_name'] || editOverrides['registered_agent_name']) && (
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                {[
+                  { key: 'recipient_business_name', label: 'Business Name' },
+                  { key: 'registered_agent_name',   label: 'Registered Agent' },
+                ].map(({ key, label }) => (
+                  <div key={key}>
+                    <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                      {label}
+                      {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                    </label>
+                    <input
+                      id={`ff-intake-override-${key}`}
+                      type="text"
+                      value={editOverrides[key] ?? ''}
+                      onChange={e => overrideField(key, e.target.value)}
+                      placeholder="—"
+                      className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
+                    />
+                    {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Address */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
               <div className="md:col-span-2">
-                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Street</label>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                  Street
+                  {ocrSourced.has('recipient_address') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                </label>
                 <input
                   id="ff-intake-override-recipient_address"
                   type="text"
                   value={editOverrides['recipient_address'] ?? ''}
-                  onChange={e => setEditOverrides(prev => ({ ...prev, recipient_address: e.target.value }))}
+                  onChange={e => overrideField('recipient_address', e.target.value)}
                   placeholder="—"
-                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('recipient_address') ? 'border-brand-700' : 'border-border-subtle'}`}
                 />
                 {judgeVerdicts['recipient_address'] && <JudgeFlagChip verdict={judgeVerdicts['recipient_address']} />}
               </div>
@@ -1235,14 +1346,17 @@ export default function ServeIntakePage() {
                 { key: 'recipient_zip',   label: 'Zip' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label htmlFor="ff-intake-client" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
                   {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
@@ -1295,43 +1409,162 @@ export default function ServeIntakePage() {
                 { key: 'service_deadline',  label: 'Due Date' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
             {/* Service */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
               {[
-                { key: 'attorney_name',   label: 'Attorney' },
-                { key: 'attorney_phone',  label: 'Attorney Phone' },
-                { key: 'fee_amount',      label: 'Fee' },
-                { key: 'service_windows', label: 'Service Windows' },
+                { key: 'attorney_name',       label: 'Attorney' },
+                { key: 'attorney_phone',      label: 'Attorney Phone' },
+                { key: 'attorney_email',      label: 'Attorney Email' },
+                { key: 'attorney_bar_number', label: 'Bar #' },
+                { key: 'fee_amount',          label: 'Fee' },
+                { key: 'service_windows',     label: 'Service Windows' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label htmlFor="ff-serveintakepage-2" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
+            {/* Process type + Priority row */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                  Process Type
+                  {ocrSourced.has('process_type') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                </label>
+                <select
+                  id="ff-intake-override-process_type"
+                  value={editOverrides['process_type'] ?? ''}
+                  onChange={e => overrideField('process_type', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">— Select —</option>
+                  <option value="personal">Personal Service</option>
+                  <option value="substitute">Substitute Service</option>
+                  <option value="posted">Posted Service</option>
+                  <option value="mail">Mail Service</option>
+                  <option value="eviction">Eviction / UD</option>
+                  <option value="subpoena">Subpoena</option>
+                  <option value="restraining_order">Restraining Order</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Priority</label>
+                <select
+                  id="ff-intake-override-priority"
+                  value={editOverrides['priority'] ?? 'normal'}
+                  onChange={e => overrideField('priority', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="routine">Routine</option>
+                  <option value="normal">Normal</option>
+                  <option value="rush">Rush</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+            {/* Service instructions */}
+            <div className="mb-3">
+              <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                Service Instructions
+                {ocrSourced.has('service_instructions') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+              </label>
+              <textarea
+                id="ff-intake-override-service_instructions"
+                value={editOverrides['service_instructions'] ?? ''}
+                onChange={e => overrideField('service_instructions', e.target.value)}
+                placeholder="Special access notes, gating, time restrictions…"
+                rows={2}
+                className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 resize-none ${ocrSourced.has('service_instructions') ? 'border-brand-700' : 'border-border-subtle'}`}
+              />
+              {judgeVerdicts['service_instructions'] && <JudgeFlagChip verdict={judgeVerdicts['service_instructions']} />}
+            </div>
+
+            {/* Scheduling constraints — only shown when the server extracted them or
+                the operator wants to set them manually before creating the entry. */}
+            <div className="space-y-2">
+              <p className="text-[9px] text-rmpg-500 uppercase font-bold">Scheduling Constraints</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Address Class
+                    {ocrSourced.has('address_class') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <select
+                    value={editOverrides['address_class'] ?? ''}
+                    onChange={e => overrideField('address_class', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('address_class') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  >
+                    <option value="">— unknown —</option>
+                    <option value="residential">Residential</option>
+                    <option value="commercial">Commercial</option>
+                    <option value="gated">Gated / HOA</option>
+                    <option value="po_box">PO Box</option>
+                  </select>
+                  {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Not Before
+                    {ocrSourced.has('attempt_start_not_before') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="date"
+                    value={editOverrides['attempt_start_not_before'] ?? ''}
+                    onChange={e => overrideField('attempt_start_not_before', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('attempt_start_not_before') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['attempt_start_not_before'] && <JudgeFlagChip verdict={judgeVerdicts['attempt_start_not_before']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Allowed Days
+                    {ocrSourced.has('service_days_allowed') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={editOverrides['service_days_allowed'] ?? ''}
+                    onChange={e => overrideField('service_days_allowed', e.target.value)}
+                    placeholder="e.g. Mon-Fri"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('service_days_allowed') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['service_days_allowed'] && <JudgeFlagChip verdict={judgeVerdicts['service_days_allowed']} />}
+                </div>
+              </div>
+            </div>
+
             <ServeRecordMatchPanel
               address={editOverrides['recipient_address'] || ''}
-              businessName={editOverrides['recipient_last_name'] || ''}
+              businessName={editOverrides['recipient_business_name'] || ''}
             />
           </div>
         </div>
@@ -1363,7 +1596,7 @@ export default function ServeIntakePage() {
                   style={{ width: `${Math.min(100, Number(ocrPreview.confidence ?? 0) * 100)}%` }} />
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                {previewFields.slice(0, 30).map(([key, field]) => (
+                {previewFields.map(([key, field]) => (
                   <div key={key} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-sm">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
@@ -1475,6 +1708,12 @@ export default function ServeIntakePage() {
       {/* Process Button */}
       {files.length > 0 && !result && (
         <>
+          {editOverrides['service_deadline'] && isNaN(Date.parse(editOverrides['service_deadline'])) && (
+            <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-400">
+              <AlertTriangle className="w-3 h-3 inline mr-1" />
+              Service deadline "{editOverrides['service_deadline']}" doesn't look like a valid date — update it before submitting.
+            </div>
+          )}
           <button
             onClick={processIntake}
             disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
@@ -1507,11 +1746,19 @@ export default function ServeIntakePage() {
             </div>
 
             {result.duplicate_of && (
-              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
-                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
-                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
-                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
-                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300 flex items-start justify-between gap-2">
+                <span>
+                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                  Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                  {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                  recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+                </span>
+                <button
+                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
+                >
+                  View Entry →
+                </button>
               </div>
             )}
 
@@ -1590,17 +1837,65 @@ export default function ServeIntakePage() {
                   </div>
                 ))}
                 {result.missing_critical && result.missing_critical.length > 0 && (
-                  <p className="text-[10px] text-amber-400 mt-1.5">
-                    <AlertTriangle className="w-3 h-3 inline mr-1" />
-                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
-                  </p>
+                  <div className="mt-2 border border-amber-700/50 rounded-sm p-2 bg-amber-900/20">
+                    <p className="text-[9px] text-amber-400 uppercase font-bold mb-1.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Not found in documents — fill in before dispatch
+                    </p>
+                    <div className="space-y-1.5">
+                      {result.missing_critical.map((label) => {
+                        const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+                        if (!putKey) {
+                          // No PUT-body mapping (e.g. DOB, phone) — show read-only note
+                          return (
+                            <p key={label} className="text-[10px] text-amber-300/70 italic">
+                              {label} — verify manually before service
+                            </p>
+                          );
+                        }
+                        return (
+                          <div key={label} className="flex items-center gap-2">
+                            <label className="text-[9px] text-amber-400 uppercase font-semibold w-24 shrink-0">
+                              {label}
+                            </label>
+                            <input
+                              type="text"
+                              value={missingFieldValues[label] ?? ''}
+                              onChange={(e) => setMissingFieldValues(prev => ({ ...prev, [label]: e.target.value }))}
+                              placeholder={`Enter ${label}`}
+                              disabled={missingFieldSaved}
+                              className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-[2px] text-[10px] text-rmpg-100 px-2 py-[3px] placeholder-rmpg-500 focus:outline-none focus:border-brand-500 disabled:opacity-50"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {result.serve_queue_id != null && (
+                      <div className="mt-2 flex items-center gap-2">
+                        {missingFieldSaved ? (
+                          <span className="text-[10px] text-green-400 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Saved to queue entry
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleMissingFieldSave(result.serve_queue_id!)}
+                            disabled={missingFieldSaving || Object.values(missingFieldValues).every(v => !v.trim())}
+                            className="toolbar-btn py-1 text-[10px] border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-40"
+                          >
+                            {missingFieldSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            Save Missing Fields
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ) : null}
 
             {/* Diligence planner — dated attempt windows. Mirrors the
                 RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
-            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+            {result.attempt_plan && result.attempt_plan.length > 0 && (
               <div className="mt-3 pt-3 border-t border-rmpg-700">
                 <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
                 {result.attempt_plan.map((w) => (
@@ -1656,7 +1951,7 @@ export default function ServeIntakePage() {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); }}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); }}
         title="Start New Intake?"
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"
