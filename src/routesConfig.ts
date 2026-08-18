@@ -256,6 +256,7 @@ import flexcam from './routes/flexcam';
 import coloradoDoc from './routes/coloradoDoc';
 // Server-side Mapbox proxy backing client/src/utils/mapboxServices.ts.
 import mapbox from './routes/mapbox';
+import optimizationV2 from './routes/mapboxOptimizationV2';
 // Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
@@ -683,6 +684,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // matrix/optimization/map-matching/tilequery/static-map/token-status). The
   // /api/mapbox prefix was never mounted, so every helper 404'd. 503s gracefully
   // when MAPBOX_ACCESS_TOKEN is unset. Mounted before the bare /api routers.
+  { prefix: '/api/mapbox/optimization-v2', router: optimizationV2, auth: 'required',
+    note: 'Mapbox Optimization V2 async engine. POST /submit builds + submits a V2 problem; GET /:jobId polls + writes back to serve_routes on completion; GET / lists jobs. Supervisor+ to submit; any authed role to poll. 200 {skipped:true} when token unset.' },
   { prefix: '/api/mapbox', router: mapbox, auth: 'required',
     note: 'Server-side Mapbox proxy; 503 when MAPBOX_ACCESS_TOKEN secret is unset' },
 

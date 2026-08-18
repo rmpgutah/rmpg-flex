@@ -276,7 +276,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       <div
         ref={containerRef}
         className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
-          isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
+          isFullscreen ? 'w-full h-full' : 'w-[900px] max-w-[calc(100vw-2rem)] max-h-[88dvh]'
         }`}
         onClick={e => e.stopPropagation()}
       >

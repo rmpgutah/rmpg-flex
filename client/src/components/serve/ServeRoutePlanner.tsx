@@ -403,6 +403,53 @@ export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
     }));
 }
 
+// ─── In-Order Arrival Computation ───────────────────────────────────────
+// Used by the auto-compute effect to produce per-stop ETAs that follow the
+// user's CURRENT stop ordering rather than re-sorting by nearest-neighbor.
+// nearestNeighborOrder stays for the "Optimize Route" action; this is the
+// lighter pass that just walks the list as-is.
+function computeArrivalsInOrder(
+  selected: StopItem[],
+  origin: { lat: number; lng: number } | null,
+  startTimeMs: number,
+): {
+  arrivals: Map<number, number>;
+  totalDistanceMiles: number;
+  totalDurationMinutes: number;
+  missedDeadlineJobIds: number[];
+} {
+  let cursor = origin;
+  let elapsedMs = startTimeMs;
+  let totalDistanceMiles = 0;
+  const arrivals = new Map<number, number>();
+  const missedDeadlineJobIds: number[] = [];
+
+  for (const stop of selected) {
+    const distanceMiles = cursor
+      ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
+      : 0;
+    const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+    arrivals.set(stop.job.id, arrivalMs);
+
+    const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
+    if (!Number.isNaN(deadlineMs) && arrivalMs > deadlineMs) {
+      missedDeadlineJobIds.push(stop.job.id);
+    }
+
+    if (cursor) totalDistanceMiles += distanceMiles;
+    cursor = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
+    const dwell = DWELL_BY_TYPE_MS[inferDefendantType(stop.job.recipient_address, stop.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs = arrivalMs + dwell;
+  }
+
+  return {
+    arrivals,
+    totalDistanceMiles,
+    totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
+    missedDeadlineJobIds,
+  };
+}
+
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
@@ -430,9 +477,13 @@ export default function ServeRoutePlanner({
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     })(),
   );
-  const [plannedStartTime, setPlannedStartTime] = useState(
-    () => localStorage.getItem('rmpg_route_start_time') ?? '08:00',
-  );
+  const [plannedStartTime, setPlannedStartTime] = useState(() => {
+    const stored = localStorage.getItem('rmpg_route_start_time');
+    if (stored) return stored;
+    // Default to current wall-clock time so ETAs are anchored to NOW.
+    const now = new Date(); // new-date-ok — local wall-clock for initial default
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
   const [savedRouteLoaded, setSavedRouteLoaded] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -476,9 +527,17 @@ export default function ServeRoutePlanner({
   const [statsIsEstimate, setStatsIsEstimate] = useState(true);
 
   // Reset derived stats when planner opens; sync date to the page's current date.
+  // Re-anchor the start time to now so ETAs always start from the current moment
+  // rather than a stale stored value from a previous session.
   useEffect(() => {
     if (!isOpen) return;
     if (initialDate) setRouteDate(initialDate);
+    setPlannedStartTime(() => {
+      const stored = localStorage.getItem('rmpg_route_start_time');
+      if (stored) return stored;
+      const now = new Date(); // new-date-ok — local wall-clock on planner open
+      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    });
     setReturnLegMiles(0);
     setStopArrivalTimes(new Map());
     setShowSplitBanner(false);
@@ -631,9 +690,10 @@ export default function ServeRoutePlanner({
     : null;
 
   // Auto-compute haversine stats whenever stops are reordered or selection changes.
-  // Gives immediate feedback without requiring "Optimize Route". Skips when the
-  // current order key matches lastDirectionsOrderKeyRef (Directions result still valid)
-  // or when a Directions optimize is actively running (it sets its own stats).
+  // Gives immediate feedback without requiring "Optimize Route". Uses the CURRENT
+  // stop ordering (not NN-reordered) so ETAs track the user's manual arrangement.
+  // Skips when the current order key matches lastDirectionsOrderKeyRef (Directions
+  // result still valid) or when a Directions optimize is actively running.
   useEffect(() => {
     if (optimizing) return;
     const selected = stops.filter(s => s.selected);
@@ -646,11 +706,11 @@ export default function ServeRoutePlanner({
       setStopArrivalTimes(new Map());
       return;
     }
-    const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds, perStopArrivalMs } =
-      nearestNeighborOrder(selected, routeOrigin, plannedStartMs);
+    const { arrivals, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } =
+      computeArrivalsInOrder(selected, routeOrigin, plannedStartMs);
     let returnMi = 0;
-    if (returnToStart && routeOrigin && ordered.length > 0) {
-      const last = ordered[ordered.length - 1];
+    if (returnToStart && routeOrigin && selected.length > 0) {
+      const last = selected[selected.length - 1];
       returnMi = haversineMiles(last.job.recipient_lat!, last.job.recipient_lng!, routeOrigin.lat, routeOrigin.lng);
     }
     const totalDur = totalDurationMinutes + estimateDriveMinutes(returnMi);
@@ -658,8 +718,6 @@ export default function ServeRoutePlanner({
     setTotalDuration(totalDur);
     setReturnLegMiles(returnMi);
     setStatsIsEstimate(true);
-    const arrivals = new Map<number, number>();
-    ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) arrivals.set(s.job.id, perStopArrivalMs[i]); });
     setStopArrivalTimes(arrivals);
     setMissedDeadlineIds(missedDeadlineJobIds);
     setShowSplitBanner(totalDur > 480);
@@ -1362,7 +1420,7 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-surface-base border border-rmpg-700 rounded-[2px] w-full h-full max-w-[1400px] max-h-[94dvh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-accent-silver-400" />

@@ -521,7 +521,7 @@ export default function FileAttachments({
               pdfBlobUrl ? (
                 <iframe
                   src={pdfBlobUrl}
-                  className="w-[800px] h-[600px] bg-white"
+                  className="w-[800px] max-w-[calc(100vw-4rem)] h-[600px] max-h-[70dvh] bg-white"
                   title="PDF Preview"
                 />
               ) : (
