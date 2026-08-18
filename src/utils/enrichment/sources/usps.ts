@@ -13,7 +13,7 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   if (!seed.address) return { source, ok: true, latency_ms: 0, records: [], error: 'no_address_seed' };
 
   try {
-    const xml = `<AddressValidateRequest USERID="${userId}"><Revision>1</Revision><Address ID="0"><Address1></Address1><Address2>${escXml(seed.address)}</Address2><City>${escXml(seed.city ?? '')}</City><State>${escXml(seed.state ?? '')}</State><Zip5></Zip5><Zip4></Zip4></Address></AddressValidateRequest>`;
+    const xml = `<AddressValidateRequest USERID="${escXml(userId)}"><Revision>1</Revision><Address ID="0"><Address1></Address1><Address2>${escXml(seed.address)}</Address2><City>${escXml(seed.city ?? '')}</City><State>${escXml(seed.state ?? '')}</State><Zip5></Zip5><Zip4></Zip4></Address></AddressValidateRequest>`;
     const params = new URLSearchParams({ API: 'Verify', XML: xml });
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);

@@ -517,15 +517,17 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                           <span className="ml-1 text-[9px] text-text-secondary">({addr.source})</span>
                         )}
                       </span>
-                      <button
-                        onClick={() => {
-                          // TODO: wire to attempt pre-fill when attempt form supports it
-                          window.dispatchEvent(new CustomEvent('serve:prefill-attempt', { detail: addr }));
-                        }}
-                        className="shrink-0 px-1.5 py-0.5 text-[9px] rounded bg-surface-sunken hover:bg-brand-700 text-text-secondary hover:text-white border border-border-subtle transition-colors"
-                      >
-                        Add as Attempt
-                      </button>
+                      {enrichResult.match_tier === 'CONFIRMED' && (
+                        <button
+                          onClick={() => {
+                            // TODO: wire to attempt pre-fill when attempt form supports it
+                            window.dispatchEvent(new CustomEvent('serve:prefill-attempt', { detail: addr }));
+                          }}
+                          className="shrink-0 px-1.5 py-0.5 text-[9px] rounded bg-surface-sunken hover:bg-brand-700 text-text-secondary hover:text-white border border-border-subtle transition-colors"
+                        >
+                          Add as Attempt
+                        </button>
+                      )}
                     </div>
                   ))}
 

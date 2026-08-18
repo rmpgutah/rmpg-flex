@@ -1,5 +1,6 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { lookupParcelsWithFallback, type LookupEnv } from '../../sl-assessor/lookup';
 
 export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
   const start = Date.now();
@@ -11,26 +12,19 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   }
   try {
     const addressQuery = [seed.address, seed.city, seed.state].filter(Boolean).join(' ');
-    const params = new URLSearchParams({ address: addressQuery });
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    // Route is already in the Worker; call via internal fetch to avoid N+1 auth overhead
-    const base = (env as Record<string, unknown>)['SELF_URL'] as string | undefined ?? 'https://api.rmpgutah.us';
-    const res = await fetch(`${base}/api/assessor/parcels?${params}`, {
-      signal: ctrl.signal,
-      headers: { Authorization: `Bearer internal` },
-    }).finally(() => clearTimeout(timer));
+    // Call the utility directly instead of looping back through HTTP (which
+    // would require a valid JWT — "Bearer internal" is not a valid JWT and
+    // always fails jose.jwtVerify() with 401).
+    const result = await lookupParcelsWithFallback(env as unknown as LookupEnv, addressQuery);
 
-    if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };
-
-    const parcels = await res.json() as Array<{
-      owner_name?: string; site_address?: string; city?: string; state?: string; zip?: string;
-    }>;
-
-    const records: EnrichedRecord[] = parcels.map(p => ({
-      name: p.owner_name,
-      addresses: p.site_address ? [{
-        street: p.site_address, city: p.city, state: p.state, zip: p.zip, source,
+    const records: EnrichedRecord[] = result.parcels.map(p => ({
+      name: p.owner_of_record ?? undefined,
+      addresses: p.situs_address ? [{
+        street: p.situs_address,
+        city: undefined,
+        state: 'UT',
+        zip: undefined,
+        source,
       }] : [],
       phones: [], emails: [], source, raw: p,
     }));
