@@ -976,6 +976,22 @@ export interface PersonPdfData {
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
   // pdfIntegrity.ts so it does NOT affect the payload hash.
   _dossier?: import('./pdfDossierRenderer').PersonDossierData;
+  // Open-source intelligence hits from the enrichment engine. Caller fetches
+  // /api/enrichment/search and attaches matching records here. Listed in
+  // NON_CANONICAL_FIELDS so it doesn't affect the payload hash.
+  _enrichment?: {
+    match_tier?: string;
+    records?: Array<{
+      name?: string;
+      dob?: string;
+      source: string;
+      watchlist_flags?: string[];
+      addresses?: Array<{ street?: string; city?: string; state?: string; zip?: string }>;
+      raw?: any;
+    }>;
+    sources?: Array<{ source: string; ok: boolean; error?: string; records: any[] }>;
+    searched_at?: string;
+  };
 }
 
 export interface VehiclePdfData {
@@ -4337,6 +4353,73 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
+
+  // ── 15b. Open-Source Intelligence (enrichment hits) ───────
+  if (data._enrichment && Array.isArray(data._enrichment.records) && data._enrichment.records.length > 0) {
+    y = checkPageBreak(doc, y, 30, prio);
+    { const sec = openAutoSection(doc, 'Open-Source Intelligence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+
+    // Source summary row
+    if (Array.isArray(data._enrichment.sources)) {
+      const sourceSummary = data._enrichment.sources
+        .map(s => `${s.source.replace(/_/g, ' ').toUpperCase()} (${s.ok ? `${s.records.length} hit${s.records.length !== 1 ? 's' : ''}` : 'error'})`)
+        .join(' · ');
+      const tier = (data._enrichment.match_tier || '').toUpperCase();
+      const tierLabel = tier === 'CONFIRMED' ? 'IDENTITY CONFIRMED' : tier === 'UNCONFIRMED' ? 'UNCONFIRMED MATCH' : '';
+      const summaryLine = [tier ? tierLabel : null, sourceSummary].filter(Boolean).join('   ');
+      if (summaryLine) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+        const tierColor: [number, number, number] = tier === 'CONFIRMED' ? [220, 38, 38] : [...COLOR.TEXT_CAPTION];
+        doc.setTextColor(...tierColor);
+        doc.text(summaryLine, lx + 1.5, y + 1.5);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        y += 4;
+      }
+    }
+
+    // Hit rows grouped by watchlist flags
+    const enrichRows = data._enrichment.records.map((r: any) => {
+      const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length > 0
+        ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
+        : '—';
+      const addr = Array.isArray(r.addresses) && r.addresses.length > 0
+        ? [r.addresses[0].street, r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
+        : '—';
+      return [
+        r.source.replace(/_/g, ' ').toUpperCase(),
+        r.name || '—',
+        r.dob ? fmtDate(r.dob) : '—',
+        flags,
+        addr,
+      ];
+    });
+
+    y = addTableWithShading(
+      doc,
+      [
+        { label: 'SOURCE',  x: lx },
+        { label: 'NAME',    x: lx + 30 },
+        { label: 'DOB',     x: lx + 75 },
+        { label: 'FLAGS',   x: lx + 100 },
+        { label: 'ADDRESS', x: lx + 135 },
+      ],
+      enrichRows,
+      y,
+      [lx, lx + 30, lx + 75, lx + 100, lx + 135],
+      { sectionTitle: 'OSINT HITS' },
+    );
+
+    if (data._enrichment.searched_at) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER - 0.5);
+      doc.setTextColor(...COLOR.TEXT_CAPTION);
+      doc.text(`Searched: ${fmtTimestamp(data._enrichment.searched_at)}`, lx + 1.5, y + 1.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += 3;
+    }
+  }
 
   // ── 16. Record Metadata ───────────────────────────────────
   y = drawFormSection(doc, {

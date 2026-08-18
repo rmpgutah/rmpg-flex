@@ -28,11 +28,11 @@ const SOURCES = [
   { key: 'nsopw',            label: 'NSOPW',              requiresKey: null,                     mod: nsopwSrc },
   { key: 'sl_assessor',      label: 'SL County Assessor', requiresKey: null,                     mod: assessorSrc },
   { key: 'open_sanctions',   label: 'OpenSanctions',      requiresKey: null,                     mod: openSanctionsSrc },
+  { key: 'fbi_wanted',       label: 'FBI Most Wanted',    requiresKey: null,                     mod: fbiSrc },
+  { key: 'bop_inmates',      label: 'BOP Inmate Locator', requiresKey: null,                     mod: bopSrc },
   { key: 'usps',             label: 'USPS Web Tools',     requiresKey: 'USPS_USER_ID',           mod: uspsSrc },
   { key: 'open_corporates',  label: 'OpenCorporates',     requiresKey: 'OPENCORPORATES_API_KEY', mod: openCorporatesSrc },
   { key: 'numverify',        label: 'Numverify',          requiresKey: 'NUMVERIFY_API_KEY',      mod: numverifySrc },
-  { key: 'fbi_wanted',      label: 'FBI Most Wanted',    requiresKey: null,                     mod: fbiSrc },
-  { key: 'bop_inmates',     label: 'BOP Federal Inmates',requiresKey: null,                     mod: bopSrc },
   { key: 'census_geocoder', label: 'Census Geocoder',    requiresKey: null,                     mod: censusGeoSrc },
   { key: 'ofac_sdn',        label: 'OFAC SDN',           requiresKey: null,                     mod: ofacSrc },
 ] as const;
