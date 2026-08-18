@@ -15,6 +15,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
+import { containsClause } from '../utils/searchText';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
 import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
@@ -540,7 +541,7 @@ intel.get('/sightings', operational, async (c) => {
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
   try {
     const rows = plate
-      ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit)
+      ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE ${containsClause('plate').sql} ORDER BY created_at DESC LIMIT ?`, containsClause('plate').bind(plate), limit)
       : await query<any>(db, `SELECT * FROM vehicle_sightings ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json(rows);
   } catch (err: any) {
