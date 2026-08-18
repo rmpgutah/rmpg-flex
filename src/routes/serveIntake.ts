@@ -2376,10 +2376,45 @@ si.put('/:id', async (c) => {
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
-  if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now')");
-  args.push(id);
-  await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  // Scheduling constraint fields live inside the parsed_data JSON blob.
+  // They're written via json_set() alongside the flat column update, or in a
+  // separate statement when no flat columns changed, rather than reading the
+  // blob out and back in (avoids a round-trip race on a concurrent save).
+  const PARSED_DATA_FIELDS: Record<string, string> = {
+    address_class:              '$._intake.address_class.klass',
+    attempt_start_not_before:   '$.attempt_start_not_before',
+    service_days_allowed:       '$.service_days_allowed',
+  };
+  const parsedPatches: { path: string; value: string }[] = [];
+  for (const [fieldKey, jsonPath] of Object.entries(PARSED_DATA_FIELDS)) {
+    if (fieldKey in body && typeof body[fieldKey] === 'string') {
+      parsedPatches.push({ path: jsonPath, value: body[fieldKey] });
+    }
+  }
+
+  if (!sets.length && !parsedPatches.length) return c.json({ error: 'No fields to update' }, 400);
+
+  if (sets.length) {
+    sets.push("updated_at = datetime('now')");
+    args.push(id);
+    await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  }
+
+  if (parsedPatches.length) {
+    // Build a chained json_set call: json_set(json_set(parsed_data, path1, ?), path2, ?)
+    let expr = 'COALESCE(parsed_data, \'{}\')'
+    const patchArgs: string[] = [];
+    for (const { path, value } of parsedPatches) {
+      expr = `json_set(${expr}, ?, ?)`;
+      patchArgs.push(path, value);
+    }
+    await execute(
+      db,
+      `UPDATE serve_queue SET parsed_data = ${expr}, updated_at = datetime('now') WHERE id = ?`,
+      ...patchArgs,
+      id,
+    );
+  }
 
   // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
   // Manually-moved slots (manually_moved=1) keep their officer assignment intact.

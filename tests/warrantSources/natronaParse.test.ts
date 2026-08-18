@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { parseNatrona } from '../../src/utils/warrantSources/parse/natrona';
+import { parseNatrona, parseNatronaPager } from '../../src/utils/warrantSources/parse/natrona';
 
 const html = readFileSync(new URL('./fixtures/natrona.html', import.meta.url), 'utf8');
 
@@ -21,7 +21,6 @@ describe('parseNatrona', () => {
 
   it('does not include the header row', () => {
     const hits = parseNatrona(html);
-    // header has Name/Race/Gender/Age literally — no hit should be named "Name"
     expect(hits.every((h) => (h.full_name || '').toLowerCase() !== 'name')).toBe(true);
   });
 
@@ -48,8 +47,42 @@ describe('parseNatrona', () => {
     expect(anthony!.last_name).toBe('Smith');
     expect(anthony!.age).toBe(63);
     expect(anthony!.warrant_id).toBe('natrona:smith-anthony-63');
-    // List-view-only source: charge/court/case/bail/issue all null in Phase 1.
     expect(anthony!.charge_description ?? null).toBeNull();
     expect(anthony!.bail_amount ?? null).toBeNull();
+  });
+});
+
+describe('parseNatronaPager', () => {
+  it('detects a Next link using &#39; entity-encoded quotes', () => {
+    // Build the HTML entity string at runtime so TS/esbuild cannot alter it.
+    // ASP.NET control IDs use '$' (not '&') as the separator, so the target
+    // is safe for the [^'&]+ capture group.
+    const amp = String.fromCharCode(38); // '&'
+    const eq = `${amp}#39;`; // '&#39;'
+    const target = 'ctl00$MainContent$DataPager1$ctl02$ctl00';
+    const h = `<a href="javascript:__doPostBack(${eq}${target}${eq},${eq}${eq})">Next</a>`;
+    expect(parseNatronaPager(h)).toBe(target);
+  });
+
+  it('detects a Next link using literal single quotes', () => {
+    // Use String.fromCharCode(39) so the quote char is never part of template source.
+    const q = String.fromCharCode(39); // "'"
+    const h = `<a href="javascript:__doPostBack(${q}ctl00$DataPager$ctl02${q},${q}${q})">Next</a>`;
+    expect(parseNatronaPager(h)).toBe('ctl00$DataPager$ctl02');
+  });
+
+  it('detects the fixture Next link', () => {
+    // The fixture is Page 1 of 2, so a DataPager Next link must be present.
+    expect(parseNatronaPager(html)).toMatch(/DataPager/);
+  });
+
+  it('returns null when there is no Next link', () => {
+    expect(parseNatronaPager('<html><body>no pager</body></html>')).toBeNull();
+  });
+
+  it('returns null when only non-Next pager links exist', () => {
+    const q = String.fromCharCode(39);
+    const prevOnly = `<a href="javascript:__doPostBack(${q}Prev${q},${q}${q})">Prev</a>`;
+    expect(parseNatronaPager(prevOnly)).toBeNull();
   });
 });

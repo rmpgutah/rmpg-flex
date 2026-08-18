@@ -99,6 +99,25 @@ function slug(s: string | null): string {
 }
 
 /**
+ * Detect whether the page has a "Next" page link, and if so return its
+ * `__doPostBack` event-target so the adapter can POST the next-page postback.
+ *
+ * The pager is a DataPager control rendered as:
+ *   <a class="PageNumber" href="javascript:__doPostBack('target','')">Next</a>
+ * We target the "Next" anchor specifically — it appears only when there IS a
+ * next page, so its presence is the reliable has-more-pages signal.
+ *
+ * Returns null when on the last page (no "Next" link present).
+ */
+export function parseNatronaPager(html: string): string | null {
+  // Match the "Next" anchor that carries a doPostBack target.
+  // The href attr uses HTML-entity-encoded single quotes (&#39;) in the fixture.
+  const re = /__doPostBack\((?:&#39;|'|&apos;)([^'&]+)(?:&#39;|'|&apos;),\s*(?:&#39;|'|&apos;)(?:&#39;|'|&apos;)\)[^>]*>Next</i;
+  const m = html.match(re);
+  return m ? m[1] : null;
+}
+
+/**
  * Split the document into per-result row blocks. Each result row is a
  * `<div class="row myrow listview_backcolor1|2 ...">`. The header row uses
  * `id="Tr1"` and class `fw-bold` (no `listview_backcolor*`), so anchoring on
