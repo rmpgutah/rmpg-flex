@@ -311,6 +311,10 @@ export default function ServeReceiptPage() {
     return Object.fromEntries(attestations.map((a) => [a.id, true]));
   }, [allConfirmed, attestations]);
 
+  const fieldErrors = useMemo(() => ({
+    idNotVerified: !idVerified && idFrontImage === null,
+  }), [idVerified, idFrontImage]);
+
   const acceptedAttestations = useMemo(
     () => attestations.map((a) => ({ id: a.id, text: a.text, accepted: !!accepted[a.id] })),
     [attestations, accepted],
@@ -344,6 +348,9 @@ export default function ServeReceiptPage() {
   }, [gpsStatus, signature, phone, email]);
 
   const stepValid = [false, step1Valid, step2Valid, step3Valid, step4Valid, step5Valid];
+
+  // Sections 1 (WHO) and 3 (DOCUMENTS) require no input — they start as done.
+  const sectionsDone = 2 + [step2Valid, step4Valid, step5Valid].filter(Boolean).length;
 
   // ── ID handlers ────────────────────────────────────────────
   const scanId = useCallback(async (file: File) => {
@@ -735,6 +742,10 @@ export default function ServeReceiptPage() {
       continueLabel={step === 5 ? 'Sign and submit' : 'Continue'}
       continueLoading={step === 5 && submitting}
     >
+      {/* Screen-reader progress companion — paired with the visual bar in WizardShell */}
+      <div role="status" aria-live="polite" className="sr-only">
+        Step {sectionsDone} of 5 complete
+      </div>
       {step === 1 && (
         <Step1WhoIsSigning
           plaintiffName={ctx.job.plaintiff_name}
@@ -766,6 +777,7 @@ export default function ServeReceiptPage() {
 
       {step === 2 && (
         <Step2Identity
+          scanIdLabel="Scan ID barcode"
           recipientName={recipientName}
           setRecipientName={setRecipientName}
           idScanning={idScanning}

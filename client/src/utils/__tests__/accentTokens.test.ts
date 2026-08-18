@@ -735,7 +735,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // text-fg-muted, and de-duplicating the Blocked IPs card — it was
   // rendering every row twice — removed several more text-rmpg-500 sites
   // along with the dead second copy.
-  const PIN = 10296;
+  //
+  // 10296 -> 10302: map system structural rebuild (#3731) added new map
+  // components (BeatManagementPanel, SearchBox, etc.) that use rmpg ramp
+  // tokens in their tactical-dark UI — legitimate new surface.
+  const PIN = 10302;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
