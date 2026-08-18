@@ -13,6 +13,7 @@ import { emitAnalytics, flexEvent } from '../utils/analytics';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const jail = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -48,7 +49,7 @@ jail.get('/inmates', async (c) => {
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
     if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
-    if (q('search')) { const s = `%${q('search')}%`; conditions.push('(last_name LIKE ? OR first_name LIKE ? OR booking_number LIKE ?)'); params.push(s, s, s); }
+    if (q('search')) { const m = containsAnyClause(['last_name', 'first_name', 'booking_number']); conditions.push(m.sql); params.push(...m.binds(q('search')!)); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(q('per_page') || '50', 10) || 50));

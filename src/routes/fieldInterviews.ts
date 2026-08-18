@@ -88,11 +88,8 @@ fi.get('/', async (c) => {
     else conditions.push('fi.archived_at IS NULL');
     const search = q('search');
     if (search) {
-      conditions.push(
-        '(fi.location LIKE ? OR fi.narrative LIKE ? OR fi.subject_first_name LIKE ? OR fi.subject_last_name LIKE ?)',
-      );
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      const m = containsAnyClause(['fi.location', 'fi.narrative', 'fi.subject_first_name', 'fi.subject_last_name']);
+      conditions.push(m.sql); params.push(...m.binds(search));
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;

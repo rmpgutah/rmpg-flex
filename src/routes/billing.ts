@@ -12,6 +12,7 @@ import { getDb, query, queryFirst, execute, executeBatch } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const billing = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -123,7 +124,7 @@ billing.get('/invoices', async (c) => {
     if (q('status')) { conditions.push('i.status = ?'); params.push(q('status')); }
     if (q('date_from')) { conditions.push('i.issue_date >= ?'); params.push(q('date_from')); }
     if (q('date_to')) { conditions.push('i.issue_date <= ?'); params.push(q('date_to')); }
-    if (q('q')) { conditions.push('(i.invoice_number LIKE ? OR i.notes LIKE ?)'); params.push(`%${q('q')}%`, `%${q('q')}%`); }
+    if (q('q')) { const m = containsAnyClause(['i.invoice_number', 'i.notes']); conditions.push(m.sql); params.push(...m.binds(q('q')!)); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(q('limit') || '50', 10) || 50));
