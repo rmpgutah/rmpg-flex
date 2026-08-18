@@ -907,6 +907,8 @@ export async function fetchDwellSeconds(
 
   const hashes = stops.map(s => s.addressHash);
   // Use queryInChunks to stay within D1's 100-bound-parameter cap.
+  // serve_dwell_times may not yet exist on all environments — degrade to
+  // defaults rather than crashing the entire route optimization on a missing table.
   const rows = await queryInChunks<{ address_hash: string; avg_dwell: number }>(
     db,
     hashes,
@@ -916,7 +918,7 @@ export async function fetchDwellSeconds(
        WHERE address_hash IN (${placeholders})
          AND logged_at > datetime('now', '-90 days')
        GROUP BY address_hash`,
-  );
+  ).catch(() => [] as { address_hash: string; avg_dwell: number }[]);
 
   const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
   return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
