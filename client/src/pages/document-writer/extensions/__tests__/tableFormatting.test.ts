@@ -15,7 +15,8 @@ afterEach(() => { editor?.destroy(); editor = null; });
 
 function mkEditor(): Editor {
   return new Editor({
-    extensions: [StarterKit.configure({}), Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extensions: [StarterKit.configure({}) as any, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
     content: '<p>seed</p>',
   });
 }
@@ -38,7 +39,8 @@ describe('TableFormatting', () => {
 
     // Round-trip: reload the serialized HTML into a fresh editor; attrs survive.
     const e2 = new Editor({
-      extensions: [StarterKit.configure({}), Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extensions: [StarterKit.configure({}) as any, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
       content: html,
     });
     const html2 = e2.getHTML();
