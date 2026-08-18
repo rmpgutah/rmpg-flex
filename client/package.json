@@ -72,7 +72,7 @@
     "@turf/area": "^7.3.5",
     "@turf/boolean-point-in-polygon": "^7.4.0",
     "@turf/circle": "^7.4.0",
-    "@turf/dissolve": "^7.3.5",
+    "@turf/dissolve": "^7.4.0",
     "@turf/length": "^7.3.5",
     "@types/mapbox-gl": "^3.5.0",
     "@xterm/addon-fit": "^0.11.0",
