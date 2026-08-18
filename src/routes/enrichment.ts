@@ -12,6 +12,10 @@ import * as openSanctionsSrc from '../utils/enrichment/sources/openSanctions';
 import * as uspsSrc from '../utils/enrichment/sources/usps';
 import * as openCorporatesSrc from '../utils/enrichment/sources/openCorporates';
 import * as numverifySrc from '../utils/enrichment/sources/numverify';
+import * as fbiSrc from '../utils/enrichment/sources/fbi';
+import * as bopSrc from '../utils/enrichment/sources/bop';
+import * as censusGeoSrc from '../utils/enrichment/sources/censusGeocoder';
+import * as ofacSrc from '../utils/enrichment/sources/ofac';
 
 const enrichment = new Hono<Env>();
 
@@ -27,6 +31,10 @@ const SOURCES = [
   { key: 'usps',             label: 'USPS Web Tools',     requiresKey: 'USPS_USER_ID',           mod: uspsSrc },
   { key: 'open_corporates',  label: 'OpenCorporates',     requiresKey: 'OPENCORPORATES_API_KEY', mod: openCorporatesSrc },
   { key: 'numverify',        label: 'Numverify',          requiresKey: 'NUMVERIFY_API_KEY',      mod: numverifySrc },
+  { key: 'fbi_wanted',      label: 'FBI Most Wanted',    requiresKey: null,                     mod: fbiSrc },
+  { key: 'bop_inmates',     label: 'BOP Federal Inmates',requiresKey: null,                     mod: bopSrc },
+  { key: 'census_geocoder', label: 'Census Geocoder',    requiresKey: null,                     mod: censusGeoSrc },
+  { key: 'ofac_sdn',        label: 'OFAC SDN',           requiresKey: null,                     mod: ofacSrc },
 ] as const;
 
 enrichment.get('/sources', (c) => {
