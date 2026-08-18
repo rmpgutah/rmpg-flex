@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import PatrolBeatPlannerModal from '../../../components/PatrolBeatPlannerModal';
 import type { V2Route } from '../../../utils/mapboxOptimizationV2';
+import AssignmentArcLayer from '../layers/AssignmentArcLayer';
 
 // MapLeftDock + MapRightDock rendered by MapboxMapPage with sections;
 // migration to this layout is a follow-up task
@@ -15,6 +16,7 @@ export default function DispatcherMapLayout() {
 
   return (
     <div data-testid="dispatcher-map-layout" className="absolute inset-0 pointer-events-none z-10">
+      <AssignmentArcLayer />
       {/* Supervisor-only controls */}
       {isSupervisorPlus && (
         <button
