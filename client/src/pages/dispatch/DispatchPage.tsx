@@ -83,6 +83,8 @@ import {
   announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
+import { useOptimizationV2 } from '../../hooks/useOptimizationV2';
+import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
 import CallDocumentsPanel from './components/CallDocumentsPanel';
@@ -132,6 +134,7 @@ export default function DispatchPage() {
     isAdminOrManager || (!!note.author_username && note.author_username === user?.username),
   [isAdminOrManager, user?.username]);
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const isSupervisorPlus = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -168,6 +171,8 @@ export default function DispatchPage() {
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
+  const dispatchOptimization = useOptimizationV2();
+  const [showAssignmentOverlay, setShowAssignmentOverlay] = useState(false);
   const [calls, setCalls] = useState<CallForService[]>([]);
   // Mirror `calls` into a ref so the mount-only WebSocket effect (deps exclude
   // `calls` to avoid re-subscribing on every list change) can read current
@@ -204,6 +209,25 @@ export default function DispatchPage() {
   // read current on-duty state.
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
+
+  const handleOptimizeAssignments = useCallback(async () => {
+    const availableUnitIds = units
+      .filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status))
+      .map((u) => Number(u.id));
+    const openCallIds = calls
+      .filter((c) => ['active', 'dispatched', 'pending'].includes(c.status))
+      .map((c) => Number(c.id));
+    if (!availableUnitIds.length || !openCallIds.length) return;
+    await dispatchOptimization.submit({
+      job_type: 'multi_unit_dispatch',
+      call_ids: openCallIds,
+      unit_ids: availableUnitIds,
+    });
+  }, [units, calls, dispatchOptimization]);
+
+  useEffect(() => {
+    if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
+  }, [dispatchOptimization.status]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   // Spillman CAD console view (P1 structural replica). Persisted; defaults ON
@@ -6556,6 +6580,19 @@ export default function DispatchPage() {
               {units.filter((u) => u.status !== 'off_duty').length}/{units.length} ON DUTY
             </span>
             <span className="toolbar-separator" />
+            {isSupervisorPlus && (
+              <button
+                type="button"
+                onClick={handleOptimizeAssignments}
+                disabled={dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'}
+                className="toolbar-btn toolbar-btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Optimize unit-to-call assignments with Mapbox V2"
+              >
+                {dispatchOptimization.status === 'pending' || dispatchOptimization.status === 'processing'
+                  ? `Optimizing… ${Math.round(dispatchOptimization.elapsedMs / 1000)}s`
+                  : 'Optimize Assignments'}
+              </button>
+            )}
             <button type="button" onClick={() => setShowCreateUnitModal(true)} className="toolbar-btn toolbar-btn-primary">
               <Plus style={{ width: 10, height: 10 }} /> New Unit
             </button>
@@ -7491,6 +7528,47 @@ export default function DispatchPage() {
           <LiveClock style={{ color: 'var(--spm-text-muted)' }} />
         </div>
       </div>
+
+      {/* Optimize Assignments result overlay */}
+      {showAssignmentOverlay && dispatchOptimization.solution && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-surface-base border border-rmpg-600 p-4 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col gap-3" style={{ borderRadius: 2 }}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-rmpg-100">Optimized Assignments</span>
+              <button
+                type="button"
+                onClick={() => { setShowAssignmentOverlay(false); dispatchOptimization.reset(); }}
+                className="text-rmpg-400 hover:text-rmpg-100 text-xs"
+              >
+                Dismiss
+              </button>
+            </div>
+            {dispatchOptimization.solution.dropped.services.length > 0 && (
+              <div className="text-xs text-amber-400">
+                ⚠ {dispatchOptimization.solution.dropped.services.length} call(s) could not be assigned
+              </div>
+            )}
+            <div className="overflow-y-auto flex-1 space-y-3">
+              {dispatchOptimization.solution.routes.map((route: V2Route) => (
+                <div key={route.vehicle} className="bg-surface-raised p-2" style={{ borderRadius: 2 }}>
+                  <div className="text-xs font-semibold text-rmpg-200 mb-1">{route.vehicle}</div>
+                  {route.stops
+                    .filter((s) => s.type === 'service')
+                    .map((s, i) => (
+                      <div key={s.location} className="text-[11px] text-rmpg-300 py-0.5 flex gap-2">
+                        <span className="text-rmpg-500">{i + 1}.</span>
+                        <span>{s.location.replace('call-', 'Call #')}</span>
+                        <span className="ml-auto text-rmpg-400">
+                          {new Date(s.eta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

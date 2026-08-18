@@ -36,6 +36,7 @@ import { getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useAuth } from '../../context/AuthContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { usePersistedState, usePersistedTab } from '../../hooks/usePersistedState';
@@ -110,6 +111,8 @@ import { useEnRouteEta } from './hooks/useEnRouteEta';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import MapTopToolbar from './components/MapTopToolbar';
+import PatrolBeatPlannerModal from '../../components/PatrolBeatPlannerModal';
+import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import UnifiedMapLegend from './components/UnifiedMapLegend';
 import OsmFeatureEditor from '../../components/OsmFeatureEditor';
 import { useOsmOverrides } from '../../hooks/useOsmOverrides';
@@ -176,6 +179,11 @@ interface MapboxMapPageProps {
 }
 
 export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapPageProps) {
+  const { user: mapPageUser } = useAuth();
+  const isSupervisorPlusMap = ['admin', 'manager', 'supervisor'].includes(mapPageUser?.role ?? '');
+  const [showBeatPlanner, setShowBeatPlanner] = useState(false);
+  const [beatRoutes, setBeatRoutes] = useState<V2Route[] | null>(null);
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [units, setUnits]           = useState<Unit[]>([]);
   const [calls, setCalls]           = useState<ActiveCall[]>([]);
@@ -1721,6 +1729,31 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
       {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
       {!isDockNarrow && <MapTopToolbar {...mapTopToolbarProps} />}
+      {/* Beat Planner — supervisor+ toolbar button */}
+      {!isDockNarrow && isSupervisorPlusMap && (
+        <div className="absolute top-9 right-2 z-30 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setShowBeatPlanner(true)}
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 transition-colors"
+            style={{ borderRadius: 2 }}
+            title="Optimize patrol beat assignments"
+          >
+            Beat Planner
+          </button>
+          {beatRoutes && (
+            <span className="text-[10px] text-rmpg-400">
+              {beatRoutes.length} route(s) planned
+            </span>
+          )}
+        </div>
+      )}
+      {showBeatPlanner && (
+        <PatrolBeatPlannerModal
+          onClose={() => setShowBeatPlanner(false)}
+          onSolutionReady={(routes) => { setBeatRoutes(routes); setShowBeatPlanner(false); }}
+        />
+      )}
 
       {/* ── Middle row: Roster dock · Layers dock · Map canvas · Info & Tools dock ── */}
       <div className="relative flex-1 flex overflow-hidden">
