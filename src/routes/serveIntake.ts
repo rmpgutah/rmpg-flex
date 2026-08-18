@@ -2448,26 +2448,38 @@ si.delete('/:id', async (c) => {
   );
   if (!queue) return c.json({ error: 'Not found' }, 404);
 
-  // Explicit cleanup for all related tables. D1 does not enforce PRAGMA
-  // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
-  // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
-  // guaranteed orphans without these DELETEs.
-  // ── serve_nudges: no FK constraint (migration 0105) — would orphan
+  // Explicit cleanup for all related tables. D1 enforces FK constraints
+  // (confirmed live 2026-08-18 via FOREIGN KEY constraint failed errors).
+  // Tables with ON DELETE CASCADE may auto-cascade, but explicit DELETEs
+  // here are the reliable path — D1's CASCADE behavior is not guaranteed.
+  // Order: deepest dependents first, serve_queue last.
+  // ── serve_nudges: no FK constraint (migration 0105)
   await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
   // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)
   await execute(db, 'DELETE FROM case_serve_jobs WHERE serve_queue_id = ?', id);
-  // ── serve_queue_persons: FK CASCADE but PRAGMA not enforced (migration 0002)
+  // ── serve_job_comments: FK ON DELETE CASCADE (migration 0238)
+  await execute(db, 'DELETE FROM serve_job_comments WHERE serve_queue_id = ?', id);
+  // ── serve_qr_scans: FK with NO ON DELETE clause → RESTRICT (migration 0247).
+  //    D1 FK enforcement BLOCKS serve_queue deletion when scan rows exist —
+  //    confirmed root cause of 500s on DELETE /api/serve-intake/:id.
+  await execute(db, 'DELETE FROM serve_scan_details WHERE scan_id IN (SELECT id FROM serve_qr_scans WHERE job_id = ?)', id);
+  await execute(db, 'DELETE FROM serve_qr_scans WHERE job_id = ?', id);
+  // ── serve_queue_persons: FK CASCADE (migration 0002)
   await execute(db, 'DELETE FROM serve_queue_persons WHERE serve_queue_id = ?', id);
-  // ── serve_charges + serve_charge_lines: FK CASCADE but PRAGMA not enforced
+  // ── serve_charges + serve_charge_lines: FK CASCADE
   await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id IN (SELECT id FROM serve_charges WHERE serve_queue_id = ?)', id);
   await execute(db, 'DELETE FROM serve_charges WHERE serve_queue_id = ?', id);
-  // ── serve_intake_documents: FK SET NULL but PRAGMA not enforced (migration 0034)
+  // ── serve_intake_documents: FK SET NULL (migration 0034)
   await execute(db, 'UPDATE serve_intake_documents SET serve_queue_id = NULL WHERE serve_queue_id = ?', id);
   // ── serve_attempt_schedules: no FK constraint (migration 0130)
   await execute(db, 'DELETE FROM serve_attempt_schedules WHERE queue_id = ?', id);
-  // ── serve_attempts + serve_skip_traces: FK CASCADE but PRAGMA not enforced
+  // ── serve_attempts + serve_skip_traces: FK CASCADE
   await execute(db, 'DELETE FROM serve_skip_traces WHERE serve_queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_attempts WHERE serve_queue_id = ?', id);
+  // ── serve_receipt_persons → serve_receipts → serve_queue (cascade chain)
+  await execute(db, 'DELETE FROM serve_receipt_persons WHERE receipt_id IN (SELECT id FROM serve_receipts WHERE serve_queue_id = ?)', id);
+  await execute(db, 'DELETE FROM serve_receipts WHERE serve_queue_id = ?', id);
+  await execute(db, 'DELETE FROM serve_receipt_tokens WHERE serve_queue_id = ?', id);
   await execute(db, 'DELETE FROM serve_queue WHERE id = ?', id);
 
   await recordAudit(c, {

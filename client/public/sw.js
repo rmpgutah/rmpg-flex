@@ -337,11 +337,9 @@ self.addEventListener('activate', (event) => {
 //
 // static.cloudflareinsights.com/beacon.min.js is NOT intercepted here —
 // Cloudflare auto-injects that <script> tag with an `integrity="sha512-…"`
-// attribute. Answering with an empty 204 would fail the SRI check, swapping
-// ERR_CONNECTION_REFUSED for an equally noisy "Failed to find a valid digest"
-// error. Instead, the beacon domain is excluded from `script-src` in the CSP
-// meta tag (client/index.html). The browser blocks the request at the CSP
-// layer — before any network connection — so no ERR_CONNECTION_REFUSED fires.
+// attribute. Answering with an empty 204 would fail the SRI check. The beacon
+// domain is allowed in `script-src` in the CSP meta tag (client/index.html)
+// so the browser loads it normally without a SW intercept.
 const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
 
 // Self-heal for the stale-chunk wedge (live incident 2026-07-30).
