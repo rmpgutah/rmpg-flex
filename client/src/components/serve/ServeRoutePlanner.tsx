@@ -515,6 +515,8 @@ export default function ServeRoutePlanner({
   const [serverEtaJobIds, setServerEtaJobIds] = useState<number[]>([]);
   const [geocodeWarnings, setGeocodeWarnings] = useState<GeocodeWarning[]>([]);
   const [matrixFallback, setMatrixFallback] = useState(false);
+  const [matrixFallbackReason, setMatrixFallbackReason] = useState<string | undefined>(undefined);
+  const [matrixFallbackDismissed, setMatrixFallbackDismissed] = useState(false);
   const [geocodeWarningDismissed, setGeocodeWarningDismissed] = useState(false);
   // Traffic polling state
   const [trafficSuggestion, setTrafficSuggestion] = useState<{
@@ -548,6 +550,8 @@ export default function ServeRoutePlanner({
     setServerEtaJobIds([]);
     setGeocodeWarnings([]);
     setMatrixFallback(false);
+    setMatrixFallbackReason(undefined);
+    setMatrixFallbackDismissed(false);
     setGeocodeWarningDismissed(false);
     setTrafficSuggestion(null);
     setRouteAccepted(false);
@@ -948,6 +952,8 @@ export default function ServeRoutePlanner({
     setServerEtaJobIds([]);
     setGeocodeWarnings([]);
     setMatrixFallback(false);
+    setMatrixFallbackReason(undefined);
+    setMatrixFallbackDismissed(false);
     setGeocodeWarningDismissed(false);
 
     // Fire server-side optimize in parallel — provides traffic-aware ETAs,
@@ -957,11 +963,13 @@ export default function ServeRoutePlanner({
       orderedStops: { jobId: number }[];
       etaPerStop: string[];
       matrixFallback: boolean;
+      fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
     } | null> = apiFetch<{
       orderedStops: { jobId: number }[];
       etaPerStop: string[];
       matrixFallback: boolean;
+      fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
     }>('/serve-queue/optimize-route', {
       method: 'POST',
@@ -1252,7 +1260,10 @@ export default function ServeRoutePlanner({
         setServerEtas(serverResult.etaPerStop ?? []);
         setServerEtaJobIds((serverResult.orderedStops ?? []).map((s: { jobId: number }) => s.jobId));
         setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
-        setMatrixFallback(serverResult.matrixFallback ?? false);
+        const newFallback = serverResult.matrixFallback ?? false;
+        setMatrixFallback(newFallback);
+        setMatrixFallbackReason(newFallback ? (serverResult.fallbackReason as string | undefined) : undefined);
+        if (newFallback) setMatrixFallbackDismissed(false);
       }
     }
   }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
@@ -1592,9 +1603,22 @@ export default function ServeRoutePlanner({
                 </div>
               </div>
             )}
-            {matrixFallback && (
-              <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/30 text-amber-400 text-[10px] leading-snug">
-                Route ETAs use estimated distances — live traffic data was unavailable.
+            {matrixFallback && !matrixFallbackDismissed && (
+              <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/30 text-amber-400 text-[10px] leading-snug flex items-center justify-between gap-2">
+                <span>
+                  Route ETAs use estimated distances — live traffic data was unavailable.
+                  {matrixFallbackReason && (
+                    <span className="ml-1 opacity-70">({matrixFallbackReason})</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMatrixFallbackDismissed(true)}
+                  className="flex-shrink-0 text-amber-500 hover:text-amber-300 leading-none"
+                  aria-label="Dismiss traffic data warning"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
             )}
             {!geocodeWarningDismissed && geocodeWarnings.length > 0 && (

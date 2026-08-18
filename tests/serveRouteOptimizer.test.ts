@@ -45,22 +45,55 @@ describe('buildCostMatrix', () => {
     expect(result.matrix[1][2]).toBe(120);
   });
 
-  it('falls back to haversine when API returns non-ok status', async () => {
+  it('retries without depart_at on 422 and succeeds', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 422, text: async () => 'invalid depart_at' } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ durations: [[0, 120, 240], [120, 0, 120], [240, 120, 0]] }),
+      } as unknown as Response);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(false);
+    expect(result.matrix[0][1]).toBe(120);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Second call must NOT include depart_at
+    const secondUrl = (fetchMock.mock.calls[1][0] as string);
+    expect(secondUrl).not.toContain('depart_at');
+  });
+
+  it('falls back to haversine with reason when API returns non-ok status (non-422)', async () => {
     global.fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
-      status: 422,
+      status: 429,
+      text: async () => 'rate limited',
     } as unknown as Response);
 
     const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
     expect(result.fallback).toBe(true);
+    expect(result.reason).toBe('rate limited (429)');
     expect(result.matrix[0][0]).toBe(0);
     expect(result.matrix[0][1]).toBeGreaterThan(0);
   });
 
-  it('falls back to haversine when token is empty string', async () => {
+  it('falls back to haversine with reason when API returns 401', async () => {
+    global.fetch = vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'unauthorized',
+    } as unknown as Response);
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(true);
+    expect(result.reason).toBe('token rejected (401)');
+  });
+
+  it('falls back to haversine with reason when token is empty string', async () => {
     global.fetch = vi.fn();
     const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', '');
     expect(result.fallback).toBe(true);
+    expect(result.reason).toBe('no token configured');
     expect((global.fetch as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 
