@@ -727,6 +727,9 @@ export default function ServeReceiptPage() {
   }
 
   // ── Wizard steps ───────────────────────────────────────────
+  // Steps 1 and 3 require nothing from the signer so they count as pre-solved.
+  // Steps 2, 4, and 5 each add 1 once the signer has moved past them.
+  const sectionsDone = 2 + (step > 2 ? 1 : 0) + (step > 3 ? 1 : 0) + (step > 4 ? 1 : 0);
   const goBack = step > 1 ? () => setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5) : undefined;
   const goNext = () => {
     if (step < 5) setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5);
@@ -736,6 +739,7 @@ export default function ServeReceiptPage() {
   return (
     <WizardShell
       currentStep={step}
+      sectionsDone={sectionsDone}
       onBack={goBack}
       onContinue={goNext}
       continueEnabled={stepValid[step]}
