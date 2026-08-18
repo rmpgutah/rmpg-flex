@@ -5,7 +5,8 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   const start = Date.now();
   const source = 'ofac_sdn';
   try {
-    const nameLike = `%${seed.last_name.toLowerCase()}%`;
+    // D1 LIKE cap is 50 chars; %pattern% uses 2, leaving 48 for the value.
+    const nameLike = `%${seed.last_name.toLowerCase().slice(0, 48)}%`;
     // Search both name and aliases_json
     const rows = await env.DB.prepare(
       `SELECT sdn_name, sdn_type, program, aliases_json, dob, nationality, remarks
