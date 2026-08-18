@@ -221,6 +221,35 @@ const SERVE_PRIORITY_OPTIONS = ['normal', 'rush', 'urgent'] as const;
 const MODAL_BACKDROP_STYLE: React.CSSProperties = { background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' };
 const MODAL_PANEL_STYLE: React.CSSProperties = { border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' };
 const DETAIL_TAB_LABELS: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+const FILTER_TAB_CONFIG = [
+  { id: 'queue', label: 'Queue' }, { id: 'pending', label: 'Pending' },
+  { id: 'active', label: 'Active' }, { id: 'hold', label: 'Hold' },
+  { id: 'serve', label: 'Serve' }, { id: 'cleared', label: 'Cleared' },
+] as const;
+const TIMELINE_FIELDS = [
+  { label: 'Created', field: 'created_at', color: 'var(--spm-text-muted)' },
+  { label: 'Dispatched', field: 'dispatched_at', color: 'var(--sev-warn)' },
+  { label: 'Enroute', field: 'enroute_at', color: 'var(--spm-text-muted)' },
+  { label: 'On Scene', field: 'onscene_at', color: 'var(--sev-special)' },
+  { label: 'Cleared', field: 'cleared_at', color: 'var(--sev-ok)' },
+  { label: 'Closed', field: 'closed_at', color: 'var(--spm-text-muted)' },
+] as const;
+const TIMELINE_FIELDS_DESKTOP = [
+  ...TIMELINE_FIELDS,
+  { label: 'Archived', field: 'archived_at', color: 'var(--spm-text-muted)' },
+] as const;
+const UNIT_STATUS_BASE_OPTIONS = [
+  { value: 'available', label: 'Available' },
+  { value: 'off_duty', label: 'Off Duty' },
+  { value: 'busy', label: 'Busy' },
+] as const;
+const UNIT_STATUS_EDIT_OPTIONS = [
+  { value: 'dispatched', label: 'Dispatched' },
+  { value: 'enroute', label: 'En Route' },
+  { value: 'onscene', label: 'On Scene' },
+] as const;
+const STATUS_BAR_STYLE: React.CSSProperties = { background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" };
+const SCROLL_CONTAIN_STYLE: React.CSSProperties = { overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties;
 
 const PROCESS_SERVICE_RESULT_GROUPS = [
   { label: 'Successful Service', options: [
@@ -2599,14 +2628,7 @@ export default function DispatchPage() {
       <div className="flex flex-col h-full relative">
         {/* Filter pill tabs — min 44px touch targets */}
         <div className="mobile-pill-tabs" style={{ gap: 6, padding: '8px 12px' }}>
-          {([
-            { id: 'queue', label: 'Queue', count: tabCounts.queue },
-            { id: 'pending', label: 'Pending', count: tabCounts.pending },
-            { id: 'active', label: 'Active', count: tabCounts.active },
-            { id: 'hold', label: 'Hold', count: tabCounts.hold },
-            { id: 'serve', label: 'Serve', count: tabCounts.serve },
-            { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
-          ] as const).map((tab) => (
+          {FILTER_TAB_CONFIG.map((tab) => ({ ...tab, count: tabCounts[tab.id as keyof typeof tabCounts] ?? 0 })).map((tab) => (
             <button type="button"
               key={tab.id}
               onClick={() => setFilterTab(tab.id as FilterTab)}
@@ -2975,14 +2997,7 @@ export default function DispatchPage() {
                     {isAdminOrManager && <span className="text-[8px] text-rmpg-500 font-mono">CLICK TO EDIT</span>}
                   </div>
                   <div className="space-y-1.5 text-xs">
-                    {([
-                      { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)' },
-                      { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
-                      { label: 'Enroute', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
-                      { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
-                      { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                      { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
-                    ] as const).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
+                    {TIMELINE_FIELDS.map(tf => ({ ...tf, value: (selectedCall as any)[tf.field] as string | undefined })).filter(ts => ts.field === 'created_at' || ts.value || isAdminOrManager).map(ts => (
                       <div key={ts.field} className="flex justify-between items-center group">
                         <span className="text-rmpg-400 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ts.color, boxShadow: ts.value ? `0 0 4px ${withAlpha(ts.color, '80')}` : 'none' }} />
@@ -3716,12 +3731,7 @@ export default function DispatchPage() {
         <TabBar
           spillman
           tabs={[
-            { id: 'queue', label: 'Queue', count: tabCounts.queue },
-            { id: 'pending', label: 'Pending', count: tabCounts.pending },
-            { id: 'active', label: 'Active', count: tabCounts.active },
-            { id: 'hold', label: 'Hold', count: tabCounts.hold },
-            { id: 'serve', label: 'Serve', count: tabCounts.serve },
-            { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
+            ...FILTER_TAB_CONFIG.map(tab => ({ ...tab, count: tabCounts[tab.id as keyof typeof tabCounts] ?? 0 })),
             { id: 'archived', label: 'Archive', count: tabCounts.archived },
           ]}
           activeTab={filterTab}
@@ -4814,7 +4824,7 @@ export default function DispatchPage() {
                   applies the CAD board's dense monospace treatment (see
                   spillman-kit.css) via a scoped CSS rule rather than touching
                   every individual Tailwind class in this ~1500-line region. */}
-              <div className="cad-detail-body flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+              <div className="cad-detail-body flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col" style={SCROLL_CONTAIN_STYLE}>
                 {/* ── CALL INFO SECTION (Info + Persons tab) ─── */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 flex-shrink-0" style={{ display: detailTab === 'info' || detailTab === 'persons' ? undefined : 'none' }}>
                   {/* Left Column: Core Info */}
@@ -5048,15 +5058,12 @@ export default function DispatchPage() {
                         {isAdminOrManager && <span className="text-[7px] text-rmpg-500 font-mono tracking-wider">ADMIN EDIT</span>}
                       </div>
                       <div className="space-y-0.5 mt-1.5 relative" style={{ paddingLeft: '12px', borderLeft: '2px solid var(--spm-border)' }}>
-                        {([
-                          { label: 'Created', field: 'created_at', value: selectedCall.created_at, color: 'var(--spm-text-muted)', showElapsed: true },
-                          { label: 'Dispatched', field: 'dispatched_at', value: selectedCall.dispatched_at, color: 'var(--sev-warn)' },
-                          { label: 'En Route', field: 'enroute_at', value: selectedCall.enroute_at, color: 'var(--spm-text-muted)' },
-                          { label: 'On Scene', field: 'onscene_at', value: selectedCall.onscene_at, color: 'var(--sev-special)' },
-                          { label: 'Cleared', field: 'cleared_at', value: selectedCall.cleared_at, color: 'var(--sev-ok)' },
-                          { label: 'Closed', field: 'closed_at', value: selectedCall.closed_at, color: 'var(--spm-text-muted)' },
-                          { label: 'Archived', field: 'archived_at', value: selectedCall.archived_at, color: 'var(--spm-text-muted)' },
-                        ] as { label: string; field: string; value: string | undefined; color: string; showElapsed?: boolean }[]).filter(ts => ts.value || isAdminOrManager).map(ts => (
+                        {TIMELINE_FIELDS_DESKTOP.map(tf => ({
+                          ...tf,
+                          label: tf.field === 'enroute_at' ? 'En Route' : tf.label,
+                          value: (selectedCall as any)[tf.field] as string | undefined,
+                          showElapsed: tf.field === 'created_at',
+                        })).filter(ts => ts.value || isAdminOrManager).map(ts => (
                           <div key={ts.field} className="flex items-center gap-2 text-xs py-0.5 relative group">
                             <div className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-2 h-2 rounded-full" style={{ background: ts.value ? ts.color : 'var(--spm-border)', border: '2px solid var(--surface-sunken)', boxShadow: ts.value ? `0 0 4px ${withAlpha(ts.color, '60')}` : 'none' }} />
                             <span className="text-rmpg-500 text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
@@ -6984,12 +6991,8 @@ export default function DispatchPage() {
                   value={newUnitStatus}
                   onChange={(e) => setNewUnitStatus(e.target.value)}
                 >
-                  <option value="available">Available</option>
-                  <option value="off_duty">Off Duty</option>
-                  <option value="busy">Busy</option>
-                  {editingUnit && <option value="dispatched">Dispatched</option>}
-                  {editingUnit && <option value="enroute">En Route</option>}
-                  {editingUnit && <option value="onscene">On Scene</option>}
+                  {UNIT_STATUS_BASE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  {editingUnit && UNIT_STATUS_EDIT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
@@ -7447,7 +7450,7 @@ export default function DispatchPage() {
               </div>
               <button aria-label="Close" type="button" onClick={() => setShowHandoffNotes(false)} className="text-rmpg-400 hover:text-rmpg-100 transition-colors"><X className="w-4 h-4" /></button>
             </div>
-            <div className="p-3 flex-1 overflow-auto" style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            <div className="p-3 flex-1 overflow-auto" style={SCROLL_CONTAIN_STYLE}>
               {handoffMeta.updated_by && (
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
@@ -7476,7 +7479,7 @@ export default function DispatchPage() {
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
-        style={{ background: 'var(--surface-deep)', borderColor: 'var(--surface-raised)', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
+        style={STATUS_BAR_STYLE}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
           <span className="text-rmpg-500 uppercase tracking-wider font-bold">CAD</span>
