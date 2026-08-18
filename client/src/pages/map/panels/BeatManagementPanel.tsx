@@ -13,7 +13,7 @@ import { useOptimizationV2 } from '../../../hooks/useOptimizationV2';
 import type { V2Route } from '../../../utils/mapboxOptimizationV2';
 
 interface Beat { id: number; beat_code: string; beat_name: string }
-interface Unit { id: number; call_sign: string; status: string }
+interface Unit { id: string; call_sign: string; status: string }
 
 export interface BeatManagementPanelProps {
   onClose(): void;
@@ -24,7 +24,7 @@ export default function BeatManagementPanel({ onClose, onSolutionReady }: BeatMa
   const [beats, setBeats] = useState<Beat[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedBeatIds, setSelectedBeatIds] = useState<Set<number>>(new Set());
-  const [selectedUnitIds, setSelectedUnitIds] = useState<Set<number>>(new Set());
+  const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [shiftStart, setShiftStart] = useState('');
   const [shiftEnd, setShiftEnd] = useState('');
   const optimization = useOptimizationV2();
@@ -72,7 +72,7 @@ export default function BeatManagementPanel({ onClose, onSolutionReady }: BeatMa
       return next;
     });
 
-  const toggleUnit = (id: number) =>
+  const toggleUnit = (id: string) =>
     setSelectedUnitIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
