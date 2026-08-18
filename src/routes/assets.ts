@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
 import { log } from '../utils/logger';
 const assets = new Hono<Env>();
@@ -34,7 +35,7 @@ assets.get('/inventory', async (c) => {
     if (q('type')) { conditions.push('asset_type = ?'); params.push(q('type')); }
     if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
     if (q('assigned_to')) { conditions.push('assigned_to = ?'); params.push(q('assigned_to')); }
-    if (q('search')) { const s = `%${q('search')}%`; conditions.push('(asset_tag LIKE ? OR make LIKE ? OR model LIKE ?)'); params.push(s, s, s); }
+    if (q('search')) { const m = containsAnyClause(['asset_tag', 'make', 'model']); conditions.push(m.sql); params.push(...m.binds(q('search')!)); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(q('per_page') || '50', 10) || 50));
