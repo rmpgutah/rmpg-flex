@@ -1765,7 +1765,9 @@ export default function DispatchPage() {
         // operator could re-enter and double-write. Surface the failure now.
         if (!cancelled) {
           setLinkedIncidents([]);
-          setActivityEntries([]);
+          // Keep existing activityEntries on a failed re-fetch — a stale log is
+          // safer for an officer than a blank one (503/offline wipe caused the
+          // "NO ACTIVITY RECORDED" bug after transient network failures).
           addToast(err?.message || 'Could not load full call details — showing partial data', 'error');
         }
       }
