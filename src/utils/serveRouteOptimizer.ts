@@ -88,118 +88,79 @@ export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): num
   return stops.map(a => stops.map(b => haversineDistance(a, b)));
 }
 
-// ── Mapbox Matrix API ──────────────────────────────────────
-
-const MATRIX_CHUNK_SIZE = 25;
+// ── Directions-API cost matrix (driving-traffic, one call per ordered pair) ──
+//
+// The Mapbox Matrix API driving-traffic profile requires an Enterprise plan.
+// The Directions API driving-traffic profile is available on pay-as-you-go.
+// We fire all n×(n-1) pairs concurrently; Workers paid plan allows 1,000
+// subrequests per invocation (handles up to ~32 stops before hitting the cap).
 
 export async function buildCostMatrix(
   stops: RouteStop[],
-  departAt: string,
+  _departAt: string,
   mapboxToken: string
 ): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   if (!mapboxToken) {
     return { matrix: haversineMatrix(stops), fallback: true, reason: 'no token configured' };
   }
-
-  if (stops.length <= MATRIX_CHUNK_SIZE) {
-    return fetchMatrixChunk(stops, departAt, mapboxToken);
+  if (stops.length <= 1) {
+    return { matrix: haversineMatrix(stops), fallback: false };
   }
 
-  // Chunk into overlapping 25-stop windows and merge
   const n = stops.length;
-  const result: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-  let fallback = false;
-  let firstReason: string | undefined;
+  const matrix: number[][] = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => (i === j ? 0 : 0))
+  );
 
-  for (let start = 0; start < n; start += MATRIX_CHUNK_SIZE) {
-    const end = Math.min(start + MATRIX_CHUNK_SIZE, n);
-    const chunk = stops.slice(start, end);
-    const { matrix: chunkMatrix, fallback: chunkFallback, reason } = await fetchMatrixChunk(
-      chunk,
-      departAt,
-      mapboxToken
-    );
-    if (chunkFallback) { fallback = true; if (!firstReason) firstReason = reason; }
-    for (let i = start; i < end; i++) {
-      for (let j = start; j < end; j++) {
-        result[i][j] = chunkMatrix[i - start][j - start];
-      }
+  // Build all ordered pairs (i → j where i ≠ j)
+  const pairs: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j) pairs.push([i, j]);
     }
-    // Fill cross-chunk cells with haversine fallback.
-    // Mixed data sources (Mapbox durations for intra-chunk, haversine for
-    // cross-chunk) are unavoidable in the chunked path, so mark fallback true
-    // unconditionally whenever any cross-chunk cells are filled.
-    if (start > 0) {
-      if (!fallback) firstReason = 'route too large for single API call';
-      fallback = true;
-      for (let i = 0; i < start; i++) {
-        for (let j = start; j < end; j++) {
-          if (result[i][j] === 0 && i !== j) {
-            result[i][j] = haversineDistance(stops[i], stops[j]);
-            result[j][i] = result[i][j];
-          }
+  }
+
+  let anyFailed = false;
+
+  const results = await Promise.all(
+    pairs.map(async ([i, j]) => {
+      const from = stops[i];
+      const to = stops[j];
+      const url = new URL(
+        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${from.lng},${from.lat};${to.lng},${to.lat}`
+      );
+      url.searchParams.set('access_token', mapboxToken);
+      url.searchParams.set('overview', 'false');
+      url.searchParams.set('steps', 'false');
+
+      try {
+        const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
+        if (!res.ok) {
+          console.warn(`[serveRouteOptimizer] Directions ${i}→${j} HTTP ${res.status}`);
+          return { i, j, duration: null as number | null };
         }
+        const data = await (res.json() as Promise<{ routes?: { duration: number }[] }>);
+        return { i, j, duration: data.routes?.[0]?.duration ?? null };
+      } catch {
+        return { i, j, duration: null as number | null };
       }
+    })
+  );
+
+  for (const { i, j, duration } of results) {
+    if (duration !== null) {
+      matrix[i][j] = duration;
+    } else {
+      matrix[i][j] = haversineDistance(stops[i], stops[j]);
+      anyFailed = true;
     }
   }
-  return { matrix: result, fallback, reason: firstReason };
-}
 
-async function fetchMatrixChunk(
-  stops: RouteStop[],
-  departAt: string,
-  mapboxToken: string
-): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
-  const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-
-  const buildUrl = (profile: 'driving-traffic' | 'driving', withDepartAt: boolean) => {
-    const url = new URL(
-      `https://api.mapbox.com/directions-matrix/v1/mapbox/${profile}/${coords}`
-    );
-    url.searchParams.set('sources', 'all');
-    url.searchParams.set('destinations', 'all');
-    if (withDepartAt && profile === 'driving-traffic') {
-      url.searchParams.set('depart_at', departAt);
-    }
-    url.searchParams.set('access_token', mapboxToken);
-    return url.toString();
+  return {
+    matrix,
+    fallback: anyFailed,
+    reason: anyFailed ? 'some directions calls failed' : undefined,
   };
-
-  const fetchUrl = (url: string) =>
-    fetch(url, { signal: AbortSignal.timeout(8_000) });
-
-  try {
-    // Tier 1: traffic-aware with departure time
-    let res = await fetchUrl(buildUrl('driving-traffic', true));
-
-    // Tier 2: traffic-aware without departure time (stale/unsupported depart_at)
-    if (!res.ok && res.status === 422) {
-      console.warn('[serveRouteOptimizer] Matrix 422 with depart_at — retrying without');
-      res = await fetchUrl(buildUrl('driving-traffic', false));
-    }
-
-    // Tier 3: road-network only (driving-traffic unavailable on this plan)
-    if (!res.ok && (res.status === 422 || res.status === 403)) {
-      console.warn(`[serveRouteOptimizer] Matrix driving-traffic HTTP ${res.status} — retrying with driving profile`);
-      res = await fetchUrl(buildUrl('driving', false));
-    }
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.error(`[serveRouteOptimizer] Matrix API HTTP ${res.status}`, body);
-      const reason = res.status === 401 ? 'token rejected (401)'
-        : res.status === 429 ? 'rate limited (429)'
-        : `HTTP ${res.status}`;
-      return { matrix: haversineMatrix(stops), fallback: true, reason };
-    }
-
-    const data = await (res.json() as Promise<{ durations: number[][] }>);
-    return { matrix: data.durations, fallback: false };
-  } catch (err) {
-    const reason = err instanceof Error && err.name === 'TimeoutError' ? 'request timed out' : 'network error';
-    console.error('[serveRouteOptimizer] Matrix API fetch failed', err);
-    return { matrix: haversineMatrix(stops), fallback: true, reason };
-  }
 }
 
 // ── Legacy attempt-based types (nearest-neighbor optimizer) ─
