@@ -252,6 +252,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   const [qrScans, setQrScans] = useState<QrScan[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const { search: enrichSearch, result: enrichResult, loading: enrichLoading, reset: enrichReset } = useEnrichment();
+
   const load = useCallback(async (id: number) => {
     setLoading(true);
     try {
@@ -276,14 +278,13 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
   }, []);
 
   useEffect(() => {
+    enrichReset();
     if (selectedId != null) load(selectedId);
-  }, [selectedId, load]);
+  }, [selectedId, load, enrichReset]);
 
   useEffect(() => {
     if (selectedJobId != null) setSelectedId(selectedJobId);
   }, [selectedJobId]);
-
-  const { search: enrichSearch, result: enrichResult, loading: enrichLoading } = useEnrichment();
 
   const handleLocateSubject = useCallback(() => {
     if (!job) return;
