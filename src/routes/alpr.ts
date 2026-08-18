@@ -30,6 +30,7 @@ import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
+import { containsClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { notConfigured } from '../utils/notConfigured';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
@@ -648,7 +649,7 @@ alpr.get('/captures', operational, async (c) => {
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
     else {
       const where: string[] = []; const params: any[] = [];
-      if (plate) { where.push('plate LIKE ?'); params.push(`%${plate}%`); }
+      if (plate) { const m = containsClause('plate'); where.push(m.sql); params.push(m.bind(plate)); }
       if (accepted === '1' || accepted === '0') { where.push('accepted = ?'); params.push(Number(accepted)); }
       if (from) { where.push('created_at >= ?'); params.push(from); }
       if (to) { where.push('created_at <= ?'); params.push(to); }
