@@ -45,7 +45,7 @@ describe('buildCostMatrix', () => {
     expect(result.matrix[1][2]).toBe(120);
   });
 
-  it('retries without depart_at on 422 and succeeds', async () => {
+  it('tier 2: retries without depart_at on 422 and succeeds', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: false, status: 422, text: async () => 'invalid depart_at' } as unknown as Response)
       .mockResolvedValueOnce({
@@ -58,9 +58,45 @@ describe('buildCostMatrix', () => {
     expect(result.fallback).toBe(false);
     expect(result.matrix[0][1]).toBe(120);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    // Second call must NOT include depart_at
     const secondUrl = (fetchMock.mock.calls[1][0] as string);
     expect(secondUrl).not.toContain('depart_at');
+  });
+
+  it('tier 3: falls back to driving profile when driving-traffic returns 422 on both tier-1 and tier-2', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 422, text: async () => 'invalid' } as unknown as Response)
+      .mockResolvedValueOnce({ ok: false, status: 422, text: async () => 'profile unavailable' } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ durations: [[0, 200, 400], [200, 0, 200], [400, 200, 0]] }),
+      } as unknown as Response);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(false);
+    expect(result.matrix[0][1]).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Third call must use the driving (non-traffic) profile
+    const thirdUrl = (fetchMock.mock.calls[2][0] as string);
+    expect(thirdUrl).toContain('/driving/');
+    expect(thirdUrl).not.toContain('driving-traffic');
+  });
+
+  it('tier 3: falls back to driving profile when driving-traffic returns 403', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => 'forbidden' } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ durations: [[0, 150, 300], [150, 0, 150], [300, 150, 0]] }),
+      } as unknown as Response);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(false);
+    expect(result.matrix[0][1]).toBe(150);
+    // Second call must use driving profile
+    const secondUrl = (fetchMock.mock.calls[1][0] as string);
+    expect(secondUrl).toContain('/driving/');
   });
 
   it('falls back to haversine with reason when API returns non-ok status (non-422)', async () => {

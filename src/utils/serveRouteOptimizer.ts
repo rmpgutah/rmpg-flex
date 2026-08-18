@@ -151,32 +151,37 @@ async function fetchMatrixChunk(
   mapboxToken: string
 ): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-  const buildUrl = (withDepartAt: boolean) => {
+
+  const buildUrl = (profile: 'driving-traffic' | 'driving', withDepartAt: boolean) => {
     const url = new URL(
-      `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
+      `https://api.mapbox.com/directions-matrix/v1/mapbox/${profile}/${coords}`
     );
     url.searchParams.set('sources', 'all');
     url.searchParams.set('destinations', 'all');
-    if (withDepartAt) url.searchParams.set('depart_at', departAt);
+    if (withDepartAt && profile === 'driving-traffic') {
+      url.searchParams.set('depart_at', departAt);
+    }
     url.searchParams.set('access_token', mapboxToken);
     return url.toString();
   };
 
-  const attempt = async (withDepartAt: boolean) => {
-    const res = await fetch(buildUrl(withDepartAt), {
-      signal: AbortSignal.timeout(8_000),
-    });
-    return res;
-  };
+  const fetchUrl = (url: string) =>
+    fetch(url, { signal: AbortSignal.timeout(8_000) });
 
   try {
-    let res = await attempt(true);
+    // Tier 1: traffic-aware with departure time
+    let res = await fetchUrl(buildUrl('driving-traffic', true));
 
-    // 422 often means `depart_at` is malformed or unsupported on this plan.
-    // Retry without it — current-conditions traffic is still better than haversine.
-    if (res.status === 422) {
-      console.warn('[serveRouteOptimizer] Matrix API 422 with depart_at — retrying without');
-      res = await attempt(false);
+    // Tier 2: traffic-aware without departure time (stale/unsupported depart_at)
+    if (!res.ok && res.status === 422) {
+      console.warn('[serveRouteOptimizer] Matrix 422 with depart_at — retrying without');
+      res = await fetchUrl(buildUrl('driving-traffic', false));
+    }
+
+    // Tier 3: road-network only (driving-traffic unavailable on this plan)
+    if (!res.ok && (res.status === 422 || res.status === 403)) {
+      console.warn(`[serveRouteOptimizer] Matrix driving-traffic HTTP ${res.status} — retrying with driving profile`);
+      res = await fetchUrl(buildUrl('driving', false));
     }
 
     if (!res.ok) {
