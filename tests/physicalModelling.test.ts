@@ -19,7 +19,7 @@ const SOUNDS = join(__dirname, '..', 'client', 'public', 'sounds');
 interface Wav { samples: Float64Array; sampleRate: number; bits: number; channels: number }
 
 function readWav(name: string): Wav {
-  const b = readFileSync(join(SOUNDS, name + '.wav'));
+  const b = readFileSync(join(SOUNDS, name + '.wav')) as Buffer;
   let off = 12, sampleRate = 44100, bits = 16, channels = 1;
   let samples = new Float64Array(0);
   while (off < b.length - 8) {
