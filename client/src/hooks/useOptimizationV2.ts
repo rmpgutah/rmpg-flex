@@ -27,6 +27,7 @@ export function useOptimizationV2(): UseOptimizationV2 {
   const jobIdRef = useRef<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startMsRef = useRef<number>(0);
+  const mountedRef = useRef(true);
 
   const clearPolling = useCallback(() => {
     if (intervalRef.current != null) {
@@ -44,16 +45,24 @@ export function useOptimizationV2(): UseOptimizationV2 {
     setError(null);
   }, [clearPolling]);
 
-  // Clean up interval on unmount
-  useEffect(() => () => { clearPolling(); }, [clearPolling]);
+  // Clear interval and mark unmounted on cleanup
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearPolling();
+    };
+  }, [clearPolling]);
 
   const startPolling = useCallback((jobId: string) => {
     startMsRef.current = Date.now();
 
     intervalRef.current = setInterval(async () => {
+      if (!mountedRef.current) return;
       setElapsedMs(Date.now() - startMsRef.current);
       try {
         const result = await pollOptimizationJob(jobId);
+        if (!mountedRef.current) return;
         if (result.status === 'complete') {
           clearPolling();
           setSolution(result.solution ?? null);
