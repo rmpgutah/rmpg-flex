@@ -6,7 +6,7 @@ export async function search(seed: EnrichmentSeed, env: Bindings): Promise<Sourc
   const source = 'sl_assessor';
   // Assessor lookup requires an address seed; skip gracefully when absent.
   if (!seed.address && !seed.city) {
-    return { source, ok: true, latency_ms: 0, records: [],
+    return { source, ok: true, latency_ms: Date.now() - start, records: [],
       error: 'no_address_seed' };
   }
   try {
