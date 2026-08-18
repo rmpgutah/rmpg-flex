@@ -463,7 +463,7 @@ NSOPW_ENABLED = "1"
 # ref_vehicle_makes / ref_vehicle_models / xref_model_year_to_specs. PR 2
 # wires the trigger with a stub handler; the real bulk-import lands in PR 2b.
 [triggers]
-crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *", "0 9 * * *", "0 3 * * 0"]
+crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *", "0 9 * * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/

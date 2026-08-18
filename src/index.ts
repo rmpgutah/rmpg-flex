@@ -231,7 +231,7 @@ export default {
   //   "0 */4 * * *"   every 4 h at :00         → warrant scan, dispatch anomalies, nudge sweep
   //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
   //   "*/30 * * * *"  every 30 min              → ServeManager job poller, email outbox drain + inbox poll
-  //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
+  //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh + OFAC SDN sync
   //   "0 9 * * *"     nightly 09:00 UTC         → driver-performance rollup (trailing 3 days)
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
@@ -731,8 +731,8 @@ export default {
       );
     }
 
-    // ── Weekly Sunday 03:00 UTC ──
-    if (event.cron === '0 3 * * 0') {
+    // ── Monthly 1st 03:00 UTC — OFAC SDN sync (piggybacks on NHTSA slot) ──
+    if (event.cron === '0 3 1 * *') {
       ctx.waitUntil(
         import('./utils/enrichment/ofacSync').then((m) =>
           m.syncOfacSdn(env.DB).then((r) => {
