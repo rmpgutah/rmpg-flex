@@ -7559,7 +7559,7 @@ export default function DispatchPage() {
                         <span className="text-rmpg-500">{i + 1}.</span>
                         <span>{s.location.replace('call-', 'Call #')}</span>
                         <span className="ml-auto text-rmpg-400">
-                          {new Date(s.eta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {new Date(s.eta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} {/* new-date-ok — s.eta is a Mapbox ISO 8601 string with Z suffix */}
                         </span>
                       </div>
                     ))}
