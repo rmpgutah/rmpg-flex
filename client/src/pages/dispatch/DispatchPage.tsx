@@ -67,7 +67,8 @@ import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
-  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal, type FilterTab,
+  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal,
+  computeResolvedDeadline, computeActiveDeadline, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
   SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
@@ -174,6 +175,21 @@ const QUICK_FLAGS = [
   { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
   { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
   { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+] as const;
+
+const KEYBOARD_SHORTCUT_GROUPS = [
+  { group: 'Selected Call', items: [
+    ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
+    ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
+  ] },
+  { group: 'Create / Panels', items: [
+    ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
+    ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
+  ] },
+  { group: 'Navigate / Filter', items: [
+    ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
+    ['Esc', 'Close modals'], ['?', 'This help'],
+  ] },
 ] as const;
 
 function buildCallEditBody(
@@ -3254,24 +3270,18 @@ export default function DispatchPage() {
 
                     {/* 72-hour countdown (mobile) */}
                     {RESOLVED_STATUSES.has(selectedCall.status) && (() => {
-                      const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
-                      if (!terminalTime) return null;
-                      const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
-                      const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
-                      if (elapsed >= 72 * 3600000) {
-                        return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
-                            72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
-                          </div>
-                        );
-                      }
-                      if (elapsed >= 48 * 3600000) {
-                        return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                            {Math.floor(hoursLeft)} HOURS UNTIL 72-HR DEADLINE
-                          </div>
-                        );
-                      }
+                      const dl = computeResolvedDeadline(selectedCall.closed_at || selectedCall.cleared_at);
+                      if (!dl) return null;
+                      if (dl.status === 'overdue') return (
+                        <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}>
+                          72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
+                        </div>
+                      );
+                      if (dl.status === 'warning') return (
+                        <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
+                          {dl.hoursLeft} HOURS UNTIL 72-HR DEADLINE
+                        </div>
+                      );
                       return null;
                     })()}
 
@@ -5721,36 +5731,30 @@ export default function DispatchPage() {
                               title="Admin: change attempt number"
                             >
                               {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                                <option key={n} value={n}>{n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`} ATTEMPT</option>
+                                <option key={n} value={n}>{formatOrdinal(n)} ATTEMPT</option>
                               ))}
                             </select>
                           ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
                             <span className="ml-1.5 px-1.5 py-0.5 text-[8px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                              {selectedCall.pso_attempt_number === 2 ? '2nd' : selectedCall.pso_attempt_number === 3 ? '3rd' : `${selectedCall.pso_attempt_number}th`} ATTEMPT
+                              {formatOrdinal(selectedCall.pso_attempt_number || 1)} ATTEMPT
                             </span>
                           ) : null
                         )}
                       </label>
                       {/* 72-hour countdown indicator */}
                       {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && RESOLVED_STATUSES.has(selectedCall.status) && (() => {
-                        const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
-                        if (!terminalTime) return null;
-                        const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
-                        const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
-                        if (elapsed >= 72 * 3600000) {
-                          return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
-                              72HR OVERDUE — RE-DISPATCH REQUIRED
-                            </span>
-                          );
-                        }
-                        if (elapsed >= 48 * 3600000) {
-                          return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
-                              {Math.floor(hoursLeft)}HR UNTIL DEADLINE
-                            </span>
-                          );
-                        }
+                        const dl = computeResolvedDeadline(selectedCall.closed_at || selectedCall.cleared_at);
+                        if (!dl) return null;
+                        if (dl.status === 'overdue') return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: 'color-mix(in srgb, var(--sev-critical) 25%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 38%, transparent)', color: 'var(--sev-critical)' }}>
+                            72HR OVERDUE — RE-DISPATCH REQUIRED
+                          </span>
+                        );
+                        if (dl.status === 'warning') return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 25%, transparent)', color: 'var(--sev-warn-soft)' }}>
+                            {dl.hoursLeft}HR UNTIL DEADLINE
+                          </span>
+                        );
                         return null;
                       })()}
                       {!isEditing && PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && INACTIVE_STATUSES.has(selectedCall.status) && (
@@ -5864,18 +5868,15 @@ export default function DispatchPage() {
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
                         {PROCESS_SERVICE_INCIDENT_TYPES.has(selectedCall.incident_type) && selectedCall.created_at && selectedCall.status !== 'archived' && (() => {
-                          const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
-                          const remaining = deadline.getTime() - Date.now();
-                          if (remaining <= 0) return (
+                          const dl = computeActiveDeadline(selectedCall.created_at);
+                          if (dl.status === 'overdue') return (
                             <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: 'var(--sev-critical)' }}>
                               72HR DEADLINE PASSED
                             </div>
                           );
-                          const hrs = Math.floor(remaining / 3600000);
-                          const mins = Math.floor((remaining % 3600000) / 60000);
                           return (
-                            <div className="text-[10px] font-mono" style={{ color: hrs < 12 ? 'var(--sev-critical)' : hrs < 24 ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
-                              {hrs}h {mins}m until 72hr deadline
+                            <div className="text-[10px] font-mono" style={{ color: dl.status === 'warning' ? 'var(--sev-warn-soft)' : 'var(--sev-ok)' }}>
+                              {dl.hoursLeft}h {dl.minsLeft}m until 72hr deadline
                             </div>
                           );
                         })()}
@@ -6636,20 +6637,7 @@ export default function DispatchPage() {
               </button>
             </div>
             <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {([
-                { group: 'Selected Call', items: [
-                  ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
-                  ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
-                ] },
-                { group: 'Create / Panels', items: [
-                  ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
-                  ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
-                ] },
-                { group: 'Navigate / Filter', items: [
-                  ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
-                  ['Esc', 'Close modals'], ['?', 'This help'],
-                ] },
-              ] as const).map(({ group, items }) => (
+              {KEYBOARD_SHORTCUT_GROUPS.map(({ group, items }) => (
                 <div key={group}>
                   <div className="text-[9px] font-bold uppercase tracking-wide text-rmpg-400 mb-1.5">{group}</div>
                   <div className="space-y-1">
