@@ -12,7 +12,7 @@ import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { apiFetch } from '../hooks/useApi';
 import { installWebglContextRecovery } from '../utils/webglRecovery';
 

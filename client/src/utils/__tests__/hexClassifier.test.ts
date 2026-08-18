@@ -19,7 +19,7 @@ describe('classifyFile', () => {
 
   it('excludes the map basemap module, which owns its own fixed palette', () => {
     expect(classifyFile('src/utils/mapboxBasemap.ts')).toBe('excluded');
-    expect(classifyFile('src/utils/mapMarkers.ts')).toBe('excluded');
+    expect(classifyFile('src/pages/map/utils/mapMarkers.ts')).toBe('excluded');
   });
 
   it('excludes tests and fixtures', () => {

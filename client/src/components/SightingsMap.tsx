@@ -10,7 +10,7 @@ import { RefreshCw } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';

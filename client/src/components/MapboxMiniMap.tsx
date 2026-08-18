@@ -21,7 +21,7 @@ import { injectMapboxStyles, registerMapInstance, unregisterMapInstance } from '
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { UNIT_STATUS_HEX, priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { withAlpha } from '../utils/withAlpha';
-import { isValidLngLat } from '../utils/mapMarkers';
+import { isValidLngLat } from '../pages/map/utils/mapMarkers';
 import IconButton from './IconButton';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import type { CallForService, Unit, UnitStatus } from '../types';

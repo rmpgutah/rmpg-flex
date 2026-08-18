@@ -11,7 +11,7 @@ import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 import { fetchMapboxMatchedPath } from '../utils/mapboxRouting';
 import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';

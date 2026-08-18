@@ -62,6 +62,8 @@ import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
 import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
 import { useMapboxPursuitSegments } from '../../hooks/useMapboxPursuitSegments';
 import { useSpeedZoneStats } from './hooks/useSpeedZoneStats';
+import { useMapIsochrone } from './hooks/useMapIsochrone';
+import { useMapGps } from './hooks/useMapGps';
 import SpeedAnalyticsPanel from './components/SpeedAnalyticsPanel';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import { useMapboxCoverageGaps } from '../../hooks/useMapboxCoverageGaps';
@@ -108,8 +110,12 @@ import MapLeftDock from './components/MapLeftDock';
 import MapRightDock from './components/MapRightDock';
 import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './hooks/useLayerBindings';
 import { useEnRouteEta } from './hooks/useEnRouteEta';
+import { useMapWelfare } from './hooks/useMapWelfare';
+import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
+import { MapContext } from './MapContext';
+import MapLayout from './MapLayout';
 import MapTopToolbar from './components/MapTopToolbar';
 import PatrolBeatPlannerModal from '../../components/PatrolBeatPlannerModal';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
@@ -196,7 +202,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
-  const [isochroneEnabled, setIsochroneEnabled] = useState(false);
   const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
   // showMeasureMenu / showDrawMenu drive the distance/area and polygon/polyline/circle
   // dropdown bodies — their launcher buttons now live in the Right Dock's Analysis
@@ -210,7 +215,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callsRef = useRef<ActiveCall[]>([]);
-  const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
+  // selfMarkerRef is now managed by useMapGps
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   // searchTimeoutRef removed — geocoder plugin handles debounce internally
 
@@ -311,7 +316,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       unitMarkersRef.current.clear();
       callMarkersRef.current.forEach(m => m.remove());
       callMarkersRef.current.clear();
-      selfMarkerRef.current?.remove();
       geocoderRef.current = null;
     };
   }, [mapLibreFallback, retryNonce]);
@@ -567,6 +571,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // session track (CSV/GeoJSON) for the GPS HUD's export/clear footer — off by
   // default on useGpsTracking so the always-on Layout tracker doesn't accumulate.
   const gps = useGpsTracking({ upload: false, capture: true });
+  const { isochroneEnabled, toggleIsochrone } = useMapIsochrone({
+    map: mapRef.current,
+    mapLoaded,
+    gpsLatitude: gps.latitude,
+    gpsLongitude: gps.longitude,
+    addToast,
+  });
   const safetyAlertFeed = useSafetyAlertFeed();
 
   // ── Google Maps Parity Hooks ──────────────────────────────────────────────
@@ -1133,120 +1144,28 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, [calls, units, mapLoaded, multiStopQueue, addCallToRoute, enRouteEtas]);
 
   // ── Self-Position (GPS Marker with heading + accuracy) ──────────────────
+  // Logic extracted to useMapGps hook (see hooks/useMapGps.ts)
+  const { selfMarkerReady: _selfMarkerReady } = useMapGps({
+    map: mapRef.current,
+    mapLoaded,
+    selfPosVisible,
+    gps,
+  });
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded) return;
+  // ── Welfare-Check Overlays ─────────────────────────────────────────────────
+  // Logic extracted to useMapWelfare hook (see hooks/useMapWelfare.ts)
+  useMapWelfare({ map: mapRef.current, mapLoaded, units });
 
-    if (!selfPosVisible || gps.latitude == null || gps.longitude == null) {
-      selfMarkerRef.current?.remove();
-      selfMarkerRef.current = null;
-      return;
-    }
-
-    const heading = gps.headingSmoothed ?? gps.course ?? gps.heading;
-    const hasHeading = heading != null && Number.isFinite(heading);
-    const speedMph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
-    const accM = gps.accuracy;
-
-    if (selfMarkerRef.current) {
-      selfMarkerRef.current.setLngLat([gps.longitude, gps.latitude]);
-      const el = selfMarkerRef.current.getElement();
-
-      const arrow = el.querySelector<SVGSVGElement>('[data-role="self-arrow"]');
-      if (arrow) arrow.style.transform = hasHeading ? `rotate(${heading}deg)` : 'rotate(0deg)';
-
-      const dot = el.querySelector<HTMLElement>('[data-role="self-dot"]');
-      if (dot) dot.style.display = hasHeading ? 'none' : 'block';
-      if (arrow) arrow.style.display = hasHeading ? 'block' : 'none';
-
-      const speedLabel = el.querySelector<HTMLElement>('[data-role="self-speed"]');
-      if (speedLabel) {
-        speedLabel.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
-        speedLabel.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
-      }
-
-      const ring = el.querySelector<HTMLElement>('[data-role="self-accuracy"]');
-      if (ring && accM != null && accM > 0) {
-        const px = Math.min(80, Math.max(12, accM / 1.5));
-        ring.style.width = ring.style.height = `${px * 2}px`;
-        ring.style.marginLeft = ring.style.marginTop = `-${px}px`;
-        ring.style.display = 'block';
-      } else if (ring) {
-        ring.style.display = 'none';
-      }
-    } else {
-      const el = document.createElement('div');
-      el.className = 'rmpg-mbx-self';
-      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:1px;pointer-events:none;position:relative;';
-
-      // Accuracy ring
-      const ring = document.createElement('div');
-      ring.setAttribute('data-role', 'self-accuracy');
-      const accPx = accM != null && accM > 0 ? Math.min(80, Math.max(12, accM / 1.5)) : 20;
-      ring.style.cssText = `
-        position:absolute;top:50%;left:50%;
-        width:${accPx * 2}px;height:${accPx * 2}px;
-        margin-left:-${accPx}px;margin-top:-${accPx}px;
-        border-radius:50%;background:rgba(59,130,246,0.10);
-        border:1.5px solid rgba(59,130,246,0.25);
-        pointer-events:none;z-index:0;
-        animation:rmpg-pulse-ring 3s ease-in-out infinite;
-      `;
-      if (!accM || accM <= 0) ring.style.display = 'none';
-      el.appendChild(ring);
-
-      // Directional arrow (shown when heading available)
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('data-role', 'self-arrow');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('width', '28');
-      svg.setAttribute('height', '28');
-      svg.style.transform = hasHeading ? `rotate(${heading}deg)` : 'rotate(0deg)';
-      svg.style.transition = 'transform 0.4s ease-out';
-      svg.style.filter = 'drop-shadow(0 0 6px rgba(59,130,246,0.7))';
-      svg.style.display = hasHeading ? 'block' : 'none';
-      svg.style.position = 'relative';
-      svg.style.zIndex = '2';
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      path.setAttribute('d', 'M12 2 20 20 12 15 4 20Z');
-      path.setAttribute('fill', TACTICAL_INFO);
-      path.setAttribute('stroke', TACTICAL_TEXT_PRIMARY);
-      path.setAttribute('stroke-width', '1.5');
-      svg.appendChild(path);
-      el.appendChild(svg);
-
-      // Blue dot (shown when no heading)
-      const dot = document.createElement('div');
-      dot.setAttribute('data-role', 'self-dot');
-      dot.style.cssText = `
-        width:18px;height:18px;border-radius:50%;
-        background:${TACTICAL_INFO};border:3px solid ${TACTICAL_TEXT_PRIMARY};
-        box-shadow:0 0 10px rgba(59,130,246,0.5), 0 0 20px rgba(59,130,246,0.25);
-        animation:rmpg-pulse 2s ease-in-out infinite;
-        position:relative;z-index:2;
-      `;
-      dot.style.display = hasHeading ? 'none' : 'block';
-      el.appendChild(dot);
-
-      // Speed readout
-      const speedEl = document.createElement('div');
-      speedEl.setAttribute('data-role', 'self-speed');
-      speedEl.style.cssText = `
-        background:rgb(0 0 0 / 0.75);border:1px solid rgba(59,130,246,0.5);
-        border-radius:2px;padding:0 4px;
-        font:700 9px/13px ui-monospace,monospace;color:${TACTICAL_INFO};
-        white-space:nowrap;position:relative;z-index:2;
-      `;
-      speedEl.textContent = speedMph != null && speedMph > 0 ? `${speedMph}` : '';
-      speedEl.style.display = speedMph != null && speedMph > 0 ? 'block' : 'none';
-      el.appendChild(speedEl);
-
-      selfMarkerRef.current = new mapboxgl.Marker({ element: el, occludedOpacity: 1 })
-        .setLngLat([gps.longitude, gps.latitude])
-        .addTo(map);
-    }
-  }, [gps.latitude, gps.longitude, gps.headingSmoothed, gps.course, gps.heading, gps.speed, gps.accuracy, selfPosVisible, mapLoaded]);
+  // ── Beat Boundary Overlay ──────────────────────────────────────────────────
+  // Logic extracted to useMapBeatOverlay hook (see hooks/useMapBeatOverlay.ts)
+  useMapBeatOverlay({
+    map: mapRef.current,
+    mapLoaded,
+    // Beat GeoJSON is managed by useGeoJsonLayers, not held as state here.
+    // This seam accepts a beats array for future per-beat marker logic.
+    beats: [],
+    beatLayerVisible: geoJsonLayers.layerStates['beat']?.visible ?? false,
+  });
 
   // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
   // Depend on `findClosestUnit` itself, not the whole `routing` object -- useMapRouting
@@ -1356,66 +1275,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     map.flyTo({ center: [gps.longitude, gps.latitude], zoom: 16, duration: 800 });
   }, [gps.latitude, gps.longitude, addToast]);
 
-  // ── Isochrone Overlay ──────────────────────────────────────────────────────
-
-  const toggleIsochrone = useCallback(async () => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded) return;
-
-    if (isochroneEnabled) {
-      // Remove existing isochrone layers
-      ['isochrone-fill-0', 'isochrone-fill-1', 'isochrone-fill-2',
-       'isochrone-border-0', 'isochrone-border-1', 'isochrone-border-2'].forEach(id => {
-        safeRemoveLayer(map, id);
-      });
-      safeRemoveSource(map, 'isochrone');
-      setIsochroneEnabled(false);
-      return;
-    }
-
-    // Use GPS position or map center as origin
-    const lng = gps.longitude ?? map.getCenter().lng;
-    const lat = gps.latitude ?? map.getCenter().lat;
-
-    try {
-      const data = await mapboxIsochrone(lng, lat, {
-        profile: 'driving',
-        minutes: [5, 10, 15],
-      });
-
-      if (!data?.features) { console.error('Isochrone response missing features'); return; }
-      upsertGeoJsonSource(map, 'isochrone', data as any);
-
-      const colors = ISOCHRONE_COLORS; // 5min=green, 10min=yellow, 15min=red
-      data.features.forEach((_, idx) => {
-        const fillId = `isochrone-fill-${idx}`;
-        const borderId = `isochrone-border-${idx}`;
-        if (!hasLayer(map, fillId)) {
-          map.addLayer({
-            id: fillId,
-            type: 'fill',
-            source: 'isochrone',
-            paint: { 'fill-color': colors[idx] || TACTICAL_TEXT_MUTED, 'fill-opacity': 0.1 },
-            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
-          });
-        }
-        if (!hasLayer(map, borderId)) {
-          map.addLayer({
-            id: borderId,
-            type: 'line',
-            source: 'isochrone',
-            paint: { 'line-color': colors[idx] || TACTICAL_TEXT_MUTED, 'line-width': 1.5, 'line-opacity': 0.6 },
-            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
-          });
-        }
-      });
-
-      setIsochroneEnabled(true);
-      addToast('Response time zones: 5/10/15 min driving', 'info');
-    } catch (err) {
-      addToast('Failed to load isochrone data', 'error');
-    }
-  }, [mapLoaded, isochroneEnabled, gps.longitude, gps.latitude, addToast]);
+  // ── Isochrone Overlay ── extracted to useMapIsochrone hook ─────────────────
 
   // ── Dock Section Data (Layers left dock + Info & Tools right dock) ──────────
   // Re-bucketed from the former flat `layerGroups`/Advanced Toolbar into the new
@@ -1725,6 +1585,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <MapContext.Provider value={{
+      map: mapRef.current,
+      units,
+      calls,
+      beats: [], // beat GeoJSON owned by useGeoJsonLayers; this param is for future per-beat UI
+    }}>
     <MapDensityProvider>
     <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
       {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
@@ -1774,6 +1640,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Map Container — explicit w/h ensures Mapbox GL gets a sized element */}
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
+      {/* Role-adaptive overlay shell — renders controls appropriate for the user's role */}
+      <MapLayout />
 
 
       {/* Geocoder styling override — tactical-dark surface (always night palette,
@@ -2327,5 +2195,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       )}
     </div>
     </MapDensityProvider>
+    </MapContext.Provider>
   );
 }

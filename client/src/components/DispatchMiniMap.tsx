@@ -15,7 +15,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
+import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../pages/map/utils/mapMarkers';
 import { priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
