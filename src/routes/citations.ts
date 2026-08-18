@@ -15,8 +15,8 @@ import { geocodeAddress } from './geocode';
 import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
-import { containsAnyClause } from '../utils/searchText';
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -117,13 +117,12 @@ citations.get('/search', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
     if (q.length < 2) return c.json({ data: [] });
     const db = getDb(c.env);
-    const like = `%${q}%`;
+    const m = containsAnyClause(['citation_number', 'person_name', 'vehicle_plate']);
     const rows = await query<Record<string, unknown>>(
       db,
-      `SELECT * FROM citations
-       WHERE citation_number LIKE ? OR person_name LIKE ? OR vehicle_plate LIKE ?
+      `SELECT * FROM citations WHERE ${m.sql}
        ORDER BY violation_date DESC LIMIT 100`,
-      like, like, like,
+      ...m.binds(q),
     );
     return c.json({ data: rows });
   } catch (err) {
