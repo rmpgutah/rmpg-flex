@@ -341,10 +341,14 @@ export function useMapCore({
     const map = mapRef.current;
     if (!map) return;
     activeStyleRef.current = styleId;
+    // Pause all source/layer hooks while the new style loads — they guard on
+    // mapLoaded, so setting it false prevents "Style is not done loading" throws.
+    setMapLoaded(false);
     setMapboxStyle(map, styleId);
     map.once('style.load', () => {
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
       if (terrainEnabled) addMapboxTerrain(map);
+      setMapLoaded(true);
     });
   }, [terrainEnabled]);
 
