@@ -753,6 +753,16 @@ export default function DispatchPage() {
   const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
   const { options: linkOptions } = useLinkOptions();
 
+  // ── Inline involved persons / vehicles (ad-hoc, no FK to records tables) ──
+  const [involvedPersons, setInvolvedPersons] = useState<any[]>([]);
+  const [involvedVehicles, setInvolvedVehicles] = useState<any[]>([]);
+  const [callNarrative, setCallNarrative] = useState<string>('');
+  const [narrativeSaving, setNarrativeSaving] = useState(false);
+  const [showAddInvPerson, setShowAddInvPerson] = useState(false);
+  const [showAddInvVehicle, setShowAddInvVehicle] = useState(false);
+  const [newInvPerson, setNewInvPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
+  const [newInvVehicle, setNewInvVehicle] = useState({ plate: '', make: '', model: '', color: '', role: 'involved' });
+
   const fetchCallPersons = useCallback(async (callId: string | number) => {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/persons`);
@@ -828,6 +838,27 @@ export default function DispatchPage() {
       addToast(err?.message || 'Failed to load linked businesses', 'error');
     }
   }, [addToast]);
+
+  const fetchInvolvedPersons = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/involved-persons`);
+      setInvolvedPersons(Array.isArray(data) ? data : []);
+    } catch { setInvolvedPersons([]); }
+  }, []);
+
+  const fetchInvolvedVehicles = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/involved-vehicles`);
+      setInvolvedVehicles(Array.isArray(data) ? data : []);
+    } catch { setInvolvedVehicles([]); }
+  }, []);
+
+  const fetchCallNarrative = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<{ narrative: string | null }>(`/dispatch/calls/${callId}/narrative`);
+      setCallNarrative(data?.narrative ?? '');
+    } catch { setCallNarrative(''); }
+  }, []);
 
   const searchBusinesses = useCallback((query: string) => {
     setBusinessQuery(query);
@@ -990,12 +1021,18 @@ export default function DispatchPage() {
       fetchCallPersons(cid);
       fetchCallVehicles(cid);
       fetchCallBusinesses(cid);
+      fetchInvolvedPersons(cid);
+      fetchInvolvedVehicles(cid);
+      fetchCallNarrative(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
       setCallBusinesses([]);
+      setInvolvedPersons([]);
+      setInvolvedVehicles([]);
+      setCallNarrative('');
     }
-  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses]);
+  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses, fetchInvolvedPersons, fetchInvolvedVehicles, fetchCallNarrative]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
   // Shares the body assembly with the click-Save path via buildCallEditBody
@@ -2247,6 +2284,22 @@ export default function DispatchPage() {
       addToast(`Call ${newCall.call_number} created`, 'success');
       // Audible feedback for local action
       announceLocalAction('call_created', `Call ${newCall.call_number} created.`);
+      // Fire-and-forget: save narrative + inline persons/vehicles from modal
+      if ((callData as any).narrative?.trim()) {
+        apiFetch(`/dispatch/calls/${result.id}/narrative`, {
+          method: 'PATCH', body: JSON.stringify({ narrative: (callData as any).narrative }),
+        }).catch(() => {});
+      }
+      for (const p of ((callData as any).involvedPersons ?? []) as any[]) {
+        apiFetch(`/dispatch/calls/${result.id}/involved-persons`, {
+          method: 'POST', body: JSON.stringify(p),
+        }).catch(() => {});
+      }
+      for (const v of ((callData as any).involvedVehicles ?? []) as any[]) {
+        apiFetch(`/dispatch/calls/${result.id}/involved-vehicles`, {
+          method: 'POST', body: JSON.stringify(v),
+        }).catch(() => {});
+      }
     } catch (err: any) {
       console.error('Failed to create call:', err);
       addToast(err?.message || 'Failed to create call', 'error');
@@ -5726,6 +5779,227 @@ export default function DispatchPage() {
                         )}
                       </>
                     )}
+                  </div>
+                )}
+
+                {/* ── INLINE INVOLVED PERSONS ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
+                        Involved Persons{involvedPersons.length > 0 && ` (${involvedPersons.length})`}
+                      </span>
+                      {!showAddInvPerson && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddInvPerson(true); setNewInvPerson({ name: '', dob: '', id_number: '', role: 'witness' }); }}
+                          className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                        >+ Add Person</button>
+                      )}
+                    </div>
+                    {showAddInvPerson && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!newInvPerson.name.trim() || !selectedCall?.id) return;
+                          try {
+                            const created = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/involved-persons`, {
+                              method: 'POST',
+                              body: JSON.stringify(newInvPerson),
+                            });
+                            setInvolvedPersons(prev => [...prev, created]);
+                            setShowAddInvPerson(false);
+                          } catch { addToast('Failed to add person', 'error'); }
+                        }}
+                        className="mb-2 space-y-1"
+                      >
+                        <div className="grid grid-cols-2 gap-1">
+                          <input
+                            className="input-dark text-xs col-span-2"
+                            placeholder="Full name *"
+                            value={newInvPerson.name}
+                            onChange={e => setNewInvPerson(p => ({ ...p, name: e.target.value }))}
+                            required
+                          />
+                          <input
+                            type="date"
+                            className="input-dark text-xs"
+                            placeholder="Date of birth"
+                            value={newInvPerson.dob}
+                            onChange={e => setNewInvPerson(p => ({ ...p, dob: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="ID / badge number"
+                            value={newInvPerson.id_number}
+                            onChange={e => setNewInvPerson(p => ({ ...p, id_number: e.target.value }))}
+                          />
+                          <select
+                            className="select-dark text-xs col-span-2"
+                            value={newInvPerson.role}
+                            onChange={e => setNewInvPerson(p => ({ ...p, role: e.target.value }))}
+                          >
+                            <option value="suspect">Suspect</option>
+                            <option value="victim">Victim</option>
+                            <option value="witness">Witness</option>
+                            <option value="reporting_party">Reporting Party</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-1 justify-end">
+                          <button type="button" onClick={() => setShowAddInvPerson(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border)] text-rmpg-400 hover:text-rmpg-200">Cancel</button>
+                          <button type="submit" className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100 hover:bg-rmpg-500">Add</button>
+                        </div>
+                      </form>
+                    )}
+                    {involvedPersons.length === 0 && !showAddInvPerson && (
+                      <p className="text-[9px] text-rmpg-500 italic">No inline subjects recorded.</p>
+                    )}
+                    {involvedPersons.map((p: any) => (
+                      <div key={p.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                          <span className="font-medium truncate">{p.name}</span>
+                          {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
+                          {p.id_number && <span className="text-rmpg-400 shrink-0">ID {p.id_number}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await apiFetch(`/dispatch/calls/${selectedCall?.id}/involved-persons/${p.id}`, { method: 'DELETE' }).catch(() => {});
+                            setInvolvedPersons(prev => prev.filter(x => x.id !== p.id));
+                          }}
+                          className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── INLINE INVOLVED VEHICLES ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
+                        Involved Vehicles{involvedVehicles.length > 0 && ` (${involvedVehicles.length})`}
+                      </span>
+                      {!showAddInvVehicle && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddInvVehicle(true); setNewInvVehicle({ plate: '', make: '', model: '', color: '', role: 'involved' }); }}
+                          className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                        >+ Add Vehicle</button>
+                      )}
+                    </div>
+                    {showAddInvVehicle && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!selectedCall?.id) return;
+                          try {
+                            const created = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/involved-vehicles`, {
+                              method: 'POST',
+                              body: JSON.stringify(newInvVehicle),
+                            });
+                            setInvolvedVehicles(prev => [...prev, created]);
+                            setShowAddInvVehicle(false);
+                          } catch { addToast('Failed to add vehicle', 'error'); }
+                        }}
+                        className="mb-2 space-y-1"
+                      >
+                        <div className="grid grid-cols-2 gap-1">
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Plate number"
+                            value={newInvVehicle.plate}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, plate: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Color"
+                            value={newInvVehicle.color}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, color: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Make"
+                            value={newInvVehicle.make}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, make: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Model"
+                            value={newInvVehicle.model}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, model: e.target.value }))}
+                          />
+                          <select
+                            className="select-dark text-xs col-span-2"
+                            value={newInvVehicle.role}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, role: e.target.value }))}
+                          >
+                            <option value="suspect">Suspect Vehicle</option>
+                            <option value="victim">Victim Vehicle</option>
+                            <option value="involved">Involved</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-1 justify-end">
+                          <button type="button" onClick={() => setShowAddInvVehicle(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border)] text-rmpg-400 hover:text-rmpg-200">Cancel</button>
+                          <button type="submit" className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100 hover:bg-rmpg-500">Add</button>
+                        </div>
+                      </form>
+                    )}
+                    {involvedVehicles.length === 0 && !showAddInvVehicle && (
+                      <p className="text-[9px] text-rmpg-500 italic">No inline vehicles recorded.</p>
+                    )}
+                    {involvedVehicles.map((v: any) => (
+                      <div key={v.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                          <span className="font-medium truncate">
+                            {[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}
+                          </span>
+                          {v.plate && <span className="text-rmpg-300 font-mono shrink-0">{v.plate}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await apiFetch(`/dispatch/calls/${selectedCall?.id}/involved-vehicles/${v.id}`, { method: 'DELETE' }).catch(() => {});
+                            setInvolvedVehicles(prev => prev.filter(x => x.id !== v.id));
+                          }}
+                          className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── NARRATIVE / INCIDENT SUMMARY ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">Narrative / Incident Summary</span>
+                      {narrativeSaving && <span className="text-[8px] text-rmpg-500 italic">Saving…</span>}
+                    </div>
+                    <textarea
+                      className="textarea-dark text-xs w-full"
+                      rows={4}
+                      placeholder="Enter structured narrative or incident summary…"
+                      value={callNarrative}
+                      onChange={e => setCallNarrative(e.target.value)}
+                      onBlur={async () => {
+                        if (!selectedCall?.id) return;
+                        setNarrativeSaving(true);
+                        try {
+                          await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ narrative: callNarrative }),
+                          });
+                        } catch { addToast('Failed to save narrative', 'error'); }
+                        finally { setNarrativeSaving(false); }
+                      }}
+                    />
+                    <p className="text-[8px] text-rmpg-500 mt-0.5">Auto-saves on blur. Separate from call description / notes log.</p>
                   </div>
                 )}
 
