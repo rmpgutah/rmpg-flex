@@ -86,7 +86,7 @@
     "jsbarcode": "^3.12.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.577.0",
-    "mapbox-gl": "^3.27.0",
+    "mapbox-gl": "^3.28.1",
     "maplibre-gl": "^6.2.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",
