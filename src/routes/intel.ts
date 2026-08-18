@@ -15,7 +15,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
-import { containsClause } from '../utils/searchText';
+import { containsClause, containsAnyClause } from '../utils/searchText';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
 import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
@@ -838,7 +838,7 @@ intel.get('/jail/bookings', operational, async (c) => {
   try {
     const where: string[] = [`entry_source LIKE 'roster%'`];
     const binds: any[] = [];
-    if (q) { where.push('(full_name LIKE ? OR charges LIKE ?)'); binds.push(`%${q}%`, `%${q}%`); }
+    if (q) { const m = containsAnyClause(['full_name', 'charges']); where.push(m.sql); binds.push(...m.binds(q)); }
     if (county) { where.push('county = ?'); binds.push(county); }
     const rows = await query<any>(db,
       `SELECT ar.id, ar.full_name, ar.booking_date, ar.charges, ar.county, ar.entry_source, ar.mugshot_url,

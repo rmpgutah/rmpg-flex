@@ -56,7 +56,7 @@ async function topHits(db: ReturnType<typeof getDb>, q: string, limit = 12): Pro
       if (rows.length) return rows.map((r) => ({ type: r.type, id: Number(r.id), label: r.label, snippet: r.snippet }));
     } catch { /* index absent → LIKE fallback */ }
   }
-  const like = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  const like = `%${q.slice(0, 48).replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
   const rows = await query<any>(
     db,
     `SELECT id, (first_name || ' ' || last_name) AS label FROM persons
