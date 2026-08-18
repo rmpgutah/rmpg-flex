@@ -450,6 +450,7 @@ export default function ServeIntakePage() {
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   // Live upload XHR, held so the Cancel button can abort() it mid-transfer.
   const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
 
@@ -1154,11 +1155,28 @@ export default function ServeIntakePage() {
         <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
-        <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
+        <p className="text-[9px] text-rmpg-600 mt-2">
+          <span>click to browse files</span>
+          <span className="mx-1 text-rmpg-700">·</span>
+          <button
+            type="button"
+            className="underline hover:text-rmpg-400 transition-colors"
+            onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
+          >or pick a folder</button>
+        </p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-expect-error webkitdirectory is not in HTMLInputElement types but is supported by all modern browsers
+          webkitdirectory=""
           multiple
           className="hidden"
           onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
