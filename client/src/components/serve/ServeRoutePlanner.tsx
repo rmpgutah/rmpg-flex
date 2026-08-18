@@ -386,21 +386,33 @@ function timeWindowToServeWindow(tw: string | null | undefined): { serveStart: s
   }
 }
 
-export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
-  return stops
-    .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
-    .map(s => ({
+async function hashAddress(address: string): Promise<string> {
+  const normalized = address.toUpperCase().trim().replace(/\s+/g, ' ');
+  const data = new TextEncoder().encode(normalized);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteStopPayload[]> {
+  const filtered = stops.filter(
+    s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null,
+  );
+  return Promise.all(
+    filtered.map(async s => ({
       jobId: s.job.id,
       lat: s.job.recipient_lat!,
       lng: s.job.recipient_lng!,
       geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
       defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
-      addressHash: '',
+      addressHash: await hashAddress(s.job.recipient_address ?? ''),
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
       locationNote: timeWindowToServeWindow(s.job.time_window),
-    }));
+    })),
+  );
 }
 
 // ─── In-Order Arrival Computation ───────────────────────────────────────
@@ -966,7 +978,7 @@ export default function ServeRoutePlanner({
     }>('/serve-queue/optimize-route', {
       method: 'POST',
       body: JSON.stringify({
-        stops: buildRouteStopsFromJobs(stops),
+        stops: await buildRouteStopsFromJobs(stops),
         departAt: new Date().toISOString(),
       }),
     }).catch(() => null);
@@ -1271,7 +1283,7 @@ export default function ServeRoutePlanner({
         const position = await new Promise<GeolocationPosition>((res, rej) =>
           navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
         );
-        const remainingStops = buildRouteStopsFromJobs(
+        const remainingStops = await buildRouteStopsFromJobs(
           selectedStops.filter(s => !TERMINAL.has(s.job.status)),
         );
         const currentOrder = remainingStops.map((_, i) => i);
