@@ -146,7 +146,9 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
 let qualityGateReconciled = false;
 async function ensureQualityGateColumns(db: D1Database): Promise<void> {
   if (qualityGateReconciled) return;
-  qualityGateReconciled = true;
+  // Set the flag only after DDL succeeds so a caught failure on this isolate
+  // doesn't permanently skip reconciliation for subsequent requests.
+  let allOk = true;
 
   try {
     await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
@@ -160,7 +162,10 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       fallback_chain TEXT NOT NULL,
       upload_user_id INTEGER
     )`);
-  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs create failed:', err);
+    allOk = false;
+  }
 
   for (const [name, type] of [
     ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
@@ -172,8 +177,13 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) {
+      console.warn(`[serve-intake] reconcile ${name} failed:`, err);
+      allOk = false;
+    }
   }
+
+  if (allOk) qualityGateReconciled = true;
 }
 
 const si = new Hono<Env>();
@@ -926,20 +936,25 @@ si.post('/upload', async (c) => {
     } catch { /* ignore malformed overrides blob */ }
   }
 
-  const judgeInsert = await db.prepare(`
-    INSERT INTO serve_intake_judge_runs
-      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    judgeResult.model,
-    judgeResult.ms,
-    judgeResult.raw_response,
-    judgeResult.flagged_field_count,
-    judgeResult.overall_status,
-    JSON.stringify(judgeResult.fallback_chain),
-    user.id,
-  ).run();
-  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  let judgeRunId: number | null = null;
+  try {
+    const judgeInsert = await db.prepare(`
+      INSERT INTO serve_intake_judge_runs
+        (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      judgeResult.model,
+      judgeResult.ms,
+      judgeResult.raw_response,
+      judgeResult.flagged_field_count,
+      judgeResult.overall_status,
+      JSON.stringify(judgeResult.fallback_chain),
+      user.id,
+    ).run();
+    judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs insert failed — proceeding without judge run id:', err);
+  }
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
   // so it doesn't get coerced through the string-only field_overrides path.
