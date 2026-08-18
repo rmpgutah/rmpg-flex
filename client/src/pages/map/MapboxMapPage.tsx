@@ -110,6 +110,8 @@ import MapLeftDock from './components/MapLeftDock';
 import MapRightDock from './components/MapRightDock';
 import { buildDockSections, findUnboundLayers, type LayerBindingMap } from './hooks/useLayerBindings';
 import { useEnRouteEta } from './hooks/useEnRouteEta';
+import { useMapWelfare } from './hooks/useMapWelfare';
+import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
 import MapTopToolbar from './components/MapTopToolbar';
@@ -1146,6 +1148,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     mapLoaded,
     selfPosVisible,
     gps,
+  });
+
+  // ── Welfare-Check Overlays ─────────────────────────────────────────────────
+  // Logic extracted to useMapWelfare hook (see hooks/useMapWelfare.ts)
+  useMapWelfare({ map: mapRef.current, mapLoaded, units });
+
+  // ── Beat Boundary Overlay ──────────────────────────────────────────────────
+  // Logic extracted to useMapBeatOverlay hook (see hooks/useMapBeatOverlay.ts)
+  useMapBeatOverlay({
+    map: mapRef.current,
+    mapLoaded,
+    beats: [],
+    beatLayerVisible: geoJsonLayers.layerStates['beat']?.visible ?? false,
   });
 
   // ── Dispatch Connections Matrix Ranking (only while the diagnostics panel is open) ──
