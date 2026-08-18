@@ -730,5 +730,36 @@ export default {
         ).catch((err) => log.error('serve-routes revision sweep failed', {}, err as Error)),
       );
     }
+
+    // ── Weekly Sunday 03:00 UTC ──
+    if (event.cron === '0 3 * * 0') {
+      ctx.waitUntil(
+        import('./utils/enrichment/ofacSync').then((m) =>
+          m.syncOfacSdn(env.DB).then((r) => {
+            log.info('[ofac-sync] complete', {
+              individualsFound: r.individualsFound,
+              rowsUpserted: r.rowsUpserted,
+              error: r.error,
+            });
+            if (r.error) {
+              logErrorToDb(env.DB, {
+                severity: 'error',
+                category: 'cron',
+                message: `OFAC SDN sync failed: ${r.error}`,
+                source: 'scheduled:ofac-sync',
+              }, ctx);
+            }
+          }).catch((err) => {
+            log.error('[ofac-sync] failed:', {}, err as Error);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: `OFAC SDN sync threw: ${err instanceof Error ? err.message : String(err)}`,
+              source: 'scheduled:ofac-sync',
+            }, ctx);
+          }),
+        ).catch(() => {}),
+      );
+    }
   },
 };
