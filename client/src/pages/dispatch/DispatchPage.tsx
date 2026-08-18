@@ -199,6 +199,27 @@ const SERVICE_WINDOW_SLOTS = [
   { key: 'weekend', label: 'Weekend' },
 ] as const;
 
+const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+const PRIORITY_LEVELS = ['P1', 'P2', 'P3', 'P4'];
+const STATUS_SORT_ORDER: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
+const SORT_CYCLE: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
+const SORT_LABELS: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
+const SORT_TITLES: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
+const ATTEMPT_NUMBERS = Array.from({ length: 10 }, (_, i) => i + 1);
+const SOURCE_OPTIONS = [
+  { value: 'phone', label: 'Phone' }, { value: 'radio', label: 'Radio' }, { value: 'walk_in', label: 'Walk-In' },
+  { value: 'alarm', label: 'Alarm' }, { value: 'patrol', label: 'Patrol' }, { value: 'online', label: 'Online' },
+  { value: 'dispatch', label: 'Dispatch' }, { value: 'other', label: 'Other' },
+] as const;
+const PRIORITY_OPTIONS = [
+  { value: 'P1', label: 'P1 - Emergency' }, { value: 'P2', label: 'P2 - Urgent' },
+  { value: 'P3', label: 'P3 - Routine' }, { value: 'P4', label: 'P4 - Scheduled' },
+] as const;
+const SERVE_PRIORITY_OPTIONS = ['normal', 'rush', 'urgent'] as const;
+const MODAL_BACKDROP_STYLE: React.CSSProperties = { background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' };
+const MODAL_PANEL_STYLE: React.CSSProperties = { border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' };
+const DETAIL_TAB_LABELS: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+
 const PROCESS_SERVICE_RESULT_GROUPS = [
   { label: 'Successful Service', options: [
     { value: 'served', text: 'Personal Service' },
@@ -1211,7 +1232,6 @@ export default function DispatchPage() {
 
   useEffect(() => {
     const LIVE_UNIT_POLL_MS = 5000; // aligned with the ~5s client GPS batch interval (useGpsTracking.ts)
-    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
     const iv = setInterval(() => {
       if (!pollEligible()) return;
       if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();
@@ -1324,8 +1344,7 @@ export default function DispatchPage() {
         const mapped = mapDbCall(data.call);
         const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
-          const priorities = ['P1', 'P2', 'P3', 'P4'];
-          if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
+          if (PRIORITY_LEVELS.indexOf(mapped.priority) < PRIORITY_LEVELS.indexOf(prevCall.priority)) {
             announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
           }
         }
@@ -1835,8 +1854,7 @@ export default function DispatchPage() {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     if (sortMode === 'status') {
-      const sOrder: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
-      const sDiff = (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
+      const sDiff = (STATUS_SORT_ORDER[a.status] ?? 5) - (STATUS_SORT_ORDER[b.status] ?? 5);
       if (sDiff !== 0) return sDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -3084,7 +3102,7 @@ export default function DispatchPage() {
                               } catch { addToast('Failed to update visit number', 'error'); }
                             }}
                           >
-                            {[1,2,3,4,5,6,7,8,9,10].map(n => <option key={n} value={n}>VISIT #{n}</option>)}
+                            {ATTEMPT_NUMBERS.map(n => <option key={n} value={n}>VISIT #{n}</option>)}
                           </select>
                         ) : (selectedCall.pso_attempt_number || 1) > 1 ? (
                           <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-sm" style={{ background: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-warn) 31%, transparent)', color: 'var(--sev-warn-soft)' }}>
@@ -3205,7 +3223,7 @@ export default function DispatchPage() {
                                     } catch { addToast('Priority change failed', 'error'); }
                                   }}
                                 >
-                                  {['normal','rush','urgent'].map((p) => (
+                                  {SERVE_PRIORITY_OPTIONS.map((p) => (
                                     <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
                                   ))}
                                 </select>
@@ -3773,13 +3791,10 @@ export default function DispatchPage() {
                 {/* Sort toggle */}
                 {(() => {
                   const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
-                  const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
-                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
-                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
                   return (
-                    <button type="button" title={`Sort: ${titles[current]} (click to cycle)`}
+                    <button type="button" title={`Sort: ${SORT_TITLES[current]} (click to cycle)`}
                       onClick={() => {
-                        const target = next[current];
+                        const target = SORT_CYCLE[current];
                         setLocalSort(target);
                         localStorage.setItem('rmpg_dispatch_sort', target);
                         apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ dispatch_sort: target }) })
@@ -3788,7 +3803,7 @@ export default function DispatchPage() {
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: 'var(--surface-sunken)', color: 'var(--brand-gold)' }}
                     >
-                      SORT: {labels[current]}
+                      SORT: {SORT_LABELS[current]}
                     </button>
                   );
                 })()}
@@ -4703,7 +4718,6 @@ export default function DispatchPage() {
                   style={{ scrollbarWidth: 'none' }}
                 >
                   {(['info', 'persons', 'timeline', 'notes', 'documents', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                    const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', documents: 'Documents', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                     const icons: Record<string, React.ReactNode> = {
                       info: <FileText style={{ width: 9, height: 9 }} />,
                       persons: <User style={{ width: 9, height: 9 }} />,
@@ -4726,7 +4740,7 @@ export default function DispatchPage() {
                       <button type="button"
                         key={tab}
                         ref={(el) => { if (el) detailTabRefs.current[tab] = el; }}
-                        aria-label={`${labels[tab]} tab`}
+                        aria-label={`${DETAIL_TAB_LABELS[tab]} tab`}
                         onClick={() => setDetailTab(tab)}
                         className="relative px-2.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-all duration-150 flex-shrink-0 whitespace-nowrap"
                         style={{
@@ -4739,7 +4753,7 @@ export default function DispatchPage() {
                       >
                         <span className="flex items-center gap-1">
                           {icons[tab]}
-                          {labels[tab]}
+                          {DETAIL_TAB_LABELS[tab]}
                           {count ? <span className="ml-0.5 min-w-[16px] text-center px-1 py-px text-[8px] rounded-sm font-mono tabular-nums" style={{ background: isActive ? 'color-mix(in srgb, var(--brand-gold) 20%, transparent)' : 'color-mix(in srgb, var(--spm-border) 19%, transparent)', color: isActive ? 'var(--spm-text)' : 'var(--spm-text-muted)' }}>{count}</span> : ''}
                         </span>
                       </button>
@@ -4877,16 +4891,13 @@ export default function DispatchPage() {
                           <div>
                             <label className="field-label">Source:</label>
                             <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
-                              <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
-                              <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
-                              <option value="dispatch">Dispatch</option><option value="other">Other</option>
+                              {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
                             <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
-                              <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
-                              <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
+                              {PRIORITY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                           </div>
                         </div>
@@ -5786,7 +5797,7 @@ export default function DispatchPage() {
                               }}
                               title="Admin: change attempt number"
                             >
-                              {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                              {ATTEMPT_NUMBERS.map(n => (
                                 <option key={n} value={n}>{formatOrdinal(n)} ATTEMPT</option>
                               ))}
                             </select>
@@ -6759,10 +6770,10 @@ export default function DispatchPage() {
 
       {/* Quick Template Dialog — minimal address-only dispatch */}
       {quickTemplateData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" style={MODAL_BACKDROP_STYLE} onKeyDown={(e) => { if (e.key === 'Escape') setQuickTemplateData(null); }}>
           <form
             className="panel-beveled bg-surface-raised animate-in rounded-sm"
-            style={{ width: '440px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}
+            style={{ width: '440px', ...MODAL_PANEL_STYLE }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (!quickTemplateAddress.trim() || quickTemplateSubmitting) return;
@@ -6890,8 +6901,8 @@ export default function DispatchPage() {
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
-          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={unitModalTitleId} style={MODAL_BACKDROP_STYLE}>
+          <div className="panel-beveled bg-surface-raised my-auto" style={{ width: '420px', ...MODAL_PANEL_STYLE }}>
             <div className="panel-title-bar">
               <div className="flex items-center gap-2">
                 <Radio className="w-4 h-4 text-brand-400" />
@@ -7390,8 +7401,8 @@ export default function DispatchPage() {
 
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0 0 0 / 0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid var(--spm-border)', boxShadow: '0 12px 40px rgba(0 0 0 / 0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={MODAL_BACKDROP_STYLE} onClick={() => setShowHandoffNotes(false)}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={MODAL_PANEL_STYLE} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: 'var(--surface-deep)' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />
