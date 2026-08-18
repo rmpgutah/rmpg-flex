@@ -2766,13 +2766,22 @@ export default function DispatchPage() {
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
               <div className="flex flex-wrap gap-2" style={{ willChange: 'transform' }}>
                 {selectedCall.status === 'pending' && (
-                  <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
-                  >
-                    <Send style={{ width: 16, height: 16 }} /> Dispatch
-                  </button>
+                  <>
+                    <button type="button"
+                      onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
+                    >
+                      <Send style={{ width: 16, height: 16 }} /> Dispatch
+                    </button>
+                    <button type="button"
+                      onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
+                    >
+                      <XCircle style={{ width: 16, height: 16 }} /> Cancel
+                    </button>
+                  </>
                 )}
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
@@ -4577,9 +4586,14 @@ export default function DispatchPage() {
                     )}
                     {/* Status action toolbar buttons */}
                     {!isEditing && selectedCall.status === 'pending' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
-                        <Send style={{ width: 10, height: 10 }} /> Dispatch
-                      </button>
+                      <>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
+                          <Send style={{ width: 10, height: 10 }} /> Dispatch
+                        </button>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: 'var(--sev-critical)' }}>
+                          <XCircle style={{ width: 10, height: 10 }} /> Cancel
+                        </button>
+                      </>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
                       <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
@@ -6730,9 +6744,14 @@ export default function DispatchPage() {
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
-                <Send style={{ width: 12, height: 12 }} /> Dispatch
-              </button>
+              <>
+                <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
+                  <Send style={{ width: 12, height: 12 }} /> Dispatch
+                </button>
+                <button type="button" className="context-menu-item" style={{ color: 'var(--sev-critical)' }} onClick={() => { handleStatusChange(contextMenu.call.id, 'cancelled'); setContextMenu(null); }}>
+                  <XCircle style={{ width: 12, height: 12 }} /> Cancel Call
+                </button>
+              </>
             )}
             {contextMenu.call.status === 'dispatched' && (
               <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
@@ -6751,6 +6770,9 @@ export default function DispatchPage() {
                 </button>
                 <button type="button" className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
                   ⏸ Hold
+                </button>
+                <button type="button" className="context-menu-item" style={{ color: 'var(--sev-critical)' }} onClick={() => { handleStatusChange(contextMenu.call.id, 'cancelled'); setContextMenu(null); }}>
+                  <XCircle style={{ width: 12, height: 12 }} /> Cancel Call
                 </button>
               </>
             )}
