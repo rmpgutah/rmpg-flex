@@ -13,7 +13,7 @@ export default defineConfig({
     // preventing the transform-cache accumulation that OOMs threads mode
     // on the 7 GB CI runner (~440 test files × heavy JSX transforms).
     pool: 'forks',
-    maxWorkers: 2,
+    maxWorkers: 1,
     // Vitest's 5s default is too tight here. Rendering a heavy page under jsdom
     // (MdtPage, the document-writer action suite) can exceed it purely from
     // parallel-worker contention — these files pass comfortably in isolation
