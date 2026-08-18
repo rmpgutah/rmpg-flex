@@ -453,6 +453,10 @@ export default function DispatchPage() {
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
 
+  // Destructure the stable submit ref so this callback only changes when units/calls
+  // change — not every render (dispatchOptimization as a whole was a new object every
+  // render before useOptimizationV2 memoized its return value, which caused this
+  // useCallback to be recreated on every render).
   const handleOptimizeAssignments = useCallback(async () => {
     const availableUnitIds = units
       .filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status))
@@ -466,7 +470,7 @@ export default function DispatchPage() {
       call_ids: openCallIds,
       unit_ids: availableUnitIds,
     });
-  }, [units, calls, dispatchOptimization]);
+  }, [units, calls, dispatchOptimization.submit]);
 
   useEffect(() => {
     if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
@@ -1232,6 +1236,15 @@ export default function DispatchPage() {
   // so manually clicking a different call after the auto-select never gets
   // reverted on the next /calls poll.
   const [searchParams, setSearchParams] = useSearchParams();
+  // Keep a ref to the current searchParams so the deep-link effect can read
+  // it without listing it as a dependency. useSearchParams() returns a NEW
+  // URLSearchParams object every render (React Router guarantees only value
+  // equality, not referential equality), so including searchParams in the
+  // effect dep array caused the effect to re-run on every render — not just
+  // when the URL actually changed. The ref avoids that while still letting
+  // the effect see the latest URL when it runs.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => { searchParamsRef.current = searchParams; });
   const pendingDeepLinkRef = useRef<string | null>(
     searchParams.get('call_id') || searchParams.get('callId') || null,
   );
@@ -1240,6 +1253,11 @@ export default function DispatchPage() {
     if (!targetId) return;
     const tryFind = (list: CallForService[]) => list.find((c) => String(c.id) === String(targetId));
     const fromActive = tryFind(calls);
+    const stripDeepLink = () => {
+      const next = new URLSearchParams(searchParamsRef.current);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+    };
     if (fromActive) {
       setSelectedCall(fromActive);
       // Map status → tab so the call is visible in the left rail.
@@ -1253,9 +1271,7 @@ export default function DispatchPage() {
       pendingDeepLinkRef.current = null;
       // Strip the query so a refresh doesn't re-select after the user
       // navigates away from this call.
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Not in active list — try archived. Trigger its load if it hasn't yet.
@@ -1268,18 +1284,14 @@ export default function DispatchPage() {
       setSelectedCall(fromArchive);
       setFilterTab('archived');
       pendingDeepLinkRef.current = null;
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Both lists hydrated, no match — surface once + give up.
     addToast(`Call ${targetId} not found`, 'warning');
     pendingDeepLinkRef.current = null;
-    const next = new URLSearchParams(searchParams);
-    next.delete('call_id'); next.delete('callId');
-    setSearchParams(next, { replace: true });
-  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
+    stripDeepLink();
+  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, setSearchParams, addToast]);
 
   // Open NewCallModal on mount if ?newCall=1 is present (used by Tools menu, Records, etc.)
   useEffect(() => {
