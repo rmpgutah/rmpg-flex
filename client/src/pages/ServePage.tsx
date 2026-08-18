@@ -25,6 +25,7 @@ import AnalyticsTab from './serve/AnalyticsTab';
 import SubjectFileTab from './serve/SubjectFileTab';
 import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
+import { useOptimizationV2 } from '../hooks/useOptimizationV2';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { importWithRetry } from '../utils/importWithRetry';
@@ -255,6 +256,7 @@ export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role ?? '');
+  const optimization = useOptimizationV2();
   const canDelete = ['admin', 'manager'].includes(user?.role ?? '');
   const { addToast } = useToast();
   // ── Right-click context menu ──────────────────────────────────────────
@@ -1131,6 +1133,33 @@ export default function ServePage() {
       addToast('Could not save route order on server', 'error');
     }
   }, [refreshJobs, fetchSavedRoute, selectedDate]);
+
+  // ── Optimization V2 ───────────────────────────────────────────────────
+  const pendingJobIds = useMemo(
+    () => jobs.filter(j => j.status !== 'served' && j.status !== 'archived' && j.status !== 'failed').map(j => j.id),
+    [jobs],
+  );
+
+  const handleOptimizeRouteV2 = useCallback(async () => {
+    if (!user?.id || !savedRoute?.id || !pendingJobIds.length) return;
+    const now = new Date(); // new-date-ok — wall-clock shift window
+    const shiftStart = now.toISOString();
+    const shiftEnd = new Date(now.getTime() + 8 * 60 * 60 * 1000).toISOString(); // new-date-ok — 8h shift window
+    await optimization.submit({
+      job_type: 'serve_run',
+      serve_queue_ids: pendingJobIds,
+      officer_unit_id: Number(user.id),
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      ref_id: savedRoute.id,
+    });
+  }, [user?.id, savedRoute?.id, pendingJobIds, optimization]);
+
+  useEffect(() => {
+    if (optimization.status === 'complete') {
+      fetchSavedRoute();
+    }
+  }, [optimization.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSkipTraceAddToRoute = useCallback((_addr: ServeSkipAddress) => {
     // Could update the job's address — for now just close and refresh
@@ -2790,6 +2819,22 @@ export default function ServePage() {
                                 ETA {new Date(stopEtas.get(job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms */}
                               </div>
                             )}
+                            {optimization.status === 'complete' && optimization.solution && (() => {
+                              const v2Route = optimization.solution.routes[0];
+                              if (!v2Route) return null;
+                              const v2Stop = v2Route.stops.find(
+                                st => st.location === String(job.id) && st.type === 'service',
+                              );
+                              if (!v2Stop) return null;
+                              const eta = new Date(v2Stop.eta); // new-date-ok — ISO from API
+                              const timeStr = eta.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                              const isLate = v2Stop.wait != null && v2Stop.wait < 0;
+                              return (
+                                <div className={`text-[9px] font-mono mt-0.5 flex items-center gap-0.5 ${isLate ? 'text-amber-400' : 'text-rmpg-300'}`}>
+                                  V2 ETA {timeStr}{isLate ? ' ⚠' : ''}
+                                </div>
+                              );
+                            })()}
                             {deadlineDate && (
                               <div className={`text-[9px] font-mono mt-0.5 ${isOverdue ? 'text-red-400' : 'text-fg-muted'}`}>
                                 {isOverdue ? '⚠ ' : ''}Deadline: {deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {/* new-date-ok — from DB */}
@@ -2832,7 +2877,7 @@ export default function ServePage() {
                   </div>
 
                   {/* Action buttons */}
-                  <div className="flex items-center gap-2 pt-2">
+                  <div className="flex items-center gap-2 pt-2 flex-wrap">
                     <button type="button"
                       onClick={() => setRoutePlannerOpen(true)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(136, 136, 136,0.15)] focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
@@ -2841,6 +2886,29 @@ export default function ServePage() {
                       <Route size={12} />
                       Open Route Planner
                     </button>
+                    <button
+                      type="button"
+                      onClick={handleOptimizeRouteV2}
+                      disabled={optimization.status === 'pending' || optimization.status === 'processing' || !pendingJobIds.length || !savedRoute?.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 rounded-[2px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Optimize Route with Mapbox V2"
+                    >
+                      {optimization.status === 'pending' || optimization.status === 'processing' ? (
+                        <>
+                          <span className="animate-spin inline-block w-3 h-3 border border-rmpg-400 border-t-transparent rounded-full" />
+                          Optimizing… {Math.round(optimization.elapsedMs / 1000)}s
+                        </>
+                      ) : (
+                        'Optimize Route'
+                      )}
+                    </button>
+                    {optimization.status === 'error' && (
+                      <span className="text-xs text-red-400">
+                        {optimization.error === 'timed_out'
+                          ? 'Timed out — try fewer stops'
+                          : `Optimization failed: ${optimization.error}`}
+                      </span>
+                    )}
                     <button type="button"
                       onClick={() => {
                         // Build navigation URL with all waypoints
