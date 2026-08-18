@@ -1826,12 +1826,12 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const result = await execute(db,
       `INSERT INTO serve_queue (
          call_id, officer_id, created_by, recipient_name, recipient_address, recipient_lat, recipient_lng,
-         property_id, document_type, case_number, client_name, deadline,
+         property_id, document_type, case_number, client_name, client_id, deadline,
          priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       id, userId, userId,
       recipientName, call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
-      call.property_id ?? null, documentType, caseNumber, clientName, deadline,
+      call.property_id ?? null, documentType, caseNumber, clientName, call.client_id ?? null, deadline,
       `Created from dispatch call ${call.call_number}`);
 
     try {

@@ -19,7 +19,7 @@
 import { Hono } from 'hono';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Env } from '../types';
-import { getDb, queryFirst, execute } from '../utils/db';
+import { getDb, queryFirst, execute, columnExists } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
@@ -236,6 +236,17 @@ mobileCfs.post('/cfs/:id/status', async (c) => {
       status, auth.callId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
     await bestEffortAudit(c, auth.userId, 'MOBILE_STATUS', auth.callId, { status, source: 'pso-mobile' });
+    // Mirror terminal status → serve_queue (same as the desktop path in extensions.ts PUT /:id/status).
+    // The crosslink self-skips for non-PSO calls, so we can fire unconditionally.
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled']);
+    if (TERMINAL_STATUSES.has(status)) {
+      const { crossLinkPsoCloseToServe } = await import('../utils/psoServeCrosslink');
+      c.executionCtx.waitUntil(
+        crossLinkPsoCloseToServe(db, auth.callId, { actorUserId: auth.userId }).catch(err =>
+          console.error('[pso-crosslink] mobile terminal status crosslink failed:', err)
+        )
+      );
+    }
     return c.json({ success: true, call: updated });
   } catch (err) {
     console.error('mobile status update failed:', err);
@@ -302,6 +313,56 @@ mobileCfs.post('/cfs/:id/pso', async (c) => {
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', auth.callId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
     await bestEffortAudit(c, auth.userId, 'MOBILE_PSO', auth.callId, { fields: sets, source: 'pso-mobile' });
+
+    // Mirror a result submission to the linked serve_queue in real time so
+    // the ServePage stays in sync during active service — before the CFS
+    // reaches a terminal status that would trigger the full crosslink.
+    // Only fires when pso_result is present in the submission (not on every
+    // ext field update like address or attempt counter increments).
+    const rawResult = body.pso_result as string | undefined;
+    if (rawResult) {
+      // Map mobile UI values to serve_attempts CHECK enum values.
+      const RESULT_MAP: Record<string, string> = {
+        served: 'served', sub_served: 'sub_served', not_home: 'no_answer',
+        refused: 'refused', bad_address: 'bad_address',
+      };
+      const legacyResult = RESULT_MAP[rawResult] ?? 'other';
+      const isServed = legacyResult === 'served' || legacyResult === 'sub_served';
+
+      c.executionCtx.waitUntil((async () => {
+        try {
+          const qRow = await queryFirst<{ id: number; attempt_count: number; status: string }>(
+            db, 'SELECT id, attempt_count, status FROM serve_queue WHERE call_id = ?', auth.callId,
+          );
+          if (!qRow) return; // no linked queue row yet; crosslink creates it on terminal status
+          const nextNum = (Number(qRow.attempt_count) || 0) + 1;
+          const newStatus = isServed ? 'served' : nextNum >= 3 ? 'failed' : 'attempted';
+          const noteText = `[Mobile PSO] ${rawResult}${body.process_served_to ? ` → ${body.process_served_to}` : ''}`;
+          const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+          if (hasDispositionCol) {
+            await execute(db,
+              `INSERT INTO serve_attempts
+                 (serve_queue_id, attempt_number, officer_id, result, disposition_code, notes, attempt_type)
+               VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+              qRow.id, nextNum, auth.userId, legacyResult, noteText,
+              isServed ? 'personal' : 'failed');
+          } else {
+            await execute(db,
+              `INSERT INTO serve_attempts
+                 (serve_queue_id, attempt_number, officer_id, result, notes, attempt_type)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              qRow.id, nextNum, auth.userId, legacyResult, noteText,
+              isServed ? 'personal' : 'failed');
+          }
+          await execute(db,
+            `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+            nextNum, newStatus, qRow.id);
+        } catch (err) {
+          console.error('[pso-mobile] serve_queue attempt mirror failed:', err);
+        }
+      })());
+    }
+
     return c.json({ success: true, call: updated });
   } catch (err) {
     console.error('mobile pso edit failed:', err);
