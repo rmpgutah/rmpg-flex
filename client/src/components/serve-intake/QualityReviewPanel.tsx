@@ -3,6 +3,7 @@ import { CheckCircle2, Wrench, AlertTriangle, ChevronDown, ChevronRight, Refresh
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import { useAuth } from '../../context/AuthContext';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { toDisplayLabel } from '../../utils/formatters';
 
 type QualityStatus = 'needs_review' | 'reviewed_ok' | 'reviewed_fixed';
@@ -173,7 +174,7 @@ export default function QualityReviewPanel() {
             const flagged = flaggedVerdicts(row.judge_raw_response);
             const isExpanded = expandedId === row.id;
             const isActioning = actioning === row.id;
-            const age = Math.floor((Date.now() - new Date(row.created_at).getTime()) / 3_600_000);
+            const age = Math.floor((Date.now() - parseTimestamp(row.created_at).getTime()) / 3_600_000);
             const ageLabel = age < 24 ? `${age}h ago` : `${Math.floor(age / 24)}d ago`;
 
             return (
