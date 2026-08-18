@@ -59,7 +59,7 @@ export default function BeatManagementPanel({ onClose, onSolutionReady }: BeatMa
     void optimization.submit({
       job_type: 'patrol_beat',
       beat_ids: [...selectedBeatIds],
-      unit_ids: [...selectedUnitIds],
+      unit_ids: [...selectedUnitIds].map(Number),
       shift_start: shiftStart + ':00Z',
       shift_end: shiftEnd + ':00Z',
     });
