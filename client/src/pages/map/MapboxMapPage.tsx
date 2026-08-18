@@ -114,6 +114,8 @@ import { useMapWelfare } from './hooks/useMapWelfare';
 import { useMapBeatOverlay } from './hooks/useMapBeatOverlay';
 import { LEFT_DOCK_GROUPS, RIGHT_DOCK_GROUPS } from './config/layerRegistry';
 import { MapDensityProvider } from './hooks/useMapDensity';
+import { MapContext } from './MapContext';
+import MapLayout from './MapLayout';
 import MapTopToolbar from './components/MapTopToolbar';
 import PatrolBeatPlannerModal from '../../components/PatrolBeatPlannerModal';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
@@ -1583,6 +1585,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
+    <MapContext.Provider value={{
+      map: mapRef.current,
+      units,
+      calls,
+      beats: [], // beat GeoJSON owned by useGeoJsonLayers; this param is for future per-beat UI
+    }}>
     <MapDensityProvider>
     <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
       {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
@@ -1632,6 +1640,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Map Container — explicit w/h ensures Mapbox GL gets a sized element */}
       <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
+      {/* Role-adaptive overlay shell — renders controls appropriate for the user's role */}
+      <MapLayout />
 
 
       {/* Geocoder styling override — tactical-dark surface (always night palette,
@@ -2185,5 +2195,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       )}
     </div>
     </MapDensityProvider>
+    </MapContext.Provider>
   );
 }

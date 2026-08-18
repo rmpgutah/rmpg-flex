@@ -1,24 +1,11 @@
 import { createContext, useContext } from 'react';
 import type mapboxgl from 'mapbox-gl';
+import type { MapUnit, ActiveCall } from './utils/mapConstants';
 
 export interface MapContextValue {
   map: mapboxgl.Map | null;
-  units: Array<{
-    id: number;
-    call_sign: string;
-    status: string;
-    latitude: number | null;
-    longitude: number | null;
-    current_call_type?: string | null;
-    call_number?: string | null;
-  }>;
-  calls: Array<{
-    call_number: string;
-    latitude: number | null;
-    longitude: number | null;
-    priority?: number | null;
-    incident_type?: string | null;
-  }>;
+  units: MapUnit[];
+  calls: ActiveCall[];
   beats: Array<{
     id: number;
     name: string;

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../../context/AuthContext';
-import MapLeftDock from '../components/MapLeftDock';
-import MapRightDock from '../components/MapRightDock';
 import PatrolBeatPlannerModal from '../../../components/PatrolBeatPlannerModal';
 import type { V2Route } from '../../../utils/mapboxOptimizationV2';
+
+// MapLeftDock + MapRightDock rendered by MapboxMapPage with sections;
+// migration to this layout is a follow-up task
 
 export default function DispatcherMapLayout() {
   const { user } = useAuth();
@@ -14,14 +15,6 @@ export default function DispatcherMapLayout() {
 
   return (
     <div data-testid="dispatcher-map-layout" className="absolute inset-0 pointer-events-none z-10">
-      {/* Left dock — layers panel (sections wired in Task 10) */}
-      <div className="pointer-events-auto">
-        <MapLeftDock sections={[]} />
-      </div>
-      {/* Right dock — calls + units (sections wired in Task 10) */}
-      <div className="pointer-events-auto">
-        <MapRightDock sections={[]} />
-      </div>
       {/* Supervisor-only controls */}
       {isSupervisorPlus && (
         <button
