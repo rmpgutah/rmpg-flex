@@ -2474,6 +2474,9 @@ si.delete('/:id', async (c) => {
   // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
   // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
   // guaranteed orphans without these DELETEs.
+  // ── serve_qr_scans: REFERENCES serve_queue(id) with no ON DELETE clause
+  //    (default NO ACTION) — blocks parent delete on any scanned job
+  await execute(db, 'DELETE FROM serve_qr_scans WHERE job_id = ?', id);
   // ── serve_nudges: no FK constraint (migration 0105) — would orphan
   await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
   // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)
