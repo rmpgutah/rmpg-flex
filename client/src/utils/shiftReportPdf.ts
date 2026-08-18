@@ -18,6 +18,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -319,5 +320,5 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
 export function openShiftReportPdf(input: ShiftReportInput): void {
   const doc = generateShiftReportPdf(input);
   const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  openPdfBlob(url, 'Shift Report');
 }

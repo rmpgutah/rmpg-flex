@@ -19,6 +19,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 import { fetchImageFromUrl, type ResolvedImage } from './pdfImageHelpers';
 
 const RMPG_GOLD = '#d4a017';
@@ -411,5 +412,5 @@ export async function generatePlateCapturePdf(input: PlateCapturePdfInput): Prom
 export async function openPlateCapturePdf(input: PlateCapturePdfInput): Promise<void> {
   const doc = await generatePlateCapturePdf(input);
   const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  openPdfBlob(url, 'Plate Capture');
 }

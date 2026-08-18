@@ -14,6 +14,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { Message, MessagePriority } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -259,5 +260,5 @@ export function generateConversationTranscriptPdf(input: ConversationTranscriptI
 export function openConversationTranscriptPdf(input: ConversationTranscriptInput): void {
   const doc = generateConversationTranscriptPdf(input);
   const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  openPdfBlob(url, 'Conversation Transcript');
 }

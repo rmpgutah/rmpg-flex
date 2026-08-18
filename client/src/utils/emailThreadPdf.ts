@@ -24,6 +24,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import type { EmailMessage, EmailAttachment } from '../types';
 import { stripHtmlForPdf } from './formatters';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -381,5 +382,5 @@ export function generateEmailThreadPdf(input: EmailThreadPdfInput): jsPDF {
 export function openEmailThreadPdf(input: EmailThreadPdfInput): void {
   const doc = generateEmailThreadPdf(input);
   const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  openPdfBlob(url, 'Email Thread');
 }

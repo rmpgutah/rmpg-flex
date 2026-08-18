@@ -23,6 +23,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -319,5 +320,5 @@ export function openWebResearchReportPdf(
 ): void {
   const doc = generateWebResearchReportPdf(results, ctx);
   const url = doc.output('bloburl');
-  window.open(url, '_blank', 'noopener,noreferrer');
+  openPdfBlob(url, 'Web Research Report');
 }

@@ -31,6 +31,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -544,7 +545,7 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
 export function openAffairsComplaintPdf(input: IaComplaintPdfInput): void {
   const doc = generateAffairsComplaintPdf(input);
   const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  openPdfBlob(url, 'Affairs Complaint');
 }
 // Mark the ROW_ALT constant as used (reserved for future investigation
 // alt-row striping; keeps it in the same visual contract as the
