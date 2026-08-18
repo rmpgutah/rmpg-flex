@@ -124,7 +124,7 @@ describe('natronaAdapter', () => {
   it('follows DataPager Next link to a second page and deduplicates', async () => {
     const terminator = '<html><body>Found 0 Warrants</body></html>';
     let call = 0;
-    const stub = vi.fn(async () => {
+    const stub = vi.fn(async (_url: string, _init?: RequestInit) => {
       call++;
       if (call === 1) return getResponse();
       if (call === 2) return new Response(NATRONA_PAGE1_WITH_NEXT, { status: 200 });
@@ -139,7 +139,7 @@ describe('natronaAdapter', () => {
     expect(hits.length).toBeGreaterThan(0);
     // The page-2 POST must carry __EVENTTARGET with the DataPager target
     const page2Init = stub.mock.calls[2][1] as RequestInit;
-    const page2Body = String(page2Init.body);
+    const page2Body = String(page2Init?.body ?? '');
     expect(page2Body).toContain('__EVENTTARGET');
     expect(page2Body).toContain('DataPager1');
   });
