@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch, uploadsUrl } from '../../hooks/useApi';
 import { useNavigate } from 'react-router';
 import { FileText, FilePlus2, FileCode, Sparkles, Clock, Eye } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -84,7 +85,7 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+      const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: form });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
       const data = await res.json() as { files: Array<{ file_id: string; original_name: string }> };
       const created = data.files?.[0];
@@ -115,16 +116,10 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
     const mimeType = mimeMap[ext] || 'text/plain';
     setCreatingText(true);
     try {
-      const token = localStorage.getItem('rmpg_token');
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/uploads/create', {
+      const created = await apiFetch<{ file_id: string; original_name: string }>('/uploads/create', {
         method: 'POST',
-        headers,
         body: JSON.stringify({ name, mime_type: mimeType, folder_id: currentFolderId }),
       });
-      if (!res.ok) { const j = await res.json() as { error?: string }; throw new Error(j.error || `HTTP ${res.status}`); }
-      const created = await res.json() as { file_id: string; original_name: string };
       const params = new URLSearchParams({ fileId: created.file_id, name: created.original_name, mime: mimeType });
       if (currentFolderId != null) params.set('folderId', String(currentFolderId));
       navigate(`/text-editor?${params.toString()}`);

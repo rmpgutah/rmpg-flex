@@ -40,7 +40,7 @@ import NUpDialog from './components/NUpDialog';
 import PageLabelsDialog from './components/PageLabelsDialog';
 import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
-import { authedImageUrl } from '../../hooks/useApi';
+import { authedImageUrl, uploadsUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { importWithRetry } from '../../utils/importWithRetry';
 
@@ -1563,7 +1563,7 @@ export default function PdfEditorPage() {
         const token = localStorage.getItem('rmpg_token');
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+        const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: form });
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
         const uploaded = normalizeUploadResponse(await res.json().catch(() => null));
         if (uploaded.length === 0) throw new Error('Upload did not return file');
