@@ -381,6 +381,6 @@ export function generateEmailThreadPdf(input: EmailThreadPdfInput): jsPDF {
 
 export function openEmailThreadPdf(input: EmailThreadPdfInput): void {
   const doc = generateEmailThreadPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Email Thread');
 }

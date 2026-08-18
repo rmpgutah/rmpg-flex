@@ -411,6 +411,6 @@ export async function generatePlateCapturePdf(input: PlateCapturePdfInput): Prom
 
 export async function openPlateCapturePdf(input: PlateCapturePdfInput): Promise<void> {
   const doc = await generatePlateCapturePdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Plate Capture');
 }

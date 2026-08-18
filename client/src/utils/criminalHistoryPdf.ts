@@ -323,6 +323,6 @@ export function generateCriminalHistoryPdf(input: CriminalHistoryInput): jsPDF {
 
 export function openCriminalHistoryPdf(input: CriminalHistoryInput): void {
   const doc = generateCriminalHistoryPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Criminal History');
 }

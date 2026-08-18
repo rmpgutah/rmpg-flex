@@ -259,6 +259,6 @@ export function generateConversationTranscriptPdf(input: ConversationTranscriptI
 
 export function openConversationTranscriptPdf(input: ConversationTranscriptInput): void {
   const doc = generateConversationTranscriptPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Conversation Transcript');
 }

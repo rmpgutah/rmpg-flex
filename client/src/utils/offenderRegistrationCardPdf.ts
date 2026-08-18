@@ -404,6 +404,6 @@ export function generateOffenderRegistrationCardPdf(input: OffenderPdfInput): js
 
 export function openOffenderRegistrationCardPdf(input: OffenderPdfInput): void {
   const doc = generateOffenderRegistrationCardPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Offender Registration Card');
 }

@@ -328,6 +328,6 @@ export function generateAuditLogPdf(input: AuditLogPdfInput): jsPDF {
  *  tripping over window.open. */
 export function openAuditLogPdf(input: AuditLogPdfInput): void {
   const doc = generateAuditLogPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Audit Log');
 }

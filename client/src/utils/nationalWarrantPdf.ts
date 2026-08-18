@@ -307,6 +307,6 @@ export function generateNationalWarrantPdf(input: NationalWarrantPdfInput): jsPD
 
 export function openNationalWarrantPdf(input: NationalWarrantPdfInput): void {
   const doc = generateNationalWarrantPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'National Warrant');
 }

@@ -427,7 +427,7 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
 
 export function openJailBookingSheetPdf(input: JailBookingSheetInput): void {
   const doc = generateJailBookingSheetPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Jail Booking Sheet');
 }
 
@@ -565,6 +565,6 @@ export function generateJailRosterSnapshotPdf(input: JailRosterSnapshotInput): j
 
 export function openJailRosterSnapshotPdf(input: JailRosterSnapshotInput): void {
   const doc = generateJailRosterSnapshotPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Jail Booking Sheet');
 }

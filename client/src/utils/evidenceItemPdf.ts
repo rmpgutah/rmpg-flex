@@ -333,6 +333,6 @@ export function generateEvidenceItemPdf(input: EvidencePdfInput): jsPDF {
 
 export function openEvidenceItemPdf(input: EvidencePdfInput): void {
   const doc = generateEvidenceItemPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Evidence Item');
 }

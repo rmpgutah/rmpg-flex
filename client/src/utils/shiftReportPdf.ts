@@ -319,6 +319,6 @@ export function generateShiftReportPdf(input: ShiftReportInput): jsPDF {
 /** Generate + open in a new tab so the operator gets the print dialog. */
 export function openShiftReportPdf(input: ShiftReportInput): void {
   const doc = generateShiftReportPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Shift Report');
 }

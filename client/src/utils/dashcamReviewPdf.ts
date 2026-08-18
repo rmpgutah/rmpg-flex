@@ -444,6 +444,6 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
 
 export function openDashcamReviewPdf(input: DashcamReviewPdfInput): void {
   const doc = generateDashcamReviewPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Dashcam Review');
 }

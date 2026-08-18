@@ -308,6 +308,6 @@ export function generateBodycamVideoCustodyPdf(input: BodycamVideoPdfInput): jsP
 
 export function openBodycamVideoCustodyPdf(input: BodycamVideoPdfInput): void {
   const doc = generateBodycamVideoCustodyPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Body Cam Video Custody');
 }

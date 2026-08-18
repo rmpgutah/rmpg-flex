@@ -529,6 +529,6 @@ export function generateCourtAppearancePdf(input: CourtAppearanceInput): jsPDF {
 
 export function openCourtAppearancePdf(input: CourtAppearanceInput): void {
   const doc = generateCourtAppearancePdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Court Appearance');
 }

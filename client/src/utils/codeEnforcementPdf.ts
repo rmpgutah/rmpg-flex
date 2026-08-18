@@ -314,7 +314,7 @@ export function generateCodeViolationNoticePdf(v: CodeViolation): jsPDF {
 
 export function openCodeViolationNoticePdf(v: CodeViolation): void {
   const doc = generateCodeViolationNoticePdf(v);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Code Violation Notice');
 }
 
@@ -509,6 +509,6 @@ export function generateTowOrderPdf(t: VehicleTow): jsPDF {
 
 export function openTowOrderPdf(t: VehicleTow): void {
   const doc = generateTowOrderPdf(t);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Tow Order');
 }

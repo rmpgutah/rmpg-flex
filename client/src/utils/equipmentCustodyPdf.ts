@@ -292,6 +292,6 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
 
 export function openEquipmentCustodyPdf(input: EquipmentPdfInput): void {
   const doc = generateEquipmentCustodyPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Equipment Custody');
 }

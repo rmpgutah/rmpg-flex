@@ -608,6 +608,6 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openForensicCasePdf(input: ForensicCasePdfInput): void {
   const doc = generateForensicCasePdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Forensic Case Report');
 }

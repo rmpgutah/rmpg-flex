@@ -319,6 +319,6 @@ export function openWebResearchReportPdf(
   ctx: WebResearchPdfContext,
 ): void {
   const doc = generateWebResearchReportPdf(results, ctx);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Web Research Report');
 }

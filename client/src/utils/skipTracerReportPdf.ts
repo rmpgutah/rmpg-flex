@@ -277,6 +277,6 @@ export function openSkipTracerReportPdf(
   ctx: SkipTraceContext,
 ): void {
   const doc = generateSkipTracerReportPdf(subject, ctx);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Skip Tracer Report');
 }

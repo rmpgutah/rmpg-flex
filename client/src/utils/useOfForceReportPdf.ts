@@ -467,6 +467,6 @@ export function generateUseOfForceReportPdf(input: UofReportPdfInput): jsPDF {
 
 export function openUseOfForceReportPdf(input: UofReportPdfInput): void {
   const doc = generateUseOfForceReportPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Use of Force Report');
 }

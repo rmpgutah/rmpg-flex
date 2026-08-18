@@ -239,6 +239,6 @@ export function generateFiCardPdf(fi: FieldInterview): jsPDF {
 
 export function openFiCardPdf(fi: FieldInterview): void {
   const doc = generateFiCardPdf(fi);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'FI Card');
 }

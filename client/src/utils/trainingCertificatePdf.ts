@@ -480,6 +480,6 @@ export function generateTrainingCertificatePdf(input: TrainingCertificatePdfInpu
 
 export function openTrainingCertificatePdf(input: TrainingCertificatePdfInput): void {
   const doc = generateTrainingCertificatePdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Training Certificate');
 }

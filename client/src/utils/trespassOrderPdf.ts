@@ -375,6 +375,6 @@ export function generateTrespassOrderPdf(order: TrespassOrder): jsPDF {
 
 export function openTrespassOrderPdf(order: TrespassOrder): void {
   const doc = generateTrespassOrderPdf(order);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Trespass Order');
 }

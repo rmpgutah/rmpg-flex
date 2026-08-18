@@ -544,7 +544,7 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openAffairsComplaintPdf(input: IaComplaintPdfInput): void {
   const doc = generateAffairsComplaintPdf(input);
-  const url = doc.output('bloburl');
+  const url = URL.createObjectURL(doc.output('blob'));
   openPdfBlob(url, 'Affairs Complaint');
 }
 // Mark the ROW_ALT constant as used (reserved for future investigation
