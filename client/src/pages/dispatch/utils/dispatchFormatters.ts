@@ -164,6 +164,13 @@ export function computeOnSceneTime(call: CallForService): number | null {
   return (diff > 0 && isFinite(diff)) ? diff : null;
 }
 
+/** Format a millisecond duration as compact "{m}m {s}s" for inline response-time badges. */
+export function formatResponseTimeShort(ms: number): string {
+  const mins = Math.floor(ms / 60000);
+  const secs = Math.floor((ms % 60000) / 1000);
+  return `${mins}m ${secs}s`;
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {
