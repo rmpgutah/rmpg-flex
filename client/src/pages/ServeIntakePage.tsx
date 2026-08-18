@@ -1234,12 +1234,13 @@ export default function ServeIntakePage() {
                 <ScanLine className="w-3 h-3" /> Scan ID
               </button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
               {[
                 { key: 'recipient_first_name',    label: 'First Name' },
                 { key: 'recipient_last_name',     label: 'Last Name' },
                 { key: 'recipient_middle_name',   label: 'Middle Name' },
                 { key: 'recipient_dob',            label: 'Date of Birth' },
+                { key: 'recipient_phone',          label: 'Phone' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
@@ -1278,6 +1279,7 @@ export default function ServeIntakePage() {
                       placeholder="—"
                       className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                     />
+                    {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                   </div>
                 ))}
               </div>
@@ -1381,6 +1383,7 @@ export default function ServeIntakePage() {
                     placeholder="—"
                     className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
@@ -1388,12 +1391,12 @@ export default function ServeIntakePage() {
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
               {[
-                { key: 'attorney_name',   label: 'Attorney' },
-                { key: 'attorney_phone',  label: 'Attorney Phone' },
-                { key: 'attorney_email',  label: 'Attorney Email' },
+                { key: 'attorney_name',       label: 'Attorney' },
+                { key: 'attorney_phone',      label: 'Attorney Phone' },
+                { key: 'attorney_email',      label: 'Attorney Email' },
                 { key: 'attorney_bar_number', label: 'Bar #' },
-                { key: 'fee_amount',      label: 'Fee' },
-                { key: 'service_windows', label: 'Service Windows' },
+                { key: 'fee_amount',          label: 'Fee' },
+                { key: 'service_windows',     label: 'Service Windows' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
@@ -1408,6 +1411,7 @@ export default function ServeIntakePage() {
                     placeholder="—"
                     className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
@@ -1464,10 +1468,11 @@ export default function ServeIntakePage() {
                 rows={2}
                 className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 resize-none ${ocrSourced.has('service_instructions') ? 'border-brand-700' : 'border-border-subtle'}`}
               />
+              {judgeVerdicts['service_instructions'] && <JudgeFlagChip verdict={judgeVerdicts['service_instructions']} />}
             </div>
             <ServeRecordMatchPanel
               address={editOverrides['recipient_address'] || ''}
-              businessName={editOverrides['recipient_last_name'] || ''}
+              businessName={editOverrides['recipient_business_name'] || ''}
             />
           </div>
         </div>
