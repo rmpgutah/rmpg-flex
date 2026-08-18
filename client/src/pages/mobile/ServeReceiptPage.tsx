@@ -349,9 +349,6 @@ export default function ServeReceiptPage() {
 
   const stepValid = [false, step1Valid, step2Valid, step3Valid, step4Valid, step5Valid];
 
-  // Sections 1 (WHO) and 3 (DOCUMENTS) require no input — they start as done.
-  const sectionsDone = 2 + [step2Valid, step4Valid, step5Valid].filter(Boolean).length;
-
   // ── ID handlers ────────────────────────────────────────────
   const scanId = useCallback(async (file: File) => {
     setIdScanning(true);
