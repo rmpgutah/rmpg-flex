@@ -164,6 +164,69 @@ export function computeOnSceneTime(call: CallForService): number | null {
   return (diff > 0 && isFinite(diff)) ? diff : null;
 }
 
+/** Format a millisecond duration as compact "{m}m {s}s" for inline response-time badges. */
+export function formatResponseTimeShort(ms: number): string {
+  const mins = Math.floor(ms / 60000);
+  const secs = Math.floor((ms % 60000) / 1000);
+  return `${mins}m ${secs}s`;
+}
+
+/** Format an attempt number as an ordinal: 1→"1st", 2→"2nd", 3→"3rd", 4→"4th", etc. */
+export function formatOrdinal(n: number): string {
+  if (n === 1) return '1st';
+  if (n === 2) return '2nd';
+  if (n === 3) return '3rd';
+  return `${n}th`;
+}
+
+export type DeadlineStatus = 'overdue' | 'warning' | 'ok' | null;
+
+export interface DeadlineResult {
+  status: DeadlineStatus;
+  hoursLeft: number;
+  minsLeft: number;
+}
+
+/** Compute 72-hour deadline status from a resolved call's terminal timestamp. */
+export function computeResolvedDeadline(terminalTime: string | null | undefined): DeadlineResult | null {
+  if (!terminalTime) return null;
+  const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
+  const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
+  if (elapsed >= 72 * 3600000) return { status: 'overdue', hoursLeft: 0, minsLeft: 0 };
+  if (elapsed >= 48 * 3600000) return { status: 'warning', hoursLeft: Math.floor(hoursLeft), minsLeft: 0 };
+  return null;
+}
+
+/** Compute 72-hour deadline status from an active call's creation timestamp. */
+export function computeActiveDeadline(createdAt: string): DeadlineResult {
+  const deadline = parseTimestamp(createdAt).getTime() + 72 * 3600000;
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) return { status: 'overdue', hoursLeft: 0, minsLeft: 0 };
+  const hrs = Math.floor(remaining / 3600000);
+  const mins = Math.floor((remaining % 3600000) / 60000);
+  const status: DeadlineStatus = hrs < 12 ? 'overdue' : hrs < 24 ? 'warning' : 'ok';
+  return { status, hoursLeft: hrs, minsLeft: mins };
+}
+
+export interface PsoServiceWindows {
+  early_morning: boolean;
+  daytime: boolean;
+  evening: boolean;
+  weekend: boolean;
+}
+
+export function parsePsoServiceWindows(raw: unknown): PsoServiceWindows {
+  const w = typeof raw === 'string'
+    ? (() => { try { return JSON.parse(raw); } catch { return null; } })()
+    : raw;
+  return {
+    early_morning: !!w?.early_morning,
+    daytime: !!w?.daytime,
+    evening: !!w?.evening,
+    weekend: !!w?.weekend,
+  };
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {

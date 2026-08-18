@@ -185,7 +185,7 @@ export function PdfReviewModal<T extends Record<string, any>>({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90vh] flex flex-col">
+      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90dvh] flex flex-col">
         <header className="flex justify-between items-center px-4 py-2 border-b border-border-default">
           <h2 className="[color:var(--panel-header-color)] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}

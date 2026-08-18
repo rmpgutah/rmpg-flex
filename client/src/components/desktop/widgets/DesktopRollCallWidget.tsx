@@ -22,11 +22,11 @@ function isOnCall(status: string): boolean {
 
 function getInitials(unit: Unit): string {
   if (unit.full_name) {
-    const parts = unit.full_name.trim().split(' ');
-    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    return parts[0].slice(0, 2).toUpperCase();
+    const parts = unit.full_name.trim().split(' ').filter(Boolean);
+    if (parts.length >= 2) return ((parts[0][0] ?? '') + (parts[parts.length - 1][0] ?? '')).toUpperCase();
+    return (parts[0] ?? '').slice(0, 2).toUpperCase();
   }
-  return unit.unit_id.slice(0, 2).toUpperCase();
+  return (unit.unit_id ?? '').slice(0, 2).toUpperCase();
 }
 
 function formatSecondsAgo(secs: number): string {

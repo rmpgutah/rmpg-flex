@@ -45,7 +45,8 @@ export function RichTextEditor({
 }: RichTextEditorProps): React.ReactElement {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (StarterKit as any).configure({
         heading: { levels: [1, 2, 3] },
         bulletList: { keepMarks: true },
         orderedList: { keepMarks: true },
