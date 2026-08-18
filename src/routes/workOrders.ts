@@ -43,6 +43,7 @@ import { emitFleetioEvent } from '../utils/fleetio/events';
 import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { putEncrypted } from '../utils/encryptedR2';
+import { containsAnyClause } from '../utils/searchText';
 import {
   isValidStatus,
   validateTransition,
@@ -185,8 +186,8 @@ wo.get('/', async (c) => {
       conds.push('scheduled_date IS NOT NULL');
     }
     if (search) {
-      conds.push('(summary LIKE ? OR number LIKE ? OR notes LIKE ?)');
-      bindings.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      const m = containsAnyClause(['summary', 'number', 'notes']);
+      conds.push(m.sql); bindings.push(...m.binds(search));
     }
     const where = conds.length > 0 ? 'WHERE ' + conds.join(' AND ') : '';
     const rows = await query<Record<string, unknown>>(
