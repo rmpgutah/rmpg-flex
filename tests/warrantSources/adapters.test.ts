@@ -79,6 +79,21 @@ describe('adaCountyAdapter', () => {
   });
 });
 
+/** Natrona's fixture has a "Next" pager link, so aspNetPagedSearch follows it.
+ *  This stub returns the fixture on the initial POST and a no-next-link body on
+ *  the subsequent page-2 check, so the pager stops after exactly one extra call.
+ *  Total: GET(1) + POST page1(2) + POST page2 terminator(3) = 3 calls. */
+function buildNatronaPagedStub() {
+  let call = 0;
+  const terminator = '<html><body>Found 0 Warrants</body></html>';
+  return vi.fn(async (_url: string, _init?: RequestInit) => {
+    call++;
+    if (call === 1) return getResponse();           // GET → tokens + cookie
+    if (call === 2) return new Response(natronaHtml, { status: 200 }); // page 1 (has Next)
+    return new Response(terminator, { status: 200 }); // page 2 terminator (no Next)
+  });
+}
+
 describe('natronaAdapter', () => {
   it('exposes html-kind metadata', () => {
     expect(natronaAdapter.meta.kind).toBe('html');
@@ -87,15 +102,16 @@ describe('natronaAdapter', () => {
     expect(natronaAdapter.meta.county).toBe('Natrona');
   });
 
-  it('does a 2-step GET→POST fetch and returns parsed hits', async () => {
-    const stub = buildStub(natronaHtml);
+  it('follows DataPager pagination and returns deduplicated hits', async () => {
+    const stub = buildNatronaPagedStub();
     vi.stubGlobal('fetch', stub);
 
     const hits = await natronaAdapter.fetchForPerson!(person, env);
 
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.source_key === 'natrona-county-wy')).toBe(true);
-    expect(stub).toHaveBeenCalledTimes(2);
+    // GET + page-1 POST + page-2 POST (terminator that has no "Next")
+    expect(stub).toHaveBeenCalledTimes(3);
 
     const postInit = stub.mock.calls[1][1] as RequestInit;
     const body = String(postInit.body);
@@ -104,7 +120,7 @@ describe('natronaAdapter', () => {
   });
 
   it('threads the GET Set-Cookie into the POST Cookie header', async () => {
-    const stub = buildStub(natronaHtml);
+    const stub = buildNatronaPagedStub();
     vi.stubGlobal('fetch', stub);
     await natronaAdapter.fetchForPerson!(person, env);
     const postInit = stub.mock.calls[1][1] as RequestInit;
