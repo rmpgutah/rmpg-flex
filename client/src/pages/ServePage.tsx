@@ -759,6 +759,7 @@ export default function ServePage() {
   // attempt-history trail, and single-stop drive-time preview state.
   const [mapZoom, setMapZoom] = useState(11);
   const [mapDeadlineFilter, setMapDeadlineFilter] = useState<DeadlineFilter>('all');
+  const [routeStatusFilter, setRouteStatusFilter] = useState<StatusFilter>('all');
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const mapSelectStartRef = useRef<{ x: number; y: number } | null>(null);
   const jobsRef = useRef<ServeJob[]>([]);
@@ -2754,9 +2755,28 @@ export default function ServePage() {
                     />
                   </div>
 
+                  {/* Route status filter */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {STATUS_FILTERS.map(f => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => setRouteStatusFilter(f.value)}
+                        className={`px-2 py-1 text-[10px] border border-border-subtle rounded-[2px] ${routeStatusFilter === f.value ? 'bg-rmpg-700 text-white' : 'bg-surface-sunken text-fg-muted'}`}
+                      >
+                        {f.label}
+                        {f.value !== 'all' && (
+                          <span className="ml-1 font-mono tabular-nums text-rmpg-500">
+                            {routeJobs.filter(j => j.status === f.value).length}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Ordered stop list */}
                   <div className="space-y-1">
-                    {routeJobs.map((job, idx) => {
+                    {(routeStatusFilter === 'all' ? routeJobs : routeJobs.filter(j => j.status === routeStatusFilter)).map((job, idx) => {
                       const isCompleted = job.status === 'served';
                       const isFailed = job.status === 'failed';
                       const deadlineDate = job.deadline ? parseTimestamp(job.deadline) : null;
@@ -2954,14 +2974,14 @@ export default function ServePage() {
             {/* Map toolbar: deadline filter + export */}
             <div className="flex items-center justify-between gap-2 px-2 py-1 bg-surface-raised border-b border-border-subtle flex-wrap">
               <div className="flex items-center gap-1">
-                {(['all', 'today', 'three_days', 'week', 'overdue', 'served'] as DeadlineFilter[]).map((f) => (
+                {(['all', 'today', 'three_days', 'week', 'overdue', 'in_progress', 'served'] as DeadlineFilter[]).map((f) => (
                   <button
                     key={f}
                     type="button"
                     onClick={() => setMapDeadlineFilter(f)}
                     className={`px-2 py-1 text-[10px] border border-border-subtle rounded ${mapDeadlineFilter === f ? 'bg-rmpg-700 text-white' : 'bg-surface-sunken text-fg-muted'}`}
                   >
-                    {f === 'three_days' ? '3 Days' : f.charAt(0).toUpperCase() + f.slice(1)}
+                    {f === 'three_days' ? '3 Days' : f === 'in_progress' ? 'In Progress' : f.charAt(0).toUpperCase() + f.slice(1)}
                   </button>
                 ))}
               </div>
