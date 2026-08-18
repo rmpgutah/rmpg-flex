@@ -182,6 +182,7 @@ function callPostureFlags(data: CallPdfData): string[] {
   const flags: string[] = [];
   const push = (cond: unknown, label: string) => { if (cond) flags.push(label); };
   push(data.officer_safety_caution, 'officer safety');
+  push(data.hazard_notes, 'officer safety');   // property hazard note → same tier as the flag
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) flags.push(`weapon ${wv}`);
   push(data.felony_in_progress, 'felony in progress');
@@ -200,7 +201,7 @@ function callPostureFlags(data: CallPdfData): string[] {
 // callPostureFlags, but worded for display rather than classification).
 function callPostureChips(data: CallPdfData): string[] {
   const chips: string[] = [];
-  if (data.officer_safety_caution) chips.push('OFFICER SAFETY');
+  if (data.officer_safety_caution || data.hazard_notes) chips.push('OFFICER SAFETY');
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) chips.push('WEAPONS');
   if (data.felony_in_progress) chips.push('FELONY IP');
@@ -633,6 +634,9 @@ export interface CallPdfData {
   latitude?: number;
   longitude?: number;
   property_name?: string;
+  hazard_notes?: string;       // from linked property JOIN — triggers posture band when present
+  post_orders?: string;        // from linked property JOIN
+  gate_code?: string;          // from linked property JOIN
   // Incident details
   num_subjects?: number;
   num_victims?: number;
@@ -2424,7 +2428,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: tsField(data.created_at, 0) },
       { label: 'Dispatched', value: tsField(data.dispatched_at, 1) },
-      { label: 'Enroute', value: tsField(data.enroute_at, 2) },
+      { label: 'En Route', value: tsField(data.enroute_at, 2) },
       { label: 'On Scene', value: tsField(data.onscene_at, 3) },
       { label: 'Cleared', value: tsField(data.cleared_at, 4) },
       { label: 'Closed', value: tsField(data.closed_at, 5) },
