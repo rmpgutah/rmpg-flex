@@ -203,7 +203,7 @@ function csvEscape(v: unknown): string {
 }
 
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
-const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled', 'archived']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
