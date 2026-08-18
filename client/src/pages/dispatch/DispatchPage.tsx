@@ -67,7 +67,7 @@ import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, callMatchesSearch, deriveCallWarnings,
   formatServiceType, formatDocumentType, formatCallDuration, computeCallDuration,
-  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, type FilterTab,
+  computeResponseTime, computeOnSceneTime, formatResponseTimeShort, formatOrdinal, type FilterTab,
 } from './utils/dispatchFormatters';
 import {
   SERVICE_TYPE_LABELS, DOCUMENT_TYPE_OPTIONS, SERVICE_TYPE_GROUPS,
@@ -127,6 +127,54 @@ const ALARM_CHECK_INTERVAL_MS = 5000;
 
 const MOBILE_ACTION_BTN_STYLE: React.CSSProperties = { minHeight: 48, minWidth: 80, touchAction: 'manipulation' };
 const RECENT_IDS_CAP = 500;
+
+const WORKFLOW_PIPELINE = [
+  { status: 'pending',    label: 'Pending',    short: 'PEND' },
+  { status: 'dispatched', label: 'Dispatched', short: 'DISP' },
+  { status: 'enroute',    label: 'En Route',   short: 'ER'   },
+  { status: 'onscene',    label: 'On Scene',   short: 'OS'   },
+  { status: 'cleared',    label: 'Cleared',    short: 'CLR'  },
+  { status: 'closed',     label: 'Closed',     short: 'CLSD' },
+] as const;
+
+const PIPELINE_TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
+
+const WORKFLOW_NEXT_STATUS: Record<string, string> = {
+  pending: 'dispatched', dispatched: 'enroute', enroute: 'onscene',
+  onscene: 'cleared', cleared: 'closed',
+};
+
+const TIMESTAMP_PREV_CHAIN: Record<string, string[]> = {
+  dispatched_at: ['created_at'],
+  enroute_at: ['dispatched_at', 'created_at'],
+  onscene_at: ['enroute_at', 'dispatched_at', 'created_at'],
+  cleared_at: ['onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+  closed_at: ['cleared_at', 'onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+};
+
+const QUICK_FLAGS = [
+  { field: 'alcohol_involved', label: 'Alcohol', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+  { field: 'drugs_involved', label: 'Drugs', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'domestic_violence', label: 'DV', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'injuries_reported', label: 'Injuries', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'supervisor_notified', label: 'Supervisor', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+  { field: 'le_notified', label: 'LE Notified', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+  { field: 'mental_health_crisis', label: 'Mental Health', onBg: 'color-mix(in srgb, var(--sev-special) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', onText: 'var(--sev-special-soft)' },
+  { field: 'juvenile_involved', label: 'Juvenile', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+  { field: 'felony_in_progress', label: 'Felony', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'officer_safety_caution', label: 'Officer Safety', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'gang_related', label: 'Gang', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'body_camera_active', label: 'Body Cam', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok)' },
+  { field: 'k9_requested', label: 'K9', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--sev-ok)' },
+  { field: 'ems_requested', label: 'EMS', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'fire_requested', label: 'Fire', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
+  { field: 'hazmat', label: 'HazMat', onBg: 'color-mix(in srgb, var(--sev-caution) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-caution) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+  { field: 'evidence_collected', label: 'Evidence', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok-soft)' },
+  { field: 'photos_taken', label: 'Photos', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
+  { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
+  { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+  { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
+] as const;
 
 function buildCallEditBody(
   ed: Record<string, any>,
@@ -2855,14 +2903,7 @@ export default function DispatchPage() {
                             {/* Elapsed since the previous populated stage — the response
                                 breakdown (Created→Dispatched→Enroute→On Scene→…). */}
                             {ts.value && (() => {
-                              const prevChain: Record<string, string[]> = {
-                                dispatched_at: ['created_at'],
-                                enroute_at: ['dispatched_at', 'created_at'],
-                                onscene_at: ['enroute_at', 'dispatched_at', 'created_at'],
-                                cleared_at: ['onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
-                                closed_at: ['cleared_at', 'onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
-                              };
-                              const chain = prevChain[ts.field];
+                              const chain = TIMESTAMP_PREV_CHAIN[ts.field];
                               const prevField = chain?.find(f => (selectedCall as any)[f]);
                               if (!prevField) return null;
                               const d = parseTimestamp(ts.value).getTime() - parseTimestamp((selectedCall as any)[prevField]).getTime();
@@ -3241,7 +3282,7 @@ export default function DispatchPage() {
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.19)', border: '1px solid rgb(var(--brand-gold-rgb) / 0.38)', color: 'var(--brand-gold)' }}
                         onClick={() => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
-                          const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
+                          const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
                             message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
@@ -4077,21 +4118,8 @@ export default function DispatchPage() {
                     the overflow toolbar. Archived/cancelled/closed are terminal and
                     shown with a distinct visual treatment. */}
                 {!isEditing && (() => {
-                  const PIPELINE = [
-                    { status: 'pending',    label: 'Pending',    short: 'PEND' },
-                    { status: 'dispatched', label: 'Dispatched', short: 'DISP' },
-                    { status: 'enroute',    label: 'En Route',   short: 'ER'   },
-                    { status: 'onscene',    label: 'On Scene',   short: 'OS'   },
-                    { status: 'cleared',    label: 'Cleared',    short: 'CLR'  },
-                    { status: 'closed',     label: 'Closed',     short: 'CLSD' },
-                  ] as const;
-                  const PIPELINE_TERMINAL_STATUSES = new Set(['cancelled', 'archived', 'duplicate', 'on_hold']);
-                  const currentIdx = PIPELINE.findIndex(p => p.status === selectedCall.status);
+                  const currentIdx = WORKFLOW_PIPELINE.findIndex(p => p.status === selectedCall.status);
                   const isTerminal = PIPELINE_TERMINAL_STATUSES.has(selectedCall.status);
-                  const NEXT_STATUS: Record<string, string> = {
-                    pending: 'dispatched', dispatched: 'enroute', enroute: 'onscene',
-                    onscene: 'cleared', cleared: 'closed',
-                  };
                   return (
                     <div
                       className="flex items-center px-2 py-1 border-b border-[var(--spm-border)] gap-0 overflow-x-auto"
@@ -4104,10 +4132,10 @@ export default function DispatchPage() {
                           style={{ color: selectedCall.status === 'cancelled' ? 'var(--sev-critical)' : selectedCall.status === 'on_hold' ? 'var(--sev-warn)' : 'var(--spm-text-muted)' }}>
                           ● {selectedCall.status.toUpperCase().replace('_', ' ')}
                         </span>
-                      ) : PIPELINE.map((step, idx) => {
+                      ) : WORKFLOW_PIPELINE.map((step, idx) => {
                         const isPast = currentIdx > idx;
                         const isCurrent = currentIdx === idx;
-                        const canAdvance = isCurrent && NEXT_STATUS[step.status] && !['cleared', 'closed'].includes(step.status);
+                        const canAdvance = isCurrent && WORKFLOW_NEXT_STATUS[step.status] && !['cleared', 'closed'].includes(step.status);
                         const color = isCurrent
                           ? step.status === 'pending' ? 'var(--sev-warn)' : step.status === 'onscene' ? 'var(--sev-special)' : 'var(--brand-gold)'
                           : isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)';
@@ -4116,8 +4144,8 @@ export default function DispatchPage() {
                             <button
                               type="button"
                               disabled={!canAdvance}
-                              onClick={canAdvance ? () => handleStatusChange(selectedCall.id, NEXT_STATUS[step.status] as any) : undefined}
-                              title={canAdvance ? `Advance to ${NEXT_STATUS[step.status]}` : step.label}
+                              onClick={canAdvance ? () => handleStatusChange(selectedCall.id, WORKFLOW_NEXT_STATUS[step.status] as any) : undefined}
+                              title={canAdvance ? `Advance to ${WORKFLOW_NEXT_STATUS[step.status]}` : step.label}
                               className="flex items-center gap-1 px-1.5 py-0.5 text-[7px] font-bold font-mono uppercase tracking-wider whitespace-nowrap transition-all flex-shrink-0"
                               style={{
                                 color,
@@ -4131,14 +4159,14 @@ export default function DispatchPage() {
                               {isCurrent && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: color, flexShrink: 0 }} />}
                               {step.short}
                             </button>
-                            {idx < PIPELINE.length - 1 && (
+                            {idx < WORKFLOW_PIPELINE.length - 1 && (
                               <span className="text-[8px] flex-shrink-0" style={{ color: isPast ? 'var(--sev-ok)' : 'var(--spm-text-muted)', opacity: 0.4 }}>›</span>
                             )}
                           </React.Fragment>
                         );
                       })}
                       <span className="ml-auto text-[7px] font-mono text-rmpg-600 flex-shrink-0 pl-2">
-                        {currentIdx >= 0 ? `${currentIdx + 1}/${PIPELINE.length}` : ''}
+                        {currentIdx >= 0 ? `${currentIdx + 1}/${WORKFLOW_PIPELINE.length}` : ''}
                       </span>
                     </div>
                   );
@@ -4288,7 +4316,7 @@ export default function DispatchPage() {
                         style={{ background: 'rgb(var(--brand-gold-rgb) / 0.15)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.31)', color: 'var(--brand-gold)' }}
                         onClick={() => {
                           const attempt = (selectedCall.pso_attempt_number || 1) + 1;
-                          const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
+                          const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
                             message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
@@ -5731,7 +5759,7 @@ export default function DispatchPage() {
                           style={{ background: 'rgb(var(--brand-gold-rgb) / 0.12)', borderColor: 'rgb(var(--brand-gold-rgb) / 0.25)', color: 'var(--brand-gold)' }}
                           onClick={() => {
                             const attempt = (selectedCall.pso_attempt_number || 1) + 1;
-                            const ordinal = attempt === 2 ? '2nd' : attempt === 3 ? '3rd' : `${attempt}th`;
+                            const ordinal = formatOrdinal(attempt);
                             setPendingConfirm({
                               title: 'Schedule Return Visit',
                               message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
@@ -6134,29 +6162,7 @@ export default function DispatchPage() {
                       <Shield className="w-3 h-3" /> Quick Flags
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {([
-                        { field: 'alcohol_involved', label: 'Alcohol', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
-                        { field: 'drugs_involved', label: 'Drugs', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'domestic_violence', label: 'DV', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'injuries_reported', label: 'Injuries', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'supervisor_notified', label: 'Supervisor', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
-                        { field: 'le_notified', label: 'LE Notified', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
-                        { field: 'mental_health_crisis', label: 'Mental Health', onBg: 'color-mix(in srgb, var(--sev-special) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-special) 31%, transparent)', onText: 'var(--sev-special-soft)' },
-                        { field: 'juvenile_involved', label: 'Juvenile', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
-                        { field: 'felony_in_progress', label: 'Felony', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'officer_safety_caution', label: 'Officer Safety', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'gang_related', label: 'Gang', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'body_camera_active', label: 'Body Cam', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok)' },
-                        { field: 'k9_requested', label: 'K9', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--sev-ok)' },
-                        { field: 'ems_requested', label: 'EMS', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'fire_requested', label: 'Fire', onBg: 'color-mix(in srgb, var(--sev-high) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-high) 31%, transparent)', onText: 'var(--sev-high)' },
-                        { field: 'hazmat', label: 'HazMat', onBg: 'color-mix(in srgb, var(--sev-caution) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-caution) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
-                        { field: 'evidence_collected', label: 'Evidence', onBg: 'color-mix(in srgb, var(--sev-ok) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-ok) 31%, transparent)', onText: 'var(--sev-ok-soft)' },
-                        { field: 'photos_taken', label: 'Photos', onBg: 'color-mix(in srgb, var(--spm-text-muted) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--spm-text-muted) 31%, transparent)', onText: 'var(--spm-text)' },
-                        { field: 'trespass_issued', label: 'Trespass', onBg: 'color-mix(in srgb, var(--sev-warn) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-warn) 31%, transparent)', onText: 'var(--sev-warn-soft)' },
-                        { field: 'vehicle_pursuit', label: 'Vehicle Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                        { field: 'foot_pursuit', label: 'Foot Pursuit', onBg: 'color-mix(in srgb, var(--sev-critical) 19%, transparent)', onBorder: 'color-mix(in srgb, var(--sev-critical) 31%, transparent)', onText: 'var(--sev-critical)' },
-                      ] as const).map(({ field, label, onBg, onBorder, onText }) => {
+                      {QUICK_FLAGS.map(({ field, label, onBg, onBorder, onText }) => {
                         const isOn = !!(selectedCall as any)[field];
                         return (
                           <button type="button"

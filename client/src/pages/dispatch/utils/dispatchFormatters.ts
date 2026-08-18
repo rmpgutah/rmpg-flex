@@ -171,6 +171,14 @@ export function formatResponseTimeShort(ms: number): string {
   return `${mins}m ${secs}s`;
 }
 
+/** Format an attempt number as an ordinal: 1→"1st", 2→"2nd", 3→"3rd", 4→"4th", etc. */
+export function formatOrdinal(n: number): string {
+  if (n === 1) return '1st';
+  if (n === 2) return '2nd';
+  if (n === 3) return '3rd';
+  return `${n}th`;
+}
+
 export function deriveCallWarnings(call: CallForService): WarningTag[] {
   const warnings: WarningTag[] = [];
   if (call.weapons_involved && !NO_WEAPON_VALUES.has(String(call.weapons_involved).trim().toLowerCase())) {
