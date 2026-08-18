@@ -1,0 +1,158 @@
+import { describe, it, expect } from 'vitest';
+import {
+  buildServeRunProblem,
+  buildPatrolBeatProblem,
+  buildDispatchProblem,
+  type ServeStop,
+  type UnitRow,
+  type BeatRow,
+  type CallRow,
+} from '../src/utils/mapboxOptimizationV2';
+
+const SHIFT_START = '2026-08-17T08:00:00Z';
+const SHIFT_END   = '2026-08-17T17:00:00Z';
+
+const officer: UnitRow = { id: 1, call_sign: 'A1', latitude: 40.76, longitude: -111.89 };
+
+const stops: ServeStop[] = [
+  { id: 10, recipient_address: '100 Main', recipient_lat: 40.77, recipient_lng: -111.88 },
+  { id: 11, recipient_address: '200 Oak',  recipient_lat: 40.78, recipient_lng: -111.87,
+    time_window: '09:00-11:00', priority: '1' },
+  { id: 12, recipient_address: '300 Elm',  recipient_lat: 40.79, recipient_lng: -111.86,
+    deadline: '2026-08-17T16:00:00Z', priority: '2' },
+];
+
+describe('buildServeRunProblem', () => {
+  it('produces a valid V2 document shape', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    expect(doc.version).toBe(1);
+    expect(Array.isArray(doc.locations)).toBe(true);
+    expect(Array.isArray(doc.vehicles)).toBe(true);
+    expect(Array.isArray(doc.services)).toBe(true);
+  });
+
+  it('includes depot + one location per stop', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    expect(doc.locations).toHaveLength(stops.length + 1); // depot + stops
+  });
+
+  it('has exactly one vehicle matching the officer call sign', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    expect(doc.vehicles).toHaveLength(1);
+    expect(doc.vehicles[0].name).toBe('A1');
+    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving-traffic');
+    expect(doc.vehicles[0].earliest_start).toBe(SHIFT_START);
+    expect(doc.vehicles[0].latest_end).toBe(SHIFT_END);
+  });
+
+  it('sets service_times from time_window when present', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    const svc11 = doc.services.find((s) => s.name === '11');
+    expect(svc11?.service_times).toBeDefined();
+    expect(svc11?.service_times![0].type).toBe('soft');
+    expect(svc11?.service_times![0].earliest).toContain('09:00');
+    expect(svc11?.service_times![0].latest).toContain('11:00');
+  });
+
+  it('sets service_times from deadline when no time_window', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    const svc12 = doc.services.find((s) => s.name === '12');
+    expect(svc12?.service_times![0].latest).toBe('2026-08-17T16:00:00Z');
+    expect(svc12?.service_times![0].type).toBe('soft_end');
+  });
+
+  it('no service_times when neither time_window nor deadline', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    const svc10 = doc.services.find((s) => s.name === '10');
+    expect(svc10?.service_times).toBeUndefined();
+  });
+
+  it('priority 1 → 1800s duration, priority 2 → 1200s', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    expect(doc.services.find((s) => s.name === '11')?.duration).toBe(1800);
+    expect(doc.services.find((s) => s.name === '12')?.duration).toBe(1200);
+  });
+
+  it('uses min-schedule-completion-time objective', () => {
+    const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
+    expect(doc.options?.objectives).toContain('min-schedule-completion-time');
+  });
+});
+
+const beats: BeatRow[] = [
+  { id: 1, beat_code: 'B1', min_lat: 40.7, max_lat: 40.8, min_lng: -111.9, max_lng: -111.8 },
+  { id: 2, beat_code: 'B2', min_lat: 40.8, max_lat: 40.9, min_lng: -111.9, max_lng: -111.8 },
+];
+const units: UnitRow[] = [
+  { id: 1, call_sign: 'A1', latitude: 40.75, longitude: -111.85 },
+  { id: 2, call_sign: 'A2', latitude: 40.76, longitude: -111.86 },
+];
+
+describe('buildPatrolBeatProblem', () => {
+  it('produces a valid V2 document', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.version).toBe(1);
+  });
+
+  it('vehicle count matches unit count', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.vehicles).toHaveLength(units.length);
+  });
+
+  it('location count = units + beats', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.locations).toHaveLength(units.length + beats.length);
+  });
+
+  it('service count matches beat count', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.services).toHaveLength(beats.length);
+  });
+
+  it('uses min-total-travel-duration objective', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.options?.objectives).toContain('min-total-travel-duration');
+  });
+
+  it('routing profile is mapbox/driving (not traffic)', () => {
+    const doc = buildPatrolBeatProblem(beats, units, SHIFT_START, SHIFT_END);
+    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving');
+  });
+});
+
+const calls: CallRow[] = [
+  { id: 100, latitude: 40.77, longitude: -111.87, priority: '1' },
+  { id: 101, latitude: 40.78, longitude: -111.88, priority: '3' },
+];
+
+describe('buildDispatchProblem', () => {
+  it('produces a valid V2 document', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.version).toBe(1);
+  });
+
+  it('vehicle count matches unit count', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.vehicles).toHaveLength(units.length);
+  });
+
+  it('service count matches call count', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.services).toHaveLength(calls.length);
+  });
+
+  it('priority 1 call → 1800s duration', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.services.find((s) => s.name === 'call-100')?.duration).toBe(1800);
+  });
+
+  it('priority 3 call → 600s duration', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.services.find((s) => s.name === 'call-101')?.duration).toBe(600);
+  });
+
+  it('uses mapbox/driving-traffic profile', () => {
+    const doc = buildDispatchProblem(calls, units);
+    expect(doc.vehicles[0].routing_profile).toBe('mapbox/driving-traffic');
+  });
+});
