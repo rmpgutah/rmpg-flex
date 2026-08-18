@@ -12,8 +12,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import mapboxgl from 'mapbox-gl';
-import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
-import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
+import MapSearchBox from './components/MapSearchBox';
 import {
   Shield, AlertTriangle, Layers, Layers3, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
@@ -208,7 +207,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // canvas root, gated on these flags exactly as before.
   const [showDrawMenu, setShowDrawMenu] = useState(false);
   const [showMeasureMenu, setShowMeasureMenu] = useState(false);
-  const geocoderRef = useRef<MapboxGeocoder | null>(null);
+
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -315,7 +314,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       unitMarkersRef.current.clear();
       callMarkersRef.current.forEach(m => m.remove());
       callMarkersRef.current.clear();
-      geocoderRef.current = null;
     };
   }, [mapLibreFallback, retryNonce]);
 
@@ -1213,39 +1211,6 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     setMapStyleId(styleId);
   }, [changeStyle, setMapStyleId]);
 
-  // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded || mapLibreFallback) return;
-    const token = mapboxToken;
-    if (!token) return;
-
-    // Don't double-add
-    if (geocoderRef.current) return;
-
-    const geocoder = new MapboxGeocoder({
-      accessToken: token,
-      mapboxgl: mapboxgl as any,
-      marker: true,
-      placeholder: 'Search address…',
-      proximity: { longitude: SLC_CENTER[0], latitude: SLC_CENTER[1] },
-      countries: 'US',
-      limit: 5,
-      collapsed: false,
-      clearOnBlur: false,
-      flyTo: { speed: 1.4, zoom: 16 },
-    });
-
-    map.addControl(geocoder, 'top-left');
-    geocoderRef.current = geocoder;
-
-    return () => {
-      try { map.removeControl(geocoder); } catch { /* map may already be destroyed */ }
-      geocoderRef.current = null;
-    };
-  }, [mapLoaded, mapLibreFallback, mapboxToken]);
-
   // ── Sidebar Interactions ───────────────────────────────────────────────────
 
   const flyToUnit = useCallback((unit: Unit) => {
@@ -1637,51 +1602,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       <MapLayout />
 
 
-      {/* Geocoder styling override — tactical-dark surface (always night palette,
-          see utils/tacticalPalette.ts; the geocoder is a raw Mapbox DOM control,
-          not React, so it's styled via injected CSS rather than Tailwind classes) */}
-      <style>{`
-        .mapboxgl-ctrl-geocoder {
-          background: ${TACTICAL_SURFACE_RAISED} !important;
-          border: 1px solid ${TACTICAL_BORDER} !important;
-          border-radius: 2px !important;
-          color: ${TACTICAL_TEXT_PRIMARY} !important;
-          font-family: ui-monospace, monospace !important;
-          font-size: 12px !important;
-          box-shadow: none !important;
-          min-width: 260px !important;
-        }
-        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
-          color: ${TACTICAL_TEXT_PRIMARY} !important;
-          font-size: 12px !important;
-        }
-        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
-          color: ${TACTICAL_TEXT_MUTED} !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions {
-          background: ${TACTICAL_SURFACE_RAISED} !important;
-          border: 1px solid ${TACTICAL_BORDER} !important;
-          border-radius: 2px !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions > li > a {
-          color: ${TACTICAL_TEXT_DIM} !important;
-          font-size: 11px !important;
-        }
-        .mapboxgl-ctrl-geocoder .suggestions > .active > a,
-        .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-          background: ${TACTICAL_SURFACE_BASE} !important;
-          color: ${TACTICAL_BRAND_GOLD} !important;
-        }
-        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-search {
-          fill: ${TACTICAL_BRAND_GOLD} !important;
-        }
-        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--button {
-          background: transparent !important;
-        }
-        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-close {
-          fill: ${TACTICAL_TEXT_MUTED} !important;
-        }
-      `}</style>
+      {/* Search Box v6 — React component overlay replacing the imperative geocoder plugin */}
+      {mapboxToken && !mapLibreFallback && <MapSearchBox accessToken={mapboxToken} />}
 
       {/* Measure / Draw dropdown bodies — their launcher buttons now live in the
           Right Dock's Analysis section (measure / draw items). The bodies mount here
