@@ -505,3 +505,201 @@ export function buildDetailPopupHtml(
       ${rowsHtml}
     </div>`;
 }
+
+// ---------------------------------------------------------------------------
+// Shared mini-map / generic marker primitives (formerly client/src/utils/mapMarkers.ts)
+// Moved here so the canonical path is pages/map/utils/mapMarkers.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Reject coordinates that Mapbox would happily plot but a human reading the
+ * map would treat as a bug: NaN / Infinity, the exact (0, 0) no-fix signature
+ * ClearPath GPS emits before its first GPS lock, and out-of-globe values.
+ */
+export function isValidLngLat(lng: unknown, lat: unknown): boolean {
+  return (
+    typeof lng === 'number' && typeof lat === 'number' &&
+    Number.isFinite(lng) && Number.isFinite(lat) &&
+    !(lng === 0 && lat === 0) &&
+    Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+  );
+}
+
+export type UnitStatus =
+  | 'in_service' | 'available' | 'enroute' | 'onscene' | 'busy'
+  | 'out_of_service' | string;
+
+const _GOLD = '#d4a017';
+const _GREEN = '#22c55e';
+const _RED = '#dc2626';
+const _NEUTRAL = '#888888';
+
+function _applyStyles(el: HTMLElement, styles: Record<string, string>): void {
+  for (const [prop, value] of Object.entries(styles)) {
+    el.style.setProperty(prop, value);
+  }
+}
+
+export function unitStatusColor(status: UnitStatus | undefined): string {
+  switch (status) {
+    case 'in_service':
+    case 'available':
+      return _GREEN;
+    case 'enroute':
+    case 'onscene':
+    case 'busy':
+      return _GOLD;
+    case 'out_of_service':
+      return _NEUTRAL;
+    default:
+      return _NEUTRAL;
+  }
+}
+
+export function callPriorityColor(priority: number | string | undefined): string {
+  if (priority === undefined || priority === null) return _GOLD;
+  const p = typeof priority === 'string' ? parseInt(priority, 10) : priority;
+  if (Number.isNaN(p)) return _GOLD;
+  if (p <= 2) return _RED;
+  if (p <= 4) return _GOLD;
+  return _NEUTRAL;
+}
+
+export interface UnitMarkerOpts {
+  label?: string;
+  status?: UnitStatus;
+  heading?: number;
+}
+
+const _UNIT_GLYPH_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">'
+  + `<path d="M12 2 L19 9 L19 21 L15 21 L15 17 L9 17 L9 21 L5 21 L5 9 Z" fill="${TACTICAL_BADGE_SURFACE}"/></svg>`;
+
+/** Bold solid-badge unit marker for mini-maps: status-colored disc + vehicle glyph + label. */
+export function buildUnitMarker(opts: UnitMarkerOpts): HTMLElement {
+  const color = unitStatusColor(opts.status);
+  const el = document.createElement('div');
+  el.dataset.statusColor = color;
+  _applyStyles(el, {
+    display: 'flex',
+    'flex-direction': 'column',
+    'align-items': 'center',
+    gap: '2px',
+    cursor: 'pointer',
+  });
+
+  const badge = document.createElement('div');
+  _applyStyles(badge, {
+    width: '30px',
+    height: '30px',
+    'border-radius': '50%',
+    display: 'flex',
+    'align-items': 'center',
+    'justify-content': 'center',
+    background: color,
+    border: `2px solid ${TACTICAL_BADGE_SURFACE}`,
+    'box-shadow': `0 0 8px ${withAlpha(color, 'b3')}`,
+  });
+  badge.innerHTML = _UNIT_GLYPH_SVG;
+  el.appendChild(badge);
+
+  if (opts.label) {
+    const labelEl = document.createElement('div');
+    _applyStyles(labelEl, {
+      background: '#101820',
+      border: `1.2px solid ${color}`,
+      'border-radius': '2px',
+      padding: '1px 6px',
+      'font-size': '9px',
+      'font-weight': '700',
+      color,
+      'font-family': '"JetBrains Mono",monospace',
+      'white-space': 'nowrap',
+    });
+    labelEl.textContent = opts.label;
+    el.appendChild(labelEl);
+  }
+
+  return el;
+}
+
+export interface CallMarkerOpts {
+  priority?: number | string;
+  label?: string;
+}
+
+/** Priority-colored teardrop call marker. */
+export function buildCallMarker(opts: CallMarkerOpts): HTMLElement {
+  const color = callPriorityColor(opts.priority);
+  const el = document.createElement('div');
+  el.dataset.priorityColor = color;
+  _applyStyles(el, { display: 'block', cursor: 'pointer' });
+
+  const teardrop = document.createElement('div');
+  teardrop.setAttribute('data-role', 'marker-inner');
+  _applyStyles(teardrop, {
+    width: '20px',
+    height: '20px',
+    background: color,
+    border: '1.5px solid #000000',
+    'border-radius': '50% 50% 50% 0',
+    transform: 'rotate(-45deg)',
+    'box-shadow': '0 2px 4px rgba(0 0 0 / 0.6)',
+  });
+  el.appendChild(teardrop);
+
+  if (opts.label) {
+    const span = document.createElement('span');
+    span.textContent = opts.label;
+    _applyStyles(span, {
+      display: 'block',
+      transform: 'rotate(45deg)',
+      'text-align': 'center',
+      'font-size': '9px',
+      'font-weight': '700',
+      color: '#000',
+      'line-height': '20px',
+    });
+    teardrop.appendChild(span);
+  }
+  return el;
+}
+
+export interface DotHalo {
+  color: string;
+  width?: number;
+  shadowSpread?: number;
+}
+
+export interface DotMarkerOpts {
+  color?: string;
+  size?: number;
+  pulse?: boolean;
+  halo?: DotHalo;
+}
+
+/** Simple colored dot for sightings / track points. */
+export function buildDotMarker(opts: DotMarkerOpts): HTMLElement {
+  const color = opts.color || _GOLD;
+  const size = opts.size ?? 10;
+  const el = document.createElement('div');
+  const halo = opts.halo;
+  _applyStyles(el, {
+    width: `${size}px`,
+    height: `${size}px`,
+    'border-radius': '50%',
+    background: color,
+    border: halo ? `${halo.width ?? 2}px solid ${halo.color}` : '1px solid #000000',
+    'box-shadow': halo
+      ? `0 0 ${halo.shadowSpread ?? 8}px 2px ${halo.color}`
+      : `0 0 4px ${color}`,
+  });
+  if (opts.pulse) el.style.animation = 'rmpg-recovery-pulse 1.4s ease-in-out infinite';
+  return el;
+}
+
+export const STATUS_COLORS = {
+  online: _GREEN,      // #22c55e
+  warning: _GOLD,      // #d4a017 (brand)
+  caution: '#f59e0b',  // amber-500
+  offline: _NEUTRAL,   // #888888
+} as const;
