@@ -17,7 +17,7 @@ import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
 import { lazyRetry } from './utils/importWithRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
-import GlobalPdfViewer from './components/GlobalPdfViewer';
+const GlobalPdfViewer = lazy(() => import('./components/GlobalPdfViewer'));
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
@@ -798,7 +798,7 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
-                    <GlobalPdfViewer />
+                    <Suspense fallback={null}><GlobalPdfViewer /></Suspense>
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>
