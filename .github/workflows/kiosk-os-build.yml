@@ -101,14 +101,14 @@ jobs:
             rmpg-kiosk-build-output
 
       - name: Restore Buildroot source cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/buildroot-src
           key: buildroot-src-2024.02.9
           restore-keys: buildroot-src-
 
       - name: Restore Buildroot build-output cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/build-output
           key: buildroot-output-2024.02.9-${{ hashFiles('kiosk-linux/configs/**', 'kiosk-linux/rootfs-overlay/**') }}
