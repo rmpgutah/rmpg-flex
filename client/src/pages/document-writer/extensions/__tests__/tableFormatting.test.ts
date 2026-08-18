@@ -15,7 +15,7 @@ afterEach(() => { editor?.destroy(); editor = null; });
 
 function mkEditor(): Editor {
   return new Editor({
-    extensions: [StarterKit, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
+    extensions: [StarterKit as never, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
     content: '<p>seed</p>',
   });
 }
@@ -38,7 +38,7 @@ describe('TableFormatting', () => {
 
     // Round-trip: reload the serialized HTML into a fresh editor; attrs survive.
     const e2 = new Editor({
-      extensions: [StarterKit, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
+      extensions: [StarterKit as never, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader, TableFormatting],
       content: html,
     });
     const html2 = e2.getHTML();

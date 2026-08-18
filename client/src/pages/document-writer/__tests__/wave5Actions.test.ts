@@ -21,7 +21,7 @@ afterEach(() => { editor?.destroy(); editor = null; });
 function mk(): Editor {
   return new Editor({
     extensions: [
-      StarterKit, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
+      StarterKit as never, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       TextStyle, Color, Highlight.configure({ multicolor: true }),
     ],
