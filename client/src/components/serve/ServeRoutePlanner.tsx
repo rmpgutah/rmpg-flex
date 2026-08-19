@@ -495,6 +495,8 @@ export default function ServeRoutePlanner({
   const lastDirectionsOrderKeyRef = useRef<string>('');
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
+  const [isRouteMapRecovering, setIsRouteMapRecovering] = useState(false);
+  const [routeMapNeedsManualReload, setRouteMapNeedsManualReload] = useState(false);
   const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
@@ -788,6 +790,8 @@ export default function ServeRoutePlanner({
       routeMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'ServeRoutePlanner',
         onRebuild: () => {
+          setIsRouteMapRecovering(false);
+          setRouteMapNeedsManualReload(false);
           if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
           markersRef.current = [];
@@ -795,6 +799,9 @@ export default function ServeRoutePlanner({
           setMapReady(false);
           setRouteMapRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsRouteMapRecovering(true),
+        onContextRestored: () => setIsRouteMapRecovering(false),
+        onGiveUp: () => { setIsRouteMapRecovering(false); setRouteMapNeedsManualReload(true); },
       });
     };
 
@@ -1836,9 +1843,27 @@ export default function ServeRoutePlanner({
           {/* Right: Map */}
           <div className="flex-1 relative bg-surface-overlay">
             <div ref={mapContainerRef} className="absolute inset-0" />
-            {(!mapReady || optimizing) && (
+            {(!mapReady || optimizing) && !isRouteMapRecovering && (
               <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0 0 0 / 0.5)]">
                 <Loader2 size={24} className="animate-spin text-brand-400" />
+              </div>
+            )}
+            {isRouteMapRecovering && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 size={20} className="animate-spin text-brand-400" />
+                  <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+                </div>
+              </div>
+            )}
+            {routeMapNeedsManualReload && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+                <div className="flex flex-col items-center gap-2 text-center px-4">
+                  <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+                  <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+                    RELOAD PAGE
+                  </button>
+                </div>
               </div>
             )}
           </div>
