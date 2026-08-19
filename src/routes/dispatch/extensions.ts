@@ -138,6 +138,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
     const body = await c.req.json().catch(() => ({} as any));
@@ -150,7 +151,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user.role);
-    if (!canForce && unit.officer_id !== user.id) {
+    if (!canForce && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
@@ -484,6 +485,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
 
@@ -498,7 +500,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const supervisorRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
-    if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
+    if (!supervisorRoles.includes(user.role) && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
     // off_duty / out_of_service transitions must use POST /dispatch/duty/end which
