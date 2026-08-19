@@ -869,9 +869,10 @@ gps.get('/speed-violations', requireRole(...READ_ROLES), async (c) => {
 
 // POST /dispatch/gps/speed-violations/:id/acknowledge
 gps.post('/speed-violations/:id/acknowledge', requireRole(...WRITE_ROLES), async (c) => {
-  // Speed violations are derived from breadcrumbs, not a separate table.
-  // Acknowledge is a no-op until we add a speed_violation_acks table.
-  return c.json({ success: true, id: c.req.param('id') });
+  // speed_violation_acks table not yet provisioned — return 501 rather than
+  // false success so the supervisor console doesn't mark violations as
+  // acknowledged when nothing was actually written.
+  return c.json({ error: 'Speed violation acknowledgement not yet implemented', code: 'NOT_IMPLEMENTED' }, 501);
 });
 
 // GET /dispatch/gps/pursuit-segments — recent pursuit track segments.

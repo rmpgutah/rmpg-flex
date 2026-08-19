@@ -1154,7 +1154,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     // busy on a call that's already gone from every active view, and
     // recommended-units/closest-unit kept skipping them as unavailable.
     // Mirrors the SQL unassign-unit already uses per-unit.
-    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (TERMINAL_STATUSES.has(status)) {
       try {
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
@@ -1169,7 +1169,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     }
 
     // ── Stack group: leave on terminal status ──
-    if (['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+    if (['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split'].includes(status)) {
       try {
         await leaveStackGroup(db, parseInt(id, 10));
       } catch (stackErr) {
@@ -1588,7 +1588,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       const conflictingCall = await queryFirst<{ call_number: string; status: string }>(
         db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
       );
-      if (conflictingCall && conflictingCall.status !== 'closed' && conflictingCall.status !== 'cancelled') {
+      const CONFLICT_TERMINAL = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
+      if (conflictingCall && !CONFLICT_TERMINAL.has(conflictingCall.status)) {
         return c.json({
           error: 'unit_already_dispatched',
           message: `Unit is already assigned to call ${conflictingCall.call_number}. Unassign it there first.`,
@@ -1794,6 +1795,16 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
       created.push(childId);
     }
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
+    // Release units assigned to the now-split parent — mirrors the unit-release
+    // block in POST /:id/status, which this handler bypasses.
+    try {
+      const assignedIdsForSplit = JSON.parse(String(parent.assigned_unit_ids || '[]')) as number[];
+      if (Array.isArray(assignedIdsForSplit) && assignedIdsForSplit.length > 0) {
+        await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id = ?`, id);
+        await executeInChunks(db, assignedIdsForSplit,
+          (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
+      }
+    } catch (unitErr) { log.error('[dispatch] failed to release units after split', { callId: id }, unitErr); }
     if (userId) await execute(db, `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
     return c.json({ success: true, parent_id: id, child_ids: created });
   } catch (err) {
@@ -1833,7 +1844,11 @@ calls.delete('/templates/:id', requireRole('officer', 'dispatcher', 'supervisor'
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
     const id = parseInt(c.req.param('id') || '0', 10);
-    await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
+    const r = await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
+    if ((r.meta.changes ?? 0) === 0) {
+      const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM call_templates WHERE id = ?', id);
+      return c.json({ error: exists ? 'Not authorized' : 'Template not found' }, exists ? 403 : 404);
+    }
     return c.json({ success: true });
   } catch (err) {
     log.error('DELETE /templates/:id failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Delete failed' }, 500); }
