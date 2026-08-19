@@ -58,7 +58,7 @@ async function getOfficerUserIdsForCall(
 
 // GET /dispatch/calls/:id/persons — joined with persons table so the
 // client renders name/dob/phone without a second fetch per row.
-links.get('/calls/:id/persons', async (c) => {
+links.get('/calls/:id/persons', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -337,7 +337,7 @@ links.post('/calls/:id/persons/quick-add', requireRole('dispatcher', 'supervisor
 // VEHICLES
 // ═══════════════════════════════════════════════════════════════════
 
-links.get('/calls/:id/vehicles', async (c) => {
+links.get('/calls/:id/vehicles', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -655,7 +655,7 @@ links.delete('/calls/:id/property', requireRole('dispatcher', 'supervisor', 'man
 // ═══════════════════════════════════════════════════════════════════
 
 // GET /dispatch/business-search?q= — typeahead against the businesses table.
-links.get('/business-search', async (c) => {
+links.get('/business-search', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const q = (c.req.query('q') || '').trim().toLowerCase();
   if (q.length < 2) return c.json([]);
@@ -671,7 +671,7 @@ links.get('/business-search', async (c) => {
 });
 
 // GET /dispatch/calls/:id/businesses — joined with businesses for one-fetch render.
-links.get('/calls/:id/businesses', async (c) => {
+links.get('/calls/:id/businesses', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -778,10 +778,10 @@ links.patch('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervis
 });
 
 // ── Person Risk Scoring ──────────────────────────────────────
-links.get('/persons/:id/risk-score', async (c) => {
+links.get('/persons/:id/risk-score', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const personId = parseInt(c.req.param('id'), 10);
+    const personId = parseInt(c.req.param('id') || '0', 10);
     let score = 0;
     const flags: string[] = [];
     const warrantCount = await queryFirst<{ n: number }>(
@@ -803,9 +803,9 @@ links.get('/persons/:id/risk-score', async (c) => {
 });
 
 // ── Protection Order Check ───────────────────────────────────
-links.get('/persons/:id/protection-orders', async (c) => {
+links.get('/persons/:id/protection-orders', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const personId = parseInt(c.req.param('id'), 10);
+  const personId = parseInt(c.req.param('id') || '0', 10);
   try {
     const orders = await query<{ case_number: string; status: string }>(
       db, "SELECT case_number, status FROM protection_orders WHERE respondent_person_id = ? AND status = 'active'", personId,
