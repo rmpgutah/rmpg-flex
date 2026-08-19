@@ -4868,6 +4868,123 @@ guardedHandle('wifi:get-detail', async () => {
 guardedHandle('wifi:scan-networks', async () => {
   if (process.platform !== 'win32') return [];
   const { execSync } = require('child_process');
+
+  // OUI → vendor name (first 6 uppercase hex chars of BSSID, no separators)
+  const OUI_VENDOR = {
+    // Cisco
+    '000142':'Cisco','0001C7':'Cisco','000164':'Cisco','0002FC':'Cisco','000617':'Cisco',
+    '001601':'Cisco','0017E3':'Cisco','001A2F':'Cisco','001B54':'Cisco','001CBC':'Cisco',
+    '001DBC':'Cisco','002155':'Cisco','005079':'Cisco','3437C9':'Cisco','38ED18':'Cisco',
+    '40F4EC':'Cisco','4400CA':'Cisco','70105C':'Cisco','74A02F':'Cisco','88F031':'Cisco',
+    'A066F0':'Cisco','B42150':'Cisco','B83A5A':'Cisco',
+    // Cisco Meraki
+    '002686':'Cisco Meraki','00272E':'Cisco Meraki','887DC3':'Cisco Meraki',
+    'E0CB4E':'Cisco Meraki','0C8112':'Cisco Meraki','AC1776':'Cisco Meraki',
+    'DC9FDB':'Cisco Meraki','34565F':'Cisco Meraki','4487FC':'Cisco Meraki','88DC96':'Cisco Meraki',
+    // Ubiquiti
+    '000427':'Ubiquiti','0418D6':'Ubiquiti','0401FC':'Ubiquiti','243A07':'Ubiquiti',
+    '44D9E7':'Ubiquiti','68D79A':'Ubiquiti','744441':'Ubiquiti','788A20':'Ubiquiti',
+    '802AA8':'Ubiquiti','F09FC2':'Ubiquiti','FCECDA':'Ubiquiti','18E829':'Ubiquiti',
+    'B4FBE4':'Ubiquiti','E0637F':'Ubiquiti',
+    // TP-Link
+    '000AEB':'TP-Link','001EE5':'TP-Link','286ED4':'TP-Link','3C1E04':'TP-Link',
+    '50BD5F':'TP-Link','50C7BF':'TP-Link','5054AB':'TP-Link','64700E':'TP-Link',
+    '6C5C3D':'TP-Link','70C94E':'TP-Link','7C8BCA':'TP-Link','90F652':'TP-Link',
+    'A04080':'TP-Link','ACC1EE':'TP-Link','B0487A':'TP-Link','C4E984':'TP-Link',
+    'D46E5C':'TP-Link','E8DE27':'TP-Link','EC086B':'TP-Link','F4F26D':'TP-Link',
+    '1CAFC0':'TP-Link','105BAD':'TP-Link',
+    // Netgear
+    '001B2F':'Netgear','001E2A':'Netgear','001FA7':'Netgear','0022B0':'Netgear',
+    '00266C':'Netgear','00F76F':'Netgear','20E52A':'Netgear','2C3033':'Netgear',
+    '4C60DE':'Netgear','6CC217':'Netgear','9C3DCF':'Netgear','A021B7':'Netgear',
+    'B0B982':'Netgear','C03F0E':'Netgear','E091F5':'Netgear','E4F4C6':'Netgear',
+    // ASUS
+    '000E35':'ASUS','001A92':'ASUS','10BF48':'ASUS','1C87F4':'ASUS','2C56DC':'ASUS',
+    '2CB43A':'ASUS','305A3A':'ASUS','382C4A':'ASUS','40167E':'ASUS','50465D':'ASUS',
+    '54A050':'ASUS','6045CB':'ASUS','7062B8':'ASUS','788CB5':'ASUS','AC220B':'ASUS',
+    'BC9680':'ASUS','F83202':'ASUS',
+    // D-Link
+    '001195':'D-Link','001346':'D-Link','00155D':'D-Link','001CF0':'D-Link',
+    '001E58':'D-Link','00218A':'D-Link','002401':'D-Link','00264D':'D-Link',
+    '0027E3':'D-Link','14D64D':'D-Link','1C7EE5':'D-Link','28107B':'D-Link',
+    '340804':'D-Link','40F3E8':'D-Link','6400F1':'D-Link','748BF6':'D-Link',
+    '84C9B2':'D-Link','9094E4':'D-Link','A4BA76':'D-Link','BC0F9A':'D-Link',
+    // Apple (AirPort, Time Capsule)
+    '000A27':'Apple','001124':'Apple','001451':'Apple','0017F2':'Apple','001B63':'Apple',
+    '001CB3':'Apple','001D4F':'Apple','001E52':'Apple','002500':'Apple','0025BC':'Apple',
+    '003065':'Apple','0C3E9F':'Apple','1040F3':'Apple','1C9179':'Apple','2078F0':'Apple',
+    '28CFE9':'Apple','34159E':'Apple','40A6D9':'Apple','6C4008':'Apple','7C11BE':'Apple',
+    '84A134':'Apple','AC3C0B':'Apple','C8699C':'Apple','D030AD':'Apple','A86DDC':'Apple',
+    // Aruba / HPE
+    '000B86':'Aruba','001A1E':'Aruba','002369':'Aruba','00248A':'Aruba','0026CB':'Aruba',
+    '10BBFD':'Aruba','204C03':'Aruba','24DEC6':'Aruba','2C69BA':'Aruba','40E3D6':'Aruba',
+    '5CDC96':'Aruba','84D47E':'Aruba','9C1C12':'Aruba','ACA31E':'Aruba','B45D50':'Aruba',
+    'D8C7C8':'Aruba','F05C19':'Aruba',
+    // Ruckus / CommScope
+    '001392':'Ruckus','0024C4':'Ruckus','10B31F':'Ruckus','20B35A':'Ruckus',
+    '2CA802':'Ruckus','54EC2F':'Ruckus','60D02C':'Ruckus','DC82B2':'Ruckus',
+    // Google (Nest WiFi, OnHub)
+    '001A11':'Google','54607E':'Google','A4770A':'Google','C8E3B8':'Google',
+    'F88FCA':'Google','3CA35B':'Google',
+    // Amazon (Eero, Echo)
+    '28CCFF':'Amazon Eero','3CCD5B':'Amazon Eero','F08175':'Amazon Eero',
+    '6837E9':'Amazon Echo','AC63BE':'Amazon Echo','F0272D':'Amazon Echo',
+    // MikroTik
+    '000C42':'MikroTik','2CC8D1':'MikroTik','488F5A':'MikroTik','4C5E0C':'MikroTik',
+    '64D154':'MikroTik','6C3B6B':'MikroTik','744D28':'MikroTik','8C882B':'MikroTik',
+    'B869F4':'MikroTik','CC2DE0':'MikroTik','D4CA6D':'MikroTik','DC2C6E':'MikroTik',
+    // Linksys
+    '000625':'Linksys','000C41':'Linksys','000E08':'Linksys','000F66':'Linksys',
+    '001217':'Linksys','20AA4B':'Linksys','48F8B3':'Linksys','68A3C4':'Linksys',
+    // Belkin
+    '001150':'Belkin','001CDF':'Belkin','081748':'Belkin','203A07':'Belkin',
+    '944452':'Belkin','EC1A59':'Belkin',
+    // Fortinet
+    '000C19':'Fortinet','0009F0':'Fortinet','706F67':'Fortinet','906CAC':'Fortinet',
+    // Juniper Mist
+    '5C5B35':'Juniper Mist','A8D3F7':'Juniper Mist',
+    // Extreme Networks
+    '001F45':'Extreme','58924A':'Extreme','0004F6':'Extreme',
+    // Huawei
+    '000E5E':'Huawei','001882':'Huawei','001ECA':'Huawei','0022A1':'Huawei',
+    '002568':'Huawei','086070':'Huawei','10BE81':'Huawei','1C8E5C':'Huawei',
+    '24DFDD':'Huawei','2C4D54':'Huawei','3C47C9':'Huawei','40CBC0':'Huawei',
+    '483C0C':'Huawei','54137B':'Huawei','607B66':'Huawei','703032':'Huawei',
+    '70BA0D':'Huawei','748177':'Huawei','784C0D':'Huawei','80717A':'Huawei',
+    '84742A':'Huawei','905E86':'Huawei','A4BEEF':'Huawei','B083FE':'Huawei',
+    'C8941F':'Huawei','D06F48':'Huawei','D4F9A1':'Huawei','DC727E':'Huawei',
+    'F48E92':'Huawei','F809CF':'Huawei',
+    // Samsung (smart home APs)
+    '000D00':'Samsung','001599':'Samsung','0015B9':'Samsung','0017D5':'Samsung',
+    '001E7D':'Samsung','002167':'Samsung','0024E9':'Samsung','002566':'Samsung',
+    'A0070B':'Samsung','B412E6':'Samsung','CC07AB':'Samsung','E8039A':'Samsung',
+    // Motorola
+    '000A28':'Motorola','0004F3':'Motorola','00E0FC':'Motorola',
+  };
+
+  // Channel → frequency in MHz (no connection required)
+  const channelToMhz = (ch, radioType) => {
+    if (!ch) return null;
+    if (radioType && /6[Ee]/.test(radioType)) return ch === 2 ? 5935 : 5950 + ch * 5;
+    if (ch >= 1  && ch <= 13)  return 2407 + ch * 5;
+    if (ch === 14) return 2484;
+    if (ch >= 32 && ch <= 177) return 5000 + ch * 5;
+    return null;
+  };
+
+  // Extract vendor from BSSID OUI
+  const ouiVendor = (bssid) => {
+    if (!bssid) return null;
+    const oui = bssid.toUpperCase().replace(/[:\-]/g, '').slice(0, 6);
+    return OUI_VENDOR[oui] ?? null;
+  };
+
+  // Parse a rates string like "1 2 5.5 11" into a sorted numeric array
+  const parseRates = (str) => {
+    if (!str) return [];
+    return str.trim().split(/\s+/).map(Number).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+  };
+
   try {
     const out = execSync(
       'netsh wlan show networks mode=Bssid',
@@ -4877,41 +4994,68 @@ guardedHandle('wifi:scan-networks', async () => {
     // Each SSID block starts with "SSID N :"
     const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
     const networks = blocks.map(block => {
-      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
-      const authM  = block.match(/Authentication +: (.+)/m);
-      const encM   = block.match(/Encryption +: (.+)/m);
-      const ssid   = ssidM  ? ssidM[1].trim()  : '';
-      const auth   = authM  ? authM[1].trim()  : 'Unknown';
-      const enc    = encM   ? encM[1].trim()   : 'Unknown';
+      const ssidM = block.match(/^SSID \d+ +: (.+)/m);
+      const authM = block.match(/Authentication +: (.+)/m);
+      const encM  = block.match(/Encryption +: (.+)/m);
+      const ntM   = block.match(/Network type +: (.+)/m);
+      const ssid  = ssidM ? ssidM[1].trim() : '';
+      const auth  = authM ? authM[1].trim() : 'Unknown';
+      const enc   = encM  ? encM[1].trim()  : 'Unknown';
+      const networkType = ntM ? ntM[1].trim() : null;
+      const isHidden = (ssid === '');
 
       // Parse each BSSID sub-block
       const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
       const bssids = bssidBlocks.map(bb => {
-        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
-        const sM  = bb.match(/Signal +: (\d+)%/m);
-        const rtM = bb.match(/Radio type +: (.+)/m);
-        const chM = bb.match(/Channel +: (\d+)/m);
-        return {
-          bssid:     bM  ? bM[1].trim()         : null,
-          signal:    sM  ? parseInt(sM[1], 10)  : 0,
-          radioType: rtM ? rtM[1].trim()         : null,
-          channel:   chM ? parseInt(chM[1], 10) : null,
-        };
+        const bM   = bb.match(/BSSID \d+ +: (.+)/m);
+        const sM   = bb.match(/Signal +: (\d+)%/m);
+        const rtM  = bb.match(/Radio type +: (.+)/m);
+        const chM  = bb.match(/Channel +: (\d+)/m);
+        const brM  = bb.match(/Basic rates \(Mbps\) +: (.+)/m);
+        const orM  = bb.match(/Other rates \(Mbps\) +: (.+)/m);
+        const bssid    = bM  ? bM[1].trim()         : null;
+        const signal   = sM  ? parseInt(sM[1], 10)  : 0;
+        const radioType = rtM ? rtM[1].trim()        : null;
+        const channel  = chM ? parseInt(chM[1], 10) : null;
+        const basicRates = parseRates(brM?.[1]);
+        const otherRates = parseRates(orM?.[1]);
+        const allRates = [...new Set([...basicRates, ...otherRates])].sort((a, b) => a - b);
+        const maxRateMbps = allRates.length ? allRates[allRates.length - 1] : null;
+        // Windows quality% → approximate dBm: quality = 2*(dBm+100), so dBm = quality/2 - 100
+        const signalDbm = Math.round(signal / 2 - 100);
+        const frequencyMhz = channelToMhz(channel, radioType);
+        const vendor = ouiVendor(bssid);
+        return { bssid, signal, signalDbm, radioType, channel, frequencyMhz, basicRates, otherRates, maxRateMbps, vendor };
       });
 
-      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
-      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
+      const maxSignal  = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
+      const bestBssid  = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
+      const channel    = bestBssid.channel ?? null;
+      const radioType  = bestBssid.radioType ?? null;
+      const frequencyMhz = bestBssid.frequencyMhz ?? null;
+      const signalDbm  = bestBssid.signalDbm ?? null;
+      const vendor     = bestBssid.vendor ?? null;
+      const maxRateMbps = bestBssid.maxRateMbps ?? null;
+      const basicRates  = bestBssid.basicRates ?? [];
+      const otherRates  = bestBssid.otherRates ?? [];
 
-      const channel = bestBssid.channel ?? null;
       const band = (() => {
         if (!channel) return null;
-        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
+        if (radioType && /6[Ee]/.test(radioType)) return '6 GHz';
+        if (channel >= 1  && channel <= 14)  return '2.4 GHz';
         if (channel >= 32 && channel <= 177) return '5 GHz';
         return null;
       })();
 
-      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
-    }).filter(n => n.ssid);
+      return {
+        ssid, auth, enc, networkType, isHidden,
+        signal: maxSignal, signalDbm, frequencyMhz,
+        channel, band, radioType, vendor,
+        maxRateMbps, basicRates, otherRates,
+        bssidCount: bssids.length,
+        bssids,
+      };
+    }).filter(n => n.ssid || n.isHidden);
 
     return networks;
   } catch { return []; }
@@ -4954,6 +5098,350 @@ guardedHandle('wifi:disconnect', async () => {
     return { ok: false, reason: err.message };
   }
 });
+
+// ── Device Capture Scanner ────────────────────────────────────
+//
+// Passively and actively enumerates surrounding devices without
+// connecting to any of them.  Protocols:
+//   ARP/NDP  — layer-2 neighbor cache (no traffic sent)
+//   Bluetooth — PnP device tree (paired + cached BT/BT-LE)
+//   SSDP     — UPnP multicast M-SEARCH  (239.255.255.250:1900)
+//   mDNS     — Bonjour/DNS-SD multicast  (224.0.0.251:5353)
+//   NetBIOS  — nbtstat name resolution
+//
+// Every scan result is appended to a persistent JSON log stored in
+// the Electron userData directory and survives restarts.
+
+(function _deviceScannerBlock() {
+  const dgram  = require('dgram');
+  const _fs    = require('fs');
+  const _path  = require('path');
+  const _os    = require('os');
+
+  // ── OUI vendor helper (reuses the WiFi table already in scope) ──
+  const _oui = (mac) => {
+    if (!mac) return null;
+    const key = mac.toUpperCase().replace(/[:\-]/g, '').slice(0, 6);
+    return OUI_VENDOR[key] || null;
+  };
+
+  // ── Persistent capture log ────────────────────────────────────
+  const LOG_PATH = _path.join(app.getPath('userData'), 'device-capture.json');
+  let _captureLog = [];
+  try { _captureLog = JSON.parse(_fs.readFileSync(LOG_PATH, 'utf8')); } catch { _captureLog = []; }
+
+  function _saveLog() {
+    try { _fs.writeFileSync(LOG_PATH, JSON.stringify(_captureLog)); } catch {}
+  }
+
+  function _pushCapture(scanType, devices, meta = {}) {
+    const entry = {
+      id:          `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp:   new Date().toISOString(),
+      scanType,
+      deviceCount: devices.length,
+      devices,
+      ...meta,
+    };
+    _captureLog.unshift(entry);
+    if (_captureLog.length > 2000) _captureLog.length = 2000;
+    _saveLog();
+    return entry;
+  }
+
+  // ── ARP / NDP neighbor cache ─────────────────────────────────
+  function _parseArpOutput(text) {
+    const out = []; const seen = new Set(); let iface = null;
+    for (const raw of text.split('\n')) {
+      const im = raw.match(/Interface:\s+([\d.]+)/);
+      if (im) { iface = im[1]; continue; }
+      const em = raw.trim().match(/^([\d.a-fA-F:]+)\s+([\w\-:]+)\s+(\w+)/);
+      if (!em) continue;
+      const [, ip, rawMac, type] = em;
+      if (/^ff/i.test(rawMac)) continue;
+      const mac = rawMac.toUpperCase().replace(/-/g, ':');
+      if (seen.has(mac)) continue; seen.add(mac);
+      out.push({ ip, mac, type, interface: iface, vendor: _oui(mac), protocol: 'ARP' });
+    }
+    return out;
+  }
+
+  guardedHandle('devices:scan-arp', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    const { execSync: _ex } = require('child_process');
+    try {
+      const arpText = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
+      const devices = _parseArpOutput(arpText);
+
+      // Also pull IPv6 neighbor cache via PowerShell
+      try {
+        const njson = _ex(
+          'powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"',
+          { encoding: 'utf8', timeout: 10000, windowsHide: true }
+        );
+        const arr  = JSON.parse(njson);
+        const narr = Array.isArray(arr) ? arr : [arr];
+        const seen2 = new Set(devices.map(d => d.mac));
+        for (const n of narr) {
+          if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
+          const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
+          if (seen2.has(mac)) continue; seen2.add(mac);
+          devices.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
+        }
+      } catch {}
+
+      const entry = _pushCapture('arp', devices, { method: 'arp -a + Get-NetNeighbor' });
+      return { ok: true, entry };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── Bluetooth / BT-LE (PnP device tree) ──────────────────────
+  function _parseBtPnp(json1, json2) {
+    const out = []; const seen = new Set();
+    for (const raw of [json1, json2]) {
+      let arr;
+      try { arr = JSON.parse(raw); } catch { continue; }
+      if (!Array.isArray(arr)) arr = arr ? [arr] : [];
+      for (const d of arr) {
+        const name  = d.FriendlyName || d.Name || 'Unknown Device';
+        const hwid  = Array.isArray(d.HardwareID) ? d.HardwareID[0] : (d.HardwareID || '');
+        const key   = hwid || name;
+        if (seen.has(key)) continue; seen.add(key);
+        // Extract MAC from BTHENUM\DEV_AABBCCDDEEFF style hardware ID
+        let mac = null;
+        const mm = hwid.match(/DEV_([0-9A-Fa-f]{12})/i);
+        if (mm) mac = mm[1].toUpperCase().match(/.{2}/g).join(':');
+        out.push({
+          name,
+          manufacturer: d.Manufacturer || null,
+          hardwareId:   hwid || null,
+          status:       d.Status || null,
+          mac,
+          vendor:       mac ? _oui(mac) : (d.Manufacturer || null),
+          protocol:     'Bluetooth',
+        });
+      }
+    }
+    return out;
+  }
+
+  guardedHandle('devices:scan-bluetooth', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    const { execSync: _ex } = require('child_process');
+    let j1 = '[]', j2 = '[]';
+    try {
+      j1 = _ex(
+        'powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"',
+        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+      );
+    } catch {}
+    try {
+      j2 = _ex(
+        'powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"',
+        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+      );
+    } catch {}
+    const devices = _parseBtPnp(j1, j2);
+    const entry = _pushCapture('bluetooth', devices, { method: 'PnP Bluetooth + BTHLEDevice enumeration' });
+    return { ok: true, entry };
+  });
+
+  // ── SSDP / UPnP multicast discovery ──────────────────────────
+  function _ssdpScan(ms = 5000) {
+    return new Promise((resolve) => {
+      const ADDR  = '239.255.255.250';
+      const PORT  = 1900;
+      const PROBE = ['M-SEARCH * HTTP/1.1', `HOST: ${ADDR}:${PORT}`, 'MAN: "ssdp:discover"', 'MX: 3', 'ST: ssdp:all', '', ''].join('\r\n');
+      const sock  = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      const found = new Map();
+
+      sock.on('message', (msg, ri) => {
+        const text     = msg.toString();
+        const location = text.match(/LOCATION:\s*(.+)/i)?.[1]?.trim() || null;
+        const usn      = text.match(/USN:\s*(.+)/i)?.[1]?.trim() || null;
+        const st       = text.match(/ST:\s*(.+)/i)?.[1]?.trim() || null;
+        const server   = text.match(/SERVER:\s*(.+)/i)?.[1]?.trim() || null;
+        const cacheCtl = text.match(/CACHE-CONTROL:\s*(.+)/i)?.[1]?.trim() || null;
+        const key      = location || ri.address;
+        if (!found.has(key)) found.set(key, { ip: ri.address, port: ri.port, location, usn, st, server, cacheControl: cacheCtl, protocol: 'SSDP/UPnP' });
+      });
+      sock.on('error', () => { try { sock.close(); } catch {} resolve([...found.values()]); });
+      sock.bind(0, () => {
+        try { sock.setBroadcast(true); } catch {}
+        const buf = Buffer.from(PROBE);
+        sock.send(buf, 0, buf.length, PORT, ADDR, () => {});
+      });
+      setTimeout(() => { try { sock.close(); } catch {} resolve([...found.values()]); }, ms);
+    });
+  }
+
+  guardedHandle('devices:scan-ssdp', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    try {
+      const devices = await _ssdpScan(5000);
+      const entry = _pushCapture('ssdp', devices, { method: 'SSDP M-SEARCH multicast → 239.255.255.250:1900' });
+      return { ok: true, entry };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── mDNS / Bonjour / DNS-SD ───────────────────────────────────
+  function _mdnsScan(ms = 5000) {
+    return new Promise((resolve) => {
+      const ADDR = '224.0.0.251';
+      const PORT = 5353;
+      // Minimal DNS query: _services._dns-sd._udp.local PTR QU
+      const labels = '_services._dns-sd._udp.local'.split('.');
+      const q = [0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00];
+      for (const l of labels) { q.push(l.length); for (const c of l) q.push(c.charCodeAt(0)); }
+      q.push(0x00, 0x00, 0x0C, 0x80, 0x01); // root + PTR + QU
+      const query = Buffer.from(q);
+
+      const sock  = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      const found = new Map();
+
+      sock.on('message', (msg, ri) => {
+        const key = ri.address;
+        if (found.has(key)) return;
+        // Best-effort: extract first readable DNS label sequence
+        let name = null;
+        try {
+          let o = 12;
+          const qs = (msg[4] << 8) | msg[5];
+          for (let i = 0; i < qs && o < msg.length; i++) {
+            while (o < msg.length && msg[o] !== 0) {
+              if ((msg[o] & 0xC0) === 0xC0) { o += 2; break; }
+              o += msg[o] + 1;
+            }
+            if (msg[o] === 0) o++;
+            o += 4; // type + class
+          }
+          const ans = (msg[6] << 8) | msg[7];
+          for (let a = 0; a < ans && o < msg.length; a++) {
+            let seg = '';
+            while (o < msg.length && msg[o] !== 0) {
+              if ((msg[o] & 0xC0) === 0xC0) { o += 2; break; }
+              const len = msg[o++];
+              seg += (seg ? '.' : '') + msg.slice(o, o + len).toString('utf8');
+              o += len;
+            }
+            if (msg[o] === 0) o++;
+            if (seg && !name) name = seg;
+            o += 8; // type + class + TTL
+            const rd = (msg[o] << 8) | msg[o + 1]; o += 2 + rd;
+          }
+        } catch {}
+        found.set(key, { ip: ri.address, hostname: name, protocol: 'mDNS' });
+      });
+      sock.on('error', () => { try { sock.close(); } catch {} resolve([...found.values()]); });
+      sock.bind(PORT, () => {
+        try { sock.addMembership(ADDR); } catch {}
+        sock.send(query, 0, query.length, PORT, ADDR, () => {});
+      });
+      setTimeout(() => { try { sock.close(); } catch {} resolve([...found.values()]); }, ms);
+    });
+  }
+
+  guardedHandle('devices:scan-mdns', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    try {
+      const devices = await _mdnsScan(5000);
+      const entry = _pushCapture('mdns', devices, { method: 'mDNS _services._dns-sd._udp.local query → 224.0.0.251:5353' });
+      return { ok: true, entry };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── NetBIOS name table ────────────────────────────────────────
+  guardedHandle('devices:scan-netbios', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    const { execSync: _ex } = require('child_process');
+    const devices = []; const seen = new Set();
+    let raw = '';
+    try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+    for (const line of raw.split('\n')) {
+      // Resolved: IP  <Name>  <type>  via <method>
+      const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
+      if (!m) continue;
+      const [, ip, name] = m;
+      if (seen.has(ip)) continue; seen.add(ip);
+      devices.push({ ip, name, protocol: 'NetBIOS' });
+    }
+    const entry = _pushCapture('netbios', devices, { method: 'nbtstat -r', raw: raw.slice(0, 3000) });
+    return { ok: true, entry };
+  });
+
+  // ── Full sweep — all protocols in parallel ────────────────────
+  guardedHandle('devices:scan-all', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    const { execSync: _ex } = require('child_process');
+    const startTs = new Date().toISOString();
+
+    const [arpR, btR, ssdpR, mdnsR, nbR] = await Promise.allSettled([
+      // ARP
+      (async () => {
+        const t = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
+        return _parseArpOutput(t).map(d => ({ ...d, scanMethod: 'ARP' }));
+      })(),
+      // Bluetooth
+      (async () => {
+        let j1 = '[]', j2 = '[]';
+        try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+        return _parseBtPnp(j1, j2).map(d => ({ ...d, scanMethod: 'Bluetooth' }));
+      })(),
+      // SSDP
+      _ssdpScan(4500).then(ds => ds.map(d => ({ ...d, scanMethod: 'SSDP' }))),
+      // mDNS
+      _mdnsScan(4500).then(ds => ds.map(d => ({ ...d, scanMethod: 'mDNS' }))),
+      // NetBIOS
+      (async () => {
+        const devs = []; const seen = new Set(); let raw = '';
+        try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 12000, windowsHide: true }); } catch {}
+        for (const line of raw.split('\n')) {
+          const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
+          if (!m || seen.has(m[1])) continue; seen.add(m[1]);
+          devs.push({ ip: m[1], name: m[2], protocol: 'NetBIOS', scanMethod: 'NetBIOS' });
+        }
+        return devs;
+      })(),
+    ]);
+
+    const allDevices = [arpR, btR, ssdpR, mdnsR, nbR]
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => r.value);
+
+    const entry = _pushCapture('full-sweep', allDevices, {
+      method: 'ARP + Bluetooth + SSDP + mDNS + NetBIOS',
+      startTs,
+      protocols: {
+        arp:       arpR.status,
+        bluetooth: btR.status,
+        ssdp:      ssdpR.status,
+        mdns:      mdnsR.status,
+        netbios:   nbR.status,
+      },
+    });
+    return { ok: true, entry };
+  });
+
+  // ── Capture log management ────────────────────────────────────
+  guardedHandle('devices:get-log',    async () => ({ ok: true, log: _captureLog }));
+  guardedHandle('devices:clear-log',  async () => { _captureLog = []; _saveLog(); return { ok: true }; });
+  guardedHandle('devices:delete-entry', async (_event, { id }) => {
+    _captureLog = _captureLog.filter(e => e.id !== id);
+    _saveLog();
+    return { ok: true };
+  });
+  guardedHandle('devices:export-log', async () => {
+    const { dialog: _dlg } = require('electron');
+    const res = await _dlg.showSaveDialog({
+      title: 'Export Device Capture Log',
+      defaultPath: `rmpg-device-capture-${Date.now()}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
+    });
+    if (res.canceled) return { ok: false, reason: 'cancelled' };
+    try { _fs.writeFileSync(res.filePath, JSON.stringify(_captureLog, null, 2)); return { ok: true, path: res.filePath }; }
+    catch (e) { return { ok: false, reason: e.message }; }
+  });
+})();
 
 // ── System: set OS master volume ──────────────────────────────
 guardedHandle('system:set-volume', async (_event, level) => {
