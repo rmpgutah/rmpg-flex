@@ -1162,11 +1162,6 @@ export default function Layout() {
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
-              {/* 2: Tighter line-height on app name for compact branding */}
-              <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
-              </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
