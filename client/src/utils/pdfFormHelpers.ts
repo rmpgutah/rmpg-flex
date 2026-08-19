@@ -8,7 +8,7 @@
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor, isEmailOrUrlPdfValue } from './pdfGenerator';
-import { getCachedSealBase64, getCachedLogoLight } from './pdfAssets';
+import { getCachedSealBase64, getCachedLogoLight, getCachedLogoPrint } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 import {
@@ -623,13 +623,18 @@ export function drawNibrsHeader(
     // agency identity stack (state · name · ORI), a boxed metadata grid at
     // the right (FORM / DATE / SUBJECT-or-CASE), a heavy separating rule,
     // then a gray report-type band. Reads like a real LE records form.
-    const sealSize = LAYOUT.SEAL_SIZE;
-    const hasSeal = !!resolvedSeal;
+    // Black RMPG wordmark — transparent bg, fits cleanly on white paper.
+    // Prefer the cached print logo (rmpg-logo-black.png) over the circular
+    // seal so the corner reads as the branded horizontal wordmark.
+    const printLogo = getCachedLogoPrint() ?? resolvedSeal;
+    const logoW = 52;   // mm — horizontal wordmark at ~3:1 aspect
+    const logoH = 17;
+    const hasSeal = !!printLogo;
     if (hasSeal) {
-      try { doc.addImage(resolvedSeal!, 'PNG', margin, y + 1, sealSize, sealSize); }
+      try { doc.addImage(printLogo!, 'PNG', margin, y + 1, logoW, logoH); }
       catch { /* skip if image fails */ }
     }
-    const textX = margin + (hasSeal ? sealSize + 4 : 0);
+    const textX = margin + (hasSeal ? logoW + 4 : 0);
 
     // Right metadata box rows (only those with data).
     const boxW = 62;

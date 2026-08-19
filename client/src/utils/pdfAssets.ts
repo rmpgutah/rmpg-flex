@@ -308,7 +308,7 @@ export function drawLogoFadeBackground(
   logoDataUrl: string,
   opts: { opacity?: number; sizeMm?: number; aspect?: 'seal' | 'banner' } = {},
 ): void {
-  const opacity  = opts.opacity ?? 0.045;
+  const opacity  = opts.opacity ?? 0.055;
   const sizeMm   = opts.sizeMm  ?? 90;
   const aspect   = opts.aspect  ?? 'seal';
   const pageW    = doc.internal.pageSize.getWidth();
@@ -342,12 +342,11 @@ export function applyLogoFadeToAllPages(
   logoDataUrl: string,
   opts: { opacity?: number; sizeMm?: number; aspect?: 'seal' | 'banner' } = {},
 ): void {
-  // Use the cached seal for a proper stamp-style ghost if available;
-  // otherwise fall back to the supplied horizontal logo in banner mode.
-  const sealData = sealBase64;
-  const useData  = sealData ?? logoDataUrl;
-  const useAspect: 'seal' | 'banner' = sealData ? 'seal' : 'banner';
-  const useSizeMm = sealData ? (opts.sizeMm ?? 88) : (opts.sizeMm ?? 110);
+  // Always use the supplied logoDataUrl (horizontal black wordmark) as the
+  // centered ghost watermark — the wide RMPG wordmark reads clearly at scale.
+  const useData   = logoDataUrl;
+  const useAspect: 'seal' | 'banner' = 'banner';
+  const useSizeMm = opts.sizeMm ?? 140; // wide enough to read clearly
 
   const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
