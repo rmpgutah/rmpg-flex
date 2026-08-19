@@ -666,6 +666,119 @@ export default {
           }),
         );
       }
+
+      // Mapbox Optimization V2 background poll — checks 'pending'/'processing'
+      // jobs every minute, writes back the solution, and performs serve_run
+      // write-back when the job is tied to a serve route.
+      ctx.waitUntil(
+        (async () => {
+          const token = (env as Record<string, unknown>).MAPBOX_ACCESS_TOKEN as string | undefined;
+          if (!token || token.startsWith('sk.')) return;
+
+          const db = env.DB;
+          const { results: jobs } = await db
+            .prepare(
+              `SELECT id, job_type, ref_id, created_at
+               FROM mapbox_optimization_v2_jobs
+               WHERE status IN ('pending','processing')
+               ORDER BY created_at ASC
+               LIMIT 10`,
+            )
+            .all<{ id: string; job_type: string; ref_id: number | null; created_at: string }>();
+
+          if (!jobs || jobs.length === 0) return;
+
+          let completed = 0;
+          let errors = 0;
+
+          for (const job of jobs) {
+            try {
+              // Timeout jobs that have been pending/processing for more than 10 minutes
+              const ageMs = Date.now() - new Date(job.created_at).getTime();
+              if (ageMs > 10 * 60 * 1000) {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='error', error_message='timed_out', updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(job.id)
+                  .run();
+                errors++;
+                continue;
+              }
+
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 8_000);
+              let res: Response;
+              try {
+                res = await fetch(
+                  `https://api.mapbox.com/optimized-trips/v2/${encodeURIComponent(job.id)}?access_token=${encodeURIComponent(token)}`,
+                  { signal: ctrl.signal },
+                );
+              } finally {
+                clearTimeout(timer);
+              }
+
+              if (res.status === 200) {
+                const body = await res.json() as { routes?: Array<{ stops?: Array<{ type?: string; location?: number; eta?: string; wait?: number }> }> };
+                const solutionJson = JSON.stringify(body);
+
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='complete', solution_json=?, updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(solutionJson, job.id)
+                  .run();
+
+                // Serve-run write-back: ordered stops into serve_routes
+                if (job.job_type === 'serve_run' && job.ref_id != null) {
+                  const stops = body.routes?.[0]?.stops ?? [];
+                  const ordered = stops
+                    .filter((s) => s.type === 'service')
+                    .map((s) => ({ id: Number(s.location), eta: s.eta, wait: s.wait ?? 0 }));
+                  await db
+                    .prepare(
+                      `UPDATE serve_routes
+                       SET optimized_order_json=?, updated_at=datetime('now')
+                       WHERE id=?`,
+                    )
+                    .bind(JSON.stringify(ordered), job.ref_id)
+                    .run();
+                }
+
+                completed++;
+              } else if (res.status === 202) {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='processing', updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(job.id)
+                  .run();
+              } else {
+                await db
+                  .prepare(
+                    `UPDATE mapbox_optimization_v2_jobs
+                     SET status='error', error_message=?, updated_at=datetime('now')
+                     WHERE id=?`,
+                  )
+                  .bind(`http_${res.status}`, job.id)
+                  .run();
+                errors++;
+              }
+            } catch (err) {
+              log.error('[optv2-poll] job error', { jobId: job.id }, err instanceof Error ? err : new Error(String(err)));
+              errors++;
+            }
+          }
+
+          log.info(`[optv2-poll] checked ${jobs.length}, completed ${completed}, errors ${errors}`);
+        })().catch((err) => log.error('[optv2-poll] sweep failed:', {}, err)),
+      );
     }
 
     // ── 1st of month, 03:00 UTC ──
