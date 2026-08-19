@@ -4832,6 +4832,180 @@ guardedHandle('system:get-network', async () => {
   } catch { return null; }
 });
 
+// ── WiFi: deep detail (IP, gateway, DNS, channel, band, MAC, …) ──
+guardedHandle('wifi:get-detail', async () => {
+  if (process.platform !== 'win32') return null;
+  const { execSync } = require('child_process');
+  const os = require('os');
+
+  const field = (text, label) => {
+    const m = text.match(new RegExp(`^\\s+${label}\\s+:\\s+(.+)`, 'm'));
+    return m ? m[1].trim() : null;
+  };
+  const intField = (text, label) => {
+    const v = field(text, label);
+    return v ? parseInt(v, 10) : null;
+  };
+
+  // --- netsh wlan show interfaces ---
+  let wlanOut = '';
+  try { wlanOut = execSync('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8', windowsHide: true }); } catch { /* no adapter */ }
+
+  const state = (() => {
+    const m = field(wlanOut, 'State');
+    if (!m) return null;
+    return m.toLowerCase().includes('connect') ? 'connected' : 'disconnected';
+  })();
+  const ssid       = field(wlanOut, 'SSID');
+  const bssid      = field(wlanOut, 'BSSID');
+  const signal     = intField(wlanOut, 'Signal');
+  const channel    = intField(wlanOut, 'Channel');
+  const radioType  = field(wlanOut, 'Radio type');
+  const auth       = field(wlanOut, 'Authentication');
+  const cipher     = field(wlanOut, 'Cipher');
+  const profile    = field(wlanOut, 'Profile');
+  const adapter    = field(wlanOut, 'Description');
+  const mac        = field(wlanOut, 'Physical address');
+  const rxMbpsRaw  = field(wlanOut, 'Receive rate \\(Mbps\\)');
+  const txMbpsRaw  = field(wlanOut, 'Transmit rate \\(Mbps\\)');
+  const rxMbps     = rxMbpsRaw ? parseFloat(rxMbpsRaw) : null;
+  const txMbps     = txMbpsRaw ? parseFloat(txMbpsRaw) : null;
+
+  const band = (() => {
+    if (!channel) return null;
+    if (channel >= 1  && channel <= 14)  return '2.4 GHz';
+    if (channel >= 32 && channel <= 177) return '5 GHz';
+    if (channel >= 1  && radioType && radioType.includes('6E')) return '6 GHz';
+    return null;
+  })();
+
+  // --- IP info from os.networkInterfaces() matched by MAC ---
+  let ip = null, ipv6 = null, subnet = null;
+  const normalMac = mac ? mac.toLowerCase().replace(/-/g, ':') : null;
+  if (normalMac) {
+    const ifaces = os.networkInterfaces();
+    for (const ifAddrs of Object.values(ifaces)) {
+      const entry = ifAddrs.find(a => a.mac && a.mac.toLowerCase() === normalMac);
+      if (entry) {
+        const v4 = ifAddrs.find(a => a.family === 'IPv4' && !a.internal);
+        const v6 = ifAddrs.find(a => a.family === 'IPv6' && !a.internal);
+        ip     = v4?.address ?? null;
+        subnet = v4?.netmask ?? null;
+        ipv6   = v6?.address?.split('%')[0] ?? null;
+        break;
+      }
+    }
+  }
+
+  // --- Gateway + DNS via PowerShell (quick, structured) ---
+  let gateway = null, dns = [];
+  try {
+    const psOut = execSync(
+      'powershell.exe -NoProfile -Command "' +
+        '$a=Get-NetIPConfiguration|Where-Object{$_.IPv4Address -ne $null}|Select-Object -First 1;' +
+        '[PSCustomObject]@{gw=$a.IPv4DefaultGateway.NextHop;dns=($a.DNSServer.ServerAddresses -join \",\")}|' +
+        'ConvertTo-Json -Compress"',
+      { timeout: 5000, encoding: 'utf8', windowsHide: true }
+    );
+    const parsed = JSON.parse(psOut.trim());
+    gateway = parsed.gw || null;
+    dns = parsed.dns ? parsed.dns.split(',').filter(Boolean) : [];
+  } catch { /* not critical */ }
+
+  return { state, ssid, bssid, signal, channel, band, radioType, auth, cipher, profile, adapter, mac, ip, ipv6, subnet, gateway, dns, rxMbps, txMbps };
+});
+
+// ── WiFi: scan available networks (Windows only) ──────────────
+guardedHandle('wifi:scan-networks', async () => {
+  if (process.platform !== 'win32') return [];
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync(
+      'netsh wlan show networks mode=Bssid',
+      { timeout: 8000, encoding: 'utf8', windowsHide: true }
+    );
+
+    // Each SSID block starts with "SSID N :"
+    const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
+    const networks = blocks.map(block => {
+      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
+      const authM  = block.match(/Authentication +: (.+)/m);
+      const encM   = block.match(/Encryption +: (.+)/m);
+      const ssid   = ssidM  ? ssidM[1].trim()  : '';
+      const auth   = authM  ? authM[1].trim()  : 'Unknown';
+      const enc    = encM   ? encM[1].trim()   : 'Unknown';
+
+      // Parse each BSSID sub-block
+      const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
+      const bssids = bssidBlocks.map(bb => {
+        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
+        const sM  = bb.match(/Signal +: (\d+)%/m);
+        const rtM = bb.match(/Radio type +: (.+)/m);
+        const chM = bb.match(/Channel +: (\d+)/m);
+        return {
+          bssid:     bM  ? bM[1].trim()         : null,
+          signal:    sM  ? parseInt(sM[1], 10)  : 0,
+          radioType: rtM ? rtM[1].trim()         : null,
+          channel:   chM ? parseInt(chM[1], 10) : null,
+        };
+      });
+
+      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
+      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
+
+      const channel = bestBssid.channel ?? null;
+      const band = (() => {
+        if (!channel) return null;
+        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
+        if (channel >= 32 && channel <= 177) return '5 GHz';
+        return null;
+      })();
+
+      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
+    }).filter(n => n.ssid);
+
+    return networks;
+  } catch { return []; }
+});
+
+// ── WiFi: list saved profiles (Windows only) ──────────────────
+guardedHandle('wifi:list-profiles', async () => {
+  if (process.platform !== 'win32') return [];
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync('netsh wlan show profiles', { timeout: 3000, encoding: 'utf8', windowsHide: true });
+    const matches = [...out.matchAll(/All User Profile\s+: (.+)/g)];
+    return matches.map(m => m[1].trim());
+  } catch { return []; }
+});
+
+// ── WiFi: connect to a saved profile (Windows only) ───────────
+guardedHandle('wifi:connect', async (_event, { profile }) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  if (!profile || typeof profile !== 'string') return { ok: false, reason: 'invalid_profile' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  try {
+    // execFile avoids shell interpolation — profile name passed as a direct argument
+    await promisify(execFile)('netsh', ['wlan', 'connect', `name=${profile}`], { timeout: 6000, encoding: 'utf8', windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── WiFi: disconnect (Windows only) ──────────────────────────
+guardedHandle('wifi:disconnect', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  const { execSync } = require('child_process');
+  try {
+    execSync('netsh wlan disconnect', { timeout: 4000, encoding: 'utf8', windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ── System: set OS master volume ──────────────────────────────
 guardedHandle('system:set-volume', async (_event, level) => {
   const clamped = Math.max(0, Math.min(100, Number(level) || 0));
