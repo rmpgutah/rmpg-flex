@@ -134,4 +134,3 @@ export default function OptimizationV2Panel({
     </div>
   );
 }
-
