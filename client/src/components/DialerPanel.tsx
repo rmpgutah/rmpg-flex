@@ -211,7 +211,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
           <iframe
             key={iframeKey}
             title="Dial Connect"
-            src={`${DIALER_ORIGIN}/dialer`}
+            src={`${DIALER_ORIGIN}/dialer-embed`}
             className="w-full border-0"
             style={{ height: 'calc(100% - 28px)' }}
             onLoad={handleIframeLoad}
