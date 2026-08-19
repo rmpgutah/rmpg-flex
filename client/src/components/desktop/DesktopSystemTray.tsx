@@ -424,3 +424,4 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
     </div>
   );
 }
+
