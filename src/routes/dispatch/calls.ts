@@ -961,7 +961,7 @@ calls.post('/:id/merge', async (c) => {
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, mergeId);
       if (userId) {
         await execute(db,
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
           userId, mergeId, JSON.stringify({ merged_into: id }));
       }
       merged++;
@@ -1397,7 +1397,7 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
 });
 
 // POST /dispatch/calls/:id/archive
-calls.post('/:id/archive', async (c) => {
+calls.post('/:id/archive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1408,12 +1408,16 @@ calls.post('/:id/archive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/unarchive
-calls.post('/:id/unarchive', async (c) => {
+calls.post('/:id/unarchive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const idStr = c.req.param('id');
     const id = Number(idStr);
-    await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    if (result.meta.changes === 0) {
+      const exists = await queryFirst(db, 'SELECT id, status FROM calls_for_service WHERE id = ?', id);
+      return c.json({ error: exists ? 'Call is not archived' : 'Not found' }, exists ? 409 : 404);
+    }
     // Fetch the updated call and ext rows
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
@@ -1441,7 +1445,7 @@ calls.post('/:id/unarchive', async (c) => {
 // in place — that combination silently drops a held call's real status on
 // resume. Superseded here by the held_at design both this route and the
 // client already commit to.
-calls.post('/:id/hold', async (c) => {
+calls.post('/:id/hold', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1460,7 +1464,7 @@ calls.post('/:id/hold', async (c) => {
 });
 
 // POST /dispatch/calls/:id/resume
-calls.post('/:id/resume', async (c) => {
+calls.post('/:id/resume', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1821,7 +1825,7 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
       created.push(childId);
     }
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
-    if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
+    if (userId) await execute(db, `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
     return c.json({ success: true, parent_id: id, child_ids: created });
   } catch (err) {
     log.error('POST /:id/split failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Call split failed' }, 500); }

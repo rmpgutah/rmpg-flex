@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
 
 const premise = new Hono<Env>();
 
@@ -29,7 +30,7 @@ interface PremiseHistoryRow {
 }
 
 // GET /dispatch/premise-history?address=...&property_id=...
-premise.get('/premise-history', async (c) => {
+premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = c.req.query('address') || '';
   const propertyId = c.req.query('property_id');
@@ -96,7 +97,7 @@ premise.get('/premise-history', async (c) => {
 // here. Additive + separate from premise-history so it can't regress that
 // (still-legacy) endpoint. Best-effort throughout — a miss returns an empty
 // list, never an error that would block call creation.
-premise.get('/address-occupants', async (c) => {
+premise.get('/address-occupants', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = (c.req.query('address') || '').trim();
   if (address.length < 5) return c.json({ occupants: [], occupant_count: 0, has_flagged: false });

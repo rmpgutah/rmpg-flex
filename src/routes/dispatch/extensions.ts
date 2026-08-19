@@ -1298,7 +1298,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
               `UPDATE serve_queue SET status = ?, updated_at = datetime('now'), closed_at = NULL WHERE id = ?`,
               openStatus, q.id);
             await execute(db,
-              `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
+              `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
                VALUES (?, 'reopen', 'serve_queue', ?, ?)`,
               userId ?? null, q.id,
               `CFS ${call.call_number} reverted from ${call.status} — serve job reopened as ${openStatus}`);
