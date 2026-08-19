@@ -27,6 +27,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsClause } from '../utils/searchText';
 // IPED_API_KEY is optional and only consulted by /status to report
 // "configured". Declared here (not in src/types.ts) because no other
 // route in the rewrite touches it — keeps the shared Bindings type lean.
@@ -332,7 +333,7 @@ iped.get('/jobs', async (c) => {
     const offset = (page - 1) * limit;
     const conds: string[] = ['1=1'];
     const params: unknown[] = [];
-    if (q('filter')) { conds.push('(ii.import_type = ? OR ii.iped_case_name LIKE ?)'); params.push(q('filter'), `%${q('filter')}%`); }
+    if (q('filter')) { const m = containsClause('ii.iped_case_name'); conds.push(`(ii.import_type = ? OR ${m.sql})`); params.push(q('filter'), m.bind(q('filter')!)); }
     const where = `WHERE ${conds.join(' AND ')}`;
     const total = (await queryFirst<{ c: number }>(db, `SELECT COUNT(*) AS c FROM iped_imports ii ${where}`, ...params))?.c ?? 0;
     const rows = await query<Record<string, unknown>>(

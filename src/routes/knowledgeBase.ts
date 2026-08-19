@@ -59,7 +59,7 @@ kb.get('/search', async (c) => {
   if (q.length < 2) return c.json({ query: q, total: 0, results: [] });
 
   const db = getDb(c.env);
-  const like = `%${q}%`;
+  const like = `%${q.slice(0, 48)}%`;
   const PER = 6; // cap per source so no single type dominates
 
   const sources: Array<Promise<KbResult[]>> = [

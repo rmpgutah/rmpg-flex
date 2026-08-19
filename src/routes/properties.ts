@@ -4,6 +4,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const properties = new Hono<Env>();
 
 // Mirrors the sentinel logic in records.ts. properties.client_id is NOT NULL,
@@ -27,7 +28,7 @@ properties.get('/', async (c) => {
     let sql = 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id';
     const params: unknown[] = [];
     const wheres: string[] = [];
-    if (search) { wheres.push('(p.name LIKE ? OR p.address LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+    if (search) { const m = containsAnyClause(['p.name', 'p.address']); wheres.push(m.sql); params.push(...m.binds(search)); }
     if (client_id) { wheres.push('p.client_id = ?'); params.push(client_id); }
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
     sql += ' ORDER BY p.name LIMIT 500';

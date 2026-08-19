@@ -348,4 +348,33 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
   }
 });
 
+// GET /dispatch/units/my-assignment
+// Returns the current officer's unit and default radio channel. Used by
+// DesktopSystemTray for the radio channel display in the status bar.
+units.get('/my-assignment', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const unit = await queryFirst<{ call_sign: string; status: string; vehicle_id: string | null }>(
+      db, 'SELECT call_sign, status, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+    );
+    if (!unit) return c.json({ call_sign: null, radio_channel: null, channel: null });
+
+    // Look up the default radio channel name for display.
+    const defaultChannel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE is_default = 1 LIMIT 1',
+    );
+
+    return c.json({
+      call_sign: unit.call_sign,
+      status: unit.status,
+      radio_channel: defaultChannel?.name ?? null,
+      channel: defaultChannel?.name ?? null,
+    });
+  } catch (err) {
+    log.error('GET /dispatch/units/my-assignment failed', {}, err);
+    return c.json({ call_sign: null, radio_channel: null, channel: null });
+  }
+});
+
 export default units;

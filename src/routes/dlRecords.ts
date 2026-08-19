@@ -37,6 +37,7 @@ import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const dlRecords = new Hono<Env>();
 
 // ── Inline role gate (mirrors arrests.ts) ───────────────────
@@ -231,9 +232,8 @@ dlRecords.get('/', async (c) => {
     let where = '1=1';
     const params: unknown[] = [];
     if (search) {
-      where += ' AND (full_name LIKE ? OR dl_number LIKE ? OR last_name LIKE ? OR first_name LIKE ?)';
-      const like = `%${search}%`;
-      params.push(like, like, like, like);
+      const m = containsAnyClause(['full_name', 'dl_number', 'last_name', 'first_name']);
+      where += ` AND ${m.sql}`; params.push(...m.binds(search));
     }
 
     const totalRow = await queryFirst<{ cnt: number }>(
@@ -457,9 +457,8 @@ dlRecords.get('/scan-log', async (c) => {
     const params: unknown[] = [];
     if (mine && userId) { where += ' AND l.user_id = ?'; params.push(userId); }
     if (search) {
-      where += ' AND (l.subject_name LIKE ? OR l.dl_number LIKE ?)';
-      const like = `%${search}%`;
-      params.push(like, like);
+      const m = containsAnyClause(['l.subject_name', 'l.dl_number']);
+      where += ` AND ${m.sql}`; params.push(...m.binds(search));
     }
 
     // Display name from the live users schema (full_name/username — there is
@@ -667,10 +666,10 @@ dlRecords.get('/deep-sweep', async (c) => {
     const dob = (c.req.query('dob') || '').trim(); // YYYY-MM-DD, refinement only
     if (last.length < 2) return c.json({ error: 'last name (min 2 chars) required', code: 'LAST_REQUIRED' }, 400);
 
-    const lastLike = `${last}%`;
-    const firstLike = first ? `${first}%` : '%';
-    const bothLike = `%${last}%`;
-    const firstAny = first ? `%${first}%` : '%';
+    const lastLike = `${last.slice(0, 49)}%`;
+    const firstLike = first ? `${first.slice(0, 49)}%` : '%';
+    const bothLike = `%${last.slice(0, 48)}%`;
+    const firstAny = first ? `%${first.slice(0, 48)}%` : '%';
 
     const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
       try { return await fn(); } catch { return []; }
@@ -678,7 +677,7 @@ dlRecords.get('/deep-sweep', async (c) => {
 
     // MVR keys: exact-ish DL number (normalised) when supplied by the scan.
     const dlNum = (c.req.query('dl') || '').trim().replace(/\W/g, '');
-    const dlLike = dlNum ? `%${dlNum}%` : null;
+    const dlLike = dlNum ? `%${dlNum.slice(0, 48)}%` : null;
 
     const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
            sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory, utahSor] = await Promise.all([

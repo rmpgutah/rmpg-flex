@@ -106,6 +106,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'bookmarks', label: 'Drop Bookmark', icon: Star, group: 'Dispatch Tools', colorVar: 'var(--sev-warn)', description: 'Click the map to save a location' },
   { id: 'gps-hud', label: 'GPS HUD', icon: Gauge, group: 'Dispatch Tools', colorVar: 'var(--sev-ok)', description: 'Heading, speed, route progress' },
   { id: 'optimize', label: 'Route Optimizer', icon: Compass, group: 'Dispatch Tools', colorVar: 'var(--sev-special)', description: 'Queue calls, pick a unit, optimize the visiting order' },
+  { id: 'optim-routes', label: 'Optimization Routes', icon: Route, group: 'Dispatch Tools', colorVar: 'var(--sev-info)', description: 'Show most recent completed optimization job routes on the map' },
 
   // ── Measurement & Marking ──
   { id: 'measure', label: 'Measure', icon: Ruler, group: 'Measurement & Marking', colorVar: 'var(--sev-info)', description: 'Distance / area measurement' },

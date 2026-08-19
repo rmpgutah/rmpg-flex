@@ -2558,4 +2558,52 @@ personnel.post('/training-bulk-assign', async (c) => {
   }
 });
 
+// GET /personnel/cert-expiration-warnings
+// Used by DashboardWidgets.tsx CertWarningsPanel. Queries officer_credentials
+// for expiring/expired entries and groups them into 30/60/90-day buckets.
+personnel.get('/cert-expiration-warnings', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      credential_id: number;
+      officer_name: string;
+      credential_type: string;
+      days_until: number;
+      severity: string;
+    }>(db, `
+      SELECT
+        oc.id AS credential_id,
+        u.full_name AS officer_name,
+        oc.credential_type,
+        CAST(julianday(oc.expiry_date) - julianday('now') AS INTEGER) AS days_until,
+        CASE
+          WHEN julianday(oc.expiry_date) < julianday('now') THEN 'expired'
+          WHEN julianday(oc.expiry_date) <= julianday('now', '+30 days') THEN 'critical'
+          WHEN julianday(oc.expiry_date) <= julianday('now', '+60 days') THEN 'warning'
+          ELSE 'notice'
+        END AS severity
+      FROM officer_credentials oc
+      JOIN users u ON u.id = oc.officer_id
+      WHERE oc.expiry_date IS NOT NULL
+        AND oc.expiry_date != ''
+        AND julianday(oc.expiry_date) <= julianday('now', '+90 days')
+        AND u.status = 'active'
+      ORDER BY julianday(oc.expiry_date) ASC
+    `);
+
+    const expired = rows.filter(r => r.severity === 'expired').length;
+    const within_30 = rows.filter(r => r.severity === 'critical').length;
+    const within_60 = rows.filter(r => r.severity === 'warning').length;
+    const within_90 = rows.filter(r => r.severity === 'notice').length;
+
+    return c.json({
+      summary: { expired, within_30, within_60, within_90 },
+      warnings: rows,
+    });
+  } catch (err) {
+    console.error('GET /personnel/cert-expiration-warnings error:', err);
+    return c.json({ summary: { expired: 0, within_30: 0, within_60: 0, within_90: 0 }, warnings: [] }, 200);
+  }
+});
+
 export default personnel;

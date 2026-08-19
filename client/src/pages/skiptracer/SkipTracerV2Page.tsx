@@ -23,7 +23,7 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { withAlpha } from '../../utils/withAlpha';
 import { INPUT_BADGE_COLORS, CATEGORY_COLORS, ENGINE_COLORS, SECTION_COLORS, STATS_COLORS, categoryColor, sourceColor } from '../../utils/skipTracerPalette';
 import { useEnrichment } from '../../hooks/useEnrichment';
-import type { EnrichmentSeed } from '../../hooks/useEnrichment';
+import type { EnrichmentSeed, SourceResult } from '../../hooks/useEnrichment';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -1310,15 +1310,12 @@ export default function SkipTracerV2Page() {
           </div>
 
           {/* Enrichment panel */}
-          <div className="border border-border-subtle rounded bg-surface-raised p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
+          <div className="border border-border-subtle rounded bg-surface-raised overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-subtle bg-surface-sunken">
               <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
-                Open-Source Enrichment
+                Open-Source Intelligence
               </span>
               <div className="flex items-center gap-2">
-                {enrichResult?.stale && (
-                  <span className="text-[9px] text-text-secondary">Cached — stale</span>
-                )}
                 <button
                   onClick={() => { const s = enrichSeed(); if (s) enrichSearch(s); }}
                   disabled={enrichLoading || !selected}
@@ -1330,35 +1327,91 @@ export default function SkipTracerV2Page() {
             </div>
 
             {enrichResult && (
-              <div className="space-y-2">
-                {/* Match tier badge */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                    enrichResult.match_tier === 'CONFIRMED'
-                      ? 'bg-green-900/40 text-green-400 border border-green-700'
-                      : 'bg-amber-900/40 text-amber-400 border border-amber-700'
-                  }`}>
-                    {enrichResult.match_tier}
+              <div className="p-3 space-y-2">
+                {/* Status bar */}
+                <div className="text-[9px] text-text-secondary leading-relaxed flex flex-wrap gap-x-1">
+                  <span className={`font-bold ${enrichResult.match_tier === 'CONFIRMED' ? 'text-green-400' : 'text-amber-400'}`}>
+                    {enrichResult.match_tier} MATCH
                   </span>
-                  {enrichResult.anchors.map(a => (
-                    <span key={a} className="px-1.5 py-0.5 rounded text-[9px] bg-surface-sunken text-text-secondary border border-border-subtle">
-                      {a === 'dob_match' ? 'DOB ✓' : a === 'address_anchor' ? 'Address ✓' : a === 'dl_number' ? 'DL# ✓' : a === 'ssn_last4' ? 'SSN-4 ✓' : a}
-                    </span>
-                  ))}
+                  {enrichResult.sources.map((s: SourceResult) => {
+                    const label = s.source.replace(/_/g, ' ').toUpperCase();
+                    const status = !s.ok
+                      ? <span className="text-red-400">(error)</span>
+                      : s.records.length === 0
+                      ? <span className="text-text-secondary">(0 hits)</span>
+                      : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;
+                    return (
+                      <span key={s.source} className="whitespace-nowrap">
+                        {' · '}{label} {status}
+                      </span>
+                    );
+                  })}
+                  {enrichResult.stale && <span className="text-amber-400 ml-1">(stale cache)</span>}
                 </div>
 
-                {/* Confirmed addresses */}
-                {enrichResult.records.flatMap(r => r.addresses).slice(0, 5).map((addr, i) => (
-                  <div key={i} className="text-[11px] text-text-primary">
-                    {[addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')}
-                    <span className="ml-1 text-[9px] text-text-secondary">({addr.source})</span>
+                {/* Anchor chips */}
+                {enrichResult.anchors.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {enrichResult.anchors.map(a => (
+                      <span key={a} className="px-1.5 py-0.5 rounded text-[9px] bg-surface-sunken text-text-secondary border border-border-subtle">
+                        {a === 'dob_match' ? 'DOB ✓' : a === 'address_anchor' ? 'Address ✓' : a === 'dl_number' ? 'DL# ✓' : a === 'ssn_last4' ? 'SSN-4 ✓' : a}
+                      </span>
+                    ))}
                   </div>
-                ))}
+                )}
 
-                <div className="text-[9px] text-text-secondary">
-                  {enrichResult.confirmed_count} confirmed · {enrichResult.sources.filter(s => s.ok).length}/{enrichResult.sources.length} sources · {enrichResult.cached ? 'cached' : 'live'}
+                {/* Records table */}
+                {enrichResult.records.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[10px]">
+                      <thead>
+                        <tr className="text-[9px] text-rmpg-400 font-semibold border-b border-border-subtle">
+                          <th className="text-left py-[3px] pr-3">SOURCE</th>
+                          <th className="text-left py-[3px] pr-3">NAME</th>
+                          <th className="text-left py-[3px] pr-3">DOB</th>
+                          <th className="text-left py-[3px] pr-3">FLAGS</th>
+                          <th className="text-left py-[3px]">ADDRESS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {enrichResult.records.map((rec, i) => {
+                          const addr = rec.addresses[0];
+                          const addrStr = addr
+                            ? [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')
+                            : '—';
+                          return (
+                            <tr key={i} className="border-b border-border-subtle/50 last:border-0">
+                              <td className="py-[2px] pr-3 text-rmpg-400 whitespace-nowrap">{rec.source.replace(/_/g, ' ').toUpperCase()}</td>
+                              <td className="py-[2px] pr-3 text-text-primary">{rec.name ?? '—'}</td>
+                              <td className="py-[2px] pr-3 text-text-secondary font-mono">{rec.dob ?? '—'}</td>
+                              <td className="py-[2px] pr-3">
+                                {(rec.watchlist_flags ?? []).length > 0
+                                  ? <span className="text-red-400 font-semibold">{rec.watchlist_flags!.join(', ').toUpperCase()}</span>
+                                  : <span className="text-text-secondary">—</span>
+                                }
+                              </td>
+                              <td className="py-[2px] text-text-secondary">{addrStr}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {enrichResult.records.length === 0 && (
+                  <p className="text-[9px] text-text-secondary italic">No records returned from any source.</p>
+                )}
+
+                <div className="text-[9px] text-text-secondary border-t border-border-subtle/50 pt-1">
+                  Searched: {new Date(enrichResult.searched_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} @ {new Date(enrichResult.searched_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
+                  {enrichResult.cached ? ' (cached)' : ' (live)'}
                 </div>
               </div>
+            )}
+
+            {!enrichResult && !enrichLoading && (
+              <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Enrich from open sources" to run open-source intelligence search.</p>
             )}
           </div>
 
