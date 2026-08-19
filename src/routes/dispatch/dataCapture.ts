@@ -409,7 +409,7 @@ dataCapture.post('/query', async (c) => {
     personClauses.push(`(REPLACE(REPLACE(REPLACE(phone,'-',''),'(',''),')','') LIKE ? OR REPLACE(REPLACE(REPLACE(phone_secondary,'-',''),'(',''),')','') LIKE ?)`);
     personBinds.push(`%${ph}%`, `%${ph}%`);
   }
-  if (body.email) { personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(`%${body.email}%`, `%${body.email}%`); }
+  if (body.email) { const emailPat = `%${String(body.email).slice(0, 48)}%`; personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(emailPat, emailPat); }
   if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${String(body.address).slice(0, 48)}%`); }
   if (body.dl_number) { personClauses.push(`dl_number = ?`); personBinds.push(body.dl_number.toUpperCase()); }
 
@@ -524,7 +524,7 @@ dataCapture.post('/query', async (c) => {
     const sdBinds: unknown[] = [];
     if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.phone) { sdClauses.push(`subject_phone LIKE ?`); sdBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${body.email}%`); }
+    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${String(body.email).slice(0, 48)}%`); }
     try {
       const sdRows = await query(
         c.env.DB,
@@ -550,7 +550,7 @@ dataCapture.post('/query', async (c) => {
     if (body.dob) { piClauses.push(`subject_dob = ?`); piBinds.push(body.dob); }
     // JSON seed search for phone/plate/email
     if (body.phone) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.email}%`); }
+    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${String(body.email).slice(0, 48)}%`); }
     if (body.plate) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.plate.toUpperCase()}%`); }
     try {
       const piRows = await query(
