@@ -52,6 +52,7 @@ import {
   criticExtract,
   CRITIC_TIMEOUT_MS,
   normalizeFields,
+  toIsoDate,
   type ExtractionResult,
   type ExtractedField,
   type PdfTextResult,
@@ -145,7 +146,9 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
 let qualityGateReconciled = false;
 async function ensureQualityGateColumns(db: D1Database): Promise<void> {
   if (qualityGateReconciled) return;
-  qualityGateReconciled = true;
+  // Set the flag only after DDL succeeds so a caught failure on this isolate
+  // doesn't permanently skip reconciliation for subsequent requests.
+  let allOk = true;
 
   try {
     await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
@@ -159,7 +162,10 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       fallback_chain TEXT NOT NULL,
       upload_user_id INTEGER
     )`);
-  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs create failed:', err);
+    allOk = false;
+  }
 
   for (const [name, type] of [
     ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
@@ -171,8 +177,13 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) {
+      console.warn(`[serve-intake] reconcile ${name} failed:`, err);
+      allOk = false;
+    }
   }
+
+  if (allOk) qualityGateReconciled = true;
 }
 
 const si = new Hono<Env>();
@@ -192,7 +203,7 @@ function csvEscape(v: unknown): string {
 }
 
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
-const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled', 'archived']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -904,9 +915,17 @@ si.post('/upload', async (c) => {
   if (typeof overridesRaw === 'string') {
     try {
       const overrides = JSON.parse(overridesRaw) as Record<string, string>;
+      // Date fields typed manually by the operator arrive as free text (e.g. "Aug 25, 2026").
+      // normalizeFields() ran before this point on AI values but not on operator overrides,
+      // so we apply toIsoDate() here for known date fields to keep storage consistent.
+      const DATE_OVERRIDE_FIELDS = new Set([
+        'service_deadline', 'hearing_date', 'filing_date', 'attempt_start_not_before', 'recipient_dob',
+      ]);
       for (const [k, v] of Object.entries(overrides)) {
         if (typeof v === 'string' && v.trim()) {
-          validatedFields[k] = { value: v.trim(), confidence: 1.0 };
+          const raw = v.trim();
+          const normalized = DATE_OVERRIDE_FIELDS.has(k) ? (toIsoDate(raw) || raw) : raw;
+          validatedFields[k] = { value: normalized, confidence: 1.0 };
         }
       }
       for (const k of Object.keys(overrides)) {
@@ -917,20 +936,25 @@ si.post('/upload', async (c) => {
     } catch { /* ignore malformed overrides blob */ }
   }
 
-  const judgeInsert = await db.prepare(`
-    INSERT INTO serve_intake_judge_runs
-      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    judgeResult.model,
-    judgeResult.ms,
-    judgeResult.raw_response,
-    judgeResult.flagged_field_count,
-    judgeResult.overall_status,
-    JSON.stringify(judgeResult.fallback_chain),
-    user.id,
-  ).run();
-  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  let judgeRunId: number | null = null;
+  try {
+    const judgeInsert = await db.prepare(`
+      INSERT INTO serve_intake_judge_runs
+        (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      judgeResult.model,
+      judgeResult.ms,
+      judgeResult.raw_response,
+      judgeResult.flagged_field_count,
+      judgeResult.overall_status,
+      JSON.stringify(judgeResult.fallback_chain),
+      user.id,
+    ).run();
+    judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs insert failed — proceeding without judge run id:', err);
+  }
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
   // so it doesn't get coerced through the string-only field_overrides path.
@@ -1187,6 +1211,8 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
     jobNumber: get('job_number'),
     caseNumber: get('case_number'),
     dueDate: get('service_deadline'),
+    hearingDate: get('hearing_date'),
+    jurisdiction: get('jurisdiction'),
     attorney: {
       name: get('attorney_name'),
       phone: get('attorney_phone'),
@@ -1200,6 +1226,7 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
     serverName: get('server_name'),
     registeredAgent: get('registered_agent_name'),
     businessName: get('recipient_business_name'),
+    recipientType: get('recipient_type'),
   };
 }
 
@@ -1561,6 +1588,7 @@ async function reprocessDocument(
 
 // GET /review-queue — serve_queue entries filtered by quality_status.
 // Defaults to 'needs_review'; accepts ?quality_status=clean|needs_review|reviewed_ok|reviewed_fixed.
+// Also accepts ?count=1 to return only { count } for badge display.
 si.get('/review-queue', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !INTAKE_ROLES.includes(user.role)) {
@@ -1569,18 +1597,27 @@ si.get('/review-queue', async (c) => {
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
   const status = c.req.query('quality_status');
-  let sql = `SELECT id, recipient_name, recipient_address, quality_status, judge_run_id, created_at
-             FROM serve_queue
-             WHERE 1 = 1`;
-  const bindings: unknown[] = [];
-  if (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed') {
-    sql += ` AND quality_status = ?`;
-    bindings.push(status);
-  } else {
-    sql += ` AND quality_status = 'needs_review'`;
+  const countOnly = c.req.query('count') === '1';
+
+  const qualityFilter = (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed')
+    ? status : 'needs_review';
+
+  if (countOnly) {
+    const row = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM serve_queue WHERE quality_status = ?`, qualityFilter);
+    return c.json({ count: row?.n ?? 0 });
   }
-  sql += ` ORDER BY created_at DESC LIMIT 200`;
-  const rows = await query(db, sql, ...bindings);
+
+  // LEFT JOIN serve_intake_judge_runs to surface flagged_field_count + raw verdicts.
+  const sql = `SELECT sq.id, sq.recipient_name, sq.recipient_address, sq.case_number,
+                      sq.quality_status, sq.judge_run_id, sq.created_at,
+                      sq.deadline, sq.priority,
+                      jr.flagged_field_count, jr.raw_response AS judge_raw_response
+               FROM serve_queue sq
+               LEFT JOIN serve_intake_judge_runs jr ON jr.id = sq.judge_run_id
+               WHERE sq.quality_status = ?
+               ORDER BY sq.created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, qualityFilter);
   return c.json({ rows });
 });
 
@@ -2452,6 +2489,9 @@ si.delete('/:id', async (c) => {
   // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
   // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
   // guaranteed orphans without these DELETEs.
+  // ── serve_qr_scans: REFERENCES serve_queue(id) with no ON DELETE clause
+  //    (default NO ACTION) — blocks parent delete on any scanned job
+  await execute(db, 'DELETE FROM serve_qr_scans WHERE job_id = ?', id);
   // ── serve_nudges: no FK constraint (migration 0105) — would orphan
   await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
   // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)

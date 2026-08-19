@@ -23,6 +23,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsClause } from '../utils/searchText';
 
 const microbilt = new Hono<Env>();
 
@@ -159,9 +160,9 @@ async function searchDlLocal(
 ): Promise<any[]> {
   const conds: string[] = [];
   const params: unknown[] = [];
-  if (p.dlNumber) { conds.push('dl_number LIKE ?'); params.push(`%${p.dlNumber}%`); }
-  if (p.lastName) { conds.push('last_name LIKE ?'); params.push(`%${p.lastName}%`); }
-  if (p.firstName) { conds.push('first_name LIKE ?'); params.push(`%${p.firstName}%`); }
+  if (p.dlNumber) { const m = containsClause('dl_number'); conds.push(m.sql); params.push(m.bind(p.dlNumber)); }
+  if (p.lastName) { const m = containsClause('last_name'); conds.push(m.sql); params.push(m.bind(p.lastName)); }
+  if (p.firstName) { const m = containsClause('first_name'); conds.push(m.sql); params.push(m.bind(p.firstName)); }
   if (p.state) { conds.push('dl_state = ?'); params.push(p.state); }
   if (p.dob) { conds.push('date_of_birth = ?'); params.push(p.dob); }
   if (conds.length === 0) return [];
@@ -193,9 +194,9 @@ async function searchPersonsWithDl(
 ): Promise<any[]> {
   const conds: string[] = ["COALESCE(dl_number,'') != ''"];
   const params: unknown[] = [];
-  if (p.dlNumber) { conds.push('dl_number LIKE ?'); params.push(`%${p.dlNumber}%`); }
-  if (p.lastName) { conds.push('last_name LIKE ?'); params.push(`%${p.lastName}%`); }
-  if (p.firstName) { conds.push('first_name LIKE ?'); params.push(`%${p.firstName}%`); }
+  if (p.dlNumber) { const m = containsClause('dl_number'); conds.push(m.sql); params.push(m.bind(p.dlNumber)); }
+  if (p.lastName) { const m = containsClause('last_name'); conds.push(m.sql); params.push(m.bind(p.lastName)); }
+  if (p.firstName) { const m = containsClause('first_name'); conds.push(m.sql); params.push(m.bind(p.firstName)); }
   if (p.state) { conds.push('dl_state = ?'); params.push(p.state); }
   if (p.dob) { conds.push('dob = ?'); params.push(p.dob); }
   try {

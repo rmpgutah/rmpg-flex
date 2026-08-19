@@ -16,6 +16,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import type { OfficerEquipment } from '../types';
 import { toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -291,6 +292,6 @@ export function generateEquipmentCustodyPdf(input: EquipmentPdfInput): jsPDF {
 
 export function openEquipmentCustodyPdf(input: EquipmentPdfInput): void {
   const doc = generateEquipmentCustodyPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Equipment Custody');
 }

@@ -100,6 +100,22 @@ export function preloadSoundAssets(keys: string[] = ['click', 'submit', 'update'
 }
 
 /**
+ * Preload the critical dispatch tones most likely to fire before the lazy
+ * decode cache warms up — new-call chime, panic, P1, alert, and status
+ * chirps. Called once from the dispatch UI mount so the first tone is
+ * always the WAV, not the synthesizer fallback.
+ */
+export function preloadDispatchTones(): void {
+  const critical = [
+    'dispatch_bell', 'caution', 'alert', 'alarm', 'panic_continuous',
+    'p1_alert', 'warning', 'emergency_three',
+    'chirp', 'double_chirp', 'enroute_chirp', 'onscene_chirp', 'cleared_chirp',
+    'info', 'error', 'login_ok', 'logoff',
+  ];
+  try { critical.forEach(load); } catch { /* audio is a nicety */ }
+}
+
+/**
  * Start a sampled asset at the given gain. Returns a stop handle, or
  * null when the caller should fall back to its synthesized voice
  * (asset not yet decoded, fetch failed, WebAudio unavailable).

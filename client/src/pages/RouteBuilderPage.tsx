@@ -30,6 +30,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useNavTrip } from '../context/NavTripContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -132,6 +133,9 @@ export default function RouteBuilderPage() {
   const [directionsDistance, setDirectionsDistance] = useState<string | null>(null);
   const [directionsDuration, setDirectionsDuration] = useState<string | null>(null);
 
+  const { rebuildNonce, attach: attachWebglRecovery, onMapLoaded } = useWebglMapRecovery();
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
   // Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -171,8 +175,9 @@ export default function RouteBuilderPage() {
 
         const map = createMapboxMap(mapContainerRef.current!, token);
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attachWebglRecovery(map, 'RouteBuilderPage');
         map.on('load', () => {
-          if (!cancelled) setMapReady(true);
+          if (!cancelled) { onMapLoaded(map); setMapReady(true); }
         });
       } catch (err) {
         console.error('Failed to load Mapbox:', err);
@@ -182,12 +187,15 @@ export default function RouteBuilderPage() {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // ─── WebSocket: live call updates ───────────────────────
 

@@ -53,7 +53,7 @@ export default function GeoDataMapView({
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // Init once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function GeoDataMapView({
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        map.on('load', () => { if (!cancelled) setLoaded(true); });
+        map.on('load', () => { if (!cancelled) { onMapLoaded(map); setLoaded(true); } });
         mapRef.current = map;
         registerMapInstance(map);
         webglRecoveryCleanupRef.current = attach(map, 'GeoDataMapView');

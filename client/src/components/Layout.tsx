@@ -117,6 +117,7 @@ const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
+import DialerPanel from './DialerPanel';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
@@ -1897,6 +1898,10 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
+      {/* Dialer — persistent system-wide floating panel (bottom-left).
+          Toasts for ringing/duress are self-contained inside DialerPanel
+          so they appear regardless of which page the user is on. */}
+      <DialerPanel />
 
     </div>
   );

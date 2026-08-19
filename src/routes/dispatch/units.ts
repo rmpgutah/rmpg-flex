@@ -83,7 +83,7 @@ units.get('/', async (c) => {
 // new unit, the fleet_vehicles.assigned_unit_id back-link is written in
 // the same transaction so a subsequent fleet LIST JOIN doesn't show the
 // vehicle as still belonging to its previous owner (or unassigned).
-units.post('/', async (c) => {
+units.post('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
@@ -286,7 +286,9 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
 // PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
 // Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
 // cadCommandParser) call this path rather than the general PUT /:id.
-units.put('/:id/status', async (c) => {
+// requireRole gates write access — without it any authenticated user can silently
+// set any unit off-duty (the exact attack the general PUT /:id gate was added to prevent).
+units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -335,7 +337,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
         updated++;
         if (userId) {
           await execute(db,
-            `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
+            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
             userId, unitId, `Batch set to ${status}`);
         }
       }

@@ -271,6 +271,14 @@ export function mapDbUnit(row: any): Unit {
     badge_number: row.badge_number || undefined,
     status: row.status || 'available',
     current_call_id: row.current_call_id ? String(row.current_call_id) : undefined,
+    queued_call_ids: (() => {
+      const raw = row.queued_call_ids;
+      if (Array.isArray(raw)) return raw.map(Number);
+      if (typeof raw === 'string' && raw.trim()) {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(Number) : []; } catch { return []; }
+      }
+      return [];
+    })(),
     // GET /dispatch/units aliases the joined call number as current_call_number
     // (`c.call_number AS current_call_number`); reading row.call_number left the
     // board's Assignment column permanently blank. Keep call_number as a fallback.

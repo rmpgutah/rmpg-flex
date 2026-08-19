@@ -28,6 +28,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -607,6 +608,6 @@ export function generateForensicCasePdf(input: ForensicCasePdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openForensicCasePdf(input: ForensicCasePdfInput): void {
   const doc = generateForensicCasePdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Forensic Case Report');
 }

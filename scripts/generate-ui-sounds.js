@@ -408,31 +408,90 @@ function bandNoise(out, { at, dur, center, gain }) {
 
 // step: [freq, start, dur, glideTo?] — strings 'n' suffix = noise center freq
 const LIBRARY = {
-  info:            { type: 'sine', steps: [[1000, 0, 0.05]] },
-  caution:         { type: 'sine', steps: [[853, 0, 0.33], [960, 0.35, 0.33]] },
-  warning:         { type: 'sine', steps: [[1050, 0, 0.15], [1450, 0.17, 0.15], [1050, 0.34, 0.15], [1450, 0.51, 0.15], [1050, 0.68, 0.15], [1450, 0.85, 0.15]] },
-  error:           { type: 'square', steps: [[440, 0, 0.12], [349, 0.15, 0.12]] },
-  alert:           { type: 'sine', steps: [[880, 0, 0.08], [1047, 0.11, 0.08], [1319, 0.22, 0.10]] },
-  alarm:           { type: 'sine', steps: [[800, 0, 0.09], [1000, 0.10, 0.09], [800, 0.20, 0.09], [1000, 0.30, 0.09], [800, 0.40, 0.09], [1000, 0.50, 0.09], [800, 0.60, 0.09], [1000, 0.70, 0.09]] },
-  chirp:           { type: 'sine', steps: [[800, 0, 0.03], [1200, 0.03, 0.03]] },
-  double_chirp:    { type: 'sine', steps: [[800, 0, 0.03], [1200, 0.03, 0.03], [800, 0.14, 0.03], [1200, 0.17, 0.03]] },
-  descending:      { type: 'sine', steps: [[1047, 0, 0.08], [880, 0.10, 0.08], [698, 0.20, 0.10]] },
-  p1_alert:        { type: 'sine', steps: [[1200, 0, 0.10], [800, 0.12, 0.10], [1200, 0.24, 0.10], [800, 0.40, 0.10], [1200, 0.52, 0.10], [800, 0.64, 0.10]] },
-  panic_continuous:{ type: 'sine', steps: Array.from({ length: 24 }, (_, i) => [i % 2 ? 1100 : 800, i * 0.10, 0.09]) },
-  key_up:          { type: 'sine', steps: [[760, 0, 0.045, 913], [913, 0.045, 0.11]] },
-  key_out:         { type: 'sine', steps: [[900, 0, 0.06], [650, 0.07, 0.07]] },
-  radio_grant:     { type: 'sine', steps: [[600, 0, 0.08, 1200]] },
-  radio_deny:      { type: 'sawtooth', steps: [[310, 0, 0.25]] },
-  quick_call_2:    { type: 'sine', steps: [[947, 0, 0.4], [1153, 0.42, 0.4]] },
-  talk_permit_low: { type: 'sine', steps: [[560, 0, 0.045, 660], [660, 0.045, 0.12]] },
-  call_alert:      { type: 'sine', steps: [[1000, 0, 0.08], [1000, 0.16, 0.08], [1000, 0.32, 0.08], [1000, 0.48, 0.08]] },
-  knox_alert:      { type: 'sine', steps: [[1200, 0, 0.07], [900, 0.08, 0.07], [1200, 0.16, 0.07], [900, 0.24, 0.07], [1200, 0.32, 0.07], [900, 0.40, 0.07]] },
-  squelch_tail:    { type: 'sine', steps: [['1800n', 0, 0.12]] },
-  static_burst:    { type: 'sine', steps: [['1500n', 0, 0.32]] },
-  boop:            { type: 'sine', steps: [[480, 0, 0.12]] },
-  dispatch_bell:   { type: 'sine', steps: [[1318, 0, 0.16], [988, 0.14, 0.22]] },
-  data_chirp:      { type: 'sine', steps: [[1500, 0, 0.05, 2200]] },
-  emergency_three: { type: 'sine', steps: [[800, 0, 0.09], [1100, 0.10, 0.09], [800, 0.20, 0.09], [1100, 0.30, 0.09], [800, 0.40, 0.09], [1100, 0.50, 0.09]] },
+  // ── Core dispatch ─────────────────────────────────────────────
+  info:            { type: 'sine',     steps: [[1000, 0, 0.055]] },
+  caution:         { type: 'sine',     steps: [[853.1, 0, 0.33], [960.0, 0.35, 0.33]] },
+  warning:         { type: 'sine',     steps: [[1050, 0, 0.15], [1450, 0.17, 0.15], [1050, 0.34, 0.15], [1450, 0.51, 0.15], [1050, 0.68, 0.15], [1450, 0.85, 0.15]] },
+  // error: A4→F4 (440→349 Hz) square NACK — matches Motorola console "buh-buh"
+  error:           { type: 'square',   steps: [[440, 0, 0.12], [349, 0.15, 0.12]] },
+  // alert: P25 three-pip ascending major triad A5→C6→E6
+  alert:           { type: 'sine',     steps: [[880, 0, 0.08], [1047, 0.11, 0.08], [1319, 0.22, 0.10]] },
+  alarm:           { type: 'sine',     steps: [[800, 0, 0.09], [1000, 0.10, 0.09], [800, 0.20, 0.09], [1000, 0.30, 0.09], [800, 0.40, 0.09], [1000, 0.50, 0.09], [800, 0.60, 0.09], [1000, 0.70, 0.09]] },
+  // chirp: 60ms per step — 30ms was inaudible on MDT speakers
+  chirp:           { type: 'sine',     steps: [[800, 0, 0.06], [1200, 0.06, 0.06]] },
+  double_chirp:    { type: 'sine',     steps: [[800, 0, 0.06], [1200, 0.06, 0.06], [800, 0.18, 0.06], [1200, 0.24, 0.06]] },
+  descending:      { type: 'sine',     steps: [[1047, 0, 0.08], [880, 0.10, 0.08], [698, 0.20, 0.10]] },
+  p1_alert:        { type: 'sine',     steps: [[1200, 0, 0.10], [800, 0.12, 0.10], [1200, 0.24, 0.10], [800, 0.40, 0.10], [1200, 0.52, 0.10], [800, 0.64, 0.10]] },
+  panic_continuous:{ type: 'sine',     steps: Array.from({ length: 24 }, (_, i) => [i % 2 ? 1100 : 800, i * 0.10, 0.09]) },
+  // dispatch_bell: E6→B5 (1318→988 Hz) — Spillman Premier CAD "ding-bong"
+  dispatch_bell:   { type: 'sine',     steps: [[1318, 0, 0.16], [988, 0.14, 0.22]] },
+  emergency_three: { type: 'sine',     steps: [[800, 0, 0.09], [1100, 0.10, 0.09], [800, 0.20, 0.09], [1100, 0.30, 0.09], [800, 0.40, 0.09], [1100, 0.50, 0.09]] },
+
+  // ── Radio (Motorola APX / P25) ────────────────────────────────
+  // key_up: Talk Permit Tone — TIA-102.BAAA "B-tone" at 913 Hz.
+  // 760→913 Hz onset glide (≈45ms vocoder snap) + 913 Hz sustain.
+  key_up:          { type: 'sine',     steps: [[760, 0, 0.045, 913], [913, 0.045, 0.11]] },
+  // key_out: APX de-key courtesy / roger beep — single clean 1800 Hz
+  // pip (≈80ms). Replaces the incorrect 900→650 Hz two-tone "bee-boop"
+  // which is not an APX characteristic; the roger beep on ASTRO25/APX
+  // is a brief mid-band single tone that signals "channel released."
+  key_out:         { type: 'sine',     steps: [[1800, 0, 0.08]] },
+  radio_grant:     { type: 'sine',     steps: [[600, 0, 0.08, 1200]] },
+  // radio_deny: APX channel-busy / PTT-denied — three rapid 1800 Hz
+  // pips (50ms each, 50ms gaps). Replaces the incorrect 310 Hz sawtooth
+  // buzz; real APX busy indication uses higher-frequency clean tones
+  // so they cut through vehicle noise and don't clash with dispatch tones.
+  radio_deny:      { type: 'sine',     steps: [[1800, 0, 0.05], [1800, 0.10, 0.05], [1800, 0.20, 0.05]] },
+  quick_call_2:    { type: 'sine',     steps: [[947, 0, 0.4], [1153, 0.42, 0.4]] },
+  // talk_permit_low: low-power / low-priority channel variant — same
+  // APX TPT glide pattern but tracking the 700→850 Hz range (sub-band
+  // of the standard 760→913 Hz) at reduced gain.
+  talk_permit_low: { type: 'sine',     steps: [[700, 0, 0.045, 850], [850, 0.045, 0.11]] },
+  call_alert:      { type: 'sine',     steps: [[1000, 0, 0.08], [1000, 0.16, 0.08], [1000, 0.32, 0.08], [1000, 0.48, 0.08]] },
+  knox_alert:      { type: 'sine',     steps: [[1200, 0, 0.07], [900, 0.08, 0.07], [1200, 0.16, 0.07], [900, 0.24, 0.07], [1200, 0.32, 0.07], [900, 0.40, 0.07]] },
+  squelch_tail:    { type: 'sine',     steps: [['1800n', 0, 0.12]] },
+  static_burst:    { type: 'sine',     steps: [['1500n', 0, 0.32]] },
+  boop:            { type: 'sine',     steps: [[480, 0, 0.12]] },
+  data_chirp:      { type: 'sine',     steps: [[1500, 0, 0.05, 2200]] },
+  roger:           { type: 'sine',     steps: [[1200, 0, 0.06]] },
+
+  // ── Status / dispatch ─────────────────────────────────────────
+  // ack: brief 1500 Hz confirmation pip — dispatcher click-to-acknowledge
+  ack:             { type: 'sine',     steps: [[1500, 0, 0.04]] },
+  // bonk: A4→F4 sawtooth NACK — command rejected / permission denied
+  bonk:            { type: 'sawtooth', steps: [[440, 0, 0.14], [349, 0.15, 0.18]] },
+  // backup_request: triple 1000 Hz pip — officer assistance requested
+  backup_request:  { type: 'sine',     steps: [[1000, 0, 0.10], [1000, 0.16, 0.10], [1000, 0.32, 0.10]] },
+  // enroute_chirp: 700→900 Hz ascending — unit reports en-route
+  enroute_chirp:   { type: 'sine',     steps: [[700, 0, 0.06], [900, 0.06, 0.06]] },
+  // onscene_chirp: A5→C6 (880→1046 Hz) — unit arrived at call
+  onscene_chirp:   { type: 'sine',     steps: [[880, 0, 0.07], [1046, 0.09, 0.10]] },
+  // cleared_chirp: 1100→700 Hz descending — unit cleared / available
+  cleared_chirp:   { type: 'sine',     steps: [[1100, 0, 0.10], [700, 0.11, 0.10]] },
+  // all_call: slow 800/1200 Hz Hi-Lo for broadcast to all units
+  all_call:        { type: 'sine',     steps: [[800, 0, 0.20], [1200, 0.20, 0.20], [800, 0.40, 0.20], [1200, 0.60, 0.20], [800, 0.80, 0.20], [1200, 1.00, 0.20], [800, 1.20, 0.20]] },
+  // priority_preempt: rising 600→1000 Hz — higher-priority call interrupts
+  priority_preempt:{ type: 'sine',     steps: [[600, 0, 0.09], [1000, 0.09, 0.11]] },
+  // unit_to_unit: single 1320 Hz pip — direct unit-to-unit message
+  unit_to_unit:    { type: 'sine',     steps: [[1320, 0, 0.08]] },
+  // stack_pip: very quiet 1500 Hz nag pip for unacknowledged stacked alerts
+  stack_pip:       { type: 'sine',     steps: [[1500, 0, 0.04]] },
+  // login_ok: C5→E5→G5 major triad ascending — session established
+  login_ok:        { type: 'sine',     steps: [[523, 0, 0.07], [659, 0.07, 0.07], [784, 0.14, 0.10]] },
+  // logoff: G5→E5→C5 descending — session terminated
+  logoff:          { type: 'sine',     steps: [[784, 0, 0.07], [659, 0.07, 0.07], [523, 0.14, 0.10]] },
+
+  // ── Voice alert / GPS ─────────────────────────────────────────
+  // beat_breach: single 660 Hz — unit crossed beat boundary
+  beat_breach:     { type: 'sine',     steps: [[660, 0, 0.20]] },
+  // gps_warn: two 880 Hz pips — 5-min GPS staleness caution
+  gps_warn:        { type: 'sine',     steps: [[880, 0, 0.10], [880, 0.30, 0.10]] },
+  // gps_lost: E6→C6→A5 (1318→1046→880 Hz) descending — 15-min GPS gap
+  gps_lost:        { type: 'sine',     steps: [[1318, 0, 0.18], [1046, 0.21, 0.18], [880, 0.42, 0.22]] },
+  // gps_restored: C6→E6 (1046→1318 Hz) — unit reappeared on GPS
+  gps_restored:    { type: 'sine',     steps: [[1046, 0, 0.09], [1318, 0.11, 0.12]] },
+  // pursuit_alert: high-pitch 1200/1600 Hz warble — vehicle pursuit speed
+  pursuit_alert:   { type: 'sine',     steps: Array.from({ length: 14 }, (_, i) => [i % 2 ? 1600 : 1200, i * 0.11, 0.10]) },
 };
 
 console.log('Rendering Spillman/Motorola dispatch tone library…');

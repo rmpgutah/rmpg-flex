@@ -453,6 +453,10 @@ export default function DispatchPage() {
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
 
+  // Destructure the stable submit ref so this callback only changes when units/calls
+  // change — not every render (dispatchOptimization as a whole was a new object every
+  // render before useOptimizationV2 memoized its return value, which caused this
+  // useCallback to be recreated on every render).
   const handleOptimizeAssignments = useCallback(async () => {
     const availableUnitIds = units
       .filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status))
@@ -466,7 +470,7 @@ export default function DispatchPage() {
       call_ids: openCallIds,
       unit_ids: availableUnitIds,
     });
-  }, [units, calls, dispatchOptimization]);
+  }, [units, calls, dispatchOptimization.submit]);
 
   useEffect(() => {
     if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
@@ -753,6 +757,16 @@ export default function DispatchPage() {
   const [linkBusinessRole, setLinkBusinessRole] = useState('involved');
   const { options: linkOptions } = useLinkOptions();
 
+  // ── Inline involved persons / vehicles (ad-hoc, no FK to records tables) ──
+  const [involvedPersons, setInvolvedPersons] = useState<any[]>([]);
+  const [involvedVehicles, setInvolvedVehicles] = useState<any[]>([]);
+  const [callNarrative, setCallNarrative] = useState<string>('');
+  const [narrativeSaving, setNarrativeSaving] = useState(false);
+  const [showAddInvPerson, setShowAddInvPerson] = useState(false);
+  const [showAddInvVehicle, setShowAddInvVehicle] = useState(false);
+  const [newInvPerson, setNewInvPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
+  const [newInvVehicle, setNewInvVehicle] = useState({ plate: '', make: '', model: '', color: '', role: 'involved' });
+
   const fetchCallPersons = useCallback(async (callId: string | number) => {
     try {
       const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/persons`);
@@ -828,6 +842,27 @@ export default function DispatchPage() {
       addToast(err?.message || 'Failed to load linked businesses', 'error');
     }
   }, [addToast]);
+
+  const fetchInvolvedPersons = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/involved-persons`);
+      setInvolvedPersons(Array.isArray(data) ? data : []);
+    } catch { setInvolvedPersons([]); }
+  }, []);
+
+  const fetchInvolvedVehicles = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<any[]>(`/dispatch/calls/${callId}/involved-vehicles`);
+      setInvolvedVehicles(Array.isArray(data) ? data : []);
+    } catch { setInvolvedVehicles([]); }
+  }, []);
+
+  const fetchCallNarrative = useCallback(async (callId: string | number) => {
+    try {
+      const data = await apiFetch<{ narrative: string | null }>(`/dispatch/calls/${callId}/narrative`);
+      setCallNarrative(data?.narrative ?? '');
+    } catch { setCallNarrative(''); }
+  }, []);
 
   const searchBusinesses = useCallback((query: string) => {
     setBusinessQuery(query);
@@ -990,12 +1025,18 @@ export default function DispatchPage() {
       fetchCallPersons(cid);
       fetchCallVehicles(cid);
       fetchCallBusinesses(cid);
+      fetchInvolvedPersons(cid);
+      fetchInvolvedVehicles(cid);
+      fetchCallNarrative(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
       setCallBusinesses([]);
+      setInvolvedPersons([]);
+      setInvolvedVehicles([]);
+      setCallNarrative('');
     }
-  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses]);
+  }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses, fetchInvolvedPersons, fetchInvolvedVehicles, fetchCallNarrative]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
   // Shares the body assembly with the click-Save path via buildCallEditBody
@@ -1195,6 +1236,15 @@ export default function DispatchPage() {
   // so manually clicking a different call after the auto-select never gets
   // reverted on the next /calls poll.
   const [searchParams, setSearchParams] = useSearchParams();
+  // Keep a ref to the current searchParams so the deep-link effect can read
+  // it without listing it as a dependency. useSearchParams() returns a NEW
+  // URLSearchParams object every render (React Router guarantees only value
+  // equality, not referential equality), so including searchParams in the
+  // effect dep array caused the effect to re-run on every render — not just
+  // when the URL actually changed. The ref avoids that while still letting
+  // the effect see the latest URL when it runs.
+  const searchParamsRef = useRef(searchParams);
+  useEffect(() => { searchParamsRef.current = searchParams; });
   const pendingDeepLinkRef = useRef<string | null>(
     searchParams.get('call_id') || searchParams.get('callId') || null,
   );
@@ -1203,6 +1253,11 @@ export default function DispatchPage() {
     if (!targetId) return;
     const tryFind = (list: CallForService[]) => list.find((c) => String(c.id) === String(targetId));
     const fromActive = tryFind(calls);
+    const stripDeepLink = () => {
+      const next = new URLSearchParams(searchParamsRef.current);
+      next.delete('call_id'); next.delete('callId');
+      setSearchParams(next, { replace: true });
+    };
     if (fromActive) {
       setSelectedCall(fromActive);
       // Map status → tab so the call is visible in the left rail.
@@ -1216,9 +1271,7 @@ export default function DispatchPage() {
       pendingDeepLinkRef.current = null;
       // Strip the query so a refresh doesn't re-select after the user
       // navigates away from this call.
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Not in active list — try archived. Trigger its load if it hasn't yet.
@@ -1231,18 +1284,14 @@ export default function DispatchPage() {
       setSelectedCall(fromArchive);
       setFilterTab('archived');
       pendingDeepLinkRef.current = null;
-      const next = new URLSearchParams(searchParams);
-      next.delete('call_id'); next.delete('callId');
-      setSearchParams(next, { replace: true });
+      stripDeepLink();
       return;
     }
     // Both lists hydrated, no match — surface once + give up.
     addToast(`Call ${targetId} not found`, 'warning');
     pendingDeepLinkRef.current = null;
-    const next = new URLSearchParams(searchParams);
-    next.delete('call_id'); next.delete('callId');
-    setSearchParams(next, { replace: true });
-  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, searchParams, setSearchParams, addToast]);
+    stripDeepLink();
+  }, [calls, archivedCalls, archivedLoaded, fetchArchivedCalls, setFilterTab, setSearchParams, addToast]);
 
   // Open NewCallModal on mount if ?newCall=1 is present (used by Tools menu, Records, etc.)
   useEffect(() => {
@@ -2247,6 +2296,22 @@ export default function DispatchPage() {
       addToast(`Call ${newCall.call_number} created`, 'success');
       // Audible feedback for local action
       announceLocalAction('call_created', `Call ${newCall.call_number} created.`);
+      // Fire-and-forget: save narrative + inline persons/vehicles from modal
+      if ((callData as any).narrative?.trim()) {
+        apiFetch(`/dispatch/calls/${result.id}/narrative`, {
+          method: 'PATCH', body: JSON.stringify({ narrative: (callData as any).narrative }),
+        }).catch(() => {});
+      }
+      for (const p of ((callData as any).involvedPersons ?? []) as any[]) {
+        apiFetch(`/dispatch/calls/${result.id}/involved-persons`, {
+          method: 'POST', body: JSON.stringify(p),
+        }).catch(() => {});
+      }
+      for (const v of ((callData as any).involvedVehicles ?? []) as any[]) {
+        apiFetch(`/dispatch/calls/${result.id}/involved-vehicles`, {
+          method: 'POST', body: JSON.stringify(v),
+        }).catch(() => {});
+      }
     } catch (err: any) {
       console.error('Failed to create call:', err);
       addToast(err?.message || 'Failed to create call', 'error');
@@ -2766,13 +2831,22 @@ export default function DispatchPage() {
               {/* Mobile Status Action Buttons — large touch targets for gloved use */}
               <div className="flex flex-wrap gap-2" style={{ willChange: 'transform' }}>
                 {selectedCall.status === 'pending' && (
-                  <button type="button"
-                    onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
-                    className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
-                    style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
-                  >
-                    <Send style={{ width: 16, height: 16 }} /> Dispatch
-                  </button>
+                  <>
+                    <button type="button"
+                      onClick={() => handleStatusChange(selectedCall.id, 'dispatched')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold text-rmpg-100 rounded-sm"
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'var(--spm-text-muted)', border: '1px solid var(--spm-text-muted)' }}
+                    >
+                      <Send style={{ width: 16, height: 16 }} /> Dispatch
+                    </button>
+                    <button type="button"
+                      onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
+                      className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
+                      style={{ ...MOBILE_ACTION_BTN_STYLE, background: 'color-mix(in srgb, var(--sev-critical) 13%, transparent)', border: '1px solid color-mix(in srgb, var(--sev-critical) 31%, transparent)', color: 'var(--sev-critical)' }}
+                    >
+                      <XCircle style={{ width: 16, height: 16 }} /> Cancel
+                    </button>
+                  </>
                 )}
                 {selectedCall.status === 'dispatched' && (
                   <button type="button"
@@ -4577,9 +4651,14 @@ export default function DispatchPage() {
                     )}
                     {/* Status action toolbar buttons */}
                     {!isEditing && selectedCall.status === 'pending' && (
-                      <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
-                        <Send style={{ width: 10, height: 10 }} /> Dispatch
-                      </button>
+                      <>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'dispatched')} className="toolbar-btn toolbar-btn-primary">
+                          <Send style={{ width: 10, height: 10 }} /> Dispatch
+                        </button>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: 'var(--sev-critical)' }}>
+                          <XCircle style={{ width: 10, height: 10 }} /> Cancel
+                        </button>
+                      </>
                     )}
                     {!isEditing && selectedCall.status === 'dispatched' && (
                       <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'enroute')} className="toolbar-btn toolbar-btn-primary">
@@ -5715,6 +5794,227 @@ export default function DispatchPage() {
                   </div>
                 )}
 
+                {/* ── INLINE INVOLVED PERSONS ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
+                        Involved Persons{involvedPersons.length > 0 && ` (${involvedPersons.length})`}
+                      </span>
+                      {!showAddInvPerson && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddInvPerson(true); setNewInvPerson({ name: '', dob: '', id_number: '', role: 'witness' }); }}
+                          className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                        >+ Add Person</button>
+                      )}
+                    </div>
+                    {showAddInvPerson && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!newInvPerson.name.trim() || !selectedCall?.id) return;
+                          try {
+                            const created = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/involved-persons`, {
+                              method: 'POST',
+                              body: JSON.stringify(newInvPerson),
+                            });
+                            setInvolvedPersons(prev => [...prev, created]);
+                            setShowAddInvPerson(false);
+                          } catch { addToast('Failed to add person', 'error'); }
+                        }}
+                        className="mb-2 space-y-1"
+                      >
+                        <div className="grid grid-cols-2 gap-1">
+                          <input
+                            className="input-dark text-xs col-span-2"
+                            placeholder="Full name *"
+                            value={newInvPerson.name}
+                            onChange={e => setNewInvPerson(p => ({ ...p, name: e.target.value }))}
+                            required
+                          />
+                          <input
+                            type="date"
+                            className="input-dark text-xs"
+                            placeholder="Date of birth"
+                            value={newInvPerson.dob}
+                            onChange={e => setNewInvPerson(p => ({ ...p, dob: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="ID / badge number"
+                            value={newInvPerson.id_number}
+                            onChange={e => setNewInvPerson(p => ({ ...p, id_number: e.target.value }))}
+                          />
+                          <select
+                            className="select-dark text-xs col-span-2"
+                            value={newInvPerson.role}
+                            onChange={e => setNewInvPerson(p => ({ ...p, role: e.target.value }))}
+                          >
+                            <option value="suspect">Suspect</option>
+                            <option value="victim">Victim</option>
+                            <option value="witness">Witness</option>
+                            <option value="reporting_party">Reporting Party</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-1 justify-end">
+                          <button type="button" onClick={() => setShowAddInvPerson(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border)] text-rmpg-400 hover:text-rmpg-200">Cancel</button>
+                          <button type="submit" className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100 hover:bg-rmpg-500">Add</button>
+                        </div>
+                      </form>
+                    )}
+                    {involvedPersons.length === 0 && !showAddInvPerson && (
+                      <p className="text-[9px] text-rmpg-500 italic">No inline subjects recorded.</p>
+                    )}
+                    {involvedPersons.map((p: any) => (
+                      <div key={p.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                          <span className="font-medium truncate">{p.name}</span>
+                          {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
+                          {p.id_number && <span className="text-rmpg-400 shrink-0">ID {p.id_number}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await apiFetch(`/dispatch/calls/${selectedCall?.id}/involved-persons/${p.id}`, { method: 'DELETE' }).catch(() => {});
+                            setInvolvedPersons(prev => prev.filter(x => x.id !== p.id));
+                          }}
+                          className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── INLINE INVOLVED VEHICLES ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">
+                        Involved Vehicles{involvedVehicles.length > 0 && ` (${involvedVehicles.length})`}
+                      </span>
+                      {!showAddInvVehicle && (
+                        <button
+                          type="button"
+                          onClick={() => { setShowAddInvVehicle(true); setNewInvVehicle({ plate: '', make: '', model: '', color: '', role: 'involved' }); }}
+                          className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                        >+ Add Vehicle</button>
+                      )}
+                    </div>
+                    {showAddInvVehicle && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!selectedCall?.id) return;
+                          try {
+                            const created = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/involved-vehicles`, {
+                              method: 'POST',
+                              body: JSON.stringify(newInvVehicle),
+                            });
+                            setInvolvedVehicles(prev => [...prev, created]);
+                            setShowAddInvVehicle(false);
+                          } catch { addToast('Failed to add vehicle', 'error'); }
+                        }}
+                        className="mb-2 space-y-1"
+                      >
+                        <div className="grid grid-cols-2 gap-1">
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Plate number"
+                            value={newInvVehicle.plate}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, plate: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Color"
+                            value={newInvVehicle.color}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, color: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Make"
+                            value={newInvVehicle.make}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, make: e.target.value }))}
+                          />
+                          <input
+                            className="input-dark text-xs"
+                            placeholder="Model"
+                            value={newInvVehicle.model}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, model: e.target.value }))}
+                          />
+                          <select
+                            className="select-dark text-xs col-span-2"
+                            value={newInvVehicle.role}
+                            onChange={e => setNewInvVehicle(p => ({ ...p, role: e.target.value }))}
+                          >
+                            <option value="suspect">Suspect Vehicle</option>
+                            <option value="victim">Victim Vehicle</option>
+                            <option value="involved">Involved</option>
+                          </select>
+                        </div>
+                        <div className="flex gap-1 justify-end">
+                          <button type="button" onClick={() => setShowAddInvVehicle(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border)] text-rmpg-400 hover:text-rmpg-200">Cancel</button>
+                          <button type="submit" className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100 hover:bg-rmpg-500">Add</button>
+                        </div>
+                      </form>
+                    )}
+                    {involvedVehicles.length === 0 && !showAddInvVehicle && (
+                      <p className="text-[9px] text-rmpg-500 italic">No inline vehicles recorded.</p>
+                    )}
+                    {involvedVehicles.map((v: any) => (
+                      <div key={v.id} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border)]" style={{ background: 'var(--surface-base)' }}>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                          <span className="font-medium truncate">
+                            {[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}
+                          </span>
+                          {v.plate && <span className="text-rmpg-300 font-mono shrink-0">{v.plate}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await apiFetch(`/dispatch/calls/${selectedCall?.id}/involved-vehicles/${v.id}`, { method: 'DELETE' }).catch(() => {});
+                            setInvolvedVehicles(prev => prev.filter(x => x.id !== v.id));
+                          }}
+                          className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── NARRATIVE / INCIDENT SUMMARY ─── */}
+                {(detailTab === 'info' || detailTab === 'persons') && (
+                  <div className="mt-2 border border-[var(--spm-border)] p-2" style={{ background: 'var(--surface-raised)' }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-[color:var(--field-label-color)]">Narrative / Incident Summary</span>
+                      {narrativeSaving && <span className="text-[8px] text-rmpg-500 italic">Saving…</span>}
+                    </div>
+                    <textarea
+                      className="textarea-dark text-xs w-full"
+                      rows={4}
+                      placeholder="Enter structured narrative or incident summary…"
+                      value={callNarrative}
+                      onChange={e => setCallNarrative(e.target.value)}
+                      onBlur={async () => {
+                        if (!selectedCall?.id) return;
+                        setNarrativeSaving(true);
+                        try {
+                          await apiFetch(`/dispatch/calls/${selectedCall.id}/narrative`, {
+                            method: 'PATCH',
+                            body: JSON.stringify({ narrative: callNarrative }),
+                          });
+                        } catch { addToast('Failed to save narrative', 'error'); }
+                        finally { setNarrativeSaving(false); }
+                      }}
+                    />
+                    <p className="text-[8px] text-rmpg-500 mt-0.5">Auto-saves on blur. Separate from call description / notes log.</p>
+                  </div>
+                )}
+
                 {/* ── SCENE DETAILS — Info tab ─── */}
                 {detailTab === 'info' && (isEditing || selectedCall.scene_safety || selectedCall.weather_conditions || selectedCall.lighting_conditions || selectedCall.alcohol_involved || selectedCall.drugs_involved || selectedCall.domestic_violence || selectedCall.le_notified || selectedCall.damage_estimate || selectedCall.action_taken) && (
                   <div className="border-t border-[var(--spm-border)] pt-3 mb-3">
@@ -6730,9 +7030,14 @@ export default function DispatchPage() {
             onMouseLeave={() => setContextMenu(null)}
           >
             {contextMenu.call.status === 'pending' && (
-              <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
-                <Send style={{ width: 12, height: 12 }} /> Dispatch
-              </button>
+              <>
+                <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'dispatched'); setContextMenu(null); }}>
+                  <Send style={{ width: 12, height: 12 }} /> Dispatch
+                </button>
+                <button type="button" className="context-menu-item" style={{ color: 'var(--sev-critical)' }} onClick={() => { handleStatusChange(contextMenu.call.id, 'cancelled'); setContextMenu(null); }}>
+                  <XCircle style={{ width: 12, height: 12 }} /> Cancel Call
+                </button>
+              </>
             )}
             {contextMenu.call.status === 'dispatched' && (
               <button type="button" className="context-menu-item" onClick={() => { handleStatusChange(contextMenu.call.id, 'enroute'); setContextMenu(null); }}>
@@ -6751,6 +7056,9 @@ export default function DispatchPage() {
                 </button>
                 <button type="button" className="context-menu-item" onClick={() => { handleHoldCall(contextMenu.call.id); setContextMenu(null); }}>
                   ⏸ Hold
+                </button>
+                <button type="button" className="context-menu-item" style={{ color: 'var(--sev-critical)' }} onClick={() => { handleStatusChange(contextMenu.call.id, 'cancelled'); setContextMenu(null); }}>
+                  <XCircle style={{ width: 12, height: 12 }} /> Cancel Call
                 </button>
               </>
             )}

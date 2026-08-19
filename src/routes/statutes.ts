@@ -59,7 +59,7 @@ statutes.get('/', async (c) => {
     const binds: unknown[] = [];
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
-      binds.push(`${q}%`, `%${q}%`, `%${q}%`);
+      const safe = q.slice(0, 48); binds.push(`${safe}%`, `%${safe}%`, `%${safe}%`);
     }
     if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
 
@@ -108,7 +108,7 @@ statutes.get('/search', async (c) => {
     }
     if (q.length >= 2) {
       where.push('(citation LIKE ? OR short_title LIKE ? OR description LIKE ?)');
-      binds.push(`${q}%`, `%${q}%`, `%${q}%`);
+      const safe = q.slice(0, 48); binds.push(`${safe}%`, `%${safe}%`, `%${safe}%`);
     }
     if (category && category !== 'all') { where.push('category = ?'); binds.push(category); }
     if (level) { where.push('offense_level = ?'); binds.push(level); }
