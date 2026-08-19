@@ -38,7 +38,7 @@ export default function WizardShell({
               <button
                 type="button"
                 onClick={onBack}
-                className="p-1 -ml-1 text-gray-500 active:opacity-60 shrink-0"
+                className="p-1 -ml-1 text-gray-300 active:opacity-60 shrink-0"
                 aria-label="Go back"
               >
                 <ChevronLeft size={24} />
