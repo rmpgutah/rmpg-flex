@@ -139,7 +139,7 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // With a call selected, show only units assigned to it (existing
   // behavior). With no call selected — e.g. the CAD board before a call is
@@ -199,9 +199,9 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
         map.on('load', () => {
           if (!cancelled) {
+            onMapLoaded(map);
             setLoaded(true);
             setError(null);
-
           }
         });
 
