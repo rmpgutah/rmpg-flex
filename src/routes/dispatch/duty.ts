@@ -23,6 +23,7 @@ import type { Context } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 import { emitAlert } from '../../utils/alertHub';
 import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { log } from '../../utils/logger';
@@ -214,12 +215,8 @@ async function loadRoster(db: D1Database) {
 // GET /dispatch/duty/roster — every active officer's duty state in one call.
 // Dispatch-tier only: this is the supervision surface behind the iOS Duty
 // Roster screen (start/end on behalf + time corrections hang off these rows).
-duty.get('/roster', async (c) => {
+duty.get('/roster', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
   try {
-    const role = (c.get('user') as { role?: string } | undefined)?.role;
-    if (!role || !ON_BEHALF_ROLES.has(role)) {
-      return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-    }
     return c.json({ officers: await loadRoster(getDb(c.env)) });
   } catch (err) {
     log.error('GET /dispatch/duty/roster failed', {}, err);
@@ -272,7 +269,7 @@ duty.get('/me', async (c) => {
 });
 
 // POST /dispatch/duty/start — go on duty: clock in + unit in-service + vehicle.
-duty.post('/start', async (c) => {
+duty.post('/start', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
@@ -404,7 +401,7 @@ duty.post('/start', async (c) => {
 });
 
 // POST /dispatch/duty/end — go off duty: clock out + off-duty + release vehicle.
-duty.post('/end', async (c) => {
+duty.post('/end', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));

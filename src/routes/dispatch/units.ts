@@ -20,7 +20,7 @@ const UPDATABLE_UNIT_COLUMNS = new Set([
 ]);
 
 // GET /dispatch/units
-units.get('/', async (c) => {
+units.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // next_service_date is a plain DATE (no time-of-day) representing a
@@ -301,6 +301,10 @@ units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'man
     }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    if (!VALID_STATUSES.includes(body.status as string)) {
+      return c.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+    }
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
       ? ', current_call_id = NULL' : '';
     // Going off duty / out of service ends any on-foot episode — otherwise the

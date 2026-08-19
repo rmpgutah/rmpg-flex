@@ -68,7 +68,7 @@ export const LIST_VIEW_COLUMNS = [
 export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
-calls.get('/', async (c) => {
+calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate, search, archived, page, limit, active, unit_id } = c.req.query();
@@ -79,14 +79,14 @@ calls.get('/', async (c) => {
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
       if (statuses.length === 1) { where += ' AND c.status = ?'; params.push(statuses[0]); }
-      else if (statuses.length > 1) { where += ` AND c.status IN (${statuses.map(() => '?').join(',')})`; params.push(...statuses); }
+      else if (statuses.length > 1) { const capped = statuses.slice(0, 90); where += ` AND c.status IN (${capped.map(() => '?').join(',')})`; params.push(...capped); }
     }
     if (priority) { where += ' AND c.priority = ?'; params.push(priority.toUpperCase()); }
     if (startDate) { where += ' AND c.created_at >= ?'; params.push(startDate); }
     if (endDate) { where += ' AND c.created_at <= ?'; params.push(endDate); }
     if (search) {
       where += " AND (c.call_number LIKE ? OR c.incident_type LIKE ? OR c.location_address LIKE ? OR c.description LIKE ?)";
-      const s = `%${search}%`; params.push(s, s, s, s);
+      const s = `%${search.slice(0, 48)}%`; params.push(s, s, s, s);
     }
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
@@ -424,7 +424,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
 });
 
 // GET /dispatch/calls/active - Active calls shortcut
-calls.get('/active', async (c) => {
+calls.get('/active', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
@@ -445,7 +445,7 @@ calls.get('/active', async (c) => {
 });
 
 // GET /dispatch/calls/export - CSV export
-calls.get('/export', async (c) => {
+calls.get('/export', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate } = c.req.query();
@@ -491,7 +491,7 @@ calls.get('/export', async (c) => {
 });
 
 // GET /dispatch/calls/check-duplicate
-calls.get('/check-duplicate', async (c) => {
+calls.get('/check-duplicate', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const address = c.req.query('address');
@@ -510,7 +510,7 @@ calls.get('/check-duplicate', async (c) => {
         WHERE ${ACTIVE_CALL_WHERE}
           AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
         ORDER BY created_at DESC LIMIT 10
-      `, `%${normalized}%`);
+      `, `%${normalized.slice(0, 48)}%`);
       textResults.push(...rows);
     }
 
@@ -562,7 +562,7 @@ calls.get('/check-duplicate', async (c) => {
 // call_vehicles/call_persons. Generic caution/gang flags are intentionally
 // excluded: this is a "check this call" signal, not the full screening
 // detail (that still lives on the call/person/vehicle record itself).
-calls.get('/hits', async (c) => {
+calls.get('/hits', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<{ call_id: number }>(db, `
@@ -633,7 +633,7 @@ calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', '
 });
 
 // ── Call Templates (CRUD for reusable dispatch patterns) ─────
-calls.get('/templates', async (c) => {
+calls.get('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -648,7 +648,7 @@ calls.get('/templates', async (c) => {
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
 // property/user/client JOIN columns or LEFT JOIN calls_for_service_ext blew
 // past the cap and produced SQLITE_ERROR 7500 "too many columns in result set".
-calls.get('/:id', async (c) => {
+calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -900,7 +900,7 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
 // { created_at, action, details, user_name } per row in the Audit tab
 // (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
 // so the tab doesn't break if audit_log schema drifts.
-calls.get('/:id/audit-trail', async (c) => {
+calls.get('/:id/audit-trail', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1441,6 +1441,8 @@ calls.post('/:id/resume', requireRole('dispatcher', 'supervisor', 'manager', 'ad
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
+    const resumeCallExists = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!resumeCallExists) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
@@ -1795,10 +1797,10 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
 });
 
 // GET /dispatch/calls/:id/evidence-prompt — check if evidence should be collected before clearing
-calls.get('/:id/evidence-prompt', async (c) => {
+calls.get('/:id/evidence-prompt', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '0', 10);
     const call = await queryFirst<{ photos_taken: number | null }>(db,
       'SELECT (SELECT COUNT(*) FROM field_photos WHERE call_id = ?) AS photos_taken', id);
     const notes = (await queryFirst<{ n: number }>(db,

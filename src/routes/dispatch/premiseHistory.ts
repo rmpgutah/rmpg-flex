@@ -53,7 +53,7 @@ premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor
     // street number) to widen the match. Won't match across totally
     // different streets because of the LIKE bounds.
     whereClause += ' AND UPPER(location_address) LIKE ?';
-    params.push(`%${address.trim().toUpperCase()}%`);
+    params.push(`%${address.trim().toUpperCase().slice(0, 48)}%`);
   }
 
   const rows = await query<PremiseHistoryRow>(
@@ -114,7 +114,7 @@ premise.get('/address-occupants', requireRole('officer', 'dispatcher', 'supervis
        WHERE UPPER(p.address) LIKE ?
        ORDER BY active_warrants DESC, p.last_name
        LIMIT 25`,
-      `%${address.toUpperCase()}%`,
+      `%${address.toUpperCase().slice(0, 48)}%`,
     );
     const occupants = people.map((p) => {
       let flags: string[] = [];

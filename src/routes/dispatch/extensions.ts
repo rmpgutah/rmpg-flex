@@ -578,7 +578,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
 
     const keywords = (text: string) =>
-      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3 && w.length <= 47).slice(0, 5);
 
     const matchClauses: string[] = [];
     const params: unknown[] = [];
@@ -943,7 +943,7 @@ async function fetchCallRow(db: D1Database, id: number) {
 // =====================================================================
 export const closestUnit = new Hono<Env>();
 
-closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
+closestUnit.get('/:id/closest-unit', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1094,7 +1094,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const callTimeline = new Hono<Env>();
 
-callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
+callTimeline.post('/:id/timeline', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1107,7 +1107,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
     const body = await c.req.json<{ action?: string; details?: string; created_at?: string }>();
-    const action = body.action ?? 'note_added';
+    const action = 'note_added';
     const details = body.details;
 
     if (!details || typeof details !== 'string' || details.length === 0) {
@@ -1400,6 +1400,7 @@ callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM external_referrals WHERE call_id = ? ORDER BY created_at DESC', id).catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
@@ -1788,7 +1789,7 @@ callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'su
 // send-to-serve below (legacy parity; DispatchPage polls this on call
 // selection). Returns null with 200 when no serve job is linked — a 404
 // here is just console noise since most calls have no serve job.
-callActions.get('/:id/serve-link', async (c) => {
+callActions.get('/:id/serve-link', requireRole(...READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
   const row = await queryFirst<Record<string, unknown>>(
