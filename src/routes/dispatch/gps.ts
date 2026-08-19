@@ -1084,14 +1084,14 @@ gps.get('/call-trail/:callId', requireRole(...READ_ROLES), async (c) => {
           AND (? IS NULL OR g.recorded_at <= ?)
           AND g.unit_id IN (${ph})
           AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
-        ORDER BY g.unit_id, g.recorded_at ASC
-        LIMIT 10000`,
+        ORDER BY g.unit_id, g.recorded_at ASC`,
       [call.received_at, call.closed_at, call.closed_at]);
+    // Cap after accumulation — LIMIT inside queryInChunks would apply per-chunk, not globally
 
     // Compute haversine distance per unit track, then sum.
     let totalDistM = 0;
     const byUnit = new Map<number, TrailPointRow[]>();
-    for (const r of rows) {
+    for (const r of rows.slice(0, 10000)) {
       let pts = byUnit.get(r.unit_id);
       if (!pts) { pts = []; byUnit.set(r.unit_id, pts); }
       pts.push(r);

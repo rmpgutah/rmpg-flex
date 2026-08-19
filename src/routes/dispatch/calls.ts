@@ -808,7 +808,11 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
     const extParams: unknown[] = [];
     const skipped: string[] = [];
 
+    const VALID_CALL_STATUSES = new Set(['pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','merged','split']);
     for (const [key, val] of Object.entries(body)) {
+      if (key === 'status' && val != null && !VALID_CALL_STATUSES.has(String(val))) {
+        return c.json({ error: `Invalid status '${val}'`, code: 'INVALID_STATUS' }, 400);
+      }
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
         baseUpdates.push(`${key} = ?`);
         baseParams.push(val ?? null);
@@ -1075,7 +1079,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     }
 
     const timeField = `${status}_at`;
-    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
+    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'archived_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
 

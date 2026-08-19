@@ -1020,7 +1020,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     // this, auto-assign would happily commit a unit to a call that's cleared/
     // closed/cancelled/archived, corrupting both the unit's status and the call's
     // audit trail (the call would silently flip back toward 'dispatched').
-    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged']);
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (call.status && TERMINAL_STATUSES.has(call.status)) {
       return c.json({ error: `Call is already ${call.status} — cannot auto-assign`, code: 'CALL_ALREADY_TERMINAL' }, 409);
     }
@@ -1777,12 +1777,12 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 }
 
 // Post-clear: requires the call to be cleared/closed first.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, true));
 
 // CAD "PI" command: promote a live call to an incident report immediately,
 // without first clearing it. Same dedup + audit behavior.
-callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, false));
 
 // GET /:id/serve-link — read back the serve_queue row created by
