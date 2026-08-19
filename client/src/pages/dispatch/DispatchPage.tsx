@@ -23,6 +23,7 @@ import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
 import { getResolvedEngine, detectMapEngine, type MapEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
+import DialerPanel from '../../components/DialerPanel';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
 import AddressAutocomplete, { type ParsedAddress } from '../../components/AddressAutocomplete';
@@ -7612,6 +7613,13 @@ export default function DispatchPage() {
           </div>
         </div>
       )}
+      {/* Dialer module — floating panel anchored to the dispatch view.
+          onDuress mirrors the panic_alert handler: alarm tone + voice announce.
+          onRinging announces the incoming call number via the voice channel. */}
+      <DialerPanel
+        onRinging={(msg) => { announceTarget(msg).catch(() => {}); }}
+        onDuress={(msg) => { playTone('alarm'); announcePanicAlert(msg); }}
+      />
     </div>
   );
 }
