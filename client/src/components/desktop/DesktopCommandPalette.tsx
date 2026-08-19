@@ -73,7 +73,7 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
         const q = encodeURIComponent(query);
         const [calls, persons, units, warrants] = await Promise.allSettled([
           apiFetch<{ id: number; incident_type: string; location_address: string }[]>(`/dispatch/calls?status=active&q=${q}`),
-          apiFetch<{ id: number; full_name: string; date_of_birth?: string }[]>(`/persons?q=${q}`),
+          apiFetch<{ id: number; full_name: string; date_of_birth?: string }[]>(`/records/persons?q=${q}`),
           apiFetch<{ id: number; unit_id: string; full_name?: string; status: string }[]>(`/dispatch/units?q=${q}`),
           apiFetch<{ id: number; defendant_name: string; charge_description?: string }[]>(`/warrants?q=${q}`),
         ]);

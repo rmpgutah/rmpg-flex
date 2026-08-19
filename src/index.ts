@@ -153,6 +153,32 @@ for (const m of ROUTE_REGISTRY) {
   app.route(m.prefix, m.router);
 }
 
+// ─── Client session event logger ─────────────────────────────
+// DesktopPage.tsx posts session-start / unlock events here (fire-and-forget).
+// Auth-gated so anonymous clients can't spam the error_log table.
+app.post('/api/errors', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ severity?: string; category?: string; message?: string; source?: string }>();
+    const userId = c.get('userId') as number | undefined;
+    await c.env.DB.prepare(
+      `INSERT INTO error_log (severity, category, message, details, trace_id, user_id, source_route, status_code, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(
+      body.severity ?? 'info',
+      body.category ?? 'client',
+      body.message ?? '',
+      JSON.stringify({ source: body.source ?? 'desktop' }),
+      c.get('traceId') ?? null,
+      userId ?? null,
+      body.source ?? 'desktop',
+      200,
+    ).run();
+    return c.json({ ok: true });
+  } catch {
+    return c.json({ ok: false });
+  }
+});
+
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
