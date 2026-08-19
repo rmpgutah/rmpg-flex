@@ -72,6 +72,10 @@ const ALLOWED_CONNECT = [
   // presigned URL, bypassing the Worker entirely — without this entry the
   // fetch/XHR is blocked by CSP before it ever reaches the network.
   'https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com',
+  // Desktop network/IP widgets (DesktopNetworkStatusWidget, DesktopIpInfoWidget,
+  // DesktopNetworkDiag) fetch the Cloudflare trace endpoint for connectivity checks.
+  'https://www.cloudflare.com',
+  'https://cloudflare.com',
 ].join(' ');
 
 const FULL_CSP = [

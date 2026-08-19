@@ -6,7 +6,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-
+import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 const trips = new Hono<Env>();
 
@@ -21,7 +21,7 @@ const trips = new Hono<Env>();
 //
 // Pass ?include_noise=1 to see them anyway (admin/debug). Active trips are
 // always shown — distance/duration are 0 by definition until they close.
-trips.get('/', async (c) => {
+trips.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { unit_id, call_id, from, to, limit, include_noise } = c.req.query();
@@ -51,7 +51,7 @@ trips.get('/', async (c) => {
 });
 
 // GET /dispatch/trips/active — one+ active trip per unit (board badges)
-trips.get('/active', async (c) => {
+trips.get('/active', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -72,7 +72,7 @@ trips.get('/active', async (c) => {
 // registration order, and if /:id came first a request to /score-trend would
 // match id="score-trend" instead (see test-workers/tripsScoreTrend.test.ts,
 // which proves both the correct response shape AND that this route wins).
-trips.get('/score-trend', async (c) => {
+trips.get('/score-trend', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -96,7 +96,7 @@ trips.get('/score-trend', async (c) => {
 });
 
 // GET /dispatch/trips/:id — trip + its breadcrumbs (for replay)
-trips.get('/:id', async (c) => {
+trips.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');

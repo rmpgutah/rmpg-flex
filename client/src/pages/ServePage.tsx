@@ -752,6 +752,8 @@ export default function ServePage() {
   const [mapReady, setMapReady] = useState(false);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
+  const [isServeMapRecovering, setIsServeMapRecovering] = useState(false);
+  const [serveMapNeedsManualReload, setServeMapNeedsManualReload] = useState(false);
   const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const serveMapRectangleSelectCleanupRef = useRef<(() => void) | null>(null);
   const serveGeoWatchId = useRef<number | null>(null);
@@ -759,6 +761,7 @@ export default function ServePage() {
   // attempt-history trail, and single-stop drive-time preview state.
   const [mapZoom, setMapZoom] = useState(11);
   const [mapDeadlineFilter, setMapDeadlineFilter] = useState<DeadlineFilter>('all');
+  const [routeStatusFilter, setRouteStatusFilter] = useState<StatusFilter>('all');
   const [selectedJobIds, setSelectedJobIds] = useState<Set<number>>(new Set());
   const mapSelectStartRef = useRef<{ x: number; y: number } | null>(null);
   const jobsRef = useRef<ServeJob[]>([]);
@@ -1637,6 +1640,8 @@ export default function ServePage() {
       serveMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'ServePage',
         onRebuild: () => {
+          setIsServeMapRecovering(false);
+          setServeMapNeedsManualReload(false);
           if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
           if (serveMapRectangleSelectCleanupRef.current) { serveMapRectangleSelectCleanupRef.current(); serveMapRectangleSelectCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
@@ -1648,6 +1653,9 @@ export default function ServePage() {
           setMapReady(false);
           setServeMapRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsServeMapRecovering(true),
+        onContextRestored: () => setIsServeMapRecovering(false),
+        onGiveUp: () => { setIsServeMapRecovering(false); setServeMapNeedsManualReload(true); },
       });
 
       map.on('load', () => {
@@ -2754,9 +2762,28 @@ export default function ServePage() {
                     />
                   </div>
 
+                  {/* Route status filter */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {STATUS_FILTERS.map(f => (
+                      <button
+                        key={f.value}
+                        type="button"
+                        onClick={() => setRouteStatusFilter(f.value)}
+                        className={`px-2 py-1 text-[10px] border border-border-subtle rounded-[2px] ${routeStatusFilter === f.value ? 'bg-rmpg-700 text-white' : 'bg-surface-sunken text-fg-muted'}`}
+                      >
+                        {f.label}
+                        {f.value !== 'all' && (
+                          <span className="ml-1 font-mono tabular-nums text-rmpg-500">
+                            {routeJobs.filter(j => j.status === f.value).length}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
                   {/* Ordered stop list */}
                   <div className="space-y-1">
-                    {routeJobs.map((job, idx) => {
+                    {(routeStatusFilter === 'all' ? routeJobs : routeJobs.filter(j => j.status === routeStatusFilter)).map((job, idx) => {
                       const isCompleted = job.status === 'served';
                       const isFailed = job.status === 'failed';
                       const deadlineDate = job.deadline ? parseTimestamp(job.deadline) : null;
@@ -2954,14 +2981,14 @@ export default function ServePage() {
             {/* Map toolbar: deadline filter + export */}
             <div className="flex items-center justify-between gap-2 px-2 py-1 bg-surface-raised border-b border-border-subtle flex-wrap">
               <div className="flex items-center gap-1">
-                {(['all', 'today', 'three_days', 'week', 'overdue', 'served'] as DeadlineFilter[]).map((f) => (
+                {(['all', 'today', 'three_days', 'week', 'overdue', 'in_progress', 'served'] as DeadlineFilter[]).map((f) => (
                   <button
                     key={f}
                     type="button"
                     onClick={() => setMapDeadlineFilter(f)}
                     className={`px-2 py-1 text-[10px] border border-border-subtle rounded ${mapDeadlineFilter === f ? 'bg-rmpg-700 text-white' : 'bg-surface-sunken text-fg-muted'}`}
                   >
-                    {f === 'three_days' ? '3 Days' : f.charAt(0).toUpperCase() + f.slice(1)}
+                    {f === 'three_days' ? '3 Days' : f === 'in_progress' ? 'In Progress' : f.charAt(0).toUpperCase() + f.slice(1)}
                   </button>
                 ))}
               </div>
@@ -2993,11 +3020,29 @@ export default function ServePage() {
 
             <div className="flex-1 relative min-h-0">
               <div ref={mapContainerRef} className="absolute inset-0" />
-              {!mapReady && (
+              {!mapReady && !isServeMapRecovering && (
                 <div className="absolute inset-0 flex items-center justify-center bg-surface-sunken">
                   <div className="flex items-center gap-2 text-xs text-rmpg-400">
                     <Loader2 size={14} className="animate-spin" />
                     Loading map...
+                  </div>
+                </div>
+              )}
+              {isServeMapRecovering && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 size={16} className="animate-spin text-brand-400" />
+                    <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+                  </div>
+                </div>
+              )}
+              {serveMapNeedsManualReload && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+                  <div className="flex flex-col items-center gap-2 text-center px-4">
+                    <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+                    <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+                      RELOAD PAGE
+                    </button>
                   </div>
                 </div>
               )}

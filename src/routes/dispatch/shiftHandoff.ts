@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
 const handoff = new Hono<Env>();
@@ -23,7 +24,7 @@ handoff.get('/', async (c) => {
   }
 });
 
-handoff.put('/', async (c) => {
+handoff.put('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;

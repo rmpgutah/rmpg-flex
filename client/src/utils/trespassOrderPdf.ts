@@ -16,6 +16,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -374,6 +375,6 @@ export function generateTrespassOrderPdf(order: TrespassOrder): jsPDF {
 
 export function openTrespassOrderPdf(order: TrespassOrder): void {
   const doc = generateTrespassOrderPdf(order);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Trespass Order');
 }

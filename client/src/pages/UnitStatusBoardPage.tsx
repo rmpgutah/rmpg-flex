@@ -16,6 +16,7 @@ interface DispatchUnit {
   current_call_id?: number | null;
   current_call_number?: string | null;
   location_description?: string | null;
+  queued_call_ids?: number[];
 }
 
 type FilterMode = 'ALL' | 'AVAILABLE' | 'ON-CALL' | 'OUT';
@@ -226,13 +227,22 @@ function UnitCard({ unit, canChangeStatus, onClick }: UnitCardProps) {
         <span className={`text-[10px] font-semibold ${statusColorClass(unit.status)}`}>{label}</span>
       </div>
 
-      {/* Call number if on call */}
+      {/* Call number if on call + queued count */}
       {unit.current_call_number && (
-        <div className="flex items-center gap-1 mt-0.5">
+        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
           <Radio size={10} style={{ color: 'var(--sev-critical)', flexShrink: 0 }} />
           <span className="text-[10px] font-mono" style={{ color: 'var(--sev-critical)' }}>
             Call {unit.current_call_number}
           </span>
+          {(unit.queued_call_ids?.length ?? 0) > 0 && (
+            <span
+              className="text-[9px] font-semibold px-1 rounded-[2px]"
+              style={{ background: 'var(--sev-warn)', color: '#000', lineHeight: '14px' }}
+              title={`${unit.queued_call_ids!.length} call${unit.queued_call_ids!.length > 1 ? 's' : ''} queued`}
+            >
+              +{unit.queued_call_ids!.length} queued
+            </span>
+          )}
         </div>
       )}
 

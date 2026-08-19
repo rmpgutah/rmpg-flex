@@ -255,9 +255,9 @@ export interface DesktopSystemTrayProps {
 
 export default function DesktopSystemTray({ className }: DesktopSystemTrayProps) {
   const { battery, connectivity, connectivityDetail, gps, syncPending, cpuPercent, onDuty, setOnDuty, radioChannel, isElectron } = useTrayPolling();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { addToast } = useToast();
-  const navigate = useNavigate();
   const [connPanelOpen, setConnPanelOpen]   = useState(false);
   const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
   const dutyBusyRef = useRef(false);

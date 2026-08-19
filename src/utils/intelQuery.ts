@@ -21,7 +21,7 @@ export interface QueryParams {
 }
 
 const esc = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
-const like = (s: string) => `%${esc(s)}%`;
+const like = (s: string) => `%${esc(s).slice(0, 48)}%`;
 
 export async function runIntelQuery(db: D1Database, p: QueryParams): Promise<{ results: QueryHit[]; facets: Facets }> {
   const limit = Math.min(p.limit || 50, 100);

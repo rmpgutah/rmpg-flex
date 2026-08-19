@@ -961,7 +961,7 @@ calls.post('/:id/merge', async (c) => {
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, mergeId);
       if (userId) {
         await execute(db,
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
           userId, mergeId, JSON.stringify({ merged_into: id }));
       }
       merged++;
@@ -1157,6 +1157,12 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
             `UPDATE units SET status = 'available', current_call_id = NULL
              WHERE current_call_id = ? OR id IN (${assignedIds.map(() => '?').join(',')})`,
             parseInt(id, 10), ...assignedIds);
+          // Promote queued calls for each released unit.
+          for (const uid of assignedIds) {
+            promoteQueuedCall(db, uid).catch((qErr) =>
+              log.error('promoteQueuedCall on call close failed (non-fatal)', { unit_id: uid }, qErr),
+            );
+          }
         }
       } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
     }
@@ -1232,6 +1238,33 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
 // list (plus any extra bound params) crosses the limit, exactly when
 // the bulk tool is most needed (many open calls at once).
 const D1_PARAM_CHUNK = 90;
+// Promote the next queued call for a unit that just cleared its active slot.
+// Called after unassign-unit and after terminal call-status transitions.
+async function promoteQueuedCall(
+  db: Awaited<ReturnType<typeof getDb>>,
+  unit_id: number,
+): Promise<void> {
+  const row = await queryFirst<{ queued_call_ids: string }>(
+    db, 'SELECT queued_call_ids FROM units WHERE id = ?', unit_id,
+  );
+  if (!row) return;
+  const queue = JSON.parse(row.queued_call_ids || '[]') as number[];
+  if (queue.length === 0) return;
+  const nextCallId = queue[0];
+  const remaining = queue.slice(1);
+  const nextCall = await queryFirst<{ status: string }>(
+    db, 'SELECT status FROM calls_for_service WHERE id = ?', nextCallId,
+  );
+  if (!nextCall || nextCall.status === 'closed' || nextCall.status === 'cancelled') {
+    await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(remaining), unit_id);
+    if (remaining.length > 0) await promoteQueuedCall(db, unit_id);
+    return;
+  }
+  await executeBatch(db, [
+    { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = ? WHERE id = ?", bindings: [nextCallId, JSON.stringify(remaining), unit_id] },
+  ]);
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -1364,7 +1397,7 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
 });
 
 // POST /dispatch/calls/:id/archive
-calls.post('/:id/archive', async (c) => {
+calls.post('/:id/archive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1375,12 +1408,16 @@ calls.post('/:id/archive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/unarchive
-calls.post('/:id/unarchive', async (c) => {
+calls.post('/:id/unarchive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const idStr = c.req.param('id');
     const id = Number(idStr);
-    await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    if (result.meta.changes === 0) {
+      const exists = await queryFirst(db, 'SELECT id, status FROM calls_for_service WHERE id = ?', id);
+      return c.json({ error: exists ? 'Call is not archived' : 'Not found' }, exists ? 409 : 404);
+    }
     // Fetch the updated call and ext rows
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
@@ -1408,7 +1445,7 @@ calls.post('/:id/unarchive', async (c) => {
 // in place — that combination silently drops a held call's real status on
 // resume. Superseded here by the held_at design both this route and the
 // client already commit to.
-calls.post('/:id/hold', async (c) => {
+calls.post('/:id/hold', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1427,7 +1464,7 @@ calls.post('/:id/hold', async (c) => {
 });
 
 // POST /dispatch/calls/:id/resume
-calls.post('/:id/resume', async (c) => {
+calls.post('/:id/resume', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1562,28 +1599,33 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       }, 409);
     }
 
-    // Reject double-dispatching a unit that's already committed to a
-    // DIFFERENT still-open call — prevents a lost-update race where two
-    // dispatchers assign the same unit to two calls simultaneously.
-    const unitRow = await queryFirst<{ current_call_id: number | null }>(
-      db, 'SELECT current_call_id FROM units WHERE id = ?', unit_id,
+    // If the unit is already working a DIFFERENT open call, queue this
+    // assignment rather than rejecting it outright. The queued call will be
+    // promoted automatically when the unit clears its active call.
+    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string }>(
+      db, 'SELECT current_call_id, queued_call_ids FROM units WHERE id = ?', unit_id,
     );
-    if (unitRow?.current_call_id != null && String(unitRow.current_call_id) !== String(id)) {
+    const activeCallId = unitRow?.current_call_id;
+    if (activeCallId != null && String(activeCallId) !== String(id)) {
       const conflictingCall = await queryFirst<{ call_number: string; status: string }>(
-        db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
+        db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', activeCallId,
       );
       if (conflictingCall && conflictingCall.status !== 'closed' && conflictingCall.status !== 'cancelled') {
-        return c.json({
-          error: 'unit_already_dispatched',
-          message: `Unit is already assigned to call ${conflictingCall.call_number}. Unassign it there first.`,
-          code: 'UNIT_ALREADY_DISPATCHED',
-        }, 409);
+        // Queue this call behind the active one instead of 409-ing.
+        const queue = JSON.parse(unitRow?.queued_call_ids || '[]') as number[];
+        const callIdNum = parseInt(id, 10);
+        if (!queue.includes(callIdNum)) queue.push(callIdNum);
+        await executeBatch(db, [
+          { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
+          { sql: 'UPDATE units SET queued_call_ids = ? WHERE id = ?', bindings: [JSON.stringify(queue), unit_id] },
+        ]);
+        return c.json({ queued: true, message: `Unit is on call ${conflictingCall.call_number} — this call has been queued.`, assigned_unit_ids: assigned, premise_pushed: 0 });
       }
     }
 
     await executeBatch(db, [
       { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
-      { sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
+      { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = '[]' WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
 
     // ── Stack sync: add unit to sibling calls ──
@@ -1660,7 +1702,23 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+
+    // If the unit's active call is this one, clear it and promote from queue.
+    // If this call was only queued (not active), just remove it from the queue.
+    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string }>(
+      db, 'SELECT current_call_id, queued_call_ids FROM units WHERE id = ?', unit_id,
+    );
+    const callIdNum = parseInt(id ?? '', 10);
+    if (unitRow?.current_call_id === callIdNum) {
+      await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+      try { await promoteQueuedCall(db, unit_id); } catch (qErr) {
+        log.error('promoteQueuedCall failed (non-fatal)', { unit_id }, qErr as Error);
+      }
+    } else {
+      // Remove from the queue without touching the active call.
+      const queue = (JSON.parse(unitRow?.queued_call_ids || '[]') as number[]).filter(q => q !== callIdNum);
+      await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(queue), unit_id);
+    }
 
     // ── Stack sync: remove unit from sibling calls ──
     try {
@@ -1767,7 +1825,7 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
       created.push(childId);
     }
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
-    if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
+    if (userId) await execute(db, `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
     return c.json({ success: true, parent_id: id, child_ids: created });
   } catch (err) {
     log.error('POST /:id/split failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Call split failed' }, 500); }

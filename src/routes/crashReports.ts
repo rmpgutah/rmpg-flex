@@ -9,6 +9,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
 import { log } from '../utils/logger';
 const crashReports = new Hono<Env>();
@@ -40,7 +41,7 @@ crashReports.get('/', async (c) => {
     const db = getDb(c.env);
     const { search, crash_type, severity, from, to } = c.req.query();
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
-    if (search) { conditions.push('(report_number LIKE ? OR location LIKE ? OR narrative LIKE ?)'); const s = `%${search}%`; params.push(s, s, s); }
+    if (search) { const m = containsAnyClause(['report_number', 'location', 'narrative']); conditions.push(m.sql); params.push(...m.binds(search)); }
     if (crash_type) { conditions.push('crash_type = ?'); params.push(crash_type); }
     if (severity) { conditions.push('severity = ?'); params.push(severity); }
     if (from) { conditions.push('crash_date >= ?'); params.push(from); }

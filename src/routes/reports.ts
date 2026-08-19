@@ -28,6 +28,7 @@ import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import type { Env } from '../types';
 
 import { log } from '../utils/logger';
+import { containsClause } from '../utils/searchText';
 import dailyReports from './dailyReports';
 const reports = new Hono<Env>();
 
@@ -1382,7 +1383,7 @@ reports.post('/custom', async (c) => {
       if (!f.value) continue;
       switch (f.operator) {
         case 'eq':       whereParts.push(`${f.column} = ?`);           binds.push(f.value); break;
-        case 'contains': whereParts.push(`${f.column} LIKE ?`);         binds.push(`%${f.value}%`); break;
+        case 'contains': { const m = containsClause(f.column); whereParts.push(m.sql); binds.push(m.bind(f.value)); break; }
         case 'gte':      whereParts.push(`${f.column} >= ?`);           binds.push(f.value); break;
         case 'lte':      whereParts.push(`${f.column} <= ?`);           binds.push(f.value); break;
       }

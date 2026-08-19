@@ -554,6 +554,12 @@ export default React.memo(function ServeJobCard({
                 <span className="font-mono tabular-nums text-rmpg-400">{job.case_number}</span>
               </div>
             )}
+            {job.sm_job_id && (
+              <div className="flex items-center gap-1">
+                <span className="text-rmpg-400">Job #:</span>
+                <span className="font-mono tabular-nums text-rmpg-300">{job.sm_job_id}</span>
+              </div>
+            )}
             {job.court_name && (
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-rmpg-400" />

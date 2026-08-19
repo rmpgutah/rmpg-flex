@@ -41,7 +41,7 @@ export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<Sour
 
   try {
     if (seed.name) {
-      const like = `%${seed.name.split(' ')[0]}%`;
+      const like = `%${seed.name.split(' ')[0].slice(0, 48)}%`;
       const { results } = await db.prepare(
         `SELECT ${PERSON_COLS} FROM persons WHERE ${PERSON_NAME_SQL} LIKE ? LIMIT 10`
       ).bind(like).all<any>();

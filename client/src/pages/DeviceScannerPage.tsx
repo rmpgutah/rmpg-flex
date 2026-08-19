@@ -335,7 +335,7 @@ function HistoryTable({ log, onDelete }: { log: CaptureEntry[]; onDelete: (id: s
           >
             <div className="flex items-center gap-2 text-[11px]">
               {expanded === entry.id ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-              <span className="text-rmpg-400 font-mono">{new Date(entry.timestamp).toLocaleString()}</span>{/* new-date-ok — timestamp is ISO 8601 from Electron main, not a D1 naive string */}
+              <span className="text-rmpg-400 font-mono">{new Date(entry.timestamp).toLocaleString()}</span>
               <span className="text-[color:var(--field-label-color)] font-semibold uppercase text-[9px]">{entry.scanType}</span>
               <span className="text-rmpg-200">{entry.deviceCount} device{entry.deviceCount !== 1 ? 's' : ''}</span>
               {entry.newDeviceCount ? <span className="text-red-400 text-[9px]">{entry.newDeviceCount} new</span> : null}
@@ -514,7 +514,7 @@ export default function DeviceScannerPage() {
             {statusMsg && <span className="text-blue-300">{statusMsg}</span>}
             {latestEntry && !statusMsg && (
               <>
-                <span className="text-rmpg-500">Last scan: {new Date(latestEntry.timestamp).toLocaleTimeString()}</span>{/* new-date-ok — ISO 8601 from Electron main */}
+                <span className="text-rmpg-500">Last scan: {new Date(latestEntry.timestamp).toLocaleTimeString()}</span>
                 <span className="text-rmpg-300">{latestDevices.length} devices</span>
                 {newCount > 0 && <span className="text-red-400 font-semibold">{newCount} NEW</span>}
                 {latestEntry.localIp && <span className="text-rmpg-600 font-mono">{latestEntry.localIp}</span>}

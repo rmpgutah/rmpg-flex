@@ -1021,7 +1021,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1085,7 +1085,7 @@ function RouteHeatmapPanel({ trips }: { trips: NavTrip[] }) {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        map.on('load', () => { if (!cancelled) setMapLoaded(true); });
+        map.on('load', () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } });
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;
         webglRecoveryCleanupRef.current = attach(map, 'NavPage-RouteHeatmap');
