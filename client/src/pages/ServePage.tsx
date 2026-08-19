@@ -3294,6 +3294,7 @@ export default function ServePage() {
             officerId={Number(user.id)}
             sharedJobs={jobs}
             onJobsChange={setJobs}
+            activeRouteId={savedRoute?.id ? Number(savedRoute.id) : undefined}
             routeOrderIds={(() => {
               if (savedRoute?.optimized_order_json) {
                 try {

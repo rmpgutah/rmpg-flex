@@ -482,11 +482,13 @@ export interface MyRunTabProps {
   onJobsChange?: Dispatch<SetStateAction<ServeJob[]>>;
   /** Ordered job IDs from the saved route plan — when provided, active jobs sort by route sequence and show stop numbers. */
   routeOrderIds?: number[];
+  /** D1 id of the active serve_routes row — used as ref_id when submitting a V2 optimization job. */
+  activeRouteId?: number;
 }
 
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
-export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds }: MyRunTabProps) {
+export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds, activeRouteId }: MyRunTabProps) {
   const navigate = useNavigate();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
@@ -722,12 +724,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
 
   const handleOptimize = useCallback(() => {
     const { shiftStart, shiftEnd } = denverShiftTimes();
-    // TODO: wire officerUnitId from auth context when available
-    const officerUnitId = 0;
-    // TODO: wire serveRouteId from active route when available
-    const serveRouteId = 0;
-    void optRun.startOptimization(byFolder.pending, officerUnitId, shiftStart, shiftEnd, serveRouteId);
-  }, [optRun, byFolder.pending]);
+    void optRun.startOptimization(byFolder.pending, officerId, shiftStart, shiftEnd, activeRouteId ?? 0);
+  }, [optRun, byFolder.pending, officerId, activeRouteId]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Render
