@@ -818,7 +818,7 @@ bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const welfareActive = new Hono<Env>();
 
-welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
+welfareActive.get('/active', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     // Pull all officers currently on a P1/P2 onscene call — those are the
@@ -1151,7 +1151,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
 // Ported from legacy callLifecycle.ts:479. Only `details` is editable —
 // created_at is an immutable audit-log timestamp. The entry is matched by
 // (id, entity_type='call', entity_id) so one call can't edit another's rows.
-callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.put('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1183,7 +1183,7 @@ callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c)
 // DELETE /api/dispatch/calls/:id/timeline/:entryId — delete a timeline entry.
 // Ported from legacy callLifecycle.ts:526. Client (handleDeleteTimeline) only
 // checks for a non-error response, so { success: true } is the contract.
-callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.delete('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1326,7 +1326,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
 
 // POST /:id/le-notification — record that an outside law-enforcement agency was
 // notified. Client sends { agency }; case_number/notes are optional extras.
-callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) => {
+callActions.post('/:id/le-notification', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;

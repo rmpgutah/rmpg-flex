@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, queryInChunks, execute, executeBatch, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, queryInChunks, execute, executeInChunks, executeBatch, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -102,7 +102,7 @@ calls.get('/', async (c) => {
     // not a replacement, so unset callers correctly get "everything
     // non-archived" per the archived handling above.
     if (active === 'true') {
-      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending')";
     }
 
     // `unit_id` scopes the list to calls assigned to one unit — opt-in, so
@@ -434,7 +434,7 @@ calls.get('/active', async (c) => {
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id
-      WHERE c.status IN ('dispatched','enroute','onscene','pending','open')
+      WHERE c.status IN ('dispatched','enroute','onscene','pending')
       ORDER BY c.created_at DESC LIMIT 200
     `);
     return c.json(rows);
@@ -925,10 +925,10 @@ calls.get('/:id/audit-trail', async (c) => {
 });
 
 // POST /dispatch/calls/:id/merge — consolidate duplicate CFS into a master call
-calls.post('/:id/merge', async (c) => {
+calls.post('/:id/merge', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '0', 10);
     const { merge_call_ids } = await c.req.json<{ merge_call_ids: number[] }>();
     if (!Array.isArray(merge_call_ids) || !merge_call_ids.length) {
       return c.json({ error: 'merge_call_ids array required' }, 400);
@@ -1131,10 +1131,9 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
       try {
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
         if (Array.isArray(assignedIds) && assignedIds.length > 0) {
-          await execute(db,
-            `UPDATE units SET status = ?, last_status_change = datetime('now')
-             WHERE id IN (${assignedIds.map(() => '?').join(',')}) AND status IN ('dispatched', 'enroute', 'onscene')`,
-            status, ...assignedIds);
+          await executeInChunks(db, assignedIds,
+            (ph) => `UPDATE units SET status = ?, last_status_change = datetime('now') WHERE id IN (${ph}) AND status IN ('dispatched', 'enroute', 'onscene')`,
+            [status]);
         }
       } catch (err) { console.error('[dispatch] failed to cascade unit status on call transition:', err); }
     }
@@ -1153,10 +1152,11 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
       try {
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
         if (Array.isArray(assignedIds) && assignedIds.length > 0) {
-          await execute(db,
-            `UPDATE units SET status = 'available', current_call_id = NULL
-             WHERE current_call_id = ? OR id IN (${assignedIds.map(() => '?').join(',')})`,
-            parseInt(id, 10), ...assignedIds);
+          // current_call_id leg: sweep any unit that still points at this call.
+          await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id = ?`, parseInt(id, 10));
+          // IN-list leg: release assigned units by explicit id, chunked to stay under D1's 100-param cap.
+          await executeInChunks(db, assignedIds,
+            (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
         }
       } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
     }
@@ -1790,7 +1790,7 @@ calls.get('/:id/evidence-prompt', async (c) => {
   } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
 });
 
-calls.post('/templates', async (c) => {
+calls.post('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
@@ -1805,11 +1805,11 @@ calls.post('/templates', async (c) => {
     log.error('POST /templates failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Template creation failed' }, 500); }
 });
 
-calls.delete('/templates/:id', async (c) => {
+calls.delete('/templates/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '0', 10);
     await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
     return c.json({ success: true });
   } catch (err) {
@@ -1833,8 +1833,8 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     if (!['pso_client_request', 'process_service'].includes(String(parent.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parent.status))) {
-      return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parent.status))) {
+      return c.json({ error: 'Call must be cleared, closed, cancelled, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
     const userId = (c.get('userId') as number | undefined) ?? null;

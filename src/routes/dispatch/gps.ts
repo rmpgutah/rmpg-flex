@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute, executeBatch, executeInChunks } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch, executeInChunks, queryInChunks } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
 import { haversineM } from '../../utils/tripTelemetry';
@@ -1073,17 +1073,20 @@ gps.get('/call-trail/:callId', requireRole(...READ_ROLES), async (c) => {
     const emptyStats = { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 };
     if (unitIds.length === 0) return c.json({ call_id: callId, points: [], stats: emptyStats });
 
-    const placeholders = unitIds.map(() => '?').join(',');
-    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null }>(db,
-      `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
+    // Breadcrumb fetch is chunked to stay under D1's 100-bound-parameter cap.
+    // queryInChunks binds leadingBindings FIRST then the chunk IDs, so the time
+    // predicates must appear before the IN-list in the SQL to match that order.
+    const rows = await queryInChunks<TrailPointRow & { unit_id: number; call_sign: string | null }>(
+      db, unitIds,
+      (ph) => `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
          FROM gps_breadcrumbs g
-        WHERE g.unit_id IN (${placeholders})
-          AND g.recorded_at >= ?
+        WHERE g.recorded_at >= ?
           AND (? IS NULL OR g.recorded_at <= ?)
+          AND g.unit_id IN (${ph})
           AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
         ORDER BY g.unit_id, g.recorded_at ASC
         LIMIT 10000`,
-      ...unitIds, call.received_at, call.closed_at, call.closed_at);
+      [call.received_at, call.closed_at, call.closed_at]);
 
     // Compute haversine distance per unit track, then sum.
     let totalDistM = 0;

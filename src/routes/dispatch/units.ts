@@ -292,8 +292,13 @@ units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'man
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    const existing = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    // Officers may only update their own unit — dispatchers and above can update any.
+    const user = c.get('user') as { role: string } | undefined;
+    if (user?.role === 'officer' && existing.officer_id !== (c.get('userId') as number | undefined)) {
+      return c.json({ error: 'Officers may only update their own unit', code: 'FORBIDDEN' }, 403);
+    }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
