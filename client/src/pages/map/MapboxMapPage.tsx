@@ -225,7 +225,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   }, []);
 
   const {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token: mapboxToken,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback,
+    isContextLost, needsManualReload,
+    changeStyle, token: mapboxToken,
     daylight, projection, atmosphere, cameraAnimation, snapshot,
   } = useMapCore({
     preferredEngine,
@@ -1589,6 +1591,33 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-8 h-8 text-brand-gold-500 animate-spin" />
             <span className="text-rmpg-300 text-xs font-mono">INITIALIZING MAP…</span>
+          </div>
+        </div>
+      )}
+
+      {/* WebGL context-lost: brief overlay while recovery rebuild is pending */}
+      {isContextLost && !loading && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-6 h-6 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-xs font-mono">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+
+      {/* WebGL loop-guard tripped — GPU too unstable for auto-recovery */}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <span className="text-rmpg-100 text-sm font-mono">MAP GPU CRASH</span>
+            <span className="text-rmpg-400 text-xs">The map GPU context crashed repeatedly. Reload the page to restore the map.</span>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-1 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-mono"
+              style={{ borderRadius: 2 }}
+            >
+              RELOAD PAGE
+            </button>
           </div>
         </div>
       )}

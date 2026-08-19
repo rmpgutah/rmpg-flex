@@ -16,6 +16,7 @@ vi.mock('jspdf', () => ({
       rect: vi.fn(),
       line: vi.fn(),
       addPage: vi.fn(),
+      getTextWidth: vi.fn((t: string) => t.length * 2),
       save: saveMock,
       internal: {
         pageSize: {

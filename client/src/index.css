@@ -4676,6 +4676,20 @@ select:not(.select-dark) {
 }
 
 /* ============================================================
+   FIX 3a: Dark option backgrounds for ALL selects in dark theme.
+   <option> elements can't be styled via inline CSS, so this class
+   rule is the only way to prevent white dropdown backgrounds in
+   dark mode for selects that use custom inline styles instead of
+   .select-dark (e.g. PSO quick-action dropdowns, attempt-number
+   selects). The .select-dark option rule below takes precedence
+   for those elements — this is a safe catch-all.
+   ============================================================ */
+html:not(.theme-light) select option {
+  background-color: var(--surface-base);
+  color: var(--text-secondary);
+}
+
+/* ============================================================
    FIX 4: Focus-visible for keyboard users only
    ============================================================ */
 html.theme-dark :focus-visible,

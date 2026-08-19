@@ -55,10 +55,15 @@ class ConnectivityMonitor {
    * Start monitoring.
    * @param {BrowserWindow} mainWindow — for sending IPC events to renderer
    * @param {Function} onTransition — called when online/offline state changes
+   * @param {Function} [onEachCheck] — called after EVERY raw health check with
+   *   (isReachable: boolean). Fires before the debounce/stable-count logic, so
+   *   callers can act on the first confirmed positive without waiting for 3
+   *   consecutive checks. Use this sparingly — it fires every 10s.
    */
-  start(mainWindow, onTransition) {
+  start(mainWindow, onTransition, onEachCheck) {
     this._mainWindow = mainWindow;
     this._onTransition = onTransition;
+    this._onEachCheck = onEachCheck || null;
 
     // Do an immediate check
     this._check();
@@ -85,6 +90,12 @@ class ConnectivityMonitor {
 
   async _check() {
     const reachable = await this._doHealthCheck();
+
+    // Fire the raw per-check callback first (before debounce logic) so callers
+    // can react to the first confirmed positive without waiting for stableCount.
+    if (this._onEachCheck) {
+      try { this._onEachCheck(reachable); } catch { /* never block the monitor */ }
+    }
 
     if (reachable === this._pendingState) {
       this._consecutiveState++;

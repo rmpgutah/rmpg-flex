@@ -255,7 +255,7 @@ def iter_literals(src: str):
 SQL_FRAGMENT = re.compile(
     r'^[\s(]*(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*'
     r'(?:[\s,().*=<>!|+\-]|\b(?:AS|NULL|ASC|DESC|AND|OR|IS|NOT|IN|LIKE|ON|END)\b'
-    r'|[A-Za-z_][A-Za-z0-9_]*|\.)*$', re.I)
+    r'|[A-Za-z_][A-Za-z0-9_]*)*$', re.I)
 
 
 def strip_interpolations(s: str) -> str:

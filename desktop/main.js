@@ -1101,6 +1101,27 @@ async function createMainWindow() {
     console.warn('[APP] loadURL failed (did-fail-load will recover):', err && err.message);
   });
 
+  // ─── Load stall watchdog ──────────────────────────────────
+  // If 'did-finish-load' never fires within 45s (WAF hung, mid-load network
+  // drop that doesn't produce did-fail-load, etc.) show the offline page so
+  // the officer isn't staring at a blank window with no feedback.
+  // Cleared by both did-finish-load AND did-fail-load so it never double-fires.
+  let _loadStallTimer = setTimeout(() => {
+    _loadStallTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const url = mainWindow.webContents.getURL();
+    if (url && !url.startsWith('data:') && url !== REMOTE_SERVER_URL && url !== '') return; // already navigated away
+    console.warn('[APP] Load stall: did-finish-load not received within 45s — showing offline page');
+    mainWindow.loadURL(getOfflineHTML()).catch(() => {});
+  }, 45_000);
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (_loadStallTimer) { clearTimeout(_loadStallTimer); _loadStallTimer = null; }
+  });
+  mainWindow.webContents.once('did-fail-load', () => {
+    if (_loadStallTimer) { clearTimeout(_loadStallTimer); _loadStallTimer = null; }
+  });
+
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
     // In kiosk shell mode the splash drives show/focus via the splash:auth flow.
@@ -1179,6 +1200,36 @@ async function createMainWindow() {
   // webContents each time createMainWindow() runs.
   mainWindow.webContents.on('render-process-gone', (event, details) => {
     recoverMainWindow('renderer', details && details.reason);
+  });
+
+  // ─── Frozen renderer detection ────────────────────────────
+  // 'unresponsive' fires when the renderer process is alive but has not
+  // processed an event within ~10s — a JS hang, tight loop, or memory
+  // pressure. This is distinct from a crash: render-process-gone does NOT
+  // fire for a frozen renderer, so recoverMainWindow() is never called.
+  // Without this handler a frozen window stays dead until a manual app
+  // restart. Strategy: wait UNRESPONSIVE_RELOAD_DELAY_MS to give Chromium
+  // time to recover on its own (it sometimes does for transient jank), then
+  // force-reload if the renderer hasn't come back yet.
+  let _unresponsiveTimer = null;
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[APP] Renderer unresponsive — will reload in 30s if not recovered');
+    if (_unresponsiveTimer) return; // already counting down
+    _unresponsiveTimer = setTimeout(() => {
+      _unresponsiveTimer = null;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      console.error('[APP] Renderer still unresponsive after 30s — force-reloading');
+      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+        console.warn('[APP] Unresponsive-recovery loadURL failed:', err && err.message);
+      });
+    }, 30_000);
+  });
+  mainWindow.webContents.on('responsive', () => {
+    if (_unresponsiveTimer) {
+      clearTimeout(_unresponsiveTimer);
+      _unresponsiveTimer = null;
+      console.log('[APP] Renderer recovered responsiveness — cancelled reload timer');
+    }
   });
 
   // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
@@ -4868,123 +4919,6 @@ guardedHandle('wifi:get-detail', async () => {
 guardedHandle('wifi:scan-networks', async () => {
   if (process.platform !== 'win32') return [];
   const { execSync } = require('child_process');
-
-  // OUI → vendor name (first 6 uppercase hex chars of BSSID, no separators)
-  const OUI_VENDOR = {
-    // Cisco
-    '000142':'Cisco','0001C7':'Cisco','000164':'Cisco','0002FC':'Cisco','000617':'Cisco',
-    '001601':'Cisco','0017E3':'Cisco','001A2F':'Cisco','001B54':'Cisco','001CBC':'Cisco',
-    '001DBC':'Cisco','002155':'Cisco','005079':'Cisco','3437C9':'Cisco','38ED18':'Cisco',
-    '40F4EC':'Cisco','4400CA':'Cisco','70105C':'Cisco','74A02F':'Cisco','88F031':'Cisco',
-    'A066F0':'Cisco','B42150':'Cisco','B83A5A':'Cisco',
-    // Cisco Meraki
-    '002686':'Cisco Meraki','00272E':'Cisco Meraki','887DC3':'Cisco Meraki',
-    'E0CB4E':'Cisco Meraki','0C8112':'Cisco Meraki','AC1776':'Cisco Meraki',
-    'DC9FDB':'Cisco Meraki','34565F':'Cisco Meraki','4487FC':'Cisco Meraki','88DC96':'Cisco Meraki',
-    // Ubiquiti
-    '000427':'Ubiquiti','0418D6':'Ubiquiti','0401FC':'Ubiquiti','243A07':'Ubiquiti',
-    '44D9E7':'Ubiquiti','68D79A':'Ubiquiti','744441':'Ubiquiti','788A20':'Ubiquiti',
-    '802AA8':'Ubiquiti','F09FC2':'Ubiquiti','FCECDA':'Ubiquiti','18E829':'Ubiquiti',
-    'B4FBE4':'Ubiquiti','E0637F':'Ubiquiti',
-    // TP-Link
-    '000AEB':'TP-Link','001EE5':'TP-Link','286ED4':'TP-Link','3C1E04':'TP-Link',
-    '50BD5F':'TP-Link','50C7BF':'TP-Link','5054AB':'TP-Link','64700E':'TP-Link',
-    '6C5C3D':'TP-Link','70C94E':'TP-Link','7C8BCA':'TP-Link','90F652':'TP-Link',
-    'A04080':'TP-Link','ACC1EE':'TP-Link','B0487A':'TP-Link','C4E984':'TP-Link',
-    'D46E5C':'TP-Link','E8DE27':'TP-Link','EC086B':'TP-Link','F4F26D':'TP-Link',
-    '1CAFC0':'TP-Link','105BAD':'TP-Link',
-    // Netgear
-    '001B2F':'Netgear','001E2A':'Netgear','001FA7':'Netgear','0022B0':'Netgear',
-    '00266C':'Netgear','00F76F':'Netgear','20E52A':'Netgear','2C3033':'Netgear',
-    '4C60DE':'Netgear','6CC217':'Netgear','9C3DCF':'Netgear','A021B7':'Netgear',
-    'B0B982':'Netgear','C03F0E':'Netgear','E091F5':'Netgear','E4F4C6':'Netgear',
-    // ASUS
-    '000E35':'ASUS','001A92':'ASUS','10BF48':'ASUS','1C87F4':'ASUS','2C56DC':'ASUS',
-    '2CB43A':'ASUS','305A3A':'ASUS','382C4A':'ASUS','40167E':'ASUS','50465D':'ASUS',
-    '54A050':'ASUS','6045CB':'ASUS','7062B8':'ASUS','788CB5':'ASUS','AC220B':'ASUS',
-    'BC9680':'ASUS','F83202':'ASUS',
-    // D-Link
-    '001195':'D-Link','001346':'D-Link','00155D':'D-Link','001CF0':'D-Link',
-    '001E58':'D-Link','00218A':'D-Link','002401':'D-Link','00264D':'D-Link',
-    '0027E3':'D-Link','14D64D':'D-Link','1C7EE5':'D-Link','28107B':'D-Link',
-    '340804':'D-Link','40F3E8':'D-Link','6400F1':'D-Link','748BF6':'D-Link',
-    '84C9B2':'D-Link','9094E4':'D-Link','A4BA76':'D-Link','BC0F9A':'D-Link',
-    // Apple (AirPort, Time Capsule)
-    '000A27':'Apple','001124':'Apple','001451':'Apple','0017F2':'Apple','001B63':'Apple',
-    '001CB3':'Apple','001D4F':'Apple','001E52':'Apple','002500':'Apple','0025BC':'Apple',
-    '003065':'Apple','0C3E9F':'Apple','1040F3':'Apple','1C9179':'Apple','2078F0':'Apple',
-    '28CFE9':'Apple','34159E':'Apple','40A6D9':'Apple','6C4008':'Apple','7C11BE':'Apple',
-    '84A134':'Apple','AC3C0B':'Apple','C8699C':'Apple','D030AD':'Apple','A86DDC':'Apple',
-    // Aruba / HPE
-    '000B86':'Aruba','001A1E':'Aruba','002369':'Aruba','00248A':'Aruba','0026CB':'Aruba',
-    '10BBFD':'Aruba','204C03':'Aruba','24DEC6':'Aruba','2C69BA':'Aruba','40E3D6':'Aruba',
-    '5CDC96':'Aruba','84D47E':'Aruba','9C1C12':'Aruba','ACA31E':'Aruba','B45D50':'Aruba',
-    'D8C7C8':'Aruba','F05C19':'Aruba',
-    // Ruckus / CommScope
-    '001392':'Ruckus','0024C4':'Ruckus','10B31F':'Ruckus','20B35A':'Ruckus',
-    '2CA802':'Ruckus','54EC2F':'Ruckus','60D02C':'Ruckus','DC82B2':'Ruckus',
-    // Google (Nest WiFi, OnHub)
-    '001A11':'Google','54607E':'Google','A4770A':'Google','C8E3B8':'Google',
-    'F88FCA':'Google','3CA35B':'Google',
-    // Amazon (Eero, Echo)
-    '28CCFF':'Amazon Eero','3CCD5B':'Amazon Eero','F08175':'Amazon Eero',
-    '6837E9':'Amazon Echo','AC63BE':'Amazon Echo','F0272D':'Amazon Echo',
-    // MikroTik
-    '000C42':'MikroTik','2CC8D1':'MikroTik','488F5A':'MikroTik','4C5E0C':'MikroTik',
-    '64D154':'MikroTik','6C3B6B':'MikroTik','744D28':'MikroTik','8C882B':'MikroTik',
-    'B869F4':'MikroTik','CC2DE0':'MikroTik','D4CA6D':'MikroTik','DC2C6E':'MikroTik',
-    // Linksys
-    '000625':'Linksys','000C41':'Linksys','000E08':'Linksys','000F66':'Linksys',
-    '001217':'Linksys','20AA4B':'Linksys','48F8B3':'Linksys','68A3C4':'Linksys',
-    // Belkin
-    '001150':'Belkin','001CDF':'Belkin','081748':'Belkin','203A07':'Belkin',
-    '944452':'Belkin','EC1A59':'Belkin',
-    // Fortinet
-    '000C19':'Fortinet','0009F0':'Fortinet','706F67':'Fortinet','906CAC':'Fortinet',
-    // Juniper Mist
-    '5C5B35':'Juniper Mist','A8D3F7':'Juniper Mist',
-    // Extreme Networks
-    '001F45':'Extreme','58924A':'Extreme','0004F6':'Extreme',
-    // Huawei
-    '000E5E':'Huawei','001882':'Huawei','001ECA':'Huawei','0022A1':'Huawei',
-    '002568':'Huawei','086070':'Huawei','10BE81':'Huawei','1C8E5C':'Huawei',
-    '24DFDD':'Huawei','2C4D54':'Huawei','3C47C9':'Huawei','40CBC0':'Huawei',
-    '483C0C':'Huawei','54137B':'Huawei','607B66':'Huawei','703032':'Huawei',
-    '70BA0D':'Huawei','748177':'Huawei','784C0D':'Huawei','80717A':'Huawei',
-    '84742A':'Huawei','905E86':'Huawei','A4BEEF':'Huawei','B083FE':'Huawei',
-    'C8941F':'Huawei','D06F48':'Huawei','D4F9A1':'Huawei','DC727E':'Huawei',
-    'F48E92':'Huawei','F809CF':'Huawei',
-    // Samsung (smart home APs)
-    '000D00':'Samsung','001599':'Samsung','0015B9':'Samsung','0017D5':'Samsung',
-    '001E7D':'Samsung','002167':'Samsung','0024E9':'Samsung','002566':'Samsung',
-    'A0070B':'Samsung','B412E6':'Samsung','CC07AB':'Samsung','E8039A':'Samsung',
-    // Motorola
-    '000A28':'Motorola','0004F3':'Motorola','00E0FC':'Motorola',
-  };
-
-  // Channel → frequency in MHz (no connection required)
-  const channelToMhz = (ch, radioType) => {
-    if (!ch) return null;
-    if (radioType && /6[Ee]/.test(radioType)) return ch === 2 ? 5935 : 5950 + ch * 5;
-    if (ch >= 1  && ch <= 13)  return 2407 + ch * 5;
-    if (ch === 14) return 2484;
-    if (ch >= 32 && ch <= 177) return 5000 + ch * 5;
-    return null;
-  };
-
-  // Extract vendor from BSSID OUI
-  const ouiVendor = (bssid) => {
-    if (!bssid) return null;
-    const oui = bssid.toUpperCase().replace(/[:\-]/g, '').slice(0, 6);
-    return OUI_VENDOR[oui] ?? null;
-  };
-
-  // Parse a rates string like "1 2 5.5 11" into a sorted numeric array
-  const parseRates = (str) => {
-    if (!str) return [];
-    return str.trim().split(/\s+/).map(Number).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
-  };
-
   try {
     const out = execSync(
       'netsh wlan show networks mode=Bssid',
@@ -4994,68 +4928,41 @@ guardedHandle('wifi:scan-networks', async () => {
     // Each SSID block starts with "SSID N :"
     const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
     const networks = blocks.map(block => {
-      const ssidM = block.match(/^SSID \d+ +: (.+)/m);
-      const authM = block.match(/Authentication +: (.+)/m);
-      const encM  = block.match(/Encryption +: (.+)/m);
-      const ntM   = block.match(/Network type +: (.+)/m);
-      const ssid  = ssidM ? ssidM[1].trim() : '';
-      const auth  = authM ? authM[1].trim() : 'Unknown';
-      const enc   = encM  ? encM[1].trim()  : 'Unknown';
-      const networkType = ntM ? ntM[1].trim() : null;
-      const isHidden = (ssid === '');
+      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
+      const authM  = block.match(/Authentication +: (.+)/m);
+      const encM   = block.match(/Encryption +: (.+)/m);
+      const ssid   = ssidM  ? ssidM[1].trim()  : '';
+      const auth   = authM  ? authM[1].trim()  : 'Unknown';
+      const enc    = encM   ? encM[1].trim()   : 'Unknown';
 
       // Parse each BSSID sub-block
       const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
       const bssids = bssidBlocks.map(bb => {
-        const bM   = bb.match(/BSSID \d+ +: (.+)/m);
-        const sM   = bb.match(/Signal +: (\d+)%/m);
-        const rtM  = bb.match(/Radio type +: (.+)/m);
-        const chM  = bb.match(/Channel +: (\d+)/m);
-        const brM  = bb.match(/Basic rates \(Mbps\) +: (.+)/m);
-        const orM  = bb.match(/Other rates \(Mbps\) +: (.+)/m);
-        const bssid    = bM  ? bM[1].trim()         : null;
-        const signal   = sM  ? parseInt(sM[1], 10)  : 0;
-        const radioType = rtM ? rtM[1].trim()        : null;
-        const channel  = chM ? parseInt(chM[1], 10) : null;
-        const basicRates = parseRates(brM?.[1]);
-        const otherRates = parseRates(orM?.[1]);
-        const allRates = [...new Set([...basicRates, ...otherRates])].sort((a, b) => a - b);
-        const maxRateMbps = allRates.length ? allRates[allRates.length - 1] : null;
-        // Windows quality% → approximate dBm: quality = 2*(dBm+100), so dBm = quality/2 - 100
-        const signalDbm = Math.round(signal / 2 - 100);
-        const frequencyMhz = channelToMhz(channel, radioType);
-        const vendor = ouiVendor(bssid);
-        return { bssid, signal, signalDbm, radioType, channel, frequencyMhz, basicRates, otherRates, maxRateMbps, vendor };
+        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
+        const sM  = bb.match(/Signal +: (\d+)%/m);
+        const rtM = bb.match(/Radio type +: (.+)/m);
+        const chM = bb.match(/Channel +: (\d+)/m);
+        return {
+          bssid:     bM  ? bM[1].trim()         : null,
+          signal:    sM  ? parseInt(sM[1], 10)  : 0,
+          radioType: rtM ? rtM[1].trim()         : null,
+          channel:   chM ? parseInt(chM[1], 10) : null,
+        };
       });
 
-      const maxSignal  = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
-      const bestBssid  = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
-      const channel    = bestBssid.channel ?? null;
-      const radioType  = bestBssid.radioType ?? null;
-      const frequencyMhz = bestBssid.frequencyMhz ?? null;
-      const signalDbm  = bestBssid.signalDbm ?? null;
-      const vendor     = bestBssid.vendor ?? null;
-      const maxRateMbps = bestBssid.maxRateMbps ?? null;
-      const basicRates  = bestBssid.basicRates ?? [];
-      const otherRates  = bestBssid.otherRates ?? [];
+      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
+      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
 
+      const channel = bestBssid.channel ?? null;
       const band = (() => {
         if (!channel) return null;
-        if (radioType && /6[Ee]/.test(radioType)) return '6 GHz';
-        if (channel >= 1  && channel <= 14)  return '2.4 GHz';
+        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
         if (channel >= 32 && channel <= 177) return '5 GHz';
         return null;
       })();
 
-      return {
-        ssid, auth, enc, networkType, isHidden,
-        signal: maxSignal, signalDbm, frequencyMhz,
-        channel, band, radioType, vendor,
-        maxRateMbps, basicRates, otherRates,
-        bssidCount: bssids.length,
-        bssids,
-      };
-    }).filter(n => n.ssid || n.isHidden);
+      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
+    }).filter(n => n.ssid);
 
     return networks;
   } catch { return []; }
@@ -5098,719 +5005,6 @@ guardedHandle('wifi:disconnect', async () => {
     return { ok: false, reason: err.message };
   }
 });
-
-// ── Device Capture Scanner ────────────────────────────────────
-//
-// Passively and actively enumerates surrounding devices without
-// connecting to any of them.  Protocols:
-//   ARP/NDP  — layer-2 neighbor cache (no traffic sent)
-//   Bluetooth — PnP device tree (paired + cached BT/BT-LE)
-//   SSDP     — UPnP multicast M-SEARCH  (239.255.255.250:1900)
-//   mDNS     — Bonjour/DNS-SD multicast  (224.0.0.251:5353)
-//   NetBIOS  — nbtstat name resolution
-//
-// Every scan result is appended to a persistent JSON log stored in
-// the Electron userData directory and survives restarts.
-
-(function _deviceScannerBlock() {
-  // ── Imports ───────────────────────────────────────────────────────────────
-  const dgram  = require('dgram');
-  const net    = require('net');
-  const http   = require('http');
-  const httpsM = require('https');
-  const dnsM   = require('dns');
-  const _fs    = require('fs');
-  const _path  = require('path');
-  const _os    = require('os');
-  const { execSync: _ex, execFile: _ef, spawn: _sp } = require('child_process');
-
-  // ── OUI vendor lookup (reuses WiFi OUI_VENDOR table already in scope) ─────
-  const _oui = (mac) => {
-    if (!mac) return null;
-    const key = mac.toUpperCase().replace(/[:\-]/g, '').slice(0, 6);
-    return OUI_VENDOR[key] || null;
-  };
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const _isIPv4 = (s) => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s || '');
-
-  function _localIp() {
-    const ifaces = _os.networkInterfaces();
-    for (const name of Object.keys(ifaces)) {
-      for (const i of ifaces[name]) {
-        if (i.family === 'IPv4' && !i.internal) return i.address;
-      }
-    }
-    return null;
-  }
-
-  // ── Persistent capture log ────────────────────────────────────────────────
-  const LOG_PATH = _path.join(app.getPath('userData'), 'device-capture.json');
-  let _captureLog = [];
-  try { _captureLog = JSON.parse(_fs.readFileSync(LOG_PATH, 'utf8')); } catch { _captureLog = []; }
-
-  function _saveLog() {
-    try { _fs.writeFileSync(LOG_PATH, JSON.stringify(_captureLog)); } catch {}
-  }
-
-  function _pushCapture(scanType, devices, meta = {}) {
-    const entry = {
-      id:          `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      timestamp:   new Date().toISOString(),
-      scanType,
-      deviceCount: devices.length,
-      devices,
-      ...meta,
-    };
-    _captureLog.unshift(entry);
-    if (_captureLog.length > 2000) _captureLog.length = 2000;
-    _saveLog();
-    return entry;
-  }
-
-  // ── Phase 0: Ping sweep (fire-and-forget to populate ARP cache) ───────────
-  function _pingSubnet(localIp) {
-    const m = (localIp || '').match(/^(\d+\.\d+\.\d+)\.\d+$/);
-    if (!m) return;
-    const subnet = m[1];
-    // Use .NET Ping async — one PowerShell process, all 254 hosts concurrent
-    try {
-      const ps = _sp('powershell', [
-        '-NoProfile', '-NonInteractive', '-Command',
-        `1..254|%{[void][System.Net.NetworkInformation.Ping]::new().SendAsync("${subnet}.$_",150)}`,
-      ], { windowsHide: true, detached: true, stdio: 'ignore' });
-      ps.unref();
-    } catch {}
-  }
-
-  // ── ARP / NDP neighbor table ──────────────────────────────────────────────
-  function _parseArpOutput(text) {
-    const out = []; const seen = new Set(); let iface = null;
-    for (const raw of text.split('\n')) {
-      const im = raw.match(/Interface:\s+([\d.]+)/);
-      if (im) { iface = im[1]; continue; }
-      const em = raw.trim().match(/^([\d.a-fA-F:]+)\s+([\w\-:]+)\s+(\w+)/);
-      if (!em) continue;
-      const [, ip, rawMac, type] = em;
-      // Skip multicast/broadcast
-      if (/^ff/i.test(rawMac) || /^224\.|^239\.|^255\./.test(ip)) continue;
-      const mac = rawMac.toUpperCase().replace(/-/g, ':');
-      if (seen.has(mac)) continue; seen.add(mac);
-      out.push({ ip, mac, type, interface: iface, vendor: _oui(mac), protocol: 'ARP' });
-    }
-    return out;
-  }
-
-  // ── Reverse DNS via Node dns module (no subprocess needed) ───────────────
-  async function _reverseDns(ips) {
-    const dnsP = dnsM.promises;
-    const results = await Promise.allSettled(ips.map(ip => dnsP.reverse(ip)));
-    const out = {};
-    ips.forEach((ip, i) => {
-      const r = results[i];
-      out[ip] = (r.status === 'fulfilled' && r.value.length > 0) ? r.value[0] : null;
-    });
-    return out;
-  }
-
-  // ── NetBIOS per-device name (nbtstat -A <ip>) ─────────────────────────────
-  function _nbtstatDevice(ip) {
-    if (!_isIPv4(ip)) return Promise.resolve(null);
-    return new Promise(resolve => {
-      _ef('nbtstat', ['-A', ip],
-        { timeout: 3500, windowsHide: true, encoding: 'utf8' },
-        (err, stdout) => {
-          if (err || !stdout) return resolve(null);
-          // WORKSTATION <00>  UNIQUE   Registered
-          const nameM  = stdout.match(/^\s{1,20}(\S{1,15})\s+<00>\s+UNIQUE\s+Registered/im);
-          const groupM = stdout.match(/^\s{1,20}(\S{1,15})\s+<00>\s+GROUP\s+Registered/im);
-          const userM  = stdout.match(/^\s{1,20}(\S{1,15})\s+<03>\s+UNIQUE\s+Registered/im);
-          const macM   = stdout.match(/MAC\s+Address\s*[=:]\s*([\dA-Fa-f\-:]{17})/i);
-          resolve({
-            name:      nameM?.[1]?.trim()  || null,
-            workgroup: groupM?.[1]?.trim() || null,
-            user:      userM?.[1]?.trim()  || null,
-            mac:       macM ? macM[1].toUpperCase().replace(/-/g, ':') : null,
-          });
-        }
-      );
-    });
-  }
-
-  // ── SSDP device description XML fetch ────────────────────────────────────
-  function _fetchSsdpDesc(location) {
-    return new Promise(resolve => {
-      if (!location || !/^https?:/.test(location)) return resolve(null);
-      try {
-        const url = new URL(location);
-        const lib = url.protocol === 'https:' ? httpsM : http;
-        let data  = '';
-        const req = lib.get(location, { timeout: 3000 }, (res) => {
-          res.on('data', c => { data += c; if (data.length > 80000) req.destroy(); });
-          res.on('end', () => {
-            const x = (tag) => data.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`, 'i'))?.[1]?.trim() || null;
-            resolve({
-              friendlyName:  x('friendlyName'),
-              manufacturer:  x('manufacturer'),
-              modelName:     x('modelName'),
-              modelNumber:   x('modelNumber'),
-              serialNumber:  x('serialNumber'),
-              deviceType:    x('deviceType'),
-              udn:           x('UDN'),
-            });
-          });
-        });
-        req.on('error', () => resolve(null));
-        req.on('timeout', () => { req.destroy(); resolve(null); });
-      } catch { resolve(null); }
-    });
-  }
-
-  // ── SSDP M-SEARCH multicast ───────────────────────────────────────────────
-  function _ssdpScan(ms = 5000) {
-    return new Promise((resolve) => {
-      const ADDR  = '239.255.255.250';
-      const PORT  = 1900;
-      const PROBE = ['M-SEARCH * HTTP/1.1', `HOST: ${ADDR}:${PORT}`, 'MAN: "ssdp:discover"', 'MX: 3', 'ST: ssdp:all', '', ''].join('\r\n');
-      const sock  = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      const found = new Map();
-      sock.on('message', (msg, ri) => {
-        const text     = msg.toString();
-        const location = text.match(/LOCATION:\s*(.+)/i)?.[1]?.trim() || null;
-        const usn      = text.match(/USN:\s*(.+)/i)?.[1]?.trim() || null;
-        const st       = text.match(/ST:\s*(.+)/i)?.[1]?.trim() || null;
-        const server   = text.match(/SERVER:\s*(.+)/i)?.[1]?.trim() || null;
-        const cacheCtl = text.match(/CACHE-CONTROL:\s*(.+)/i)?.[1]?.trim() || null;
-        const key = location || ri.address;
-        if (!found.has(key)) found.set(key, { ip: ri.address, port: ri.port, location, usn, st, server, cacheControl: cacheCtl, protocol: 'SSDP/UPnP' });
-      });
-      sock.on('error', () => { try { sock.close(); } catch {} resolve([...found.values()]); });
-      sock.bind(0, () => {
-        try { sock.setBroadcast(true); } catch {}
-        const buf = Buffer.from(PROBE);
-        sock.send(buf, 0, buf.length, PORT, ADDR, () => {});
-      });
-      setTimeout(() => { try { sock.close(); } catch {} resolve([...found.values()]); }, ms);
-    });
-  }
-
-  // ── mDNS DNS label reader ─────────────────────────────────────────────────
-  function _readDnsLabel(buf, off) {
-    let name = ''; let jumped = false; let retOff = -1; let safety = 0;
-    while (off < buf.length && safety++ < 128) {
-      const len = buf[off];
-      if (len === 0) { off++; break; }
-      if ((len & 0xC0) === 0xC0) {
-        if (!jumped) retOff = off + 2;
-        off = ((len & 0x3F) << 8) | buf[off + 1];
-        jumped = true;
-        continue;
-      }
-      if (name) name += '.';
-      name += buf.slice(off + 1, off + 1 + len).toString('utf8');
-      off += 1 + len;
-    }
-    return { name, end: jumped ? retOff : off };
-  }
-
-  function _parseMdnsMsg(buf, srcIp) {
-    const out = { ip: srcIp, names: new Set(), services: new Set(), aRecords: {} };
-    try {
-      if (buf.length < 12) return out;
-      const qdCnt = (buf[4] << 8) | buf[5];
-      const anCnt = (buf[6] << 8) | buf[7];
-      const arCnt = (buf[10] << 8) | buf[11];
-      let o = 12;
-      for (let i = 0; i < qdCnt && o < buf.length; i++) { const { end } = _readDnsLabel(buf, o); o = end + 4; }
-      for (let i = 0; i < anCnt + arCnt && o < buf.length; i++) {
-        const { name: rName, end: rEnd } = _readDnsLabel(buf, o); o = rEnd;
-        if (o + 10 > buf.length) break;
-        const type  = (buf[o] << 8) | buf[o + 1];
-        const rdLen = (buf[o + 8] << 8) | buf[o + 9];
-        const rdOff = o + 10;
-        if (type === 1 && rdLen === 4) {
-          const ip4 = [...buf.slice(rdOff, rdOff + 4)].join('.');
-          out.aRecords[rName] = ip4;
-        } else if (type === 12) {
-          const { name: ptrTarget } = _readDnsLabel(buf, rdOff);
-          out.names.add(ptrTarget);
-          const svcM = rName.match(/(_[^.]+\._(?:tcp|udp))\.local/i);
-          if (svcM) out.services.add(svcM[1]);
-        } else if (type === 33 && rdLen >= 7) {
-          const port = (buf[rdOff + 4] << 8) | buf[rdOff + 5];
-          const instanceName = rName.split('._')[0];
-          if (instanceName) out.names.add(instanceName);
-          const svcM2 = rName.match(/(_[^.]+\._(?:tcp|udp))\.local/i);
-          if (svcM2) out.services.add(`${svcM2[1]}:${port}`);
-        }
-        o = rdOff + rdLen;
-      }
-    } catch {}
-    return out;
-  }
-
-  function _buildDnsQuery(name) {
-    const labels = name.split('.');
-    const q = [0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00];
-    for (const l of labels) { q.push(l.length); for (const c of l) q.push(c.charCodeAt(0)); }
-    q.push(0x00, 0x00, 0x0C, 0x00, 0x01);
-    return Buffer.from(q);
-  }
-
-  // 14 service types — discovers web servers, SSH, SMB, printers, cast devices, IoT
-  const MDNS_SVCS = [
-    '_services._dns-sd._udp.local', '_http._tcp.local', '_https._tcp.local',
-    '_ssh._tcp.local', '_smb._tcp.local', '_printer._tcp.local', '_ipp._tcp.local',
-    '_airplay._tcp.local', '_googlecast._tcp.local', '_spotify-connect._tcp.local',
-    '_homekit._tcp.local', '_raop._tcp.local', '_rdp._tcp.local', '_rfb._tcp.local',
-  ];
-
-  function _mdnsScanMulti(ms = 5000) {
-    return new Promise((resolve) => {
-      const ADDR = '224.0.0.251', PORT = 5353;
-      const byIp = new Map();
-      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      sock.on('message', (msg, ri) => {
-        const parsed = _parseMdnsMsg(msg, ri.address);
-        if (!byIp.has(ri.address)) byIp.set(ri.address, { ip: ri.address, names: new Set(), services: new Set(), protocol: 'mDNS' });
-        const dev = byIp.get(ri.address);
-        parsed.names.forEach(n => dev.names.add(n));
-        parsed.services.forEach(s => dev.services.add(s));
-        // Cross-link A records: if another host advertised an IP for a name, track it
-        for (const [rname, ip4] of Object.entries(parsed.aRecords)) {
-          if (_isIPv4(ip4) && ip4 !== ri.address) {
-            if (!byIp.has(ip4)) byIp.set(ip4, { ip: ip4, names: new Set(), services: new Set(), protocol: 'mDNS' });
-            byIp.get(ip4).names.add(rname.replace(/\.local\.?$/i, '.local'));
-          }
-        }
-      });
-      sock.on('error', () => { try { sock.close(); } catch {} });
-      sock.bind(PORT, () => {
-        try { sock.addMembership(ADDR); } catch {}
-        // Stagger queries 80 ms apart
-        MDNS_SVCS.forEach((svc, i) => setTimeout(() => {
-          try { const q = _buildDnsQuery(svc); sock.send(q, 0, q.length, PORT, ADDR, () => {}); } catch {}
-        }, i * 80));
-      });
-      setTimeout(() => {
-        try { sock.close(); } catch {}
-        const out = [...byIp.values()].map(d => ({
-          ...d,
-          hostname: [...d.names].find(n => /\.local\.?$/.test(n)) || [...d.names][0] || null,
-          names:    [...d.names],
-          services: [...d.services],
-        }));
-        resolve(out);
-      }, ms);
-    });
-  }
-
-  // ── TCP port probe (Node net module — no firewall prompt for outbound) ────
-  const PORT_SERVICES = {
-    21: 'FTP', 22: 'SSH', 23: 'Telnet', 80: 'HTTP', 443: 'HTTPS',
-    445: 'SMB', 548: 'AFP', 554: 'RTSP', 631: 'IPP',
-    1883: 'MQTT', 3389: 'RDP', 5900: 'VNC', 7000: 'AirPlay',
-    8008: 'Chromecast', 8080: 'HTTP-alt', 8443: 'HTTPS-alt', 9100: 'Raw-Print',
-  };
-  const PROBE_PORTS = Object.keys(PORT_SERVICES).map(Number);
-
-  function _tcpProbeOne(ip, port, ms = 400) {
-    return new Promise(resolve => {
-      const s = new net.Socket();
-      s.setTimeout(ms);
-      s.on('connect', () => { s.destroy(); resolve(true); });
-      s.on('error',   () => { s.destroy(); resolve(false); });
-      s.on('timeout', () => { s.destroy(); resolve(false); });
-      try { s.connect(port, ip); } catch { resolve(false); }
-    });
-  }
-
-  async function _tcpProbeDevice(ip) {
-    if (!_isIPv4(ip)) return {};
-    const results = await Promise.allSettled(PROBE_PORTS.map(p => _tcpProbeOne(ip, p)));
-    const open = {};
-    results.forEach((r, i) => { if (r.status === 'fulfilled' && r.value) open[PROBE_PORTS[i]] = PORT_SERVICES[PROBE_PORTS[i]]; });
-    return open;
-  }
-
-  // ── Bluetooth PnP enumeration ──────────────────────────────────────────────
-  function _parseBtPnp(json1, json2) {
-    const out = []; const seen = new Set();
-    for (const raw of [json1, json2]) {
-      let arr;
-      try { arr = JSON.parse(raw); } catch { continue; }
-      if (!Array.isArray(arr)) arr = arr ? [arr] : [];
-      for (const d of arr) {
-        const name = d.FriendlyName || d.Name || 'Unknown Bluetooth Device';
-        const hwid = Array.isArray(d.HardwareID) ? d.HardwareID[0] : (d.HardwareID || '');
-        const key  = hwid || name;
-        if (seen.has(key)) continue; seen.add(key);
-        let mac = null;
-        const mm = hwid.match(/DEV_([0-9A-Fa-f]{12})/i);
-        if (mm) mac = mm[1].toUpperCase().match(/.{2}/g).join(':');
-        out.push({
-          name, manufacturer: d.Manufacturer || null, hardwareId: hwid || null,
-          status: d.Status || null, btClass: d.Class === 'BTHLEDevice' ? 'BLE' : 'Classic',
-          mac, vendor: mac ? _oui(mac) : (d.Manufacturer || null), protocol: 'Bluetooth',
-        });
-      }
-    }
-    return out;
-  }
-
-  // ── Device type classifier ─────────────────────────────────────────────────
-  function _classifyDevice(dev) {
-    const v   = (dev.vendor || dev.manufacturer || dev.friendlyName || '').toLowerCase();
-    const dt  = (dev.deviceType || '').toLowerCase();
-    const svc = ([...(dev.services || []), ...(dev.names || [])].join(' ')).toLowerCase();
-    const ports = Object.keys(dev.openPorts || {}).map(Number);
-    if (/cisco|netgear|linksys|tp.link|asus|d.link|ubiquiti|mikrotik|arris|sagemcom|eero|orbi/i.test(v)) return 'router';
-    if (/hp|hewlett|epson|canon|brother|lexmark|xerox|ricoh|kyocera/i.test(v) || ports.includes(9100) || ports.includes(631)) return 'printer';
-    if (svc.includes('_googlecast') || ports.includes(8008) || ports.includes(8009)) return 'smart-tv';
-    if (svc.includes('_airplay') || ports.includes(7000)) return 'airplay';
-    if (svc.includes('_spotify-connect') || svc.includes('_raop') || /sonos|bose|denon|yamaha|harman|jbl/i.test(v)) return 'speaker';
-    if (svc.includes('_homekit') || svc.includes('_hap')) return 'iot';
-    if (/hikvision|dahua|axis|hanwha|reolink|amcrest/i.test(v) || dt.includes('camera') || ports.includes(554)) return 'camera';
-    if (/sony|nintendo|valve|xbox/i.test(v)) return 'gaming';
-    if (dt.includes('mediarenderer') || dt.includes('mediaserver')) return 'media-server';
-    if (ports.includes(3389)) return 'desktop';
-    if (ports.includes(22)) return 'server';
-    if (dev.protocol === 'Bluetooth') return 'bluetooth-device';
-    return 'unknown';
-  }
-
-  // ── Best display name ─────────────────────────────────────────────────────
-  function _bestName(dev) {
-    return dev.friendlyName
-      || dev.netbiosName
-      || dev.hostname
-      || (Array.isArray(dev.names) && dev.names.find(n => !/^_/.test(n)))
-      || dev.name
-      || dev.ptrHostname
-      || (dev.server && dev.server.split(' ')[0])
-      || dev.vendor
-      || dev.mac
-      || dev.ip
-      || 'Unknown Device';
-  }
-
-  // ── Cross-protocol device merge (by IP, then by MAC) ─────────────────────
-  function _mergeInto(target, src) {
-    if (src.protocol)   target.protocols.add(src.protocol);
-    if (src.scanMethod) target.protocols.add(src.scanMethod);
-    if (src.mac  && !target.mac)    { target.mac = src.mac; target.vendor = target.vendor || _oui(src.mac); }
-    if (src.vendor && !target.vendor) target.vendor = src.vendor;
-    if (src.manufacturer) target.manufacturer = src.manufacturer;
-    if (src.friendlyName) { target.friendlyName = src.friendlyName; target.names.add(src.friendlyName); }
-    if (src.netbiosName)  { target.netbiosName = src.netbiosName; target.names.add(src.netbiosName); }
-    if (src.netbiosWorkgroup) target.netbiosWorkgroup = src.netbiosWorkgroup;
-    if (src.netbiosUser)  target.netbiosUser = src.netbiosUser;
-    if (src.hostname)     { target.hostname = target.hostname || src.hostname; target.names.add(src.hostname); }
-    if (src.ptrHostname)  { target.ptrHostname = src.ptrHostname; target.names.add(src.ptrHostname); }
-    if (src.name && src.name !== 'Unknown Device' && src.name !== 'Unknown Bluetooth Device') target.names.add(src.name);
-    if (Array.isArray(src.names)) src.names.forEach(n => target.names.add(n));
-    if (Array.isArray(src.services)) src.services.forEach(s => target.services.add(s));
-    if (src.deviceType)   target.deviceType = src.deviceType;
-    if (src.modelName)    target.modelName = src.modelName;
-    if (src.modelNumber)  target.modelNumber = src.modelNumber;
-    if (src.serialNumber) target.serialNumber = src.serialNumber;
-    if (src.udn)          target.udn = src.udn;
-    if (src.location)     target.location = src.location;
-    if (src.server)       target.server = src.server;
-    if (src.openPorts && typeof src.openPorts === 'object') Object.assign(target.openPorts, src.openPorts);
-    if (src.interface && !target.interface) target.interface = src.interface;
-    if (src.btClass)  target.btClass = src.btClass;
-    if (src.hardwareId && !target.hardwareId) target.hardwareId = src.hardwareId;
-  }
-
-  function _mergeDevices(devices) {
-    const byIp  = new Map();
-    const byMac = new Map(); // mac → ip (dedup)
-    const noIp  = [];        // Bluetooth etc. without IPv4
-
-    for (const dev of devices) {
-      const ip  = _isIPv4(dev.ip) ? dev.ip : null;
-      const mac = dev.mac || null;
-      if (!ip) { noIp.push(dev); continue; }
-      // If this MAC already resolved to a different IP, merge into that slot
-      if (mac && byMac.has(mac)) {
-        const existing = byIp.get(byMac.get(mac));
-        if (existing) { _mergeInto(existing, dev); continue; }
-      }
-      if (mac) byMac.set(mac, ip);
-      if (!byIp.has(ip)) {
-        byIp.set(ip, { ip, mac: null, vendor: null, protocols: new Set(), names: new Set(), services: new Set(), openPorts: {} });
-      }
-      _mergeInto(byIp.get(ip), dev);
-    }
-
-    return [...byIp.values(), ...noIp].map(d => ({
-      ...d,
-      protocols: d.protocols instanceof Set ? [...d.protocols] : (d.protocols || []),
-      names:     d.names     instanceof Set ? [...d.names]     : (d.names     || []),
-      services:  d.services  instanceof Set ? [...d.services]  : (d.services  || []),
-    })).map(d => ({ ...d, deviceClass: _classifyDevice(d), name: _bestName(d) }));
-  }
-
-  // ── New-device detection (compare against all prior log entries) ──────────
-  function _flagNewDevices(devices) {
-    const seenMacs = new Set(); const seenIps = new Set();
-    // log[0] will be the entry being pushed — check from log[0] onward (pre-push)
-    for (const entry of _captureLog) {
-      for (const d of (entry.devices || [])) {
-        if (d.mac) seenMacs.add(d.mac);
-        if (d.ip && _isIPv4(d.ip)) seenIps.add(d.ip);
-      }
-    }
-    devices.forEach(d => {
-      if ((d.mac && !seenMacs.has(d.mac)) || (!d.mac && d.ip && !seenIps.has(d.ip))) d.isNew = true;
-    });
-    return devices.filter(d => d.isNew).length;
-  }
-
-  // ── IPC: scan-arp ─────────────────────────────────────────────────────────
-  guardedHandle('devices:scan-arp', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    try {
-      const arpText = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
-      const devices = _parseArpOutput(arpText);
-      try {
-        const njson = _ex('powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 10000, windowsHide: true });
-        const narr  = [].concat(JSON.parse(njson));
-        const seenM = new Set(devices.map(d => d.mac));
-        for (const n of narr) {
-          if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
-          const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
-          if (seenM.has(mac)) continue; seenM.add(mac);
-          devices.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
-        }
-      } catch {}
-      // Reverse DNS + NetBIOS names
-      const ips    = devices.filter(d => _isIPv4(d.ip)).map(d => d.ip);
-      const ptrMap = await _reverseDns(ips);
-      const nbRes  = await Promise.allSettled(ips.slice(0, 20).map(ip => _nbtstatDevice(ip).then(r => ({ ip, ...r }))));
-      const nbByIp = {}; nbRes.filter(r => r.status === 'fulfilled' && r.value).forEach(r => { nbByIp[r.value.ip] = r.value; });
-      devices.forEach(d => {
-        if (ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
-        if (nbByIp[d.ip]) { const nb = nbByIp[d.ip]; if (nb.name) d.netbiosName = nb.name; if (nb.workgroup) d.netbiosWorkgroup = nb.workgroup; if (nb.user) d.netbiosUser = nb.user; }
-        d.name = _bestName(d); d.deviceClass = _classifyDevice(d);
-      });
-      const entry = _pushCapture('arp', devices, { method: 'arp -a + Get-NetNeighbor + rDNS + nbtstat' });
-      return { ok: true, entry };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
-
-  // ── IPC: scan-bluetooth ───────────────────────────────────────────────────
-  guardedHandle('devices:scan-bluetooth', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    let j1 = '[]', j2 = '[]';
-    try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-    try { j2 = _ex('powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-    const devices = _parseBtPnp(j1, j2);
-    const entry   = _pushCapture('bluetooth', devices, { method: 'PnP Bluetooth Classic + BLE enumeration' });
-    return { ok: true, entry };
-  });
-
-  // ── IPC: scan-ssdp ────────────────────────────────────────────────────────
-  guardedHandle('devices:scan-ssdp', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    try {
-      const raw     = await _ssdpScan(5000);
-      const descRes = await Promise.allSettled(raw.slice(0, 15).map(d => _fetchSsdpDesc(d.location)));
-      const devices = raw.map((d, i) => {
-        const desc   = descRes[i]?.status === 'fulfilled' ? descRes[i].value : null;
-        const merged = { ...d, ...(desc || {}), protocol: 'SSDP/UPnP' };
-        merged.name  = _bestName(merged); merged.deviceClass = _classifyDevice(merged);
-        return merged;
-      });
-      const entry = _pushCapture('ssdp', devices, { method: 'SSDP M-SEARCH + description XML fetch' });
-      return { ok: true, entry };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
-
-  // ── IPC: scan-mdns ────────────────────────────────────────────────────────
-  guardedHandle('devices:scan-mdns', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    try {
-      const devices = (await _mdnsScanMulti(5000)).map(d => ({ ...d, name: _bestName(d), deviceClass: _classifyDevice(d) }));
-      const entry   = _pushCapture('mdns', devices, { method: 'mDNS multi-service PTR (14 service types) → 224.0.0.251:5353' });
-      return { ok: true, entry };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
-
-  // ── IPC: scan-netbios ─────────────────────────────────────────────────────
-  guardedHandle('devices:scan-netbios', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const devices = []; const seen = new Set(); let raw = '';
-    try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-    for (const line of raw.split('\n')) {
-      const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
-      if (!m || seen.has(m[1])) continue; seen.add(m[1]);
-      devices.push({ ip: m[1], name: m[2], netbiosName: m[2], protocol: 'NetBIOS' });
-    }
-    const nbRes = await Promise.allSettled(devices.slice(0, 20).map(d => _nbtstatDevice(d.ip).then(r => ({ ip: d.ip, ...r }))));
-    nbRes.filter(r => r.status === 'fulfilled' && r.value).forEach(r => {
-      const d = devices.find(x => x.ip === r.value.ip);
-      if (!d) return;
-      if (r.value.name) { d.netbiosName = r.value.name; d.name = r.value.name; }
-      if (r.value.workgroup) d.netbiosWorkgroup = r.value.workgroup;
-      if (r.value.user) d.netbiosUser = r.value.user;
-      if (r.value.mac && !d.mac) { d.mac = r.value.mac; d.vendor = _oui(r.value.mac); }
-      d.name = _bestName(d); d.deviceClass = _classifyDevice(d);
-    });
-    const entry = _pushCapture('netbios', devices, { method: 'nbtstat -r + nbtstat -A per device' });
-    return { ok: true, entry };
-  });
-
-  // ── IPC: scan-all — 4-phase enriched sweep ────────────────────────────────
-  guardedHandle('devices:scan-all', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const startTs = new Date().toISOString();
-    const localIp = _localIp();
-
-    // Phase 0: background ping sweep (populates ARP cache while we scan)
-    _pingSubnet(localIp);
-
-    // Phase 1: All passive scans in parallel (4.5 s window)
-    const [arpR, btR, ssdpRawR, mdnsR, nbR] = await Promise.allSettled([
-      (async () => {
-        const t = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
-        const devs = _parseArpOutput(t);
-        try {
-          const nj = _ex('powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 10000, windowsHide: true });
-          const narr = [].concat(JSON.parse(nj));
-          const seenM = new Set(devs.map(d => d.mac));
-          for (const n of narr) {
-            if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
-            const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
-            if (seenM.has(mac)) continue; seenM.add(mac);
-            devs.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
-          }
-        } catch {}
-        return devs;
-      })(),
-      (async () => {
-        let j1 = '[]', j2 = '[]';
-        try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-        try { j2 = _ex('powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-        return _parseBtPnp(j1, j2);
-      })(),
-      _ssdpScan(4500),
-      _mdnsScanMulti(4500),
-      (async () => {
-        const devs = []; const seen = new Set(); let raw = '';
-        try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 12000, windowsHide: true }); } catch {}
-        for (const line of raw.split('\n')) {
-          const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
-          if (!m || seen.has(m[1])) continue; seen.add(m[1]);
-          devs.push({ ip: m[1], name: m[2], netbiosName: m[2], protocol: 'NetBIOS' });
-        }
-        return devs;
-      })(),
-    ]);
-
-    const arpDevs   = arpR.status     === 'fulfilled' ? arpR.value     : [];
-    const btDevs    = btR.status      === 'fulfilled' ? btR.value      : [];
-    const ssdpRaw   = ssdpRawR.status === 'fulfilled' ? ssdpRawR.value : [];
-    const mdnsDevs  = mdnsR.status    === 'fulfilled' ? mdnsR.value    : [];
-    const nbDevs    = nbR.status      === 'fulfilled' ? nbR.value      : [];
-
-    // Phase 2: Parallel enrichment
-    const allIps    = [...new Set([...arpDevs, ...mdnsDevs, ...nbDevs].filter(d => _isIPv4(d.ip)).map(d => d.ip))];
-    const enrichIps = allIps.slice(0, 25);
-
-    const [ptrMapR, ssdpDescR, nbEnrichR, portProbeR] = await Promise.allSettled([
-      _reverseDns(allIps),
-      Promise.allSettled(ssdpRaw.slice(0, 15).map(d => _fetchSsdpDesc(d.location))),
-      Promise.allSettled(enrichIps.slice(0, 20).map(ip => _nbtstatDevice(ip).then(r => ({ ip, ...(r || {}) })))),
-      Promise.allSettled(enrichIps.slice(0, 20).map(ip => _tcpProbeDevice(ip).then(ports => ({ ip, ports })))),
-    ]);
-
-    const ptrMap    = ptrMapR.status   === 'fulfilled' ? ptrMapR.value   : {};
-    const ssdpDescs = ssdpDescR.status === 'fulfilled' ? ssdpDescR.value : [];
-    const nbByIp    = {}; (nbEnrichR.status === 'fulfilled' ? nbEnrichR.value : []).filter(r => r.status === 'fulfilled' && r.value?.ip).forEach(r => { nbByIp[r.value.ip] = r.value; });
-    const portByIp  = {}; (portProbeR.status === 'fulfilled' ? portProbeR.value : []).filter(r => r.status === 'fulfilled' && r.value?.ip).forEach(r => { portByIp[r.value.ip] = r.value.ports; });
-
-    // Apply enrichment to ARP/mDNS/NetBIOS devices
-    [...arpDevs, ...mdnsDevs, ...nbDevs].forEach(d => {
-      if (d.ip && ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
-      if (d.ip && nbByIp[d.ip]) { const nb = nbByIp[d.ip]; if (nb.name) d.netbiosName = nb.name; if (nb.workgroup) d.netbiosWorkgroup = nb.workgroup; if (nb.user) d.netbiosUser = nb.user; if (nb.mac && !d.mac) { d.mac = nb.mac; d.vendor = _oui(nb.mac); } }
-      if (d.ip && portByIp[d.ip]) d.openPorts = portByIp[d.ip];
-    });
-
-    // Enrich SSDP with descriptions
-    const ssdpDevs = ssdpRaw.map((d, i) => {
-      const desc = ssdpDescs[i]?.status === 'fulfilled' ? ssdpDescs[i].value : null;
-      return { ...d, ...(desc || {}), protocol: 'SSDP/UPnP' };
-    });
-    // Apply ptr+ports to SSDP devices too
-    ssdpDevs.forEach(d => {
-      if (d.ip && ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
-      if (d.ip && portByIp[d.ip]) d.openPorts = portByIp[d.ip];
-    });
-
-    // Phase 3: Cross-protocol merge
-    const allRaw = [
-      ...arpDevs.map(d => ({ ...d, scanMethod: 'ARP' })),
-      ...btDevs.map(d => ({ ...d, scanMethod: 'Bluetooth' })),
-      ...ssdpDevs.map(d => ({ ...d, scanMethod: 'SSDP' })),
-      ...mdnsDevs.map(d => ({ ...d, scanMethod: 'mDNS' })),
-      ...nbDevs.map(d => ({ ...d, scanMethod: 'NetBIOS' })),
-    ];
-    const merged = _mergeDevices(allRaw);
-
-    // Phase 4: Flag new devices, push to log
-    const newCount = _flagNewDevices(merged);
-    const entry = _pushCapture('full-sweep', merged, {
-      method:  'ARP+NDP · Bluetooth · SSDP+XML · mDNS×14 · NetBIOS · rDNS · nbtstat · TCP-ports · merge',
-      startTs, localIp,
-      protocols: { arp: arpR.status, bluetooth: btR.status, ssdp: ssdpRawR.status, mdns: mdnsR.status, netbios: nbR.status },
-      newDeviceCount: newCount,
-    });
-    return { ok: true, entry, newDeviceCount: newCount };
-  });
-
-  // ── IPC: enrich-device (deep single-IP probe) ─────────────────────────────
-  guardedHandle('devices:enrich-device', async (_event, { ip }) => {
-    if (!_isIPv4(ip)) return { ok: false, reason: 'invalid-ip' };
-    try {
-      const [ptrR, nbR, portsR] = await Promise.allSettled([
-        _reverseDns([ip]).then(m => m[ip]),
-        _nbtstatDevice(ip),
-        _tcpProbeDevice(ip),
-      ]);
-      return {
-        ok: true,
-        result: {
-          ip,
-          ptrHostname: ptrR.status  === 'fulfilled' ? ptrR.value  : null,
-          netbios:     nbR.status   === 'fulfilled' ? nbR.value   : null,
-          openPorts:   portsR.status === 'fulfilled' ? portsR.value : {},
-        },
-      };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
-
-  // ── Log management ────────────────────────────────────────────────────────
-  guardedHandle('devices:get-log',    async () => ({ ok: true, log: _captureLog }));
-  guardedHandle('devices:clear-log',  async () => { _captureLog = []; _saveLog(); return { ok: true }; });
-  guardedHandle('devices:delete-entry', async (_event, { id }) => {
-    _captureLog = _captureLog.filter(e => e.id !== id);
-    _saveLog();
-    return { ok: true };
-  });
-  guardedHandle('devices:export-log', async () => {
-    const { dialog: _dlg } = require('electron');
-    const res = await _dlg.showSaveDialog({
-      title: 'Export Device Capture Log',
-      defaultPath: `rmpg-device-capture-${Date.now()}.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }, { name: 'All Files', extensions: ['*'] }],
-    });
-    if (res.canceled) return { ok: false, reason: 'cancelled' };
-    try { _fs.writeFileSync(res.filePath, JSON.stringify(_captureLog, null, 2)); return { ok: true, path: res.filePath }; }
-    catch (e) { return { ok: false, reason: e.message }; }
-  });
-})();
 
 // ── System: set OS master volume ──────────────────────────────
 guardedHandle('system:set-volume', async (_event, level) => {
@@ -5993,6 +5187,40 @@ function createTray() {
             mainWindow.show();
             mainWindow.focus();
           }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Reload (F5)',
+        click: () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch(() => {});
+          } else {
+            mainWindow.webContents.reload();
+          }
+          mainWindow.show();
+          console.log('[TRAY] Reload triggered from tray');
+        },
+      },
+      {
+        label: 'Hard Reload — Clear Cache (Ctrl+Shift+F5)',
+        click: async () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          try {
+            await mainWindow.webContents.session.clearCache();
+            await mainWindow.webContents.session.clearStorageData({
+              storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+            });
+          } catch (err) {
+            console.warn('[TRAY] Hard reload cache clear failed:', err && err.message);
+          }
+          mainWindow.loadURL(REMOTE_SERVER_URL).catch(() => {});
+          mainWindow.show();
+          console.log('[TRAY] Hard reload triggered from tray');
         },
       },
       { type: 'separator' },
@@ -6263,6 +5491,58 @@ app.whenReady().then(async () => {
     await createMainWindow();
     createTray();
 
+    // ─── Field reload hotkeys (global — survive kiosk/black-screen) ───
+    // Registered as global shortcuts so they fire from the main process
+    // regardless of renderer state (no menu needed, works on black screens).
+    //
+    // F5  — soft reload: reloads the current page (recovers random freezes).
+    //        If the page is the offline data: URL, navigates back to the real
+    //        server instead of re-rendering the dead-end offline screen.
+    // Ctrl+Shift+F5 — hard reload: clears HTTP + SW caches then loads the
+    //        real server URL. Recovers wedged service workers, stale deploys,
+    //        and any state that a plain reload won't shake loose.
+    //
+    // Both shortcuts unregister themselves in the 'before-quit' handler via
+    // globalShortcut.unregisterAll(), matching the kiosk escape hatch pattern.
+    globalShortcut.register('F5', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      // Manual reload: clear the crash-loop counter so a human override
+      // isn't blocked by stale automatic-recovery timestamps.
+      rendererRecoveryTimestamps = [];
+      const currentUrl = mainWindow.webContents.getURL();
+      if (currentUrl.startsWith('data:')) {
+        // On the offline or crash-loop page — navigate back to the real app
+        mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+          console.warn('[RELOAD] F5 loadURL failed:', err && err.message);
+        });
+      } else {
+        mainWindow.webContents.reload();
+      }
+      console.log('[RELOAD] F5: soft reload');
+    });
+
+    globalShortcut.register('Ctrl+Shift+F5', async () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      // Manual hard reload: clear the crash-loop counter (same rationale as F5).
+      rendererRecoveryTimestamps = [];
+      console.log('[RELOAD] Ctrl+Shift+F5: hard reload — clearing caches');
+      try {
+        await mainWindow.webContents.session.clearCache();
+        await mainWindow.webContents.session.clearStorageData({
+          storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+        });
+        await mainWindow.webContents.executeJavaScript(`
+          if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+          if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+        `).catch(() => {});
+      } catch (err) {
+        console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+      }
+      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+        console.warn('[RELOAD] Ctrl+Shift+F5 loadURL failed:', err && err.message);
+      });
+    });
+
     // Await connectivity (usually already resolved by now)
     const isReachable = await connectivityPromise;
     if (!isReachable) {
@@ -6292,11 +5572,13 @@ app.whenReady().then(async () => {
       if (nowOnline) {
         // Auto-reload when on the offline page — the officer shouldn't have
         // to manually tap "Retry" after cellular reconnects in the field.
+        // (The fast-reconnect path below handles this sooner; this is the
+        // fallback for any case where that didn't fire.)
         try {
           if (mainWindow && !mainWindow.isDestroyed()) {
             const currentUrl = mainWindow.webContents.getURL();
             if (currentUrl.startsWith('data:')) {
-              console.log('[APP] Connectivity restored while on offline page — reloading');
+              console.log('[APP] Connectivity restored (debounced) while on offline page — reloading');
               mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
                 console.warn('[APP] Auto-reload on reconnect failed:', err && err.message);
               });
@@ -6315,6 +5597,24 @@ app.whenReady().then(async () => {
           mainWindow?.webContents.send('connectivity:failover', { from: 'wifi', to: 'wwan' });
         }
       }
+    }, (isReachable) => {
+      // ─── Fast reconnect: bypass debounce when on the offline page ─────
+      // The debounce (stableCount=3, ~30s) protects against flapping while
+      // the app is running normally. When the page is already dead (data: URL)
+      // there is nothing to protect — any confirmed positive reachability check
+      // should reload immediately, not after 30s.
+      if (!isReachable) return;
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            console.log('[APP] Fast reconnect: reachable while on offline page — reloading immediately');
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+              console.warn('[APP] Fast reconnect loadURL failed:', err && err.message);
+            });
+          }
+        }
+      } catch { /* window may be closing */ }
     });
 
     // Start background pull sync if online

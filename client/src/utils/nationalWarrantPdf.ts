@@ -13,6 +13,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -306,6 +307,6 @@ export function generateNationalWarrantPdf(input: NationalWarrantPdfInput): jsPD
 
 export function openNationalWarrantPdf(input: NationalWarrantPdfInput): void {
   const doc = generateNationalWarrantPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'National Warrant');
 }

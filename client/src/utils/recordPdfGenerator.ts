@@ -182,6 +182,7 @@ function callPostureFlags(data: CallPdfData): string[] {
   const flags: string[] = [];
   const push = (cond: unknown, label: string) => { if (cond) flags.push(label); };
   push(data.officer_safety_caution, 'officer safety');
+  push(data.hazard_notes, 'officer safety');   // property hazard note → same tier as the flag
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) flags.push(`weapon ${wv}`);
   push(data.felony_in_progress, 'felony in progress');
@@ -200,7 +201,7 @@ function callPostureFlags(data: CallPdfData): string[] {
 // callPostureFlags, but worded for display rather than classification).
 function callPostureChips(data: CallPdfData): string[] {
   const chips: string[] = [];
-  if (data.officer_safety_caution) chips.push('OFFICER SAFETY');
+  if (data.officer_safety_caution || data.hazard_notes) chips.push('OFFICER SAFETY');
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) chips.push('WEAPONS');
   if (data.felony_in_progress) chips.push('FELONY IP');
@@ -633,6 +634,9 @@ export interface CallPdfData {
   latitude?: number;
   longitude?: number;
   property_name?: string;
+  hazard_notes?: string;       // from linked property JOIN — triggers posture band when present
+  post_orders?: string;        // from linked property JOIN
+  gate_code?: string;          // from linked property JOIN
   // Incident details
   num_subjects?: number;
   num_victims?: number;
@@ -972,6 +976,22 @@ export interface PersonPdfData {
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
   // pdfIntegrity.ts so it does NOT affect the payload hash.
   _dossier?: import('./pdfDossierRenderer').PersonDossierData;
+  // Open-source intelligence hits from the enrichment engine. Caller fetches
+  // /api/enrichment/search and attaches matching records here. Listed in
+  // NON_CANONICAL_FIELDS so it doesn't affect the payload hash.
+  _enrichment?: {
+    match_tier?: string;
+    records?: Array<{
+      name?: string;
+      dob?: string;
+      source: string;
+      watchlist_flags?: string[];
+      addresses?: Array<{ street?: string; city?: string; state?: string; zip?: string }>;
+      raw?: any;
+    }>;
+    sources?: Array<{ source: string; ok: boolean; error?: string; records: any[] }>;
+    searched_at?: string;
+  };
 }
 
 export interface VehiclePdfData {
@@ -2424,7 +2444,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: tsField(data.created_at, 0) },
       { label: 'Dispatched', value: tsField(data.dispatched_at, 1) },
-      { label: 'Enroute', value: tsField(data.enroute_at, 2) },
+      { label: 'En Route', value: tsField(data.enroute_at, 2) },
       { label: 'On Scene', value: tsField(data.onscene_at, 3) },
       { label: 'Cleared', value: tsField(data.cleared_at, 4) },
       { label: 'Closed', value: tsField(data.closed_at, 5) },
@@ -4333,6 +4353,73 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
 
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
+
+  // ── 15b. Open-Source Intelligence (enrichment hits) ───────
+  if (data._enrichment && Array.isArray(data._enrichment.records) && data._enrichment.records.length > 0) {
+    y = checkPageBreak(doc, y, 30, prio);
+    { const sec = openAutoSection(doc, 'Open-Source Intelligence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+
+    // Source summary row
+    if (Array.isArray(data._enrichment.sources)) {
+      const sourceSummary = data._enrichment.sources
+        .map(s => `${s.source.replace(/_/g, ' ').toUpperCase()} (${s.ok ? `${s.records.length} hit${s.records.length !== 1 ? 's' : ''}` : 'error'})`)
+        .join(' · ');
+      const tier = (data._enrichment.match_tier || '').toUpperCase();
+      const tierLabel = tier === 'CONFIRMED' ? 'IDENTITY CONFIRMED' : tier === 'UNCONFIRMED' ? 'UNCONFIRMED MATCH' : '';
+      const summaryLine = [tier ? tierLabel : null, sourceSummary].filter(Boolean).join('   ');
+      if (summaryLine) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+        const tierColor: [number, number, number] = tier === 'CONFIRMED' ? [220, 38, 38] : [...COLOR.TEXT_CAPTION];
+        doc.setTextColor(...tierColor);
+        doc.text(summaryLine, lx + 1.5, y + 1.5);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        y += 4;
+      }
+    }
+
+    // Hit rows grouped by watchlist flags
+    const enrichRows = data._enrichment.records.map((r: any) => {
+      const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length > 0
+        ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
+        : '—';
+      const addr = Array.isArray(r.addresses) && r.addresses.length > 0
+        ? [r.addresses[0].street, r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
+        : '—';
+      return [
+        r.source.replace(/_/g, ' ').toUpperCase(),
+        r.name || '—',
+        r.dob ? fmtDate(r.dob) : '—',
+        flags,
+        addr,
+      ];
+    });
+
+    y = addTableWithShading(
+      doc,
+      [
+        { label: 'SOURCE',  x: lx },
+        { label: 'NAME',    x: lx + 30 },
+        { label: 'DOB',     x: lx + 75 },
+        { label: 'FLAGS',   x: lx + 100 },
+        { label: 'ADDRESS', x: lx + 135 },
+      ],
+      enrichRows,
+      y,
+      [lx, lx + 30, lx + 75, lx + 100, lx + 135],
+      { sectionTitle: 'OSINT HITS' },
+    );
+
+    if (data._enrichment.searched_at) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER - 0.5);
+      doc.setTextColor(...COLOR.TEXT_CAPTION);
+      doc.text(`Searched: ${fmtTimestamp(data._enrichment.searched_at)}`, lx + 1.5, y + 1.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += 3;
+    }
+  }
 
   // ── 16. Record Metadata ───────────────────────────────────
   y = drawFormSection(doc, {

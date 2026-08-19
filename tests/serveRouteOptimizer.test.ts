@@ -26,46 +26,78 @@ describe('RouteStop type shape', () => {
   });
 });
 
+// Helper: build a fetch mock that returns a Directions API response for every call
+function directionsOkMock(duration: number) {
+  return vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ routes: [{ duration }] }),
+  } as unknown as Response);
+}
+
 describe('buildCostMatrix', () => {
-  it('returns Mapbox duration matrix when API succeeds', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        durations: [
-          [0, 120, 240],
-          [120, 0, 120],
-          [240, 120, 0],
-        ],
-      }),
-    } as unknown as Response);
+  it('returns driving-traffic duration matrix when all calls succeed', async () => {
+    // 3 stops → 3×2 = 6 ordered pairs
+    global.fetch = directionsOkMock(120);
 
     const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
     expect(result.fallback).toBe(false);
+    expect(result.matrix[0][0]).toBe(0);  // diagonal
     expect(result.matrix[0][1]).toBe(120);
+    expect(result.matrix[1][0]).toBe(120);
     expect(result.matrix[1][2]).toBe(120);
   });
 
-  it('falls back to haversine when API returns non-ok status', async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 422,
-    } as unknown as Response);
+  it('calls the driving-traffic Directions API (not the Matrix API)', async () => {
+    const fetchMock = directionsOkMock(100);
+    global.fetch = fetchMock;
 
-    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
-    expect(result.fallback).toBe(true);
-    expect(result.matrix[0][0]).toBe(0);
-    expect(result.matrix[0][1]).toBeGreaterThan(0);
+    await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+
+    const firstUrl = (fetchMock.mock.calls[0][0] as string);
+    expect(firstUrl).toContain('directions/v5/mapbox/driving-traffic');
+    // Should NOT use the old matrix endpoint
+    expect(firstUrl).not.toContain('directions-matrix');
   });
 
-  it('falls back to haversine when token is empty string', async () => {
+  it('fires n×(n-1) parallel calls for n stops', async () => {
+    const fetchMock = directionsOkMock(100);
+    global.fetch = fetchMock;
+
+    await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    // 3 stops → 3×2 = 6 pairs
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('falls back per-pair to haversine when a Directions call fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 } as unknown as Response)  // pair 0→1 fails
+      .mockResolvedValue({ ok: true, json: async () => ({ routes: [{ duration: 120 }] }) } as unknown as Response);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(true);    // at least one pair used haversine
+    expect(result.matrix[0][1]).toBeGreaterThan(0);  // haversine fallback is non-zero
+    expect(result.matrix[0][2]).toBe(120); // other pairs still got real durations
+  });
+
+  it('falls back to haversine with reason when token is empty string', async () => {
     global.fetch = vi.fn();
     const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', '');
     expect(result.fallback).toBe(true);
+    expect(result.reason).toBe('no token configured');
     expect((global.fetch as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 
-  it('chunks stops into ≤25-stop windows and merges', async () => {
-    const bigStops: RouteStop[] = Array.from({ length: 26 }, (_, i) => ({
+  it('handles a single stop gracefully (no pairs needed)', async () => {
+    global.fetch = vi.fn();
+    const result = await buildCostMatrix([STOPS_3[0]], '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.matrix).toHaveLength(1);
+    expect(result.matrix[0][0]).toBe(0);
+    expect((global.fetch as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('scales to large stop counts without chunking', async () => {
+    const bigStops: RouteStop[] = Array.from({ length: 10 }, (_, i) => ({
       jobId: i + 1,
       lat: 40.7 + i * 0.01,
       lng: -111.9 + i * 0.01,
@@ -78,22 +110,16 @@ describe('buildCostMatrix', () => {
       locationNote: null,
     }));
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        durations: Array.from({ length: 25 }, (_, r) =>
-          Array.from({ length: 25 }, (_, c) => (r === c ? 0 : 100))
-        ),
-      }),
-    } as unknown as Response);
+    global.fetch = directionsOkMock(200);
 
     const result = await buildCostMatrix(bigStops, '2026-08-12T07:00:00Z', 'sk.fake');
-    expect(result.matrix).toHaveLength(26);
-    expect(result.matrix[0]).toHaveLength(26);
-    // Cross-chunk cells (stop 0 vs stop 25) are filled with haversine, so must be non-zero
-    expect(result.matrix[0][25]).toBeGreaterThan(0);
-    // Matrix must be marked fallback:true because cross-chunk cells use haversine
-    expect(result.fallback).toBe(true);
+    expect(result.matrix).toHaveLength(10);
+    expect(result.matrix[0]).toHaveLength(10);
+    expect(result.matrix[0][0]).toBe(0);
+    expect(result.matrix[0][9]).toBe(200);
+    expect(result.fallback).toBe(false);
+    // 10×9 = 90 calls total, all in one batch (no chunking)
+    expect((global.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(90);
   });
 });
 
@@ -232,16 +258,11 @@ describe('checkTrafficDegradation', () => {
   ];
 
   it('returns degraded:false when traffic is unchanged', async () => {
+    // checkTrafficDegradation calls buildCostMatrix which now uses Directions API
+    // (one call per ordered pair); return a modest duration so no >15min degradation
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        durations: [
-          [0, 300, 300, 300],
-          [300, 0, 300, 600],
-          [300, 300, 0, 300],
-          [300, 600, 300, 0],
-        ],
-      }),
+      json: async () => ({ routes: [{ duration: 300 }] }),
     } as unknown as Response);
 
     const mockDb = {
@@ -265,16 +286,10 @@ describe('checkTrafficDegradation', () => {
   });
 
   it('returns degraded:true when total added time exceeds 15 minutes', async () => {
+    // Return very high duration (35 min) so accumulated delay fires the degraded threshold
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({
-        durations: [
-          [0, 2100, 2100, 2100],
-          [2100, 0, 2100, 2100],
-          [2100, 2100, 0, 2100],
-          [2100, 2100, 2100, 0],
-        ],
-      }),
+      json: async () => ({ routes: [{ duration: 2100 }] }),
     } as unknown as Response);
 
     const mockDb = {
@@ -318,8 +333,8 @@ describe('checkTrafficDegradation', () => {
     expect(result.degraded).toBe(false);
   });
 
-  it('returns matrixFallback:true and degraded:false when API fails', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response);
+  it('returns matrixFallback:true and degraded:false when API calls all fail', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
 
     const mockDb = {
       prepare: () => ({

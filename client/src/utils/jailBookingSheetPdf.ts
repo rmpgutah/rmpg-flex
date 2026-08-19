@@ -24,6 +24,7 @@ import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 
 import { formatEnumValue, toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -426,8 +427,8 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
 
 export function openJailBookingSheetPdf(input: JailBookingSheetInput): void {
   const doc = generateJailBookingSheetPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Jail Booking Sheet');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -564,6 +565,6 @@ export function generateJailRosterSnapshotPdf(input: JailRosterSnapshotInput): j
 
 export function openJailRosterSnapshotPdf(input: JailRosterSnapshotInput): void {
   const doc = generateJailRosterSnapshotPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Jail Booking Sheet');
 }

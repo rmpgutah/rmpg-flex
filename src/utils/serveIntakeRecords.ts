@@ -824,6 +824,19 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       // For the queue's recipient_person_id, point at the agent —
       // that's who the officer needs to find on the door.
       person = agentPerson;
+    } else if (recipientFirst || recipientLast) {
+      // Fallback: operator filled the agent's name into the First/Last Name
+      // fields (common when the registered agent is a known individual rather
+      // than a department). Don't drop these — create the person row from them.
+      agentPerson = await findOrCreatePerson(db, {
+        first_name: recipientFirst,
+        middle_name: recipientMiddle,
+        last_name: recipientLast || '-',
+        dob: recipientDob || null,
+        address: addr || null,
+        phone: recipientPhone || null,
+      });
+      person = agentPerson;
     }
   } else if (recipientFirst || recipientLast) {
     person = await findOrCreatePerson(db, {
@@ -1155,8 +1168,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status,
         geo_cluster_id, urgency_tier, urgency_computed_at,
-        quality_status, judge_run_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        quality_status, judge_run_id, sm_job_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -1170,7 +1183,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
       geoClusterId, urgencyTier, urgencyComputedAt,
-      input.qualityStatus ?? 'clean', input.judgeRunId ?? null,
+      input.qualityStatus ?? 'clean', input.judgeRunId ?? null, queueRow.sm_job_id ?? null,
     );
     queueId = Number(ins.meta.last_row_id);
 
