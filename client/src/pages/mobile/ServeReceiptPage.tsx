@@ -734,6 +734,9 @@ export default function ServeReceiptPage() {
   };
 
   return (
+    <>
+      {/* Screen-reader live region — announces step progress without relying on colour */}
+      <span role="status" className="sr-only">Step {sectionsDone} of 5 complete</span>
     <WizardShell
       currentStep={step}
       sectionsDone={sectionsDone}
@@ -846,5 +849,6 @@ export default function ServeReceiptPage() {
         />
       )}
     </WizardShell>
+    </>
   );
 }

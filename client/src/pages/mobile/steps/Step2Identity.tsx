@@ -23,9 +23,9 @@ function FieldLabel({ children, required }: { children: React.ReactNode; require
 }
 
 const inputCls =
-  'w-full bg-white border border-gray-300 rounded-sm px-3 py-2.5 ' +
-  'text-[15px] text-gray-800 placeholder:text-gray-400 focus:outline-none ' +
-  'focus:border-blue-500';
+  'w-full bg-white border border-gray-600 rounded-sm px-3 py-2.5 ' +
+  'text-[15px] text-white placeholder:text-gray-500 focus:outline-none ' +
+  'focus:border-blue-400';
 
 const selectCls = inputCls;
 
@@ -126,8 +126,8 @@ export default function Step2Identity({
   return (
     <div className="p-4 pb-6 max-w-lg mx-auto space-y-5">
       <div>
-        <h2 className="text-xl font-bold text-gray-800 mb-1">Your Identity</h2>
-        <p className="text-[14px] text-gray-500 leading-relaxed">
+        <h2 className="text-xl font-bold text-white mb-1">Your Identity</h2>
+        <p className="text-[14px] text-gray-400 leading-relaxed">
           Tell us who you are. This information is recorded with your signature.
         </p>
       </div>
@@ -156,25 +156,25 @@ export default function Step2Identity({
           {/* Card A — Barcode scan */}
           {idScanMethod === 'barcode' && idVerified ? (
             // Completed state
-            <div className="p-3 rounded-sm border-2 border-green-300 bg-green-50 flex items-center gap-3">
-              <Check size={18} className="text-green-600 shrink-0" />
+            <div className="p-3 rounded-sm border-2 border-green-700 bg-green-900 flex items-center gap-3">
+              <Check size={18} className="text-green-400 shrink-0" />
               <div className="flex-1">
-                <p className="text-[14px] font-semibold text-green-700">Barcode scanned successfully</p>
+                <p className="text-[14px] font-semibold text-green-400">Barcode scanned successfully</p>
                 {idDescription && (
-                  <p className="text-[12px] text-green-600 mt-0.5">{idDescription}</p>
+                  <p className="text-[12px] text-green-500 mt-0.5">{idDescription}</p>
                 )}
               </div>
             </div>
           ) : (
-            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'barcode' ? 'border-blue-400' : 'border-gray-200'}`}>
+            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'barcode' ? 'border-blue-500' : 'border-gray-600'}`}>
               <button
                 type="button"
                 onClick={() => setActiveCard(activeCard === 'barcode' ? null : 'barcode')}
                 className="w-full flex items-center gap-3 p-3.5 text-left bg-white active:bg-gray-50"
               >
-                <ScanLine size={20} className="text-blue-600 shrink-0" />
+                <ScanLine size={20} className="text-blue-500 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-[14px] font-semibold text-gray-800">Scan ID barcode</p>
+                  <p className="text-[14px] font-semibold text-white">Scan ID barcode</p>
                   <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">
                     Take a photo of the barcode on the back of your licence or state ID.
                     Your name and description will fill in automatically.
@@ -182,12 +182,12 @@ export default function Step2Identity({
                 </div>
               </button>
               {activeCard === 'barcode' && (
-                <div className="px-3.5 pb-3.5 space-y-2 bg-white border-t border-gray-100">
-                  <label className="block mt-2 p-3 rounded-sm border border-dashed border-blue-400 bg-blue-50 text-center cursor-pointer active:opacity-80">
-                    <p className="text-[14px] font-medium text-blue-700">
+                <div className="px-3.5 pb-3.5 space-y-2 bg-white border-t border-gray-700">
+                  <label className="block mt-2 p-3 rounded-sm border border-dashed border-blue-500 bg-blue-900 text-center cursor-pointer active:opacity-80">
+                    <p className="text-[14px] font-medium text-blue-300">
                       {idScanning ? 'Reading barcode…' : 'Open camera and scan barcode'}
                     </p>
-                    <p className="text-[12px] text-blue-500 mt-0.5">
+                    <p className="text-[12px] text-blue-400 mt-0.5">
                       Tap to open camera
                     </p>
                     <input
@@ -202,7 +202,7 @@ export default function Step2Identity({
                     />
                   </label>
                   {idScanError && (
-                    <p className="text-[13px] text-amber-700 bg-amber-50 border border-amber-200 rounded-sm px-3 py-2 leading-snug">
+                    <p className="text-[13px] text-amber-400 bg-amber-900 border border-amber-700 rounded-sm px-3 py-2 leading-snug">
                       {idScanError}
                     </p>
                   )}
@@ -214,41 +214,41 @@ export default function Step2Identity({
           {/* Card B — Photo */}
           {idScanMethod === 'photo' && idFrontImage ? (
             // Completed state
-            <div className="p-3 rounded-sm border-2 border-green-300 bg-green-50 flex items-center gap-3">
-              <Check size={18} className="text-green-600 shrink-0" />
+            <div className="p-3 rounded-sm border-2 border-green-700 bg-green-900 flex items-center gap-3">
+              <Check size={18} className="text-green-400 shrink-0" />
               <div className="flex-1">
-                <p className="text-[14px] font-semibold text-green-700">
+                <p className="text-[14px] font-semibold text-green-400">
                   ID photo captured{idBackImage ? ' (front + back)' : ' (front)'}
                 </p>
-                <p className="text-[12px] text-green-600 mt-0.5">
+                <p className="text-[12px] text-green-500 mt-0.5">
                   Please fill in the required fields (gender, height, weight, hair, eye color)
                   if they are not already completed.
                 </p>
               </div>
             </div>
           ) : (
-            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'photo' ? 'border-blue-400' : 'border-gray-200'}`}>
+            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'photo' ? 'border-blue-500' : 'border-gray-600'}`}>
               <button
                 type="button"
                 onClick={() => setActiveCard(activeCard === 'photo' ? null : 'photo')}
                 className="w-full flex items-center gap-3 p-3.5 text-left bg-white active:bg-gray-50"
               >
-                <Camera size={20} className="text-blue-600 shrink-0" />
+                <Camera size={20} className="text-blue-500 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-[14px] font-semibold text-gray-800">Take a photo of your ID</p>
+                  <p className="text-[14px] font-semibold text-white">Take a photo of your ID</p>
                   <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">
                     Front is required. Back is optional but encouraged.
                   </p>
                 </div>
               </button>
               {activeCard === 'photo' && (
-                <div className="px-3.5 pb-3.5 bg-white border-t border-gray-100">
+                <div className="px-3.5 pb-3.5 bg-white border-t border-gray-700">
                   <div className="grid grid-cols-2 gap-2 mt-3">
-                    <label className="block p-3 rounded-sm border border-gray-300 bg-gray-50 text-center cursor-pointer active:opacity-80">
+                    <label className="block p-3 rounded-sm border border-gray-600 bg-gray-50 text-center cursor-pointer active:opacity-80">
                       <Camera size={16} className="mx-auto text-gray-400 mb-1" />
-                      <span className="text-[13px] text-gray-600">
+                      <span className="text-[13px] text-gray-300">
                         {idFrontImage ? (
-                          <><Check size={13} className="inline text-green-600 mr-0.5" />Front</>
+                          <><Check size={13} className="inline text-green-400 mr-0.5" />Front</>
                         ) : 'Front of ID *'}
                       </span>
                       <input
@@ -262,11 +262,11 @@ export default function Step2Identity({
                         }}
                       />
                     </label>
-                    <label className="block p-3 rounded-sm border border-gray-300 bg-gray-50 text-center cursor-pointer active:opacity-80">
+                    <label className="block p-3 rounded-sm border border-gray-600 bg-gray-50 text-center cursor-pointer active:opacity-80">
                       <Camera size={16} className="mx-auto text-gray-400 mb-1" />
-                      <span className="text-[13px] text-gray-600">
+                      <span className="text-[13px] text-gray-300">
                         {idBackImage ? (
-                          <><Check size={13} className="inline text-green-600 mr-0.5" />Back</>
+                          <><Check size={13} className="inline text-green-400 mr-0.5" />Back</>
                         ) : 'Back of ID (optional)'}
                       </span>
                       <input
@@ -289,32 +289,32 @@ export default function Step2Identity({
           {/* Card C — Manual entry */}
           {idScanMethod === 'manual' && idVerified ? (
             // Completed state
-            <div className="p-3 rounded-sm border-2 border-green-300 bg-green-50 flex items-center gap-3">
-              <Check size={18} className="text-green-600 shrink-0" />
+            <div className="p-3 rounded-sm border-2 border-green-700 bg-green-900 flex items-center gap-3">
+              <Check size={18} className="text-green-400 shrink-0" />
               <div className="flex-1">
-                <p className="text-[14px] font-semibold text-green-700">ID entered manually</p>
+                <p className="text-[14px] font-semibold text-green-400">ID entered manually</p>
                 {idDescription && (
-                  <p className="text-[12px] text-green-600 mt-0.5">{idDescription}</p>
+                  <p className="text-[12px] text-green-500 mt-0.5">{idDescription}</p>
                 )}
               </div>
             </div>
           ) : (
-            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'manual' ? 'border-blue-400' : 'border-gray-200'}`}>
+            <div className={`rounded-sm border-2 overflow-hidden ${activeCard === 'manual' ? 'border-blue-500' : 'border-gray-600'}`}>
               <button
                 type="button"
                 onClick={() => setActiveCard(activeCard === 'manual' ? null : 'manual')}
                 className="w-full flex items-center gap-3 p-3.5 text-left bg-white active:bg-gray-50"
               >
-                <Pencil size={20} className="text-blue-600 shrink-0" />
+                <Pencil size={20} className="text-blue-500 shrink-0" />
                 <div className="flex-1">
-                  <p className="text-[14px] font-semibold text-gray-800">Enter ID details manually</p>
+                  <p className="text-[14px] font-semibold text-white">Enter ID details manually</p>
                   <p className="text-[12px] text-gray-400 mt-0.5 leading-snug">
                     Type in the information from your driver's licence or state ID.
                   </p>
                 </div>
               </button>
               {activeCard === 'manual' && (
-                <div className="px-3.5 pb-3.5 bg-white border-t border-gray-100 space-y-3 mt-3">
+                <div className="px-3.5 pb-3.5 bg-white border-t border-gray-700 space-y-3 mt-3">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <FieldLabel required>First name</FieldLabel>
@@ -396,7 +396,7 @@ export default function Step2Identity({
       {/* ── Address confirmation (shown after any ID method started) ── */}
       {idDone && hasServiceAddress && (
         <div className="space-y-3">
-          <p className="text-[14px] font-medium text-gray-700">
+          <p className="text-[14px] font-medium text-gray-200">
             Is the address on your ID your current address?
           </p>
           <div className="flex gap-3">
@@ -407,8 +407,8 @@ export default function Step2Identity({
                 onClick={() => setAddressCurrent(val)}
                 className={`flex-1 py-3 rounded-sm border-2 text-[14px] font-semibold transition-colors ${
                   addressCurrent === val
-                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 bg-white text-gray-600'
+                    ? 'border-blue-500 bg-blue-900 text-blue-300'
+                    : 'border-gray-600 bg-transparent text-gray-300'
                 }`}
               >
                 {txt}
