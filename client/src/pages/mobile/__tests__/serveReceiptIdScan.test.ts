@@ -10,6 +10,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const PAGE = readFileSync(join(__dirname, '..', 'ServeReceiptPage.tsx'), 'utf8');
+// Step components that the wizard refactor split out of ServeReceiptPage.
+const STEP2 = readFileSync(join(__dirname, '..', 'steps', 'Step2Identity.tsx'), 'utf8');
+const SHELL = readFileSync(join(__dirname, '..', 'steps', 'WizardShell.tsx'), 'utf8');
 
 describe('driver licence scan', () => {
   it('reuses the existing decoder and AAMVA parser', () => {
@@ -23,10 +26,11 @@ describe('driver licence scan', () => {
     // A proof of service is more defensible in a contested hearing when
     // the signer's identity was verified against a photo ID rather than
     // self-attested.
-    expect(PAGE).toMatch(/Scan ID barcode/);
-    // ID validation is relaxed: accepts barcode scan OR manual entry OR front photo.
-    const fieldErrorsBlock = PAGE.slice(PAGE.indexOf('const fieldErrors'), PAGE.indexOf('const acceptedAttestations'));
-    expect(fieldErrorsBlock).toMatch(/idVerified/);
+    // The wizard refactor moved the barcode UI to Step2Identity.tsx.
+    expect(STEP2).toMatch(/Scan ID barcode/);
+    // The controller (ServeReceiptPage) still owns idVerified state and gates step 2 on it.
+    const step2Block = PAGE.slice(PAGE.indexOf('const step2Valid'), PAGE.indexOf('const step3Valid'));
+    expect(step2Block).toMatch(/idVerified/);
   });
 
   it('populates the columns that existed and were never written', () => {
@@ -72,9 +76,10 @@ describe('public surface accessibility', () => {
     // A form of unknown length on a doorstep is one people abandon. The
     // bar is aria-hidden and paired with a live region, because five
     // coloured rectangles say nothing to a screen reader.
+    // The controller computes sectionsDone; WizardShell renders the live region.
     expect(PAGE).toMatch(/sectionsDone/);
-    expect(PAGE).toMatch(/role="status"/);
-    expect(PAGE).toMatch(/Step \{sectionsDone\} of 5 complete/);
+    expect(SHELL).toMatch(/role="status"/);
+    expect(SHELL).toMatch(/Step \{sectionsDone\} of 5 complete/);
   });
 
   it('counts the read-only sections as already done', () => {

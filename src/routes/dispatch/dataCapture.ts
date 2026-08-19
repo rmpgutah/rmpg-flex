@@ -324,14 +324,26 @@ dataCapture.patch('/subject/:id', async (c) => {
   return c.json({ ok: true });
 });
 
-// DELETE /subject/:id — detach from call
+// DELETE /subject/:id?call_id= — detach a subject from its call.
+// call_id is required to prevent cross-call deletes: an officer on Call A
+// cannot silently destroy a subject record that belongs to Call B.
 dataCapture.delete('/subject/:id', async (c) => {
   const { id: userId, role } = actor(c);
   if (!['admin', 'manager', 'supervisor', 'dispatcher'].includes(role)) {
     return c.json({ error: 'Forbidden' }, 403);
   }
   const subjectId = Number(c.req.param('id'));
-  await execute(c.env.DB, `DELETE FROM cfs_subjects WHERE id = ?`, subjectId);
+  const callId = Number(c.req.query('call_id'));
+  if (!callId) return c.json({ error: 'call_id is required' }, 400);
+
+  const result = await execute(
+    c.env.DB,
+    `DELETE FROM cfs_subjects WHERE id = ? AND call_id = ?`,
+    subjectId, callId,
+  );
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'Subject not found on this call' }, 404);
+  }
   return c.json({ ok: true });
 });
 

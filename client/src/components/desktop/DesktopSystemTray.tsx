@@ -3,6 +3,7 @@ import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, Refres
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../ToastProvider';
+import WifiSelector from './WifiSelector';
 
 interface BatteryStatus {
   charging: boolean;
@@ -255,7 +256,8 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
   const { battery, connectivity, connectivityDetail, gps, syncPending, cpuPercent, onDuty, setOnDuty, radioChannel, isElectron } = useTrayPolling();
   const { user } = useAuth();
   const { addToast } = useToast();
-  const [connPanelOpen, setConnPanelOpen] = useState(false);
+  const [connPanelOpen, setConnPanelOpen]   = useState(false);
+  const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
   const dutyBusyRef = useRef(false);
 
   const toggleDuty = useCallback(async () => {
@@ -336,12 +338,16 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
         </div>
       )}
 
-      {/* Network — clickable, opens connectivity detail panel */}
+      {/* Network — Electron: opens WifiSelector; browser: opens ConnectivityPanel */}
       <div style={{ position: 'relative' }}>
         <button
           type="button"
-          title={connectivity === 'online' ? 'Online — click for details' : connectivity === 'degraded' ? 'Network degraded' : 'Offline'}
-          onClick={() => setConnPanelOpen(v => !v)}
+          title={
+            connectivity === 'online'   ? (isElectron ? 'Wi-Fi — click to manage' : 'Online — click for details')
+            : connectivity === 'degraded' ? 'Network degraded'
+            : 'Offline'
+          }
+          onClick={() => isElectron ? setWifiSelectorOpen(v => !v) : setConnPanelOpen(v => !v)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex' }}
           aria-label={connectivity === 'online' ? 'Online' : connectivity === 'degraded' ? 'Network degraded' : 'Offline'}
         >
@@ -353,6 +359,9 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
             <WifiOff className="w-3.5 h-3.5" style={{ color: 'var(--sev-critical)' }} />
           )}
         </button>
+        {wifiSelectorOpen && (
+          <WifiSelector onClose={() => setWifiSelectorOpen(false)} />
+        )}
         {connPanelOpen && (
           <ConnectivityPanel detail={connectivityDetail} onClose={() => setConnPanelOpen(false)} />
         )}

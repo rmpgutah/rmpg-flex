@@ -172,6 +172,10 @@ const DEFAULT_FORM_DATA = {
   historical_onscene_at: '',
   historical_cleared_at: '',
   historical_closed_at: '',
+  // Narrative and inline subjects (no pre-existing records required)
+  narrative: '',
+  involvedPersons: [] as Array<{ name: string; dob: string; id_number: string; role: string }>,
+  involvedVehicles: [] as Array<{ plate: string; make: string; model: string; color: string; role: string }>,
 };
 
 const DRAFT_KEY = 'rmpg_new_call_draft';
@@ -209,6 +213,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, getArea } = useDistrictOptions();
   const { options } = useLinkOptions();
+
+  // Inline involved persons/vehicles (no pre-existing records needed)
+  const [showModalPersonForm, setShowModalPersonForm] = useState(false);
+  const [newModalPerson, setNewModalPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
+  const [showModalVehicleForm, setShowModalVehicleForm] = useState(false);
+  const [newModalVehicle, setNewModalVehicle] = useState({ plate: '', make: '', model: '', color: '', role: 'involved' });
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -920,6 +930,180 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               value={formData.description}
               onChange={(e) => update('description', e.target.value)}
             />
+          </div>
+
+          {/* ── Narrative / Incident Summary ─────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-rmpg-300 mb-1">Narrative / Incident Summary</label>
+            <textarea
+              className="textarea-dark text-xs w-full"
+              rows={3}
+              placeholder="Structured narrative or incident summary (saved separately from description)…"
+              value={formData.narrative}
+              onChange={(e) => update('narrative', e.target.value)}
+            />
+          </div>
+
+          {/* ── Inline Involved Persons ───────────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-300">
+                Involved Persons{formData.involvedPersons.length > 0 && ` (${formData.involvedPersons.length})`}
+              </span>
+              {!showModalPersonForm && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModalPersonForm(true); setNewModalPerson({ name: '', dob: '', id_number: '', role: 'witness' }); }}
+                  className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border,#334155)] text-rmpg-300 hover:text-rmpg-100"
+                >+ Add</button>
+              )}
+            </div>
+            {showModalPersonForm && (
+              <div className="mb-2 space-y-1">
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    className="input-dark text-xs col-span-2"
+                    placeholder="Full name *"
+                    value={newModalPerson.name}
+                    onChange={e => setNewModalPerson(p => ({ ...p, name: e.target.value }))}
+                  />
+                  <input
+                    type="date"
+                    className="input-dark text-xs"
+                    value={newModalPerson.dob}
+                    onChange={e => setNewModalPerson(p => ({ ...p, dob: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="ID / badge #"
+                    value={newModalPerson.id_number}
+                    onChange={e => setNewModalPerson(p => ({ ...p, id_number: e.target.value }))}
+                  />
+                  <select
+                    className="select-dark text-xs col-span-2"
+                    value={newModalPerson.role}
+                    onChange={e => setNewModalPerson(p => ({ ...p, role: e.target.value }))}
+                  >
+                    <option value="suspect">Suspect</option>
+                    <option value="victim">Victim</option>
+                    <option value="witness">Witness</option>
+                    <option value="reporting_party">Reporting Party</option>
+                  </select>
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button type="button" onClick={() => setShowModalPersonForm(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border,#334155)] text-rmpg-400">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newModalPerson.name.trim()) return;
+                      setFormData(prev => ({ ...prev, involvedPersons: [...prev.involvedPersons, { ...newModalPerson }] }));
+                      setShowModalPersonForm(false);
+                    }}
+                    className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100"
+                  >Add</button>
+                </div>
+              </div>
+            )}
+            {formData.involvedPersons.length === 0 && !showModalPersonForm && (
+              <p className="text-[9px] text-rmpg-500 italic">No persons added yet.</p>
+            )}
+            {formData.involvedPersons.map((p, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                  <span className="font-medium truncate">{p.name}</span>
+                  {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, involvedPersons: prev.involvedPersons.filter((_, j) => j !== i) }))}
+                  className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                >×</button>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Inline Involved Vehicles ──────────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-300">
+                Involved Vehicles{formData.involvedVehicles.length > 0 && ` (${formData.involvedVehicles.length})`}
+              </span>
+              {!showModalVehicleForm && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModalVehicleForm(true); setNewModalVehicle({ plate: '', make: '', model: '', color: '', role: 'involved' }); }}
+                  className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border,#334155)] text-rmpg-300 hover:text-rmpg-100"
+                >+ Add</button>
+              )}
+            </div>
+            {showModalVehicleForm && (
+              <div className="mb-2 space-y-1">
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Plate"
+                    value={newModalVehicle.plate}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, plate: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Color"
+                    value={newModalVehicle.color}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, color: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Make"
+                    value={newModalVehicle.make}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, make: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Model"
+                    value={newModalVehicle.model}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, model: e.target.value }))}
+                  />
+                  <select
+                    className="select-dark text-xs col-span-2"
+                    value={newModalVehicle.role}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, role: e.target.value }))}
+                  >
+                    <option value="suspect">Suspect Vehicle</option>
+                    <option value="victim">Victim Vehicle</option>
+                    <option value="involved">Involved</option>
+                  </select>
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button type="button" onClick={() => setShowModalVehicleForm(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border,#334155)] text-rmpg-400">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, involvedVehicles: [...prev.involvedVehicles, { ...newModalVehicle }] }));
+                      setShowModalVehicleForm(false);
+                    }}
+                    className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100"
+                  >Add</button>
+                </div>
+              </div>
+            )}
+            {formData.involvedVehicles.length === 0 && !showModalVehicleForm && (
+              <p className="text-[9px] text-rmpg-500 italic">No vehicles added yet.</p>
+            )}
+            {formData.involvedVehicles.map((v, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                  <span className="font-medium truncate">{[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}</span>
+                  {v.plate && <span className="text-rmpg-300 font-mono shrink-0">{v.plate}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, involvedVehicles: prev.involvedVehicles.filter((_, j) => j !== i) }))}
+                  className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                >×</button>
+              </div>
+            ))}
           </div>
 
           {/* ── Full Mode: Extended Fields ────────────────────── */}

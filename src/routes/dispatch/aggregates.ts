@@ -367,7 +367,7 @@ aggregates.get('/heatmap/predictions', async (c) => {
         MAX(created_at) AS last_incident
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND CAST(strftime('%H', created_at) AS INTEGER) IN (${hours.join(',')})
+        AND CAST(strftime('%H', datetime(created_at, '+6 hours')) AS INTEGER) IN (${hours.join(',')})
         AND created_at >= datetime('now', '-90 days')
       GROUP BY ROUND(latitude, 2), ROUND(longitude, 2)
       HAVING incident_count >= 2
@@ -511,8 +511,8 @@ aggregates.get('/stats/dashboard', async (c) => {
     const [calls, units, priority] = await Promise.all([
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-                SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed
+                SUM(CASE WHEN status IN ('pending','dispatched','enroute','onscene') THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN status IN ('closed','cancelled') THEN 1 ELSE 0 END) AS closed
          FROM calls_for_service WHERE created_at >= datetime('now', '-24 hours')`),
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS total,
@@ -521,7 +521,7 @@ aggregates.get('/stats/dashboard', async (c) => {
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS p1_count
          FROM calls_for_service
-         WHERE priority = 'P1' AND status = 'active'`),
+         WHERE priority = 'P1' AND status IN ('pending','dispatched','enroute','onscene')`),
     ]);
     return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
   } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
@@ -539,9 +539,9 @@ aggregates.get('/integration-dashboard', async (c) => {
       // Dispatch: active/pending/closed calls in last 24h
       queryFirst<Record<string, unknown>>(db, `
         SELECT COUNT(*) as total_24h,
-          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+          SUM(CASE WHEN status IN ('pending','dispatched','enroute','onscene') THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-          SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
+          SUM(CASE WHEN status IN ('closed','cancelled') THEN 1 ELSE 0 END) as closed,
           SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
           SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
           -- Excludes negative deltas (odometer reset / data-entry error) —
@@ -850,15 +850,16 @@ aggregates.get('/ambient-stats', async (c) => {
     const [callRow, critRow, unitRow] = await Promise.all([
       queryFirst<{ count: number }>(db,
         `SELECT COUNT(*) AS count FROM calls_for_service
-         WHERE status NOT IN ('closed','cancelled','duplicate','archived') AND date(created_at) = date('now','localtime')`),
+         WHERE status NOT IN ('closed','cancelled','duplicate','archived')
+         AND created_at >= datetime('now', '-24 hours')`),
       queryFirst<{ count: number }>(db,
         `SELECT COUNT(*) AS count FROM calls_for_service
          WHERE priority IN ('1','P1','critical') AND status NOT IN ('closed','cancelled','duplicate','archived')
-         AND date(created_at) = date('now','localtime')`),
+         AND created_at >= datetime('now', '-24 hours')`),
       queryFirst<{ total: number; available: number }>(db,
         `SELECT COUNT(*) AS total,
                 SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
-         FROM dispatch_units WHERE active = 1`),
+         FROM units WHERE status != 'off_duty'`),
     ]);
     return c.json({
       active_calls: callRow?.count ?? 0,

@@ -778,7 +778,7 @@ forensics.get('/:caseId/links/search', async (c) => {
     const type = (c.req.query('type') || 'person').toLowerCase();
     if (!q || q.length < 2) return c.json([]);
     if (!LINK_ENTITY_TYPES.has(type)) return c.json([]);
-    const like = `%${q}%`;
+    const like = `%${q.slice(0, 48)}%`;
 
     if (type === 'person') {
       const rows = await query<Record<string, unknown>>(db, `

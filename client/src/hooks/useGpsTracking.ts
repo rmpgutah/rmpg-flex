@@ -102,6 +102,14 @@ interface UseGpsTrackingOptions {
  *  At ~1 position/second, each batch carries ~5 points. */
 const DEFAULT_BATCH_INTERVAL = 5000;
 
+/** Batch interval when running on the Toughbook FZ-55 with the internal u-blox
+ *  chip configured at 5 Hz (UBX-CFG-RATE). Reduces map lag from ~6 s to ~1.2 s. */
+const WINDOWS_INTERNAL_BATCH_MS = 1000;
+
+/** Skip a 'poor' quality fix (HDOP > 5) if the last accepted fix is younger than
+ *  this window. Prevents urban-canyon signal from overwriting the last good road fix. */
+const POOR_FIX_SKIP_WINDOW_MS = 30_000;
+
 /** Whether the current device is likely a desktop/laptop (no GPS hardware).
  *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
  *  vehicles typically returns 100–500m accuracy. */
@@ -139,6 +147,7 @@ interface QueuedPoint {
   source: PositionSource;
   activity?: string | null;
   activity_confidence?: string | null;
+  fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
 }
 
 // ── CoreMotion activity bridge (native iOS only) ─────────────
@@ -769,6 +778,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     speed: number | null;
     sourceHint?: PositionSource;
     fromInternalGps?: boolean;
+    fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
   }) => {
     const { latitude, longitude, accuracy, heading, speed } = coords;
 
@@ -778,6 +788,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     if (!coords.fromInternalGps && useInternalGpsRef.current) {
       const sinceInternal = Date.now() - lastInternalGpsAtRef.current;
       if (sinceInternal < INTERNAL_GPS_FRESH_MS) return;
+    }
+
+    // Quality gate — reject 'poor' fixes (HDOP > 5) while a good fix is recent.
+    // Prevents urban-canyon reflections from overwriting the last road position.
+    // Once the good-fix window expires (30 s), poor fixes are accepted — the
+    // officer must not be left with a stale position indefinitely.
+    if (coords.fixQuality === 'poor' && lastAcceptedRef.current) {
+      const sinceGood = Date.now() - lastAcceptedRef.current.time;
+      if (sinceGood < POOR_FIX_SKIP_WINDOW_MS) return;
     }
 
     if (coords.fromInternalGps) {
@@ -821,6 +840,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         speed,
         timestamp: new Date().toISOString(),
         source,
+        fixQuality: coords.fixQuality ?? null,
       };
 
       lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
@@ -953,6 +973,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           speed: pos.speed ?? null,
           sourceHint: 'gps',
           fromInternalGps: true,
+          fixQuality: pos.fixQuality ?? null,
         });
       });
       unsubError = electron.onInternalGpsError((err: any) => {
@@ -1021,10 +1042,25 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Start tracking
   const startTracking = useCallback(() => {
-    // On Toughbook FZ-55, internal NMEA is primary but navigator.geolocation
-    // also runs as a SECONDARY fallback — when GPS lock is lost (concrete
-    // buildings, parking garages), WiFi triangulation fills the gap.
-    // ingestPosition gates browser fixes via lastInternalGpsAtRef.
+    // On Windows Electron (Toughbook FZ-55), the internal u-blox NMEA reader is
+    // the ONLY GPS source. navigator.geolocation on Windows routes through the
+    // Windows Location Platform (WiFi/IP triangulation), which is less accurate
+    // than the dedicated hardware chip and creates an unnecessary permission flow.
+    // Skip it entirely — just arm the batch send timer so queued internal-GPS
+    // fixes get uploaded. The IS_WINDOWS_ELECTRON useEffect above calls
+    // setIsTracking(true) once the COM port is confirmed, so tracking state is
+    // accurate (not prematurely "on" while the port is still being enumerated).
+    if (IS_WINDOWS_ELECTRON) {
+      setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
+      if (uploadRef.current) {
+        // Use the faster Windows interval — chip configured at 5 Hz via UBX-CFG-RATE,
+        // so 1 s batches upload fresh positions every second instead of every 5 s.
+        const interval = setInterval(sendBatch, WINDOWS_INTERNAL_BATCH_MS);
+        batchIntervalRef.current = interval;
+      }
+      return;
+    }
+
     if (!('geolocation' in navigator)) {
       setState((prev) => ({
         ...prev,
@@ -1445,15 +1481,21 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       startTracking();
     };
 
-    const permApi = (navigator as any).permissions;
-    if (permApi?.query) {
-      permApi.query({ name: 'geolocation' }).then((res: any) => {
-        if (res.state === 'granted') start();
-      }).catch(() => { /* Permissions API absent — wait for gesture */ });
+    // On Windows Electron, the internal NMEA reader requires no browser permission
+    // prompt — start the batch timer immediately without waiting for a gesture.
+    if (IS_WINDOWS_ELECTRON) {
+      start();
+    } else {
+      const permApi = (navigator as any).permissions;
+      if (permApi?.query) {
+        permApi.query({ name: 'geolocation' }).then((res: any) => {
+          if (res.state === 'granted') start();
+        }).catch(() => { /* Permissions API absent — wait for gesture */ });
+      }
+      window.addEventListener('click', start, { once: true });
+      window.addEventListener('keydown', start, { once: true });
+      window.addEventListener('touchstart', start, { once: true });
     }
-    window.addEventListener('click', start, { once: true });
-    window.addEventListener('keydown', start, { once: true });
-    window.addEventListener('touchstart', start, { once: true });
 
     return () => {
       mountedRef.current = false;

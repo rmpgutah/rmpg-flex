@@ -1225,6 +1225,9 @@ export interface QueueRow {
   plaintiff: string | null;
   defendant: string | null;
   court_date: string | null;
+  // Attorney/client job reference extracted from the document header (e.g. "Job: 16623863").
+  // Stored in sm_job_id when the intake is not sourced from ServeManager directly.
+  sm_job_id: string | null;
 }
 
 export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
@@ -1263,5 +1266,7 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     defendant: get('defendant'),
     // hearing date → court_date; only a real calendar date (same guard as deadline).
     court_date: normalizeDeadline(get('hearing_date') || ''),
+    // Attorney/client job reference number from the document header.
+    sm_job_id: get('job_number'),
   };
 }

@@ -20,6 +20,7 @@ import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
 import { toDisplayLabel } from '../utils/formatters';
 import { importWithRetry } from '../utils/importWithRetry';
+import QualityReviewPanel from '../components/serve-intake/QualityReviewPanel';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -372,8 +373,16 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, boolean>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
-  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar, 'enforcement' = quality review
   const [activeTab, setActiveTab] = useState<'intake' | 'schedule' | 'enforcement'>('intake');
+  // Badge count for the Enforcement tab — shows pending needs_review items.
+  const [reviewPendingCount, setReviewPendingCount] = useState(0);
+
+  useEffect(() => {
+    apiFetch<{ count: number }>('/serve-intake/review-queue?count=1')
+      .then(d => setReviewPendingCount(d.count ?? 0))
+      .catch(() => {});
+  }, []);
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
@@ -441,6 +450,7 @@ export default function ServeIntakePage() {
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   // Live upload XHR, held so the Cancel button can abort() it mid-transfer.
   const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
 
@@ -1090,6 +1100,11 @@ export default function ServeIntakePage() {
           >
             {tab === 'intake' ? <Upload size={11} /> : tab === 'schedule' ? <CalendarDays size={11} /> : <ScanText size={11} />}
             {tab === 'intake' ? 'Intake' : tab === 'schedule' ? 'Attempt Schedule' : 'Enforcement'}
+            {tab === 'enforcement' && reviewPendingCount > 0 && (
+              <span className="ml-0.5 min-w-[16px] px-1 py-px text-[9px] font-bold rounded-full bg-amber-600 text-white leading-none">
+                {reviewPendingCount > 99 ? '99+' : reviewPendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -1099,19 +1114,19 @@ export default function ServeIntakePage() {
         <ServeAttemptCalendar />
       )}
 
-      {/* Enforcement tab */}
+      {/* Enforcement tab — Quality Review Queue */}
       {activeTab === 'enforcement' && (
-        <div className="p-4 space-y-3">
-          <p className="text-[11px] text-fg-muted">
-            Enforcement tools for Serve Intake.
-          </p>
+        <div className="space-y-0">
+          <QualityReviewPanel />
           {user && ['admin', 'manager'].includes(user.role) && (
-            <button
-              onClick={() => navigate('/tesseract-training')}
-              className="flex items-center gap-1.5 px-3 py-1 text-[11px] border border-surface-border hover:bg-surface-raised"
-            >
-              <ScanText size={12} /> Tesseract OCR Learning
-            </button>
+            <div className="px-3 pb-3 border-t border-surface-border pt-2">
+              <button
+                onClick={() => navigate('/tesseract-training')}
+                className="flex items-center gap-1.5 px-3 py-1 text-[10px] border border-surface-border hover:bg-surface-raised text-rmpg-400"
+              >
+                <ScanText size={11} /> Tesseract OCR Learning
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -1140,11 +1155,28 @@ export default function ServeIntakePage() {
         <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
-        <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
+        <p className="text-[9px] text-rmpg-600 mt-2">
+          <span>click to browse files</span>
+          <span className="mx-1 text-rmpg-700">·</span>
+          <button
+            type="button"
+            className="underline hover:text-rmpg-400 transition-colors"
+            onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
+          >or pick a folder</button>
+        </p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-expect-error webkitdirectory is not in HTMLInputElement types but is supported by all modern browsers
+          webkitdirectory=""
           multiple
           className="hidden"
           onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
@@ -1272,56 +1304,91 @@ export default function ServeIntakePage() {
                 <ScanLine className="w-3 h-3" /> Scan ID
               </button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-              {[
-                { key: 'recipient_first_name',    label: 'First Name' },
-                { key: 'recipient_last_name',     label: 'Last Name' },
-                { key: 'recipient_middle_name',   label: 'Middle Name' },
-                { key: 'recipient_dob',            label: 'Date of Birth' },
-                { key: 'recipient_phone',          label: 'Phone' },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
-                    {label}
-                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
-                  </label>
-                  <input
-                    id={`ff-intake-override-${key}`}
-                    type="text"
-                    value={editOverrides[key] ?? ''}
-                    onChange={e => overrideField(key, e.target.value)}
-                    placeholder="—"
-                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
-                  />
-                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+            {/* Recipient type indicator + entity-aware layout */}
+            {(() => {
+              const isBusiness = !!(editOverrides['recipient_business_name'] || editOverrides['registered_agent_name']);
+              const recipientType = editOverrides['recipient_type']?.toLowerCase();
+              const entityLabel = recipientType === 'business' ? 'Business Entity'
+                : recipientType === 'person' ? 'Individual'
+                : isBusiness ? 'Business Entity' : null;
+
+              const businessRow = isBusiness ? (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { key: 'recipient_business_name', label: 'Business Name' },
+                    { key: 'registered_agent_name',   label: 'Registered Agent' },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                        {label}
+                        {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                      </label>
+                      <input
+                        id={`ff-intake-override-${key}`}
+                        type="text"
+                        value={editOverrides[key] ?? ''}
+                        onChange={e => overrideField(key, e.target.value)}
+                        placeholder="—"
+                        className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
+                      />
+                      {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {/* Business name — shown when the recipient is a company/agent (extracted or typed) */}
-            {(editOverrides['recipient_business_name'] || editOverrides['registered_agent_name']) && (
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {[
-                  { key: 'recipient_business_name', label: 'Business Name' },
-                  { key: 'registered_agent_name',   label: 'Registered Agent' },
-                ].map(({ key, label }) => (
-                  <div key={key}>
-                    <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
-                      {label}
-                      {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
-                    </label>
-                    <input
-                      id={`ff-intake-override-${key}`}
-                      type="text"
-                      value={editOverrides[key] ?? ''}
-                      onChange={e => overrideField(key, e.target.value)}
-                      placeholder="—"
-                      className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
-                    />
-                    {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+              ) : null;
+
+              const personFieldLabel = (base: string) => isBusiness
+                ? (base === 'First Name' ? 'Agent First' : base === 'Last Name' ? 'Agent Last' : base === 'Middle Name' ? 'Agent Middle' : base)
+                : base;
+
+              const personRow = (
+                <div className="mb-3">
+                  {isBusiness && (
+                    <p className="text-[9px] text-rmpg-500 mb-1">Contact / Agent Person <span className="text-rmpg-600">(optional for business service)</span></p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {[
+                      { key: 'recipient_first_name', label: 'First Name' },
+                      { key: 'recipient_last_name',  label: 'Last Name' },
+                      { key: 'recipient_middle_name',label: 'Middle Name' },
+                      { key: 'recipient_dob',        label: 'Date of Birth' },
+                      { key: 'recipient_phone',      label: 'Phone' },
+                    ].map(({ key, label }) => (
+                      <div key={key}>
+                        <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                          {personFieldLabel(label)}
+                          {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                        </label>
+                        <input
+                          id={`ff-intake-override-${key}`}
+                          type="text"
+                          value={editOverrides[key] ?? ''}
+                          onChange={e => overrideField(key, e.target.value)}
+                          placeholder="—"
+                          className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
+                        />
+                        {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
+              );
+
+              return (
+                <>
+                  {entityLabel && (
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="text-[9px] px-1.5 py-0.5 border border-brand-600 text-brand-300 uppercase tracking-wider font-semibold">
+                        {entityLabel}
+                        {ocrSourced.has('recipient_type') && <span className="ml-1 text-brand-400">OCR</span>}
+                      </span>
+                    </div>
+                  )}
+                  {/* Business row first — entity name is the primary identifier */}
+                  {isBusiness ? <>{businessRow}{personRow}</> : <>{personRow}{businessRow}</>}
+                </>
+              );
+            })()}
             {/* Address */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
@@ -1407,6 +1474,8 @@ export default function ServeIntakePage() {
                 { key: 'case_number',       label: 'Case #' },
                 { key: 'job_number',        label: 'Job #' },
                 { key: 'service_deadline',  label: 'Due Date' },
+                { key: 'hearing_date',      label: 'Hearing Date' },
+                { key: 'jurisdiction',      label: 'Jurisdiction' },
               ].map(({ key, label }) => (
                 <div key={key}>
                   <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">

@@ -101,7 +101,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   const [items, setItems] = useState<QueueMapItem[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -180,6 +180,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
     registerMapInstance(map, MAPBOX_STYLE_DARK);
     webglRecoveryCleanupRef.current = attach(map, 'ServeIntakeMap');
     map.on('load', () => {
+      onMapLoaded(map);
       applyRmpgBasemap(map, { variant: 'dark' });
       setMapReady(true);
     });

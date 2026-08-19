@@ -425,6 +425,18 @@ function maybeRedirectToCfWorker(url: string): string {
 // this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
 const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
 
+// Cloudflare Pages does NOT support 200-rewrites to another origin in
+// _redirects (it only honours redirect statuses). So a relative /api/uploads
+// from the Pages SPA (rmpgutah.us) resolves to the Pages domain, not the
+// Worker — which causes ERR_HTTP2_PROTOCOL_ERROR. All multipart upload POSTs
+// must go directly to the Worker in production.
+const UPLOADS_URL = import.meta.env.DEV ? '/api/uploads' : `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+
+/** Absolute URL for POST /api/uploads in production; relative in dev (Vite proxies it). */
+export function uploadsUrl(): string {
+  return UPLOADS_URL;
+}
+
 /**
  * Absolute URL for a published download (installer / OS image).
  *
@@ -716,14 +728,14 @@ async function apiUploadFilesMultipart(
     if (entityId) formData.append('entity_id', String(entityId));
 
     try {
-      const res = await fetchWithTimeout('/api/uploads', {
+      const res = await fetchWithTimeout(UPLOADS_URL, {
         method: 'POST',
         headers,
         body: formData,
         timeoutMs: opts?.timeoutMs,
       });
       if (res.ok) {
-        chimeForApiSuccess('POST', '/api/uploads');
+        chimeForApiSuccess('POST', UPLOADS_URL);
         return res.json();
       }
       const errData = await res.json().catch(() => ({}));
@@ -806,7 +818,7 @@ export async function apiUploadFilesWithProgress(
     if (entityId) formData.append('entity_id', String(entityId));
 
     const result = await uploadWithProgress(
-      '/api/uploads',
+      UPLOADS_URL,
       formData,
       token,
       (progress) => onProgress(progress, i, files.length),

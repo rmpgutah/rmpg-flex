@@ -210,6 +210,38 @@ export default function PrintRecordButton({
       } catch (err) {
         console.warn('[PrintRecordButton] Criminal history fetch failed, proceeding without:', err);
       }
+
+      // Fetch OSINT enrichment (FBI Wanted, BOP inmates, NSOPW, sanctions, etc.)
+      try {
+        const enrichmentSeed: Record<string, string> = {};
+        if (data.first_name) enrichmentSeed.first_name = data.first_name;
+        if (data.last_name)  enrichmentSeed.last_name  = data.last_name;
+        if (data.date_of_birth) enrichmentSeed.dob     = data.date_of_birth;
+        if (data.address)    enrichmentSeed.address     = data.address;
+        if (data.city)       enrichmentSeed.city        = data.city;
+        if (data.state)      enrichmentSeed.state       = data.state;
+        if (data.phone)      enrichmentSeed.phone       = data.phone;
+        if (data.email)      enrichmentSeed.email       = data.email;
+        if (data.dl_number)  enrichmentSeed.dl_number   = data.dl_number;
+        if (data.ssn_last4)  enrichmentSeed.ssn_last4   = data.ssn_last4;
+
+        if (enrichmentSeed.first_name && enrichmentSeed.last_name) {
+          const enrichmentResult = await apiFetch<any>('/enrichment/search', {
+            method: 'POST',
+            body: JSON.stringify(enrichmentSeed),
+          });
+          if (enrichmentResult) {
+            enriched._enrichment = {
+              match_tier:  enrichmentResult.match_tier,
+              records:     enrichmentResult.records,
+              sources:     enrichmentResult.sources,
+              searched_at: enrichmentResult.searched_at,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] Enrichment fetch failed, proceeding without:', err);
+      }
     }
 
     // For person records, fetch all linked records (all entity types)

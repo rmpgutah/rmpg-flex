@@ -49,6 +49,8 @@ export interface OptimizeResult {
   orderedStops: RouteStop[];
   etaPerStop: string[];
   matrixFallback: boolean;
+  /** Human-readable reason the Matrix API was unavailable, when matrixFallback is true. */
+  fallbackReason?: string;
   geocodeWarnings: GeocodeWarning[];
 }
 
@@ -59,6 +61,7 @@ export interface TrafficCheckResult {
   newEtas: string[];
   degradedSegments: Array<{ fromJobId: number; toJobId: number; addedSeconds: number }>;
   matrixFallback: boolean;
+  fallbackReason?: string;
 }
 
 /**
@@ -85,85 +88,79 @@ export function haversineMatrix(stops: Array<{ lat: number; lng: number }>): num
   return stops.map(a => stops.map(b => haversineDistance(a, b)));
 }
 
-// ── Mapbox Matrix API ──────────────────────────────────────
-
-const MATRIX_CHUNK_SIZE = 25;
+// ── Directions-API cost matrix (driving-traffic, one call per ordered pair) ──
+//
+// The Mapbox Matrix API driving-traffic profile requires an Enterprise plan.
+// The Directions API driving-traffic profile is available on pay-as-you-go.
+// We fire all n×(n-1) pairs concurrently; Workers paid plan allows 1,000
+// subrequests per invocation (handles up to ~32 stops before hitting the cap).
 
 export async function buildCostMatrix(
   stops: RouteStop[],
-  departAt: string,
+  _departAt: string,
   mapboxToken: string
-): Promise<{ matrix: number[][]; fallback: boolean }> {
+): Promise<{ matrix: number[][]; fallback: boolean; reason?: string }> {
   if (!mapboxToken) {
-    return { matrix: haversineMatrix(stops), fallback: true };
+    return { matrix: haversineMatrix(stops), fallback: true, reason: 'no token configured' };
+  }
+  if (stops.length <= 1) {
+    return { matrix: haversineMatrix(stops), fallback: false };
   }
 
-  if (stops.length <= MATRIX_CHUNK_SIZE) {
-    return fetchMatrixChunk(stops, departAt, mapboxToken);
-  }
-
-  // Chunk into overlapping 25-stop windows and merge
   const n = stops.length;
-  const result: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-  let fallback = false;
-
-  for (let start = 0; start < n; start += MATRIX_CHUNK_SIZE) {
-    const end = Math.min(start + MATRIX_CHUNK_SIZE, n);
-    const chunk = stops.slice(start, end);
-    const { matrix: chunkMatrix, fallback: chunkFallback } = await fetchMatrixChunk(
-      chunk,
-      departAt,
-      mapboxToken
-    );
-    if (chunkFallback) fallback = true;
-    for (let i = start; i < end; i++) {
-      for (let j = start; j < end; j++) {
-        result[i][j] = chunkMatrix[i - start][j - start];
-      }
-    }
-    // Fill cross-chunk cells with haversine fallback.
-    // Mixed data sources (Mapbox durations for intra-chunk, haversine for
-    // cross-chunk) are unavoidable in the chunked path, so mark fallback true
-    // unconditionally whenever any cross-chunk cells are filled.
-    if (start > 0) {
-      fallback = true;
-      for (let i = 0; i < start; i++) {
-        for (let j = start; j < end; j++) {
-          if (result[i][j] === 0 && i !== j) {
-            result[i][j] = haversineDistance(stops[i], stops[j]);
-            result[j][i] = result[i][j];
-          }
-        }
-      }
-    }
-  }
-  return { matrix: result, fallback };
-}
-
-async function fetchMatrixChunk(
-  stops: RouteStop[],
-  departAt: string,
-  mapboxToken: string
-): Promise<{ matrix: number[][]; fallback: boolean }> {
-  const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-  const url = new URL(
-    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving-traffic/${coords}`
+  const matrix: number[][] = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => (i === j ? 0 : 0))
   );
-  url.searchParams.set('sources', 'all');
-  url.searchParams.set('destinations', 'all');
-  url.searchParams.set('depart_at', departAt);
-  url.searchParams.set('access_token', mapboxToken);
 
-  try {
-    const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!res.ok) throw new Error(`Mapbox Matrix HTTP ${res.status}`);
-    const data = await (res.json() as Promise<{ durations: number[][] }>);
-    return { matrix: data.durations, fallback: false };
-  } catch {
-    return { matrix: haversineMatrix(stops), fallback: true };
+  // Build all ordered pairs (i → j where i ≠ j)
+  const pairs: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i !== j) pairs.push([i, j]);
+    }
   }
+
+  let anyFailed = false;
+
+  const results = await Promise.all(
+    pairs.map(async ([i, j]) => {
+      const from = stops[i];
+      const to = stops[j];
+      const url = new URL(
+        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${from.lng},${from.lat};${to.lng},${to.lat}`
+      );
+      url.searchParams.set('access_token', mapboxToken);
+      url.searchParams.set('overview', 'false');
+      url.searchParams.set('steps', 'false');
+
+      try {
+        const res = await fetch(url.toString(), { signal: AbortSignal.timeout(8_000) });
+        if (!res.ok) {
+          console.warn(`[serveRouteOptimizer] Directions ${i}→${j} HTTP ${res.status}`);
+          return { i, j, duration: null as number | null };
+        }
+        const data = await (res.json() as Promise<{ routes?: { duration: number }[] }>);
+        return { i, j, duration: data.routes?.[0]?.duration ?? null };
+      } catch {
+        return { i, j, duration: null as number | null };
+      }
+    })
+  );
+
+  for (const { i, j, duration } of results) {
+    if (duration !== null) {
+      matrix[i][j] = duration;
+    } else {
+      matrix[i][j] = haversineDistance(stops[i], stops[j]);
+      anyFailed = true;
+    }
+  }
+
+  return {
+    matrix,
+    fallback: anyFailed,
+    reason: anyFailed ? 'some directions calls failed' : undefined,
+  };
 }
 
 // ── Legacy attempt-based types (nearest-neighbor optimizer) ─
@@ -862,12 +859,12 @@ export async function optimizeRouteFullPipeline(
   const now = new Date();
   const geocodeWarnings = collectGeocodeWarnings(stops);
   const dwellSecs = await fetchDwellSeconds(db, stops);
-  const { matrix, fallback } = await buildCostMatrix(stops, departAt, mapboxToken);
+  const { matrix, fallback, reason } = await buildCostMatrix(stops, departAt, mapboxToken);
   const orderedIndices = optimizeRoute(stops, matrix, departAt, now, dwellSecs);
   const orderedStops = orderedIndices.map(i => stops[i]);
   const etaPerStop = computeEtas(orderedIndices, matrix, dwellSecs, departAt);
 
-  return { orderedStops, etaPerStop, matrixFallback: fallback, geocodeWarnings };
+  return { orderedStops, etaPerStop, matrixFallback: fallback, fallbackReason: reason, geocodeWarnings };
 }
 
 export async function hashAddress(address: string): Promise<string> {
@@ -910,6 +907,8 @@ export async function fetchDwellSeconds(
 
   const hashes = stops.map(s => s.addressHash);
   // Use queryInChunks to stay within D1's 100-bound-parameter cap.
+  // serve_dwell_times may not yet exist on all environments — degrade to
+  // defaults rather than crashing the entire route optimization on a missing table.
   const rows = await queryInChunks<{ address_hash: string; avg_dwell: number }>(
     db,
     hashes,
@@ -919,7 +918,7 @@ export async function fetchDwellSeconds(
        WHERE address_hash IN (${placeholders})
          AND logged_at > datetime('now', '-90 days')
        GROUP BY address_hash`,
-  );
+  ).catch(() => [] as { address_hash: string; avg_dwell: number }[]);
 
   const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
   return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
@@ -1029,7 +1028,7 @@ export async function checkTrafficDegradation(
 
   const allStops = [origin, ...remainingStops];
   const nowIso = new Date().toISOString();
-  const { matrix, fallback } = await buildCostMatrix(allStops, nowIso, mapboxToken);
+  const { matrix, fallback, reason } = await buildCostMatrix(allStops, nowIso, mapboxToken);
 
   if (fallback) {
     return {
@@ -1039,6 +1038,7 @@ export async function checkTrafficDegradation(
       newEtas: originalEtas,
       degradedSegments: [],
       matrixFallback: true,
+      fallbackReason: reason,
     };
   }
 
