@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEnrichment } from '../../hooks/useEnrichment';
-import type { EnrichmentSeed, EnrichmentAddress } from '../../hooks/useEnrichment';
+import type { EnrichmentSeed, EnrichmentAddress, SourceResult } from '../../hooks/useEnrichment';
 import {
   User, FileText, MapPin, Phone, Mail, Calendar, Briefcase, Scale,
   Clock, CheckCircle, XCircle, AlertTriangle, ChevronDown, ChevronRight,
@@ -476,65 +476,111 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
               )}
             </div>
 
-            {/* Locate Subject — open-source enrichment */}
-            <div className="border border-border-subtle rounded bg-surface-raised p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
+            {/* Open-Source Intelligence — enrichment */}
+            <div className="border border-border-subtle rounded bg-surface-raised overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border-subtle bg-surface-sunken">
                 <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
-                  Locate Subject
+                  Open-Source Intelligence
                 </span>
                 <button
                   onClick={handleLocateSubject}
                   disabled={enrichLoading || !job}
                   className="px-2 py-1 text-[10px] font-medium rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-40 transition-colors"
                 >
-                  {enrichLoading ? 'Locating…' : 'Locate Subject'}
+                  {enrichLoading ? 'Locating…' : enrichResult ? 'Refresh' : 'Locate Subject'}
                 </button>
               </div>
 
               {enrichResult && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${
-                      enrichResult.match_tier === 'CONFIRMED'
-                        ? 'bg-green-900/40 text-green-400 border-green-700'
-                        : 'bg-amber-900/40 text-amber-400 border-amber-700'
-                    }`}>
-                      {enrichResult.match_tier}
+                <div className="p-3 space-y-2">
+                  {/* Status bar — match tier + per-source status */}
+                  <div className="text-[9px] text-text-secondary leading-relaxed flex flex-wrap gap-x-1">
+                    <span className={`font-bold ${enrichResult.match_tier === 'CONFIRMED' ? 'text-green-400' : 'text-amber-400'}`}>
+                      {enrichResult.match_tier} MATCH
                     </span>
+                    {enrichResult.sources.map((s: SourceResult) => {
+                      const label = s.source.replace(/_/g, ' ').toUpperCase();
+                      const status = !s.ok
+                        ? <span className="text-red-400">(error)</span>
+                        : s.records.length === 0
+                        ? <span className="text-text-secondary">(0 hits)</span>
+                        : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;
+                      return (
+                        <span key={s.source} className="whitespace-nowrap">
+                          {' · '}{label} {status}
+                        </span>
+                      );
+                    })}
                     {enrichResult.stale && (
-                      <span className="text-[9px] text-amber-400">Cached result — may be stale</span>
-                    )}
-                    {enrichResult.match_tier === 'UNCONFIRMED' && (
-                      <span className="text-[9px] text-amber-400">Officer review required before use</span>
+                      <span className="text-amber-400 ml-1">(stale cache)</span>
                     )}
                   </div>
 
-                  {enrichResult.records.flatMap((r: { addresses: EnrichmentAddress[] }) => r.addresses).slice(0, 5).map((addr: EnrichmentAddress, i: number) => (
-                    <div key={i} className="flex items-center justify-between gap-2 py-1 border-b border-border-subtle last:border-0">
-                      <span className="text-[11px] text-text-primary">
-                        {[addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')}
-                        {addr.source && (
-                          <span className="ml-1 text-[9px] text-text-secondary">({addr.source})</span>
-                        )}
-                      </span>
-                      {enrichResult.match_tier === 'CONFIRMED' && (
-                        <button
-                          onClick={() => {
-                            // TODO: wire to attempt pre-fill when attempt form supports it
-                            window.dispatchEvent(new CustomEvent('serve:prefill-attempt', { detail: addr }));
-                          }}
-                          className="shrink-0 px-1.5 py-0.5 text-[9px] rounded bg-surface-sunken hover:bg-brand-700 text-text-secondary hover:text-white border border-border-subtle transition-colors"
-                        >
-                          Add as Attempt
-                        </button>
-                      )}
+                  {/* Records table */}
+                  {enrichResult.records.length > 0 && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="text-[9px] text-rmpg-400 font-semibold border-b border-border-subtle">
+                            <th className="text-left py-[3px] pr-3">SOURCE</th>
+                            <th className="text-left py-[3px] pr-3">NAME</th>
+                            <th className="text-left py-[3px] pr-3">DOB</th>
+                            <th className="text-left py-[3px] pr-3">FLAGS</th>
+                            <th className="text-left py-[3px]">ADDRESS</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {enrichResult.records.map((rec, i) => {
+                            const addr = rec.addresses[0];
+                            const addrStr = addr
+                              ? [addr.street, addr.city, addr.state, addr.zip].filter(Boolean).join(', ')
+                              : '—';
+                            return (
+                              <tr key={i} className="border-b border-border-subtle/50 last:border-0">
+                                <td className="py-[2px] pr-3 text-rmpg-400 whitespace-nowrap">
+                                  {rec.source.replace(/_/g, ' ').toUpperCase()}
+                                </td>
+                                <td className="py-[2px] pr-3 text-text-primary">{rec.name ?? '—'}</td>
+                                <td className="py-[2px] pr-3 text-text-secondary font-mono">{rec.dob ?? '—'}</td>
+                                <td className="py-[2px] pr-3">
+                                  {(rec.watchlist_flags ?? []).length > 0
+                                    ? <span className="text-red-400 font-semibold">{rec.watchlist_flags!.join(', ').toUpperCase()}</span>
+                                    : <span className="text-text-secondary">—</span>
+                                  }
+                                </td>
+                                <td className="py-[2px] text-text-secondary">
+                                  {addrStr}
+                                  {enrichResult.match_tier === 'CONFIRMED' && addr && (
+                                    <button
+                                      onClick={() => window.dispatchEvent(new CustomEvent('serve:prefill-attempt', { detail: addr }))}
+                                      className="ml-2 px-1.5 py-0.5 text-[9px] rounded bg-surface-sunken hover:bg-brand-700 text-text-secondary hover:text-white border border-border-subtle transition-colors"
+                                    >
+                                      Use
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  ))}
+                  )}
 
-                  <div className="text-[9px] text-text-secondary">
-                    {enrichResult.confirmed_count} confirmed · {enrichResult.sources.filter(s => s.ok).length} sources responded
+                  {enrichResult.records.length === 0 && (
+                    <p className="text-[9px] text-text-secondary italic">No records returned from any source.</p>
+                  )}
+
+                  {/* Footer */}
+                  <div className="text-[9px] text-text-secondary border-t border-border-subtle/50 pt-1">
+                    Searched: {new Date(enrichResult.searched_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })} @ {new Date(enrichResult.searched_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}
                   </div>
                 </div>
+              )}
+
+              {!enrichResult && !enrichLoading && (
+                <p className="px-3 py-2 text-[9px] text-text-secondary">Click "Locate Subject" to run open-source intelligence search.</p>
               )}
             </div>
 
