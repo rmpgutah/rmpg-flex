@@ -57,6 +57,11 @@ export interface WebglRecoveryOptions {
   maxRebuilds?: number;
   /** Rolling window (ms) for the rebuild cap. Default 60000. */
   rebuildWindowMs?: number;
+  /**
+   * Interval (ms) for the background health poll that catches silent context
+   * death (no DOM event fired, page visible). 0 disables. Default 30000.
+   */
+  healthPollMs?: number;
 }
 
 // Debug registry so an operator can force a context loss from the DevTools
@@ -108,10 +113,12 @@ export function installWebglContextRecovery(
     restoreGraceMs = 2500,
     maxRebuilds = 4,
     rebuildWindowMs = 60_000,
+    healthPollMs = 30_000,
   } = opts;
 
   let disposed = false;
   let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
   let lastCamera: MapCamera | null = null;
   const rebuildTimes: number[] = [];
 
@@ -197,6 +204,27 @@ export function installWebglContextRecovery(
     }
   };
 
+  // Background poll: catches silent context death on some Windows GPU drivers
+  // where neither webglcontextlost nor visibilitychange fires (Intel HD Graphics,
+  // older AMD integrated). Only fires when the page is visible and no grace timer
+  // is already running — avoids double-triggering if an event path beat it.
+  if (healthPollMs > 0) {
+    pollTimer = setInterval(() => {
+      if (disposed || document.hidden || restoreTimer) return;
+      if (!isContextHealthy(map)) {
+        devWarn(`[webglRecovery:${label}] health poll detected silent context loss — triggering recovery`);
+        lastCamera = captureCamera();
+        onContextLost?.();
+        restoreTimer = setTimeout(() => {
+          restoreTimer = null;
+          if (disposed) return;
+          if (isContextHealthy(map)) { devLog(`[webglRecovery:${label}] context recovered (poll)`); onContextRestored?.(); return; }
+          triggerRebuild();
+        }, restoreGraceMs);
+      }
+    }, healthPollMs);
+  }
+
   // Mapbox surfaces these as map events (a MapContextEvent that wraps the DOM
   // WebGLContextEvent on .originalEvent). map.remove() drops them, but we also
   // detach explicitly in cleanup.
@@ -207,6 +235,7 @@ export function installWebglContextRecovery(
   return () => {
     disposed = true;
     if (restoreTimer) { clearTimeout(restoreTimer); restoreTimer = null; }
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     _recoverable.delete(entry);
     try { map.off('webglcontextlost', handleLost as any); } catch { /* map already removed */ }
     try { map.off('webglcontextrestored', handleRestored as any); } catch { /* map already removed */ }
