@@ -49,13 +49,13 @@ export function drawDefaultHeader(
   doc.line(left, TOP, right, TOP);
   doc.setDrawColor(0, 0, 0); // reset for the bottom rule + everything downstream
 
-  // 1b) Emblem — dark-colored logo, top-left of the header block (white
-  // paper background). Rendered as a horizontal banner logo at 40×13mm
-  // (approx 3:1 aspect for the horizontal RMPG logo variants).
-  // Falls back to 13×13mm square for non-horizontal/square logos.
+  // 1b) Agency logo — black transparent horizontal wordmark, left-aligned in
+  // the header band. 52×17mm gives a bold, readable presence on letter paper
+  // without crowding the centered agency text. Transparent-bg asset renders
+  // cleanly on white paper with no white-box bleed.
   if (ctx.logoBase64) {
-    const logoW = 40;
-    const logoH = 13;
+    const logoW = 52;
+    const logoH = 17;
     try {
       doc.addImage(ctx.logoBase64, 'PNG', left, TOP + 0.5, logoW, logoH);
     } catch {

@@ -292,28 +292,31 @@ export async function loadLogoBlueDarkBase64(): Promise<string | null> {
 }
 
 /**
- * Draw a faint logo fade in the center of the current PDF page — a ghost
- * brand mark used as a background element behind form content. The logo is
- * rendered at ~8% opacity so it reads as watermark-level presence without
- * competing with form fields. Call once per page after drawing all content
- * (or before; jsPDF draws in z-order but the opacity keeps it subtle).
+ * Draw a ghost brand watermark centered on the current PDF page.
  *
- * @param doc - the jsPDF instance (current page is stamped)
- * @param logoDataUrl - base64 data URL (loadLogoPrintBase64 recommended)
- * @param opts.opacity - 0–1, default 0.06
- * @param opts.widthMm - logo width in mm, default 100 (centered)
+ * Two layout modes controlled by `opts.aspect`:
+ *   'seal'  (default) — square 1:1, sized to `opts.sizeMm` (default 90mm).
+ *                        Use with the RMPG seal emblem for a stamp-like ghost.
+ *   'banner'          — horizontal 3:1 banner, width = `opts.sizeMm`.
+ *                        Use with the horizontal wordmark logo.
+ *
+ * Opacity defaults to 0.045 (4.5%) — visible enough to register as a brand
+ * mark without muddying form fields or competing with CONFIDENTIAL overlays.
  */
 export function drawLogoFadeBackground(
   doc: jsPDF,
   logoDataUrl: string,
-  opts: { opacity?: number; widthMm?: number } = {},
+  opts: { opacity?: number; sizeMm?: number; aspect?: 'seal' | 'banner' } = {},
 ): void {
-  const opacity = opts.opacity ?? 0.06;
-  const logoW = opts.widthMm ?? 100;
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
+  const opacity  = opts.opacity ?? 0.045;
+  const sizeMm   = opts.sizeMm  ?? 90;
+  const aspect   = opts.aspect  ?? 'seal';
+  const pageW    = doc.internal.pageSize.getWidth();
+  const pageH    = doc.internal.pageSize.getHeight();
+
+  const logoW = sizeMm;
+  const logoH = aspect === 'seal' ? sizeMm : sizeMm * 0.33;
   const logoX = (pageW - logoW) / 2;
-  const logoH = logoW * 0.33; // approximate 3:1 aspect for horizontal logo
   const logoY = (pageH - logoH) / 2;
 
   try {
@@ -323,23 +326,33 @@ export function drawLogoFadeBackground(
     // @ts-ignore jsPDF GState constructor not in community typedefs
     doc.setGState(new doc.GState({ opacity: 1.0 }));
   } catch {
-    // Silently skip — bad image data should never crash a PDF generation
+    // skip — malformed image must never crash PDF generation
   }
 }
 
 /**
- * Apply a logo background fade to every page of a finalized PDF.
- * Call this after all content is drawn, before save().
+ * Apply the ghost brand watermark to every page of a finalized PDF.
+ * Prefers the RMPG seal (square emblem) for a clean centered stamp look.
+ * Falls back to `logoDataUrl` (horizontal wordmark) if no seal is cached.
+ *
+ * Call after all content is drawn, before doc.save().
  */
 export function applyLogoFadeToAllPages(
   doc: jsPDF,
   logoDataUrl: string,
-  opts: { opacity?: number; widthMm?: number } = {},
+  opts: { opacity?: number; sizeMm?: number; aspect?: 'seal' | 'banner' } = {},
 ): void {
+  // Use the cached seal for a proper stamp-style ghost if available;
+  // otherwise fall back to the supplied horizontal logo in banner mode.
+  const sealData = sealBase64;
+  const useData  = sealData ?? logoDataUrl;
+  const useAspect: 'seal' | 'banner' = sealData ? 'seal' : 'banner';
+  const useSizeMm = sealData ? (opts.sizeMm ?? 88) : (opts.sizeMm ?? 110);
+
   const total = doc.getNumberOfPages();
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
-    drawLogoFadeBackground(doc, logoDataUrl, opts);
+    drawLogoFadeBackground(doc, useData, { ...opts, aspect: useAspect, sizeMm: useSizeMm });
   }
 }
 
