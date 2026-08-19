@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 import { requireRole } from '../../middleware/auth';
 import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { findOrCreateBusiness } from '../../utils/serveIntakeRecords';
 import { screenPersonForSor } from '../../utils/screening/nsopwAdapter';
@@ -43,11 +43,10 @@ async function getOfficerUserIdsForCall(
   let unitIds: number[] = [];
   try { unitIds = JSON.parse(call.assigned_unit_ids); } catch { return []; }
   if (unitIds.length === 0) return [];
-  const placeholders = unitIds.map(() => '?').join(',');
-  const rows = await query<{ officer_id: number | null }>(
+  const rows = await queryInChunks<{ officer_id: number | null }>(
     db,
-    `SELECT officer_id FROM units WHERE id IN (${placeholders}) AND officer_id IS NOT NULL`,
-    ...unitIds,
+    unitIds,
+    (ph) => `SELECT officer_id FROM units WHERE id IN (${ph}) AND officer_id IS NOT NULL`,
   );
   return rows.map((r) => r.officer_id!).filter((id): id is number => typeof id === 'number');
 }

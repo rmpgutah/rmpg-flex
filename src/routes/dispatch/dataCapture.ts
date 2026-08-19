@@ -397,12 +397,12 @@ dataCapture.post('/query', async (c) => {
   const personBinds: unknown[] = [];
 
   if (body.name) {
-    const n = `%${body.name.trim()}%`;
+    const n = `%${body.name.trim().slice(0, 48)}%`;
     personClauses.push(`(first_name || ' ' || last_name LIKE ? OR alias_nickname LIKE ? OR aliases LIKE ?)`);
     personBinds.push(n, n, n);
   }
-  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(`%${body.first_name}%`); }
-  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(`%${body.last_name}%`); }
+  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(`%${String(body.first_name).slice(0, 48)}%`); }
+  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(`%${String(body.last_name).slice(0, 48)}%`); }
   if (body.dob) { personClauses.push(`dob = ?`); personBinds.push(body.dob); }
   if (body.phone) {
     const ph = body.phone.replace(/\D/g, '');
@@ -410,7 +410,7 @@ dataCapture.post('/query', async (c) => {
     personBinds.push(`%${ph}%`, `%${ph}%`);
   }
   if (body.email) { personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(`%${body.email}%`, `%${body.email}%`); }
-  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${body.address}%`); }
+  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${String(body.address).slice(0, 48)}%`); }
   if (body.dl_number) { personClauses.push(`dl_number = ?`); personBinds.push(body.dl_number.toUpperCase()); }
 
   if (personClauses.length > 0) {
@@ -440,10 +440,10 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dl_number || body.dob || body.address) {
     const dlClauses: string[] = [];
     const dlBinds: unknown[] = [];
-    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.dl_number) { dlClauses.push(`dl_number = ?`); dlBinds.push(body.dl_number.toUpperCase()); }
     if (body.dob) { dlClauses.push(`dob = ?`); dlBinds.push(body.dob); }
-    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(`%${body.address}%`); }
+    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(`%${String(body.address).slice(0, 48)}%`); }
     try {
       const dlRows = await query(
         c.env.DB,
@@ -471,7 +471,7 @@ dataCapture.post('/query', async (c) => {
     }
     if (body.name) {
       vClauses.push(`registered_owner LIKE ?`);
-      vBinds.push(`%${body.name.trim()}%`);
+      vBinds.push(`%${body.name.trim().slice(0, 48)}%`);
     }
     try {
       const vRows = await query(
@@ -497,7 +497,7 @@ dataCapture.post('/query', async (c) => {
     const wBinds: unknown[] = [];
     if (body.name) {
       wClauses.push(`subject_name LIKE ?`);
-      wBinds.push(`%${body.name.trim()}%`);
+      wBinds.push(`%${body.name.trim().slice(0, 48)}%`);
     }
     if (body.dob) { wClauses.push(`subject_dob = ?`); wBinds.push(body.dob); }
     try {
@@ -522,7 +522,7 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.phone || body.email) {
     const sdClauses: string[] = [];
     const sdBinds: unknown[] = [];
-    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.phone) { sdClauses.push(`subject_phone LIKE ?`); sdBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
     if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${body.email}%`); }
     try {
@@ -546,8 +546,7 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dob || body.phone || body.plate || body.email) {
     const piClauses: string[] = [];
     const piBinds: unknown[] = [];
-    const seed: Record<string, string> = {};
-    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.dob) { piClauses.push(`subject_dob = ?`); piBinds.push(body.dob); }
     // JSON seed search for phone/plate/email
     if (body.phone) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
@@ -575,7 +574,7 @@ dataCapture.post('/query', async (c) => {
   const matchedPersonIds = (results.persons as any[]).map((p: any) => p.id);
   if (matchedPersonIds.length > 0) {
     try {
-      const callRows = await queryInChunks(
+      const callRowsRaw = await queryInChunks(
         c.env.DB,
         matchedPersonIds,
         (placeholders) =>
@@ -583,10 +582,11 @@ dataCapture.post('/query', async (c) => {
                   c.status, c.location_address, c.created_at, c.disposition
            FROM cfs_subjects s
            JOIN calls_for_service c ON c.id = s.call_id
-           WHERE s.person_id IN (${placeholders})
-           ORDER BY c.created_at DESC
-           LIMIT 50`
+           WHERE s.person_id IN (${placeholders})`
       );
+      const callRows = (callRowsRaw as any[])
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 50);
       results.call_history = callRows;
       if (callRows.length > 0) sourceTables.push('cfs_subjects');
     } catch (e) {

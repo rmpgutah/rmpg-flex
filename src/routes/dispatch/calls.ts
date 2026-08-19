@@ -1047,6 +1047,8 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
     const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
+    const callCheck = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callCheck) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     // NOTE: 'on_hold' is intentionally NOT in this list. Hold is stored as
     // calls_for_service_ext.held_at (migration 0041), an orthogonal flag set
     // via POST /:id/hold and /:id/resume — not a real status value — so a
@@ -1369,7 +1371,8 @@ calls.post('/:id/archive', requireRole('dispatcher', 'supervisor', 'manager', 'a
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    if (result.meta.changes === 0) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     return c.json({ message: 'Archived' });
   } catch (err) {
     log.error('POST /:id/archive failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Archive failed' }, 500); }
@@ -1417,6 +1420,8 @@ calls.post('/:id/hold', requireRole('dispatcher', 'supervisor', 'manager', 'admi
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
+    const callExists = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callExists) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
     await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
@@ -1759,13 +1764,24 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const created: number[] = [];
+    // call_number is NOT NULL UNIQUE — generate a new number for each child
+    const splitYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
+    const splitPrefix = `CFS${splitYear}-`;
+    const nextSplitCallNumber = async () => {
+      const [{ max }] = await query<{ max: string | null }>(
+        db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${splitPrefix}%`,
+      );
+      const seq = max ? String(parseInt(max.slice(splitPrefix.length), 10) + 1).padStart(5, '0') : '00001';
+      return `${splitPrefix}${seq}`;
+    };
     for (const s of splits) {
+      const childCallNumber = await nextSplitCallNumber();
       const result = await execute(db,
         // No split_from_id on calls_for_service (and it's at the 100-column
         // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
-        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, created_at, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null);
+        `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null);
       const childId = Number(result.meta.last_row_id);
       await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', childId);
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
