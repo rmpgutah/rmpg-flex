@@ -183,7 +183,7 @@ export function useFleetRouteOptimization(): UseFleetRouteOptimizationResult {
       const ordered = pts.length <= 10 ? twoOpt(origin, nn) : nn; // 2-opt expensive for large sets
 
       // Build ETA chain from shiftStart
-      let cursor = new Date(shiftStart).getTime();
+      let cursor = new Date(shiftStart).getTime(); // new-date-ok: datetime-local input value (local wall-clock)
       let odometerMi = 0;
       let prevLat = originLat;
       let prevLng = originLng;
@@ -193,7 +193,7 @@ export function useFleetRouteOptimization(): UseFleetRouteOptimizationResult {
         const legMs = (legMi / AVG_SPEED_MPH) * 3_600_000;
         cursor += legMs;
         odometerMi += legMi;
-        const eta = new Date(cursor).toISOString();
+        const eta = new Date(cursor).toISOString(); // new-date-ok: cursor is an epoch number (ms since Unix epoch)
         const dur = (pt.stop.duration ?? 600) * 1000;
         cursor += dur; // advance past on-site time
         prevLat = pt.lat;

@@ -1,4 +1,5 @@
 import { Clock, XCircle } from 'lucide-react';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Props {
   stopIndex: number;
@@ -25,7 +26,7 @@ function formatEta(iso: string): string {
       timeZone: 'America/Denver',
       hour: 'numeric',
       minute: '2-digit',
-    }).format(new Date(iso));
+    }).format(parseTimestamp(iso));
   } catch {
     return iso;
   }

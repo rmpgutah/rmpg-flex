@@ -31,6 +31,7 @@ import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { useServeRunOptimization } from './hooks/useServeRunOptimization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -682,7 +683,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrd
     const map = new Map<number, string>();
     for (const stop of optRun.optimizedOrder) {
       try {
-        map.set(stop.jobId, fmt.format(new Date(stop.eta)));
+        map.set(stop.jobId, fmt.format(parseTimestamp(stop.eta)));
       } catch {
         // malformed ISO — skip
       }

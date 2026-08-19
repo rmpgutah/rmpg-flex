@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Route } from 'lucide-react';
 import type { SubmitParams, V2Solution } from '../utils/mapboxOptimizationV2';
+import { parseTimestamp } from '../utils/dateUtils';
 import { useOptimizationV2 } from '../hooks/useOptimizationV2';
 import OptimizationV2StatusBadge from './OptimizationV2StatusBadge';
 
@@ -19,7 +20,7 @@ function formatEtaTime(iso: string): string {
       timeZone: 'America/Denver',
       hour: 'numeric',
       minute: '2-digit',
-    }).format(new Date(iso));
+    }).format(parseTimestamp(iso));
   } catch {
     return iso;
   }

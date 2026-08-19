@@ -10,6 +10,7 @@
 import React, { useEffect, useState } from 'react';
 import { History, RefreshCw, CheckCircle, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ function fmtJobType(t: string): string {
 
 function fmtDate(iso: string): string {
   try {
-    return new Date(iso).toLocaleDateString('en-US', {
+    return parseTimestamp(iso).toLocaleDateString('en-US', {
       month: 'short', day: 'numeric',
       hour: 'numeric', minute: '2-digit',
       hour12: true, timeZone: 'America/Denver',
@@ -151,7 +152,7 @@ export default function FleetOptimizationHistoryCard({ className = '' }: Props) 
 
       {fetchedAt && (
         <div className="px-3 py-1 text-[9px] text-rmpg-700 border-t border-rmpg-700/30">
-          Fetched {new Date(fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+          Fetched {new Date(fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })} {/* new-date-ok: fetchedAt is a Date.now() epoch number, not a server string */}
         </div>
       )}
     </div>
