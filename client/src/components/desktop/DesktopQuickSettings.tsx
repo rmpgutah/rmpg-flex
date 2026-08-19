@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap, Focus } from 'lucide-react';
+import { Moon, BellOff, Wifi, RefreshCw, Volume2, VolumeX, BatteryMedium, Zap, Focus, ChevronRight } from 'lucide-react';
 import { useOptionalDesktopSystem, type FocusAssistLevel } from '../../context/DesktopSystemContext';
+import WifiSelector from './WifiSelector';
 
 const VOLUME_KEY = 'rmpg_desktop_volume';
 
@@ -21,6 +22,8 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
   const [volume, setVolume] = useState(getStoredVolume);
   const [battery, setBattery] = useState<{ percent: number | null; charging: boolean } | null>(null);
   const [network, setNetwork] = useState<{ ssid: string | null; signal: number | null } | null>(null);
+  const [wifiSelectorOpen, setWifiSelectorOpen] = useState(false);
+  const isElectron = !!(window as any).electron?.isElectron;
 
   const handleVolume = useCallback((v: number) => {
     setVolume(v);
@@ -101,14 +104,31 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
           </div>
         </div>
 
-        {/* Wi-Fi status */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)' }} />
-          <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {network?.ssid ?? (navigator.onLine ? 'Connected' : 'Offline')}
-          </span>
-          {network?.signal != null && (
-            <span style={{ fontSize: 9, color: 'var(--text-secondary)', flexShrink: 0 }}>{network.signal}%</span>
+        {/* Wi-Fi status — clickable in Electron to open full selector */}
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => isElectron ? setWifiSelectorOpen(v => !v) : undefined}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+              background: 'none', border: 'none', cursor: isElectron ? 'pointer' : 'default',
+              padding: 0, textAlign: 'left',
+            }}
+            aria-label="Wi-Fi settings"
+          >
+            <Wifi className="w-3.5 h-3.5" style={{ color: 'var(--sev-ok)', flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: 'var(--text-primary)', flexGrow: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {network?.ssid ?? (navigator.onLine ? 'Connected' : 'Offline')}
+            </span>
+            {network?.signal != null && (
+              <span style={{ fontSize: 9, color: 'var(--text-secondary)', flexShrink: 0 }}>{network.signal}%</span>
+            )}
+            {isElectron && (
+              <ChevronRight className="w-3 h-3" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+            )}
+          </button>
+          {wifiSelectorOpen && (
+            <WifiSelector onClose={() => setWifiSelectorOpen(false)} />
           )}
         </div>
 
