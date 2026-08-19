@@ -68,8 +68,10 @@ export function appendCautionFlag(existing: string | null, flag: string): string
 }
 
 // Fix 4: Escape LIKE wildcards in user-supplied input.
+// D1 LIKE cap is 50 chars; %pattern% uses 2, so cap the inner term at 48.
 function likeContains(input: string | undefined | null): string {
-  return `%${(input ?? '').trim().replace(/[%_\\]/g, '\\$&')}%`;
+  const inner = (input ?? '').trim().replace(/[%_\\]/g, '\\$&').slice(0, 48);
+  return `%${inner}%`;
 }
 
 export async function ingestOfac(env: Bindings): Promise<{ rowsLoaded: number }> {

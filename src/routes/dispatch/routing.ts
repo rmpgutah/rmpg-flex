@@ -17,8 +17,9 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer';
-
+import { requireRole } from '../../middleware/auth';
 import { dbErrorResponse } from '../../utils/dbErrors';
+
 const routing = new Hono<Env>();
 
 // Boot reconciler — deploy migrations are continue-on-error, so the route
@@ -65,7 +66,7 @@ interface CallRow {
 }
 
 // POST /optimize — build an ordered route over the unit's active CFS calls.
-routing.post('/optimize', async (c) => {
+routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ unit_id?: string | number; priority_weighted?: boolean }>().catch(() => ({} as any));
@@ -146,7 +147,7 @@ routing.post('/optimize', async (c) => {
 });
 
 // POST /save — persist the built route (supersedes prior active routes for the unit).
-routing.post('/save', async (c) => {
+routing.post('/save', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);
@@ -184,7 +185,7 @@ routing.post('/save', async (c) => {
 });
 
 // GET /unit/:unitId — latest active saved routes (newest first).
-routing.get('/unit/:unitId', async (c) => {
+routing.get('/unit/:unitId', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);
@@ -203,7 +204,7 @@ routing.get('/unit/:unitId', async (c) => {
 
 // POST /:id/complete-stop — mark one waypoint done; completes the route when
 // every stop is done.
-routing.post('/:id/complete-stop', async (c) => {
+routing.post('/:id/complete-stop', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);

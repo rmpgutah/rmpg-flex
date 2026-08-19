@@ -281,6 +281,8 @@ export default function DashCamDetailPage() {
   const [mapReady, setMapReady] = useState(false);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [mapRecoverNonce, setMapRecoverNonce] = useState(0);
+  const [isMapRecovering, setIsMapRecovering] = useState(false);
+  const [mapNeedsManualReload, setMapNeedsManualReload] = useState(false);
   const mapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // ConfirmDialog state — burn HUD overlay
@@ -455,6 +457,8 @@ export default function DashCamDetailPage() {
     mapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
       label: 'DashCamDetail',
       onRebuild: () => {
+        setIsMapRecovering(false);
+        setMapNeedsManualReload(false);
         if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
         try { markerRef.current?.remove(); } catch { /* gone */ }
         markerRef.current = null;
@@ -462,6 +466,9 @@ export default function DashCamDetailPage() {
         setMapReady(false);
         setMapRecoverNonce((n) => n + 1);
       },
+      onContextLost: () => setIsMapRecovering(true),
+      onContextRestored: () => setIsMapRecovering(false),
+      onGiveUp: () => { setIsMapRecovering(false); setMapNeedsManualReload(true); },
     });
 
     map.on('load', () => {
@@ -1054,12 +1061,32 @@ export default function DashCamDetailPage() {
             {/* 4. GPS MAP */}
             <HudSection title="GPS Map" icon={Map}
               isOpen={sections.gps} onToggle={() => toggleSection('gps')}>
-              <div ref={mapContainerRef}
-                className="w-full rounded-sm"
-                style={{ height: 200, background: 'var(--surface-deep)' }}>
-                {!mapboxgl?.accessToken && (
-                  <div className="flex items-center justify-center h-full">
-                    <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
+              <div className="relative w-full rounded-sm" style={{ height: 200 }}>
+                <div ref={mapContainerRef}
+                  className="absolute inset-0 rounded-sm"
+                  style={{ background: 'var(--surface-deep)' }}>
+                  {!mapboxgl?.accessToken && (
+                    <div className="flex items-center justify-center h-full">
+                      <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
+                    </div>
+                  )}
+                </div>
+                {isMapRecovering && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none rounded-sm">
+                    <div className="flex flex-col items-center gap-1">
+                      <Loader2 size={14} className="animate-spin text-brand-400" />
+                      <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+                    </div>
+                  </div>
+                )}
+                {mapNeedsManualReload && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90 rounded-sm">
+                    <div className="flex flex-col items-center gap-2 text-center px-3">
+                      <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+                      <button onClick={() => window.location.reload()} className="px-2 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[9px] font-mono" style={{ borderRadius: 2 }}>
+                        RELOAD
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -6,6 +6,7 @@ import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 import { requireRole } from '../middleware/auth';
 import { verifySignedResource } from '../utils/signedAccess';
 import { summarizeInspection } from '../utils/vehicleInspection';
+import { containsAnyClause } from '../utils/searchText';
 import { isEvidenceLocked } from '../utils/evidenceLock';
 import { recordAudit } from '../utils/auditLog';
 import { emitFleetioEvent } from '../utils/fleetio/events';
@@ -2904,7 +2905,7 @@ fleet.get('/parts', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query();
     const where: string[] = ['1=1']; const params: unknown[] = [];
-    if (q.search) { where.push('(part_number LIKE ? OR name LIKE ?)'); params.push(`%${q.search}%`, `%${q.search}%`); }
+    if (q.search) { const m = containsAnyClause(['part_number', 'name']); where.push(m.sql); params.push(...m.binds(q.search)); }
     if (q.category) { where.push('category = ?'); params.push(q.category); }
     const whereSql = where.join(' AND ');
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM fleet_parts WHERE ${whereSql} ORDER BY name LIMIT 500`, ...params);

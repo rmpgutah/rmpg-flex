@@ -266,6 +266,18 @@ contextBridge.exposeInMainWorld('electron', {
   getNetwork: () => ipcRenderer.invoke('system:get-network'),
   setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
 
+  // ─── WiFi Selector ──────────────────────────────────────
+  // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)
+  wifiGetDetail:    ()              => ipcRenderer.invoke('wifi:get-detail'),
+  // Scan all visible SSIDs with signal strength, security, channel
+  wifiScanNetworks: ()              => ipcRenderer.invoke('wifi:scan-networks'),
+  // List saved Windows WLAN profiles (connectable without credentials)
+  wifiListProfiles: ()              => ipcRenderer.invoke('wifi:list-profiles'),
+  // Connect to a saved profile by name
+  wifiConnect:      (profile)       => ipcRenderer.invoke('wifi:connect', { profile }),
+  // Disconnect from the current wireless network
+  wifiDisconnect:   ()              => ipcRenderer.invoke('wifi:disconnect'),
+
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the
   // main process can cache the session (auth_token, refresh_token,

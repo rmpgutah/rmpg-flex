@@ -16,6 +16,10 @@ vi.mock('../../utils/mapboxBasemap', () => ({
   applyRmpgBasemap: vi.fn(),
 }));
 
+vi.mock('../../utils/webglRecovery', () => ({
+  installWebglContextRecovery: vi.fn(() => () => {}),
+}));
+
 vi.mock('../../utils/mapboxLoader', () => {
   class FakeMap {
     addSource() { /* noop */ }

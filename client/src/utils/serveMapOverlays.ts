@@ -27,7 +27,7 @@ export function isRiskFlagged(item: {
   return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
 }
 
-export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue' | 'served';
+export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue' | 'served' | 'in_progress';
 
 export function matchesDeadlineFilter(
   deadline: string | null,
@@ -36,6 +36,7 @@ export function matchesDeadlineFilter(
   status?: string | null,
 ): boolean {
   if (filter === 'served') return status === 'served';
+  if (filter === 'in_progress') return status === 'in_progress';
   if (filter === 'all') return true;
   if (!deadline) return false;
   const deadlineMs = parseTimestamp(deadline).getTime();

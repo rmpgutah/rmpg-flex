@@ -291,6 +291,15 @@ export default React.memo(function UnitStatusBoard({
                 <div className="flex flex-col gap-0.5">
                   <span className="flex items-center gap-1">
                     {unit.current_call_number || <span className="text-fg-muted italic text-[10px]">Unassigned</span>}
+                    {(unit.queued_call_ids?.length ?? 0) > 0 && (
+                      <span
+                        className="text-[8px] font-bold px-1 py-px rounded-sm tabular-nums"
+                        style={{ background: 'color-mix(in srgb, var(--sev-warn) 22%, transparent)', color: 'var(--sev-warn)' }}
+                        title={`${unit.queued_call_ids!.length} call${unit.queued_call_ids!.length > 1 ? 's' : ''} queued`}
+                      >
+                        +{unit.queued_call_ids!.length}Q
+                      </span>
+                    )}
                     {unitWorkload && (unitWorkload.get(String(unit.id)) ?? 0) > 1 && (
                       <span
                         className="text-[8px] font-bold px-1 py-px rounded-sm tabular-nums"

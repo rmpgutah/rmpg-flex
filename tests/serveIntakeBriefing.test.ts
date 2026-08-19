@@ -12,7 +12,7 @@ const baseRow = {
   jurisdiction: 'UT', client_name: 'ICU', attorney_name: null,
   priority: 'rush' as const, deadline: '2026-06-30', service_instructions: null,
   notes: null, plaintiff: 'AVERY HOLT', defendant: 'NORTHGATE LOGISTICS, LLC',
-  court_date: null,
+  court_date: null, sm_job_id: null,
 };
 
 // Builds a minimal BriefingInput around a queueRow override, and returns the
