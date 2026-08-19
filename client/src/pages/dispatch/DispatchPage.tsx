@@ -94,6 +94,9 @@ import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import { renderFormattedText } from '../../utils/renderFormatted';
 import NoteComposer from './components/NoteComposer';
 import CallDocumentsPanel from './components/CallDocumentsPanel';
+import AssignmentProposalModal from './components/AssignmentProposalModal';
+import { useDispatchOptimization } from './hooks/useDispatchOptimization';
+import OptimizationV2StatusBadge from '../../components/OptimizationV2StatusBadge';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useLinkOptions } from '../../hooks/useLinkOptions';
@@ -423,6 +426,7 @@ export default function DispatchPage() {
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const dispatchOptimization = useOptimizationV2();
   const [showAssignmentOverlay, setShowAssignmentOverlay] = useState(false);
+  const dispatchOpt = useDispatchOptimization();
   const [calls, setCalls] = useState<CallForService[]>([]);
   // Mirror `calls` into a ref so the mount-only WebSocket effect (deps exclude
   // `calls` to avoid re-subscribing on every list change) can read current
@@ -458,19 +462,35 @@ export default function DispatchPage() {
   // render before useOptimizationV2 memoized its return value, which caused this
   // useCallback to be recreated on every render).
   const handleOptimizeAssignments = useCallback(async () => {
-    const availableUnitIds = units
-      .filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status))
-      .map((u) => Number(u.id));
-    const openCallIds = calls
-      .filter((c) => ['active', 'dispatched', 'pending'].includes(c.status))
-      .map((c) => Number(c.id));
+    const availableUnits = units.filter((u) => ['available', 'on_scene', 'onscene'].includes(u.status));
+    const availableUnitIds = availableUnits.map((u) => Number(u.id));
+    const openCalls = calls.filter((c) => ['active', 'dispatched', 'pending'].includes(c.status));
+    const openCallIds = openCalls.map((c) => Number(c.id));
     if (!availableUnitIds.length || !openCallIds.length) return;
+
+    // Build context maps for the rich proposal builder
+    const callDetails = new Map(openCalls.map((c) => [
+      Number(c.id),
+      {
+        incidentNumber: c.call_number || String(c.id),
+        address: c.location || '',
+        priority: c.priority || 'P3',
+      },
+    ]));
+    const callAssignments = new Map(openCalls.map((c) => [
+      Number(c.id),
+      Array.isArray(c.assigned_units) ? c.assigned_units : [],
+    ]));
+    const unitsBySign = new Map(availableUnits.map((u) => [u.call_sign, Number(u.id)]));
+
+    // Drive both: legacy simple overlay (kept for compat) + new proposal modal
     await dispatchOptimization.submit({
       job_type: 'multi_unit_dispatch',
       call_ids: openCallIds,
       unit_ids: availableUnitIds,
     });
-  }, [units, calls, dispatchOptimization.submit]);
+    await dispatchOpt.startOptimization(openCallIds, availableUnitIds);
+  }, [units, calls, dispatchOptimization.submit, dispatchOpt]);
 
   useEffect(() => {
     if (dispatchOptimization.status === 'complete') setShowAssignmentOverlay(true);
@@ -3780,6 +3800,22 @@ export default function DispatchPage() {
             <Shield style={{ width: 10, height: 10 }} />
             PSO
           </button>
+          {/* Optimize Assignments — supervisor+ only, requires pending calls + available units */}
+          {isSupervisorPlus && calls.some(c => c.status === 'pending' || c.status === 'on_hold') && units.some(u => u.status === 'available') && (
+            dispatchOpt.status === 'idle' || dispatchOpt.status === 'error' ? (
+              <button
+                type="button"
+                onClick={handleOptimizeAssignments}
+                className="toolbar-btn"
+                title="Suggest optimal unit assignments for pending calls"
+              >
+                <Route style={{ width: 10, height: 10 }} />
+                Optimize
+              </button>
+            ) : (dispatchOpt.status === 'pending' || dispatchOpt.status === 'processing') ? (
+              <OptimizationV2StatusBadge status={dispatchOpt.status} elapsedMs={dispatchOpt.elapsedMs} />
+            ) : null
+          )}
           <button type="button"
             onClick={toggleCadBoardView}
             className="toolbar-btn"
@@ -7880,8 +7916,8 @@ export default function DispatchPage() {
         </div>
       </div>
 
-      {/* Optimize Assignments result overlay */}
-      {showAssignmentOverlay && dispatchOptimization.solution && (
+      {/* Optimize Assignments result overlay — legacy simple view (kept for backwards compat) */}
+      {showAssignmentOverlay && dispatchOptimization.solution && !dispatchOpt.showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-surface-base border border-rmpg-600 p-4 max-w-lg w-full mx-4 max-h-[80vh] flex flex-col gap-3" style={{ borderRadius: 2 }}>
             <div className="flex items-center justify-between">
@@ -7919,6 +7955,25 @@ export default function DispatchPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Optimize Assignments — rich proposal modal */}
+      {dispatchOpt.showModal && (
+        <AssignmentProposalModal
+          proposals={dispatchOpt.proposals}
+          droppedServices={dispatchOpt.droppedServices}
+          accepted={dispatchOpt.accepted}
+          onToggle={dispatchOpt.toggleAccepted}
+          onApplyAll={() => dispatchOpt.applyProposals(async (callId, unitId) => {
+            await apiFetch(`/dispatch/calls/${callId}/assign-unit`, {
+              method: 'POST',
+              body: JSON.stringify({ unit_id: unitId }),
+            });
+            await refreshUnits();
+          })}
+          onClose={() => { dispatchOpt.closeModal(); dispatchOpt.reset(); }}
+          applying={dispatchOpt.applying}
+        />
       )}
     </div>
   );

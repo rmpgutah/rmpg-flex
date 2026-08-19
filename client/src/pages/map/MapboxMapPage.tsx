@@ -72,6 +72,7 @@ import { useMapboxHistoryCalls } from '../../hooks/useMapboxHistoryCalls';
 import { useMapboxTilequery } from '../../hooks/useMapboxTilequery';
 import { useMapboxRepeatAddresses } from '../../hooks/useMapboxRepeatAddresses';
 import { useMapboxServeJobs } from '../../hooks/useMapboxServeJobs';
+import { useMapboxOptimizationRoutes } from '../../hooks/useMapboxOptimizationRoutes';
 import { useMapTraffic } from '../../hooks/useMapTraffic';
 import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
 import StreetViewLightbox from './components/StreetViewLightbox';
@@ -407,6 +408,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [repeatAddressesEnabled, setRepeatAddressesEnabled] = useState(false);
   const serveJobs = useMapboxServeJobs(mapLoaded ? mapRef.current : null);
   const [serveJobsEnabled, setServeJobsEnabled] = useState(false);
+  const optimRoutes = useMapboxOptimizationRoutes(
+    mapLoaded ? mapRef.current : null,
+    calls.map((c) => ({ ...c, id: Number(c.id) })),
+  );
   const [incidentsEnabled, setIncidentsEnabled] = useState(false);
   const [coverageGapsEnabled, setCoverageGapsEnabled] = useState(false);
   const [responseTimeEnabled, setResponseTimeEnabled] = useState(false);
@@ -1274,6 +1279,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     'repeat-addresses': { active: repeatAddressesEnabled, onToggle: () => setRepeatAddressesEnabled((v) => !v), loading: repeatAddresses.loading, error: repeatAddresses.error },
     selfpos: { active: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v) },
     'serve-jobs': { active: serveJobsEnabled, onToggle: () => setServeJobsEnabled((v) => !v), loading: serveJobs.loading, error: serveJobs.error },
+    'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
     // ── Historical Analysis ──
     heatmap: {
@@ -1368,6 +1374,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     geofenceAlerts, breadcrumbs, clustering, incidentsEnabled, incidentsLayer.loading,
     incidentsLayer.error, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error,
     selfPosVisible, setSelfPosVisible, serveJobsEnabled, serveJobs.loading, serveJobs.error,
+    optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
     heatmap, populateAndToggleHeatmap, heatmapMode,
     historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
