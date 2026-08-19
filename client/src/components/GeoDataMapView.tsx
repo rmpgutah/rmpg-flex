@@ -7,7 +7,7 @@
 // mapboxLoader init pattern (see SightingsMap / ForensicTrackMap).
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
@@ -53,7 +53,7 @@ export default function GeoDataMapView({
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
 
   // Init once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
@@ -220,6 +220,22 @@ export default function GeoDataMapView({
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
           <RefreshCw className="w-3.5 h-3.5 text-fg-muted animate-spin" />
+        </div>
+      )}
+      {isRecovering && (
+        <div style={{ position: 'absolute', inset: 0 }} className="z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 size={14} className="animate-spin text-brand-400" />
+            <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div style={{ position: 'absolute', inset: 0 }} className="z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
+          </div>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 // geocoded intel as toggleable circle layers; clicking a point selects the
 // entity into the shared context (right dossier panel) or navigates.
 import { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../../utils/mapboxApiKey';
@@ -21,7 +22,7 @@ export default function IntelMapPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState('');
   const [active, setActive] = useState<Record<string, boolean>>(() => Object.fromEntries(LAYER_DEFS.map((l) => [l.key, true])));
@@ -100,6 +101,22 @@ export default function IntelMapPage() {
   return (
     <div className="relative h-full w-full">
       <div ref={ref} className="absolute inset-0" />
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 size={16} className="animate-spin text-brand-400" />
+            <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
+          </div>
+        </div>
+      )}
       <div className="absolute top-2 left-2 z-10 bg-black/80 border border-border-default rounded-[2px] p-2 space-y-2">
         <div className="flex gap-1 items-center">
           {DAYS_OPTS.map((d) => (

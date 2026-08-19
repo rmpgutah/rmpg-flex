@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import mapboxgl from 'mapbox-gl';
 import { saveMapPref } from '../../../utils/mapPreferences';
 import { applyRmpgBasemap } from '../../../utils/mapboxBasemap';
@@ -11,7 +12,7 @@ interface Props {
 
 export default function MinimapControl({ parentMap, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, isRecovering, needsManualReload } = useWebglMapRecovery();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -53,6 +54,16 @@ export default function MinimapControl({ parentMap, onClose }: Props) {
       style={{ width: 180, height: 140, borderRadius: 2 }}
     >
       <div ref={containerRef} className="w-full h-full" />
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <Loader2 size={12} className="animate-spin text-brand-400" />
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <span className="text-[8px] font-mono text-rmpg-500">MAP UNAVAIL</span>
+        </div>
+      )}
       <button
         aria-label="Close minimap"
         onClick={() => { saveMapPref('minimap_visible', false); onClose(); }}

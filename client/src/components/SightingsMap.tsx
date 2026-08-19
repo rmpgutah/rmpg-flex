@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
@@ -56,7 +56,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) ClearPath no-fix
   // signature so a pre-GPS-lock sighting never anchors a dot off the African coast.
@@ -291,6 +291,22 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       {loaded && !located.length && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-fg-muted">
           No GPS-tagged sightings yet
+        </div>
+      )}
+      {isRecovering && (
+        <div style={{ position: 'absolute', inset: 0 }} className="z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 size={14} className="animate-spin text-brand-400" />
+            <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div style={{ position: 'absolute', inset: 0 }} className="z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
+          </div>
         </div>
       )}
     </div>

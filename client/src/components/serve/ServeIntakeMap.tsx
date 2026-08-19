@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus, Printer, Radio } from 'lucide-react';
+import { MapPin, Building2, User, AlertTriangle, RefreshCw, Plus, Printer, Radio, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 import { mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
@@ -101,7 +101,7 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
 
   const [items, setItems] = useState<QueueMapItem[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -657,6 +657,22 @@ export default function ServeIntakeMap({ onSelectQueue }: Props) {
         {!loading && items.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center z-10">
             <span className="text-[11px] text-brand-500">No active serve orders</span>
+          </div>
+        )}
+        {isRecovering && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+            <div className="flex flex-col items-center gap-1">
+              <Loader2 size={14} className="animate-spin text-brand-400" />
+              <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+            </div>
+          </div>
+        )}
+        {needsManualReload && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+            <div className="flex flex-col items-center gap-2 text-center px-4">
+              <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+              <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
+            </div>
           </div>
         )}
       </div>

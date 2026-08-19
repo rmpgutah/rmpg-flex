@@ -133,7 +133,7 @@ export default function RouteBuilderPage() {
   const [directionsDistance, setDirectionsDistance] = useState<string | null>(null);
   const [directionsDuration, setDirectionsDuration] = useState<string | null>(null);
 
-  const { rebuildNonce, attach: attachWebglRecovery, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach: attachWebglRecovery, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // Refs
@@ -833,11 +833,27 @@ export default function RouteBuilderPage() {
       <div className="flex-1 relative">
         <div ref={mapContainerRef} className="w-full h-full bg-surface-deep" />
 
-        {!mapReady && (
+        {!mapReady && !isRecovering && (
           <div className="absolute inset-0 flex items-center justify-center bg-surface-deep">
             <div className="text-center">
               <Loader2 className="w-8 h-8 mx-auto mb-2 [color:var(--panel-header-color)] animate-spin" />
               <p className="text-fg-muted text-xs">Loading map…</p>
+            </div>
+          </div>
+        )}
+        {isRecovering && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-brand-400" />
+              <span className="text-[10px] font-mono text-rmpg-300 tracking-widest">MAP RECONNECTING…</span>
+            </div>
+          </div>
+        )}
+        {needsManualReload && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+            <div className="flex flex-col items-center gap-2 text-center px-4">
+              <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+              <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
             </div>
           </div>
         )}

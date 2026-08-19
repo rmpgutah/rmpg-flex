@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle, Route, CloudRain,
+  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle, Route, CloudRain, Loader2,
 } from 'lucide-react';
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_SATELLITE,
@@ -117,7 +117,7 @@ export default function NavMapView({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
@@ -743,6 +743,23 @@ export default function NavMapView({
           <div>
             <AlertCircle size={20} className="mx-auto mb-1" style={{ color: 'var(--sev-critical)' }} />
             <p className="text-[10px]" style={{ color: '#888' }}>{error}</p>
+          </div>
+        </div>
+      )}
+
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 size={20} className="animate-spin text-brand-400" />
+            <span className="text-[10px] font-mono text-rmpg-300 tracking-widest">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
           </div>
         </div>
       )}

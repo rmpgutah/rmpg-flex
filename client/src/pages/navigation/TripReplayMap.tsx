@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK,
 } from '../../utils/mapboxLoader';
@@ -41,7 +42,7 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded, isRecovering, needsManualReload } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -202,6 +203,22 @@ export default function TripReplayMap({ points, replayIdx }: TripReplayMapProps)
       style={{ height: 140, borderRadius: 2, background: 'var(--surface-sunken)' }}
     >
       <div ref={containerRef} className="absolute inset-0" />
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 size={14} className="animate-spin text-brand-400" />
+            <span className="text-[9px] font-mono text-rmpg-300">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-[10px] font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>RELOAD PAGE</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
