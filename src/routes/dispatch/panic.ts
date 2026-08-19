@@ -300,7 +300,7 @@ panic.post('/panic/:id/false-alarm', requireRole('dispatcher', 'supervisor', 'ma
 // row. Mirrors the welfare/help broadcast pattern. Nobody implemented
 // this before (legacy + rewrite both 404'd), so the RadialMenu "Backup"
 // action silently failed.
-panic.post('/request-backup', async (c) => {
+panic.post('/request-backup', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;

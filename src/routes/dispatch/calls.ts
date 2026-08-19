@@ -157,7 +157,7 @@ calls.get('/', async (c) => {
 });
 
 // POST /dispatch/calls - Create call
-calls.post('/', async (c) => {
+calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
@@ -291,7 +291,7 @@ calls.post('/', async (c) => {
     // UPDATABLE_CALL_COLUMNS_BASE set so any column writable later is
     // writable on insert. Skip immutable cols (id, call_number,
     // created_at, dispatcher_id — set above).
-    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id']);
+    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id', 'status']);
     for (const [key, val] of Object.entries(body)) {
       if (skipOnCreate.has(key)) continue;
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
@@ -607,7 +607,7 @@ calls.get('/archive-bulk', async (c) => {
   return c.redirect('/dispatch/calls/archive-bulk', 307);
 });
 
-calls.post('/archive-bulk', async (c) => {
+calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // Honor the client's { statuses } body (handleBulkArchive sends
@@ -671,11 +671,12 @@ calls.get('/:id', async (c) => {
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null);
 
     const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
-    const assignedUnits = assignedIds.length === 0 ? [] : await query<Record<string, unknown>>(db, `
-      SELECT u.*, usr.full_name as officer_name, usr.badge_number
-      FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.id IN (${assignedIds.map(() => '?').join(',')})
-    `, ...assignedIds);
+    const assignedUnits = assignedIds.length === 0 ? [] : await queryInChunks<Record<string, unknown>>(
+      db, assignedIds,
+      (ph) => `SELECT u.*, usr.full_name as officer_name, usr.badge_number
+               FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
+               WHERE u.id IN (${ph})`,
+    );
 
     const incidents = await query<Record<string, unknown>>(db,
       'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
@@ -793,7 +794,7 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
 ]);
 
 // PUT /dispatch/calls/:id - Update call
-calls.put('/:id', async (c) => {
+calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -847,7 +848,7 @@ calls.put('/:id', async (c) => {
       const newAddr = body.location_address as string | undefined;
       const oldAddr = String(existing.location_address ?? '');
       if (newAddr && newAddr.trim().toLowerCase() !== oldAddr.trim().toLowerCase()) {
-        await reassignStackGroup(db, parseInt(id, 10), newAddr);
+        await reassignStackGroup(db, parseInt(id || '0', 10), newAddr);
       }
 
       // Re-read after possible reassignment — reassignStackGroup writes a new stack_group_id.
@@ -865,7 +866,7 @@ calls.put('/:id', async (c) => {
           mileageFields.ending_mileage = Number(body.ending_mileage);
         }
         if (Object.keys(mileageFields).length) {
-          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), { mileage: mileageFields });
+          await syncToStack(db, ext.stack_group_id, parseInt(id || '0', 10), { mileage: mileageFields });
         }
       }
     } catch (stackErr) {
@@ -1857,7 +1858,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       const parsedIds = JSON.parse(String(parent.assigned_unit_ids || '[]'));
       const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((x: unknown) => typeof x === 'number' && Number.isFinite(x));
       if (unitIds.length) {
-        const units = await query<{ call_sign: string }>(db, `SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`, ...unitIds);
+        const units = await queryInChunks<{ call_sign: string }>(db, unitIds, (ph) => `SELECT call_sign FROM units WHERE id IN (${ph})`);
         assignedCallSigns = units.map((u) => u.call_sign).filter(Boolean);
       }
     } catch (err) { console.error('[redispatch] failed to snapshot assigned units:', err); }

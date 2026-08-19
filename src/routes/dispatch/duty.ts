@@ -281,6 +281,12 @@ duty.post('/start', async (c) => {
 
     const unit = body.unit_id != null ? await unitById(db, Number(body.unit_id)) : await officerUnit(db, officerId);
     if (!unit) return c.json({ error: 'No unit assigned — ask dispatch to assign you a unit first', code: 'NO_UNIT' }, 409);
+    // IDOR: non-privileged callers cannot seize a unit already claimed by another officer
+    if (body.unit_id != null && !ON_BEHALF_ROLES.has((c.get('user') as { role?: string } | undefined)?.role ?? '')) {
+      if (unit.officer_id !== null && unit.officer_id !== officerId) {
+        return c.json({ error: 'That unit is assigned to another officer', code: 'UNIT_NOT_YOURS' }, 409);
+      }
+    }
 
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     const officerName = officer?.full_name ?? null;
@@ -440,7 +446,9 @@ duty.post('/end', async (c) => {
         `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
         stamp, hrs, endingMileage, totalMiles, entry.id);
       // Shift-end odometer reading is authoritative — sync the fleet vehicle.
-      await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
+      if (endingMileage != null) {
+        await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
+      }
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.

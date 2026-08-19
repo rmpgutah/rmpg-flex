@@ -165,7 +165,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 // PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
 // Neither legacy nor the rewrite implemented this before, so the CAD
 // command 404'd. units.mileage is REAL; we accept a non-negative number.
-audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+audioMode.put('/:id/mileage', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = parseInt(c.req.param('id') || '', 10);
@@ -501,6 +501,11 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
     if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
+    // off_duty / out_of_service transitions must use POST /dispatch/duty/end which
+    // also clocks out the shift entry and tears down the WelfareWatchDO.
+    if (['off_duty', 'out_of_service'].includes(status) && !supervisorRoles.includes(user.role)) {
+      return c.json({ error: 'Use /dispatch/duty/end to end your shift', code: 'USE_DUTY_END' }, 403);
+    }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
@@ -588,7 +593,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     }
     if (address && address.length >= 3) {
       matchClauses.push('UPPER(description) LIKE ?');
-      params.push(`%${address.toUpperCase()}%`);
+      params.push(`%${address.toUpperCase().slice(0, 46)}%`);
     }
     if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
 
@@ -649,7 +654,7 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
-bolos.post('/expire-check', requireRole(...READ_ROLES), async (c) => {
+bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const expired = await query<{ id: number }>(db, `

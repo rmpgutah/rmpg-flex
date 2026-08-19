@@ -327,11 +327,11 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       const body = await c.req.json<Record<string, unknown>>();
       if (!body[meta.codeCol] || !body[meta.nameCol]) return c.json({ error: `${meta.codeCol} and ${meta.nameCol} required` }, 400);
       if (meta.parentCol && !body[meta.parentCol]) return c.json({ error: `${meta.parentCol} required` }, 400);
-      const cols = [meta.codeCol, meta.nameCol, 'active', "datetime('now')"];
+      const cols = [meta.codeCol, meta.nameCol, 'active'];
       const vals: unknown[] = [body[meta.codeCol], body[meta.nameCol], 1];
-      const ph = ['?', '?', '?', "datetime('now')"];
+      const ph = ['?', '?', '?'];
       if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
-      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
+      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')}, datetime('now'))`, ...vals);
       return c.json({ success: true, id: result.meta.last_row_id }, 201);
     } catch (err) {
       log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to create' }, 500); }
@@ -341,7 +341,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
     try {
       const db = getDb(c.env);
       const id = c.req.param('id');
-      await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      const result = await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      if ((result.meta.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
       return c.json({ success: true });
     } catch (err) {
       log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to delete' }, 500); }

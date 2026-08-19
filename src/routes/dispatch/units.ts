@@ -329,7 +329,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb(c.env);
     const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
     if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
-    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'unavailable', 'out_of_service'];
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
 
     let updated = 0;
