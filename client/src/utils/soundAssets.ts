@@ -29,6 +29,22 @@
 /** UI feedback sounds (always preloaded — they fire constantly). */
 export type UiSoundKey = 'click' | 'submit' | 'update' | 'delete' | 'login';
 
+/**
+ * All dispatch/radio WAV assets on disk. Used as a compile-time registry so
+ * typos in playTone() callers surface as TS errors rather than silent fallback
+ * to the synthesizer. Add a key here whenever a new WAV is added to /sounds/.
+ */
+export type DispatchSoundKey =
+  | 'ack' | 'alarm' | 'alert' | 'all_call' | 'backup_request' | 'beat_breach'
+  | 'bonk' | 'boop' | 'call_alert' | 'caution' | 'chirp' | 'cleared_chirp'
+  | 'data_chirp' | 'descending' | 'dispatch_bell' | 'double_chirp'
+  | 'emergency_three' | 'enroute_chirp' | 'error' | 'gps_lost' | 'gps_restored'
+  | 'gps_warn' | 'info' | 'key_out' | 'key_up' | 'knox_alert' | 'login_ok'
+  | 'logoff' | 'onscene_chirp' | 'p1_alert' | 'panic_continuous'
+  | 'priority_preempt' | 'pursuit_alert' | 'quick_call_2' | 'radio_deny'
+  | 'radio_grant' | 'roger' | 'squelch_tail' | 'stack_pip' | 'static_burst'
+  | 'talk_permit_low' | 'unit_to_unit' | 'warning';
+
 // Deliberately quiet — UI feedback should sit under the dispatch tones,
 // felt more than heard. Clicks especially fire on every interaction.
 const UI_GAIN: Record<UiSoundKey, number> = {
@@ -111,6 +127,8 @@ export function preloadDispatchTones(): void {
     'p1_alert', 'warning', 'emergency_three',
     'chirp', 'double_chirp', 'enroute_chirp', 'onscene_chirp', 'cleared_chirp',
     'info', 'error', 'login_ok', 'logoff',
+    // Radio tones — preload so PTT and channel-grant fire instantly
+    'key_up', 'key_out', 'radio_grant', 'radio_deny', 'roger',
   ];
   try { critical.forEach(load); } catch { /* audio is a nicety */ }
 }

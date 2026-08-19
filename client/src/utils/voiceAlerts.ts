@@ -947,8 +947,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
   // Play appropriate chirp based on status
   const statusNorm = newStatus.replace(/_/g, '').toLowerCase();
   if (statusNorm === 'enroute') {
-    await playToneAsync('info');
-    await delay(200);
+    // Channel-grant chirp — in P25 trunking this fires the moment the system
+    // assigns a working channel to the unit going enroute
+    await playToneAsync('radio_grant');
+    await delay(150);
     enqueuePhrases([{ text: `Unit ${callSign}, en route${callNumber ? ` to call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'onscene') {
     await playToneAsync('info');

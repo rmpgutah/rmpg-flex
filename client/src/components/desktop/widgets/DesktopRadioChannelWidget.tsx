@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Radio } from 'lucide-react';
 import { useOptionalDesktopSystem } from '../../../context/DesktopSystemContext';
+import { playToneAsync } from '../../../utils/dispatchTones';
 
 const CHANNELS: Record<string, string> = {
   CH1: 'Patrol Primary',
@@ -88,14 +89,23 @@ export default function DesktopRadioChannelWidget() {
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.code === 'Space' && !e.repeat) {
       e.preventDefault();
+      if (radioChannel === 'EMERGENCY') {
+        // Emergency channel is receive-only for console; play TX Denied tone
+        void playToneAsync('radio_deny');
+        return;
+      }
       setPttActive(true);
+      // Talk Permit Tone — real APX hardware recording
+      void playToneAsync('key_up');
     }
-  }, []);
+  }, [radioChannel]);
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent) => {
     if (e.code === 'Space') {
       e.preventDefault();
       setPttActive(false);
+      // De-key acknowledgment
+      void playToneAsync('key_out');
     }
   }, []);
 
@@ -104,6 +114,8 @@ export default function DesktopRadioChannelWidget() {
     setRadioChannel(chKey);
     touchLastTx(chKey);
     scanIndexRef.current = CHANNEL_KEYS.indexOf(chKey);
+    // Trunked channel-grant chirp when switching channels
+    void playToneAsync('radio_grant');
   }, [scanning, setRadioChannel]);
 
   const toggleScan = useCallback(() => {
