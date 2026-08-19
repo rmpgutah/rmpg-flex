@@ -138,6 +138,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
     const body = await c.req.json().catch(() => ({} as any));
@@ -150,7 +151,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user.role);
-    if (!canForce && unit.officer_id !== user.id) {
+    if (!canForce && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
@@ -165,7 +166,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 // PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
 // Neither legacy nor the rewrite implemented this before, so the CAD
 // command 404'd. units.mileage is REAL; we accept a non-negative number.
-audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+audioMode.put('/:id/mileage', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = parseInt(c.req.param('id') || '', 10);
@@ -484,6 +485,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
 
@@ -498,8 +500,13 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const supervisorRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
-    if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
+    if (!supervisorRoles.includes(user.role) && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
+    }
+    // off_duty / out_of_service transitions must use POST /dispatch/duty/end which
+    // also clocks out the shift entry and tears down the WelfareWatchDO.
+    if (['off_duty', 'out_of_service'].includes(status) && !supervisorRoles.includes(user.role)) {
+      return c.json({ error: 'Use /dispatch/duty/end to end your shift', code: 'USE_DUTY_END' }, 403);
     }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
@@ -573,7 +580,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
 
     const keywords = (text: string) =>
-      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3 && w.length <= 47).slice(0, 5);
 
     const matchClauses: string[] = [];
     const params: unknown[] = [];
@@ -588,7 +595,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     }
     if (address && address.length >= 3) {
       matchClauses.push('UPPER(description) LIKE ?');
-      params.push(`%${address.toUpperCase()}%`);
+      params.push(`%${address.toUpperCase().slice(0, 46)}%`);
     }
     if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
 
@@ -649,7 +656,7 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
-bolos.post('/expire-check', requireRole(...READ_ROLES), async (c) => {
+bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const expired = await query<{ id: number }>(db, `
@@ -818,7 +825,7 @@ bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const welfareActive = new Hono<Env>();
 
-welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
+welfareActive.get('/active', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     // Pull all officers currently on a P1/P2 onscene call — those are the
@@ -938,7 +945,7 @@ async function fetchCallRow(db: D1Database, id: number) {
 // =====================================================================
 export const closestUnit = new Hono<Env>();
 
-closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
+closestUnit.get('/:id/closest-unit', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1015,7 +1022,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     // this, auto-assign would happily commit a unit to a call that's cleared/
     // closed/cancelled/archived, corrupting both the unit's status and the call's
     // audit trail (the call would silently flip back toward 'dispatched').
-    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged']);
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (call.status && TERMINAL_STATUSES.has(call.status)) {
       return c.json({ error: `Call is already ${call.status} — cannot auto-assign`, code: 'CALL_ALREADY_TERMINAL' }, 409);
     }
@@ -1089,7 +1096,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const callTimeline = new Hono<Env>();
 
-callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
+callTimeline.post('/:id/timeline', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1102,7 +1109,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
     const body = await c.req.json<{ action?: string; details?: string; created_at?: string }>();
-    const action = body.action ?? 'note_added';
+    const action = 'note_added';
     const details = body.details;
 
     if (!details || typeof details !== 'string' || details.length === 0) {
@@ -1151,7 +1158,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
 // Ported from legacy callLifecycle.ts:479. Only `details` is editable —
 // created_at is an immutable audit-log timestamp. The entry is matched by
 // (id, entity_type='call', entity_id) so one call can't edit another's rows.
-callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.put('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1183,7 +1190,7 @@ callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c)
 // DELETE /api/dispatch/calls/:id/timeline/:entryId — delete a timeline entry.
 // Ported from legacy callLifecycle.ts:526. Client (handleDeleteTimeline) only
 // checks for a non-error response, so { success: true } is the contract.
-callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.delete('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1326,7 +1333,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
 
 // POST /:id/le-notification — record that an outside law-enforcement agency was
 // notified. Client sends { agency }; case_number/notes are optional extras.
-callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) => {
+callActions.post('/:id/le-notification', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1395,6 +1402,7 @@ callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM external_referrals WHERE call_id = ? ORDER BY created_at DESC', id).catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
@@ -1771,19 +1779,19 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 }
 
 // Post-clear: requires the call to be cleared/closed first.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, true));
 
 // CAD "PI" command: promote a live call to an incident report immediately,
 // without first clearing it. Same dedup + audit behavior.
-callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, false));
 
 // GET /:id/serve-link — read back the serve_queue row created by
 // send-to-serve below (legacy parity; DispatchPage polls this on call
 // selection). Returns null with 200 when no serve job is linked — a 404
 // here is just console noise since most calls have no serve job.
-callActions.get('/:id/serve-link', async (c) => {
+callActions.get('/:id/serve-link', requireRole(...READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
   const row = await queryFirst<Record<string, unknown>>(

@@ -129,15 +129,17 @@ trips.delete('/:id', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isFinite(id)) return c.json({ error: 'Invalid trip id' }, 400);
 
-    const user = c.get('user') as { id: number; role: string } | undefined;
+    const user = c.get('user') as Record<string, unknown> | undefined;
     if (!user) return c.json({ error: 'Unauthorized' }, 401);
+    const userId = (user.user_id ?? user.userId ?? user.id) as number | undefined;
+    const userRole = (user.role as string | undefined) ?? '';
 
     const trip = await queryFirst<{ id: number; officer_id: number | null; status: string; trip_type: string; start_time: string; distance_m: number | null }>(
       db, 'SELECT id, officer_id, status, trip_type, start_time, distance_m FROM unit_trips WHERE id = ?', id);
     if (!trip) return c.json({ error: 'Not found' }, 404);
 
-    const isPrivileged = TRIP_DELETE_ROLES.has(user.role);
-    const isOwner = trip.officer_id != null && trip.officer_id === user.id;
+    const isPrivileged = TRIP_DELETE_ROLES.has(userRole);
+    const isOwner = trip.officer_id != null && trip.officer_id === userId;
     if (!isPrivileged && !isOwner) {
       return c.json({ error: 'Insufficient permissions' }, 403);
     }
@@ -152,7 +154,7 @@ trips.delete('/:id', async (c) => {
       await execute(db,
         `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
          VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        user.id, 'DELETE', 'unit_trip', id,
+        userId ?? null, 'DELETE', 'unit_trip', id,
         `Deleted ${trip.trip_type} trip #${id} (start ${trip.start_time}, ${((trip.distance_m ?? 0) / 1609.34).toFixed(2)} mi) as false record`);
     } catch (auditErr) {
       console.warn('audit_log insert failed for trip delete:', auditErr);

@@ -30,6 +30,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
               acknowledged_by, acknowledged_at, created_at
          FROM anomaly_alerts
         WHERE created_at >= datetime('now', '-' || ? || ' hours')
+         AND acknowledged_at IS NULL
         ORDER BY created_at DESC
         LIMIT 200`,
       hours,
@@ -247,7 +248,7 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot', 'bolo_expired')`,
   );
   let resolved = 0;
   for (const row of active) {

@@ -8,19 +8,9 @@ import { denverNowDateExpr } from '../../utils/denverTime';
 
 const units = new Hono<Env>();
 
-// Columns a client may set via PUT /dispatch/units/:id. The handler
-// interpolates body keys directly into the SQL SET clause, so without this
-// allowlist any key would be concatenated into the query (column-name
-// injection) and any column writable. Keys outside this set are ignored.
-// `updated_at` is intentionally omitted — the handler stamps it itself.
-const UPDATABLE_UNIT_COLUMNS = new Set([
-  'call_sign', 'officer_id', 'status', 'latitude', 'longitude',
-  'vehicle_id', 'capabilities', 'current_call_id', 'current_call_number',
-  'last_status_change', 'audio_mode',
-]);
 
 // GET /dispatch/units
-units.get('/', async (c) => {
+units.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // next_service_date is a plain DATE (no time-of-day) representing a
@@ -292,10 +282,19 @@ units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'man
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    const existing = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    // Officers may only update their own unit — dispatchers and above can update any.
+    const user = c.get('user') as { role: string } | undefined;
+    if (user?.role === 'officer' && existing.officer_id !== (c.get('userId') as number | undefined)) {
+      return c.json({ error: 'Officers may only update their own unit', code: 'FORBIDDEN' }, 403);
+    }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    if (!VALID_STATUSES.includes(body.status as string)) {
+      return c.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+    }
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
       ? ', current_call_id = NULL' : '';
     // Going off duty / out of service ends any on-foot episode — otherwise the
@@ -324,7 +323,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb(c.env);
     const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
     if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
-    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'unavailable', 'out_of_service'];
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
 
     let updated = 0;
@@ -338,7 +337,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
         if (userId) {
           await execute(db,
             `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
-            userId, unitId, `Batch set to ${status}`);
+            userId, unitId, JSON.stringify({ status, unit_id: unitId }));
         }
       }
     }

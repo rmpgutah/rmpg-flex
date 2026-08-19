@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
-import { denverDateExpr, denverNowDateExpr } from '../../utils/denverTime';
+import { denverDateExpr, denverNowDateExpr, denverOffsetHours } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
@@ -663,10 +663,10 @@ aggregates.get('/history-map', async (c) => {
     const db = getDb(c.env);
     const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
     const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
-    const csv = (q?: string) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean) : []);
-    const statuses = csv(c.req.query('status'));
-    const types = csv(c.req.query('types'));
-    const priorities = csv(c.req.query('priority'));
+    const csv = (q?: string, cap = 20) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean).slice(0, cap) : []);
+    const statuses = csv(c.req.query('status'), 10);
+    const types = csv(c.req.query('types'), 30);
+    const priorities = csv(c.req.query('priority'), 5);
 
     const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
     const params: unknown[] = [`-${days} days`];
@@ -804,8 +804,9 @@ aggregates.get('/hourly-today', async (c) => {
     // Use MT day boundary (UTC-6 standard / UTC-7 MDT). Cloudflare Workers run
     // UTC — a bare date('now') boundary skips calls 00:00–06:00 MT that landed
     // before UTC midnight. Offset 6h shifts the boundary to match midnight MT.
+    const offset = denverOffsetHours();
     const rows = await query<{ hour: number; count: number }>(db,
-      `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS hour, COUNT(*) AS count
+      `SELECT CAST(strftime('%H', datetime(created_at, '${offset} hours')) AS INTEGER) AS hour, COUNT(*) AS count
        FROM calls_for_service
        WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
        GROUP BY hour

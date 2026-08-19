@@ -85,9 +85,15 @@ routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'ma
       SELECT id, call_number, incident_type, priority, status, latitude, longitude,
              location_address, description, assigned_unit_ids
       FROM calls_for_service
-      WHERE status IN ('pending','queued','on_hold','dispatched','enroute','onscene')
+      WHERE status IN ('pending','dispatched','enroute','onscene')
       ORDER BY created_at ASC LIMIT 500`);
-    const routable = candidates.filter((call) => call.latitude != null && call.longitude != null);
+    const routable = candidates.filter((call) => {
+      if (call.latitude == null || call.longitude == null) return false;
+      try {
+        const assignedIds = JSON.parse(call.assigned_unit_ids || '[]') as number[];
+        return assignedIds.includes(Number(unitId));
+      } catch { return false; }
+    });
     const skipped = candidates.length - routable.length;
 
     let warning: string | undefined;
@@ -174,7 +180,7 @@ routing.post('/save', requireRole('officer', 'dispatcher', 'supervisor', 'manage
         Number(body.total_distance_miles) || 0,
         Math.round(Number(body.estimated_time_minutes)) || 0,
         String(body.notes || ''),
-        (c as any).var?.user?.id ?? null,
+        c.get('userId') ?? null,
       )
       .run();
     return c.json({ success: true, id: result.meta.last_row_id });

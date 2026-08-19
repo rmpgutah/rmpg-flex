@@ -7,7 +7,7 @@ import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
 const handoff = new Hono<Env>();
 
-handoff.get('/', async (c) => {
+handoff.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ text: string; updated_by: number | null; updated_at: string }>(
@@ -46,7 +46,7 @@ handoff.put('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), as
 });
 
 // ── GET /briefing — auto-generated shift change briefing from live data ──
-handoff.get('/briefing', async (c) => {
+handoff.get('/briefing', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const results: Record<string, any> = {};

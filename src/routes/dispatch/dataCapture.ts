@@ -101,6 +101,9 @@ dataCapture.put('/session/:id', async (c) => {
     sessionId
   );
   if (!session) return c.json({ error: 'Session not found or not active' }, 404);
+  if (session.dispatcher_id !== null && session.dispatcher_id !== userId) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
 
   await execute(
     c.env.DB,
@@ -127,14 +130,17 @@ dataCapture.post('/session/:id/submit', async (c) => {
 
   const sessionId = Number(c.req.param('id'));
   const session = await queryFirst<{
-    id: number; call_id: number;
+    id: number; call_id: number; dispatcher_id: number | null;
     subjects_data: string; caller_data: string;
   }>(
     c.env.DB,
-    `SELECT id, call_id, subjects_data, caller_data FROM dispatch_capture_sessions WHERE id = ? AND status = 'active'`,
+    `SELECT id, call_id, dispatcher_id, subjects_data, caller_data FROM dispatch_capture_sessions WHERE id = ? AND status = 'active'`,
     sessionId
   );
   if (!session) return c.json({ error: 'Session not found or not active' }, 404);
+  if (session.dispatcher_id !== null && session.dispatcher_id !== userId) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
 
   let subjects: any[] = [];
   let callerData: any = {};
@@ -296,7 +302,9 @@ dataCapture.patch('/subject/:id', async (c) => {
     direction_of_travel?: string;
   }>();
 
-  await execute(
+  const callId = Number(c.req.query('call_id'));
+  if (!callId) return c.json({ error: 'call_id is required' }, 400);
+  const result = await execute(
     c.env.DB,
     `UPDATE cfs_subjects SET
        located = COALESCE(?, located),
@@ -309,7 +317,7 @@ dataCapture.patch('/subject/:id', async (c) => {
        last_seen_location = COALESCE(?, last_seen_location),
        direction_of_travel = COALESCE(?, direction_of_travel),
        updated_at = datetime('now')
-     WHERE id = ?`,
+     WHERE id = ? AND call_id = ?`,
     body.located != null ? (body.located ? 1 : 0) : null,
     body.arrested != null ? (body.arrested ? 1 : 0) : null,
     body.disposition ?? null,
@@ -319,8 +327,9 @@ dataCapture.patch('/subject/:id', async (c) => {
     body.person_intel_id ?? null,
     body.last_seen_location ?? null,
     body.direction_of_travel ?? null,
-    subjectId
+    subjectId, callId
   );
+  if (result.meta.changes === 0) return c.json({ error: 'Subject not found on this call' }, 404);
   return c.json({ ok: true });
 });
 
@@ -388,20 +397,20 @@ dataCapture.post('/query', async (c) => {
   const personBinds: unknown[] = [];
 
   if (body.name) {
-    const n = `%${body.name.trim()}%`;
+    const n = `%${body.name.trim().slice(0, 48)}%`;
     personClauses.push(`(first_name || ' ' || last_name LIKE ? OR alias_nickname LIKE ? OR aliases LIKE ?)`);
     personBinds.push(n, n, n);
   }
-  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(`%${body.first_name}%`); }
-  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(`%${body.last_name}%`); }
+  if (body.first_name) { personClauses.push(`first_name LIKE ?`); personBinds.push(`%${String(body.first_name).slice(0, 48)}%`); }
+  if (body.last_name) { personClauses.push(`last_name LIKE ?`); personBinds.push(`%${String(body.last_name).slice(0, 48)}%`); }
   if (body.dob) { personClauses.push(`dob = ?`); personBinds.push(body.dob); }
   if (body.phone) {
     const ph = body.phone.replace(/\D/g, '');
     personClauses.push(`(REPLACE(REPLACE(REPLACE(phone,'-',''),'(',''),')','') LIKE ? OR REPLACE(REPLACE(REPLACE(phone_secondary,'-',''),'(',''),')','') LIKE ?)`);
     personBinds.push(`%${ph}%`, `%${ph}%`);
   }
-  if (body.email) { personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(`%${body.email}%`, `%${body.email}%`); }
-  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${body.address}%`); }
+  if (body.email) { const emailPat = `%${String(body.email).slice(0, 48)}%`; personClauses.push(`(email LIKE ? OR email_secondary LIKE ?)`); personBinds.push(emailPat, emailPat); }
+  if (body.address) { personClauses.push(`address LIKE ?`); personBinds.push(`%${String(body.address).slice(0, 48)}%`); }
   if (body.dl_number) { personClauses.push(`dl_number = ?`); personBinds.push(body.dl_number.toUpperCase()); }
 
   if (personClauses.length > 0) {
@@ -431,10 +440,10 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dl_number || body.dob || body.address) {
     const dlClauses: string[] = [];
     const dlBinds: unknown[] = [];
-    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { dlClauses.push(`full_name LIKE ?`); dlBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.dl_number) { dlClauses.push(`dl_number = ?`); dlBinds.push(body.dl_number.toUpperCase()); }
     if (body.dob) { dlClauses.push(`dob = ?`); dlBinds.push(body.dob); }
-    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(`%${body.address}%`); }
+    if (body.address) { dlClauses.push(`address LIKE ?`); dlBinds.push(`%${String(body.address).slice(0, 48)}%`); }
     try {
       const dlRows = await query(
         c.env.DB,
@@ -462,7 +471,7 @@ dataCapture.post('/query', async (c) => {
     }
     if (body.name) {
       vClauses.push(`registered_owner LIKE ?`);
-      vBinds.push(`%${body.name.trim()}%`);
+      vBinds.push(`%${body.name.trim().slice(0, 48)}%`);
     }
     try {
       const vRows = await query(
@@ -488,7 +497,7 @@ dataCapture.post('/query', async (c) => {
     const wBinds: unknown[] = [];
     if (body.name) {
       wClauses.push(`subject_name LIKE ?`);
-      wBinds.push(`%${body.name.trim()}%`);
+      wBinds.push(`%${body.name.trim().slice(0, 48)}%`);
     }
     if (body.dob) { wClauses.push(`subject_dob = ?`); wBinds.push(body.dob); }
     try {
@@ -513,9 +522,9 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.phone || body.email) {
     const sdClauses: string[] = [];
     const sdBinds: unknown[] = [];
-    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { sdClauses.push(`subject_name LIKE ?`); sdBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.phone) { sdClauses.push(`subject_phone LIKE ?`); sdBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${body.email}%`); }
+    if (body.email) { sdClauses.push(`subject_email LIKE ?`); sdBinds.push(`%${String(body.email).slice(0, 48)}%`); }
     try {
       const sdRows = await query(
         c.env.DB,
@@ -537,12 +546,11 @@ dataCapture.post('/query', async (c) => {
   if (body.name || body.dob || body.phone || body.plate || body.email) {
     const piClauses: string[] = [];
     const piBinds: unknown[] = [];
-    const seed: Record<string, string> = {};
-    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(`%${body.name.trim()}%`); }
+    if (body.name) { piClauses.push(`subject_name LIKE ?`); piBinds.push(`%${body.name.trim().slice(0, 48)}%`); }
     if (body.dob) { piClauses.push(`subject_dob = ?`); piBinds.push(body.dob); }
     // JSON seed search for phone/plate/email
     if (body.phone) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.phone.replace(/\D/g, '').slice(-7)}%`); }
-    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.email}%`); }
+    if (body.email) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${String(body.email).slice(0, 48)}%`); }
     if (body.plate) { piClauses.push(`subject_seed LIKE ?`); piBinds.push(`%${body.plate.toUpperCase()}%`); }
     try {
       const piRows = await query(
@@ -566,7 +574,7 @@ dataCapture.post('/query', async (c) => {
   const matchedPersonIds = (results.persons as any[]).map((p: any) => p.id);
   if (matchedPersonIds.length > 0) {
     try {
-      const callRows = await queryInChunks(
+      const callRowsRaw = await queryInChunks(
         c.env.DB,
         matchedPersonIds,
         (placeholders) =>
@@ -574,10 +582,11 @@ dataCapture.post('/query', async (c) => {
                   c.status, c.location_address, c.created_at, c.disposition
            FROM cfs_subjects s
            JOIN calls_for_service c ON c.id = s.call_id
-           WHERE s.person_id IN (${placeholders})
-           ORDER BY c.created_at DESC
-           LIMIT 50`
+           WHERE s.person_id IN (${placeholders})`
       );
+      const callRows = (callRowsRaw as any[])
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 50);
       results.call_history = callRows;
       if (callRows.length > 0) sourceTables.push('cfs_subjects');
     } catch (e) {
@@ -627,7 +636,7 @@ dataCapture.get('/query-log', async (c) => {
   const offset = Number(c.req.query('offset') ?? 0);
   const queriedBy = c.req.query('user_id');
 
-  let sql = `SELECT q.*, u.first_name || ' ' || u.last_name AS queried_by_name
+  let sql = `SELECT q.*, u.full_name AS queried_by_name
              FROM subject_query_log q
              LEFT JOIN users u ON u.id = q.queried_by`;
   const binds: unknown[] = [];
