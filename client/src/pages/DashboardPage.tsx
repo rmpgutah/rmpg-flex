@@ -1054,8 +1054,6 @@ export default function DashboardPage() {
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border))' }} />
-          {!isMobile && <RmpgLogo height={68} />}
-          {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200 select-none`}>
