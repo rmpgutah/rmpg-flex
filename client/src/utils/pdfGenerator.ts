@@ -15,7 +15,7 @@ import { toNum } from './sentinel';
 import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined, sectionPrefix } from './dispatchCodeParts';
-import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { loadSealBase64, loadLogoDarkBase64, loadLogoPrintBase64, loadLogoLightBase64, getCachedSealBase64, getCachedLogoPrint as getCachedLogoPrintFromAssets, applyLogoFadeToAllPages, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
@@ -612,6 +612,7 @@ function getPdfTextLineHeight(fontSize: number, readable = false): number {
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
+let cachedLogoPrint: string | null = null;
 
 // Active form key for footer form numbers
 let activeFormKey = '';
@@ -635,11 +636,21 @@ export async function loadPdfAssets(): Promise<void> {
   if (cachedLogoDark === null) {
     cachedLogoDark = await loadLogoDarkBase64() || '';
   }
+  if (cachedLogoPrint === null) {
+    cachedLogoPrint = await loadLogoPrintBase64() || '';
+  }
+  // Light/white logo — recolored silhouette for dark header bars in pdfFormHelpers
+  await loadLogoLightBase64();
 }
 
 /** Access cached dark logo (for record generators) */
 export function getCachedLogoDark(): string | null {
   return cachedLogoDark || null;
+}
+
+/** Access cached print-quality logo (BW/clean, for document headers) */
+export function getCachedLogoPrint(): string | null {
+  return cachedLogoPrint || null;
 }
 
 // ── Base Helpers ─────────────────────────────────────────────
@@ -5063,6 +5074,14 @@ export function finalizePoliceReport(
   doc: jsPDF,
   opts: PoliceReportFinalizeOptions = {},
 ): void {
+  // 0. Logo background fade — ghost brand mark centered behind all content.
+  //    Uses the print-quality (BW/clean) logo at ~6% opacity. Applied before
+  //    the text watermark so the watermark wins in z-order when both are used.
+  const printLogo = getCachedLogoPrintFromAssets();
+  if (printLogo) {
+    applyLogoFadeToAllPages(doc, printLogo);
+  }
+
   // 1. Watermark (goes under everything else)
   if (opts.watermark) {
     applyWatermarkToAllPages(doc, opts.watermark);
