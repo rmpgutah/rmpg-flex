@@ -720,6 +720,10 @@ export default function ServeReceiptPage() {
   }
 
   // ── Wizard steps ───────────────────────────────────────────
+  // Steps 1 and 3 require nothing from the signer — start the accessible progress
+  // announcement at 2 of 5 so it's not motionless through the first third of the form.
+  const sectionsDone = 2 + (step > 1 ? 1 : 0) + (step > 3 ? 1 : 0);
+
   const goBack = step > 1 ? () => setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5) : undefined;
   const goNext = () => {
     if (step < 5) setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5);
@@ -727,6 +731,9 @@ export default function ServeReceiptPage() {
   };
 
   return (
+    <>
+      {/* Screen-reader live region — announces step progress without relying on colour */}
+      <span role="status" className="sr-only">Step {sectionsDone} of 5 complete</span>
     <WizardShell
       currentStep={step}
       onBack={goBack}
@@ -833,5 +840,6 @@ export default function ServeReceiptPage() {
         />
       )}
     </WizardShell>
+    </>
   );
 }
