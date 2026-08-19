@@ -11,12 +11,16 @@
 // cache invalidation is automatic on rebuild.
 import sealUrl from '../assets/rmpg-seal.png?url';
 
+import type jsPDF from 'jspdf';
+
 // ── Module-level image cache ────────────────────────────────
 
 let sealBase64: string | null = null;
 let logoBase64: string | null = null;
 let logoDarkBase64: string | null = null;
 let logoLightBase64: string | null = null;
+let logoPrintBase64: string | null = null;   // BW/clean version for PDF headers on white paper
+let logoBlueDarkBase64: string | null = null; // Blue-on-dark for UI dark theme
 
 /**
  * Fetch the RMPG seal PNG, downscale to 128x128 for PDF embedding,
@@ -178,6 +182,22 @@ export async function loadLogoLightBase64(): Promise<string | null> {
 }
 
 /**
+ * Synchronous read of the cached light/white logo (recolored from RMPG Logo Dark).
+ * Returns null if `loadLogoLightBase64()` hasn't been awaited yet.
+ */
+export function getCachedLogoLight(): string | null {
+  return logoLightBase64;
+}
+
+/**
+ * Synchronous read of the cached print logo (BW/clean).
+ * Returns null if `loadLogoPrintBase64()` hasn't been awaited yet.
+ */
+export function getCachedLogoPrint(): string | null {
+  return logoPrintBase64;
+}
+
+/**
  * Synchronous read of whatever `loadSealBase64()` has already cached, or
  * `null` if it hasn't resolved yet. `drawNibrsHeader()` (pdfFormHelpers.ts)
  * is synchronous and can't `await` the loader itself, so callers that
@@ -188,12 +208,149 @@ export function getCachedSealBase64(): string | null {
   return sealBase64;
 }
 
+/**
+ * Fetch the print-quality RMPG logo — black transparent-background logo for
+ * clean letterhead on white paper and ghost watermarks. Prefers the canonical
+ * rmpg-logo-black.png (transparent bg, no white box artifact on PDF pages).
+ *
+ * Drop your logo files into client/public/:
+ *   rmpg-logo-black.png       — black logo, transparent bg (preferred)
+ *   rmpg-logo-bw.png          — BW logo, fallback
+ *   Logo Official.png         — legacy fallback
+ */
+export async function loadLogoPrintBase64(): Promise<string | null> {
+  if (logoPrintBase64) return logoPrintBase64;
+  const candidates = ['/rmpg-logo-black.png', '/rmpg-logo-bw.png', '/Logo Official.png', '/RMPG Logo Dark.png'];
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const w = 360;
+      const h = Math.round(w * (bmp.height / bmp.width));
+      const canvas = new OffscreenCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); continue; }
+      // No white bg fill — transparent-bg logo renders cleanly on white paper
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close();
+      const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(outBlob);
+      });
+      logoPrintBase64 = dataUrl;
+      return logoPrintBase64;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch the silver RMPG logo for use on dark-themed surfaces (navbar, NIBRS
+ * header band, dark panel headers). Transparent background — no white box.
+ *
+ * Drop your logo file into client/public/:
+ *   rmpg-logo-silver.png      — silver/gray logo, transparent bg (preferred)
+ *   rmpg-logo-blue-dark.png   — blue logo on transparent bg (fallback)
+ */
+export async function loadLogoBlueDarkBase64(): Promise<string | null> {
+  if (logoBlueDarkBase64) return logoBlueDarkBase64;
+  const candidates = ['/rmpg-logo-silver.png', '/rmpg-logo-blue-dark.png', '/rmpg flex.png', '/rmpg-logo.png'];
+  for (const src of candidates) {
+    try {
+      const res = await fetch(src);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const bmp = await createImageBitmap(blob);
+      const w = 360;
+      const h = Math.round(w * (bmp.height / bmp.width));
+      const canvas = new OffscreenCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); continue; }
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close();
+      const outBlob = await canvas.convertToBlob({ type: 'image/png' });
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(outBlob);
+      });
+      logoBlueDarkBase64 = dataUrl;
+      return logoBlueDarkBase64;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Draw a faint logo fade in the center of the current PDF page — a ghost
+ * brand mark used as a background element behind form content. The logo is
+ * rendered at ~8% opacity so it reads as watermark-level presence without
+ * competing with form fields. Call once per page after drawing all content
+ * (or before; jsPDF draws in z-order but the opacity keeps it subtle).
+ *
+ * @param doc - the jsPDF instance (current page is stamped)
+ * @param logoDataUrl - base64 data URL (loadLogoPrintBase64 recommended)
+ * @param opts.opacity - 0–1, default 0.06
+ * @param opts.widthMm - logo width in mm, default 100 (centered)
+ */
+export function drawLogoFadeBackground(
+  doc: jsPDF,
+  logoDataUrl: string,
+  opts: { opacity?: number; widthMm?: number } = {},
+): void {
+  const opacity = opts.opacity ?? 0.06;
+  const logoW = opts.widthMm ?? 100;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const logoX = (pageW - logoW) / 2;
+  const logoH = logoW * 0.33; // approximate 3:1 aspect for horizontal logo
+  const logoY = (pageH - logoH) / 2;
+
+  try {
+    // @ts-ignore jsPDF GState constructor not in community typedefs
+    doc.setGState(new doc.GState({ opacity }));
+    doc.addImage(logoDataUrl, 'PNG', logoX, logoY, logoW, logoH);
+    // @ts-ignore jsPDF GState constructor not in community typedefs
+    doc.setGState(new doc.GState({ opacity: 1.0 }));
+  } catch {
+    // Silently skip — bad image data should never crash a PDF generation
+  }
+}
+
+/**
+ * Apply a logo background fade to every page of a finalized PDF.
+ * Call this after all content is drawn, before save().
+ */
+export function applyLogoFadeToAllPages(
+  doc: jsPDF,
+  logoDataUrl: string,
+  opts: { opacity?: number; widthMm?: number } = {},
+): void {
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    drawLogoFadeBackground(doc, logoDataUrl, opts);
+  }
+}
+
 /** Clear cached images (for testing) */
 export function clearImageCache(): void {
   sealBase64 = null;
   logoBase64 = null;
   logoDarkBase64 = null;
   logoLightBase64 = null;
+  logoPrintBase64 = null;
+  logoBlueDarkBase64 = null;
 }
 
 // ── Form Number Constants ───────────────────────────────────

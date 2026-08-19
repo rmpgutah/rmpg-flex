@@ -8,7 +8,7 @@
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
 import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor, isEmailOrUrlPdfValue } from './pdfGenerator';
-import { getCachedSealBase64 } from './pdfAssets';
+import { getCachedSealBase64, getCachedLogoLight } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 import {
@@ -783,6 +783,19 @@ export function drawNibrsHeader(
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2;
   const textX = resolvedSeal ? sealX + sealSize + 4 : margin + 4;
+
+  // Horizontal logo — white silhouette placed at the right edge of the
+  // navy header bar. Provides a branded anchor opposite the text stack.
+  const lightLogo = getCachedLogoLight();
+  if (lightLogo) {
+    const logoW = 42;
+    const logoH = 12;
+    const logoX = margin + contentW - logoW - 2;
+    const logoY = y + (headerH - logoH) / 2;
+    try { doc.addImage(lightLogo, 'PNG', logoX, logoY, logoW, logoH); }
+    catch { /* skip if asset fails */ }
+  }
+
 
   if (config.stateIdentifier) {
     doc.setFont(FONT_FAMILY, 'normal');
