@@ -153,6 +153,32 @@ for (const m of ROUTE_REGISTRY) {
   app.route(m.prefix, m.router);
 }
 
+// ─── Client session event logger ─────────────────────────────
+// DesktopPage.tsx posts session-start / unlock events here (fire-and-forget).
+// Auth-gated so anonymous clients can't spam the error_log table.
+app.post('/api/errors', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ severity?: string; category?: string; message?: string; source?: string }>();
+    const userId = c.get('userId') as number | undefined;
+    await c.env.DB.prepare(
+      `INSERT INTO error_log (severity, category, message, details, trace_id, user_id, source_route, status_code, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
+    ).bind(
+      body.severity ?? 'info',
+      body.category ?? 'client',
+      body.message ?? '',
+      JSON.stringify({ source: body.source ?? 'desktop' }),
+      c.get('traceId') ?? null,
+      userId ?? null,
+      body.source ?? 'desktop',
+      200,
+    ).run();
+    return c.json({ ok: true });
+  } catch {
+    return c.json({ ok: false });
+  }
+});
+
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
@@ -231,7 +257,7 @@ export default {
   //   "0 */4 * * *"   every 4 h at :00         → warrant scan, dispatch anomalies, nudge sweep
   //   "* * * * *"     every minute              → serve attempt notifications, daily rebalance
   //   "*/30 * * * *"  every 30 min              → ServeManager job poller, email outbox drain + inbox poll
-  //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh
+  //   "0 3 1 * *"     1st of month 03:00 UTC    → NHTSA vPIC refresh + OFAC SDN sync
   //   "0 9 * * *"     nightly 09:00 UTC         → driver-performance rollup (trailing 3 days)
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     // ── Every 4 hours (UTC 00:00, 04:00, 08:00, 12:00, 16:00, 20:00) ──
@@ -728,6 +754,37 @@ export default {
             log.info('serve-routes revision sweep complete', { deleted: r.deleted, cutoff: r.cutoff }),
           ),
         ).catch((err) => log.error('serve-routes revision sweep failed', {}, err as Error)),
+      );
+    }
+
+    // ── Monthly 1st 03:00 UTC — OFAC SDN sync (piggybacks on NHTSA slot) ──
+    if (event.cron === '0 3 1 * *') {
+      ctx.waitUntil(
+        import('./utils/enrichment/ofacSync').then((m) =>
+          m.syncOfacSdn(env.DB).then((r) => {
+            log.info('[ofac-sync] complete', {
+              individualsFound: r.individualsFound,
+              rowsUpserted: r.rowsUpserted,
+              error: r.error,
+            });
+            if (r.error) {
+              logErrorToDb(env.DB, {
+                severity: 'error',
+                category: 'cron',
+                message: `OFAC SDN sync failed: ${r.error}`,
+                source: 'scheduled:ofac-sync',
+              }, ctx);
+            }
+          }).catch((err) => {
+            log.error('[ofac-sync] failed:', {}, err as Error);
+            logErrorToDb(env.DB, {
+              severity: 'error',
+              category: 'cron',
+              message: `OFAC SDN sync threw: ${err instanceof Error ? err.message : String(err)}`,
+              source: 'scheduled:ofac-sync',
+            }, ctx);
+          }),
+        ).catch(() => {}),
       );
     }
   },

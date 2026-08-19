@@ -153,7 +153,12 @@ gps.post('/', async (c) => {
     const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null; latitude: number | null; longitude: number | null; gps_updated_at: string | null }>(db,
       'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id, latitude, longitude, gps_updated_at FROM units WHERE officer_id = ? LIMIT 1', userId);
 
-    if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
+    if (!unit && !isTakeHome) {
+      // 200 (not 400) so the client queue drains cleanly instead of re-queuing and
+      // retrying every 5 s for the entire shift — mirrors the off-duty handling below.
+      log.info('[gps] dropped fixes from officer with no assigned unit', { userId });
+      return c.json({ accepted: 0, dropped: rawPoints.length, reason: 'no_unit' }, 200);
+    }
 
     // Privacy + data-integrity guard: drop pings from a non-take-home officer
     // whose unit is off-duty. iOS keeps the GpsTracker running until the user
