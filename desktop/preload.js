@@ -279,16 +279,17 @@ contextBridge.exposeInMainWorld('electron', {
   wifiDisconnect:   ()              => ipcRenderer.invoke('wifi:disconnect'),
 
   // ─── Device Capture Scanner ─────────────────────────────────
-  devicesScanArp:       ()    => ipcRenderer.invoke('devices:scan-arp'),
-  devicesScanBluetooth: ()    => ipcRenderer.invoke('devices:scan-bluetooth'),
-  devicesScanSsdp:      ()    => ipcRenderer.invoke('devices:scan-ssdp'),
-  devicesScanMdns:      ()    => ipcRenderer.invoke('devices:scan-mdns'),
-  devicesScanNetbios:   ()    => ipcRenderer.invoke('devices:scan-netbios'),
-  devicesScanAll:       ()    => ipcRenderer.invoke('devices:scan-all'),
-  devicesGetLog:        ()    => ipcRenderer.invoke('devices:get-log'),
-  devicesClearLog:      ()    => ipcRenderer.invoke('devices:clear-log'),
-  devicesDeleteEntry:   (id)  => ipcRenderer.invoke('devices:delete-entry', { id }),
-  devicesExportLog:     ()    => ipcRenderer.invoke('devices:export-log'),
+  devicesScanArp:        ()    => ipcRenderer.invoke('devices:scan-arp'),
+  devicesScanBluetooth:  ()    => ipcRenderer.invoke('devices:scan-bluetooth'),
+  devicesScanSsdp:       ()    => ipcRenderer.invoke('devices:scan-ssdp'),
+  devicesScanMdns:       ()    => ipcRenderer.invoke('devices:scan-mdns'),
+  devicesScanNetbios:    ()    => ipcRenderer.invoke('devices:scan-netbios'),
+  devicesScanAll:        ()    => ipcRenderer.invoke('devices:scan-all'),
+  devicesEnrichDevice:   (ip)  => ipcRenderer.invoke('devices:enrich-device', { ip }),
+  devicesGetLog:         ()    => ipcRenderer.invoke('devices:get-log'),
+  devicesClearLog:       ()    => ipcRenderer.invoke('devices:clear-log'),
+  devicesDeleteEntry:    (id)  => ipcRenderer.invoke('devices:delete-entry', { id }),
+  devicesExportLog:      ()    => ipcRenderer.invoke('devices:export-log'),
 
   // ─── Auth Session Bridge ────────────────────────────────
   // Called by AuthContext.tsx right after login/2FA/token-refresh so the

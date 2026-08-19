@@ -1,362 +1,589 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
-  Radio, Bluetooth, Wifi, Network, Globe, Server,
-  RefreshCw, Trash2, Download, ChevronDown, ChevronRight,
-  Activity, Shield, Clock, Copy, X,
+  Radio, Wifi, Bluetooth, Globe, Network, Server,
+  Printer, Tv, Speaker, Camera, Cpu, Gamepad2,
+  Router, Monitor, Smartphone, HelpCircle,
+  ScanLine, Trash2, Download, RefreshCw, ChevronDown, ChevronRight,
+  Shield, Zap, Antenna,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'overview',   label: 'Overview',       icon: Antenna },
+  { id: 'network',    label: 'Network (ARP)',   icon: Network },
+  { id: 'bluetooth',  label: 'Bluetooth',       icon: Bluetooth },
+  { id: 'ssdp',       label: 'UPnP / SSDP',    icon: Globe },
+  { id: 'mdns',       label: 'mDNS / Bonjour',  icon: Wifi },
+  { id: 'netbios',    label: 'NetBIOS',         icon: Server },
+  { id: 'history',    label: 'History',         icon: Shield },
+] as const;
+type TabId = typeof TABS[number]['id'];
 
-type ScanType = 'arp' | 'bluetooth' | 'ssdp' | 'mdns' | 'netbios' | 'full-sweep';
-
-interface CapturedDevice {
+interface MergedDevice {
   ip?: string | null;
   mac?: string | null;
   vendor?: string | null;
-  protocol?: string | null;
-  scanMethod?: string | null;
-  // ARP
-  type?: string | null;
-  interface?: string | null;
-  state?: string | null;
-  // Bluetooth
-  name?: string | null;
   manufacturer?: string | null;
+  name?: string | null;
+  deviceClass?: string | null;
+  protocols?: string[];
+  names?: string[];
+  services?: string[];
+  openPorts?: Record<string, string>;
+  friendlyName?: string | null;
+  hostname?: string | null;
+  ptrHostname?: string | null;
+  netbiosName?: string | null;
+  netbiosWorkgroup?: string | null;
+  netbiosUser?: string | null;
+  location?: string | null;
+  server?: string | null;
+  modelName?: string | null;
+  modelNumber?: string | null;
+  serialNumber?: string | null;
+  udn?: string | null;
+  st?: string | null;
+  cacheControl?: string | null;
+  btClass?: string | null;
   hardwareId?: string | null;
   status?: string | null;
-  // SSDP
-  location?: string | null;
-  usn?: string | null;
-  st?: string | null;
-  server?: string | null;
-  cacheControl?: string | null;
-  port?: number | null;
-  // mDNS
-  hostname?: string | null;
-  // NetBIOS
-  // (name already above)
+  interface?: string | null;
+  isNew?: boolean;
+  scanMethod?: string;
+  protocol?: string;
 }
 
 interface CaptureEntry {
   id: string;
   timestamp: string;
-  scanType: ScanType;
+  scanType: string;
   deviceCount: number;
-  devices: CapturedDevice[];
+  devices: MergedDevice[];
   method?: string;
   startTs?: string;
   protocols?: Record<string, string>;
-  raw?: string;
+  newDeviceCount?: number;
+  localIp?: string;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Device class → icon ───────────────────────────────────────────────────────
+function DeviceIcon({ cls, size = 14 }: { cls?: string | null; size?: number }) {
+  const s = { width: size, height: size, flexShrink: 0 as const };
+  switch (cls) {
+    case 'router':           return <Router style={s} className="text-blue-400" />;
+    case 'printer':          return <Printer style={s} className="text-yellow-400" />;
+    case 'smart-tv':         return <Tv style={s} className="text-purple-400" />;
+    case 'airplay':          return <Tv style={s} className="text-pink-400" />;
+    case 'speaker':          return <Speaker style={s} className="text-green-400" />;
+    case 'camera':           return <Camera style={s} className="text-red-400" />;
+    case 'gaming':           return <Gamepad2 style={s} className="text-orange-400" />;
+    case 'server':           return <Server style={s} className="text-cyan-400" />;
+    case 'desktop':          return <Monitor style={s} className="text-blue-300" />;
+    case 'iot':              return <Cpu style={s} className="text-teal-400" />;
+    case 'media-server':     return <Tv style={s} className="text-indigo-400" />;
+    case 'bluetooth-device': return <Bluetooth style={s} className="text-blue-500" />;
+    case 'mobile':           return <Smartphone style={s} className="text-emerald-400" />;
+    default:                 return <HelpCircle style={s} className="text-rmpg-500" />;
+  }
+}
 
-const SCAN_META: Record<ScanType, { label: string; icon: React.ElementType; color: string }> = {
-  'arp':        { label: 'ARP / NDP',   icon: Network,    color: 'var(--brand-400)' },
-  'bluetooth':  { label: 'Bluetooth',   icon: Bluetooth,  color: '#60a5fa' },
-  'ssdp':       { label: 'SSDP/UPnP',  icon: Globe,      color: '#a78bfa' },
-  'mdns':       { label: 'mDNS',        icon: Server,     color: '#34d399' },
-  'netbios':    { label: 'NetBIOS',     icon: Radio,      color: '#fb923c' },
-  'full-sweep': { label: 'Full Sweep',  icon: Activity,   color: 'var(--sev-warn)' },
+const PROTO_COLORS: Record<string, string> = {
+  ARP:          'bg-blue-900/60 text-blue-300',
+  'NDP/IPv6':   'bg-blue-800/60 text-blue-300',
+  Bluetooth:    'bg-indigo-900/60 text-indigo-300',
+  'SSDP/UPnP':  'bg-purple-900/60 text-purple-300',
+  SSDP:         'bg-purple-900/60 text-purple-300',
+  mDNS:         'bg-teal-900/60 text-teal-300',
+  NetBIOS:      'bg-amber-900/60 text-amber-300',
 };
-
-function fmtTs(ts: string) {
-  try { return new Date(ts).toLocaleString(); } catch { return ts; }
+function ProtoBadge({ proto }: { proto: string }) {
+  const color = PROTO_COLORS[proto] || 'bg-rmpg-800/60 text-rmpg-300';
+  return <span className={`px-1 py-px text-[9px] font-mono rounded ${color}`}>{proto}</span>;
 }
 
-function DeviceRow({ dev }: { dev: CapturedDevice }) {
-  const [open, setOpen] = useState(false);
-  const label = dev.name || dev.hostname || dev.ip || dev.usn || 'Unknown';
-  const sub   = [dev.vendor || dev.manufacturer, dev.mac, dev.ip].filter(Boolean).join('  ·  ');
-  const badge = dev.scanMethod || dev.protocol;
+function PortChip({ port, svc }: { port: string; svc: string }) {
+  return <span className="px-1 py-px text-[9px] font-mono rounded bg-green-900/50 text-green-300">{port}/{svc}</span>;
+}
 
-  const fields = Object.entries(dev).filter(([k, v]) =>
-    v !== null && v !== undefined && v !== '' && k !== 'scanMethod'
-  );
+function NewBadge() {
+  return <span className="px-1 py-px text-[9px] font-bold rounded bg-red-500/20 text-red-400 border border-red-500/40">NEW</span>;
+}
 
+function TH({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left' }}
-      >
-        {open
-          ? <ChevronDown  className="w-2.5 h-2.5" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-          : <ChevronRight className="w-2.5 h-2.5" style={{ color: 'var(--border-subtle)',  flexShrink: 0 }} />
-        }
-        <div style={{ flexGrow: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
-          {sub && <div style={{ fontSize: 8, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{sub}</div>}
-        </div>
-        {badge && (
-          <span style={{ fontSize: 8, padding: '1px 5px', background: 'rgba(var(--brand-400-rgb,96 165 250)/0.15)', color: 'var(--brand-400)', flexShrink: 0, border: '1px solid var(--border-subtle)' }}>
-            {badge}
-          </span>
-        )}
-      </button>
+    <th className={`px-2 py-1.5 text-left text-[10px] font-semibold text-[color:var(--panel-header-color)] border-b border-rmpg-700/50 whitespace-nowrap ${className}`}>
+      {children}
+    </th>
+  );
+}
+function TD({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-2 py-1 text-[11px] text-rmpg-200 align-top ${className}`}>{children}</td>;
+}
+
+// ── Expandable device row (overview + network) ────────────────────────────────
+function ExpandableRow({ d }: { d: MergedDevice }) {
+  const [open, setOpen] = useState(false);
+  const ports = Object.entries(d.openPorts || {});
+  return (
+    <>
+      <tr className="border-b border-rmpg-800/30 hover:bg-surface-raised/20 transition-colors cursor-pointer" onClick={() => setOpen(o => !o)}>
+        <TD>
+          <div className="flex items-center gap-1.5">
+            {open ? <ChevronDown size={10} className="text-rmpg-500" /> : <ChevronRight size={10} className="text-rmpg-500" />}
+            <DeviceIcon cls={d.deviceClass} size={12} />
+            <span className="font-medium text-rmpg-100">{d.name || '—'}</span>
+            {d.isNew && <NewBadge />}
+          </div>
+        </TD>
+        <TD><code className="font-mono text-[10px]">{d.ip || '—'}</code></TD>
+        <TD><code className="font-mono text-[10px]">{d.mac || '—'}</code></TD>
+        <TD>{d.vendor || d.manufacturer || '—'}</TD>
+        <TD>{d.hostname || d.ptrHostname || '—'}</TD>
+        <TD>{d.netbiosName || '—'}</TD>
+        <TD>
+          <div className="flex flex-wrap gap-0.5">
+            {ports.slice(0, 5).map(([p, s]) => <PortChip key={p} port={p} svc={s} />)}
+            {ports.length > 5 && <span className="text-[9px] text-rmpg-500">+{ports.length - 5}</span>}
+          </div>
+        </TD>
+        <TD>{d.interface || '—'}</TD>
+      </tr>
       {open && (
-        <div style={{ padding: '4px 24px 8px', display: 'flex', flexDirection: 'column', gap: 2, background: 'var(--surface-sunken)' }}>
-          {fields.map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-              <span style={{ fontSize: 8, color: 'var(--field-label-color)', flexShrink: 0, minWidth: 80 }}>{k}</span>
-              <span style={{ fontSize: 8, color: 'var(--text-primary)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{String(v)}</span>
+        <tr className="bg-surface-sunken/30 border-b border-rmpg-800/40">
+          <td colSpan={8} className="px-6 py-2">
+            <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-[10px]">
+              {d.friendlyName     && <><span className="text-[color:var(--field-label-color)]">Friendly Name</span><span className="text-rmpg-200">{d.friendlyName}</span></>}
+              {d.modelName        && <><span className="text-[color:var(--field-label-color)]">Model</span><span className="text-rmpg-200">{d.modelName} {d.modelNumber || ''}</span></>}
+              {d.serialNumber     && <><span className="text-[color:var(--field-label-color)]">Serial</span><span className="text-rmpg-200">{d.serialNumber}</span></>}
+              {d.netbiosWorkgroup && <><span className="text-[color:var(--field-label-color)]">Workgroup</span><span className="text-amber-300">{d.netbiosWorkgroup}</span></>}
+              {d.netbiosUser      && <><span className="text-[color:var(--field-label-color)]">Logged-in User</span><span className="text-green-300">{d.netbiosUser}</span></>}
+              {(d.names  || []).length > 0 && <><span className="text-[color:var(--field-label-color)]">All Names</span><span className="text-rmpg-300 break-all">{(d.names || []).join(' · ')}</span></>}
+              {(d.services || []).length > 0 && <><span className="text-[color:var(--field-label-color)]">mDNS Services</span><span className="text-teal-300 break-all">{(d.services || []).join(' · ')}</span></>}
+              {ports.length > 0  && <><span className="text-[color:var(--field-label-color)]">Open Ports</span><span className="text-green-300">{ports.map(([p, s]) => `${p}/${s}`).join(', ')}</span></>}
+              {d.location        && <><span className="text-[color:var(--field-label-color)]">SSDP Location</span><span className="text-rmpg-400 break-all text-[9px]">{d.location}</span></>}
+              {d.udn             && <><span className="text-[color:var(--field-label-color)]">UDN</span><span className="text-rmpg-400 text-[9px]">{d.udn}</span></>}
+              {(d.protocols || []).length > 0 && (
+                <><span className="text-[color:var(--field-label-color)]">Protocols</span>
+                  <div className="flex flex-wrap gap-1">{(d.protocols || []).map(p => <ProtoBadge key={p} proto={p} />)}</div>
+                </>
+              )}
             </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ── Per-protocol tables ───────────────────────────────────────────────────────
+function Empty({ msg }: { msg: string }) {
+  return <div className="flex items-center justify-center py-10 text-[11px] text-rmpg-500"><Radio size={14} className="mr-2 opacity-40" />{msg}</div>;
+}
+
+function OverviewTable({ devices }: { devices: MergedDevice[] }) {
+  if (!devices.length) return <Empty msg="No devices in this scan" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Device</TH><TH>IP Address</TH><TH>MAC Address</TH><TH>Vendor</TH>
+          <TH>Hostname</TH><TH>NetBIOS Name</TH><TH>Open Ports</TH><TH>Interface</TH>
+        </tr></thead>
+        <tbody>{devices.map((d, i) => <ExpandableRow key={d.mac || d.ip || i} d={d} />)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function NetworkTable({ devices }: { devices: MergedDevice[] }) {
+  const net = devices.filter(d => (d.protocols || [d.protocol]).some((p: any) => p === 'ARP' || p === 'NDP/IPv6'));
+  if (!net.length) return <Empty msg="No network neighbors detected — run ARP scan or Full Sweep" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Device</TH><TH>IP Address</TH><TH>MAC Address</TH><TH>Vendor / OUI</TH>
+          <TH>Hostname (PTR)</TH><TH>NetBIOS Name</TH><TH>Open Ports</TH><TH>Interface</TH>
+        </tr></thead>
+        <tbody>{net.map((d, i) => <ExpandableRow key={d.mac || d.ip || i} d={d} />)}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function BluetoothTable({ devices }: { devices: MergedDevice[] }) {
+  const bt = devices.filter(d => (d.protocols || [d.protocol]).some((p: any) => p === 'Bluetooth'));
+  if (!bt.length) return <Empty msg="No Bluetooth devices detected — run Bluetooth scan or Full Sweep" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Device Name</TH><TH>Type</TH><TH>Manufacturer</TH><TH>MAC</TH>
+          <TH>BT Class</TH><TH>Hardware ID</TH><TH>Status</TH>
+        </tr></thead>
+        <tbody>
+          {bt.map((d, i) => (
+            <tr key={d.mac || d.hardwareId || i} className="border-b border-rmpg-800/30 hover:bg-surface-raised/20 transition-colors">
+              <TD><div className="flex items-center gap-1.5"><DeviceIcon cls={d.deviceClass} size={12} /><span className="font-medium text-rmpg-100">{d.name || d.friendlyName || 'Unknown'}</span>{d.isNew && <NewBadge />}</div></TD>
+              <TD>{d.btClass || 'Classic'}</TD>
+              <TD>{d.manufacturer || d.vendor || '—'}</TD>
+              <TD><code className="font-mono text-[10px] text-rmpg-300">{d.mac || '—'}</code></TD>
+              <TD>{d.btClass || '—'}</TD>
+              <TD><code className="font-mono text-[9px] text-rmpg-400 break-all">{(d.hardwareId || '').slice(0, 50) || '—'}</code></TD>
+              <TD><span className={`px-1 py-px text-[9px] rounded ${d.status === 'OK' ? 'bg-green-900/50 text-green-400' : 'bg-rmpg-800/50 text-rmpg-400'}`}>{d.status || '—'}</span></TD>
+            </tr>
           ))}
-        </div>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function EntryCard({ entry, onDelete }: { entry: CaptureEntry; onDelete: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const meta = SCAN_META[entry.scanType] ?? SCAN_META['full-sweep'];
-  const Icon = meta.icon;
-
+function SsdpTable({ devices }: { devices: MergedDevice[] }) {
+  const ssdp = devices.filter(d => (d.protocols || [d.protocol]).some((p: any) => p === 'SSDP/UPnP' || p === 'SSDP'));
+  if (!ssdp.length) return <Empty msg="No UPnP / SSDP devices detected — run SSDP scan or Full Sweep" />;
   return (
-    <div style={{ border: '1px solid var(--border-subtle)', marginBottom: 6 }}>
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 8px', background: 'var(--surface-raised)', cursor: 'pointer' }}
-        onClick={() => setOpen(o => !o)}
-      >
-        <Icon className="w-3 h-3" style={{ color: meta.color, flexShrink: 0 }} />
-        <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-primary)', flexGrow: 1 }}>{meta.label}</span>
-        <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>{entry.deviceCount} device{entry.deviceCount !== 1 ? 's' : ''}</span>
-        <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{fmtTs(entry.timestamp)}</span>
-        <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }} aria-label="Delete entry"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', flexShrink: 0 }}>
-          <X className="w-2.5 h-2.5" style={{ color: 'var(--sev-critical)' }} />
-        </button>
-        {open
-          ? <ChevronDown  className="w-3 h-3" style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-          : <ChevronRight className="w-3 h-3" style={{ color: 'var(--border-subtle)',  flexShrink: 0 }} />
-        }
-      </div>
-
-      {open && (
-        <div>
-          {/* Meta info */}
-          {entry.method && (
-            <div style={{ padding: '4px 8px', fontSize: 8, color: 'var(--text-muted)', borderBottom: '1px solid var(--border-subtle)' }}>
-              <Shield className="w-2.5 h-2.5" style={{ display: 'inline', marginRight: 4, color: 'var(--field-label-color)' }} />
-              {entry.method}
-            </div>
-          )}
-          {entry.protocols && (
-            <div style={{ padding: '3px 8px', display: 'flex', gap: 8, flexWrap: 'wrap', borderBottom: '1px solid var(--border-subtle)' }}>
-              {Object.entries(entry.protocols).map(([proto, status]) => (
-                <span key={proto} style={{ fontSize: 7, color: status === 'fulfilled' ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>
-                  {proto}: {status === 'fulfilled' ? '✓' : '✗'}
-                </span>
-              ))}
-            </div>
-          )}
-          {/* Device list */}
-          {entry.devices.length > 0
-            ? entry.devices.map((d, i) => <DeviceRow key={i} dev={d} />)
-            : <div style={{ padding: '6px 8px', fontSize: 9, color: 'var(--text-muted)' }}>No devices captured.</div>
-          }
-        </div>
-      )}
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Friendly Name</TH><TH>IP</TH><TH>Manufacturer</TH><TH>Model</TH>
+          <TH>Serial</TH><TH>Service Type</TH><TH>Cache-Control</TH><TH>Server String</TH>
+        </tr></thead>
+        <tbody>
+          {ssdp.map((d, i) => (
+            <tr key={d.udn || d.location || d.ip || i} className="border-b border-rmpg-800/30 hover:bg-surface-raised/20 transition-colors">
+              <TD><div className="flex items-center gap-1.5"><DeviceIcon cls={d.deviceClass} size={12} /><span className="font-medium text-rmpg-100">{d.friendlyName || d.name || '—'}</span>{d.isNew && <NewBadge />}</div></TD>
+              <TD><code className="font-mono text-[10px]">{d.ip || '—'}</code></TD>
+              <TD>{d.manufacturer || '—'}</TD>
+              <TD>{d.modelName || '—'}{d.modelNumber ? ` (${d.modelNumber})` : ''}</TD>
+              <TD><code className="font-mono text-[9px] text-rmpg-400">{d.serialNumber || '—'}</code></TD>
+              <TD className="max-w-[180px]"><span className="break-all text-[9px] text-rmpg-400">{d.st || '—'}</span></TD>
+              <TD>{d.cacheControl || '—'}</TD>
+              <TD className="max-w-[160px]"><span className="break-all text-[9px] text-rmpg-400">{d.server || '—'}</span></TD>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  );
+}
+
+function MdnsTable({ devices }: { devices: MergedDevice[] }) {
+  const mdns = devices.filter(d => (d.protocols || [d.protocol]).some((p: any) => p === 'mDNS'));
+  if (!mdns.length) return <Empty msg="No mDNS / Bonjour devices detected — run mDNS scan or Full Sweep" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Instance Name</TH><TH>IP</TH><TH>Hostname (.local)</TH><TH>Services Advertised</TH><TH>All Names</TH>
+        </tr></thead>
+        <tbody>
+          {mdns.map((d, i) => (
+            <tr key={d.ip || i} className="border-b border-rmpg-800/30 hover:bg-surface-raised/20 transition-colors">
+              <TD><div className="flex items-center gap-1.5"><DeviceIcon cls={d.deviceClass} size={12} /><span className="font-medium text-rmpg-100">{d.name || d.hostname || '—'}</span>{d.isNew && <NewBadge />}</div></TD>
+              <TD><code className="font-mono text-[10px]">{d.ip || '—'}</code></TD>
+              <TD><code className="font-mono text-[10px] text-teal-300">{d.hostname || '—'}</code></TD>
+              <TD><div className="flex flex-wrap gap-1">{(d.services || []).slice(0, 8).map(s => <span key={s} className="px-1 py-px text-[9px] rounded bg-teal-900/40 text-teal-300 font-mono">{s}</span>)}</div></TD>
+              <TD><div className="flex flex-wrap gap-1">{(d.names || []).slice(0, 6).map(n => <span key={n} className="text-[9px] text-rmpg-400 font-mono">{n}</span>)}</div></TD>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function NetbiosTable({ devices }: { devices: MergedDevice[] }) {
+  const nb = devices.filter(d => (d.protocols || [d.protocol]).some((p: any) => p === 'NetBIOS'));
+  if (!nb.length) return <Empty msg="No NetBIOS hosts detected — run NetBIOS scan or Full Sweep" />;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[11px]">
+        <thead><tr className="bg-surface-raised/40">
+          <TH>Computer Name</TH><TH>IP Address</TH><TH>Workgroup / Domain</TH>
+          <TH>Logged-in User</TH><TH>MAC</TH><TH>Vendor</TH>
+        </tr></thead>
+        <tbody>
+          {nb.map((d, i) => (
+            <tr key={d.ip || i} className="border-b border-rmpg-800/30 hover:bg-surface-raised/20 transition-colors">
+              <TD><div className="flex items-center gap-1.5"><DeviceIcon cls={d.deviceClass} size={12} /><span className="font-medium text-rmpg-100">{d.netbiosName || d.name || '—'}</span>{d.isNew && <NewBadge />}</div></TD>
+              <TD><code className="font-mono text-[10px]">{d.ip || '—'}</code></TD>
+              <TD><span className="text-amber-300 font-medium">{d.netbiosWorkgroup || '—'}</span></TD>
+              <TD><span className="text-green-300">{d.netbiosUser || '—'}</span></TD>
+              <TD><code className="font-mono text-[10px]">{d.mac || '—'}</code></TD>
+              <TD>{d.vendor || '—'}</TD>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── History accordion ─────────────────────────────────────────────────────────
+function HistoryTable({ log, onDelete }: { log: CaptureEntry[]; onDelete: (id: string) => void }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  if (!log.length) return <Empty msg="No capture history yet — run a scan first" />;
+  return (
+    <div className="space-y-1">
+      {log.map(entry => (
+        <div key={entry.id} className="border border-rmpg-700/40 rounded bg-surface-raised/10">
+          <button
+            type="button"
+            onClick={() => setExpanded(e => e === entry.id ? null : entry.id)}
+            className="w-full flex items-center justify-between px-3 py-1.5 text-left hover:bg-surface-raised/20 rounded transition-colors"
+          >
+            <div className="flex items-center gap-2 text-[11px]">
+              {expanded === entry.id ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              <span className="text-rmpg-400 font-mono">{new Date(entry.timestamp).toLocaleString()}</span>
+              <span className="text-[color:var(--field-label-color)] font-semibold uppercase text-[9px]">{entry.scanType}</span>
+              <span className="text-rmpg-200">{entry.deviceCount} device{entry.deviceCount !== 1 ? 's' : ''}</span>
+              {entry.newDeviceCount ? <span className="text-red-400 text-[9px]">{entry.newDeviceCount} new</span> : null}
+            </div>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onDelete(entry.id); }}
+              className="text-rmpg-600 hover:text-red-400 transition-colors p-0.5 rounded"
+              aria-label="Delete entry"
+            >
+              <Trash2 size={10} />
+            </button>
+          </button>
+          {expanded === entry.id && (
+            <div className="px-3 pb-2 border-t border-rmpg-800/30">
+              <div className="text-[9px] text-rmpg-500 mb-1">{entry.method}</div>
+              <OverviewTable devices={entry.devices} />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Scan button ───────────────────────────────────────────────────────────────
+function ScanBtn({ label, icon: Icon, onClick, loading, active }: { label: string; icon: React.ElementType; onClick: () => void; loading?: boolean; active?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-medium transition-colors border ${
+        active
+          ? 'bg-blue-600/30 border-blue-500/50 text-blue-200'
+          : 'bg-surface-raised/30 border-rmpg-700/40 text-rmpg-300 hover:bg-surface-raised/60 hover:text-rmpg-100'
+      } disabled:opacity-50 disabled:cursor-not-allowed`}
+    >
+      {loading ? <RefreshCw size={10} className="animate-spin" /> : <Icon size={10} />}
+      {label}
+    </button>
   );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-
-const SCAN_BUTTONS: { type: ScanType; label: string; invoke: string }[] = [
-  { type: 'full-sweep', label: 'Full Sweep',  invoke: 'devicesScanAll'       },
-  { type: 'arp',        label: 'ARP / NDP',   invoke: 'devicesScanArp'       },
-  { type: 'bluetooth',  label: 'Bluetooth',   invoke: 'devicesScanBluetooth' },
-  { type: 'ssdp',       label: 'SSDP/UPnP',  invoke: 'devicesScanSsdp'      },
-  { type: 'mdns',       label: 'mDNS',        invoke: 'devicesScanMdns'      },
-  { type: 'netbios',    label: 'NetBIOS',     invoke: 'devicesScanNetbios'   },
-];
-
 export default function DeviceScannerPage() {
-  const el = (window as any).electron as Record<string, (...a: any[]) => Promise<any>> | undefined;
+  const [tab, setTab]            = useState<TabId>('overview');
+  const [loading, setLoading]    = useState<string | null>(null);
+  const [latestEntry, setLatest] = useState<CaptureEntry | null>(null);
+  const [log, setLog]            = useState<CaptureEntry[]>([]);
+  const [logLoaded, setLogLoaded]= useState(false);
+  const [statusMsg, setStatus]   = useState<string | null>(null);
+  const electron                 = (window as any).electron;
+  const isElectron               = !!electron;
+  const statusTimer              = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initRef                  = useRef(false);
 
-  const [log,         setLog]         = useState<CaptureEntry[]>([]);
-  const [scanning,    setScanning]    = useState<ScanType | null>(null);
-  const [statusMsg,   setStatusMsg]   = useState<string | null>(null);
-  const [autoInterval,setAutoInterval]= useState<number>(0); // 0 = off
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const loadLog = useCallback(async () => {
-    if (!el?.devicesGetLog) return;
-    try {
-      const res = await el.devicesGetLog();
-      if (res.ok) setLog(res.log);
-    } catch {}
-  }, [el]);
-
-  useEffect(() => { loadLog(); }, [loadLog]);
-
-  // Auto-scan interval
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (autoInterval <= 0) return;
-    intervalRef.current = setInterval(() => runScan('full-sweep'), autoInterval * 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [autoInterval]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const runScan = useCallback(async (type: ScanType) => {
-    const btn = SCAN_BUTTONS.find(b => b.type === type);
-    if (!btn || !el?.[btn.invoke] || scanning) return;
-    setScanning(type);
-    setStatusMsg(null);
-    try {
-      const res = await el[btn.invoke]();
-      if (res.ok) {
-        setLog(prev => [res.entry, ...prev.filter(e => e.id !== res.entry.id)]);
-        setStatusMsg(`${SCAN_META[type].label}: ${res.entry.deviceCount} device${res.entry.deviceCount !== 1 ? 's' : ''} captured`);
-      } else {
-        setStatusMsg(`Scan failed: ${res.reason ?? 'unknown'}`);
-      }
-    } catch (e: any) {
-      setStatusMsg('Error: ' + (e?.message ?? 'unknown'));
-    } finally {
-      setScanning(null);
-    }
-  }, [el, scanning]);
-
-  const handleDelete = useCallback(async (id: string) => {
-    if (!el?.devicesDeleteEntry) return;
-    await el.devicesDeleteEntry(id);
-    setLog(prev => prev.filter(e => e.id !== id));
-  }, [el]);
-
-  const handleClear = useCallback(async () => {
-    if (!el?.devicesClearLog) return;
-    await el.devicesClearLog();
-    setLog([]);
-    setStatusMsg('Log cleared.');
-  }, [el]);
-
-  const handleExport = useCallback(async () => {
-    if (!el?.devicesExportLog) return;
-    const res = await el.devicesExportLog();
-    setStatusMsg(res.ok ? `Exported to ${res.path}` : `Export failed: ${res.reason}`);
-  }, [el]);
-
-  const copyEntry = useCallback((entry: CaptureEntry) => {
-    navigator.clipboard?.writeText(JSON.stringify(entry, null, 2)).catch(() => {});
+  const flash = useCallback((msg: string) => {
+    setStatus(msg);
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    statusTimer.current = setTimeout(() => setStatus(null), 4000);
   }, []);
 
-  const totalDevices = log.reduce((acc, e) => acc + e.deviceCount, 0);
+  // Load log once on mount
+  if (!initRef.current && isElectron && !logLoaded) {
+    initRef.current = true;
+    electron.devicesGetLog().then((res: any) => {
+      if (res?.ok) { setLog(res.log || []); if (res.log?.[0]) setLatest(res.log[0]); }
+      setLogLoaded(true);
+    }).catch(() => setLogLoaded(true));
+  }
+
+  const runScan = useCallback(async (type: string, fn: () => Promise<any>) => {
+    if (!isElectron) return;
+    setLoading(type);
+    try {
+      const res = await fn();
+      if (res?.ok && res.entry) {
+        setLatest(res.entry);
+        setLog(prev => [res.entry, ...prev]);
+        const nc = res.newDeviceCount;
+        flash(`${res.entry.scanType.toUpperCase()} scan complete — ${res.entry.deviceCount} device${res.entry.deviceCount !== 1 ? 's' : ''} captured${nc ? `, ${nc} NEW` : ''}`);
+      } else {
+        flash(`Scan failed: ${res?.reason || 'unknown error'}`);
+      }
+    } catch (e: any) {
+      flash(`Error: ${e.message}`);
+    } finally {
+      setLoading(null);
+    }
+  }, [isElectron, flash]);
+
+  const handleExport = useCallback(async () => {
+    if (!isElectron) return;
+    const res = await electron.devicesExportLog();
+    if (res?.ok) flash(`Exported → ${res.path}`);
+    else if (!res?.reason?.includes('cancel')) flash('Export failed');
+  }, [isElectron, electron, flash]);
+
+  const handleClear = useCallback(async () => {
+    if (!isElectron) return;
+    await electron.devicesClearLog();
+    setLog([]); setLatest(null);
+    flash('Capture log cleared');
+  }, [isElectron, electron, flash]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!isElectron) return;
+    await electron.devicesDeleteEntry(id);
+    setLog(prev => prev.filter(e => e.id !== id));
+    if (latestEntry?.id === id) setLatest(null);
+  }, [isElectron, electron, latestEntry]);
+
+  const latestDevices: MergedDevice[] = latestEntry?.devices || [];
+  const newCount = latestDevices.filter(d => d.isNew).length;
+
+  // Tab device counts
+  const PROTO_MAP: Record<string, string[]> = {
+    network:   ['ARP','NDP/IPv6'],
+    bluetooth: ['Bluetooth'],
+    ssdp:      ['SSDP/UPnP','SSDP'],
+    mdns:      ['mDNS'],
+    netbios:   ['NetBIOS'],
+  };
+
+  function tabCount(tid: string): number | null {
+    if (tid === 'overview') return latestDevices.length || null;
+    if (tid === 'history')  return log.length || null;
+    const protos = PROTO_MAP[tid];
+    if (!protos || !latestDevices.length) return null;
+    const n = latestDevices.filter(d => (d.protocols || [d.protocol]).some((p: any) => protos.includes(p))).length;
+    return n || null;
+  }
 
   return (
-    <div className="p-3 space-y-3" style={{ maxWidth: 900 }}>
-      <PanelTitleBar title="DEVICE CAPTURE SCANNER" icon={Radio} />
-
-      {/* Scan controls */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-        {SCAN_BUTTONS.map(btn => {
-          const meta = SCAN_META[btn.type];
-          const Icon = meta.icon;
-          const isActive = scanning === btn.type;
-          return (
-            <button
-              key={btn.type}
-              type="button"
-              disabled={!!scanning}
-              onClick={() => runScan(btn.type)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                fontSize: 9, padding: '4px 10px',
-                background: btn.type === 'full-sweep' ? (isActive ? 'var(--brand-400)' : 'rgba(var(--brand-400-rgb,96 165 250)/0.15)') : 'var(--surface-raised)',
-                border: `1px solid ${isActive ? meta.color : 'var(--border-subtle)'}`,
-                color: isActive ? '#fff' : 'var(--text-primary)',
-                cursor: scanning ? 'default' : 'pointer',
-                fontWeight: btn.type === 'full-sweep' ? 700 : 400,
-              }}
-            >
-              {isActive
-                ? <RefreshCw className="w-2.5 h-2.5" style={{ animation: 'spin 1s linear infinite' }} />
-                : <Icon className="w-2.5 h-2.5" style={{ color: isActive ? '#fff' : meta.color }} />
-              }
-              {btn.label}
-            </button>
-          );
-        })}
-
-        {/* Auto-scan interval */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-          <Clock className="w-3 h-3" style={{ color: 'var(--text-secondary)' }} />
-          <span style={{ fontSize: 9, color: 'var(--text-secondary)' }}>Auto:</span>
-          <select
-            value={autoInterval}
-            onChange={e => setAutoInterval(Number(e.target.value))}
-            style={{ fontSize: 9, padding: '2px 4px', background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }}
-          >
-            <option value={0}>Off</option>
-            <option value={30}>30 s</option>
-            <option value={60}>1 min</option>
-            <option value={300}>5 min</option>
-            <option value={600}>10 min</option>
-          </select>
+    <div className="h-full flex flex-col bg-surface-base text-rmpg-100 overflow-hidden" style={{ fontSize: '11px' }}>
+      {/* Header */}
+      <div className="flex-shrink-0 border-b border-rmpg-700/50 bg-surface-raised/20">
+        <div className="px-4 py-2">
+          <PanelTitleBar title="RADAR360 — PASSIVE DEVICE CAPTURE" icon={Antenna} />
         </div>
-      </div>
 
-      {/* Status */}
-      {statusMsg && (
-        <div style={{ fontSize: 9, color: 'var(--sev-warn)', padding: '3px 0' }}>{statusMsg}</div>
-      )}
-
-      {/* Log header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--field-label-color)' }}>
-          CAPTURE LOG — {log.length} scan{log.length !== 1 ? 's' : ''} · {totalDevices} total devices
-        </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button type="button" onClick={handleExport} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, padding: '2px 8px', background: 'none', border: '1px solid var(--border-subtle)', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-            <Download className="w-2.5 h-2.5" /> Export JSON
+        {/* Scan controls */}
+        <div className="px-4 pb-2 flex flex-wrap items-center gap-1.5">
+          <ScanBtn label="Full Sweep" icon={ScanLine}
+            onClick={() => runScan('full', () => electron.devicesScanAll())}
+            loading={loading === 'full'} active={loading === 'full'} />
+          <div className="w-px h-4 bg-rmpg-700/50" />
+          <ScanBtn label="ARP / NDP" icon={Network}
+            onClick={() => runScan('arp', () => electron.devicesScanArp())}
+            loading={loading === 'arp'} />
+          <ScanBtn label="Bluetooth" icon={Bluetooth}
+            onClick={() => runScan('bt', () => electron.devicesScanBluetooth())}
+            loading={loading === 'bt'} />
+          <ScanBtn label="UPnP / SSDP" icon={Globe}
+            onClick={() => runScan('ssdp', () => electron.devicesScanSsdp())}
+            loading={loading === 'ssdp'} />
+          <ScanBtn label="mDNS" icon={Wifi}
+            onClick={() => runScan('mdns', () => electron.devicesScanMdns())}
+            loading={loading === 'mdns'} />
+          <ScanBtn label="NetBIOS" icon={Server}
+            onClick={() => runScan('nb', () => electron.devicesScanNetbios())}
+            loading={loading === 'nb'} />
+          <div className="flex-1" />
+          <button type="button" onClick={handleExport} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-rmpg-400 hover:text-rmpg-200 transition-colors" aria-label="Export log">
+            <Download size={10} className="mr-0.5" />Export
           </button>
-          <button type="button" onClick={handleClear} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, padding: '2px 8px', background: 'none', border: '1px solid var(--border-subtle)', cursor: 'pointer', color: 'var(--sev-critical)' }}>
-            <Trash2 className="w-2.5 h-2.5" /> Clear All
+          <button type="button" onClick={handleClear} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-red-500 hover:text-red-300 transition-colors" aria-label="Clear log">
+            <Trash2 size={10} className="mr-0.5" />Clear
           </button>
         </div>
-      </div>
 
-      {/* Log entries */}
-      <div>
-        {log.length === 0 ? (
-          <div style={{ padding: '24px 0', textAlign: 'center', fontSize: 10, color: 'var(--text-muted)' }}>
-            No captures yet. Run a scan to populate the log.
+        {/* Status bar */}
+        {(statusMsg || latestEntry) && (
+          <div className="px-4 pb-1.5 flex items-center gap-3 text-[10px]">
+            {statusMsg && <span className="text-blue-300">{statusMsg}</span>}
+            {latestEntry && !statusMsg && (
+              <>
+                <span className="text-rmpg-500">Last scan: {new Date(latestEntry.timestamp).toLocaleTimeString()}</span>
+                <span className="text-rmpg-300">{latestDevices.length} devices</span>
+                {newCount > 0 && <span className="text-red-400 font-semibold">{newCount} NEW</span>}
+                {latestEntry.localIp && <span className="text-rmpg-600 font-mono">{latestEntry.localIp}</span>}
+                <span className="text-rmpg-700 text-[9px]">{latestEntry.method}</span>
+              </>
+            )}
           </div>
-        ) : (
-          log.map(entry => (
-            <div key={entry.id} style={{ position: 'relative' }}>
-              <button
-                type="button"
-                onClick={() => copyEntry(entry)}
-                title="Copy entry JSON"
-                style={{ position: 'absolute', top: 6, right: 32, background: 'none', border: 'none', cursor: 'pointer', padding: 2, zIndex: 1 }}
-              >
-                <Copy className="w-2 h-2" style={{ color: 'var(--border-subtle)' }} />
-              </button>
-              <EntryCard entry={entry} onDelete={handleDelete} />
-            </div>
-          ))
         )}
       </div>
 
-      {/* Legend */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '6px 0', borderTop: '1px solid var(--border-subtle)' }}>
-        {Object.entries(SCAN_META).map(([type, meta]) => {
-          const Icon = meta.icon;
+      {/* Signal tabs */}
+      <div className="flex-shrink-0 flex border-b border-rmpg-700/50 bg-surface-raised/10 overflow-x-auto">
+        {TABS.map(t => {
+          const Icon = t.icon;
+          const count = tabCount(t.id);
           return (
-            <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Icon className="w-2.5 h-2.5" style={{ color: meta.color }} />
-              <span style={{ fontSize: 8, color: 'var(--text-secondary)' }}>{meta.label}</span>
-            </div>
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-[10px] font-medium whitespace-nowrap border-b-2 transition-colors ${
+                tab === t.id
+                  ? 'border-blue-500 text-blue-300 bg-blue-900/10'
+                  : 'border-transparent text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised/20'
+              }`}
+            >
+              <Icon size={10} />
+              {t.label}
+              {count !== null && (
+                <span className={`px-1 py-px text-[9px] rounded-full ${tab === t.id ? 'bg-blue-600/40 text-blue-200' : 'bg-rmpg-800/60 text-rmpg-400'}`}>
+                  {count}
+                </span>
+              )}
+            </button>
           );
         })}
-        <span style={{ fontSize: 8, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-          Passive-only · no connection required · log persists across restarts
-        </span>
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {!isElectron && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded bg-amber-900/20 border border-amber-700/30 text-amber-300 text-[11px] mb-4">
+            <Zap size={12} />
+            Radar360 requires the RMPG Flex desktop app. Passive RF capture is not available in the browser.
+          </div>
+        )}
+
+        {!latestEntry && tab !== 'history' && isElectron && (
+          <div className="flex flex-col items-center justify-center py-16 text-rmpg-500">
+            <Antenna size={36} className="mb-3 opacity-30" />
+            <p className="text-[12px] font-medium text-rmpg-400 mb-1">No scan data yet</p>
+            <p className="text-[10px]">
+              Run <span className="text-blue-400 font-medium">Full Sweep</span> to capture all surrounding devices across all signal types simultaneously
+            </p>
+          </div>
+        )}
+
+        {latestEntry && tab !== 'history' && (
+          <>
+            {tab === 'overview'  && <OverviewTable  devices={latestDevices} />}
+            {tab === 'network'   && <NetworkTable   devices={latestDevices} />}
+            {tab === 'bluetooth' && <BluetoothTable  devices={latestDevices} />}
+            {tab === 'ssdp'      && <SsdpTable      devices={latestDevices} />}
+            {tab === 'mdns'      && <MdnsTable      devices={latestDevices} />}
+            {tab === 'netbios'   && <NetbiosTable   devices={latestDevices} />}
+          </>
+        )}
+
+        {tab === 'history' && <HistoryTable log={log} onDelete={handleDelete} />}
       </div>
     </div>
   );

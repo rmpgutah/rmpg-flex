@@ -5113,19 +5113,38 @@ guardedHandle('wifi:disconnect', async () => {
 // the Electron userData directory and survives restarts.
 
 (function _deviceScannerBlock() {
+  // ── Imports ───────────────────────────────────────────────────────────────
   const dgram  = require('dgram');
+  const net    = require('net');
+  const http   = require('http');
+  const httpsM = require('https');
+  const dnsM   = require('dns');
   const _fs    = require('fs');
   const _path  = require('path');
   const _os    = require('os');
+  const { execSync: _ex, execFile: _ef, spawn: _sp } = require('child_process');
 
-  // ── OUI vendor helper (reuses the WiFi table already in scope) ──
+  // ── OUI vendor lookup (reuses WiFi OUI_VENDOR table already in scope) ─────
   const _oui = (mac) => {
     if (!mac) return null;
     const key = mac.toUpperCase().replace(/[:\-]/g, '').slice(0, 6);
     return OUI_VENDOR[key] || null;
   };
 
-  // ── Persistent capture log ────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const _isIPv4 = (s) => /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s || '');
+
+  function _localIp() {
+    const ifaces = _os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const i of ifaces[name]) {
+        if (i.family === 'IPv4' && !i.internal) return i.address;
+      }
+    }
+    return null;
+  }
+
+  // ── Persistent capture log ────────────────────────────────────────────────
   const LOG_PATH = _path.join(app.getPath('userData'), 'device-capture.json');
   let _captureLog = [];
   try { _captureLog = JSON.parse(_fs.readFileSync(LOG_PATH, 'utf8')); } catch { _captureLog = []; }
@@ -5149,7 +5168,22 @@ guardedHandle('wifi:disconnect', async () => {
     return entry;
   }
 
-  // ── ARP / NDP neighbor cache ─────────────────────────────────
+  // ── Phase 0: Ping sweep (fire-and-forget to populate ARP cache) ───────────
+  function _pingSubnet(localIp) {
+    const m = (localIp || '').match(/^(\d+\.\d+\.\d+)\.\d+$/);
+    if (!m) return;
+    const subnet = m[1];
+    // Use .NET Ping async — one PowerShell process, all 254 hosts concurrent
+    try {
+      const ps = _sp('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `1..254|%{[void][System.Net.NetworkInformation.Ping]::new().SendAsync("${subnet}.$_",150)}`,
+      ], { windowsHide: true, detached: true, stdio: 'ignore' });
+      ps.unref();
+    } catch {}
+  }
+
+  // ── ARP / NDP neighbor table ──────────────────────────────────────────────
   function _parseArpOutput(text) {
     const out = []; const seen = new Set(); let iface = null;
     for (const raw of text.split('\n')) {
@@ -5158,7 +5192,8 @@ guardedHandle('wifi:disconnect', async () => {
       const em = raw.trim().match(/^([\d.a-fA-F:]+)\s+([\w\-:]+)\s+(\w+)/);
       if (!em) continue;
       const [, ip, rawMac, type] = em;
-      if (/^ff/i.test(rawMac)) continue;
+      // Skip multicast/broadcast
+      if (/^ff/i.test(rawMac) || /^224\.|^239\.|^255\./.test(ip)) continue;
       const mac = rawMac.toUpperCase().replace(/-/g, ':');
       if (seen.has(mac)) continue; seen.add(mac);
       out.push({ ip, mac, type, interface: iface, vendor: _oui(mac), protocol: 'ARP' });
@@ -5166,87 +5201,72 @@ guardedHandle('wifi:disconnect', async () => {
     return out;
   }
 
-  guardedHandle('devices:scan-arp', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const { execSync: _ex } = require('child_process');
-    try {
-      const arpText = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
-      const devices = _parseArpOutput(arpText);
-
-      // Also pull IPv6 neighbor cache via PowerShell
-      try {
-        const njson = _ex(
-          'powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"',
-          { encoding: 'utf8', timeout: 10000, windowsHide: true }
-        );
-        const arr  = JSON.parse(njson);
-        const narr = Array.isArray(arr) ? arr : [arr];
-        const seen2 = new Set(devices.map(d => d.mac));
-        for (const n of narr) {
-          if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
-          const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
-          if (seen2.has(mac)) continue; seen2.add(mac);
-          devices.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
-        }
-      } catch {}
-
-      const entry = _pushCapture('arp', devices, { method: 'arp -a + Get-NetNeighbor' });
-      return { ok: true, entry };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
-
-  // ── Bluetooth / BT-LE (PnP device tree) ──────────────────────
-  function _parseBtPnp(json1, json2) {
-    const out = []; const seen = new Set();
-    for (const raw of [json1, json2]) {
-      let arr;
-      try { arr = JSON.parse(raw); } catch { continue; }
-      if (!Array.isArray(arr)) arr = arr ? [arr] : [];
-      for (const d of arr) {
-        const name  = d.FriendlyName || d.Name || 'Unknown Device';
-        const hwid  = Array.isArray(d.HardwareID) ? d.HardwareID[0] : (d.HardwareID || '');
-        const key   = hwid || name;
-        if (seen.has(key)) continue; seen.add(key);
-        // Extract MAC from BTHENUM\DEV_AABBCCDDEEFF style hardware ID
-        let mac = null;
-        const mm = hwid.match(/DEV_([0-9A-Fa-f]{12})/i);
-        if (mm) mac = mm[1].toUpperCase().match(/.{2}/g).join(':');
-        out.push({
-          name,
-          manufacturer: d.Manufacturer || null,
-          hardwareId:   hwid || null,
-          status:       d.Status || null,
-          mac,
-          vendor:       mac ? _oui(mac) : (d.Manufacturer || null),
-          protocol:     'Bluetooth',
-        });
-      }
-    }
+  // ── Reverse DNS via Node dns module (no subprocess needed) ───────────────
+  async function _reverseDns(ips) {
+    const dnsP = dnsM.promises;
+    const results = await Promise.allSettled(ips.map(ip => dnsP.reverse(ip)));
+    const out = {};
+    ips.forEach((ip, i) => {
+      const r = results[i];
+      out[ip] = (r.status === 'fulfilled' && r.value.length > 0) ? r.value[0] : null;
+    });
     return out;
   }
 
-  guardedHandle('devices:scan-bluetooth', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const { execSync: _ex } = require('child_process');
-    let j1 = '[]', j2 = '[]';
-    try {
-      j1 = _ex(
-        'powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"',
-        { encoding: 'utf8', timeout: 15000, windowsHide: true }
+  // ── NetBIOS per-device name (nbtstat -A <ip>) ─────────────────────────────
+  function _nbtstatDevice(ip) {
+    if (!_isIPv4(ip)) return Promise.resolve(null);
+    return new Promise(resolve => {
+      _ef('nbtstat', ['-A', ip],
+        { timeout: 3500, windowsHide: true, encoding: 'utf8' },
+        (err, stdout) => {
+          if (err || !stdout) return resolve(null);
+          // WORKSTATION <00>  UNIQUE   Registered
+          const nameM  = stdout.match(/^\s{1,20}(\S{1,15})\s+<00>\s+UNIQUE\s+Registered/im);
+          const groupM = stdout.match(/^\s{1,20}(\S{1,15})\s+<00>\s+GROUP\s+Registered/im);
+          const userM  = stdout.match(/^\s{1,20}(\S{1,15})\s+<03>\s+UNIQUE\s+Registered/im);
+          const macM   = stdout.match(/MAC\s+Address\s*[=:]\s*([\dA-Fa-f\-:]{17})/i);
+          resolve({
+            name:      nameM?.[1]?.trim()  || null,
+            workgroup: groupM?.[1]?.trim() || null,
+            user:      userM?.[1]?.trim()  || null,
+            mac:       macM ? macM[1].toUpperCase().replace(/-/g, ':') : null,
+          });
+        }
       );
-    } catch {}
-    try {
-      j2 = _ex(
-        'powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"',
-        { encoding: 'utf8', timeout: 15000, windowsHide: true }
-      );
-    } catch {}
-    const devices = _parseBtPnp(j1, j2);
-    const entry = _pushCapture('bluetooth', devices, { method: 'PnP Bluetooth + BTHLEDevice enumeration' });
-    return { ok: true, entry };
-  });
+    });
+  }
 
-  // ── SSDP / UPnP multicast discovery ──────────────────────────
+  // ── SSDP device description XML fetch ────────────────────────────────────
+  function _fetchSsdpDesc(location) {
+    return new Promise(resolve => {
+      if (!location || !/^https?:/.test(location)) return resolve(null);
+      try {
+        const url = new URL(location);
+        const lib = url.protocol === 'https:' ? httpsM : http;
+        let data  = '';
+        const req = lib.get(location, { timeout: 3000 }, (res) => {
+          res.on('data', c => { data += c; if (data.length > 80000) req.destroy(); });
+          res.on('end', () => {
+            const x = (tag) => data.match(new RegExp(`<${tag}[^>]*>([^<]+)</${tag}>`, 'i'))?.[1]?.trim() || null;
+            resolve({
+              friendlyName:  x('friendlyName'),
+              manufacturer:  x('manufacturer'),
+              modelName:     x('modelName'),
+              modelNumber:   x('modelNumber'),
+              serialNumber:  x('serialNumber'),
+              deviceType:    x('deviceType'),
+              udn:           x('UDN'),
+            });
+          });
+        });
+        req.on('error', () => resolve(null));
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+      } catch { resolve(null); }
+    });
+  }
+
+  // ── SSDP M-SEARCH multicast ───────────────────────────────────────────────
   function _ssdpScan(ms = 5000) {
     return new Promise((resolve) => {
       const ADDR  = '239.255.255.250';
@@ -5254,7 +5274,6 @@ guardedHandle('wifi:disconnect', async () => {
       const PROBE = ['M-SEARCH * HTTP/1.1', `HOST: ${ADDR}:${PORT}`, 'MAN: "ssdp:discover"', 'MX: 3', 'ST: ssdp:all', '', ''].join('\r\n');
       const sock  = dgram.createSocket({ type: 'udp4', reuseAddr: true });
       const found = new Map();
-
       sock.on('message', (msg, ri) => {
         const text     = msg.toString();
         const location = text.match(/LOCATION:\s*(.+)/i)?.[1]?.trim() || null;
@@ -5262,7 +5281,7 @@ guardedHandle('wifi:disconnect', async () => {
         const st       = text.match(/ST:\s*(.+)/i)?.[1]?.trim() || null;
         const server   = text.match(/SERVER:\s*(.+)/i)?.[1]?.trim() || null;
         const cacheCtl = text.match(/CACHE-CONTROL:\s*(.+)/i)?.[1]?.trim() || null;
-        const key      = location || ri.address;
+        const key = location || ri.address;
         if (!found.has(key)) found.set(key, { ip: ri.address, port: ri.port, location, usn, st, server, cacheControl: cacheCtl, protocol: 'SSDP/UPnP' });
       });
       sock.on('error', () => { try { sock.close(); } catch {} resolve([...found.values()]); });
@@ -5275,154 +5294,504 @@ guardedHandle('wifi:disconnect', async () => {
     });
   }
 
-  guardedHandle('devices:scan-ssdp', async () => {
-    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+  // ── mDNS DNS label reader ─────────────────────────────────────────────────
+  function _readDnsLabel(buf, off) {
+    let name = ''; let jumped = false; let retOff = -1; let safety = 0;
+    while (off < buf.length && safety++ < 128) {
+      const len = buf[off];
+      if (len === 0) { off++; break; }
+      if ((len & 0xC0) === 0xC0) {
+        if (!jumped) retOff = off + 2;
+        off = ((len & 0x3F) << 8) | buf[off + 1];
+        jumped = true;
+        continue;
+      }
+      if (name) name += '.';
+      name += buf.slice(off + 1, off + 1 + len).toString('utf8');
+      off += 1 + len;
+    }
+    return { name, end: jumped ? retOff : off };
+  }
+
+  function _parseMdnsMsg(buf, srcIp) {
+    const out = { ip: srcIp, names: new Set(), services: new Set(), aRecords: {} };
     try {
-      const devices = await _ssdpScan(5000);
-      const entry = _pushCapture('ssdp', devices, { method: 'SSDP M-SEARCH multicast → 239.255.255.250:1900' });
-      return { ok: true, entry };
-    } catch (e) { return { ok: false, reason: e.message }; }
-  });
+      if (buf.length < 12) return out;
+      const qdCnt = (buf[4] << 8) | buf[5];
+      const anCnt = (buf[6] << 8) | buf[7];
+      const arCnt = (buf[10] << 8) | buf[11];
+      let o = 12;
+      for (let i = 0; i < qdCnt && o < buf.length; i++) { const { end } = _readDnsLabel(buf, o); o = end + 4; }
+      for (let i = 0; i < anCnt + arCnt && o < buf.length; i++) {
+        const { name: rName, end: rEnd } = _readDnsLabel(buf, o); o = rEnd;
+        if (o + 10 > buf.length) break;
+        const type  = (buf[o] << 8) | buf[o + 1];
+        const rdLen = (buf[o + 8] << 8) | buf[o + 9];
+        const rdOff = o + 10;
+        if (type === 1 && rdLen === 4) {
+          const ip4 = [...buf.slice(rdOff, rdOff + 4)].join('.');
+          out.aRecords[rName] = ip4;
+        } else if (type === 12) {
+          const { name: ptrTarget } = _readDnsLabel(buf, rdOff);
+          out.names.add(ptrTarget);
+          const svcM = rName.match(/(_[^.]+\._(?:tcp|udp))\.local/i);
+          if (svcM) out.services.add(svcM[1]);
+        } else if (type === 33 && rdLen >= 7) {
+          const port = (buf[rdOff + 4] << 8) | buf[rdOff + 5];
+          const instanceName = rName.split('._')[0];
+          if (instanceName) out.names.add(instanceName);
+          const svcM2 = rName.match(/(_[^.]+\._(?:tcp|udp))\.local/i);
+          if (svcM2) out.services.add(`${svcM2[1]}:${port}`);
+        }
+        o = rdOff + rdLen;
+      }
+    } catch {}
+    return out;
+  }
 
-  // ── mDNS / Bonjour / DNS-SD ───────────────────────────────────
-  function _mdnsScan(ms = 5000) {
+  function _buildDnsQuery(name) {
+    const labels = name.split('.');
+    const q = [0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00];
+    for (const l of labels) { q.push(l.length); for (const c of l) q.push(c.charCodeAt(0)); }
+    q.push(0x00, 0x00, 0x0C, 0x00, 0x01);
+    return Buffer.from(q);
+  }
+
+  // 14 service types — discovers web servers, SSH, SMB, printers, cast devices, IoT
+  const MDNS_SVCS = [
+    '_services._dns-sd._udp.local', '_http._tcp.local', '_https._tcp.local',
+    '_ssh._tcp.local', '_smb._tcp.local', '_printer._tcp.local', '_ipp._tcp.local',
+    '_airplay._tcp.local', '_googlecast._tcp.local', '_spotify-connect._tcp.local',
+    '_homekit._tcp.local', '_raop._tcp.local', '_rdp._tcp.local', '_rfb._tcp.local',
+  ];
+
+  function _mdnsScanMulti(ms = 5000) {
     return new Promise((resolve) => {
-      const ADDR = '224.0.0.251';
-      const PORT = 5353;
-      // Minimal DNS query: _services._dns-sd._udp.local PTR QU
-      const labels = '_services._dns-sd._udp.local'.split('.');
-      const q = [0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x00];
-      for (const l of labels) { q.push(l.length); for (const c of l) q.push(c.charCodeAt(0)); }
-      q.push(0x00, 0x00, 0x0C, 0x80, 0x01); // root + PTR + QU
-      const query = Buffer.from(q);
-
-      const sock  = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-      const found = new Map();
-
+      const ADDR = '224.0.0.251', PORT = 5353;
+      const byIp = new Map();
+      const sock = dgram.createSocket({ type: 'udp4', reuseAddr: true });
       sock.on('message', (msg, ri) => {
-        const key = ri.address;
-        if (found.has(key)) return;
-        // Best-effort: extract first readable DNS label sequence
-        let name = null;
-        try {
-          let o = 12;
-          const qs = (msg[4] << 8) | msg[5];
-          for (let i = 0; i < qs && o < msg.length; i++) {
-            while (o < msg.length && msg[o] !== 0) {
-              if ((msg[o] & 0xC0) === 0xC0) { o += 2; break; }
-              o += msg[o] + 1;
-            }
-            if (msg[o] === 0) o++;
-            o += 4; // type + class
+        const parsed = _parseMdnsMsg(msg, ri.address);
+        if (!byIp.has(ri.address)) byIp.set(ri.address, { ip: ri.address, names: new Set(), services: new Set(), protocol: 'mDNS' });
+        const dev = byIp.get(ri.address);
+        parsed.names.forEach(n => dev.names.add(n));
+        parsed.services.forEach(s => dev.services.add(s));
+        // Cross-link A records: if another host advertised an IP for a name, track it
+        for (const [rname, ip4] of Object.entries(parsed.aRecords)) {
+          if (_isIPv4(ip4) && ip4 !== ri.address) {
+            if (!byIp.has(ip4)) byIp.set(ip4, { ip: ip4, names: new Set(), services: new Set(), protocol: 'mDNS' });
+            byIp.get(ip4).names.add(rname.replace(/\.local\.?$/i, '.local'));
           }
-          const ans = (msg[6] << 8) | msg[7];
-          for (let a = 0; a < ans && o < msg.length; a++) {
-            let seg = '';
-            while (o < msg.length && msg[o] !== 0) {
-              if ((msg[o] & 0xC0) === 0xC0) { o += 2; break; }
-              const len = msg[o++];
-              seg += (seg ? '.' : '') + msg.slice(o, o + len).toString('utf8');
-              o += len;
-            }
-            if (msg[o] === 0) o++;
-            if (seg && !name) name = seg;
-            o += 8; // type + class + TTL
-            const rd = (msg[o] << 8) | msg[o + 1]; o += 2 + rd;
-          }
-        } catch {}
-        found.set(key, { ip: ri.address, hostname: name, protocol: 'mDNS' });
+        }
       });
-      sock.on('error', () => { try { sock.close(); } catch {} resolve([...found.values()]); });
+      sock.on('error', () => { try { sock.close(); } catch {} });
       sock.bind(PORT, () => {
         try { sock.addMembership(ADDR); } catch {}
-        sock.send(query, 0, query.length, PORT, ADDR, () => {});
+        // Stagger queries 80 ms apart
+        MDNS_SVCS.forEach((svc, i) => setTimeout(() => {
+          try { const q = _buildDnsQuery(svc); sock.send(q, 0, q.length, PORT, ADDR, () => {}); } catch {}
+        }, i * 80));
       });
-      setTimeout(() => { try { sock.close(); } catch {} resolve([...found.values()]); }, ms);
+      setTimeout(() => {
+        try { sock.close(); } catch {}
+        const out = [...byIp.values()].map(d => ({
+          ...d,
+          hostname: [...d.names].find(n => /\.local\.?$/.test(n)) || [...d.names][0] || null,
+          names:    [...d.names],
+          services: [...d.services],
+        }));
+        resolve(out);
+      }, ms);
     });
   }
 
-  guardedHandle('devices:scan-mdns', async () => {
+  // ── TCP port probe (Node net module — no firewall prompt for outbound) ────
+  const PORT_SERVICES = {
+    21: 'FTP', 22: 'SSH', 23: 'Telnet', 80: 'HTTP', 443: 'HTTPS',
+    445: 'SMB', 548: 'AFP', 554: 'RTSP', 631: 'IPP',
+    1883: 'MQTT', 3389: 'RDP', 5900: 'VNC', 7000: 'AirPlay',
+    8008: 'Chromecast', 8080: 'HTTP-alt', 8443: 'HTTPS-alt', 9100: 'Raw-Print',
+  };
+  const PROBE_PORTS = Object.keys(PORT_SERVICES).map(Number);
+
+  function _tcpProbeOne(ip, port, ms = 400) {
+    return new Promise(resolve => {
+      const s = new net.Socket();
+      s.setTimeout(ms);
+      s.on('connect', () => { s.destroy(); resolve(true); });
+      s.on('error',   () => { s.destroy(); resolve(false); });
+      s.on('timeout', () => { s.destroy(); resolve(false); });
+      try { s.connect(port, ip); } catch { resolve(false); }
+    });
+  }
+
+  async function _tcpProbeDevice(ip) {
+    if (!_isIPv4(ip)) return {};
+    const results = await Promise.allSettled(PROBE_PORTS.map(p => _tcpProbeOne(ip, p)));
+    const open = {};
+    results.forEach((r, i) => { if (r.status === 'fulfilled' && r.value) open[PROBE_PORTS[i]] = PORT_SERVICES[PROBE_PORTS[i]]; });
+    return open;
+  }
+
+  // ── Bluetooth PnP enumeration ──────────────────────────────────────────────
+  function _parseBtPnp(json1, json2) {
+    const out = []; const seen = new Set();
+    for (const raw of [json1, json2]) {
+      let arr;
+      try { arr = JSON.parse(raw); } catch { continue; }
+      if (!Array.isArray(arr)) arr = arr ? [arr] : [];
+      for (const d of arr) {
+        const name = d.FriendlyName || d.Name || 'Unknown Bluetooth Device';
+        const hwid = Array.isArray(d.HardwareID) ? d.HardwareID[0] : (d.HardwareID || '');
+        const key  = hwid || name;
+        if (seen.has(key)) continue; seen.add(key);
+        let mac = null;
+        const mm = hwid.match(/DEV_([0-9A-Fa-f]{12})/i);
+        if (mm) mac = mm[1].toUpperCase().match(/.{2}/g).join(':');
+        out.push({
+          name, manufacturer: d.Manufacturer || null, hardwareId: hwid || null,
+          status: d.Status || null, btClass: d.Class === 'BTHLEDevice' ? 'BLE' : 'Classic',
+          mac, vendor: mac ? _oui(mac) : (d.Manufacturer || null), protocol: 'Bluetooth',
+        });
+      }
+    }
+    return out;
+  }
+
+  // ── Device type classifier ─────────────────────────────────────────────────
+  function _classifyDevice(dev) {
+    const v   = (dev.vendor || dev.manufacturer || dev.friendlyName || '').toLowerCase();
+    const dt  = (dev.deviceType || '').toLowerCase();
+    const svc = ([...(dev.services || []), ...(dev.names || [])].join(' ')).toLowerCase();
+    const ports = Object.keys(dev.openPorts || {}).map(Number);
+    if (/cisco|netgear|linksys|tp.link|asus|d.link|ubiquiti|mikrotik|arris|sagemcom|eero|orbi/i.test(v)) return 'router';
+    if (/hp|hewlett|epson|canon|brother|lexmark|xerox|ricoh|kyocera/i.test(v) || ports.includes(9100) || ports.includes(631)) return 'printer';
+    if (svc.includes('_googlecast') || ports.includes(8008) || ports.includes(8009)) return 'smart-tv';
+    if (svc.includes('_airplay') || ports.includes(7000)) return 'airplay';
+    if (svc.includes('_spotify-connect') || svc.includes('_raop') || /sonos|bose|denon|yamaha|harman|jbl/i.test(v)) return 'speaker';
+    if (svc.includes('_homekit') || svc.includes('_hap')) return 'iot';
+    if (/hikvision|dahua|axis|hanwha|reolink|amcrest/i.test(v) || dt.includes('camera') || ports.includes(554)) return 'camera';
+    if (/sony|nintendo|valve|xbox/i.test(v)) return 'gaming';
+    if (dt.includes('mediarenderer') || dt.includes('mediaserver')) return 'media-server';
+    if (ports.includes(3389)) return 'desktop';
+    if (ports.includes(22)) return 'server';
+    if (dev.protocol === 'Bluetooth') return 'bluetooth-device';
+    return 'unknown';
+  }
+
+  // ── Best display name ─────────────────────────────────────────────────────
+  function _bestName(dev) {
+    return dev.friendlyName
+      || dev.netbiosName
+      || dev.hostname
+      || (Array.isArray(dev.names) && dev.names.find(n => !/^_/.test(n)))
+      || dev.name
+      || dev.ptrHostname
+      || (dev.server && dev.server.split(' ')[0])
+      || dev.vendor
+      || dev.mac
+      || dev.ip
+      || 'Unknown Device';
+  }
+
+  // ── Cross-protocol device merge (by IP, then by MAC) ─────────────────────
+  function _mergeInto(target, src) {
+    if (src.protocol)   target.protocols.add(src.protocol);
+    if (src.scanMethod) target.protocols.add(src.scanMethod);
+    if (src.mac  && !target.mac)    { target.mac = src.mac; target.vendor = target.vendor || _oui(src.mac); }
+    if (src.vendor && !target.vendor) target.vendor = src.vendor;
+    if (src.manufacturer) target.manufacturer = src.manufacturer;
+    if (src.friendlyName) { target.friendlyName = src.friendlyName; target.names.add(src.friendlyName); }
+    if (src.netbiosName)  { target.netbiosName = src.netbiosName; target.names.add(src.netbiosName); }
+    if (src.netbiosWorkgroup) target.netbiosWorkgroup = src.netbiosWorkgroup;
+    if (src.netbiosUser)  target.netbiosUser = src.netbiosUser;
+    if (src.hostname)     { target.hostname = target.hostname || src.hostname; target.names.add(src.hostname); }
+    if (src.ptrHostname)  { target.ptrHostname = src.ptrHostname; target.names.add(src.ptrHostname); }
+    if (src.name && src.name !== 'Unknown Device' && src.name !== 'Unknown Bluetooth Device') target.names.add(src.name);
+    if (Array.isArray(src.names)) src.names.forEach(n => target.names.add(n));
+    if (Array.isArray(src.services)) src.services.forEach(s => target.services.add(s));
+    if (src.deviceType)   target.deviceType = src.deviceType;
+    if (src.modelName)    target.modelName = src.modelName;
+    if (src.modelNumber)  target.modelNumber = src.modelNumber;
+    if (src.serialNumber) target.serialNumber = src.serialNumber;
+    if (src.udn)          target.udn = src.udn;
+    if (src.location)     target.location = src.location;
+    if (src.server)       target.server = src.server;
+    if (src.openPorts && typeof src.openPorts === 'object') Object.assign(target.openPorts, src.openPorts);
+    if (src.interface && !target.interface) target.interface = src.interface;
+    if (src.btClass)  target.btClass = src.btClass;
+    if (src.hardwareId && !target.hardwareId) target.hardwareId = src.hardwareId;
+  }
+
+  function _mergeDevices(devices) {
+    const byIp  = new Map();
+    const byMac = new Map(); // mac → ip (dedup)
+    const noIp  = [];        // Bluetooth etc. without IPv4
+
+    for (const dev of devices) {
+      const ip  = _isIPv4(dev.ip) ? dev.ip : null;
+      const mac = dev.mac || null;
+      if (!ip) { noIp.push(dev); continue; }
+      // If this MAC already resolved to a different IP, merge into that slot
+      if (mac && byMac.has(mac)) {
+        const existing = byIp.get(byMac.get(mac));
+        if (existing) { _mergeInto(existing, dev); continue; }
+      }
+      if (mac) byMac.set(mac, ip);
+      if (!byIp.has(ip)) {
+        byIp.set(ip, { ip, mac: null, vendor: null, protocols: new Set(), names: new Set(), services: new Set(), openPorts: {} });
+      }
+      _mergeInto(byIp.get(ip), dev);
+    }
+
+    return [...byIp.values(), ...noIp].map(d => ({
+      ...d,
+      protocols: d.protocols instanceof Set ? [...d.protocols] : (d.protocols || []),
+      names:     d.names     instanceof Set ? [...d.names]     : (d.names     || []),
+      services:  d.services  instanceof Set ? [...d.services]  : (d.services  || []),
+    })).map(d => ({ ...d, deviceClass: _classifyDevice(d), name: _bestName(d) }));
+  }
+
+  // ── New-device detection (compare against all prior log entries) ──────────
+  function _flagNewDevices(devices) {
+    const seenMacs = new Set(); const seenIps = new Set();
+    // log[0] will be the entry being pushed — check from log[0] onward (pre-push)
+    for (const entry of _captureLog) {
+      for (const d of (entry.devices || [])) {
+        if (d.mac) seenMacs.add(d.mac);
+        if (d.ip && _isIPv4(d.ip)) seenIps.add(d.ip);
+      }
+    }
+    devices.forEach(d => {
+      if ((d.mac && !seenMacs.has(d.mac)) || (!d.mac && d.ip && !seenIps.has(d.ip))) d.isNew = true;
+    });
+    return devices.filter(d => d.isNew).length;
+  }
+
+  // ── IPC: scan-arp ─────────────────────────────────────────────────────────
+  guardedHandle('devices:scan-arp', async () => {
     if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
     try {
-      const devices = await _mdnsScan(5000);
-      const entry = _pushCapture('mdns', devices, { method: 'mDNS _services._dns-sd._udp.local query → 224.0.0.251:5353' });
+      const arpText = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
+      const devices = _parseArpOutput(arpText);
+      try {
+        const njson = _ex('powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 10000, windowsHide: true });
+        const narr  = [].concat(JSON.parse(njson));
+        const seenM = new Set(devices.map(d => d.mac));
+        for (const n of narr) {
+          if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
+          const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
+          if (seenM.has(mac)) continue; seenM.add(mac);
+          devices.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
+        }
+      } catch {}
+      // Reverse DNS + NetBIOS names
+      const ips    = devices.filter(d => _isIPv4(d.ip)).map(d => d.ip);
+      const ptrMap = await _reverseDns(ips);
+      const nbRes  = await Promise.allSettled(ips.slice(0, 20).map(ip => _nbtstatDevice(ip).then(r => ({ ip, ...r }))));
+      const nbByIp = {}; nbRes.filter(r => r.status === 'fulfilled' && r.value).forEach(r => { nbByIp[r.value.ip] = r.value; });
+      devices.forEach(d => {
+        if (ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
+        if (nbByIp[d.ip]) { const nb = nbByIp[d.ip]; if (nb.name) d.netbiosName = nb.name; if (nb.workgroup) d.netbiosWorkgroup = nb.workgroup; if (nb.user) d.netbiosUser = nb.user; }
+        d.name = _bestName(d); d.deviceClass = _classifyDevice(d);
+      });
+      const entry = _pushCapture('arp', devices, { method: 'arp -a + Get-NetNeighbor + rDNS + nbtstat' });
       return { ok: true, entry };
     } catch (e) { return { ok: false, reason: e.message }; }
   });
 
-  // ── NetBIOS name table ────────────────────────────────────────
-  guardedHandle('devices:scan-netbios', async () => {
+  // ── IPC: scan-bluetooth ───────────────────────────────────────────────────
+  guardedHandle('devices:scan-bluetooth', async () => {
     if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const { execSync: _ex } = require('child_process');
-    const devices = []; const seen = new Set();
-    let raw = '';
-    try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-    for (const line of raw.split('\n')) {
-      // Resolved: IP  <Name>  <type>  via <method>
-      const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
-      if (!m) continue;
-      const [, ip, name] = m;
-      if (seen.has(ip)) continue; seen.add(ip);
-      devices.push({ ip, name, protocol: 'NetBIOS' });
-    }
-    const entry = _pushCapture('netbios', devices, { method: 'nbtstat -r', raw: raw.slice(0, 3000) });
+    let j1 = '[]', j2 = '[]';
+    try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+    try { j2 = _ex('powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+    const devices = _parseBtPnp(j1, j2);
+    const entry   = _pushCapture('bluetooth', devices, { method: 'PnP Bluetooth Classic + BLE enumeration' });
     return { ok: true, entry };
   });
 
-  // ── Full sweep — all protocols in parallel ────────────────────
+  // ── IPC: scan-ssdp ────────────────────────────────────────────────────────
+  guardedHandle('devices:scan-ssdp', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    try {
+      const raw     = await _ssdpScan(5000);
+      const descRes = await Promise.allSettled(raw.slice(0, 15).map(d => _fetchSsdpDesc(d.location)));
+      const devices = raw.map((d, i) => {
+        const desc   = descRes[i]?.status === 'fulfilled' ? descRes[i].value : null;
+        const merged = { ...d, ...(desc || {}), protocol: 'SSDP/UPnP' };
+        merged.name  = _bestName(merged); merged.deviceClass = _classifyDevice(merged);
+        return merged;
+      });
+      const entry = _pushCapture('ssdp', devices, { method: 'SSDP M-SEARCH + description XML fetch' });
+      return { ok: true, entry };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── IPC: scan-mdns ────────────────────────────────────────────────────────
+  guardedHandle('devices:scan-mdns', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    try {
+      const devices = (await _mdnsScanMulti(5000)).map(d => ({ ...d, name: _bestName(d), deviceClass: _classifyDevice(d) }));
+      const entry   = _pushCapture('mdns', devices, { method: 'mDNS multi-service PTR (14 service types) → 224.0.0.251:5353' });
+      return { ok: true, entry };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── IPC: scan-netbios ─────────────────────────────────────────────────────
+  guardedHandle('devices:scan-netbios', async () => {
+    if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
+    const devices = []; const seen = new Set(); let raw = '';
+    try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+    for (const line of raw.split('\n')) {
+      const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
+      if (!m || seen.has(m[1])) continue; seen.add(m[1]);
+      devices.push({ ip: m[1], name: m[2], netbiosName: m[2], protocol: 'NetBIOS' });
+    }
+    const nbRes = await Promise.allSettled(devices.slice(0, 20).map(d => _nbtstatDevice(d.ip).then(r => ({ ip: d.ip, ...r }))));
+    nbRes.filter(r => r.status === 'fulfilled' && r.value).forEach(r => {
+      const d = devices.find(x => x.ip === r.value.ip);
+      if (!d) return;
+      if (r.value.name) { d.netbiosName = r.value.name; d.name = r.value.name; }
+      if (r.value.workgroup) d.netbiosWorkgroup = r.value.workgroup;
+      if (r.value.user) d.netbiosUser = r.value.user;
+      if (r.value.mac && !d.mac) { d.mac = r.value.mac; d.vendor = _oui(r.value.mac); }
+      d.name = _bestName(d); d.deviceClass = _classifyDevice(d);
+    });
+    const entry = _pushCapture('netbios', devices, { method: 'nbtstat -r + nbtstat -A per device' });
+    return { ok: true, entry };
+  });
+
+  // ── IPC: scan-all — 4-phase enriched sweep ────────────────────────────────
   guardedHandle('devices:scan-all', async () => {
     if (process.platform !== 'win32') return { ok: false, reason: 'windows-only' };
-    const { execSync: _ex } = require('child_process');
     const startTs = new Date().toISOString();
+    const localIp = _localIp();
 
-    const [arpR, btR, ssdpR, mdnsR, nbR] = await Promise.allSettled([
-      // ARP
+    // Phase 0: background ping sweep (populates ARP cache while we scan)
+    _pingSubnet(localIp);
+
+    // Phase 1: All passive scans in parallel (4.5 s window)
+    const [arpR, btR, ssdpRawR, mdnsR, nbR] = await Promise.allSettled([
       (async () => {
         const t = _ex('arp -a', { encoding: 'utf8', timeout: 8000, windowsHide: true });
-        return _parseArpOutput(t).map(d => ({ ...d, scanMethod: 'ARP' }));
+        const devs = _parseArpOutput(t);
+        try {
+          const nj = _ex('powershell -NoProfile -Command "Get-NetNeighbor -State Reachable,Stale,Delay,Probe | Select-Object IPAddress,LinkLayerAddress,State,InterfaceAlias | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 10000, windowsHide: true });
+          const narr = [].concat(JSON.parse(nj));
+          const seenM = new Set(devs.map(d => d.mac));
+          for (const n of narr) {
+            if (!n.LinkLayerAddress || /^00-00-00/.test(n.LinkLayerAddress)) continue;
+            const mac = n.LinkLayerAddress.toUpperCase().replace(/-/g, ':');
+            if (seenM.has(mac)) continue; seenM.add(mac);
+            devs.push({ ip: n.IPAddress, mac, state: n.State, interface: n.InterfaceAlias, vendor: _oui(mac), protocol: 'NDP/IPv6' });
+          }
+        } catch {}
+        return devs;
       })(),
-      // Bluetooth
       (async () => {
         let j1 = '[]', j2 = '[]';
-        try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
-        return _parseBtPnp(j1, j2).map(d => ({ ...d, scanMethod: 'Bluetooth' }));
+        try { j1 = _ex('powershell -NoProfile -Command "Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+        try { j2 = _ex('powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Class -eq \'BTHLEDevice\'} -ErrorAction SilentlyContinue | Select-Object FriendlyName,Manufacturer,HardwareID,Status,Class | ConvertTo-Json -Compress"', { encoding: 'utf8', timeout: 15000, windowsHide: true }); } catch {}
+        return _parseBtPnp(j1, j2);
       })(),
-      // SSDP
-      _ssdpScan(4500).then(ds => ds.map(d => ({ ...d, scanMethod: 'SSDP' }))),
-      // mDNS
-      _mdnsScan(4500).then(ds => ds.map(d => ({ ...d, scanMethod: 'mDNS' }))),
-      // NetBIOS
+      _ssdpScan(4500),
+      _mdnsScanMulti(4500),
       (async () => {
         const devs = []; const seen = new Set(); let raw = '';
         try { raw = _ex('nbtstat -r', { encoding: 'utf8', timeout: 12000, windowsHide: true }); } catch {}
         for (const line of raw.split('\n')) {
           const m = line.match(/([\d]{1,3}\.[\d]{1,3}\.[\d]{1,3}\.[\d]{1,3})\s+(\S+)/);
           if (!m || seen.has(m[1])) continue; seen.add(m[1]);
-          devs.push({ ip: m[1], name: m[2], protocol: 'NetBIOS', scanMethod: 'NetBIOS' });
+          devs.push({ ip: m[1], name: m[2], netbiosName: m[2], protocol: 'NetBIOS' });
         }
         return devs;
       })(),
     ]);
 
-    const allDevices = [arpR, btR, ssdpR, mdnsR, nbR]
-      .filter(r => r.status === 'fulfilled')
-      .flatMap(r => r.value);
+    const arpDevs   = arpR.status     === 'fulfilled' ? arpR.value     : [];
+    const btDevs    = btR.status      === 'fulfilled' ? btR.value      : [];
+    const ssdpRaw   = ssdpRawR.status === 'fulfilled' ? ssdpRawR.value : [];
+    const mdnsDevs  = mdnsR.status    === 'fulfilled' ? mdnsR.value    : [];
+    const nbDevs    = nbR.status      === 'fulfilled' ? nbR.value      : [];
 
-    const entry = _pushCapture('full-sweep', allDevices, {
-      method: 'ARP + Bluetooth + SSDP + mDNS + NetBIOS',
-      startTs,
-      protocols: {
-        arp:       arpR.status,
-        bluetooth: btR.status,
-        ssdp:      ssdpR.status,
-        mdns:      mdnsR.status,
-        netbios:   nbR.status,
-      },
+    // Phase 2: Parallel enrichment
+    const allIps    = [...new Set([...arpDevs, ...mdnsDevs, ...nbDevs].filter(d => _isIPv4(d.ip)).map(d => d.ip))];
+    const enrichIps = allIps.slice(0, 25);
+
+    const [ptrMapR, ssdpDescR, nbEnrichR, portProbeR] = await Promise.allSettled([
+      _reverseDns(allIps),
+      Promise.allSettled(ssdpRaw.slice(0, 15).map(d => _fetchSsdpDesc(d.location))),
+      Promise.allSettled(enrichIps.slice(0, 20).map(ip => _nbtstatDevice(ip).then(r => ({ ip, ...(r || {}) })))),
+      Promise.allSettled(enrichIps.slice(0, 20).map(ip => _tcpProbeDevice(ip).then(ports => ({ ip, ports })))),
+    ]);
+
+    const ptrMap    = ptrMapR.status   === 'fulfilled' ? ptrMapR.value   : {};
+    const ssdpDescs = ssdpDescR.status === 'fulfilled' ? ssdpDescR.value : [];
+    const nbByIp    = {}; (nbEnrichR.status === 'fulfilled' ? nbEnrichR.value : []).filter(r => r.status === 'fulfilled' && r.value?.ip).forEach(r => { nbByIp[r.value.ip] = r.value; });
+    const portByIp  = {}; (portProbeR.status === 'fulfilled' ? portProbeR.value : []).filter(r => r.status === 'fulfilled' && r.value?.ip).forEach(r => { portByIp[r.value.ip] = r.value.ports; });
+
+    // Apply enrichment to ARP/mDNS/NetBIOS devices
+    [...arpDevs, ...mdnsDevs, ...nbDevs].forEach(d => {
+      if (d.ip && ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
+      if (d.ip && nbByIp[d.ip]) { const nb = nbByIp[d.ip]; if (nb.name) d.netbiosName = nb.name; if (nb.workgroup) d.netbiosWorkgroup = nb.workgroup; if (nb.user) d.netbiosUser = nb.user; if (nb.mac && !d.mac) { d.mac = nb.mac; d.vendor = _oui(nb.mac); } }
+      if (d.ip && portByIp[d.ip]) d.openPorts = portByIp[d.ip];
     });
-    return { ok: true, entry };
+
+    // Enrich SSDP with descriptions
+    const ssdpDevs = ssdpRaw.map((d, i) => {
+      const desc = ssdpDescs[i]?.status === 'fulfilled' ? ssdpDescs[i].value : null;
+      return { ...d, ...(desc || {}), protocol: 'SSDP/UPnP' };
+    });
+    // Apply ptr+ports to SSDP devices too
+    ssdpDevs.forEach(d => {
+      if (d.ip && ptrMap[d.ip]) d.ptrHostname = ptrMap[d.ip];
+      if (d.ip && portByIp[d.ip]) d.openPorts = portByIp[d.ip];
+    });
+
+    // Phase 3: Cross-protocol merge
+    const allRaw = [
+      ...arpDevs.map(d => ({ ...d, scanMethod: 'ARP' })),
+      ...btDevs.map(d => ({ ...d, scanMethod: 'Bluetooth' })),
+      ...ssdpDevs.map(d => ({ ...d, scanMethod: 'SSDP' })),
+      ...mdnsDevs.map(d => ({ ...d, scanMethod: 'mDNS' })),
+      ...nbDevs.map(d => ({ ...d, scanMethod: 'NetBIOS' })),
+    ];
+    const merged = _mergeDevices(allRaw);
+
+    // Phase 4: Flag new devices, push to log
+    const newCount = _flagNewDevices(merged);
+    const entry = _pushCapture('full-sweep', merged, {
+      method:  'ARP+NDP · Bluetooth · SSDP+XML · mDNS×14 · NetBIOS · rDNS · nbtstat · TCP-ports · merge',
+      startTs, localIp,
+      protocols: { arp: arpR.status, bluetooth: btR.status, ssdp: ssdpRawR.status, mdns: mdnsR.status, netbios: nbR.status },
+      newDeviceCount: newCount,
+    });
+    return { ok: true, entry, newDeviceCount: newCount };
   });
 
-  // ── Capture log management ────────────────────────────────────
+  // ── IPC: enrich-device (deep single-IP probe) ─────────────────────────────
+  guardedHandle('devices:enrich-device', async (_event, { ip }) => {
+    if (!_isIPv4(ip)) return { ok: false, reason: 'invalid-ip' };
+    try {
+      const [ptrR, nbR, portsR] = await Promise.allSettled([
+        _reverseDns([ip]).then(m => m[ip]),
+        _nbtstatDevice(ip),
+        _tcpProbeDevice(ip),
+      ]);
+      return {
+        ok: true,
+        result: {
+          ip,
+          ptrHostname: ptrR.status  === 'fulfilled' ? ptrR.value  : null,
+          netbios:     nbR.status   === 'fulfilled' ? nbR.value   : null,
+          openPorts:   portsR.status === 'fulfilled' ? portsR.value : {},
+        },
+      };
+    } catch (e) { return { ok: false, reason: e.message }; }
+  });
+
+  // ── Log management ────────────────────────────────────────────────────────
   guardedHandle('devices:get-log',    async () => ({ ok: true, log: _captureLog }));
   guardedHandle('devices:clear-log',  async () => { _captureLog = []; _saveLog(); return { ok: true }; });
   guardedHandle('devices:delete-entry', async (_event, { id }) => {
