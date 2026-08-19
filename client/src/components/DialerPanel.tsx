@@ -7,6 +7,7 @@ export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
+const TOAST_DURATION_MS = 7_000;
 
 type DialConnectMessage =
   | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string }
@@ -22,6 +23,12 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
   );
 }
 
+interface Toast {
+  id: number;
+  kind: 'ringing' | 'duress';
+  message: string;
+}
+
 interface DialerPanelProps {
   onRinging?: (message: string) => void;
   onDuress?: (message: string) => void;
@@ -32,13 +39,22 @@ interface DialerPanelProps {
 // page load but short enough to feel responsive.
 const UNAVAILABLE_GRACE_MS = 12_000;
 
+let _toastId = 0;
+
 export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [connected, setConnected] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const lastSeenRef = useRef(0);
   const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const addToast = useCallback((kind: Toast['kind'], message: string) => {
+    const id = ++_toastId;
+    setToasts((prev) => [...prev, { id, kind, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_DURATION_MS);
+  }, []);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -63,12 +79,16 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
       });
 
       if (message.type === 'call_status' && message.status === 'ringing') {
-        onRinging?.(`Inbound call from ${message.from ?? 'unknown number'}`);
+        const msg = `Inbound call from ${message.from ?? 'unknown number'}`;
+        addToast('ringing', msg);
+        onRinging?.(msg);
       } else if (message.type === 'duress_alert') {
-        onDuress?.(`Duress alert: ${message.dispatcherName}`);
+        const msg = `Duress alert: ${message.dispatcherName}`;
+        addToast('duress', msg);
+        onDuress?.(msg);
       }
     },
-    [onRinging, onDuress],
+    [onRinging, onDuress, addToast],
   );
 
   useEffect(() => {
@@ -117,7 +137,35 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9998] flex flex-col items-end">
+    <div className="fixed bottom-4 left-4 z-[9998] flex flex-col items-start">
+      {/* Toast notification stack — appears above the chip, visible on any page */}
+      {toasts.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1.5 items-start">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className="flex items-center gap-2 px-3 py-2 border shadow-lg text-[11px] font-semibold uppercase tracking-wide max-w-[320px]"
+              style={{
+                background: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--surface-raised)',
+                borderColor: toast.kind === 'duress' ? 'var(--sev-critical)' : 'var(--sev-ok)',
+                color: toast.kind === 'duress' ? '#fff' : 'var(--text-primary)',
+              }}
+            >
+              <PhoneCall className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate">{toast.message}</span>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="ml-auto flex-shrink-0 opacity-70 hover:opacity-100"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         style={{
           // Dial Connect is a full desktop app (its own nav, wide tables,
