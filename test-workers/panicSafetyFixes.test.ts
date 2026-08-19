@@ -50,7 +50,7 @@ beforeAll(async () => {
     -- declare a column live D1 does not have, so it green-lit a route INSERT
     -- that always failed in production.
     description TEXT, source TEXT, officer_safety_caution INTEGER,
-    dispatcher_id INTEGER, assigned_unit_ids TEXT DEFAULT '[]',
+    dispatcher_id INTEGER, assigned_unit_ids TEXT DEFAULT '[]', unit_call_signs TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS units (
