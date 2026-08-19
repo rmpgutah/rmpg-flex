@@ -2,7 +2,8 @@
 // The rail — one left edge and one width for full-bleed blocks
 // ============================================================
 // Section header bars are drawn at PAGE_MARGIN across getContentWidth
-// (10 -> 205.9 on letter). Blocks that instead used getLeftX() /
+// (12.7 -> 185.9 on letter; PAGE_MARGIN updated to 0.5 in / 12.7 mm by
+// fix(pdf): #3742). Blocks that instead used getLeftX() /
 // getFullFieldWidth() landed at 11 -> 204.9, inset a millimetre on BOTH
 // sides. Worse, the I(a)/I(b) panel pair was SIZED from getContentWidth but
 // DRAWN from getLeftX, so it overshot the right rail by a millimetre at
@@ -25,7 +26,7 @@ const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
 
 describe('rail geometry', () => {
   it('matches the rails a section header bar is drawn on', () => {
-    expect(getRailX()).toBe(10);
+    expect(getRailX()).toBe(12.7); // 0.5 in, updated by fix(pdf) #3742
     expect(getRailWidth(doc)).toBeCloseTo(getContentWidth(doc), 5);
   });
 

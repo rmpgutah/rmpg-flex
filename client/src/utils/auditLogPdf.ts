@@ -20,6 +20,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -327,6 +328,6 @@ export function generateAuditLogPdf(input: AuditLogPdfInput): jsPDF {
  *  tripping over window.open. */
 export function openAuditLogPdf(input: AuditLogPdfInput): void {
   const doc = generateAuditLogPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Audit Log');
 }

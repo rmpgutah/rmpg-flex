@@ -386,21 +386,33 @@ function timeWindowToServeWindow(tw: string | null | undefined): { serveStart: s
   }
 }
 
-export function buildRouteStopsFromJobs(stops: StopItem[]): RouteStopPayload[] {
-  return stops
-    .filter(s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null)
-    .map(s => ({
+async function hashAddress(address: string): Promise<string> {
+  const normalized = address.toUpperCase().trim().replace(/\s+/g, ' ');
+  const data = new TextEncoder().encode(normalized);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteStopPayload[]> {
+  const filtered = stops.filter(
+    s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null,
+  );
+  return Promise.all(
+    filtered.map(async s => ({
       jobId: s.job.id,
       lat: s.job.recipient_lat!,
       lng: s.job.recipient_lng!,
       geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
       defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
-      addressHash: '',
+      addressHash: await hashAddress(s.job.recipient_address ?? ''),
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
       locationNote: timeWindowToServeWindow(s.job.time_window),
-    }));
+    })),
+  );
 }
 
 // ─── In-Order Arrival Computation ───────────────────────────────────────
@@ -495,6 +507,8 @@ export default function ServeRoutePlanner({
   const lastDirectionsOrderKeyRef = useRef<string>('');
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
+  const [isRouteMapRecovering, setIsRouteMapRecovering] = useState(false);
+  const [routeMapNeedsManualReload, setRouteMapNeedsManualReload] = useState(false);
   const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
@@ -515,6 +529,8 @@ export default function ServeRoutePlanner({
   const [serverEtaJobIds, setServerEtaJobIds] = useState<number[]>([]);
   const [geocodeWarnings, setGeocodeWarnings] = useState<GeocodeWarning[]>([]);
   const [matrixFallback, setMatrixFallback] = useState(false);
+  const [matrixFallbackReason, setMatrixFallbackReason] = useState<string | undefined>(undefined);
+  const [matrixFallbackDismissed, setMatrixFallbackDismissed] = useState(false);
   const [geocodeWarningDismissed, setGeocodeWarningDismissed] = useState(false);
   // Traffic polling state
   const [trafficSuggestion, setTrafficSuggestion] = useState<{
@@ -548,6 +564,8 @@ export default function ServeRoutePlanner({
     setServerEtaJobIds([]);
     setGeocodeWarnings([]);
     setMatrixFallback(false);
+    setMatrixFallbackReason(undefined);
+    setMatrixFallbackDismissed(false);
     setGeocodeWarningDismissed(false);
     setTrafficSuggestion(null);
     setRouteAccepted(false);
@@ -788,6 +806,8 @@ export default function ServeRoutePlanner({
       routeMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'ServeRoutePlanner',
         onRebuild: () => {
+          setIsRouteMapRecovering(false);
+          setRouteMapNeedsManualReload(false);
           if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
           markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
           markersRef.current = [];
@@ -795,6 +815,9 @@ export default function ServeRoutePlanner({
           setMapReady(false);
           setRouteMapRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsRouteMapRecovering(true),
+        onContextRestored: () => setIsRouteMapRecovering(false),
+        onGiveUp: () => { setIsRouteMapRecovering(false); setRouteMapNeedsManualReload(true); },
       });
     };
 
@@ -948,6 +971,8 @@ export default function ServeRoutePlanner({
     setServerEtaJobIds([]);
     setGeocodeWarnings([]);
     setMatrixFallback(false);
+    setMatrixFallbackReason(undefined);
+    setMatrixFallbackDismissed(false);
     setGeocodeWarningDismissed(false);
 
     // Fire server-side optimize in parallel — provides traffic-aware ETAs,
@@ -957,16 +982,18 @@ export default function ServeRoutePlanner({
       orderedStops: { jobId: number }[];
       etaPerStop: string[];
       matrixFallback: boolean;
+      fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
     } | null> = apiFetch<{
       orderedStops: { jobId: number }[];
       etaPerStop: string[];
       matrixFallback: boolean;
+      fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
     }>('/serve-queue/optimize-route', {
       method: 'POST',
       body: JSON.stringify({
-        stops: buildRouteStopsFromJobs(stops),
+        stops: await buildRouteStopsFromJobs(stops),
         departAt: new Date().toISOString(),
       }),
     }).catch(() => null);
@@ -1252,7 +1279,10 @@ export default function ServeRoutePlanner({
         setServerEtas(serverResult.etaPerStop ?? []);
         setServerEtaJobIds((serverResult.orderedStops ?? []).map((s: { jobId: number }) => s.jobId));
         setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
-        setMatrixFallback(serverResult.matrixFallback ?? false);
+        const newFallback = serverResult.matrixFallback ?? false;
+        setMatrixFallback(newFallback);
+        setMatrixFallbackReason(newFallback ? (serverResult.fallbackReason as string | undefined) : undefined);
+        if (newFallback) setMatrixFallbackDismissed(false);
       }
     }
   }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
@@ -1271,7 +1301,7 @@ export default function ServeRoutePlanner({
         const position = await new Promise<GeolocationPosition>((res, rej) =>
           navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
         );
-        const remainingStops = buildRouteStopsFromJobs(
+        const remainingStops = await buildRouteStopsFromJobs(
           selectedStops.filter(s => !TERMINAL.has(s.job.status)),
         );
         const currentOrder = remainingStops.map((_, i) => i);
@@ -1592,9 +1622,22 @@ export default function ServeRoutePlanner({
                 </div>
               </div>
             )}
-            {matrixFallback && (
-              <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/30 text-amber-400 text-[10px] leading-snug">
-                Route ETAs use estimated distances — live traffic data was unavailable.
+            {matrixFallback && !matrixFallbackDismissed && (
+              <div className="px-3 py-1.5 bg-amber-900/20 border-b border-amber-700/30 text-amber-400 text-[10px] leading-snug flex items-center justify-between gap-2">
+                <span>
+                  Route ETAs use estimated distances — live traffic data was unavailable.
+                  {matrixFallbackReason && (
+                    <span className="ml-1 opacity-70">({matrixFallbackReason})</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMatrixFallbackDismissed(true)}
+                  className="flex-shrink-0 text-amber-500 hover:text-amber-300 leading-none"
+                  aria-label="Dismiss traffic data warning"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
             )}
             {!geocodeWarningDismissed && geocodeWarnings.length > 0 && (
@@ -1836,9 +1879,27 @@ export default function ServeRoutePlanner({
           {/* Right: Map */}
           <div className="flex-1 relative bg-surface-overlay">
             <div ref={mapContainerRef} className="absolute inset-0" />
-            {(!mapReady || optimizing) && (
+            {(!mapReady || optimizing) && !isRouteMapRecovering && (
               <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0 0 0 / 0.5)]">
                 <Loader2 size={24} className="animate-spin text-brand-400" />
+              </div>
+            )}
+            {isRouteMapRecovering && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 size={20} className="animate-spin text-brand-400" />
+                  <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+                </div>
+              </div>
+            )}
+            {routeMapNeedsManualReload && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+                <div className="flex flex-col items-center gap-2 text-center px-4">
+                  <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+                  <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+                    RELOAD PAGE
+                  </button>
+                </div>
               </div>
             )}
           </div>

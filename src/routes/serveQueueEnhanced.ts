@@ -26,7 +26,7 @@ import {
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
 import { containsAnyClause } from '../utils/searchText';
-import { log as logger } from '../utils/logger';
+import { log as logger, logErrorToDb } from '../utils/logger';
 import {
   crossReferenceDefendant,
   validateCharges,
@@ -1025,7 +1025,16 @@ sqe.post('/optimize-route', async (c) => {
     const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken);
     return c.json(result);
   } catch (err) {
-    console.error('[serve-queue] optimize-route error', err);
+    logger.error('[serve-queue] optimize-route error', {}, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: (err as Error)?.message ?? String(err),
+      details: { route: 'POST /serve-queue/optimize-route' },
+      traceId: c.get('traceId') ?? '',
+      source: 'serveQueueEnhanced',
+      statusCode: 500,
+    }, c.executionCtx);
     return c.json({ error: 'Route optimization failed' }, 500);
   }
 });

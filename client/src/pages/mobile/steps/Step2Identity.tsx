@@ -77,6 +77,9 @@ export interface Step2Props {
   // Active card selection
   activeCard: 'barcode' | 'photo' | 'manual' | null;
   setActiveCard: (v: 'barcode' | 'photo' | 'manual' | null) => void;
+
+  // Optional label override for the barcode scan trigger
+  scanIdLabel?: string;
 }
 
 // ── Component ─────────────────────────────────────────────────────────
@@ -103,6 +106,7 @@ export default function Step2Identity({
   currentZip, setCurrentZip,
   onScanId, onCapturePhoto, onCompleteManual,
   activeCard, setActiveCard,
+  scanIdLabel = 'Scan ID barcode',
 }: Step2Props) {
   const idDone = idVerified || idFrontImage !== null;
 

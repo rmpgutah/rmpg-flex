@@ -26,7 +26,7 @@ import {
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
-  Route as RouteIcon, Grid3X3, Printer, type LucideIcon,
+  Route as RouteIcon, Grid3X3, Printer, Loader2, type LucideIcon,
 } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
@@ -927,6 +927,8 @@ export default function NavigationPage() {
   // likely; each map rebuilds itself in place at its captured view.
   const [navRecoverNonce, setNavRecoverNonce] = useState(0);
   const [insetRecoverNonce, setInsetRecoverNonce] = useState(0);
+  const [isNavRecovering, setIsNavRecovering] = useState(false);
+  const [mapNeedsManualReload, setMapNeedsManualReload] = useState(false);
   const navRecoverCamRef = useRef<MapCamera | null>(null);
   const navRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const insetRecoveryCleanupRef = useRef<(() => void) | null>(null);
@@ -1142,6 +1144,8 @@ export default function NavigationPage() {
           navRecoveryCleanupRef.current = installWebglContextRecovery(map, {
             label: 'NavigationPage.main',
             onRebuild: (camera) => {
+              setIsNavRecovering(false);
+              setMapNeedsManualReload(false);
               navRecoverCamRef.current = camera;
               if (navRecoveryCleanupRef.current) { navRecoveryCleanupRef.current(); navRecoveryCleanupRef.current = null; }
               try { markerRef.current?.remove(); } catch { /* gone */ }
@@ -1150,6 +1154,9 @@ export default function NavigationPage() {
               setMapReady(false);
               setNavRecoverNonce((n) => n + 1);
             },
+            onContextLost: () => setIsNavRecovering(true),
+            onContextRestored: () => setIsNavRecovering(false),
+            onGiveUp: () => { setIsNavRecovering(false); setMapNeedsManualReload(true); },
           });
           markerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
@@ -1206,6 +1213,7 @@ export default function NavigationPage() {
               setInsetReady(false);
               setInsetRecoverNonce((n) => n + 1);
             },
+            onGiveUp: () => setMapNeedsManualReload(true),
           });
           insetMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude!, gps.latitude!]).addTo(m);
@@ -2517,6 +2525,25 @@ export default function NavigationPage() {
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-600 text-xs pointer-events-none">
           <Crosshair className="w-4 h-4 mr-2 animate-pulse text-brand-500" />
           Initializing map…
+        </div>
+      )}
+      {isNavRecovering && !mapNeedsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-[10px] font-mono tracking-widest">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {mapNeedsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <span className="text-rmpg-100 text-sm font-mono">MAP GPU CRASH</span>
+            <span className="text-rmpg-400 text-xs">The map GPU context crashed repeatedly. Reload to restore.</span>
+            <button onClick={() => window.location.reload()} className="mt-1 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-mono" style={{ borderRadius: 2 }}>
+              RELOAD PAGE
+            </button>
+          </div>
         </div>
       )}
       {/* #2 — offline/cached basemap fallback indicator. The schematic

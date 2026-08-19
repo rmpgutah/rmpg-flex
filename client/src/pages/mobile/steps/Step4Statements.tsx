@@ -48,8 +48,7 @@ export default function Step4Statements({
           type="button"
           onClick={() => setAllConfirmed(!allConfirmed)}
           aria-pressed={allConfirmed}
-          className="w-full flex items-start gap-3 text-left p-4 rounded-sm bg-gray-50 border-2 border-gray-200 active:opacity-80"
-          style={{ borderColor: allConfirmed ? '#2563eb' : undefined }}
+          className={`w-full flex items-start gap-3 text-left p-4 rounded-sm bg-gray-50 border-2 active:opacity-80 ${allConfirmed ? 'border-rmpg-600' : 'border-gray-200'}`}
         >
           <span
             className={`mt-0.5 shrink-0 w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors ${

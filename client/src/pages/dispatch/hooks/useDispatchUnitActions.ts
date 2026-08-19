@@ -148,7 +148,9 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
       setSelectedCall((prev) => prev ? apply(prev) : prev);
       onAssignSuccess?.();
       const assignedUnit = units.find((u) => String(u.id) === String(unitId));
-      if (assignedUnit) {
+      if (result?.queued) {
+        addToast(`${assignedUnit?.call_sign ?? 'Unit'} queued — will auto-dispatch when it clears its active call.`, 'info');
+      } else if (assignedUnit) {
         announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
       }
       await refreshUnits();

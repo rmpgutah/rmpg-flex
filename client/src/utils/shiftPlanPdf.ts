@@ -22,6 +22,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { openPdfBlob } from './openPdfDocument';
 import { SHIFT_TYPES, type ShiftPlan, type ShiftType } from '../hooks/useShiftPlanning';
 
 const RMPG_GOLD = '#d4a017';
@@ -366,14 +367,5 @@ export function openShiftPlanPdf(input: ShiftPlanPdfInput): void {
   const doc = generateShiftPlanPdf(input);
   const blob = doc.output('blob');
   const url = URL.createObjectURL(blob);
-  const w = window.open(url, '_blank');
-  if (!w) {
-    // Popup blocked — fall back to download.
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ShiftPlan-${input.plan.date}-${input.plan.shiftType}.pdf`;
-    link.click();
-  }
-  // Revoke after a delay so the new tab has time to load it.
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  openPdfBlob(url, 'Shift Plan');
 }

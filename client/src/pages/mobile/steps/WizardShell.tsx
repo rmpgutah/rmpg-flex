@@ -9,6 +9,8 @@ import { ChevronLeft, Loader2 } from 'lucide-react';
 interface WizardShellProps {
   currentStep: number;
   totalSteps?: number;
+  /** How many sections the reader should consider already completed (pre-solved + newly done). */
+  sectionsDone?: number;
   /** Omit to hide the back button on step 1. */
   onBack?: () => void;
   onContinue: () => void;
@@ -21,6 +23,7 @@ interface WizardShellProps {
 export default function WizardShell({
   currentStep,
   totalSteps = 5,
+  sectionsDone,
   onBack,
   onContinue,
   continueEnabled,
@@ -46,6 +49,10 @@ export default function WizardShell({
             ) : (
               // Reserve space so the progress bar aligns the same on step 1
               <span className="w-7 shrink-0" aria-hidden />
+            )}
+            {/* Screen-reader live announcement — the visual bar is aria-hidden. */}
+            {sectionsDone !== undefined && (
+              <p role="status" className="sr-only">Step {sectionsDone} of 5 complete</p>
             )}
             {/* 5-segment progress bar */}
             <div className="flex gap-1 flex-1" role="progressbar" aria-valuenow={currentStep} aria-valuemin={1} aria-valuemax={totalSteps} aria-label={`Step ${currentStep} of ${totalSteps}`}>

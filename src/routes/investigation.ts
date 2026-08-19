@@ -45,7 +45,7 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
   } catch (err: any) {
     log.warn('[investigation] FTS cases query failed, trying LIKE fallback', { error: err.message });
     try {
-      const likeQuery = `%${sanitized}%`;
+      const likeQuery = `%${sanitized.slice(0, 48)}%`;
       const likeRes = await db.prepare(
         `SELECT c.id, c.case_number, c.title, c.status, c.case_type, c.priority,
                 c.solvability_score, c.created_at, c.updated_at, 0 as fts_rank
@@ -80,7 +80,7 @@ app.get('/search', zValidator('query', searchSchema), async (c) => {
   } catch (err: any) {
     log.warn('[investigation] FTS persons query failed, trying LIKE fallback', { error: err.message });
     try {
-      const likeQuery = `%${sanitized}%`;
+      const likeQuery = `%${sanitized.slice(0, 48)}%`;
       const likeRes = await db.prepare(
         `SELECT p.id, p.first_name, p.last_name, p.dob, p.phone,
                 p.created_at, 0 as fts_rank
