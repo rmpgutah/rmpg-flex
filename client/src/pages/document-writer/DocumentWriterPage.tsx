@@ -20,7 +20,7 @@ import SubscriptExt from '@tiptap/extension-subscript';
 import { FileText, ZoomIn, ZoomOut, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, uploadsUrl } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
 import TemplateChooser from './components/TemplateChooser';
@@ -242,7 +242,7 @@ export default function DocumentWriterPage() {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
+      const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: formData });
       if (!res.ok) {
         const detail = await res.json().catch(() => null) as any;
         throw new Error(detail?.error || `Save failed (HTTP ${res.status})`);
@@ -731,7 +731,7 @@ export default function DocumentWriterPage() {
           const token = localStorage.getItem('rmpg_token');
           const headers: Record<string, string> = {};
           if (token) headers['Authorization'] = `Bearer ${token}`;
-          const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
+          const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: formData });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           setServerSaveState('saved');
         } catch (err) {

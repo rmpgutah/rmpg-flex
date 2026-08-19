@@ -37,6 +37,7 @@ import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const arrests = new Hono<Env>();
 
 // ── Allowed values ─────────────────────────────────────────
@@ -343,13 +344,12 @@ arrests.get('/search', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
     if (q.length < 2) return c.json({ data: [] });
     const db = getDb(c.env);
-    const like = `%${q}%`;
+    const m = containsAnyClause(['full_name', 'first_name', 'last_name', 'booking_number']);
     const rows = await query<Record<string, unknown>>(
       db,
-      `SELECT * FROM arrest_records
-       WHERE full_name LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR booking_number LIKE ?
+      `SELECT * FROM arrest_records WHERE ${m.sql}
        ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT 100`,
-      like, like, like, like,
+      ...m.binds(q),
     );
     return c.json({ data: await enrichLinkedPersons(db, rows) });
   } catch (err) {

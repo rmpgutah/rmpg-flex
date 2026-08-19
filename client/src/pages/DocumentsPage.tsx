@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import DossierGrid from './documents/DossierGrid';
 import { useNavigate, useSearchParams } from 'react-router';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { apiFetch, authedImageUrl, apiUploadFiles } from '../hooks/useApi';
 import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -167,36 +167,24 @@ export default function DocumentsPage() {
     setUploading(true);
     const items = Array.from(fileList);
     setUploadProgress(items.map(f => ({ name: f.name, done: false, error: false })));
-    const token = localStorage.getItem('rmpg_token');
     let successCount = 0;
     try {
       for (let i = 0; i < items.length; i++) {
         const file = items[i];
-        const formData = new FormData();
-        formData.append('files', file);
-        if (currentFolderId) {
-          formData.append('entity_type', 'document_folder');
-          formData.append('entity_id', String(currentFolderId));
-        }
         try {
-          const resp = await fetch('/api/uploads', {
-            method: 'POST',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-            body: formData,
-          });
-          if (resp.ok) {
-            const results = await resp.json();
-            if (currentFolderId && results?.[0]?.file_id) {
-              await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
-                method: 'POST',
-                body: JSON.stringify({ file_id: results[0].file_id }),
-              }).catch(() => {});
-            }
-            successCount++;
-            setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
-          } else {
-            setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
+          const results = await apiUploadFiles(
+            [file],
+            currentFolderId ? 'document_folder' : undefined,
+            currentFolderId ?? undefined,
+          );
+          if (currentFolderId && results?.[0]?.file_id) {
+            await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
+              method: 'POST',
+              body: JSON.stringify({ file_id: results[0].file_id }),
+            }).catch(() => {});
           }
+          successCount++;
+          setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
         } catch {
           setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
         }

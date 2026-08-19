@@ -21,7 +21,7 @@ import { getDecrypted } from '../../utils/encryptedR2';
 const panic = new Hono<Env>();
 
 // GET /dispatch/panic — list panic alerts, default active only
-panic.get('/panic', async (c) => {
+panic.get('/panic', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const status = c.req.query('status') || 'active';
   const rows = await query<Record<string, unknown>>(
@@ -40,8 +40,8 @@ panic.get('/panic', async (c) => {
   return c.json(rows);
 });
 
-// POST /dispatch/panic — officer hits the panic button
-panic.post('/panic', async (c) => {
+// POST /dispatch/panic — officer hits the panic button (any authenticated role may trigger their own)
+panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const userId = c.get('userId') as number;
   const body = await c.req.json<{
@@ -79,7 +79,7 @@ panic.post('/panic', async (c) => {
       db,
       `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
          description, source, officer_safety_caution, created_at, updated_at)
-       VALUES ('panic_alarm', 'P1', 'active', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+       VALUES ('panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
       body.location_address ?? 'Panic location',
       body.latitude ?? null, body.longitude ?? null,
       'Officer Panic Activation'
@@ -155,8 +155,10 @@ panic.post('/panic', async (c) => {
             backupCallId, unit.id);
         }
         await execute(db,
-          `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
-          JSON.stringify(available.map((u) => u.id)), backupCallId);
+          `UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ? WHERE id = ?`,
+          JSON.stringify(available.map((u) => u.id)),
+          JSON.stringify(available.map((u) => u.call_sign)),
+          backupCallId);
         const backupUnits = JSON.stringify(available.map((u) => u.call_sign));
         await execute(db,
           `UPDATE panic_alerts SET backup_call_id = ?, backup_units = ? WHERE id = ?`,

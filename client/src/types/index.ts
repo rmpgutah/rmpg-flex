@@ -452,6 +452,8 @@ export interface Unit {
   status: UnitStatus;
   current_call_id?: string | null;
   current_call_number?: string | null;
+  /** Ordered list of call IDs queued behind the active current_call_id. */
+  queued_call_ids?: number[];
   location?: string;
   latitude?: number | null;
   longitude?: number | null;

@@ -687,7 +687,7 @@ rt.get('/ai/shift-summary', async (c) => {
      WHERE (unit_call_signs LIKE ? OR COALESCE(responding_officer,'') LIKE ?)
        AND datetime(created_at) >= datetime('now', ?)
      ORDER BY datetime(created_at) DESC LIMIT 50`,
-    `%${unit}%`, `%${unit}%`, since,
+    `%${unit.slice(0, 48)}%`, `%${unit.slice(0, 48)}%`, since,
   ).catch(() => []);
 
   const txRow = await queryFirst<{ n: number }>(

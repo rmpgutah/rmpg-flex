@@ -376,7 +376,7 @@ export const SPACING = {
 // ── Layout Tokens ────────────────────────────────────────────
 
 export const LAYOUT = {
-  PAGE_MARGIN:       10,     // Tighter margins for max content area
+  PAGE_MARGIN:       12.7,   // 0.5 inch — standard printer minimum printable-area margin
   // [Improvement 44] Header bar taller to accommodate 13.5pt agency
   // name + 7pt subheader + meta line + priority badge without
   // vertical cramping.

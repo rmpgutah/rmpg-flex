@@ -99,12 +99,13 @@ export async function crossLinkPsoCloseToServe(
       `INSERT INTO serve_queue (
          call_id, officer_id, created_by, recipient_name, recipient_address,
          recipient_lat, recipient_lng, document_type, case_number, client_name,
-         priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+         client_id, priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       callId, merged.officer_id ?? options.actorUserId ?? null, options.actorUserId ?? null,
       recipientName, recipientAddress,
       merged.latitude ?? null, merged.longitude ?? null,
       documentType, caseNumber, clientName,
+      merged.client_id ?? null,
       `Auto-created from CFS ${merged.call_number || `#${callId}`} on close (${code})`,
     );
     queueCreated = true;

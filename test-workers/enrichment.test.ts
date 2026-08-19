@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { Hono } from 'hono';
 import { getDb, execute } from '../src/utils/db';
 
-// Mock all 6 source adapters before importing the route
+// Mock all 10 source adapters before importing the route
 vi.mock('../src/utils/enrichment/sources/nsopw', () => ({
   search: async () => ({
     source: 'nsopw', ok: true, latency_ms: 10,
@@ -20,6 +20,10 @@ vi.mock('../src/utils/enrichment/sources/openSanctions', () => ({ search: async 
 vi.mock('../src/utils/enrichment/sources/usps',          () => ({ search: async () => ({ source: 'usps',            ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
 vi.mock('../src/utils/enrichment/sources/openCorporates',() => ({ search: async () => ({ source: 'open_corporates', ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
 vi.mock('../src/utils/enrichment/sources/numverify',     () => ({ search: async () => ({ source: 'numverify',       ok: false, latency_ms: 0, records: [], error: 'not_configured' }) }));
+vi.mock('../src/utils/enrichment/sources/fbi',           () => ({ search: async () => ({ source: 'fbi_wanted',      ok: true,  latency_ms: 5, records: [] }) }));
+vi.mock('../src/utils/enrichment/sources/bop',           () => ({ search: async () => ({ source: 'bop_inmates',     ok: true,  latency_ms: 5, records: [] }) }));
+vi.mock('../src/utils/enrichment/sources/censusGeocoder',() => ({ search: async () => ({ source: 'census_geocoder', ok: true,  latency_ms: 5, records: [] }) }));
+vi.mock('../src/utils/enrichment/sources/ofac',          () => ({ search: async () => ({ source: 'ofac_sdn',        ok: true,  latency_ms: 5, records: [] }) }));
 
 import enrichment from '../src/routes/enrichment';
 
@@ -112,11 +116,11 @@ describe('POST /api/enrichment/search', () => {
     expect(res.status).toBe(400);
   });
 
-  it('GET /sources returns 6 sources', async () => {
+  it('GET /sources returns 10 sources', async () => {
     const app = appWithUser(testUser);
     const res = await app.fetch(new Request('https://example.com/api/enrichment/sources'), env);
     const json = await res.json() as any[];
     expect(res.status).toBe(200);
-    expect(json).toHaveLength(6);
+    expect(json).toHaveLength(10);
   });
 });

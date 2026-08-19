@@ -21,7 +21,7 @@ export default function AssignmentArcLayer() {
   useEffect(() => {
     if (!map) return;
 
-    const features = units
+    const buildFeatures = () => units
       .filter(u => u.latitude != null && u.longitude != null && u.call_number != null)
       .flatMap(u => {
         const call = calls.find(c => c.call_number === u.call_number);
@@ -39,35 +39,43 @@ export default function AssignmentArcLayer() {
         }];
       });
 
-    const geojson: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+    const applyData = () => {
+      if (!map.isStyleLoaded()) return;
+      const geojson: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: buildFeatures() };
 
-    if (map.getSource(SOURCE_ID)) {
-      (map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource).setData(geojson);
-    } else {
-      map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
-    }
+      if (map.getSource(SOURCE_ID)) {
+        (map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource).setData(geojson);
+      } else {
+        map.addSource(SOURCE_ID, { type: 'geojson', data: geojson });
+      }
 
-    if (!map.getLayer(LAYER_ID)) {
-      map.addLayer({
-        id: LAYER_ID,
-        type: 'line',
-        source: SOURCE_ID,
-        paint: {
-          'line-color': [
-            'match', ['get', 'priority'],
-            '1', PRIORITY_COLORS['1'],
-            '2', PRIORITY_COLORS['2'],
-            '3', PRIORITY_COLORS['3'],
-            DEFAULT_ARC_COLOR,
-          ],
-          'line-width': 1.5,
-          'line-opacity': 0.7,
-          'line-dasharray': [2, 3],
-        },
-      });
-    }
+      if (!map.getLayer(LAYER_ID)) {
+        map.addLayer({
+          id: LAYER_ID,
+          type: 'line',
+          source: SOURCE_ID,
+          paint: {
+            'line-color': [
+              'match', ['get', 'priority'],
+              '1', PRIORITY_COLORS['1'],
+              '2', PRIORITY_COLORS['2'],
+              '3', PRIORITY_COLORS['3'],
+              DEFAULT_ARC_COLOR,
+            ],
+            'line-width': 1.5,
+            'line-opacity': 0.7,
+            'line-dasharray': [2, 3],
+          },
+        });
+      }
+    };
+
+    applyData();
+    // Re-apply after style switches (map.setStyle() wipes all sources/layers)
+    map.on('style.load', applyData);
 
     return () => {
+      map.off('style.load', applyData);
       try {
         if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
         if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);

@@ -59,7 +59,8 @@ def health():
             ["tesseract", "--version"], capture_output=True, text=True, timeout=5
         ).stdout.splitlines()[0]
     except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "unavailable", "detail": str(e)})
+        logger.error("tesseract version check failed: %s", e)
+        return JSONResponse(status_code=503, content={"status": "unavailable", "detail": "tesseract unavailable"})
 
     import os
     custom_model_present = os.path.exists(f"{TESSDATA_DIR}/{CUSTOM_LANG}.traineddata")

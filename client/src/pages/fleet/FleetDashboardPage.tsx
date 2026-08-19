@@ -247,7 +247,7 @@ export default function FleetDashboardPage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
@@ -274,7 +274,7 @@ export default function FleetDashboardPage() {
         });
         map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        const markReady = () => { if (!cancelled) setMapLoaded(true); };
+        const markReady = () => { if (!cancelled) { onMapLoaded(map); setMapLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setMapError(e.error?.message || 'Map error'); });

@@ -58,7 +58,7 @@ async function getOfficerUserIdsForCall(
 
 // GET /dispatch/calls/:id/persons — joined with persons table so the
 // client renders name/dob/phone without a second fetch per row.
-links.get('/calls/:id/persons', async (c) => {
+links.get('/calls/:id/persons', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -337,7 +337,7 @@ links.post('/calls/:id/persons/quick-add', requireRole('dispatcher', 'supervisor
 // VEHICLES
 // ═══════════════════════════════════════════════════════════════════
 
-links.get('/calls/:id/vehicles', async (c) => {
+links.get('/calls/:id/vehicles', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -655,7 +655,7 @@ links.delete('/calls/:id/property', requireRole('dispatcher', 'supervisor', 'man
 // ═══════════════════════════════════════════════════════════════════
 
 // GET /dispatch/business-search?q= — typeahead against the businesses table.
-links.get('/business-search', async (c) => {
+links.get('/business-search', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const q = (c.req.query('q') || '').trim().toLowerCase();
   if (q.length < 2) return c.json([]);
@@ -671,7 +671,7 @@ links.get('/business-search', async (c) => {
 });
 
 // GET /dispatch/calls/:id/businesses — joined with businesses for one-fetch render.
-links.get('/calls/:id/businesses', async (c) => {
+links.get('/calls/:id/businesses', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const rows = await query<Record<string, unknown>>(
     db,
@@ -778,10 +778,10 @@ links.patch('/calls/:id/businesses/:linkId', requireRole('dispatcher', 'supervis
 });
 
 // ── Person Risk Scoring ──────────────────────────────────────
-links.get('/persons/:id/risk-score', async (c) => {
+links.get('/persons/:id/risk-score', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const personId = parseInt(c.req.param('id'), 10);
+    const personId = parseInt(c.req.param('id') || '0', 10);
     let score = 0;
     const flags: string[] = [];
     const warrantCount = await queryFirst<{ n: number }>(
@@ -803,15 +803,138 @@ links.get('/persons/:id/risk-score', async (c) => {
 });
 
 // ── Protection Order Check ───────────────────────────────────
-links.get('/persons/:id/protection-orders', async (c) => {
+links.get('/persons/:id/protection-orders', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
-  const personId = parseInt(c.req.param('id'), 10);
+  const personId = parseInt(c.req.param('id') || '0', 10);
   try {
     const orders = await query<{ case_number: string; status: string }>(
       db, "SELECT case_number, status FROM protection_orders WHERE respondent_person_id = ? AND status = 'active'", personId,
     ).catch(() => []);
     return c.json({ person_id: personId, active_orders: orders.length, orders });
   } catch { return c.json({ person_id: personId, active_orders: 0, orders: [] }); }
+});
+
+// ── INVOLVED PERSONS (inline — no FK to persons table) ─────────────────────
+links.get('/calls/:id/involved-persons', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager', 'client_viewer', 'human_resources'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  try {
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM call_involved_persons WHERE call_id = ? ORDER BY created_at ASC',
+      id,
+    );
+    return c.json(rows);
+  } catch (err) {
+    log.error('GET involved-persons failed', { callId: id }, err as Error);
+    return c.json([], 200);
+  }
+});
+
+links.post('/calls/:id/involved-persons', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json();
+  const { name, dob, id_number, role } = body as { name: string; dob?: string; id_number?: string; role?: string };
+  if (!name?.trim()) return c.json({ error: 'name is required' }, 400);
+  try {
+    const result = await execute(db,
+      'INSERT INTO call_involved_persons (call_id, name, dob, id_number, role) VALUES (?, ?, ?, ?, ?)',
+      id, name.trim(), dob || null, id_number || null, role || 'witness',
+    );
+    const created = await queryFirst<Record<string, unknown>>(db,
+      'SELECT * FROM call_involved_persons WHERE id = ?',
+      result.meta.last_row_id,
+    );
+    return c.json(created, 201);
+  } catch (err) {
+    log.error('POST involved-person failed', { callId: id }, err as Error);
+    return c.json({ error: 'Failed to add person' }, 500);
+  }
+});
+
+links.delete('/calls/:id/involved-persons/:entryId', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const entryId = Number(c.req.param('entryId'));
+  await execute(db, 'DELETE FROM call_involved_persons WHERE id = ? AND call_id = ?', entryId, id);
+  return c.json({ success: true });
+});
+
+// ── INVOLVED VEHICLES (inline — no FK to vehicles_records table) ────────────
+links.get('/calls/:id/involved-vehicles', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager', 'client_viewer', 'human_resources'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  try {
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM call_involved_vehicles WHERE call_id = ? ORDER BY created_at ASC',
+      id,
+    );
+    return c.json(rows);
+  } catch (err) {
+    log.error('GET involved-vehicles failed', { callId: id }, err as Error);
+    return c.json([], 200);
+  }
+});
+
+links.post('/calls/:id/involved-vehicles', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const body = await c.req.json();
+  const { plate, make, model, color, role } = body as { plate?: string; make?: string; model?: string; color?: string; role?: string };
+  try {
+    const result = await execute(db,
+      'INSERT INTO call_involved_vehicles (call_id, plate, make, model, color, role) VALUES (?, ?, ?, ?, ?, ?)',
+      id, plate || null, make || null, model || null, color || null, role || 'involved',
+    );
+    const created = await queryFirst<Record<string, unknown>>(db,
+      'SELECT * FROM call_involved_vehicles WHERE id = ?',
+      result.meta.last_row_id,
+    );
+    return c.json(created, 201);
+  } catch (err) {
+    log.error('POST involved-vehicle failed', { callId: id }, err as Error);
+    return c.json({ error: 'Failed to add vehicle' }, 500);
+  }
+});
+
+links.delete('/calls/:id/involved-vehicles/:entryId', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const entryId = Number(c.req.param('entryId'));
+  await execute(db, 'DELETE FROM call_involved_vehicles WHERE id = ? AND call_id = ?', entryId, id);
+  return c.json({ success: true });
+});
+
+// ── NARRATIVE (reads/writes calls_for_service_ext.narrative) ────────────────
+links.get('/calls/:id/narrative', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager', 'client_viewer', 'human_resources'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  try {
+    const row = await queryFirst<{ narrative: string | null }>(db,
+      'SELECT narrative FROM calls_for_service_ext WHERE id = ?',
+      id,
+    );
+    return c.json({ narrative: row?.narrative ?? null });
+  } catch {
+    return c.json({ narrative: null });
+  }
+});
+
+links.patch('/calls/:id/narrative', requireRole('dispatcher', 'officer', 'supervisor', 'admin', 'manager'), async (c) => {
+  const db = getDb(c.env);
+  const id = Number(c.req.param('id'));
+  const { narrative } = await c.req.json() as { narrative?: string };
+  try {
+    await execute(db,
+      `INSERT INTO calls_for_service_ext (id, narrative) VALUES (?, ?)
+       ON CONFLICT(id) DO UPDATE SET narrative = excluded.narrative`,
+      id, narrative ?? null,
+    );
+    return c.json({ success: true, narrative: narrative ?? null });
+  } catch (err) {
+    log.error('PATCH narrative failed', { callId: id }, err as Error);
+    return c.json({ error: 'Failed to save narrative' }, 500);
+  }
 });
 
 export default links;

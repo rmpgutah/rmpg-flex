@@ -1101,6 +1101,27 @@ async function createMainWindow() {
     console.warn('[APP] loadURL failed (did-fail-load will recover):', err && err.message);
   });
 
+  // ─── Load stall watchdog ──────────────────────────────────
+  // If 'did-finish-load' never fires within 45s (WAF hung, mid-load network
+  // drop that doesn't produce did-fail-load, etc.) show the offline page so
+  // the officer isn't staring at a blank window with no feedback.
+  // Cleared by both did-finish-load AND did-fail-load so it never double-fires.
+  let _loadStallTimer = setTimeout(() => {
+    _loadStallTimer = null;
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const url = mainWindow.webContents.getURL();
+    if (url && !url.startsWith('data:') && url !== REMOTE_SERVER_URL && url !== '') return; // already navigated away
+    console.warn('[APP] Load stall: did-finish-load not received within 45s — showing offline page');
+    mainWindow.loadURL(getOfflineHTML()).catch(() => {});
+  }, 45_000);
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (_loadStallTimer) { clearTimeout(_loadStallTimer); _loadStallTimer = null; }
+  });
+  mainWindow.webContents.once('did-fail-load', () => {
+    if (_loadStallTimer) { clearTimeout(_loadStallTimer); _loadStallTimer = null; }
+  });
+
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
     // In kiosk shell mode the splash drives show/focus via the splash:auth flow.
@@ -1179,6 +1200,36 @@ async function createMainWindow() {
   // webContents each time createMainWindow() runs.
   mainWindow.webContents.on('render-process-gone', (event, details) => {
     recoverMainWindow('renderer', details && details.reason);
+  });
+
+  // ─── Frozen renderer detection ────────────────────────────
+  // 'unresponsive' fires when the renderer process is alive but has not
+  // processed an event within ~10s — a JS hang, tight loop, or memory
+  // pressure. This is distinct from a crash: render-process-gone does NOT
+  // fire for a frozen renderer, so recoverMainWindow() is never called.
+  // Without this handler a frozen window stays dead until a manual app
+  // restart. Strategy: wait UNRESPONSIVE_RELOAD_DELAY_MS to give Chromium
+  // time to recover on its own (it sometimes does for transient jank), then
+  // force-reload if the renderer hasn't come back yet.
+  let _unresponsiveTimer = null;
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[APP] Renderer unresponsive — will reload in 30s if not recovered');
+    if (_unresponsiveTimer) return; // already counting down
+    _unresponsiveTimer = setTimeout(() => {
+      _unresponsiveTimer = null;
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      console.error('[APP] Renderer still unresponsive after 30s — force-reloading');
+      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+        console.warn('[APP] Unresponsive-recovery loadURL failed:', err && err.message);
+      });
+    }, 30_000);
+  });
+  mainWindow.webContents.on('responsive', () => {
+    if (_unresponsiveTimer) {
+      clearTimeout(_unresponsiveTimer);
+      _unresponsiveTimer = null;
+      console.log('[APP] Renderer recovered responsiveness — cancelled reload timer');
+    }
   });
 
   // Server hostname for link filtering — derived once at module scope (TRUSTED_HOST)
@@ -4781,6 +4832,180 @@ guardedHandle('system:get-network', async () => {
   } catch { return null; }
 });
 
+// ── WiFi: deep detail (IP, gateway, DNS, channel, band, MAC, …) ──
+guardedHandle('wifi:get-detail', async () => {
+  if (process.platform !== 'win32') return null;
+  const { execSync } = require('child_process');
+  const os = require('os');
+
+  const field = (text, label) => {
+    const m = text.match(new RegExp(`^\\s+${label}\\s+:\\s+(.+)`, 'm'));
+    return m ? m[1].trim() : null;
+  };
+  const intField = (text, label) => {
+    const v = field(text, label);
+    return v ? parseInt(v, 10) : null;
+  };
+
+  // --- netsh wlan show interfaces ---
+  let wlanOut = '';
+  try { wlanOut = execSync('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8', windowsHide: true }); } catch { /* no adapter */ }
+
+  const state = (() => {
+    const m = field(wlanOut, 'State');
+    if (!m) return null;
+    return m.toLowerCase().includes('connect') ? 'connected' : 'disconnected';
+  })();
+  const ssid       = field(wlanOut, 'SSID');
+  const bssid      = field(wlanOut, 'BSSID');
+  const signal     = intField(wlanOut, 'Signal');
+  const channel    = intField(wlanOut, 'Channel');
+  const radioType  = field(wlanOut, 'Radio type');
+  const auth       = field(wlanOut, 'Authentication');
+  const cipher     = field(wlanOut, 'Cipher');
+  const profile    = field(wlanOut, 'Profile');
+  const adapter    = field(wlanOut, 'Description');
+  const mac        = field(wlanOut, 'Physical address');
+  const rxMbpsRaw  = field(wlanOut, 'Receive rate \\(Mbps\\)');
+  const txMbpsRaw  = field(wlanOut, 'Transmit rate \\(Mbps\\)');
+  const rxMbps     = rxMbpsRaw ? parseFloat(rxMbpsRaw) : null;
+  const txMbps     = txMbpsRaw ? parseFloat(txMbpsRaw) : null;
+
+  const band = (() => {
+    if (!channel) return null;
+    if (channel >= 1  && channel <= 14)  return '2.4 GHz';
+    if (channel >= 32 && channel <= 177) return '5 GHz';
+    if (channel >= 1  && radioType && radioType.includes('6E')) return '6 GHz';
+    return null;
+  })();
+
+  // --- IP info from os.networkInterfaces() matched by MAC ---
+  let ip = null, ipv6 = null, subnet = null;
+  const normalMac = mac ? mac.toLowerCase().replace(/-/g, ':') : null;
+  if (normalMac) {
+    const ifaces = os.networkInterfaces();
+    for (const ifAddrs of Object.values(ifaces)) {
+      const entry = ifAddrs.find(a => a.mac && a.mac.toLowerCase() === normalMac);
+      if (entry) {
+        const v4 = ifAddrs.find(a => a.family === 'IPv4' && !a.internal);
+        const v6 = ifAddrs.find(a => a.family === 'IPv6' && !a.internal);
+        ip     = v4?.address ?? null;
+        subnet = v4?.netmask ?? null;
+        ipv6   = v6?.address?.split('%')[0] ?? null;
+        break;
+      }
+    }
+  }
+
+  // --- Gateway + DNS via PowerShell (quick, structured) ---
+  let gateway = null, dns = [];
+  try {
+    const psOut = execSync(
+      'powershell.exe -NoProfile -Command "' +
+        '$a=Get-NetIPConfiguration|Where-Object{$_.IPv4Address -ne $null}|Select-Object -First 1;' +
+        '[PSCustomObject]@{gw=$a.IPv4DefaultGateway.NextHop;dns=($a.DNSServer.ServerAddresses -join \",\")}|' +
+        'ConvertTo-Json -Compress"',
+      { timeout: 5000, encoding: 'utf8', windowsHide: true }
+    );
+    const parsed = JSON.parse(psOut.trim());
+    gateway = parsed.gw || null;
+    dns = parsed.dns ? parsed.dns.split(',').filter(Boolean) : [];
+  } catch { /* not critical */ }
+
+  return { state, ssid, bssid, signal, channel, band, radioType, auth, cipher, profile, adapter, mac, ip, ipv6, subnet, gateway, dns, rxMbps, txMbps };
+});
+
+// ── WiFi: scan available networks (Windows only) ──────────────
+guardedHandle('wifi:scan-networks', async () => {
+  if (process.platform !== 'win32') return [];
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync(
+      'netsh wlan show networks mode=Bssid',
+      { timeout: 8000, encoding: 'utf8', windowsHide: true }
+    );
+
+    // Each SSID block starts with "SSID N :"
+    const blocks = out.split(/(?=^SSID \d+ :)/m).filter(b => b.trim().startsWith('SSID'));
+    const networks = blocks.map(block => {
+      const ssidM  = block.match(/^SSID \d+ +: (.+)/m);
+      const authM  = block.match(/Authentication +: (.+)/m);
+      const encM   = block.match(/Encryption +: (.+)/m);
+      const ssid   = ssidM  ? ssidM[1].trim()  : '';
+      const auth   = authM  ? authM[1].trim()  : 'Unknown';
+      const enc    = encM   ? encM[1].trim()   : 'Unknown';
+
+      // Parse each BSSID sub-block
+      const bssidBlocks = block.split(/(?=^ +BSSID \d+ +:)/m).slice(1);
+      const bssids = bssidBlocks.map(bb => {
+        const bM  = bb.match(/BSSID \d+ +: (.+)/m);
+        const sM  = bb.match(/Signal +: (\d+)%/m);
+        const rtM = bb.match(/Radio type +: (.+)/m);
+        const chM = bb.match(/Channel +: (\d+)/m);
+        return {
+          bssid:     bM  ? bM[1].trim()         : null,
+          signal:    sM  ? parseInt(sM[1], 10)  : 0,
+          radioType: rtM ? rtM[1].trim()         : null,
+          channel:   chM ? parseInt(chM[1], 10) : null,
+        };
+      });
+
+      const maxSignal = bssids.reduce((m, b) => Math.max(m, b.signal), 0);
+      const bestBssid = bssids.find(b => b.signal === maxSignal) || bssids[0] || {};
+
+      const channel = bestBssid.channel ?? null;
+      const band = (() => {
+        if (!channel) return null;
+        if (channel >= 1 && channel <= 14)  return '2.4 GHz';
+        if (channel >= 32 && channel <= 177) return '5 GHz';
+        return null;
+      })();
+
+      return { ssid, auth, enc, signal: maxSignal, channel, band, radioType: bestBssid.radioType ?? null, bssids };
+    }).filter(n => n.ssid);
+
+    return networks;
+  } catch { return []; }
+});
+
+// ── WiFi: list saved profiles (Windows only) ──────────────────
+guardedHandle('wifi:list-profiles', async () => {
+  if (process.platform !== 'win32') return [];
+  const { execSync } = require('child_process');
+  try {
+    const out = execSync('netsh wlan show profiles', { timeout: 3000, encoding: 'utf8', windowsHide: true });
+    const matches = [...out.matchAll(/All User Profile\s+: (.+)/g)];
+    return matches.map(m => m[1].trim());
+  } catch { return []; }
+});
+
+// ── WiFi: connect to a saved profile (Windows only) ───────────
+guardedHandle('wifi:connect', async (_event, { profile }) => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  if (!profile || typeof profile !== 'string') return { ok: false, reason: 'invalid_profile' };
+  const { execFile } = require('child_process');
+  const { promisify } = require('util');
+  try {
+    // execFile avoids shell interpolation — profile name passed as a direct argument
+    await promisify(execFile)('netsh', ['wlan', 'connect', `name=${profile}`], { timeout: 6000, encoding: 'utf8', windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+});
+
+// ── WiFi: disconnect (Windows only) ──────────────────────────
+guardedHandle('wifi:disconnect', async () => {
+  if (process.platform !== 'win32') return { ok: false, reason: 'unsupported_platform' };
+  const { execSync } = require('child_process');
+  try {
+    execSync('netsh wlan disconnect', { timeout: 4000, encoding: 'utf8', windowsHide: true });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+});
+
 // ── System: set OS master volume ──────────────────────────────
 guardedHandle('system:set-volume', async (_event, level) => {
   const clamped = Math.max(0, Math.min(100, Number(level) || 0));
@@ -4962,6 +5187,40 @@ function createTray() {
             mainWindow.show();
             mainWindow.focus();
           }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Reload (F5)',
+        click: () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch(() => {});
+          } else {
+            mainWindow.webContents.reload();
+          }
+          mainWindow.show();
+          console.log('[TRAY] Reload triggered from tray');
+        },
+      },
+      {
+        label: 'Hard Reload — Clear Cache (Ctrl+Shift+F5)',
+        click: async () => {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          try {
+            await mainWindow.webContents.session.clearCache();
+            await mainWindow.webContents.session.clearStorageData({
+              storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+            });
+          } catch (err) {
+            console.warn('[TRAY] Hard reload cache clear failed:', err && err.message);
+          }
+          mainWindow.loadURL(REMOTE_SERVER_URL).catch(() => {});
+          mainWindow.show();
+          console.log('[TRAY] Hard reload triggered from tray');
         },
       },
       { type: 'separator' },
@@ -5232,6 +5491,58 @@ app.whenReady().then(async () => {
     await createMainWindow();
     createTray();
 
+    // ─── Field reload hotkeys (global — survive kiosk/black-screen) ───
+    // Registered as global shortcuts so they fire from the main process
+    // regardless of renderer state (no menu needed, works on black screens).
+    //
+    // F5  — soft reload: reloads the current page (recovers random freezes).
+    //        If the page is the offline data: URL, navigates back to the real
+    //        server instead of re-rendering the dead-end offline screen.
+    // Ctrl+Shift+F5 — hard reload: clears HTTP + SW caches then loads the
+    //        real server URL. Recovers wedged service workers, stale deploys,
+    //        and any state that a plain reload won't shake loose.
+    //
+    // Both shortcuts unregister themselves in the 'before-quit' handler via
+    // globalShortcut.unregisterAll(), matching the kiosk escape hatch pattern.
+    globalShortcut.register('F5', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      // Manual reload: clear the crash-loop counter so a human override
+      // isn't blocked by stale automatic-recovery timestamps.
+      rendererRecoveryTimestamps = [];
+      const currentUrl = mainWindow.webContents.getURL();
+      if (currentUrl.startsWith('data:')) {
+        // On the offline or crash-loop page — navigate back to the real app
+        mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+          console.warn('[RELOAD] F5 loadURL failed:', err && err.message);
+        });
+      } else {
+        mainWindow.webContents.reload();
+      }
+      console.log('[RELOAD] F5: soft reload');
+    });
+
+    globalShortcut.register('Ctrl+Shift+F5', async () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      // Manual hard reload: clear the crash-loop counter (same rationale as F5).
+      rendererRecoveryTimestamps = [];
+      console.log('[RELOAD] Ctrl+Shift+F5: hard reload — clearing caches');
+      try {
+        await mainWindow.webContents.session.clearCache();
+        await mainWindow.webContents.session.clearStorageData({
+          storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+        });
+        await mainWindow.webContents.executeJavaScript(`
+          if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+          if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+        `).catch(() => {});
+      } catch (err) {
+        console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+      }
+      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+        console.warn('[RELOAD] Ctrl+Shift+F5 loadURL failed:', err && err.message);
+      });
+    });
+
     // Await connectivity (usually already resolved by now)
     const isReachable = await connectivityPromise;
     if (!isReachable) {
@@ -5261,11 +5572,13 @@ app.whenReady().then(async () => {
       if (nowOnline) {
         // Auto-reload when on the offline page — the officer shouldn't have
         // to manually tap "Retry" after cellular reconnects in the field.
+        // (The fast-reconnect path below handles this sooner; this is the
+        // fallback for any case where that didn't fire.)
         try {
           if (mainWindow && !mainWindow.isDestroyed()) {
             const currentUrl = mainWindow.webContents.getURL();
             if (currentUrl.startsWith('data:')) {
-              console.log('[APP] Connectivity restored while on offline page — reloading');
+              console.log('[APP] Connectivity restored (debounced) while on offline page — reloading');
               mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
                 console.warn('[APP] Auto-reload on reconnect failed:', err && err.message);
               });
@@ -5284,6 +5597,24 @@ app.whenReady().then(async () => {
           mainWindow?.webContents.send('connectivity:failover', { from: 'wifi', to: 'wwan' });
         }
       }
+    }, (isReachable) => {
+      // ─── Fast reconnect: bypass debounce when on the offline page ─────
+      // The debounce (stableCount=3, ~30s) protects against flapping while
+      // the app is running normally. When the page is already dead (data: URL)
+      // there is nothing to protect — any confirmed positive reachability check
+      // should reload immediately, not after 30s.
+      if (!isReachable) return;
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            console.log('[APP] Fast reconnect: reachable while on offline page — reloading immediately');
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+              console.warn('[APP] Fast reconnect loadURL failed:', err && err.message);
+            });
+          }
+        }
+      } catch { /* window may be closing */ }
     });
 
     // Start background pull sync if online

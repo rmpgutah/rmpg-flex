@@ -30,6 +30,13 @@ function priorityConfig(raw: string) {
   return PRIORITY_CONFIG[raw?.toLowerCase()] ?? PRIORITY_CONFIG.routine;
 }
 
+function truncateToFit(doc: jsPDF, text: string, maxWidth: number): string {
+  if (doc.getTextWidth(text) <= maxWidth) return text;
+  let t = text;
+  while (t.length > 0 && doc.getTextWidth(t + '…') > maxWidth) t = t.slice(0, -1);
+  return t + '…';
+}
+
 function drawTableRow(
   doc: jsPDF,
   y: number,
@@ -71,8 +78,8 @@ function drawTableRow(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const nameStr = item.recipient_name || '(name not set)';
-  doc.text(nameStr, nameX, y + 3.5, { maxWidth: nameW });
+  const nameStr = truncateToFit(doc, item.recipient_name || '(name not set)', nameW);
+  doc.text(nameStr, nameX, y + 3.5);
 
   // Address — smaller, below name
   if (item.recipient_address) {
@@ -92,7 +99,7 @@ function drawTableRow(
       doc.text(`ETA ${item.eta}`, etaX, y + 3.2);
     }
     if (item.bufferMinutes) {
-      doc.text(`~${item.bufferMinutes} min buffer`, etaX, y + 7.2);
+      doc.text(`~${item.bufferMinutes} min dwell`, etaX, y + 7.2);
     }
   }
 
@@ -167,7 +174,7 @@ export async function exportServeMapSheet(items: QueueMapItemForExport[]): Promi
     doc.text('PRIORITY', lx + 2, y + 4);
     doc.text('#', lx + 24, y + 4);
     doc.text('RECIPIENT / ADDRESS', lx + 32, y + 4);
-    doc.text('ETA / BUFFER', pageW - lx - 54, y + 4);
+    doc.text('ETA / DWELL', pageW - lx - 54, y + 4);
     doc.text('DEADLINE', pageW - lx - 24, y + 4);
     return y + 6;
   };

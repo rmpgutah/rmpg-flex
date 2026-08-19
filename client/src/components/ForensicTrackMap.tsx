@@ -46,7 +46,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { rebuildNonce, attach } = useWebglMapRecovery();
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature so
   // a ClearPath device's pre-fix frames never anchor the route line off-coast.
@@ -68,6 +68,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) return;
+          onMapLoaded(map);
           const line = coords.map((p) => [p.longitude, p.latitude]);
           map.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } } });
           map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': GOLD, 'line-width': 4, 'line-opacity': 0.9 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });

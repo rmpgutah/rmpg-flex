@@ -9,18 +9,14 @@
 //   POST /validate   Any authed user except client_viewer. Resolves a
 //                     warrant charge string against (in order): the local
 //                     utah_statutes table, the legal_charge_validations
-//                     cache, then the live Legal Data Hunter API under a
-//                     rate-limit budget.
-//   GET  /usage       admin/manager. Today's LDH call count vs budget.
+//                     cache, then the live Legal Data Hunter API.
 // ============================================================
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
-import { requireRole } from '../middleware/auth';
 import { configFromEnv, resolveCitation, searchLegislation } from '../utils/legalDataHunter/client';
 import { LdhConfigError, LdhError } from '../utils/legalDataHunter/errors';
-import { checkAndReserveLdhCall, LDH_DAILY_BUDGET } from '../utils/legalDataHunter/rateLimit';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsClause, containedByClause } from '../utils/searchText';
 import { log } from '../utils/logger';
@@ -150,11 +146,6 @@ legalDataHunter.post('/validate', async (c) => {
       throw err;
     }
 
-    const reservation = await checkAndReserveLdhCall(c.env.KV as unknown as { get: (k: string) => Promise<string | null>; put: (k: string, v: string, o?: { expirationTtl?: number }) => Promise<void> }, Date.now());
-    if (!reservation.allowed) {
-      return c.json({ ok: false, code: 'rate_limited', reason: reservation.reason });
-    }
-
     const countryHint = state ? 'US' : undefined;
     const citationLike = extractCitationLike(charge);
     let source: 'ldh_resolve' | 'ldh_search';
@@ -207,14 +198,6 @@ legalDataHunter.post('/validate', async (c) => {
     }
     return dbErrorResponse(c, err, 'Failed to validate charge against Legal Data Hunter');
   }
-});
-
-legalDataHunter.get('/usage', requireRole('admin', 'manager'), async (c) => {
-  const kv = c.env.KV as unknown as { get: (k: string) => Promise<string | null> };
-  const today = new Date().toISOString().slice(0, 10);
-  const raw = await kv.get(`legal_data_hunter:usage:day:${today}`);
-  const dayCount = raw ? parseInt(raw, 10) || 0 : 0;
-  return c.json({ ok: true, day_count: dayCount, budget: LDH_DAILY_BUDGET });
 });
 
 export default legalDataHunter;
