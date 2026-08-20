@@ -744,7 +744,8 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // panel) added rmpg-400/500 ramp tokens for muted secondary text in its
   // judge-flags and case-list UI.
   // 10356 -> 10438: Merged SearchBox v6 and Radar360 device capture UI
-  const PIN = 10438;
+  // 10438 -> 10455: FZ-55 Kiosk HUD overlay telemetry classes
+  const PIN = 10455;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
