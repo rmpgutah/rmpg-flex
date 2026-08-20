@@ -651,7 +651,7 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
                         e.stopPropagation();
                         // Open relevant CAD app or window if applicable
                         if (item.category === 'cad_apps') {
-                          openWindow('/dispatch', item.name, { width: 1000, height: 700 });
+                          openWindow?.('/dispatch', item.name, { width: 1000, height: 700 });
                         } else {
                           setSelectedFeature(item);
                         }

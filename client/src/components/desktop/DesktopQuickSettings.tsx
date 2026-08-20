@@ -64,7 +64,7 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          justify: 'between',
+          justifyContent: 'space-between',
           gap: 8,
           textAlign: 'left'
         }}
