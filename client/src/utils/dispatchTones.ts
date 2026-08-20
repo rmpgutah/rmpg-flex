@@ -779,7 +779,7 @@ export function playSound(sound: SoundId): { stop: () => void } | null {
 
   try {
     const ctx = getAudioContext();
-    if (!ctx) return false;
+    if (!ctx) return null;
     const profile = PROFILES[sound];
     const now = ctx.currentTime;
 
