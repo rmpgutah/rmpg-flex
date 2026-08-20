@@ -26,6 +26,7 @@ vi.mock('../context/UserPreferencesContext', () => ({
 // here (role-filtering itself isn't what these tests are checking).
 vi.mock('../context/AuthContext', () => ({
   useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+  useOptionalAuth: () => ({ user: { id: '1', role: 'officer' } }),
 }));
 
 // DesktopTaskbar (rendered by DesktopPage) calls useToast() to surface
