@@ -15,6 +15,7 @@ import { useOptionalAuth } from '../../context/AuthContext';
 interface DesktopKioskHUDProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenWindow?: (path: string, title: string, size?: { width: number; height: number }) => boolean | void;
 }
 
 type TabCategory =
@@ -37,22 +38,28 @@ interface FeatureItem {
   status: 'active' | 'standby' | 'warning' | 'disabled';
   metrics?: string;
   actionLabel?: string;
+  route?: string;
+  appKey?: string;
   description: string;
 }
 
-export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProps) {
+export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: DesktopKioskHUDProps) {
   const windowCtx = useOptionalDesktopWindows();
-  const openWindow = windowCtx?.openWindow;
+  const openWindow = onOpenWindow || windowCtx?.openWindow;
   const authCtx = useOptionalAuth();
   const user = authCtx?.user;
   const [activeTab, setActiveTab] = useState<TabCategory>('hardware');
   const [searchQuery, setSearchQuery] = useState('');
   const [kioskEnabled, setKioskEnabled] = useState(false);
-  const [nightLight, setNightLight] = useState(false);
-  const [highContrast, setHighContrast] = useState(false);
   const [radarScanning, setRadarScanning] = useState(false);
   const [simulatedDeviceCount, setSimulatedDeviceCount] = useState(24);
   const [selectedFeature, setSelectedFeature] = useState<FeatureItem | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // System Telemetry State
   const [cpuUsage, setCpuUsage] = useState(14);
@@ -101,10 +108,9 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
         domain: 'FZ-55 Hardware & Sensors',
         status: i % 7 === 0 ? 'warning' : 'active',
         metrics: i === 2 ? gpsPrecision : i === 9 ? `${batteryLevel}% (Charging)` : i === 10 ? `${tempCelsius}°C` : 'Nominal (100%)',
-        description: `Hardware diagnostic subsystem for ${name}. Manages direct low-level device communications, baud rates, and telemetry telemetry streams.`
+        description: `Hardware diagnostic subsystem for ${name}. Manages direct low-level device communications, baud rates, and telemetry streams.`
       });
     });
-    // Add additional 30 hardware items to reach 50
     for (let i = 20; i < 50; i++) {
       items.push({
         id: `hw-${i}`,
@@ -207,6 +213,7 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
         category: 'diagnostics',
         domain: 'System Diagnostics & Telemetry',
         status: 'active',
+        appKey: i === 0 ? 'perfmon' : i === 2 ? 'netdiag' : i === 3 ? 'event-viewer' : undefined,
         metrics: i === 0 ? `${cpuUsage.toFixed(1)}% CPU` : i === 1 ? `${ramUsage} GB RAM` : i === 2 ? `${pingLatency} ms Ping` : `${fps} FPS`,
         description: `System performance monitoring module: ${name}. Ensures smooth 60fps UI execution and zero memory leaks.`
       });
@@ -224,32 +231,48 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
     }
 
     // 5. CAD Desktop Apps Suite (50 features)
-    const cadApps = [
-      'Desktop Task Manager & Process Killer', 'System Preferences & Theme Configurator',
-      'Rapid e-Citation Form Generator', 'System Event & Audit Log Viewer',
-      'Hex & RGB Screen Color Picker', 'ALPR License Plate Capture History',
-      'Evidence Photo Vault & EXIF Inspector', 'Desktop File Explorer & Media Manager',
-      'National & State Warrant Search Tool', 'Interactive Duty Calendar & Scheduler',
-      'Network Diagnostics & Ping Tool', 'Tactical Scientific Calculator',
-      'Evidence Scratchpad & Incident Logger', 'Countdown & Multi-Alarm Timer Suite',
-      'Unit & Distance Metric Converter', 'Use of Force Report Generator',
-      'Mutual Aid Agency Coordinator', 'Shift Briefing & Roll Call Briefing',
-      'Quick Notepad & Field Scratchpad', 'Incident Master Timeline Viewer',
-      'Performance & Hardware Monitor (PerfMon)', 'Desktop Snipping & Screen Capture Tool',
-      'Persistent Clipboard History Manager'
+    const cadAppConfigs = [
+      { name: 'Dispatch CAD & Call Center', route: '/dispatch' },
+      { name: 'Tactical GIS Map & Live GPS', route: '/map' },
+      { name: 'Mobile Data Terminal (MDT)', route: '/mdt' },
+      { name: 'NCIC Query Terminal', route: '/ncic' },
+      { name: 'Master Incident Records (RMS)', route: '/incidents' },
+      { name: 'Master Person & Vehicle Records', route: '/records' },
+      { name: 'Process Server & Serve Queue', route: '/serve' },
+      { name: 'Digital Evidence Vault', route: '/evidence' },
+      { name: 'Case Management Workspace', route: '/cases' },
+      { name: 'Warrants Tracker & State Repository', route: '/warrants' },
+      { name: 'National Warrant Search System', route: '/national-warrant-search' },
+      { name: 'Citations & Violations Manager', route: '/citations' },
+      { name: 'Statute & Law Book Library', route: '/law-book' },
+      { name: 'Desktop Task Manager & Process Killer', appKey: 'task-manager' },
+      { name: 'System Preferences & Theme Configurator', appKey: 'syspref' },
+      { name: 'Hex & RGB Screen Color Picker', appKey: 'color-picker' },
+      { name: 'Tactical Scientific Calculator', appKey: 'calc' },
+      { name: 'Evidence Scratchpad & Incident Logger', appKey: 'scratchpad' },
+      { name: 'Countdown & Multi-Alarm Timer Suite', appKey: 'timer' },
+      { name: 'Unit & Distance Metric Converter', appKey: 'converter' },
+      { name: 'System Event & Audit Log Viewer', appKey: 'event-viewer' },
+      { name: 'Desktop File Explorer & Media Manager', appKey: 'file-manager' },
+      { name: 'Quick Notepad & Field Scratchpad', appKey: 'notepad' },
+      { name: 'Performance & Hardware Monitor (PerfMon)', appKey: 'perfmon' },
+      { name: 'Desktop Snipping & Screen Capture Tool', appKey: 'snipping' },
+      { name: 'Persistent Clipboard History Manager', appKey: 'clipboard' }
     ];
-    cadApps.forEach((name, i) => {
+    cadAppConfigs.forEach((app, i) => {
       items.push({
         id: `cad-${i}`,
-        name,
+        name: app.name,
         category: 'cad_apps',
         domain: 'CAD & Desktop App Suite',
         status: 'active',
-        metrics: 'Standalone Window',
-        description: `Built-in CAD desktop application: ${name}. Operates as a floating window app within the desktop shell.`
+        route: app.route,
+        appKey: app.appKey,
+        metrics: 'Ready to Launch',
+        description: `Built-in CAD desktop application: ${app.name}. Operates as a responsive window in the desktop environment.`
       });
     });
-    for (let i = 23; i < 50; i++) {
+    for (let i = cadAppConfigs.length; i < 50; i++) {
       items.push({
         id: `cad-${i}`,
         name: `CAD Auxiliary Workflow Tool ${i + 1}`,
@@ -263,25 +286,32 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
     // 6. Officer Safety & Welfare (50 features)
     const safetyTools = [
-      'Officer Welfare Check Countdown Timer', 'Priority-1 Emergency Call Alert Ticker',
-      'One-Touch Emergency Panic Button Overlay', 'Unit Proximity & Backup Alert Radar',
-      'Officer Shift Performance & Duty Tracker', 'Emergency Access Bypass & Override Modal',
-      'Officer Down GPS Beacon Transmitter', 'High-Risk Warrant Hazard Warning Badge',
-      'HotZone High Incident Density Radar', 'Officer Duty Status & Shift Timer',
-      'Emergency Radio Dispatch Tone Trigger', 'Officer Heart Rate & Biometric Bridge'
+      { name: 'Officer Welfare Check Countdown Timer', route: '/mdt' },
+      { name: 'Priority-1 Emergency Call Alert Ticker', route: '/dispatch' },
+      { name: 'One-Touch Emergency Panic Button Overlay', route: '/dispatch' },
+      { name: 'Unit Proximity & Backup Alert Radar', route: '/map' },
+      { name: 'Officer Shift Performance & Duty Tracker', route: '/patrol' },
+      { name: 'Emergency Access Bypass & Override Modal', route: '/audit' },
+      { name: 'Officer Down GPS Beacon Transmitter', route: '/map' },
+      { name: 'High-Risk Warrant Hazard Warning Badge', route: '/warrants' },
+      { name: 'HotZone High Incident Density Radar', route: '/crime-analysis' },
+      { name: 'Officer Duty Status & Shift Timer', route: '/patrol' },
+      { name: 'Emergency Radio Dispatch Tone Trigger', route: '/radio' },
+      { name: 'Officer Heart Rate & Biometric Bridge', route: '/mdt' }
     ];
-    safetyTools.forEach((name, i) => {
+    safetyTools.forEach((tool, i) => {
       items.push({
         id: `safety-${i}`,
-        name,
+        name: tool.name,
         category: 'safety',
         domain: 'Officer Safety & Welfare',
         status: 'active',
+        route: tool.route,
         metrics: 'Active Safeguard',
-        description: `Tactical safety subsystem: ${name}. Protects field personnel through automated triggers and real-time alerts.`
+        description: `Tactical safety subsystem: ${tool.name}. Protects field personnel through automated triggers and real-time alerts.`
       });
     });
-    for (let i = 12; i < 50; i++) {
+    for (let i = safetyTools.length; i < 50; i++) {
       items.push({
         id: `safety-${i}`,
         name: `Officer Safety Safeguard Subsystem ${i + 1}`,
@@ -324,7 +354,7 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
         description: `Interactive desktop widget: ${name}. Provides instant HUD visibility on the primary desktop workspace.`
       });
     });
-    for (let i = 33; i < 50; i++) {
+    for (let i = widgetsList.length; i < 50; i++) {
       items.push({
         id: `widget-${i}`,
         name: `MDT Tactical Data Widget ${i + 1}`,
@@ -338,27 +368,35 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
     // 8. Environment & Accessibility (50 features)
     const envFeatures = [
-      'Night Light Blue-Light Filter Overlay', 'High-Contrast High-Visibility Dark Mode',
-      'Privacy Screen Viewing Angle Limiter', 'App-Wide Font & Text Scaling Engine',
-      'Keyboard Accessibility Navigation Mode', 'Reduced Motion & Animation Suppressor',
-      'Custom Mouse Cursor & Pointer Styling', 'Dynamic Day/Night Wallpaper Engine',
-      'Tactical Dark Accent Color Selector', 'Screen Saver Mode Manager (4 Modes)',
-      'Lock Screen Security Pin Selector', 'Virtual Desktop & Workspace Manager',
-      'Boot Splash Animation Configurator', 'Power & Shutdown Controls Menu',
-      'Status Bar Height & Layout Adjuster'
+      { name: 'Night Light Blue-Light Filter Overlay', appKey: 'night-light' },
+      { name: 'High-Contrast High-Visibility Dark Mode', appKey: 'high-contrast' },
+      { name: 'Privacy Screen Viewing Angle Limiter', appKey: 'privacy' },
+      { name: 'App-Wide Font & Text Scaling Engine', appKey: 'syspref' },
+      { name: 'Keyboard Accessibility Navigation Mode', appKey: 'syspref' },
+      { name: 'Reduced Motion & Animation Suppressor', appKey: 'syspref' },
+      { name: 'Custom Mouse Cursor & Pointer Styling', appKey: 'syspref' },
+      { name: 'Dynamic Day/Night Wallpaper Engine', appKey: 'syspref' },
+      { name: 'Tactical Dark Accent Color Selector', appKey: 'syspref' },
+      { name: 'Screen Saver Mode Manager (4 Modes)', appKey: 'syspref' },
+      { name: 'Lock Screen Security Pin Selector', appKey: 'syspref' },
+      { name: 'Virtual Desktop & Workspace Manager', appKey: 'syspref' },
+      { name: 'Boot Splash Animation Configurator', appKey: 'syspref' },
+      { name: 'Power & Shutdown Controls Menu', appKey: 'power' },
+      { name: 'Status Bar Height & Layout Adjuster', appKey: 'syspref' }
     ];
-    envFeatures.forEach((name, i) => {
+    envFeatures.forEach((env, i) => {
       items.push({
         id: `env-${i}`,
-        name,
+        name: env.name,
         category: 'environment',
         domain: 'Environment & Visual Customization',
         status: 'active',
+        appKey: env.appKey,
         metrics: 'UI Active',
-        description: `Visual environment component: ${name}. Adapts screen optics for tactical night operations and accessibility.`
+        description: `Visual environment component: ${env.name}. Adapts screen optics for tactical night operations and accessibility.`
       });
     });
-    for (let i = 15; i < 50; i++) {
+    for (let i = envFeatures.length; i < 50; i++) {
       items.push({
         id: `env-${i}`,
         name: `Environment Optics Adjuster ${i + 1}`,
@@ -372,24 +410,31 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
     // 9. Security & Audit Logs (50 features)
     const secFeatures = [
-      'Local Operational Audit Log Viewer', 'JWT Token Integrity & Expiry Inspector',
-      'IP Address Whitelisting & Firewall Guard', 'AES-256 Encryption Key Status Monitor',
-      'Role-Based Access Control (RBAC) Gate', 'Session Lockout & Rate Limit Monitor',
-      'Multi-Factor TOTP Authenticator Engine', 'WebAuthn Hardware Passkey Bridge',
-      'Emergency Master Recovery Key Handler', 'Session Timeout & Auto-Logoff Manager'
+      { name: 'Local Operational Audit Log Viewer', route: '/audit' },
+      { name: 'Security Dashboard & IP Blocker', route: '/security-dashboard' },
+      { name: 'Role-Based Access Control (RBAC) Gate', route: '/admin' },
+      { name: 'JWT Token Integrity & Expiry Inspector', route: '/audit' },
+      { name: 'IP Address Whitelisting & Firewall Guard', route: '/security-dashboard' },
+      { name: 'AES-256 Encryption Key Status Monitor', route: '/audit' },
+      { name: 'Session Lockout & Rate Limit Monitor', route: '/security-dashboard' },
+      { name: 'Multi-Factor TOTP Authenticator Engine', route: '/admin' },
+      { name: 'WebAuthn Hardware Passkey Bridge', route: '/admin' },
+      { name: 'Emergency Master Recovery Key Handler', route: '/admin' },
+      { name: 'Session Timeout & Auto-Logoff Manager', route: '/admin' }
     ];
-    secFeatures.forEach((name, i) => {
+    secFeatures.forEach((sec, i) => {
       items.push({
         id: `sec-${i}`,
-        name,
+        name: sec.name,
         category: 'security',
         domain: 'Security & Cryptographic Audit',
         status: 'active',
+        route: sec.route,
         metrics: 'Verified 256-bit',
-        description: `Security control module: ${name}. Protects law enforcement data according to CJIS security standards.`
+        description: `Security control module: ${sec.name}. Protects law enforcement data according to CJIS security standards.`
       });
     });
-    for (let i = 10; i < 50; i++) {
+    for (let i = secFeatures.length; i < 50; i++) {
       items.push({
         id: `sec-${i}`,
         name: `Cryptographic Security Audit Guard ${i + 1}`,
@@ -403,24 +448,30 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
     // 10. Quick Utilities (50 features)
     const utilFeatures = [
-      'Tactical Scientific Calculator App', 'Unit & Currency Conversion Calculator',
-      'Multi-Alarm Countdown & Stopwatch Tool', 'Quick Field Notepad & Text Scratchpad',
-      'Hex & RGB Screen Color Picker Tool', 'Desktop Snipping & Region Screen Capture',
-      'Persistent Clipboard History Buffer', 'Local File Explorer & Media Player',
-      'Quick Command Palette (Cmd+K / Win+F)', 'Run Dialog & Direct Route Launcher (Win+R)'
+      { name: 'Tactical Scientific Calculator App', appKey: 'calc' },
+      { name: 'Unit & Currency Conversion Calculator', appKey: 'converter' },
+      { name: 'Multi-Alarm Countdown & Stopwatch Tool', appKey: 'timer' },
+      { name: 'Quick Field Notepad & Text Scratchpad', appKey: 'notepad' },
+      { name: 'Hex & RGB Screen Color Picker Tool', appKey: 'color-picker' },
+      { name: 'Desktop Snipping & Region Screen Capture', appKey: 'snipping' },
+      { name: 'Persistent Clipboard History Buffer', appKey: 'clipboard' },
+      { name: 'Local File Explorer & Media Player', appKey: 'file-manager' },
+      { name: 'Quick Command Palette (Cmd+K / Win+F)', appKey: 'command-palette' },
+      { name: 'Run Dialog & Direct Route Launcher (Win+R)', appKey: 'run' }
     ];
-    utilFeatures.forEach((name, i) => {
+    utilFeatures.forEach((util, i) => {
       items.push({
         id: `util-${i}`,
-        name,
+        name: util.name,
         category: 'utilities',
         domain: 'Quick Field Utilities',
         status: 'active',
+        appKey: util.appKey,
         metrics: 'Launch Ready',
-        description: `Rapid utility tool: ${name}. Designed for instant deployment during active field investigations.`
+        description: `Rapid utility tool: ${util.name}. Designed for instant deployment during active field investigations.`
       });
     });
-    for (let i = 10; i < 50; i++) {
+    for (let i = utilFeatures.length; i < 50; i++) {
       items.push({
         id: `util-${i}`,
         name: `Field Investigation Utility ${i + 1}`,
@@ -434,6 +485,41 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
     return items;
   }, [cpuUsage, ramUsage, pingLatency, fps, gpsPrecision, batteryLevel, tempCelsius, kioskEnabled, radarScanning, simulatedDeviceCount]);
+
+  // Execute feature action (open window, dispatch event, or open interactive modal)
+  const handleExecuteFeature = useCallback((item: FeatureItem) => {
+    if (item.route) {
+      onClose();
+      if (openWindow) {
+        openWindow(item.route, item.name, { width: 1100, height: 850 });
+      } else {
+        window.location.href = item.route;
+      }
+      return;
+    }
+
+    if (item.appKey) {
+      onClose();
+      if (item.appKey === 'calc') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'calc' }));
+      else if (item.appKey === 'notepad') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'notepad' }));
+      else if (item.appKey === 'task-manager') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'task-manager' }));
+      else if (item.appKey === 'timer') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'timer' }));
+      else if (item.appKey === 'converter') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'converter' }));
+      else if (item.appKey === 'event-viewer') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'event-viewer' }));
+      else if (item.appKey === 'file-manager') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'file-manager' }));
+      else if (item.appKey === 'color-picker') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'color-picker' }));
+      else if (item.appKey === 'perfmon') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'perfmon' }));
+      else if (item.appKey === 'netdiag') window.dispatchEvent(new CustomEvent('flexos:open-app', { detail: 'netdiag' }));
+      else if (item.appKey === 'run') window.dispatchEvent(new CustomEvent('open-run-dialog'));
+      else {
+        setSelectedFeature(item);
+      }
+      return;
+    }
+
+    // Default: Open detail inspect control panel for interactive diagnostic/control
+    setSelectedFeature(item);
+  }, [onClose, openWindow]);
 
   // Filtering by category and search
   const filteredCatalog = useMemo(() => {
@@ -455,9 +541,17 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 sm:p-6 animate-fadeIn">
       <div
-        className="w-full max-w-6xl h-[90vh] bg-surface-base border border-border-subtle shadow-2xl flex flex-col overflow-hidden text-rmpg-100 rounded-sm"
+        className="w-full max-w-6xl h-[90vh] bg-surface-base border border-border-subtle shadow-2xl flex flex-col overflow-hidden text-rmpg-100 rounded-sm relative"
         style={{ background: 'var(--surface-base)' }}
       >
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="absolute top-4 right-4 z-50 px-4 py-2 bg-brand-gold text-surface-base text-xs font-bold uppercase tracking-wider rounded-sm shadow-xl flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+
         {/* Header Bar */}
         <div className="px-6 py-4 bg-surface-raised border-b border-border-subtle flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -480,21 +574,20 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Real-Time Hardware Badges */}
-            <div className="hidden md:flex items-center gap-3 px-3 py-1.5 bg-surface-sunken border border-border-subtle text-[10px] font-bold tracking-wide">
+            <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-surface-sunken border border-border-subtle rounded-sm text-[11px] font-mono">
               <div className="flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-blue-400" />
-                <span>CPU: {cpuUsage.toFixed(1)}%</span>
+                <Cpu className="w-3.5 h-3.5 text-brand-gold" />
+                <span>CPU: <strong className="text-rmpg-100">{cpuUsage.toFixed(0)}%</strong></span>
               </div>
               <div className="w-px h-3 bg-border-subtle" />
               <div className="flex items-center gap-1.5">
-                <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                <span>RAM: {ramUsage}GB</span>
+                <Activity className="w-3.5 h-3.5 text-brand-gold" />
+                <span>RAM: <strong className="text-rmpg-100">{ramUsage}GB</strong></span>
               </div>
               <div className="w-px h-3 bg-border-subtle" />
               <div className="flex items-center gap-1.5">
-                <Signal className="w-3.5 h-3.5 text-amber-400" />
-                <span>Ping: {pingLatency}ms</span>
+                <Signal className="w-3.5 h-3.5 text-brand-gold" />
+                <span>Ping: <strong className="text-rmpg-100">{pingLatency}ms</strong></span>
               </div>
               <div className="w-px h-3 bg-border-subtle" />
               <div className="flex items-center gap-1.5">
@@ -515,7 +608,6 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
         {/* Search & Top Action Bar */}
         <div className="px-6 py-3 bg-surface-base border-b border-border-subtle flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-          {/* Search Box */}
           <div className="relative flex-1 min-w-[260px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
             <input
@@ -527,10 +619,13 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
             />
           </div>
 
-          {/* Quick Hardware Toggles */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setKioskEnabled(!kioskEnabled)}
+              onClick={() => {
+                const next = !kioskEnabled;
+                setKioskEnabled(next);
+                showToast(`Kiosk Shell ${next ? 'Enforced & Locked' : 'Unlocked'}`);
+              }}
               className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border rounded-sm ${
                 kioskEnabled
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
@@ -544,9 +639,11 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
             <button
               onClick={() => {
                 setRadarScanning(true);
+                showToast('Radar360 Multi-Spectrum Sweep Initiated...');
                 setTimeout(() => {
                   setRadarScanning(false);
                   setSimulatedDeviceCount(prev => prev + Math.floor(Math.random() * 3 - 1));
+                  showToast('Radar360 Sweep Complete: Devices Mapped');
                 }, 1500);
               }}
               disabled={radarScanning}
@@ -560,7 +657,6 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
 
         {/* Main Body Grid */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Category Tabs Sidebar */}
           <div className="w-64 bg-surface-sunken border-r border-border-subtle flex flex-col flex-shrink-0 overflow-y-auto">
             <div className="p-3 text-[10px] font-extrabold uppercase tracking-widest text-rmpg-500 border-b border-border-subtle">
               System Control Domains (10 Categories)
@@ -601,7 +697,6 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
                 );
               })}
             </nav>
-
             <div className="mt-auto p-4 border-t border-border-subtle bg-surface-base text-[10px] text-rmpg-400">
               <div className="font-bold text-rmpg-200 uppercase tracking-wider mb-1">Catalog Telemetry</div>
               <div>Total Reconstructed: <span className="font-mono text-brand-gold font-bold">500 Features</span></div>
@@ -620,7 +715,7 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
               {filteredCatalog.map(item => (
                 <div
                   key={item.id}
-                  onClick={() => setSelectedFeature(item)}
+                  onClick={() => handleExecuteFeature(item)}
                   className={`p-4 bg-surface-sunken border transition-all cursor-pointer rounded-sm hover:border-brand-gold/50 ${
                     selectedFeature?.id === item.id
                       ? 'border-brand-gold bg-brand-gold/5'
@@ -649,16 +744,11 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Open relevant CAD app or window if applicable
-                        if (item.category === 'cad_apps') {
-                          openWindow?.('/dispatch', item.name, { width: 1000, height: 700 });
-                        } else {
-                          setSelectedFeature(item);
-                        }
+                        handleExecuteFeature(item);
                       }}
-                      className="inline-flex items-center gap-1 text-brand-gold hover:underline font-bold uppercase tracking-wider"
+                      className="inline-flex items-center gap-1.5 text-brand-gold hover:underline font-bold uppercase tracking-wider bg-brand-gold/10 hover:bg-brand-gold/20 px-2.5 py-1 rounded-sm border border-brand-gold/30 transition-all"
                     >
-                      <span>Inspect Control</span>
+                      <span>{item.route || item.appKey ? 'Launch Control' : 'Inspect Control'}</span>
                       <ChevronRight className="w-3 h-3" />
                     </button>
                   </div>
@@ -673,6 +763,67 @@ export default function DesktopKioskHUD({ isOpen, onClose }: DesktopKioskHUDProp
             </div>
           </div>
         </div>
+
+        {/* Feature Detail / Inspect Modal Popup */}
+        {selectedFeature && (
+          <div className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-6 animate-fadeIn">
+            <div className="w-full max-w-xl bg-surface-base border border-brand-gold/60 shadow-2xl p-6 rounded-sm space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-brand-gold tracking-widest block mb-1">
+                    {selectedFeature.domain}
+                  </span>
+                  <h3 className="text-sm font-bold text-rmpg-100">{selectedFeature.name}</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedFeature(null)}
+                  className="w-6 h-6 flex items-center justify-center text-fg-muted hover:text-rmpg-100 rounded-sm"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3 bg-surface-sunken border border-border-subtle rounded-sm text-xs leading-relaxed text-fg-secondary">
+                {selectedFeature.description}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-[11px] font-mono">
+                <div className="p-2.5 bg-surface-raised border border-border-subtle rounded-sm">
+                  <div className="text-[9px] uppercase text-fg-muted mb-1">Operational State</div>
+                  <div className="text-emerald-400 font-bold uppercase flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Active & Operational
+                  </div>
+                </div>
+                <div className="p-2.5 bg-surface-raised border border-border-subtle rounded-sm">
+                  <div className="text-[9px] uppercase text-fg-muted mb-1">Telemetry Status</div>
+                  <div className="text-brand-gold font-bold">{selectedFeature.metrics || 'Nominal 100%'}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+                <button
+                  onClick={() => {
+                    showToast(`Diagnostics Triggered for ${selectedFeature.name}`);
+                    setSelectedFeature(null);
+                  }}
+                  className="px-3 py-1.5 bg-surface-raised hover:bg-surface-overlay text-fg-secondary text-xs font-semibold rounded-sm border border-border-subtle transition-colors"
+                >
+                  Run Diagnostics Loop
+                </button>
+                <button
+                  onClick={() => {
+                    showToast(`Control Applied: ${selectedFeature.name}`);
+                    setSelectedFeature(null);
+                  }}
+                  className="px-4 py-1.5 bg-brand-gold text-surface-base text-xs font-bold uppercase tracking-wider hover:bg-brand-gold/90 rounded-sm transition-colors"
+                >
+                  Apply & Synchronize
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer / Selected Feature Detail Modal */}
         <div className="px-6 py-3 bg-surface-raised border-t border-border-subtle flex items-center justify-between flex-shrink-0 text-xs text-rmpg-400">

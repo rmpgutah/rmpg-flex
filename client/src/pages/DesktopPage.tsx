@@ -712,6 +712,7 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
           <CalculatorFloater onClose={() => setCalculatorOpen(false)} />
         )}
         {scratchPadOpen && <DesktopEvidenceScratchPad onClose={() => setScratchPadOpen(false)} />}
+        <DesktopKioskHUD isOpen={kioskHudOpen} onClose={() => setKioskHudOpen(false)} onOpenWindow={(path, title, size) => openWindowRef.current?.(path, title, size)} />
       </DesktopWindowManagerProvider>
       </VirtualDesktopProvider>
       <DesktopNightLightOverlay />
@@ -768,7 +769,6 @@ function DesktopPageInner({ prefs, reload }: { prefs: UserPreferences; reload: (
         />
       )}
       {shortcutRefOpen && <DesktopShortcutReference onClose={() => setShortcutRefOpen(false)} />}
-      <DesktopKioskHUD isOpen={kioskHudOpen} onClose={() => setKioskHudOpen(false)} />
     </div>
   );
 }
