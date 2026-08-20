@@ -1155,7 +1155,7 @@ export default function ServePage() {
       officer_unit_id: Number(user.id),
       shift_start: shiftStart,
       shift_end: shiftEnd,
-      ref_id: savedRoute.id,
+      ref_id: savedRoute?.id ?? null,
     });
   }, [user?.id, savedRoute?.id, pendingJobIds, optimization]);
 
@@ -2716,38 +2716,46 @@ export default function ServePage() {
                       <span className="font-mono tabular-nums text-rmpg-100">{totalStops}</span>
                       <span>stops</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                      <Navigation size={12} className="text-emerald-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">
-                        {savedRoute.total_distance_miles ? `${Number(savedRoute.total_distance_miles).toFixed(1)} mi` : '--'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                      <Calendar size={12} className="text-amber-400" />
-                      <span className="font-mono tabular-nums text-rmpg-100">
-                        {savedRoute.total_time_minutes
-                          ? `~${Math.floor(savedRoute.total_time_minutes / 60)}h ${Math.round(savedRoute.total_time_minutes % 60)}m`
-                          : '--'}
-                      </span>
-                    </div>
-                    {savedRoute?.total_distance_miles && (
-                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                        <span className="text-[color:var(--field-label-color)] font-mono">$</span>
-                        <span className="font-mono tabular-nums text-rmpg-100">
-                          ${(Number(savedRoute.total_distance_miles) * serveMileageRate).toFixed(2)}
-                        </span>
-                        <span className="text-fg-muted text-[9px]">fuel</span>
-                      </div>
-                    )}
-                    {savedRoute?.total_distance_miles && totalStops > 0 && (
-                      <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
-                        <Gauge size={11} className="text-fg-muted" />
-                        <span className="font-mono tabular-nums text-rmpg-100">
-                          {(totalStops / Number(savedRoute.total_distance_miles)).toFixed(1)}
-                        </span>
-                        <span className="text-fg-muted text-[9px]">stops/mi</span>
-                      </div>
-                    )}
+                    {(() => {
+                      const distMiles = savedRoute?.total_distance_miles ?? routeData?.totalDistance ?? null;
+                      const timeMins = savedRoute?.total_time_minutes ?? routeData?.totalDuration ?? null;
+                      return (
+                        <>
+                          <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                            <Navigation size={12} className="text-emerald-400" />
+                            <span className="font-mono tabular-nums text-rmpg-100">
+                              {distMiles != null && !isNaN(Number(distMiles)) ? `${Number(distMiles).toFixed(1)} mi` : '--'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                            <Calendar size={12} className="text-amber-400" />
+                            <span className="font-mono tabular-nums text-rmpg-100">
+                              {timeMins != null && !isNaN(Number(timeMins))
+                                ? `~${Math.floor(Number(timeMins) / 60)}h ${Math.round(Number(timeMins) % 60)}m`
+                                : '--'}
+                            </span>
+                          </div>
+                          {distMiles != null && !isNaN(Number(distMiles)) && Number(distMiles) > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <span className="text-[color:var(--field-label-color)] font-mono">$</span>
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                ${(Number(distMiles) * serveMileageRate).toFixed(2)}
+                              </span>
+                              <span className="text-fg-muted text-[9px]">fuel</span>
+                            </div>
+                          )}
+                          {distMiles != null && !isNaN(Number(distMiles)) && Number(distMiles) > 0 && totalStops > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <Gauge size={11} className="text-fg-muted" />
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                {(totalStops / Number(distMiles)).toFixed(1)}
+                              </span>
+                              <span className="text-fg-muted text-[9px]">stops/mi</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="flex items-center gap-1.5 text-fg-secondary text-xs sm:ml-auto col-span-2 sm:col-span-1">
                       <span className="font-mono tabular-nums text-[color:var(--field-label-color)]">
                         {completedCount}/{totalStops} done ({progressPct}%)
