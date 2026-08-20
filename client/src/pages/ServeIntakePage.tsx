@@ -159,18 +159,22 @@ function isFallbackEngine(model: string | null | undefined): boolean {
 }
 
 const DOCUMENT_TYPES = [
-  { value: 'court_filing', label: 'Court Filing/Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
+  { value: 'court_filing', label: 'Court Filing / Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
-  { value: 'summons', label: 'Summons', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'summons', label: 'Summons & Complaint', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
+  { value: 'small_claims', label: 'Small Claims Filing', color: 'bg-emerald-900/40 text-emerald-400 border-emerald-700/40' },
+  { value: 'divorce_family', label: 'Divorce & Family Petition', color: 'bg-sky-900/40 text-sky-400 border-sky-700/40' },
+  { value: 'garnishment', label: 'Writ of Garnishment', color: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/40' },
   { value: 'subpoena', label: 'Subpoena', color: 'bg-pink-900/40 text-pink-400 border-pink-700/40' },
-  { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
-  { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
-  { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'eviction', label: 'Eviction / UD Notice', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
+  { value: 'restraining_order', label: 'Restraining / Protective Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
+  { value: 'probate', label: 'Probate / Guardianship Citation', color: 'bg-teal-900/40 text-teal-400 border-teal-700/40' },
+  { value: 'identification', label: 'ID / Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'correspondence', label: 'Correspondence', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
-  { value: 'other', label: 'Other', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
+  { value: 'other', label: 'Other Legal Document', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
 function confidenceColor(conf: number): string {

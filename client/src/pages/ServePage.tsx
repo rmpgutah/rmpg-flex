@@ -40,6 +40,7 @@ import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import ServeAuditLogModal from '../components/serve/ServeAuditLogModal';
 import FormModal from '../components/FormModal';
 import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
+import DocumentTypeSelector from '../components/serve/DocumentTypeSelector';
 import type { ServeJob, ServeAttempt, ServeAttemptData, ServeSkipAddress, ServeFolder } from '../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../types';
 import ExportButton from '../components/ExportButton';
@@ -2260,16 +2261,16 @@ export default function ServePage() {
           </div>
 
           {/* Document type + priority */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label htmlFor="ff-servepage-7" className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
-              <select id="ff-servepage-7"
+              <label htmlFor="ff-servepage-7" className="block text-[11px] text-rmpg-400 mb-1">
+                Document Type / Legal Statement
+              </label>
+              <DocumentTypeSelector
+                id="ff-servepage-7"
                 value={formData.document_type}
-                onChange={e => handleFormChange('document_type', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
-              >
-                {DOCUMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+                onChange={val => handleFormChange('document_type', val)}
+              />
             </div>
             <div>
               <label htmlFor="ff-servepage-8" className="block text-[11px] text-rmpg-400 mb-1">Priority</label>

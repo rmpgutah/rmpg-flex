@@ -23,6 +23,7 @@ import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db'
 import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
+import { findServeJobForCall } from '../../utils/psoServeCrosslink';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -1285,9 +1286,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
         && call.incident_type === 'pso_client_request') {
       import('../../utils/psoServeCrosslink').then(async (m) => {
         try {
-          const q = await queryFirst<{ id: number; status: string }>(
-            db, 'SELECT id, status FROM serve_queue WHERE call_id = ?', id,
-          );
+          const q = await findServeJobForCall(db, id);
           if (q && (q.status === 'served' || q.status === 'failed')) {
             const openStatus = q.status === 'served' ? 'attempted' : 'pending';
             await execute(db,
@@ -1743,8 +1742,7 @@ callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'su
 callActions.get('/:id/serve-link', async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
-  const row = await queryFirst<Record<string, unknown>>(
-    getDb(c.env), 'SELECT * FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id);
+  const row = await findServeJobForCall(getDb(c.env), id);
   return c.json(row ?? null);
 });
 
@@ -1765,8 +1763,8 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
-    // Dedup: one serve job per call. Return the existing row if present.
-    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    // Dedup: one serve job per call chain. Return the existing row if present.
+    const existing = await findServeJobForCall(db, id);
     if (existing) return c.json(existing, 200);
 
     const result = await execute(db,

@@ -571,6 +571,27 @@ sv.get('/', async (c) => {
         byQueue.set(a.serve_queue_id, bucket);
       }
       for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
+
+      // ── Attach notice scans per job ─────────────────────────────
+      // QR "Notice of Attempt to Serve" scan evidence (migration 0189).
+      const scans = await query<any>(
+        db,
+        `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
+                geo_city, geo_region, geo_country, geo_lat, geo_lng,
+                device_type, device_brand, device_model, os_family,
+                browser_family, browser_version, touch_capable, is_proxy, is_bot
+           FROM notice_scans
+          WHERE serve_queue_id IN (${placeholders})
+          ORDER BY scanned_at ASC, id ASC`,
+        ...ids,
+      );
+      const scansByQueue = new Map<number, any[]>();
+      for (const s of scans) {
+        const bucket = scansByQueue.get(s.serve_queue_id) ?? [];
+        bucket.push(s);
+        scansByQueue.set(s.serve_queue_id, bucket);
+      }
+      for (const j of jobs) j.scans = scansByQueue.get(j.id) ?? [];
     }
   }
   return c.json(jobs);
@@ -703,7 +724,16 @@ sv.get('/:id', async (c) => {
        WHERE a.serve_queue_id = ? ORDER BY a.attempt_at DESC`,
     id,
   );
-  return c.json({ ...row, attempts });
+  const scans = await query(
+    db,
+    `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
+            geo_city, geo_region, geo_country, geo_lat, geo_lng,
+            device_type, device_brand, device_model, os_family,
+            browser_family, browser_version, touch_capable, is_proxy, is_bot
+       FROM notice_scans WHERE serve_queue_id = ? ORDER BY scanned_at DESC`,
+    id,
+  );
+  return c.json({ ...row, attempts, scans });
 });
 
 // ── Serve audit trail ──────────────────────────────────────────

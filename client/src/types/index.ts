@@ -3253,6 +3253,8 @@ export interface ServeJob {
   intake_screened_at?: string | null;
   attempts?: ServeAttempt[];
   skipTraces?: ServeSkipTrace[];
+  /** QR "Notice of Attempt to Serve" scan evidence (migration 0189). */
+  scans?: ServeNoticeScan[];
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────
@@ -3384,6 +3386,31 @@ export interface ServeSkipTrace {
   lookup_cost: number;
   addresses_found: ServeSkipAddress[];
   created_at: string;
+}
+
+/** QR "Notice of Attempt to Serve" scan evidence (migration 0189). Written
+ *  by the email/scan beacon Worker when a subject opens a notice's QR link. */
+export interface ServeNoticeScan {
+  id: number;
+  serve_queue_id: number;
+  job_ref: string | null;
+  scanned_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  geo_city: string | null;
+  geo_region: string | null;
+  geo_country: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  device_type: string | null;
+  device_brand: string | null;
+  device_model: string | null;
+  os_family: string | null;
+  browser_family: string | null;
+  browser_version: string | null;
+  touch_capable: boolean;
+  is_proxy: boolean;
+  is_bot: boolean;
 }
 
 export interface ServeSkipAddress {

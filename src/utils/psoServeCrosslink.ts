@@ -42,6 +42,50 @@ export interface PsoCrosslinkResult {
 const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled']);
 
 /**
+ * Find the linked serve_queue row for a call ID.
+ * Resolves re-dispatched / return visit child calls by tracing parent_call_id
+ * so that reattempts link to the SAME original Job ID rather than creating a new job.
+ */
+export async function findServeJobForCall(
+  db: D1Database,
+  callId: number | string,
+): Promise<Record<string, any> | null> {
+  const numId = Number(callId);
+  if (!numId || isNaN(numId)) return null;
+
+  // 1. Direct match on call_id
+  let row = await queryFirst<Record<string, any>>(
+    db, 'SELECT * FROM serve_queue WHERE call_id = ?', numId,
+  );
+  if (row) return row;
+
+  // 2. Trace parent_call_id from calls_for_service_ext
+  const ext = await queryFirst<{ parent_call_id: number | null }>(
+    db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', numId,
+  ).catch(() => null);
+
+  if (ext?.parent_call_id) {
+    row = await queryFirst<Record<string, any>>(
+      db, 'SELECT * FROM serve_queue WHERE call_id = ?', ext.parent_call_id,
+    );
+    if (row) return row;
+
+    // Check root call ID if nested re-dispatch chain
+    const rootExt = await queryFirst<{ parent_call_id: number | null }>(
+      db, 'SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?', ext.parent_call_id,
+    ).catch(() => null);
+    if (rootExt?.parent_call_id) {
+      row = await queryFirst<Record<string, any>>(
+        db, 'SELECT * FROM serve_queue WHERE call_id = ?', rootExt.parent_call_id,
+      );
+      if (row) return row;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Mirror a PSO CFS close into the Process Server queue. Fire-and-forget —
  * callers should `await` but wrap in try/catch and never let an error here
  * break the call transition itself.
@@ -79,9 +123,8 @@ export async function crossLinkPsoCloseToServe(
   const queueOutcome = codeToQueueStatus(code);
 
   // ── Step 1: find or create the serve_queue row ──────────────────────
-  let queueRow = await queryFirst<Record<string, any>>(
-    db, 'SELECT * FROM serve_queue WHERE call_id = ?', callId,
-  );
+  // Resolves parent_call_id so reattempts stay linked to the SAME Job ID!
+  let queueRow = await findServeJobForCall(db, callId);
   let queueCreated = false;
   if (!queueRow) {
     // Seed from the call. Address / lat / lng are the load-bearing pieces;

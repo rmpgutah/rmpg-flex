@@ -26,6 +26,7 @@ import {
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
+import { getMatterCategoryByDocType } from '../../constants/documentTypes';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -260,10 +261,20 @@ export default React.memo(function ServeJobCard({
 
         {/* Badges row */}
         <div className="flex items-center gap-1.5 ml-4 flex-wrap">
-          {/* Enhancement 50: Document type with icon */}
-          <span className="text-[9px] font-mono text-rmpg-400 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0 inline-flex items-center gap-0.5">
+          {/* Matter Category Badge */}
+          {(() => {
+            const cat = getMatterCategoryByDocType(job.document_type || '');
+            return (
+              <span className={`text-[9px] font-semibold uppercase font-mono px-1 py-0 border rounded-[2px] ${cat.badgeBg} ${cat.badgeText} ${cat.badgeBorder}`}>
+                {cat.shortLabel}
+              </span>
+            );
+          })()}
+
+          {/* Document type with icon */}
+          <span className="text-[9px] font-mono text-rmpg-200 bg-rmpg-800/60 border border-rmpg-700/40 px-1 py-0 inline-flex items-center gap-0.5">
             {(() => { const DocIcon = DOC_TYPE_ICONS[job.document_type] || FileText; return <DocIcon className="w-2.5 h-2.5" />; })()}
-            {toDisplayLabel(job.document_type || '')}
+            {job.document_type || 'Legal Document'}
           </span>
 
           {/* Priority */}
@@ -492,6 +503,33 @@ export default React.memo(function ServeJobCard({
                         <span>Edit</span>
                       </button>
                     )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notice of Attempt — QR scan evidence (migration 0189) */}
+          {job.scans && job.scans.length > 0 && (
+            <div>
+              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">
+                Notice Scans ({job.scans.length})
+              </span>
+              <div className="mt-1 space-y-1">
+                {job.scans.map((scan) => (
+                  <div key={scan.id} className="flex items-center gap-2 pl-2 border-l-2 border-rmpg-600/50">
+                    <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
+                      {safeDateStr(scan.scanned_at)}
+                    </span>
+                    <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
+                      {formatEnumValue(scan.device_type || 'scan')}
+                    </span>
+                    <span className="text-[10px] text-rmpg-400 flex-1 min-w-0 truncate" title={scan.ip_address || undefined}>
+                      {[scan.geo_city, scan.geo_region, scan.geo_country].filter(Boolean).join(', ')}
+                      {[scan.geo_city, scan.geo_region, scan.geo_country].some(Boolean) ? ' · ' : ''}
+                      {[scan.os_family, scan.browser_family].filter(Boolean).join(' / ') || scan.ip_address}
+                      {scan.is_proxy ? ' · PROXY' : ''}
+                    </span>
                   </div>
                 ))}
               </div>
