@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { loadSealBase64 } from './pdfAssets';
 import QRCode from 'qrcode';
-import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
+import { isPast, isWithinDays, parseTimestamp, formatDateTime, localToday } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
 import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
@@ -23,6 +23,7 @@ import {
   displayStatus, finalizePoliceReport, setActiveSectionStyle,
   addVoidWatermark, setActiveVoidWatermark,
   type PersonIdPayload, type FormMetadataPayload,
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   computePayloadHash, setActivePayloadHash, clearActivePayloadHash,
@@ -51,6 +52,7 @@ import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { cleanAddressText } from './addressClean';
 import { fetchLocationMapImage, fetchTacticalContext } from './pdfStaticMap';
+import { preloadSignatureTransparency } from './pdf/signatureImage';
 import { toMgrs } from './mgrs';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
@@ -69,7 +71,7 @@ import {
   drawDispatchTimelineStrip, drawChainOfCustodyTable, drawFormRow,
   type TimelineEvent, type CustodyTransfer, type FormCell,
 } from './pdfFormHelpers';
-import { toDisplayLabel } from './formatters';
+import { toDisplayLabel, formatCurrency } from './formatters';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -180,6 +182,7 @@ function callPostureFlags(data: CallPdfData): string[] {
   const flags: string[] = [];
   const push = (cond: unknown, label: string) => { if (cond) flags.push(label); };
   push(data.officer_safety_caution, 'officer safety');
+  push(data.hazard_notes, 'officer safety');   // property hazard note → same tier as the flag
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) flags.push(`weapon ${wv}`);
   push(data.felony_in_progress, 'felony in progress');
@@ -198,7 +201,7 @@ function callPostureFlags(data: CallPdfData): string[] {
 // callPostureFlags, but worded for display rather than classification).
 function callPostureChips(data: CallPdfData): string[] {
   const chips: string[] = [];
-  if (data.officer_safety_caution) chips.push('OFFICER SAFETY');
+  if (data.officer_safety_caution || data.hazard_notes) chips.push('OFFICER SAFETY');
   const wv = (data.weapons_involved || '').toLowerCase().trim();
   if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) chips.push('WEAPONS');
   if (data.felony_in_progress) chips.push('FELONY IP');
@@ -260,6 +263,18 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
 // recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
 // posture so low-risk records print exactly as before (no added length).
 
+// Non-values a tow_status column may hold that mean "not actually towed."
+// tow_status is stored title-cased per TOW_STATUS_OPTIONS ('None', 'Police
+// Hold', ...); this must be normalized before comparison or the vehicle
+// quick-ref banner falsely stamps IMPOUNDED on every non-empty tow_status,
+// including the default 'None'.
+const NON_TOW_VALUES = new Set(['none', 'n/a', 'na', 'not towed', '-']);
+
+export function isVehicleActivelyTowed(towStatus: string | null | undefined): boolean {
+  const norm = (towStatus || '').trim().toLowerCase();
+  return norm !== '' && !NON_TOW_VALUES.has(norm);
+}
+
 const POSTURE_CHIP_MAX_CHARS = 22;
 
 /** Truncate a posture-chip label to POSTURE_CHIP_MAX_CHARS, cutting at the
@@ -298,7 +313,7 @@ function renderRecordPostureBand(
   const seen = new Set<string>();
   for (const f of flags) {
     if (!f) continue;
-    const c = truncatePostureChip(String(f).replace(/_/g, ' ').toUpperCase().trim());
+    const c = truncatePostureChip(toDisplayLabel(String(f)).toUpperCase());
     if (c && !seen.has(c)) { seen.add(c); chips.push(c); }
   }
   return drawThreatPostureBand(doc, {
@@ -346,6 +361,25 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
   return flags;
 }
 
+/** Is a vehicle actually impounded / held per its tow_status?
+ *
+ *  Single source of truth for the banner pill AND the posture band, which used
+ *  to decide this two different ways. The band tested for the substrings below;
+ *  the pill tested `tow_status && tow_status !== 'none'` — case-sensitively,
+ *  against a column that live D1 stores capitalized ('None'). So the 2 vehicles
+ *  that explicitly recorded "no tow" were the only ones stamped IMPOUNDED on
+ *  the form, while '' / NULL rows were correctly blank. Recording the negative
+ *  was punished.
+ *
+ *  Matching by substring (not equality) because tow_status is free text on live:
+ *  'Impounded', 'Police Hold', 'Evidence Hold' must all read as held.
+ */
+export function isVehicleImpounded(towStatus: unknown): boolean {
+  const ts = (typeof towStatus === 'string' ? towStatus : '').toLowerCase().trim();
+  if (!ts || ts === 'none' || ts === 'not towed' || ts === 'n/a') return false;
+  return ['impound', 'hold', 'evidence'].some(t => ts.includes(t));
+}
+
 function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
   const ss = (data.stolen_status || '').toLowerCase();
@@ -358,8 +392,7 @@ function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | und
   }
   if (data.hazmat) flags.push('HAZMAT');
   if (ss && !notStolen) flags.push('STOLEN');
-  const ts = (data.tow_status || '').toLowerCase();
-  if (ts && ['impound', 'hold', 'evidence'].some(t => ts.includes(t))) flags.push('IMPOUND');
+  if (isVehicleImpounded(data.tow_status)) flags.push('IMPOUND');
   return flags;
 }
 
@@ -601,6 +634,9 @@ export interface CallPdfData {
   latitude?: number;
   longitude?: number;
   property_name?: string;
+  hazard_notes?: string;       // from linked property JOIN — triggers posture band when present
+  post_orders?: string;        // from linked property JOIN
+  gate_code?: string;          // from linked property JOIN
   // Incident details
   num_subjects?: number;
   num_victims?: number;
@@ -940,6 +976,22 @@ export interface PersonPdfData {
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
   // pdfIntegrity.ts so it does NOT affect the payload hash.
   _dossier?: import('./pdfDossierRenderer').PersonDossierData;
+  // Open-source intelligence hits from the enrichment engine. Caller fetches
+  // /api/enrichment/search and attaches matching records here. Listed in
+  // NON_CANONICAL_FIELDS so it doesn't affect the payload hash.
+  _enrichment?: {
+    match_tier?: string;
+    records?: Array<{
+      name?: string;
+      dob?: string;
+      source: string;
+      watchlist_flags?: string[];
+      addresses?: Array<{ street?: string; city?: string; state?: string; zip?: string }>;
+      raw?: any;
+    }>;
+    sources?: Array<{ source: string; ok: boolean; error?: string; records: any[] }>;
+    searched_at?: string;
+  };
 }
 
 export interface VehiclePdfData {
@@ -1476,14 +1528,21 @@ function callPriorityLabel(p: string): string {
 }
 
 /** Format: MM/DD/YYYY @ HH:MM:SS AM/PM */
-/** Convert a date to Mountain Time components */
+/**
+ * Convert a date to Mountain Time components via Intl.DateTimeFormat parts —
+ * not a toLocaleString-round-trip-then-reparse, which is locale-format-fragile
+ * and can misparse depending on runtime ICU data.
+ */
 function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string; min: string; sec: string } {
-  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
-  const mm = String(mt.getMonth() + 1).padStart(2, '0');
-  const dd = String(mt.getDate()).padStart(2, '0');
-  const yyyy = mt.getFullYear();
-  const hh = String(mt.getHours()).padStart(2, '0');
-  return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0';
+  let hh = get('hour');
+  if (hh === '24') hh = '00'; // some engines emit '24' for midnight under hour12:false
+  return { mm: get('month'), dd: get('day'), yyyy: parseInt(get('year'), 10), hh, min: get('minute'), sec: get('second') };
 }
 
 /** Format: MM/DD/YYYY */
@@ -1646,9 +1705,9 @@ function addConnectionsSection(
   y = checkPageBreak(doc, y, 25, priority);
   { const sec = openAutoSection(doc, 'Connected Profiles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
   const rows = connections.map((c: any) => [
-    titleCase(c.type.replace(/_/g, ' ')),
+    titleCase(toDisplayLabel(c.type)),
     c.label || 'N/A',
-    titleCase(c.relationship.replace(/_/g, ' ')),
+    titleCase(toDisplayLabel(c.relationship)),
   ]);
   y = addTableWithShading(doc,
     [{ label: 'TYPE', x: lx }, { label: 'NAME / IDENTIFIER', x: lx + 30 }, { label: 'RELATIONSHIP', x: lx + 130 }],
@@ -1704,7 +1763,7 @@ export async function addLocationMapSection(
     priority?: string;
     /** Extra labeled cells appended to the LOCATION DATA strip's top row
      *  (cross street, property, suite, ...). */
-    details?: { label: string; value: string; ratio?: number }[];
+    details?: { label: string; value: string; ratio?: number; minFontSize?: number }[];
     /** Incident timestamp (ISO) driving the light-condition readout —
      *  defaults to generation time. */
     eventIso?: string | null;
@@ -2026,7 +2085,7 @@ export async function addLocationMapSection(
   };
   const topCells: FormCell[] = [
     { label: 'TARGET ADDRESS', value: opts.caption || opts.address || '', ratio: 2.6 },
-    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1 })),
+    ...(opts.details || []).map((c) => ({ label: c.label, value: c.value || EMPTY_FIELD, ratio: c.ratio ?? 1, minFontSize: c.minFontSize })),
   ];
   const frameM = Math.round(mPerMm * drawW);
   const botCells: FormCell[] = [
@@ -2385,7 +2444,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = addThreeColumnFields(doc, [
       { label: 'Created', value: tsField(data.created_at, 0) },
       { label: 'Dispatched', value: tsField(data.dispatched_at, 1) },
-      { label: 'Enroute', value: tsField(data.enroute_at, 2) },
+      { label: 'En Route', value: tsField(data.enroute_at, 2) },
       { label: 'On Scene', value: tsField(data.onscene_at, 3) },
       { label: 'Cleared', value: tsField(data.cleared_at, 4) },
       { label: 'Closed', value: tsField(data.closed_at, 5) },
@@ -2724,6 +2783,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
       ];
+      // Guard the entire 4-column row before drawing any column. Without this,
+      // the Property field's internal checkPageBreak can move to page N+1 while
+      // Building/Floor/Suite/Room still draw at the old y on that new page —
+      // landing near its bottom rather than beside Property (page 2 layout bug).
+      y = checkPageBreak(doc, y, 14, prio);
       let maxY = y + SPACING.FIELD_ROW_ADVANCE;
       for (let i = 0; i < 4; i++) {
         const fy = addFieldPair(doc, r3Fields[i].label, r3Fields[i].value, lx + i * quarterW, y, quarterW);
@@ -3023,7 +3087,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('INCIDENT DETAILS -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('INCIDENT DETAILS — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const idRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
@@ -3246,7 +3310,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       const entryLead = continued
-        ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
+        ? `ENTRY ${entryNum} OF ${total} — CONTINUED`
         : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
       doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
       doc.setFontSize(6);
@@ -3422,6 +3486,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (resp.ok) {
         const { url } = await resp.json();
         const qr_png_base64 = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        // Last page, for the same reason as the recipient badge below:
+        // a multi-page call report would otherwise strand this badge on
+        // whatever page happened to be current.
+        doc.setPage(doc.getNumberOfPages());
         const pageW = doc.internal.pageSize.getWidth();
         const pageH = doc.internal.pageSize.getHeight();
         const qrSize = 12; // mm — compact corner badge
@@ -3450,9 +3518,58 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     } catch { /* non-fatal — PDF still prints without QR */ }
   }
 
-  // Restore default dark style + disable field numbering for any
-  // subsequent (non-Call) generation that shares module state.
-  setActiveSectionStyle('dark');
+  // ── Recipient Receipt of Service QR ────────────────────────
+  // A SECOND, different-audience badge. The QR above is the OFFICER's
+  // (multi-scan, opens the mobile PSO status surface); this one is the
+  // RECIPIENT's — the officer shows it at the door and the person being
+  // served scans it on their own phone to sign the Receipt of Service
+  // and, for substitute service, the Court Document Release.
+  //
+  // Its token is single-use and burned on signature, which is why it
+  // cannot share the /api/cfs/:id/qr-token credential above: an officer
+  // scanning the status QR would otherwise consume the recipient's.
+  //
+  // Placed to the LEFT of the officer QR with its own caption so the two
+  // are never confused at a doorstep. Non-fatal on failure — a run sheet
+  // that prints without this badge is still a valid run sheet, and the
+  // officer can fall back to the in-app attempt modal.
+  if (isProcessServiceCall && data.serve_queue_id) {
+    try {
+      const resp = await fetch(`/api/serve-receipts/${data.serve_queue_id}/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('rmpg_token') || ''}`,
+        },
+        body: JSON.stringify({}),
+      });
+      if (resp.ok) {
+        const { url } = await resp.json();
+        const png = await QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 1, scale: 6 });
+        // Pin to the LAST page explicitly. jsPDF draws on whatever page
+        // is current, and by this point the report may have spilled —
+        // the badge would then sit mid-document where nobody looks for
+        // it. The run sheet is handed over at the door as a stack; the
+        // scannable face has to be the one on the bottom of it.
+        doc.setPage(doc.getNumberOfPages());
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
+        const qrSize = 12;
+        // 4mm gap left of the officer QR, same baseline.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1 - qrSize - 4;
+        const qrY = pageH - 23 - qrSize;
+        doc.addImage(png, 'PNG', qrX, qrY, qrSize, qrSize);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(4.5);
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text('RECIPIENT: SCAN TO SIGN', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
+      }
+    } catch { /* non-fatal — PDF still prints without the receipt QR */ }
+  }
+
+  // Restore light style + disable field numbering for any
+  // subsequent generation that shares module state.
+  setActiveSectionStyle('light');
   setFieldNumberingEnabled(false);
 }
 
@@ -3912,7 +4029,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
     // Clean up: replace underscores with spaces
-    flagList = flagList.map(f => f.replace(/_/g, ' ').toUpperCase());
+    flagList = flagList.map(f => toDisplayLabel(f).toUpperCase());
 
     // Dedup against the checkbox flags above.
     const alreadyShown = new Set<string>();
@@ -4237,6 +4354,73 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
+  // ── 15b. Open-Source Intelligence (enrichment hits) ───────
+  if (data._enrichment && Array.isArray(data._enrichment.records) && data._enrichment.records.length > 0) {
+    y = checkPageBreak(doc, y, 30, prio);
+    { const sec = openAutoSection(doc, 'Open-Source Intelligence', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+
+    // Source summary row
+    if (Array.isArray(data._enrichment.sources)) {
+      const sourceSummary = data._enrichment.sources
+        .map(s => `${s.source.replace(/_/g, ' ').toUpperCase()} (${s.ok ? `${s.records.length} hit${s.records.length !== 1 ? 's' : ''}` : 'error'})`)
+        .join(' · ');
+      const tier = (data._enrichment.match_tier || '').toUpperCase();
+      const tierLabel = tier === 'CONFIRMED' ? 'IDENTITY CONFIRMED' : tier === 'UNCONFIRMED' ? 'UNCONFIRMED MATCH' : '';
+      const summaryLine = [tier ? tierLabel : null, sourceSummary].filter(Boolean).join('   ');
+      if (summaryLine) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
+        const tierColor: [number, number, number] = tier === 'CONFIRMED' ? [220, 38, 38] : [...COLOR.TEXT_CAPTION];
+        doc.setTextColor(...tierColor);
+        doc.text(summaryLine, lx + 1.5, y + 1.5);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        y += 4;
+      }
+    }
+
+    // Hit rows grouped by watchlist flags
+    const enrichRows = data._enrichment.records.map((r: any) => {
+      const flags = Array.isArray(r.watchlist_flags) && r.watchlist_flags.length > 0
+        ? r.watchlist_flags.map((f: string) => f.replace(/_/g, ' ').toUpperCase()).join(', ')
+        : '—';
+      const addr = Array.isArray(r.addresses) && r.addresses.length > 0
+        ? [r.addresses[0].street, r.addresses[0].city, r.addresses[0].state].filter(Boolean).join(', ')
+        : '—';
+      return [
+        r.source.replace(/_/g, ' ').toUpperCase(),
+        r.name || '—',
+        r.dob ? fmtDate(r.dob) : '—',
+        flags,
+        addr,
+      ];
+    });
+
+    y = addTableWithShading(
+      doc,
+      [
+        { label: 'SOURCE',  x: lx },
+        { label: 'NAME',    x: lx + 30 },
+        { label: 'DOB',     x: lx + 75 },
+        { label: 'FLAGS',   x: lx + 100 },
+        { label: 'ADDRESS', x: lx + 135 },
+      ],
+      enrichRows,
+      y,
+      [lx, lx + 30, lx + 75, lx + 100, lx + 135],
+      { sectionTitle: 'OSINT HITS' },
+    );
+
+    if (data._enrichment.searched_at) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(FONT.SIZE_TABLE_HEADER - 0.5);
+      doc.setTextColor(...COLOR.TEXT_CAPTION);
+      doc.text(`Searched: ${fmtTimestamp(data._enrichment.searched_at)}`, lx + 1.5, y + 1.5);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      y += 3;
+    }
+  }
+
   // ── 16. Record Metadata ───────────────────────────────────
   y = drawFormSection(doc, {
     sideTab: { label: 'META' },
@@ -4268,9 +4452,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = renderPersonDossierAppendix(doc, data._dossier, y);
   }
 
-  // Restore default section style so the next PDF (which may be a
-  // different record type with the dark style) renders unchanged.
-  setActiveSectionStyle('dark');
+  // Restore light style so the next PDF renders unchanged.
+  setActiveSectionStyle('light');
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
@@ -4301,7 +4484,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       ? { label: 'STOLEN', tone: 'high' }
       : stolen === 'recovered'
         ? { label: 'RECOVERED', tone: 'elevated' }
-        : (data.tow_status && data.tow_status !== 'none')
+        : isVehicleImpounded(data.tow_status)
           ? { label: 'IMPOUNDED', tone: 'elevated' }
           : undefined;
     y = addQuickReferenceBanner(doc, {
@@ -4566,7 +4749,15 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 async function generateQrDataUrl(text: string): Promise<string | null> {
   try {
-    return await QRCode.toDataURL(text, { width: 96, margin: 0, errorCorrectionLevel: 'M' });
+    // margin MUST stay at the spec quiet zone (ISO/IEC 18004: 4 modules). This
+    // was margin: 0, which shipped a symbol with no quiet zone at all — the only
+    // light border was the 1mm white card drawn behind it at the call site, and
+    // at a 22mm render that is roughly 1.5 modules where 4 are required.
+    //
+    // width is the raster size, independent of the 22mm PDF placement. 96px over
+    // ~41 units was ~2px per module, so the image was upscaled ~5x into the page
+    // and arrived blurred; 512px keeps module edges crisp at any print size.
+    return await QRCode.toDataURL(text, { width: 512, margin: 4, errorCorrectionLevel: 'M' });
   } catch {
     return null;
   }
@@ -5111,7 +5302,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.evidence_type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + fifthW * 4, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
     const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
@@ -5311,7 +5502,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
 function buildFleetCautionText(data: FleetPdfData, flags: string[]): string {
   const parts: string[] = [];
   if (flags.includes('OUT OF SERVICE') || flags.includes('IN REPAIR')) {
-    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ').toUpperCase()} — not available for deployment.`);
+    parts.push(`Vehicle ${data.vehicle_number} is currently ${toDisplayLabel(data.status).toUpperCase()} — not available for deployment.`);
   }
   if (flags.includes('REGISTRATION EXPIRED') || flags.includes('INSURANCE EXPIRED')) {
     parts.push('CRITICAL: Expired compliance documents — vehicle may not be legally operable on public roadways until renewed.');
@@ -5386,7 +5577,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Row 3: Plate Number, Plate State, Status (3 cols)
     const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
     const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
-    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + thirdW * 2, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + thirdW * 2, y, thirdW);
     y = Math.max(r3a, r3b, r3c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -6184,8 +6375,13 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     details: [
       { label: 'PROPERTY',  value: data.name || '', ratio: 1.2 },
       { label: 'STATUS',    value: data.is_active === false ? 'INACTIVE' : 'ACTIVE', ratio: 0.65 },
-      { label: 'TYPE',      value: (data.property_type || data.business_type || '').replace(/_/g, ' ').toUpperCase(), ratio: 0.95 },
-      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.0 }] : []),
+      { label: 'TYPE',      value: toDisplayLabel(data.property_type || data.business_type || '').toUpperCase(), ratio: 0.95 },
+      // Widened ratio (1.0 -> 1.5) + a lower shrink-to-fit floor (4pt) so a
+      // long owner name (e.g. a hyphenated double surname) gets enough room to
+      // fully fit instead of falling back to fitTextToWidth's last-resort
+      // ellipsis-truncate — a person's name should never clip on a legal
+      // record when shrinking the font can avoid it.
+      ...(data.owner_name ? [{ label: 'OWNER', value: data.owner_name, ratio: 1.5, minFontSize: 4 }] : []),
     ],
     eventIso: data.created_at,
   }, y);
@@ -6466,7 +6662,13 @@ async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
     y = Math.max(r2a, r2b, r2c, r2d);
     // Row 3: Employee Count, Annual Revenue, Status, Record ID
     const r3a = addFieldPair(doc, 'Employees', data.employee_count || '', lx, y, qw);
-    const r3b = addFieldPair(doc, 'Annual Revenue', data.annual_revenue || '', lx + qw, y, qw);
+    // annual_revenue is a raw integer (the UI prints it unformatted too, but
+    // a business record should read as currency — thousands separators + $
+    // marker, matching how the fleet reports render cost figures).
+    const annualRevenueDisplay = data.annual_revenue != null && data.annual_revenue !== ''
+      ? formatCurrency(Number(data.annual_revenue), { decimals: 0 })
+      : '';
+    const r3b = addFieldPair(doc, 'Annual Revenue', annualRevenueDisplay, lx + qw, y, qw);
     const r3c = addFieldPair(doc, 'Status', (data.status || 'active').toUpperCase(), lx + 2 * qw, y, qw);
     const r3d = addFieldPair(doc, 'Record ID', data.id || '', lx + 3 * qw, y, qw);
     y = Math.max(r3a, r3b, r3c, r3d);
@@ -6715,7 +6917,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + quarterW * 2, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + quarterW * 3, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus(toDisplayLabel(data.status || '').toUpperCase()), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);
@@ -6972,11 +7174,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
   setActiveFormKey(recordType);
 
   // Set generation timestamp
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   // Watermark on first page
   addConfidentialWatermark(doc);
@@ -7139,7 +7337,7 @@ export async function generateRecordPdf<T extends RecordPdfType>(
       caseNumber: meta.caseNumber,
       agency: 'RMPG',
       agencyOri: 'UT0180100',
-      reportDate: new Date().toISOString().slice(0, 10),
+      reportDate: localToday(),
     };
     finalizePoliceReport(doc, { barcode: { formMetadata: formMeta } });
   }
@@ -7165,15 +7363,22 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
-    const _p2 = (n: number) => String(n).padStart(2, '0');
-    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
+    // formatDateTime resolves the display timezone (America/Denver) via
+    // Intl.DateTimeFormat internally — raw Date getters here would read the
+    // Workers/browser host's local zone (UTC) instead, offsetting every
+    // printed officer signature date/time by hours.
+    const sigDateStr = formatDateTime(closedDate || new Date().toISOString());
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
@@ -7227,15 +7432,22 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
-    const _p2 = (n: number) => String(n).padStart(2, '0');
-    const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
+    // formatDateTime resolves the display timezone (America/Denver) via
+    // Intl.DateTimeFormat internally — raw Date getters here would read the
+    // Workers/browser host's local zone (UTC) instead, offsetting every
+    // printed officer signature date/time by hours.
+    const sigDateStr = formatDateTime(closedDate || new Date().toISOString());
     setActiveOfficerSignature({
       signatureImage: anyData._officerSignature || null,
       printedName: officerName,
       badgeNumber: badgeNum,
       date: sigDateStr,
     });
+    // Warm the transparency cache BEFORE the (synchronous) jsPDF drawing
+    // calls run — addSignatureBlock/drawSignatureSlot can't be async
+    // themselves without rippling across every document generator, so the
+    // conversion happens here, at the one place the signature is loaded.
+    await preloadSignatureTransparency(anyData._officerSignature);
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
@@ -7297,11 +7509,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
   // Clear any leftover case number from a previous PDF in this session —
   // BOLO is multi-subject and uses an explicit barcode value below.
   setActiveCaseNumber('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   // Sort by severity: felony first
   const severityOrder: Record<string, number> = { felony: 0, misdemeanor: 1, infraction: 2, civil: 3 };
@@ -7500,7 +7708,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
   // BOLO packet — form metadata with warrant/packet identifier
   const boloId = subjects.length === 1 && subjects[0].warrants[0]?.warrant_number
     ? `BOLO-${subjects[0].warrants[0].warrant_number}`
-    : `BOLO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    : `BOLO-${localToday().replace(/-/g, '')}`;
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -7508,7 +7716,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
         caseNumber: boloId,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
       },
     },
   });
@@ -7543,11 +7751,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   setActiveFormKey('warrant');
   // Clear case number — summary is agency-wide, explicit barcode below.
   setActiveCaseNumber('');
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    timeZone: 'America/Denver',
-  }));
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState
@@ -7626,7 +7830,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.setFontSize(6.5);
     for (const [label, count] of entries) {
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(titleCase(label.replace(/_/g, ' ')), x + 2, ty + 3);
+      doc.text(titleCase(toDisplayLabel(label)), x + 2, ty + 3);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(String(count), x + w - 2, ty + 3, { align: 'right' });
       ty += 5;
@@ -7712,7 +7916,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
   // Warrant summary is agency-wide — encode as form metadata
   const periodLabel = data.period?.to
     ? `WRTSUM-${String(data.period.to).replace(/[^0-9]/g, '')}`
-    : `WRTSUM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+    : `WRTSUM-${localToday().replace(/-/g, '')}`;
   finalizePoliceReport(doc, {
     barcode: {
       formMetadata: {
@@ -7720,7 +7924,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
         caseNumber: periodLabel,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
       },
     },
   });

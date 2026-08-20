@@ -118,13 +118,13 @@ skiptracer.get('/stats', async (c) => {
       db, `SELECT COUNT(*) as count FROM microbilt_searches`,
     ))?.count ?? 0;
 
-    // SQLite-style "start of current month" — locked to localtime to
-    // match the column default. Avoids timezone drift between INSERT
+    // SQLite-style "start of current month" — UTC, matching the column
+    // default (datetime('now')). Avoids timezone drift between INSERT
     // and SELECT that bit us on call_number generation.
     const thisMonth = (await queryFirst<{ count: number }>(
       db,
       `SELECT COUNT(*) as count FROM microbilt_searches
-       WHERE created_at >= strftime('%Y-%m-01 00:00:00', 'now', 'localtime')`,
+       WHERE created_at >= strftime('%Y-%m-01 00:00:00', 'now')`,
     ))?.count ?? 0;
 
     // subject_name aliased to `name` so the client doesn't need a

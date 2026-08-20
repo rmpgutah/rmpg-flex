@@ -16,10 +16,11 @@ import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
-  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+  try { return new Date(d + (d.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); } // new-date-ok
 }
 
 // ============================================================
@@ -114,26 +115,36 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/invoices?client_id=${clientId}&limit=100`);
-      setInvoices(asArray<Invoice>(res?.data));
-    } catch { setError('Failed to load invoices'); }
-    setLoading(false);
+      const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/billing/invoices?client_id=${clientId}&limit=100`);
+      const rows = asArray<Invoice>(res?.data);
+      setInvoices(rows);
+      // billing.ts has no per-client stats endpoint — derive the tile
+      // values from the scoped invoice list instead of the global,
+      // unscoped /invoices/stats (which ignores client_id entirely).
+      const outstanding = rows.filter(i => !['paid', 'void', 'cancelled'].includes((i as any).status));
+      setStats({
+        total_invoices: rows.length,
+        total_outstanding: outstanding.reduce((sum, i) => sum + (Number((i as any).total ?? 0) - Number((i as any).paid_amount ?? 0)), 0),
+        total_collected: rows.reduce((sum, i) => sum + Number((i as any).paid_amount ?? 0), 0),
+        overdue_count: rows.filter(i => (i as any).status === 'overdue').length,
+        draft_count: rows.filter(i => (i as any).status === 'draft').length,
+        by_status: rows.reduce((acc: Record<string, number>, i) => {
+          const s = (i as any).status || 'draft';
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        }, {}),
+      } as InvoiceStats);
+    } catch { setError('Failed to load invoices'); } finally { setLoading(false); }
   }, [clientId]);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const res = await apiFetch<{ data: InvoiceStats }>(`/invoices/stats?client_id=${clientId}`);
-      setStats(res.data);
-    } catch (e) { console.error('Failed to load invoice stats:', e); }
-  }, [clientId]);
+  const fetchStats = useCallback(async () => { /* derived inline in fetchInvoices — no scoped stats endpoint exists */ }, []);
 
   const fetchInvoiceDetail = useCallback(async (id: string) => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${id}`);
+      const res = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${id}`);
       setSelectedInvoice(res.data);
-    } catch { setError('Failed to load invoice detail'); }
-    setLoading(false);
+    } catch { setError('Failed to load invoice detail'); } finally { setLoading(false); }
   }, []);
 
   // Shared "open invoice" — used by the list row onClick + right-click menu.
@@ -160,36 +171,41 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
 
   // ─── Actions ──────────────────────────────────────
   const handleCreate = async () => {
-    if (!createForm.period_start || !createForm.period_end) {
-      setError('Period start and end dates are required');
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
-      const res = await apiFetch<{ data: Invoice }>('/invoices', {
+      // POST /billing/invoices/:id/generate only auto-fills line items for a
+      // flat-rate contract linked to the invoice — find this client's active
+      // contract first so the invoice is created already linked to it.
+      const contractsRes = await apiFetch<{ data: Array<{ id: number; status: string }> }>(`/billing/contracts?client_id=${clientId}&status=active`);
+      const contract = asArray<{ id: number; status: string }>(contractsRes?.data)[0];
+      const res = await apiFetch<{ data: Invoice }>('/billing/invoices', {
         method: 'POST',
         body: JSON.stringify({
           client_id: clientId,
-          period_start: createForm.period_start,
-          period_end: createForm.period_end,
+          contract_id: contract?.id ?? null,
           issue_date: createForm.issue_date,
           notes: createForm.notes,
         }),
       });
-      // Auto-generate line items
       const invoiceId = res?.data?.id;
       if (!invoiceId) throw new Error('Invoice creation returned no ID');
-      const genRes = await apiFetch<{ data: InvoiceDetail }>(`/invoices/${invoiceId}/generate`, { method: 'POST' });
-      if (!genRes?.data) throw new Error('Invoice generation returned no data');
-      setSelectedInvoice(genRes.data);
+      // Auto-generate flat-rate line items only when a contract was linked —
+      // otherwise leave it as a blank draft the user adds line items to.
+      if (contract?.id) {
+        const genRes = await apiFetch<{ data: InvoiceDetail }>(`/billing/invoices/${invoiceId}/generate`, { method: 'POST' });
+        if (genRes?.data) setSelectedInvoice(genRes.data as InvoiceDetail);
+        else await fetchInvoiceDetail(String(invoiceId));
+      } else {
+        await fetchInvoiceDetail(String(invoiceId));
+      }
       setView('detail');
       fetchInvoices();
-      fetchStats();
     } catch (e: any) {
       setError(e.message || 'Failed to create invoice');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleStatusChange = async (status: string) => {
@@ -203,8 +219,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleAddLineItem = async () => {
@@ -224,8 +239,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setShowAddItem(false);
       setItemForm({ line_type: 'custom', description: '', quantity: '1', unit_price: '0' });
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleDeleteLineItem = async (itemId: string) => {
@@ -257,8 +271,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       setPayForm({ amount: '', payment_date: localToday(), payment_method: 'check', reference_number: '', notes: '' });
       fetchInvoices();
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleDeletePayment = async (paymentId: string) => {
@@ -278,8 +291,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
       await apiFetch(`/billing/invoices/${selectedInvoice.id}/generate`, { method: 'POST' });
       await fetchInvoiceDetail(selectedInvoice.id);
       fetchStats();
-    } catch (e: any) { setError(e.message); }
-    setSaving(false);
+    } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   };
 
   const handleSaveNotes = async (notes: string) => {
@@ -388,7 +400,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {(inv.status || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(inv.status || '').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-1.5 text-right font-mono text-rmpg-100">{formatCurrency(inv.total)}</td>
@@ -408,7 +420,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
   const renderCreateView = () => (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
-        <button type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+        <button aria-label="Back" type="button" onClick={() => setView('list')} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
         <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold">Create New Invoice</span>
       </div>
 
@@ -457,7 +469,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           <button type="button" onClick={() => setView('list')} className="toolbar-btn text-rmpg-400">Cancel</button>
           <button type="button"
             onClick={handleCreate}
-            disabled={saving || !createForm.period_start || !createForm.period_end}
+            disabled={saving}
             className="toolbar-btn text-brand-400 hover:text-brand-300 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Zap className="w-3.5 h-3.5" />}
@@ -478,7 +490,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
+            <button aria-label="Back" type="button" onClick={() => { setView('list'); setSelectedInvoice(null); }} className="toolbar-btn"><ArrowLeft className="w-3.5 h-3.5" /></button>
             <span className="font-mono text-brand-400 font-bold text-sm">{inv.invoice_number}</span>
             <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
               {toDisplayLabel(inv.status)}
@@ -508,7 +520,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     <CheckCircle className="w-3.5 h-3.5" /> <span className="text-[10px]">Mark Paid</span>
                   </button>
                 )}
-                <button type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
+                <button aria-label="Close" type="button" onClick={() => handleStatusChange('void')} className="toolbar-btn text-rmpg-500" disabled={saving}>
                   <XCircle className="w-3.5 h-3.5" />
                 </button>
               </>
@@ -620,7 +632,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   {inv.status === 'draft' && (
                     <td className="p-1 text-center">
-                      <button type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
+                      <button aria-label="Delete" type="button" onClick={() => handleDeleteLineItem(item.id)} className="text-rmpg-600 hover:text-red-400 transition-colors">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </td>
@@ -724,7 +736,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                     <td className="p-1 text-rmpg-400">{pay.reference_number || '—'}</td>
                     <td className="p-1 text-rmpg-400">{pay.recorded_by_name || '—'}</td>
                     <td className="p-1">
-                      <button type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+                      <button aria-label="Delete" type="button" onClick={() => handleDeletePayment(pay.id)} className="text-rmpg-600 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
                     </td>
                   </tr>
                 ))}
@@ -751,7 +763,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generateInvoicePdfBlobUrl } = await import('../../utils/invoicePdfGenerator');
+                const { generateInvoicePdfBlobUrl } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
@@ -771,7 +783,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generateInvoicePdf } = await import('../../utils/invoicePdfGenerator');
+                const { generateInvoicePdf } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 const doc = await generateInvoicePdf(res.data.invoice);
@@ -789,7 +801,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             onClick={async () => {
               try {
                 setError(null);
-                const { generatePrintableInvoiceHtml } = await import('../../utils/invoicePdfGenerator');
+                const { generatePrintableInvoiceHtml } = await importWithRetry(() => import('../../utils/invoicePdfGenerator'));
                 const res = await apiFetch<{ data: any }>(`/invoices/${inv.id}/pdf-data`);
                 if (!res?.data?.invoice) throw new Error('No invoice data returned from server');
                 const html = generatePrintableInvoiceHtml(res.data.invoice);
@@ -830,7 +842,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="flex items-center gap-2 bg-red-900/30 border border-red-700/50 text-red-300 text-[10px] px-3 py-2 rounded-sm mb-2">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="ml-auto"><XCircle className="w-3 h-3" /></button>
         </div>
       )}
       {view === 'list' && renderListView()}

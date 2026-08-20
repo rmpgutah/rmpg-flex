@@ -20,10 +20,22 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+// No dynamic-import precedent exists elsewhere in this router (checked via
+// `grep -n "await import(" src/routes/shiftPlans.ts` — zero hits), so a
+// normal static import is used here per the task brief's fallback guidance.
+import { evaluateNotificationRules } from './notificationEngine';
 
 const sp = new Hono<Env>();
+
+// Per-shift-type staffing minimums, shared by GET /staffing-levels and
+// GET /shift-notifications so the two surfaces never disagree on what
+// counts as understaffed (a graveyard shift needs only 1 officer; day/
+// swing need 2). GET /staffing-levels allows overriding these via query
+// params — that override is local to that handler and doesn't affect
+// this shared default.
+export const SHIFT_STAFFING_MINIMUMS: Record<string, number> = { day: 2, swing: 2, graveyard: 1 };
 
 // Auth is enforced INSIDE the router instead of via the registry's
 // per-prefix loop. The router mounts at the bare `/api` prefix so it
@@ -34,7 +46,27 @@ const sp = new Hono<Env>();
 // `/api/auth/login` (see PR #627 incident). Same pattern the geocode
 // router uses post-#627: register here, mark the registry entry
 // `auth: 'public'`.
-sp.use('*', authMiddleware);
+//
+// ⚠️  Scope this to the exact sub-paths this router owns — NOT `'*'`.
+// A router-internal `sp.use('*', mw)` merges through `app.route('/api',
+// sp)` into the parent app's route table as a genuinely global
+// `/api/*` pattern (same blanket-block #627 was about, just registered
+// from this call site instead of index.ts — see geocode.ts's matching
+// comment for the Hono internals). Because this router mounts before
+// other bare-`/api` public routers (mobileCfs, downloads, stubs'
+// diagnostics/updates mounts), a bare `'*'` here silently 401'd all of
+// them (found 2026-07-18 wiring mobile rate limiting — see
+// test-workers/mobileAuthRouting.test.ts). List every literal path +
+// its `/*` glob (Hono's glob doesn't match the bare path — same
+// gotcha documented in routesConfig.ts's file header).
+sp.use('/shift-plans', authMiddleware);
+sp.use('/shift-plans/*', authMiddleware);
+sp.use('/shift-swaps', authMiddleware);
+sp.use('/shift-swaps/*', authMiddleware);
+sp.use('/admin/shift-swaps', authMiddleware);
+sp.use('/shift-overtime', authMiddleware);
+sp.use('/staffing-levels', authMiddleware);
+sp.use('/shift-notifications', authMiddleware);
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -59,6 +91,29 @@ function parseAssignments<T extends { assignments?: string | unknown[] }>(row: T
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return '""';
   return `"${String(v).replace(/"/g, '""')}"`;
+}
+
+// Every shift-swap status transition writes one row to the existing
+// generic activity_log table (migrations/0001_initial.sql) rather than a
+// new dedicated audit table -- entity_type='shift_swap_request' lets a
+// future "history for this swap" view query
+// activity_log WHERE entity_type = 'shift_swap_request' AND entity_id = ?
+// with no new schema.
+async function writeSwapActivityLog(
+  db: ReturnType<typeof getDb>,
+  actorUserId: number,
+  action: string,
+  swapId: number,
+  details: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await execute(
+      db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, ?, 'shift_swap_request', ?, ?, datetime('now'))`,
+      actorUserId, action, swapId, JSON.stringify(details),
+    );
+  } catch { /* audit-log failure must never block the swap action */ }
 }
 
 const SHIFT_TYPES = new Set(['day', 'swing', 'night', 'graveyard', 'custom']);
@@ -133,18 +188,18 @@ sp.post('/shift-plans/bulk-activate', async (c) => {
   const db = getDb(c.env);
   let activated = 0;
   if (Array.isArray(body.plan_ids) && body.plan_ids.length > 0) {
-    const ph = body.plan_ids.map(() => '?').join(',');
-    const r = await execute(
-      db,
-      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime')
-         WHERE id IN (${ph}) AND status = 'draft'`,
-      ...body.plan_ids,
-    );
-    activated = (r.meta as any).changes ?? 0;
+    // plan_ids is caller-supplied and unbounded, so the query's SHAPE grows with
+    // the request: a bulk-activate of 100+ plans exceeds D1's 100-bound-parameter
+    // cap and throws at BIND time, before the statement runs. Passes every test
+    // and every small activation, then fails on exactly the big batch that
+    // matters most.
+    activated = await executeInChunks(db, body.plan_ids,
+      (ph) => `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
+         WHERE id IN (${ph}) AND status = 'draft'`);
   } else if (body.start_date && body.end_date) {
     const r = await execute(
       db,
-      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime')
+      `UPDATE shift_plans SET status = 'active', updated_at = datetime('now')
          WHERE date BETWEEN ? AND ? AND status = 'draft'`,
       body.start_date, body.end_date,
     );
@@ -193,13 +248,13 @@ sp.post('/shift-plans/:id/activate', async (c) => {
   // Demote every other active plan for the same date.
   await execute(
     db,
-    `UPDATE shift_plans SET status = 'draft', updated_at = datetime('now','localtime')
+    `UPDATE shift_plans SET status = 'draft', updated_at = datetime('now')
        WHERE date = ? AND id != ? AND status = 'active'`,
     existing.date, id,
   );
   await execute(
     db,
-    `UPDATE shift_plans SET status = 'active', updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE shift_plans SET status = 'active', updated_at = datetime('now') WHERE id = ?`,
     id,
   );
   const updated = await queryFirst<any>(
@@ -296,7 +351,7 @@ sp.post('/shift-plans', async (c) => {
       db,
       `UPDATE shift_plans
          SET name = ?, date = ?, shift_type = ?, assignments = ?, status = ?,
-             updated_at = COALESCE(?, datetime('now','localtime'))
+             updated_at = COALESCE(?, datetime('now'))
          WHERE id = ?`,
       cleanName, date, shiftType || 'day', assignmentsJson, status || 'draft', updatedAt ?? null, id,
     );
@@ -305,8 +360,8 @@ sp.post('/shift-plans', async (c) => {
       db,
       `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
        VALUES (?,?,?,?,?,?, ?,
-               COALESCE(?, datetime('now','localtime')),
-               COALESCE(?, datetime('now','localtime')))`,
+               COALESCE(?, datetime('now')),
+               COALESCE(?, datetime('now')))`,
       id, cleanName, date, shiftType || 'day', assignmentsJson, status || 'draft', user?.id ?? null,
       createdAt ?? null, updatedAt ?? null,
     );
@@ -348,7 +403,7 @@ sp.put('/shift-plans/:id', async (c) => {
     args.push(v === '' ? null : v ?? null);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now','localtime')");
+  sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE shift_plans SET ${sets.join(', ')} WHERE id = ?`, ...args);
 
@@ -382,12 +437,20 @@ sp.delete('/shift-plans/:id', async (c) => {
 // keep both registered until the client is converged on one path. Sharing
 // a handler so the two never drift apart.
 async function listShiftSwaps(c: any) {
-  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
-  if (denied) return c.json({ error: denied }, 403);
   const status = c.req.query('status');
   const date = c.req.query('date');
   const where: string[] = [];
   const args: any[] = [];
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
+  if (denied) {
+    // Non-elevated callers (e.g. plain officers) don't get a blanket 403 —
+    // they can still see swaps where they're the requester or the target,
+    // which is exactly the data the client's accept/decline modal needs.
+    const user = c.get('user');
+    if (!user) return c.json({ error: denied }, 403);
+    where.push('(requester_id = ? OR target_id = ?)');
+    args.push(user.id, user.id);
+  }
   if (status) { where.push('status = ?'); args.push(status); }
   if (date) { where.push('shift_date = ?'); args.push(date); }
   const sql = `SELECT * FROM shift_swap_requests ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -413,12 +476,121 @@ sp.post('/shift-swaps', async (c) => {
     `INSERT INTO shift_swap_requests (
        requester_id, requester_name, target_id, target_name, plan_id,
        shift_date, original_shift, requested_shift, reason, status, created_at
-     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now','localtime'))`,
+     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now'))`,
     user.id, user.full_name ?? null, body.target_id ?? null, targetName,
     body.plan_id ?? null, body.shift_date, body.original_shift ?? null,
     body.requested_shift ?? null, body.reason ?? null,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+
+  const swapId = Number(r.meta.last_row_id);
+
+  await writeSwapActivityLog(db, user.id, 'swap_requested', swapId, { shift_date: body.shift_date, target_id: body.target_id ?? null });
+
+  try {
+    await evaluateNotificationRules(db, 'shift_swap_requested', {
+      title: 'Shift swap requested',
+      message: `${user.full_name ?? 'An officer'} requested a swap for ${body.shift_date}`,
+      priority: 'normal',
+      entity_type: 'shift_swap_request',
+      entity_id: swapId,
+    }, c.env);
+  } catch { /* notification failure must never block the swap request */ }
+
+  return c.json({ success: true, id: swapId }, 201);
+});
+
+sp.post('/shift-swaps/:id/respond', async (c) => {
+  const user = c.get('user') as { id: number; full_name?: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const body = await c.req.json<{ accept?: boolean }>().catch(() => ({} as { accept?: boolean }));
+  if (typeof body.accept !== 'boolean') {
+    return c.json({ error: 'accept (boolean) is required' }, 400);
+  }
+  const db = getDb(c.env);
+
+  const swap = await queryFirst<{
+    requester_id: number; target_id: number | null; target_name: string | null;
+    shift_date: string; status: string;
+  }>(
+    db,
+    'SELECT requester_id, target_id, target_name, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.target_id === null) {
+    return c.json({ error: 'This swap has no target officer to respond' }, 400);
+  }
+  if (swap.target_id !== user.id) {
+    return c.json({ error: 'Only the target officer can respond to this swap' }, 403);
+  }
+  if (swap.status !== 'pending') {
+    return c.json({ error: 'This swap is not awaiting a response' }, 400);
+  }
+
+  if (body.accept) {
+    await execute(
+      db,
+      `UPDATE shift_swap_requests SET status = 'pending_supervisor', target_responded_at = datetime('now') WHERE id = ?`,
+      id,
+    );
+    await writeSwapActivityLog(db, user.id, 'swap_target_accepted', id, { shift_date: swap.shift_date });
+    try {
+      await evaluateNotificationRules(db, 'shift_swap_target_accepted', {
+        title: 'Shift swap accepted — ready for review',
+        message: `${swap.target_name ?? 'The target officer'} accepted a swap for ${swap.shift_date}`,
+        priority: 'normal',
+        entity_type: 'shift_swap_request',
+        entity_id: id,
+      }, c.env);
+    } catch { /* notification failure must never block the response */ }
+  } else {
+    const declineNote = `${swap.target_name ?? 'The target officer'} declined the swap`;
+    await execute(
+      db,
+      `UPDATE shift_swap_requests SET status = 'denied', target_responded_at = datetime('now'), review_notes = ? WHERE id = ?`,
+      declineNote, id,
+    );
+    await writeSwapActivityLog(db, user.id, 'swap_target_rejected', id, { shift_date: swap.shift_date });
+    try {
+      await evaluateNotificationRules(db, 'shift_swap_denied', {
+        title: 'Shift swap denied',
+        message: `Your swap request for ${swap.shift_date} was declined by the target officer`,
+        priority: 'normal',
+        entity_type: 'shift_swap_request',
+        entity_id: id,
+      }, c.env, [swap.requester_id]);
+    } catch { /* notification failure must never block the response */ }
+  }
+
+  return c.json({ success: true });
+});
+
+sp.post('/shift-swaps/:id/cancel', async (c) => {
+  const user = c.get('user') as { id: number; full_name?: string } | undefined;
+  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  const swap = await queryFirst<{ requester_id: number; shift_date: string; status: string }>(
+    db,
+    'SELECT requester_id, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.requester_id !== user.id) {
+    return c.json({ error: 'Only the requester can cancel this swap' }, 403);
+  }
+  if (swap.status !== 'pending' && swap.status !== 'pending_supervisor') {
+    return c.json({ error: `Cannot cancel a swap in status '${swap.status}'` }, 400);
+  }
+
+  await execute(db, `UPDATE shift_swap_requests SET status = 'cancelled' WHERE id = ?`, id);
+  await writeSwapActivityLog(db, user.id, 'swap_cancelled', id, { shift_date: swap.shift_date });
+
+  return c.json({ success: true });
 });
 
 sp.put('/shift-swaps/:id', async (c) => {
@@ -432,13 +604,42 @@ sp.put('/shift-swaps/:id', async (c) => {
   }
   const user = c.get('user') as { id: number; full_name?: string } | undefined;
   const db = getDb(c.env);
+
+  const swap = await queryFirst<{ requester_id: number | null; target_id: number | null; shift_date: string; status: string }>(
+    db,
+    'SELECT requester_id, target_id, shift_date, status FROM shift_swap_requests WHERE id = ?',
+    id,
+  );
+  if (!swap) return c.json({ error: 'Shift swap request not found' }, 404);
+  if (swap.target_id !== null && swap.status === 'pending') {
+    return c.json({ error: "This swap is awaiting the target officer's response" }, 400);
+  }
+  if (swap.status !== 'pending' && swap.status !== 'pending_supervisor') {
+    return c.json({ error: `Cannot review a swap in status '${swap.status}'` }, 400);
+  }
+
   await execute(
     db,
     `UPDATE shift_swap_requests SET status = ?, reviewed_by = ?, reviewed_by_name = ?,
-       reviewed_at = datetime('now','localtime'), review_notes = ?
+       reviewed_at = datetime('now'), review_notes = ?
      WHERE id = ?`,
     body.status, user?.id ?? null, user?.full_name ?? null, body.review_notes ?? null, id,
   );
+
+  await writeSwapActivityLog(db, user?.id ?? 0, `swap_${body.status}`, id, { shift_date: swap.shift_date, review_notes: body.review_notes ?? null });
+
+  try {
+    const dynamicTargets = [swap.requester_id, swap.target_id]
+      .filter((x): x is number => typeof x === 'number');
+    await evaluateNotificationRules(db, `shift_swap_${body.status}`, {
+      title: body.status === 'approved' ? 'Shift swap approved' : 'Shift swap denied',
+      message: `Your swap request for ${swap.shift_date} was ${body.status}`,
+      priority: 'normal',
+      entity_type: 'shift_swap_request',
+      entity_id: id,
+    }, c.env, dynamicTargets);
+  } catch { /* notification failure must never block the swap review */ }
+
   return c.json({ success: true });
 });
 
@@ -489,9 +690,9 @@ sp.get('/staffing-levels', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const targetDate = c.req.query('date') || new Date().toISOString().slice(0, 10);
   const minimums: Record<string, number> = {
-    day: parseInt(c.req.query('min_day') || '2', 10),
-    swing: parseInt(c.req.query('min_swing') || '2', 10),
-    graveyard: parseInt(c.req.query('min_grave') || '1', 10),
+    day: parseInt(c.req.query('min_day') || String(SHIFT_STAFFING_MINIMUMS.day), 10),
+    swing: parseInt(c.req.query('min_swing') || String(SHIFT_STAFFING_MINIMUMS.swing), 10),
+    graveyard: parseInt(c.req.query('min_grave') || String(SHIFT_STAFFING_MINIMUMS.graveyard), 10),
   };
   const plans = await query<any>(getDb(c.env), 'SELECT * FROM shift_plans WHERE date = ? ORDER BY shift_type', targetDate);
   const levels: any[] = [];
@@ -500,7 +701,12 @@ sp.get('/staffing-levels', async (c) => {
     try { assignments = typeof plan.assignments === 'string' ? JSON.parse(plan.assignments) : (plan.assignments || []); }
     catch { assignments = []; }
     const cnt = assignments.length;
-    const minR = minimums[plan.shift_type] || 1;
+    // `|| 1` discarded an explicit min of 0 ("no coverage required on this
+    // shift"), since 0 is falsy — the same falsy-zero bug as the citation
+    // warning multiplier. `??` alone would let a NaN from a junk query param
+    // through, so the guard is an explicit finite check.
+    const configured = minimums[plan.shift_type];
+    const minR = Number.isFinite(configured) ? configured : 1;
     levels.push({
       plan_id: plan.id, plan_name: plan.name, shift_type: plan.shift_type, status: plan.status,
       staff_count: cnt, min_required: minR, max_recommended: minR * 2,
@@ -545,7 +751,8 @@ sp.get('/shift-notifications', async (c) => {
     let asgn: any[] = [];
     try { asgn = typeof p.assignments === 'string' ? JSON.parse(p.assignments) : (p.assignments || []); }
     catch { asgn = []; }
-    if (asgn.length < 2) {
+    const minRequired = SHIFT_STAFFING_MINIMUMS[p.shift_type] ?? 1;
+    if (asgn.length < minRequired) {
       notifications.push({
         type: 'understaffed', severity: 'warning',
         message: `${p.date} ${p.shift_type}: Only ${asgn.length} officer(s)`, date: p.date,

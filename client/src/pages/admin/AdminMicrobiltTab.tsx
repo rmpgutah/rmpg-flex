@@ -7,6 +7,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -343,7 +344,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                 style={{
                   background: environment === env ? (env === 'production' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(136, 136, 136, 0.15)') : 'transparent',
                   border: environment === env ? `1px solid ${env === 'production' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(136, 136, 136, 0.4)'}` : '1px solid transparent',
-                  color: environment === env ? (env === 'production' ? '#f87171' : '#aaaaaa') : '#888888',
+                  color: environment === env ? (env === 'production' ? 'rgb(248 113 113)' : 'var(--text-secondary)') : 'var(--text-muted)',
                 }}
               >
                 {env === 'sandbox' ? 'Sandbox' : 'Production'}
@@ -487,7 +488,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
               <div key={cat.category}>
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <CatIcon className="w-3 h-3 text-rmpg-400" />
-                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{(cat.category || '').replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">{toDisplayLabel(cat.category || '')}</span>
                 </div>
                 <div className="space-y-0.5">
                   {cat.products.map((product) => {

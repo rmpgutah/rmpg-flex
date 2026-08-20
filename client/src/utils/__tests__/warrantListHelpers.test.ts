@@ -3,7 +3,6 @@ import {
   priorityBucket,
   formatAge,
   freshnessClass,
-  stateFromSource,
 } from '../warrantListHelpers';
 
 describe('warrantListHelpers', () => {
@@ -13,6 +12,28 @@ describe('warrantListHelpers', () => {
     expect(priorityBucket(50)).toBe('medium');
     expect(priorityBucket(5)).toBe('low');
     expect(priorityBucket(null)).toBe('low');
+  });
+
+  // These boundaries are coupled to computePriorityScore's base values in
+  // src/routes/warrants.ts. They are asserted against the SCORES THE MODEL
+  // PRODUCES, not round numbers, so a change on either side breaks the pair.
+  it('priorityBucket boundaries match the scoring model', () => {
+    // A felony with NO modifiers scores exactly 60 and must read as high — the
+    // scorer's stated intent. Under the previous 70 boundary this was 'medium',
+    // and a live felony scoring 61 was being understated on the service queue.
+    expect(priorityBucket(60)).toBe('high');
+    expect(priorityBucket(61)).toBe('high');
+    expect(priorityBucket(59)).toBe('medium');
+
+    // A maximally stale misdemeanor tops out at 45 (30 + the 15 staleness cap).
+    // It must stay medium: age alone must never reach the felony band.
+    expect(priorityBucket(45)).toBe('medium');
+
+    // A plain misdemeanor (30) stays low; critical remains reserved for a felony
+    // with genuinely stacked aggravating factors.
+    expect(priorityBucket(30)).toBe('low');
+    expect(priorityBucket(89)).toBe('high');
+    expect(priorityBucket(90)).toBe('critical');
   });
   it('formatAge', () => {
     expect(formatAge(3)).toBe('3d');
@@ -28,10 +49,10 @@ describe('warrantListHelpers', () => {
     expect(freshnessClass(60)).toBe('old');
     expect(freshnessClass(null)).toBe('manual');
   });
-  it('stateFromSource', () => {
-    expect(stateFromSource('ut_warrants')).toBe('UT');
-    expect(stateFromSource('fed_usms_wanted')).toBe('FED');
-    expect(stateFromSource('manual')).toBe('—');
-    expect(stateFromSource(null)).toBe('—');
-  });
+  // stateFromSource was deleted — see the note in warrantListHelpers.ts. The
+  // derivation now lives server-side in src/utils/warrantSourceState.ts and is
+  // covered by tests/warrantSourceState.test.ts against the REAL live source
+  // keys. The old test here only ever exercised the 'ut_warrants' shape, which
+  // is why a parser that failed on every production key looked tested.
+
 });

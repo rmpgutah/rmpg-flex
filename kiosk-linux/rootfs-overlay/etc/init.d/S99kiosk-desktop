@@ -1,0 +1,219 @@
+#!/bin/sh
+# /etc/init.d/S99kiosk-desktop — start the RMPG Flex Desktop session.
+#
+# Replaces the old S99kiosk-browser-marker fullscreen-cog launcher. That script
+# ran `cog --platform=drm` straight against DRM/KMS with no window manager,
+# which is exactly why it could only ever show one fullscreen page. This starts
+# a real X session instead (see /etc/rmpg-desktop/xinitrc).
+#
+# Runs AFTER S98kiosk-net-marker so the network is up before the session
+# starts — the desktop opens the RMPG Flex console immediately, and a DNS
+# failure at that moment shows the user an error page they then have to
+# manually reload.
+#
+# The session is supervised: if X or the window manager exits (a crash, or the
+# user choosing "Sign out"), it restarts. A kiosk terminal must never drop to a
+# bare console and sit there.
+
+DESKTOP_LOG=/tmp/rmpg-desktop.log
+FALLBACK_LOG=/tmp/kiosk-console-fallback.log
+
+. /usr/lib/rmpg/boot-store.sh
+
+# Clear the failed-boot counter: this boot reached a working state, so it must
+# not count toward the 3 strikes that trigger an A/B rollback.
+#
+# ── 2026-07-25: this was two lines that would have caused a rollback loop ─────
+#
+# The previous form was:
+#     if [ -w /mnt/kiosk-boot/boot_attempts ]; then echo 0 > ...; fi
+#
+# Both halves of that were wrong once the store stopped being /dev/vda1:
+#
+#   1. On the no-USB install the counter lives at
+#      /mnt/kiosk-boot/RMPG-Flex-OS/boot_attempts, so the path simply did not
+#      exist and the `-w` test quietly skipped the reset.
+#   2. S01kiosk-boot-slot-check now leaves the store mounted READ-ONLY, which
+#      makes `-w` false even for root (access(W_OK) returns EROFS), so the reset
+#      would have been skipped on the USB path too.
+#
+# Either way the counter would have climbed on perfectly healthy boots until it
+# passed 3 — at which point the terminal would roll back to the other slot,
+# boot healthily 3 more times, roll back again, and flip between slots forever.
+# A silent `if` that skips the reset is far more dangerous than a failed write,
+# so this reports every outcome instead of testing a permission bit.
+reset_boot_attempts() {
+    if ! rmpg_bootstore_find; then
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_SKIPPED (no boot store found)"
+        return 1
+    fi
+    if ! rmpg_bootstore_rw; then
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_FAILED (store is read-only)"
+        return 1
+    fi
+    if echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"; then
+        sync
+        rmpg_bootstore_ro
+        echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
+        return 0
+    fi
+    rmpg_bootstore_ro
+    echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET_FAILED (write to $RMPG_BOOTSTORE_DIR/boot_attempts failed)"
+    return 1
+}
+
+# Last-resort console mode: run the Flex console fullscreen through cog on
+# DRM/KMS, with no X server and no window manager.
+#
+# This is the path the terminal shipped with before the desktop existed, and it
+# is proven — verified rendering the live login console with zero crashes. If
+# the desktop session cannot start, an officer must still get a working
+# dispatch terminal rather than a black screen: dispatch access matters far
+# more than having a taskbar. The desktop failure stays loudly in the log so
+# the underlying cause still gets fixed.
+#
+# cog talks to DRM directly and never consults the PCI display class or the X
+# module loader, which is exactly why it works in situations where X does not.
+start_console_fallback() {
+    if [ ! -x /usr/bin/cog ]; then
+        echo "KIOSK_LINUX_CONSOLE_FALLBACK_UNAVAILABLE (cog not installed)"
+        return 1
+    fi
+
+    echo "KIOSK_LINUX_CONSOLE_FALLBACK_STARTING (desktop unavailable — serving the console fullscreen)"
+
+    # Release the framebuffer console from the display, or fbcon keeps drawing
+    # over the browser. X normally does this itself; without X it must be done
+    # here.
+    for vtcon in /sys/class/vtconsole/vtcon*; do
+        if grep -q "frame buffer device" "$vtcon/name" 2>/dev/null; then
+            echo 0 > "$vtcon/bind" 2>/dev/null
+        fi
+    done
+
+    export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+    mkdir -p "$XDG_RUNTIME_DIR"
+    chmod 0700 "$XDG_RUNTIME_DIR"
+
+    cog --platform=drm "${RMPG_CONSOLE_URL:-https://rmpgutah.us}" >>"$FALLBACK_LOG" 2>&1 &
+    COG_PID=$!
+    sleep 15
+
+    if kill -0 "$COG_PID" 2>/dev/null; then
+        echo "KIOSK_LINUX_CONSOLE_FALLBACK_OK"
+        # A terminal serving dispatch is a healthy terminal, even without the
+        # desktop — reset the A/B counter so the fallback does not trigger a
+        # slot rollback that would land on an image with the same problem.
+        reset_boot_attempts
+    else
+        echo "KIOSK_LINUX_CONSOLE_FALLBACK_FAILED (see $FALLBACK_LOG)"
+        tail -20 "$FALLBACK_LOG" 2>/dev/null
+    fi
+}
+
+start() {
+    if [ ! -x /usr/bin/xinit ]; then
+        echo "KIOSK_LINUX_DESKTOP_FAILED (xinit not found — desktop packages missing)"
+        return 1
+    fi
+
+    # Home for the desktop user. pcmanfm, the browser download directory and
+    # per-session state all land here.
+    mkdir -p /root/Desktop /root/Downloads /root/Documents
+
+    # X11 unix-socket directory. X creates its listening socket at
+    # /tmp/.X11-unix/X0, and /tmp here is a tmpfs that starts empty on every
+    # boot because the whole rootfs is an initramfs. On a normal distribution
+    # the display manager or the distro X init script creates this; this image
+    # starts X directly from init, so nothing else does it.
+    #
+    # Without it X itself starts fine — it just cannot be reached, and every
+    # client dies with the opaque:
+    #   xinit: XIO: fatal IO error 11 (Resource temporarily unavailable)
+    #          on X server ":0"
+    # which names neither the socket nor the directory. Mode 1777 (sticky,
+    # world-writable) is what X expects, matching /tmp itself.
+    mkdir -p /tmp/.X11-unix
+    chmod 1777 /tmp/.X11-unix
+
+    (
+        # Supervision loop. A short delay between restarts stops a session that
+        # crashes instantly from spinning the CPU at 100% forever.
+        restarts=0
+        while true; do
+            # Clear the display lock and socket before each attempt. When a
+            # session dies without X shutting down cleanly, /tmp/.X0-lock is
+            # left behind and the NEXT attempt fails with a completely
+            # different and misleading error —
+            #   "Server is already active for display 0"
+            # — which hides the original cause behind a cascade of collisions.
+            # Any X still holding the display is killed first, so the lock we
+            # remove is genuinely stale rather than in use.
+            killall Xorg X 2>/dev/null
+            sleep 1
+            rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 2>/dev/null
+
+            xinit /etc/rmpg-desktop/xinitrc -- /usr/bin/X :0 vt1 -nolisten tcp \
+                >>"$DESKTOP_LOG" 2>&1
+            restarts=$((restarts + 1))
+            echo "KIOSK_LINUX_DESKTOP_SESSION_EXITED (restart #$restarts)" >>"$DESKTOP_LOG"
+
+            # After many rapid failures, stop trying and leave the log intact
+            # rather than hiding the cause under an endless restart cycle. The
+            # A/B boot fallback (S01kiosk-boot-slot-check) then has a chance to
+            # roll the terminal back to its previous known-good image.
+            if [ "$restarts" -ge 3 ]; then
+                echo "KIOSK_LINUX_DESKTOP_GIVING_UP ($restarts consecutive session exits)" >>"$DESKTOP_LOG"
+                start_console_fallback
+                break
+            fi
+            sleep 2
+        done
+    ) &
+
+    # Confirm the session actually came up rather than reporting success the
+    # instant the background job was spawned. xinitrc echoes the marker below
+    # once the window manager, desktop layer and taskbar are all running.
+    i=0
+    while [ "$i" -lt 120 ]; do
+        if grep -q "KIOSK_LINUX_DESKTOP_SESSION_UP" "$DESKTOP_LOG" 2>/dev/null; then
+            echo "KIOSK_LINUX_DESKTOP_OK"
+
+            # Sub-project 5: this is the confirmed-good signal the A/B
+            # slot-check fallback relies on — reset the failed-boot counter now
+            # that this boot has genuinely reached a usable desktop.
+            reset_boot_attempts
+            return 0
+        fi
+        i=$((i + 1))
+        sleep 0.5
+    done
+
+    echo "KIOSK_LINUX_DESKTOP_FAILED (session did not come up within 60s, see $DESKTOP_LOG)"
+    tail -30 "$DESKTOP_LOG" 2>/dev/null
+
+    # Echo X own error lines to the CONSOLE, not just to a file inside the
+    # guest. X writes the real reason it failed to /var/log/Xorg.0.log, which
+    # never reaches the serial log — so a captured boot log showed only the
+    # symptom ("no screens found") while the cause sat unread in the VM. That
+    # cost several rebuild-and-boot cycles chasing wrong theories, and reading
+    # it required logging in over the serial console, which is fragile to get
+    # right and impossible on a fielded terminal nobody can reach.
+    if [ -f /var/log/Xorg.0.log ]; then
+        echo "--- Xorg errors ---"
+        grep -E "^\[.*\] \(EE\)" /var/log/Xorg.0.log 2>/dev/null | head -15
+        echo "--- end Xorg errors ---"
+    fi
+    return 1
+}
+
+stop() {
+    killall rmpg-shell pcmanfm openbox X 2>/dev/null
+}
+
+case "$1" in
+    start) start ;;
+    stop)  stop ;;
+    restart|reload) stop; sleep 1; start ;;
+    *) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

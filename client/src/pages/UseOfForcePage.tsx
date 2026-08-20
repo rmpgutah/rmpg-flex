@@ -39,7 +39,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Shield, Plus, Search, Loader2, CheckCircle, XCircle, Eye, Printer, FileText, Video, Trash2 } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -47,7 +47,7 @@ import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
-import { formatLabel } from '../utils/formatters';
+import { toDisplayLabel, formatLabel } from '../utils/formatters';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { useToast } from '../components/ToastProvider';
@@ -101,7 +101,7 @@ const CAN_DELETE_ROLES = new Set(['admin', 'manager']);
 
 // Status colour tokens — CSS variables so the chip re-themes between
 // night (steel-blue) and day (light-grey). Pre-v1061 these were hard
-// hex (#888888 / #22c55e / #f59e0b), which broke the day theme.
+// hex (var(--text-secondary) / var(--sev-ok) / var(--sev-warn)), which broke the day theme.
 // Resolves via Tailwind's text-* / bg-* utilities at runtime.
 type StatusTone = 'neutral' | 'warning' | 'success';
 const STATUS_TONE: Record<string, StatusTone> = {
@@ -688,7 +688,7 @@ export default function UseOfForcePage() {
             >
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 flex-shrink-0 ${tone.swatch}`} style={{ borderRadius: '1px' }} />
-                <span className="text-[10px] font-bold text-rmpg-100 uppercase">{(r.force_type || '').replace(/_/g, ' ')}</span>
+                <span className="text-[10px] font-bold text-rmpg-100 uppercase">{toDisplayLabel(r.force_type || '')}</span>
                 <span className="ml-auto text-[9px] text-rmpg-500">{formatDate(r.created_at)}</span>
               </div>
               <div className="text-[9px] text-rmpg-400 mt-0.5">
@@ -728,7 +728,7 @@ export default function UseOfForcePage() {
     <div className="p-4 space-y-4 overflow-y-auto h-full">
       <div className="flex items-center gap-2">
         <div className={`w-3 h-3 ${TONE_CLASSES[toneFor(selected.status)].swatch}`} style={{ borderRadius: '1px' }} />
-        <h2 className="text-sm font-bold text-rmpg-100 uppercase">{(selected.force_type || '').replace(/_/g, ' ')} — UoF #{selected.id}</h2>
+        <h2 className="text-sm font-bold text-rmpg-100 uppercase">{toDisplayLabel(selected.force_type || '')} — UoF #{selected.id}</h2>
         <span className={`ml-auto text-[9px] font-bold uppercase px-2 py-0.5 border ${TONE_CLASSES[toneFor(selected.status)].text} ${TONE_CLASSES[toneFor(selected.status)].border}`}>
           {formatLabel(selected.status)}
         </span>
@@ -762,7 +762,7 @@ export default function UseOfForcePage() {
       <div className="border border-rmpg-700 bg-surface-sunken p-3 space-y-2">
         <div className="text-[9px] text-red-400 uppercase font-bold">Force Details</div>
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <div><span className="text-rmpg-500 text-[9px]">Type:</span> <span className="text-rmpg-100 capitalize">{(selected.force_type || '').replace(/_/g, ' ')}</span></div>
+          <div><span className="text-rmpg-500 text-[9px]">Type:</span> <span className="text-rmpg-100 capitalize">{toDisplayLabel(selected.force_type || '')}</span></div>
           <div><span className="text-rmpg-500 text-[9px]">Level:</span> <span className="text-rmpg-100">{selected.force_level || '—'}</span></div>
           <div><span className="text-rmpg-500 text-[9px]">Weapons Used:</span> <span className="text-rmpg-100">{selected.weapons_used || 'None'}</span></div>
           <div><span className="text-rmpg-500 text-[9px]">Body Camera:</span> <span className={selected.body_camera_active ? 'text-green-400' : 'text-red-400'}>{selected.body_camera_active ? 'Active' : 'Inactive'}</span></div>
@@ -921,7 +921,7 @@ export default function UseOfForcePage() {
 
       {error && (
         <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
-          {error} <button className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
+          {error} <button type="button" className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
         </div>
       )}
 
@@ -951,7 +951,7 @@ export default function UseOfForcePage() {
                   <label htmlFor="ff-useofforcepage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type <span className="text-red-400">*</span></label>
                   <select id="ff-useofforcepage-2" className="select-dark text-xs w-full mt-1" value={form.force_type} onChange={(e) => setForm((f) => ({ ...f, force_type: e.target.value }))} required>
                     <option value="">-- Select --</option>
-                    {FORCE_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ').toUpperCase()}</option>)}
+                    {FORCE_TYPES.map((t) => <option key={t} value={t}>{toDisplayLabel(t).toUpperCase()}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1053,7 +1053,7 @@ export default function UseOfForcePage() {
         details={reviewDialog ? (
           <div className="space-y-2 mt-2">
             <div className="text-xs">
-              UoF #{reviewDialog.report.id} — {(reviewDialog.report.force_type || '').replace(/_/g, ' ')}
+              UoF #{reviewDialog.report.id} — {toDisplayLabel(reviewDialog.report.force_type || '')}
               {reviewDialog.report.officer_name ? ` by ${reviewDialog.report.officer_name}` : ''}
             </div>
             <label className="block text-[10px] text-rmpg-400 uppercase font-semibold">
@@ -1082,7 +1082,7 @@ export default function UseOfForcePage() {
         message="This permanently removes the report and all linked review records from the system. This action is irreversible and will be logged to the audit trail."
         details={deleteTarget ? (
           <div className="text-xs mt-2">
-            UoF #{deleteTarget.id} — {(deleteTarget.force_type || '').replace(/_/g, ' ')}
+            UoF #{deleteTarget.id} — {toDisplayLabel(deleteTarget.force_type || '')}
             {deleteTarget.officer_name ? ` by ${deleteTarget.officer_name}` : ''}
           </div>
         ) : undefined}

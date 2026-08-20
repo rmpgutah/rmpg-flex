@@ -124,7 +124,7 @@ export default function ExportButton({
         {/* 45: Loading spinner / phase indicator during export */}
         {isExporting
           ? exportPhase === 'ready'
-            ? <Check className="w-3.5 h-3.5 text-[#d4a017]" />
+            ? <Check className="w-3.5 h-3.5 [color:var(--panel-header-color)]" />
             : <Loader2 className="w-3.5 h-3.5 animate-spin" />
           : <Download className="w-3.5 h-3.5" />
         }
@@ -144,7 +144,7 @@ export default function ExportButton({
       {/* Export progress bar (indeterminate while fetching) */}
       {isExporting && exportPhase === 'fetching' && (
         <div className="absolute left-0 right-0" style={{ top: '100%', zIndex: 51 }}>
-          <ProgressBar color="#888888" height={2} showPercent={false} />
+          <ProgressBar color="var(--text-muted)" height={2} showPercent={false} />
         </div>
       )}
 
@@ -161,7 +161,7 @@ export default function ExportButton({
             background: 'var(--surface-base)',
             border: '1px solid var(--border-default)',
             borderRadius: 0,
-            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.6)',
+            boxShadow: '0 6px 20px rgba(0 0 0 / 0.6)',
           }}
         >
           {/* 48: Export CSV — replaced inline hover handlers with Tailwind classes */}

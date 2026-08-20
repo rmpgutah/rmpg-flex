@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import ConnectionsPage from '../ConnectionsPage';
 import { ToastProvider } from '../../components/ToastProvider';
 
@@ -13,6 +13,16 @@ vi.mock('../../hooks/useApi', () => ({
 // paths are reachable in tests.
 vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({ user: { role: 'admin', full_name: 'Test Admin', username: 'testadmin' } }),
+}));
+
+// ConnectionsMapPanel fires its own apiFetch calls (gps-track/geo-points) on
+// mount and would otherwise consume entries from this file's queue-based
+// mockResolvedValueOnce() chains meant for /connections/search, /graph,
+// /path, and /investigations — desyncing every test after the graph loads.
+// Stubbed the same way IntelContextPanel.test.tsx stubs ConnectionsGraphPanel;
+// the map panel's own behavior belongs in a dedicated component test, not here.
+vi.mock('../../components/ConnectionsMapPanel', () => ({
+  default: () => <div data-testid="connections-map-panel-stub" />,
 }));
 
 describe('ConnectionsPage', () => {
@@ -360,6 +370,53 @@ describe('ConnectionsPage - depth slider', () => {
     fireEvent.change(screen.getByLabelText(/Graph depth/i), { target: { value: '3' } });
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/connections/graph?type=person&id=42&depth=3'));
+    });
+  });
+});
+
+describe('ConnectionsPage - date range filter', () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it('renders from/to date inputs and includes alpr_sighting in the node color map', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    expect(await screen.findByLabelText(/Filter from date/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter to date/i)).toBeInTheDocument();
+  });
+
+  it('setting from/to dates refetches the graph with date_from/date_to params', async () => {
+    mockFetch
+      .mockResolvedValueOnce([{ id: 42, type: 'person', label: 'Jane' }])
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      })
+      .mockResolvedValueOnce({
+        nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
+        edges: [],
+      });
+
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
+    fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
+    await waitFor(() => screen.getByText('Jane'));
+    fireEvent.click(screen.getByText('Jane'));
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/connections/graph?type=person&id=42&depth=2'));
+    });
+
+    fireEvent.change(await screen.findByLabelText(/Filter from date/i), { target: { value: '2026-01-01' } });
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('date_from=2026-01-01'));
     });
   });
 });

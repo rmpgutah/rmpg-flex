@@ -38,10 +38,10 @@ export default function UploadProgressBar({
         : 'Uploading...';
 
   const barColor = phase === 'done'
-    ? '#d4a017'    // gold for completion
+    ? 'var(--field-label-color)'    // gold for completion
     : phase === 'error'
-      ? '#dc2626'
-      : '#888888'; // brand blue
+      ? 'var(--sev-critical)'
+      : 'var(--text-secondary)'; // brand blue
 
   return (
     <div className="w-full space-y-1 px-1">
@@ -51,7 +51,7 @@ export default function UploadProgressBar({
           <PhaseIcon
             className={`w-3 h-3 flex-shrink-0 ${
               phase === 'done'
-                ? 'text-[#d4a017]'
+                ? '[color:var(--panel-header-color)]'
                 : phase === 'error'
                   ? 'text-red-400'
                   : phase === 'processing'
@@ -106,7 +106,7 @@ export default function UploadProgressBar({
 
       {/* Multi-file counter */}
       {totalFiles && totalFiles > 1 && phase === 'uploading' && (
-        <div className="text-[9px] text-rmpg-500">
+        <div className="text-[9px] text-fg-muted">
           Uploading {fileCount ?? 1} of {totalFiles} files
         </div>
       )}

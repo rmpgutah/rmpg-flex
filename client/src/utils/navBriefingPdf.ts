@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { localToday } from './dateUtils';
 import type { RouteInfo, RouteStep } from '../hooks/useMapRouting';
 import type { NavWaypoint } from '../hooks/waypointAdvance';
 import { fetchLocationMapImage } from './pdfStaticMap';
@@ -121,14 +122,15 @@ export function buildBriefingSteps(steps: RouteStep[] | undefined): Array<{ n: n
 }
 
 /**
- * Generate a printable PRE-trip route briefing: destination(s), ETA/distance,
+ * Build a printable PRE-trip route briefing: destination(s), ETA/distance,
  * full turn-by-turn list, and (best-effort) a static overview map. Portrait
  * orientation — this is a hand-carried briefing sheet, not a wide data table.
+ * Returns the jsPDF document without saving it.
  */
-export async function generateNavBriefing({
+export async function buildNavBriefingPdf({
   route, destinationLabel, destLat, destLng, originLat, originLng,
   waypoints, officerName, unitCallSign,
-}: NavBriefingArgs): Promise<void> {
+}: NavBriefingArgs): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const marginX = 40;
@@ -315,8 +317,15 @@ export async function generateNavBriefing({
     footerStrip(doc, p, total);
   }
 
-  // ── Save ──────────────────────────────────────────────────
-  const officerSlug = (officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
-  const dateStr = new Date().toISOString().slice(0, 10);
+  return doc;
+}
+
+/** Build the Nav Briefing PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export async function generateNavBriefing(args: NavBriefingArgs): Promise<void> {
+  const doc = await buildNavBriefingPdf(args);
+  const officerSlug = (args.officerName || 'officer').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase();
+  const dateStr = localToday();
   doc.save(`nav-briefing-${officerSlug}-${dateStr}.pdf`);
 }

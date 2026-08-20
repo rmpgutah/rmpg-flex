@@ -5,7 +5,7 @@
 // Optimized for iPhone 17 Pro (393×852, 34px bottom safe area)
 // ============================================================
 
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { LayoutDashboard, Map, Bell, Menu, LayoutList } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -71,7 +71,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             <Icon
               size={22}
               style={{
-                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
+                color: active ? 'var(--brand-gold)' : 'var(--text-muted)',
                 transition: 'color 0.15s',
               }}
             />
@@ -81,7 +81,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
-                color: active ? 'var(--brand-gold)' : 'var(--rmpg-500)',
+                color: active ? 'var(--brand-gold)' : 'var(--text-muted)',
                 transition: 'color 0.15s',
               }}
             >
@@ -95,8 +95,8 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
                   top: 4,
                   right: '50%',
                   marginRight: -16,
-                  background: '#ef4444',
-                  color: '#fff',
+                  background: 'var(--sev-critical)',
+                  color: 'white',
                   fontSize: 9,
                   fontWeight: 700,
                   borderRadius: 10,
@@ -137,7 +137,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
         <Menu
           size={22}
           style={{
-            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--text-muted)',
             transition: 'color 0.15s',
           }}
         />
@@ -147,7 +147,7 @@ export default function MobileBottomNav({ onMoreTap, unreadAlerts = 0 }: MobileB
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--rmpg-500)',
+            color: !isPrimaryPage ? 'var(--brand-gold)' : 'var(--text-muted)',
             transition: 'color 0.15s',
           }}
         >

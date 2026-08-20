@@ -14,10 +14,11 @@ import jsPDF from 'jspdf';
 import { toNum } from './sentinel';
 import { classifyLine, stripStrayMarkers } from './noteFormatting';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
-import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
-import { loadSealBase64, loadLogoDarkBase64, getCachedSealBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { zoneLeaf, beatLeaf, sectionZoneBeatCombined, sectionPrefix } from './dispatchCodeParts';
+import { loadSealBase64, loadLogoDarkBase64, loadLogoPrintBase64, loadLogoLightBase64, getCachedSealBase64, getCachedLogoPrint as getCachedLogoPrintFromAssets, applyLogoFadeToAllPages, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -206,6 +207,33 @@ export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; tex
 export let generationTimestamp = '';
 export function setGenerationTimestamp(ts: string) { generationTimestamp = ts; }
 
+/**
+ * Stamp the document's generation time. Use this instead of hand-rolling a
+ * toLocaleString at each call site.
+ *
+ * Two things every print form needs and several were getting wrong:
+ *
+ * 1. MOUNTAIN, ALWAYS. Six generators (invoice, proposal, blank form, serve
+ *    job sheet, the serve log, and the base record path) omitted `timeZone`,
+ *    so they stamped the DEVICE's zone. On an MT Toughbook that is invisibly
+ *    fine; generated from a laptop in another zone, an invoice or proposal
+ *    prints a time that never happened here. Mountain is the canonical record
+ *    zone for this app -- see the "MT MUST BE MT" rule.
+ *
+ * 2. A ZONE LABEL. These are recipient- and court-facing documents, and a
+ *    bare "13:01:11" does not say which zone it means -- the same ambiguity
+ *    that produced the 6-hour Notice-of-Attempt regression.
+ */
+export function stampGenerationTime(now: Date = new Date()): string {
+  const ts = now.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  generationTimestamp = `${ts} MT`;
+  return generationTimestamp;
+}
+
 // Section header visual style — 'dark' is the original charcoal-bar style
 // shipped across all forms; 'light' is the cream/gold banner style
 // adopted for the Person PDF (2026-05-04) at user request, modeled on
@@ -253,6 +281,24 @@ export function applyFieldNumber(label: string): string {
  */
 export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean; preserveCase?: boolean } = {}): string {
   if (!text) return text;
+  // Coerce non-strings before touching string methods.
+  //
+  // The signature says `string`, but record data reaches this function from
+  // `any`-typed D1 rows, so a numeric column arrives as a NUMBER at runtime and
+  // TypeScript never sees it. `generateBusinessReport` passing `employee_count`
+  // straight through threw `TypeError: text.replace is not a function` and
+  // aborted the whole Business Record PDF — a document that simply failed to
+  // generate, with no partial output and no clue why. Found 2026-08-01 by the
+  // audit harness; the record the operator happened to print stored its count
+  // as a string, which is why it had never surfaced in production.
+  //
+  // This is the single choke point every generator's text passes through, so
+  // guarding here protects all ~81 documents rather than one field on one form.
+  // Deliberately NOT `String(text)` at the top: the `!text` guard above must
+  // keep returning falsy input untouched (callers rely on '' staying '').
+  if (typeof text !== 'string') {
+    text = String(text);
+  }
   let s = text
     // HTML entity decode — narrative text occasionally arrives still
     // escaped from upstream rich-text editors / scrapers (e.g.
@@ -369,6 +415,92 @@ export function sanitizePdfText(text: string, opts: { preserveMarkers?: boolean;
   return s;
 }
 
+/** Points → millimetres. The documents are built with jsPDF `unit: 'mm'`, but
+ *  `setFontSize()` always takes points, so any layout maths that mixes the two
+ *  needs this conversion. */
+const PT_TO_MM = 25.4 / 72;
+
+/**
+ * Baseline for the FIRST line of text inside a section's content box.
+ *
+ * `openAutoSection()` returns `contentY` as the *top edge* of the content area,
+ * only `SPACING.SECTION_CONTENT_PAD` (1.2mm) below the filled header bar. jsPDF
+ * positions text by its BASELINE and draws glyphs upward from it, so passing
+ * `contentY` straight to `doc.text()` renders the line back up inside the bar.
+ *
+ * That is exactly what happened to the "None recorded" empty state under
+ * VEHICLES INVOLVED (0) and EVIDENCE / PROPERTY (0): at 7.5pt the cap height is
+ * ~1.85mm against a 1.2mm pad, so the text was struck through the header. It
+ * only ever showed on EMPTY sections — the populated path goes through
+ * `addTableWithShading()`, which applies its own baseline offset — which is why
+ * it survived unnoticed on the most common kind of report.
+ *
+ * Callers elsewhere hand-tuned this with bare `+ 2` / `+ 2.5` nudges; prefer
+ * this so the offset tracks the font size instead of being a magic number.
+ */
+export function firstLineBaseline(contentY: number, fontSizePt: number): number {
+  return contentY + fontSizePt * PT_TO_MM;
+}
+
+export interface ResponseDurations {
+  /** Dispatched → on scene. */
+  responseTime: string;
+  /** On scene → cleared. */
+  onSceneTime: string;
+  /** Dispatched → cleared (or closed). */
+  totalTime: string;
+  /** True when at least one duration could be computed. */
+  any: boolean;
+}
+
+/**
+ * Dispatch response durations, formatted for print ("14m", "1h 07m").
+ *
+ * Extracted from `generateGeneralIncident` during the 2026-07-24 PDF audit.
+ * The logic previously lived inline inside the `PSO Client Request Details`
+ * section, which is gated on `pso_service_type || pso_requestor_name ||
+ * pso_billing_code || contract_id` — so an ordinary incident report printed no
+ * response times at all, even with every dispatch timestamp populated. The
+ * screen showed Duration / Response / On-Scene for the same call while the
+ * printed record omitted them, which is precisely the data an after-action or
+ * liability review needs.
+ *
+ * Returns empty strings rather than throwing on missing or malformed inputs; a
+ * report must still render when a call was never dispatched.
+ */
+export function computeResponseDurations(data: {
+  dispatched_at?: string; enroute_at?: string; onscene_at?: string;
+  cleared_at?: string; closed_at?: string;
+}): ResponseDurations {
+  // parseTimestamp() falls back to `new Date()` for unparseable input. That is
+  // fine for display, but catastrophic for arithmetic: a call with a valid
+  // dispatched_at and a corrupt onscene_at would measure dispatch → REPORT
+  // GENERATION TIME and print a fabricated response time on a court-bound
+  // record, with nothing marking it as wrong. Require a recognisable date
+  // before trusting the parse; print nothing when we cannot.
+  const parseStrict = (s?: string): number | null => {
+    if (!s || !/\d{4}-\d{2}-\d{2}/.test(s)) return null;
+    const t = parseTimestamp(s).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const durMin = (from?: string, to?: string): string => {
+    const a = parseStrict(from);
+    const b = parseStrict(to);
+    if (a == null || b == null) return '';
+    // b < a means the timestamps are out of order — bad data, not a negative
+    // duration. Print nothing rather than "-12m".
+    if (b < a) return '';
+    const mins = Math.round((b - a) / 60_000);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+  };
+  const responseTime = durMin(data.dispatched_at, data.onscene_at);
+  const onSceneTime = durMin(data.onscene_at, data.cleared_at);
+  const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
+  return { responseTime, onSceneTime, totalTime, any: !!(responseTime || onSceneTime || totalTime) };
+}
+
 export function fitPdfText(doc: jsPDF, text: string, maxWidth: number): string {
   const safeText = sanitizePdfText(text || '');
   if (!safeText || maxWidth <= 0) return '';
@@ -459,6 +591,20 @@ function isNarrativeLikePdfText(text: string, width: number): boolean {
   return width > 160 || trimmed.length > 120 || /[\n.!?;:]/.test(trimmed);
 }
 
+// Email addresses and URLs are case-sensitive in principle (and the UI
+// renders them lowercase, as stored) — exempt them from the blanket
+// uppercasing every other field value gets so printed records match the
+// screen instead of shouting `CHZAMO@RMPGUTAH.US`. Shape-based rather than
+// per-call-site so any field renderer sharing this path (not just the
+// business record's Email/Website cells) benefits automatically.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE = /^(https?:\/\/|www\.)\S+$/i;
+export function isEmailOrUrlPdfValue(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  return EMAIL_RE.test(trimmed) || URL_RE.test(trimmed);
+}
+
 function getPdfTextLineHeight(fontSize: number, readable = false): number {
   return readable ? fontSize * 0.44 + 0.35 : fontSize * 0.35 + 0.2;
 }
@@ -466,6 +612,7 @@ function getPdfTextLineHeight(fontSize: number, readable = false): number {
 // Cached images (loaded once per session)
 let cachedSeal: string | null = null;
 let cachedLogoDark: string | null = null;
+let cachedLogoPrint: string | null = null;
 
 // Active form key for footer form numbers
 let activeFormKey = '';
@@ -489,11 +636,21 @@ export async function loadPdfAssets(): Promise<void> {
   if (cachedLogoDark === null) {
     cachedLogoDark = await loadLogoDarkBase64() || '';
   }
+  if (cachedLogoPrint === null) {
+    cachedLogoPrint = await loadLogoPrintBase64() || '';
+  }
+  // Light/white logo — recolored silhouette for dark header bars in pdfFormHelpers
+  await loadLogoLightBase64();
 }
 
 /** Access cached dark logo (for record generators) */
 export function getCachedLogoDark(): string | null {
   return cachedLogoDark || null;
+}
+
+/** Access cached print-quality logo (BW/clean, for document headers) */
+export function getCachedLogoPrint(): string | null {
+  return cachedLogoPrint || null;
 }
 
 // ── Base Helpers ─────────────────────────────────────────────
@@ -508,7 +665,27 @@ export function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+// ── Confidential watermark suppression ──────────────────────
+// Defaults to ENABLED, so every existing generator keeps its current
+// output byte-for-byte. Opt OUT only for documents that are handed to a
+// member of the public by design — the recipient's Acknowledgement of
+// Service copy is the first. Stamping "CONFIDENTIAL" on a form you just
+// gave a defendant is both false and intimidating.
+//
+// It lives here rather than in the receipt generator because
+// checkPageBreak() watermarks EVERY page it creates; a caller that only
+// skips the first-page call still gets one the moment its content
+// spills to page 2 (which is exactly what the Business variant did).
+let confidentialWatermarkEnabled = true;
+
+/** Toggle the CONFIDENTIAL watermark. ALWAYS restore in a finally —
+ *  this is module state shared by every generator in the bundle. */
+export function setConfidentialWatermarkEnabled(enabled: boolean): void {
+  confidentialWatermarkEnabled = enabled;
+}
+
 export function addConfidentialWatermark(doc: jsPDF) {
+  if (!confidentialWatermarkEnabled) return;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -920,7 +1097,7 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
  * Shows "—" em-dash for empty/null values.
  * Returns Y position for next row.
  */
-export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
+export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number, valueFontSizeOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   // Height reserved for label above value. 2.7mm keeps the label clear of
@@ -937,11 +1114,17 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
-  const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
+  const valueFontSize = valueFontSizeOverride ?? FONT.SIZE_FIELD_VALUE;
+  const lineStep = getPdfTextLineHeight(valueFontSize, useReadableText);
   const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  // Email addresses and URLs are case-sensitive in principle and the UI
+  // renders them as stored (e.g. `chzamo@rmpgutah.us`) — the blanket
+  // .toUpperCase() below (applied to every other field so forms read like
+  // a real police form) was also stamping these, producing
+  // `CHZAMO@RMPGUTAH.US` / `HTTPS://RMPGUTAHPS.US` on printed records.
+  const displayText = isEmpty ? 'N/A' : (isEmailOrUrlPdfValue(sanitized) ? sanitized : sanitized.toUpperCase());
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setFontSize(valueFontSize);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
   const lines: string[] = allFieldLines.slice(0, maxLines);
   if (allFieldLines.length > maxLines && lines.length > 0) {
@@ -983,7 +1166,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Value text — vertically centered in box. Re-assert the value font
   // (the label above just switched to bold helvetica).
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
+  doc.setFontSize(valueFontSize);
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
@@ -1303,12 +1486,28 @@ function getOfficerSig(): PdfSignatureData | undefined {
 
 /** Digital signature data for embedding into PDF signature blocks */
 export interface PdfSignatureData {
+  /**
+   * Short certification sentence drawn INSIDE the signature row, above the
+   * rule. A signature with nothing stated above it does not say what is being
+   * certified; drawn as a separate paragraph above the block it costs its own
+   * vertical band, which on a roll-printed instrument is the difference
+   * between one sheet and two. The row already reserves this space.
+   */
+  certification?: string;
   /** base64 PNG data URL of the handwritten signature */
   signatureImage?: string | null;
   /** Printed name to fill in */
   printedName?: string;
   /** Badge number to fill in */
   badgeNumber?: string;
+  /**
+   * Label for the middle sub-field. Defaults to 'BADGE NUMBER', which is
+   * right for every officer-signed document — and meaningless on one
+   * signed by a member of the public, where it prints as an empty cell
+   * captioned with a term that does not apply to them. Additive: omit it
+   * and output is unchanged.
+   */
+  middleFieldLabel?: string;
   /** Date string (auto-filled if omitted) */
   date?: string;
 }
@@ -1336,21 +1535,33 @@ export function addSignatureBlock(
   const x = _x;
   const width = blockWidth;
 
+  // NOTE: keep this pinned to SIGNATURE_ROLE_H, not SECTION_HEADER_H — at
+  // least one caller (servePdfGenerator.ts's Notice of Attempt) computes
+  // its own page-break reservation from SPACING.SIGNATURE_ROLE_H directly;
+  // bumping the height drawn here without updating that caller would
+  // silently under-reserve space and risk overlapping the next block.
   const roleBarH = SPACING.SIGNATURE_ROLE_H;
   const sigRowH = overrideSigRowH ?? 12;
   const infoRowH = overrideInfoRowH ?? 8;
   const totalH = roleBarH + sigRowH + infoRowH;
 
-  // ── Role label header bar (outline only — low ink) ──
-  doc.setDrawColor(...COLOR.BG_SECTION_HDR);
-  doc.setLineWidth(0.3);
-  doc.rect(x, y, width, roleBarH);
-  doc.setFont('helvetica', 'bold');
+  // ── Role label header bar — filled gray, matching openAutoSection's
+  // numbered section bars (same accent-color hierarchy, same inverted
+  // white title) so a signature block reads as the next section, not a
+  // visually distinct leftover box.
+  const roleAccentRgb = resolveSectionAccentColor(roleLabel);
+  doc.setFillColor(roleAccentRgb[0], roleAccentRgb[1], roleAccentRgb[2]);
+  doc.rect(x, y, width, roleBarH, 'F');
+  doc.setFont('Arial', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
   const roleCapH = FONT.SIZE_SECTION_TITLE * 0.35;
   const roleTextY = y + (roleBarH + roleCapH) / 2;
   doc.text(sanitizePdfText(roleLabel.toUpperCase()), x + SPACING.CONTENT_INSET, roleTextY);
+  doc.setDrawColor(roleAccentRgb[0], roleAccentRgb[1], roleAccentRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.line(x, y + roleBarH, x + width, y + roleBarH);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
   // ── Signature area (very light tint — low ink) ──
   const row1Y = y + roleBarH;
@@ -1360,43 +1571,85 @@ export function addSignatureBlock(
   doc.setFillColor(252, 252, 252);
   doc.rect(x + 0.3, row1Y + 0.3, width - 0.6, sigRowH - 0.6, 'F');
 
+  // Certification sits at the TOP of the signature row so the reader meets the
+  // statement before the space where the name goes -- and it costs no extra
+  // vertical band, because the row is otherwise empty here.
+  if (sigData?.certification) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL + 0.5);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    const certLines = doc.splitTextToSize(
+      sanitizePdfText(sigData.certification, { preserveCase: true }),
+      width - SPACING.MD * 2,
+    ) as string[];
+    let cy = row1Y + 2.4;
+    for (const cl of certLines) { doc.text(cl, x + SPACING.MD, cy); cy += 2.6; }
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  }
+
   if (sigData?.signatureImage) {
     try {
       // Natural placement: preserve the pad image's aspect ratio (the old
       // code stretched it to fill the whole row — squashed/cropped look),
       // and rest it on a signature baseline like a real signed form.
-      const sigLineY = row1Y + sigRowH - 2.5;
+      const sigLineY = row1Y + sigRowH - 3.2;
       doc.setDrawColor(...COLOR.TEXT_TERTIARY);
       doc.setLineWidth(BORDER.SIGNATURE_LINE);
       doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
 
       const maxW = Math.min(width * 0.5, 70);
       const maxH = sigRowH - 3.5; // breathing room inside the row
-      let imgW = maxW;
-      let imgH = maxH;
+      // Align the ink to the rule's own left edge rather than an arbitrary
+      // +4 offset, so a signed block and an unsigned one share a left edge.
+      const imgX = x + SPACING.MD + 1;
+      // Dynamic, aspect-preserving fit via computeSignatureRect (was a
+      // fixed-box stretch) with a bounded overshoot so ink can realistically
+      // run slightly past the box — hardLimits keeps it inside the
+      // certification text above and the info row below. Runs through the
+      // transparency cache so pre-existing white-boxed signatures render
+      // clean too, with no re-sign and no migration.
+      const img = getCachedTransparentSignature(sigData.signatureImage) ?? sigData.signatureImage;
+      let rect = { x: imgX, y: sigLineY - 0.5 - maxH, w: maxW, h: maxH };
       try {
-        const props = doc.getImageProperties(sigData.signatureImage);
+        const props = doc.getImageProperties(img);
         if (props?.width && props?.height) {
-          const scale = Math.min(maxW / props.width, maxH / props.height);
-          imgW = props.width * scale;
-          imgH = props.height * scale;
+          rect = computeSignatureRect(
+            { width: props.width, height: props.height },
+            { x: imgX, y: row1Y + 0.5, w: maxW, h: sigLineY - 0.5 - (row1Y + 0.5) },
+            {
+              anchor: 'bottom',
+              align: 'left',
+              hardLimits: { x: x + SPACING.MD, y: row1Y + 0.5, w: width - SPACING.MD * 2, h: sigLineY + 0.5 - (row1Y + 0.5) },
+            },
+          );
         }
       } catch { /* unknown dims — fall back to box fit */ }
-      // Bottom edge sits just above the baseline (ink touches the line).
-      const imgX = x + SPACING.CONTENT_INSET + 4;
-      const imgY = sigLineY - 0.5 - imgH;
-      doc.addImage(sigData.signatureImage, 'PNG', imgX, imgY, imgW, imgH);
+      if (rect.w > 0 && rect.h > 0) {
+        doc.addImage(img, 'PNG', rect.x, rect.y, rect.w, rect.h);
+      }
     } catch { /* skip */ }
   } else {
-    // Clean signature line — no bureaucratic X marker
-    const sigLineY = row1Y + sigRowH - 2.5;
+    // ── Unsigned: a real signature rule, captioned clear of the border ──
+    //
+    // The caption used to sit at sigLineY + 2.5, which is exactly
+    // row1Y + sigRowH -- the boundary the info row's top border is drawn on.
+    // The word SIGNATURE therefore printed ON that rule and read as a
+    // rendering fault. It is now seated ABOVE the line, in the empty space
+    // the block already has, where a caption belongs.
+    //
+    // The rule is also inset to match the info-row label column below it
+    // (SPACING.MD), so the signature line, PRINTED NAME, and the role label
+    // all share one left edge instead of three near-misses.
+    const sigLineY = row1Y + sigRowH - 3.2;
     doc.setDrawColor(...COLOR.TEXT_TERTIARY);
     doc.setLineWidth(BORDER.SIGNATURE_LINE);
     doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('SIGNATURE', x + width / 2, sigLineY + 2.5, { align: 'center' });
+    // Caption under the rule but INSIDE the row, left-aligned to the same
+    // inset as every other label in the block.
+    doc.text('SIGNATURE', x + SPACING.MD, sigLineY + 2.4);
   }
 
   // ── Info row: PRINTED NAME | BADGE NUMBER | DATE ──
@@ -1413,7 +1666,10 @@ export function addSignatureBlock(
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
   doc.text(fitPdfText(doc, 'PRINTED NAME', colW - SPACING.MD * 2), x + SPACING.MD, row2Y + 2.2);
-  doc.text(fitPdfText(doc, 'BADGE NUMBER', colW - SPACING.MD * 2), x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text(
+    fitPdfText(doc, sigData?.middleFieldLabel ?? 'BADGE NUMBER', colW - SPACING.MD * 2),
+    x + colW + SPACING.MD, row2Y + 2.2,
+  );
   doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
@@ -1428,11 +1684,15 @@ export function addSignatureBlock(
     const now = new Date();
     // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
     // Legal documents require the correct local timestamp — UTC drift corrupts records.
-    const dateStr = sigData!.date || now.toLocaleString('en-US', {
+    // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
+    // does not say which zone it means. Only the AUTO-generated value is
+    // stamped -- a caller-supplied sigData.date is left exactly as passed so
+    // it can never be double-labelled.
+    const dateStr = sigData!.date || `${now.toLocaleString('en-US', {
       timeZone: 'America/Denver',
       month: '2-digit', day: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(', ', ' ');
+    }).replace(', ', ' ')} MT`;
     doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
   }
 
@@ -1760,20 +2020,16 @@ export function addDocumentIntegrityTrailer(
 
   const sig = getActiveSignature();
   if (sig) {
-    // Signature value — base64 grouped 4-char × 12-cols × 2 rows
+    // Ed25519 — 88 base64 chars, short enough to print in full, grouped.
     doc.setFont('courier', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    for (const line of formatSignatureGrouped(sig.signature)) {
+    for (const line of formatSignatureGrouped(sig.ed25519.signature)) {
       doc.text(line, labelX, y);
       y += 3.2;
     }
     y += 1;
 
-    // Signed-at + public-key fingerprint (first 16 chars of base64
-    // — full key is too long for the trailer, but the prefix
-    // disambiguates which keypair was used if the server later
-    // rotates).
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5.5);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -1784,9 +2040,31 @@ export function addDocumentIntegrityTrailer(
     doc.setFontSize(7);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.text(sanitizePdfText(sig.signedAt), labelX, y);
-    const keyPrefix = (sig.publicKey || '').slice(0, 16) + '…';
-    doc.text(keyPrefix, labelX + 38, y);
+    doc.text((sig.ed25519.publicKey || '').slice(0, 16) + '…', labelX + 38, y);
     y += 5;
+
+    // ML-DSA-87 (4.6KB) / SLH-DSA-256f (49.9KB) signatures are far too
+    // large to print in full on a page — only a short fingerprint is
+    // shown here. The complete post-quantum signatures travel inside
+    // the PDF's embedded sidecar (engine/sidecar.ts, Keywords + post-EOF
+    // marker) for machine verification, not human transcription.
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('ML-DSA-87 / SLH-DSA-256F (POST-QUANTUM)', labelX, y);
+    y += 3;
+    doc.setFont('courier', 'normal');
+    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(`ML-DSA-87  ${(sig.mlDsa87.signature || '').slice(0, 24)}…`, labelX, y);
+    y += 2.8;
+    doc.text(`SLH-DSA    ${(sig.slhDsa256f.signature || '').slice(0, 24)}…`, labelX, y);
+    y += 2.8;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('Full post-quantum signatures embedded in PDF sidecar metadata.', labelX, y);
+    y += 4;
   } else {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
@@ -1842,7 +2120,18 @@ export function addWrappedText(
       const line = lines[li];
       const isLastLine = li === lines.length - 1;
 
-      if (!isLastLine && line.trim().length > 0) {
+      // Only justify a line that was actually wrapped because it hit
+      // maxWidth. wordWrapText also breaks on hard `\n` in the source text
+      // (e.g. "WEEKDAYS BETWEEN 09:00 TO 15:30.\nROUTINE SERVICE..."), which
+      // produces short, deliberate lines that aren't the paragraph's last
+      // line either. Justifying those stretched a 5-word line across the
+      // full field width with huge inter-word gaps (live PDF 2026-08-08).
+      // A line that filled most of maxWidth naturally is the wrap case; a
+      // short line is a hard break and should stay left-aligned like the
+      // last line does.
+      const naturalWidth = doc.getTextWidth(line);
+      const wasWrapped = naturalWidth >= maxWidth * 0.85;
+      if (!isLastLine && wasWrapped && line.trim().length > 0) {
         // Justify: distribute extra space between words
         const words = line.split(/\s+/).filter(w => w.length > 0);
         if (words.length > 1) {
@@ -1867,6 +2156,56 @@ export function addWrappedText(
 }
 
 /**
+ * Render PSO pre-arrival briefing notes (items 42-44).
+ *
+ * Each note has an `author` tag (`OFFICER SAFETY` / `INTAKE` / `DISPATCH` / `OCR`)
+ * that determines its sub-section header color. The header is a narrower bar than
+ * the parent section — same width but lower height — to distinguish topical entries
+ * visually without adding full section breaks. Text is rendered via addFormattedText
+ * so bold/italic/underline markers in the briefing body survive to print.
+ */
+export function renderPsoBriefingNotes(
+  doc: jsPDF,
+  notes: Array<{ author: string; text: string; timestamp?: string }>,
+  x: number,
+  y: number,
+  maxWidth: number,
+  priority?: string,
+): number {
+  const AUTHOR_COLOR: Record<string, [number, number, number]> = {
+    'OFFICER SAFETY': [35,  35,  35 ],
+    'INTAKE':         [70,  70,  70 ],
+    'DISPATCH':       [100, 100, 100],
+    'OCR':            [130, 130, 130],
+  };
+  const DEFAULT_COLOR: [number, number, number] = [100, 100, 100];
+  const BAR_H = 4.5;
+  const fontSize = FONT.SIZE_FIELD_VALUE;
+
+  for (const note of notes) {
+    if (!note.text?.trim()) continue;
+    y = checkPageBreak(doc, y, BAR_H + 8, priority);
+
+    // Author sub-header bar
+    const rgb = AUTHOR_COLOR[note.author?.toUpperCase?.()] ?? DEFAULT_COLOR;
+    doc.setFillColor(...rgb);
+    doc.rect(x, y, maxWidth, BAR_H, 'F');
+    doc.setFont('Arial', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    const capH = 7 * 0.35;
+    const label = sanitizePdfText(note.author.toUpperCase());
+    doc.text(label, x + SPACING.CONTENT_INSET, y + (BAR_H + capH) / 2);
+    y += BAR_H + SPACING.SM;
+
+    // Note body — passes through addFormattedText for full markdown rendering
+    y = addFormattedText(doc, note.text, x, y, maxWidth, fontSize);
+    y += SPACING.MD;
+  }
+  return y;
+}
+
+/**
  * Render text with simple inline formatting markers:
  * **bold**, *italic*, __underline__
  * Switches between courier normal/bold/bolditalic as needed.
@@ -1883,7 +2222,32 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
   const GUTTER_MM = 5;   // minimum space reserved for the bullet/number marker
   const BULLET_R = 0.5;  // filled-circle bullet radius (mm)
 
-  // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier
+  // Custom word-based line wrapper — jsPDF splitTextToSize breaks mid-word with Courier.
+  // Handles oversized single tokens (URLs, long hyphenated names, case numbers) that
+  // alone exceed maxW by hard-breaking them character-by-character, preferring to cut
+  // after a hyphen to keep compound names readable (item 54).
+  const breakOversized = (word: string, maxW: number): string[] => {
+    if (doc.getTextWidth(word) <= maxW) return [word];
+    const parts: string[] = [];
+    let chunk = '';
+    for (const ch of word) {
+      const test = chunk + ch;
+      if (doc.getTextWidth(test) > maxW && chunk) {
+        const hyphenIdx = chunk.lastIndexOf('-');
+        if (hyphenIdx > 0 && hyphenIdx < chunk.length - 1) {
+          parts.push(chunk.slice(0, hyphenIdx + 1));
+          chunk = chunk.slice(hyphenIdx + 1) + ch;
+        } else {
+          parts.push(chunk);
+          chunk = ch;
+        }
+      } else {
+        chunk = test;
+      }
+    }
+    if (chunk) parts.push(chunk);
+    return parts;
+  };
   const wordWrap = (str: string, maxW: number): string[] => {
     const words = str.split(/(\s+)/); // Split keeping whitespace tokens
     const result: string[] = [];
@@ -1894,7 +2258,15 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       const testWidth = doc.getTextWidth(testLine.trimEnd());
       if (testWidth > maxW && currentLine.trim().length > 0) {
         result.push(currentLine.trimEnd());
-        currentLine = word.trimStart(); // Start new line without leading space
+        const chunks = breakOversized(word.trimStart(), maxW);
+        for (let ci = 0; ci < chunks.length - 1; ci++) result.push(chunks[ci]);
+        currentLine = chunks[chunks.length - 1] ?? '';
+      } else if (doc.getTextWidth(word.trimStart()) > maxW) {
+        // Single word alone is too wide — break it even with no prior content
+        if (currentLine.trim()) { result.push(currentLine.trimEnd()); currentLine = ''; }
+        const chunks = breakOversized(word.trimStart(), maxW);
+        for (let ci = 0; ci < chunks.length - 1; ci++) result.push(chunks[ci]);
+        currentLine = chunks[chunks.length - 1] ?? '';
       } else {
         currentLine = testLine;
       }
@@ -1947,9 +2319,14 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
       const contentX = x + indentMm + gutterMm;
       const availWidth = safeMaxWidth - indentMm - gutterMm;
 
-      // Use bold font width for wrapping if line contains bold markers — bold Courier is wider
+      // Measure in the widest font variant that appears on this line.
+      // Bold Courier is wider than normal; bolditalic is wider than bold.
+      // A line with only *italic* markers renders bolditalic but was previously
+      // measured in normal, causing right-margin overflow.
       const hasBold = /\*\*/.test(lineText);
-      doc.setFont(PDF_VALUE_FONT, hasBold ? 'bold' : 'normal');
+      const hasItalic = lineText.replace(/\*\*(.+?)\*\*/gs, '').includes('*');
+      const measureFont = hasItalic ? 'bolditalic' : hasBold ? 'bold' : 'normal';
+      doc.setFont(PDF_VALUE_FONT, measureFont);
       doc.setFontSize(fontSize);
       const stripped = stripMarkers(lineText);
       const wrappedLines: string[] = wordWrap(stripped, availWidth);
@@ -2110,7 +2487,7 @@ export function addNarrativeSection(
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
   // Page break callback: draw section continuation sub-header
-  const contTitle = title.toUpperCase() + ' -- CONTINUED';
+  const contTitle = title.toUpperCase() + ' — CONTINUED';
   const narrativePageBreak = (newY: number): number => {
     // Section continuation sub-header — thin outline (low ink)
     const cw = getContentWidth(doc);
@@ -2168,7 +2545,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
     if (sup.narrative) {
       y += SPACING.LG;
       const fontSize = FONT.SIZE_FIELD_VALUE;
-      const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
+      const contTitle = supTitle.toUpperCase() + ' — CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
         doc.setFont('helvetica', 'bold');
@@ -2356,6 +2733,19 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
   // at ≥ pageH-22 (2mm buffer above barcode top). Reserve = 22mm.
   const BARCODE_CLEARANCE = 15;  // extra space above barcode
   if (y + needed > pageHeight - LAYOUT.FOOTER_HEIGHT - BARCODE_CLEARANCE) {
+    // Snapshot the caller's font BEFORE we switch to bold/SIZE_SECTION_TITLE
+    // to draw the continuation header below. The old code restored the font
+    // FAMILY (PDF_VALUE_FONT) but never the SIZE, so any caller drawing
+    // wrapped/justified text across a page break (e.g. addWrappedText) kept
+    // measuring word widths at its own small size while jsPDF actually
+    // rendered them at the larger section-title size left behind here —
+    // the mismatch is exactly what made justified text on a fresh page
+    // render squished/overlapping (e.g. serve job sheet notes, live PDF
+    // 2026-08-08). Restore the exact pre-break font/size/color instead of
+    // a hardcoded guess.
+    const priorFont = doc.getFont();
+    const priorFontSize = doc.getFontSize();
+    const priorTextColor = (doc as any).getTextColor?.();
     doc.addPage();
     addConfidentialWatermark(doc);
     if (activeVoidWatermark) addVoidWatermark(doc);
@@ -2383,7 +2773,7 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
     doc.setTextColor(0, 0, 0);
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} — CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
     // Form number + case number on right
     const rightParts: string[] = [];
@@ -2402,8 +2792,13 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setLineWidth(BORDER.SECTION_OUTER);
     doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
 
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFont(priorFont.fontName, priorFont.fontStyle);
+    doc.setFontSize(priorFontSize);
+    if (priorTextColor != null) {
+      doc.setTextColor(priorTextColor as any);
+    } else {
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    }
 
     // Content starts below continuation header.
     return contY + contH + SPACING.SECTION_GAP + 2.5;
@@ -2541,7 +2936,7 @@ export function addTableWithShading(
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
-          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
+          sanitizePdfText(`${opts.sectionTitle.toUpperCase()} — CONTINUED`),
           LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
@@ -2705,6 +3100,10 @@ interface IncidentData {
   linked_persons?: { first_name: string; last_name: string; role: string; dob?: string }[];
   linked_vehicles?: { plate_number?: string; state?: string; year?: string; color?: string; make?: string; model?: string; role: string }[];
   evidence?: { evidence_number: string; evidence_type: string; description: string; storage_location?: string }[];
+  assigned_units_detail?: { call_sign: string; officer_name: string; badge_number: string; status: string }[];
+  action_taken?: string;
+  cross_street?: string;
+  description?: string;
   // Attachment images (pre-fetched as base64 data URLs)
   attachment_images?: { dataUrl: string; width: number; height: number; format: 'JPEG' | 'PNG'; name: string }[];
   // Extended operational flags
@@ -2773,6 +3172,11 @@ interface IncidentData {
   caller_name?: string;
   caller_phone?: string;
   call_notes?: string;
+  // Structured PSO briefing notes (process-server intake). When present the
+  // PDF renders each entry as an author-badged sub-section instead of the
+  // flat call_notes string. Both fields may be present; pso_briefing_notes
+  // takes precedence.
+  pso_briefing_notes?: Array<{ author: string; text: string; timestamp?: string }>;
   // Supplement reports
   supplements?: {
     report_number: string;
@@ -2980,20 +3384,29 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy9 = addFieldPair(doc, 'Priority', data.priority || '', lx + w6 * 4, y, w6);
     const fy10 = addFieldPair(doc, 'Disposition', data.disposition || '', lx + w6 * 5, y, w6);
     y = Math.max(fy5, fy6, fy7, fy8, fy9, fy10);
-    // Row 3: Reporting Officer, Badge #
+    // Row 3: Description (full width, when present)
+    if (data.description) {
+      const fy_desc = addFieldPair(doc, 'Description', data.description, lx, y, ffw);
+      y = fy_desc;
+    }
+    // Row 4: Reporting Officer, Badge #
     const fy11 = addFieldPair(doc, 'Reporting Officer', data.officer_name || '', lx, y, ffw * 0.75);
     const fy12 = addFieldPair(doc, 'Badge #', data.badge_number || '', lx + ffw * 0.75, y, ffw * 0.25);
     y = Math.max(fy11, fy12);
-    // Row 4: Address (full width)
-    y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 5: Section/Zone/Beat (combined chart code), Section, Zone, Beat, Responding Agency, LE Case #
-    const fy13 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx, y, w6);
-    const fy14 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w6, y, w6);
-    const fy15 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w6 * 2, y, w6);
-    const fy16 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w6 * 3, y, w6);
-    const fy17 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx + w6 * 4, y, w6);
-    const fy18 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w6 * 5, y, w6);
-    y = Math.max(fy13, fy14, fy15, fy16, fy17, fy18);
+    // Row 4: Responding Agency, LE Case #.
+    //
+    // The address and the Section/Zone/Beat quartet used to render here too.
+    // Both were verbatim duplicates: the address already appears in INCIDENT
+    // OVERVIEW (which always renders) and again as INCIDENT LOCATION's Full
+    // Address, and the geography quartet was repeated field-for-field in
+    // INCIDENT LOCATION. On a typical report that was eleven cells restating
+    // facts printed elsewhere on the same page — mostly reading "N/A" — which
+    // pushed the narrative onto page 2 and made the form read as machine-dumped
+    // rather than authored. Geography now lives only in INCIDENT LOCATION,
+    // whose gate was widened to match.
+    const fy13 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx, y, ffw / 2);
+    const fy14 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + ffw / 2, y, ffw / 2);
+    y = Math.max(fy13, fy14);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3006,6 +3419,32 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const fy1 = addFieldPair(doc, 'Caller Name', data.caller_name || '', lx, y, hfw);
       const fy2 = addFieldPair(doc, 'Phone', data.caller_phone || '', rx, y, hfw);
       y = Math.max(fy1, fy2);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SECTION 1B½ — RESPONDING UNITS
+  // ═══════════════════════════════════════════════════════════
+  const unitDetails = data.assigned_units_detail || [];
+  if (unitDetails.length > 0) {
+    y = checkPageBreak(doc, y, 20);
+    { const sec = openAutoSection(doc, `Responding Units (${unitDetails.length})`, y); y = sec.contentY;
+      const colPositions = [lx, lx + ffw * 0.20, lx + ffw * 0.60, lx + ffw * 0.80];
+      const tableHeaders = [
+        { label: 'UNIT', x: colPositions[0] },
+        { label: 'OFFICER', x: colPositions[1] },
+        { label: 'BADGE #', x: colPositions[2] },
+        { label: 'STATUS', x: colPositions[3] },
+      ];
+      const tableRows = unitDetails.map((u) => [
+        u.call_sign || '—',
+        u.officer_name || '—',
+        u.badge_number || '—',
+        displayStatus(u.status || ''),
+      ]);
+      y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
+      y += SPACING.MD;
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
   }
@@ -3093,30 +3532,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         } catch { /* malformed JSON — skip rather than crash */ }
       }
 
-      // Row 7: Response-time metrics — computed from dispatch lifecycle timestamps.
-      // Internal-record value is having the durations printed alongside the section
-      // rather than forcing the reader into a separate analytics UI.
-      if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
-        const durMin = (from?: string, to?: string): string => {
-          if (!from || !to) return '';
-          const a = parseTimestamp(from).getTime();
-          const b = parseTimestamp(to).getTime();
-          if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
-          const mins = Math.round((b - a) / 60_000);
-          const h = Math.floor(mins / 60);
-          const m = mins % 60;
-          return h > 0 ? `${h}h ${m}m` : `${m}m`;
-        };
-        const responseTime = durMin(data.dispatched_at, data.onscene_at);
-        const onSceneTime = durMin(data.onscene_at, data.cleared_at);
-        const totalTime = durMin(data.dispatched_at, data.cleared_at || data.closed_at);
-        if (responseTime || onSceneTime || totalTime) {
-          const fya = addFieldPair(doc, 'Response Time', responseTime || '—', lx, y, thirdW);
-          const fyb = addFieldPair(doc, 'On-Scene Time', onSceneTime || '—', lx + thirdW, y, thirdW);
-          const fyc = addFieldPair(doc, 'Total Duration', totalTime || '—', lx + thirdW * 2, y, thirdW);
-          y = Math.max(fya, fyb, fyc);
-        }
-      }
+      // Response-time metrics used to be rendered here, inside the PSO-only
+      // section. They are dispatch lifecycle facts, not PSO facts, so they now
+      // render for EVERY report from the Dispatch Linkage section below (see
+      // computeResponseDurations). Kept out of here to avoid printing them
+      // twice on a PSO report.
 
       // Row 8: Record-keeping meta
       if (data.created_by || data.dispatcher_name || data.created_at) {
@@ -3162,7 +3582,12 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // SECTION 1E — INCIDENT LOCATION (ENHANCED)
   // ═══════════════════════════════════════════════════════════
-  if (data.latitude != null || data.longitude != null || data.property_name) {
+  // Section/zone/beat now lives ONLY here (it used to be duplicated verbatim in
+  // Administrative Data). This gate must therefore also open the section for a
+  // call that has geography but no coordinates and no property name — otherwise
+  // de-duplicating would have silently dropped the geography from those reports.
+  if (data.latitude != null || data.longitude != null || data.property_name
+      || data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 15);
     { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
       // Row 1: Full address, Property Name
@@ -3178,10 +3603,10 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const lngStr = lngN != null ? lngN.toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
-      const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
+      const fy5 = addFieldPair(doc, 'Sector/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
       y = Math.max(fy3, fy4, fy5);
-      // Row 3: Section, Zone, Beat (each as leaf — no parent prefixes)
-      const fy6 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, w3);
+      // Row 3: Sector, Zone, Beat (each as leaf — no parent prefixes)
+      const fy6 = addFieldPair(doc, 'Sector', sectionPrefix(data.zone_id) || data.sector_id || '', lx, y, w3);
       const fy7 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w3, y, w3);
       const fy8 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w3 * 2, y, w3);
       y = Math.max(fy6, fy7, fy8);
@@ -3236,6 +3661,16 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       if (data.hazard_code) {
         const fy6 = addFieldPair(doc, 'Hazard Code', data.hazard_code, lx, y, ffw);
         y = fy6;
+      }
+      // Row 4: Cross Street (when available)
+      if (data.cross_street) {
+        const fy_cross = addFieldPair(doc, 'Cross Street', data.cross_street, lx, y, ffw);
+        y = fy_cross;
+      }
+      // Row 5: Action Taken (when available)
+      if (data.action_taken) {
+        const fy_action = addFieldPair(doc, 'Action Taken', data.action_taken, lx, y, ffw);
+        y = fy_action;
       }
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
@@ -3320,7 +3755,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     ];
     const tableRows = persons.map((p) => [
       `${(p.last_name || '').toUpperCase()}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '') || '—',
-      capFirst(p.role?.replace(/_/g, ' ') || '').toUpperCase() || '—',
+      capFirst(toDisplayLabel(p.role) || '').toUpperCase() || '—',
       (p.dob || '—').toUpperCase(),
     ]);
     y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
@@ -3343,7 +3778,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         { label: 'COLOR', x: colPositions[3] },
       ];
       const tableRows = vehicles.map((v) => [
-        capFirst(v.role?.replace(/_/g, ' ').toUpperCase() || ''),
+        capFirst(toDisplayLabel(v.role).toUpperCase() || ''),
         `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
         [v.year, v.make, v.model].filter(Boolean).join(' '),
         v.color || '',
@@ -3351,6 +3786,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      // Baseline must clear the section header bar — see firstLineBaseline().
+      y = firstLineBaseline(y, FONT.SIZE_TABLE_BODY);
       doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3379,6 +3816,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = addTableWithShading(doc, tableHeaders, tableRows, y, colPositions);
     } else {
       doc.setFontSize(FONT.SIZE_TABLE_BODY); doc.setTextColor(...COLOR.TEXT_TERTIARY);
+      // Baseline must clear the section header bar — see firstLineBaseline().
+      y = firstLineBaseline(y, FONT.SIZE_TABLE_BODY);
       doc.text('None recorded', lx, y); doc.setTextColor(...COLOR.TEXT_PRIMARY); y += SPACING.XL;
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3400,10 +3839,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // SECTION 10 — DISPATCH / CALL DETAILS
   // ═══════════════════════════════════════════════════════════
-  if (data.call_number || data.call_type || data.caller_name || data.call_notes) {
+  // Lifecycle timestamps alone are enough to open this section: a dispatched
+  // call always has response durations worth printing even when it carries no
+  // caller name or call notes.
+  const durations = computeResponseDurations(data);
+  if (data.call_number || data.call_type || data.caller_name || data.call_notes || durations.any) {
     y = checkPageBreak(doc, y, 22, data.priority);
     const hasDispatchFields = data.call_number || data.call_type || data.call_created_at || data.caller_name || data.caller_phone || (data.latitude != null && data.longitude != null);
-    if (hasDispatchFields || data.call_notes) {
+    if (hasDispatchFields || data.call_notes || durations.any) {
       const sec = openAutoSection(doc, 'Dispatch Linkage', y); y = sec.contentY;
       // Row 1: CFS Call #, Call Type, Dispatched
       const r1Fields: { label: string; value: string }[] = [];
@@ -3434,8 +3877,23 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         }
         y = maxR2Y;
       }
-      // Call Notes (narrative text below fields)
-      if (data.call_notes) {
+      // Row 3: Response durations. These are the numbers an after-action or
+      // liability review reaches for, and before the 2026-07-24 audit they
+      // printed only on PSO client-request reports.
+      if (durations.any) {
+        const dThirdW = ffw / 3;
+        const fya = addFieldPair(doc, 'Response Time', durations.responseTime || '—', lx, y, dThirdW);
+        const fyb = addFieldPair(doc, 'On-Scene Time', durations.onSceneTime || '—', lx + dThirdW, y, dThirdW);
+        const fyc = addFieldPair(doc, 'Total Duration', durations.totalTime || '—', lx + dThirdW * 2, y, dThirdW);
+        y = Math.max(fya, fyb, fyc);
+      }
+
+      // Call Notes — structured PSO briefing renders per-author sub-sections;
+      // legacy flat string falls through to addFormattedText.
+      if (data.pso_briefing_notes?.length) {
+        y += SPACING.LG;
+        y = renderPsoBriefingNotes(doc, data.pso_briefing_notes, lx, y, ffw, data.priority);
+      } else if (data.call_notes) {
         y += SPACING.LG;
         y = addFormattedText(doc, data.call_notes, lx, y, ffw);
         y += SPACING.MD;
@@ -3491,7 +3949,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      doc.text('NARRATIVE / SERVICE NOTES — CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
       const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       doc.setLineWidth(BORDER.SECTION_OUTER);
@@ -3970,12 +4428,12 @@ function generateDailyActivityReport(doc: jsPDF, data: IncidentData) {
   const ffw = getFullFieldWidth(doc);
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, 'Daily Activity Overview', y); y = sec.contentY;
-    // Row 1: Officer Name (2/5), Section (1/5), Zone (1/5), Beat (1/5)
+    // Row 1: Officer Name (2/5), Sector (1/5), Zone (1/5), Beat (1/5)
     const w5 = ffw / 5;
     const fy1 = addFieldPair(doc, 'Officer Name', data.officer_name || '', lx, y, w5 * 2);
-    const fy2 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w5 * 2, y, w5);
-    const fy3 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w5 * 3, y, w5);
-    const fy4 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w5 * 4, y, w5);
+    const fy2 = addFieldPair(doc, 'Sector', sectionPrefix(data.zone_id) || data.sector_id || '', lx + w5 * 2, y, w5);
+    const fy3 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w5 * 3, y, w5);
+    const fy4 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w5 * 4, y, w5);
     y = Math.max(fy1, fy2, fy3, fy4);
     // Row 2: Shift Date, Shift Start, Shift End
     const w3 = ffw / 3;
@@ -4278,9 +4736,9 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     const olFields = [
       { label: 'Officer', value: data.officer_name || '' },
       { label: 'Location', value: data.location || '' },
-      { label: 'Section ID', value: data.sector_id || '' },
-      { label: 'Zone ID', value: data.zone_id || '' },
-      { label: 'Beat ID', value: data.beat_id || '' },
+      { label: 'Sector', value: sectionPrefix(data.zone_id) || data.sector_id || '' },
+      { label: 'Zone', value: zoneLeaf(data.zone_id) },
+      { label: 'Beat', value: beatLeaf(data.beat_id) },
     ];
     const olRatios = [2, 3, 1, 1, 1]; // Officer wider, Location widest, IDs narrow
     const olTotal = olRatios.reduce((a, b) => a + b, 0);
@@ -4332,7 +4790,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     const rows = data.linked_persons.map(p => [
       `${p.last_name}, ${p.first_name}`,
       p.role,
-      p.dob || '',
+      p.dob || 'NOT IN DOCUMENTS',
     ]);
     y = addTableWithShading(doc, tableHeaders, rows, y, colPositions);
     y += SPACING.MD;
@@ -4348,6 +4806,37 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   y = addStackedSignatures(doc, 'Process Server / Officer', '', y, getOfficerSig(), undefined, data.priority);
 }
 
+/**
+ * Populate the PDF's document-information dictionary.
+ *
+ * Before the 2026-07-24 audit every generated report shipped with Title,
+ * Author, Subject and Keywords all unset. These exports leave the building —
+ * court filings, discovery packages, email attachments — and an untitled PDF
+ * carries no evidence of what it is or who produced it once it is detached
+ * from the app. `Title` is also what a PDF viewer shows in its window and tab,
+ * and what desktop and e-discovery search index.
+ *
+ * Set at the START of generation so a later `embedSidecar()` (v2 engine) can
+ * still overwrite `keywords` with its payload — that call intentionally wins.
+ */
+function applyDocumentProperties(doc: jsPDF, reportType: PdfReportType, data: IncidentData): void {
+  const agency = getActiveBranding()?.report_header_text || 'Rocky Mountain Protective Group';
+  const label = PDF_REPORT_LABELS[reportType] || 'Report';
+  const caseNo = data.incident_number || '';
+
+  doc.setProperties({
+    title: caseNo ? `${label} — ${caseNo}` : label,
+    // The reporting officer is the document's author; fall back to the agency
+    // so the field is never blank.
+    author: data.officer_name || agency,
+    subject: [label, data.incident_type ? formatIncidentType(data.incident_type) : '', data.location || '']
+      .filter(Boolean).join(' · '),
+    keywords: [caseNo, data.call_number || '', label, data.incident_type || '', agency]
+      .filter(Boolean).join(', '),
+    creator: `${agency} — RMPG Flex`,
+  });
+}
+
 // ── Public API ───────────────────────────────────────────────
 
 export function generatePdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): jsPDF {
@@ -4357,11 +4846,9 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
 
   setActiveFormKey(reportType);
   setActiveCaseNumber(data.incident_number);
+  applyDocumentProperties(doc, reportType, data);
 
-  generationTimestamp = new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
+  stampGenerationTime();
 
   addConfidentialWatermark(doc);
   // @ts-expect-error jsPDF GState — safety reset after watermark
@@ -4402,7 +4889,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData,
         generateGeneralIncident(doc, data);
     }
   } finally {
-    setActiveSectionStyle('dark');
+    setActiveSectionStyle('light');
   }
 
   // Document integrity trailer page removed 2026-05-04 per user request.
@@ -4587,6 +5074,14 @@ export function finalizePoliceReport(
   doc: jsPDF,
   opts: PoliceReportFinalizeOptions = {},
 ): void {
+  // 0. Logo background fade — ghost brand mark centered behind all content.
+  //    Uses the print-quality (BW/clean) logo at ~6% opacity. Applied before
+  //    the text watermark so the watermark wins in z-order when both are used.
+  const printLogo = getCachedLogoPrintFromAssets();
+  if (printLogo) {
+    applyLogoFadeToAllPages(doc, printLogo);
+  }
+
   // 1. Watermark (goes under everything else)
   if (opts.watermark) {
     applyWatermarkToAllPages(doc, opts.watermark);

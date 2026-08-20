@@ -1,0 +1,139 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter } from '../serveMapOverlays';
+
+// Every fixture below is expressed relative to this instant.
+//
+// The unparseable-deadline case relies on parseTimestamp's `new Date()` fallback
+// (dateUtils.ts:153), which read the REAL clock while every assertion compares
+// against the fixed instant below. That made the test a time bomb: it passed
+// until real time drifted more than 24h past 2026-07-28T12:00Z, then reported
+// 'warning' instead of 'critical' — and it failed on main for everyone, in a
+// file nobody had touched. Pinning the clock makes the fallback deterministic.
+const NOW_ISO = '2026-07-28T12:00:00Z';
+
+// Pinned at file level, not per-describe: `matchesDeadlineFilter` below shares
+// the same fixture instant and the same fallback exposure.
+// `toFake: ['Date']` deliberately leaves setTimeout/setInterval real — only the
+// clock needs pinning, and faking timers wholesale can deadlock unrelated code.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW_ISO)); // new-date-ok — Z-suffixed UTC literal, not a naive server string
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe('urgencyTierForDeadline', () => {
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
+
+  it('returns "none" when there is no deadline', () => {
+    expect(urgencyTierForDeadline(null, now)).toBe('none');
+  });
+
+  it('returns "critical" when the deadline is within 24 hours (ISO 8601)', () => {
+    expect(urgencyTierForDeadline('2026-07-29T06:00:00Z', now)).toBe('critical');
+  });
+
+  it('returns "critical" when the deadline is already past', () => {
+    expect(urgencyTierForDeadline('2026-07-27T00:00:00Z', now)).toBe('critical');
+  });
+
+  it('returns "warning" when the deadline is within 72 hours but past 24', () => {
+    expect(urgencyTierForDeadline('2026-07-30T18:00:00Z', now)).toBe('warning');
+  });
+
+  it('returns "none" when the deadline is more than 72 hours out', () => {
+    expect(urgencyTierForDeadline('2026-08-05T00:00:00Z', now)).toBe('none');
+  });
+
+  // Test timezone-naive format that parseTimestamp handles specially
+  it('returns "critical" when the deadline is within 24 hours (timezone-naive space-separated format)', () => {
+    // "2026-07-29 06:00:00" is treated as UTC by parseTimestamp (space-separated legacy format)
+    expect(urgencyTierForDeadline('2026-07-29 06:00:00', now)).toBe('critical');
+  });
+
+  it('returns "warning" when the deadline is within 72 hours (timezone-naive space-separated format)', () => {
+    // "2026-07-30 18:00:00" is treated as UTC by parseTimestamp
+    expect(urgencyTierForDeadline('2026-07-30 18:00:00', now)).toBe('warning');
+  });
+
+  it('returns "critical" for unparseable deadline formats (fallback to current time)', () => {
+    // parseTimestamp falls back to new Date() for invalid strings, making them urgent
+    expect(urgencyTierForDeadline('not-a-date', now)).toBe('critical');
+  });
+
+  it('returns "none" when deadline is an empty string', () => {
+    // Empty string is falsy, so it's treated like null/undefined
+    expect(urgencyTierForDeadline('', now)).toBe('none');
+  });
+});
+
+describe('isRiskFlagged', () => {
+  it('flags urgent-priority items', () => {
+    expect(isRiskFlagged({ priority: 'urgent', location_note_text: null })).toBe(true);
+  });
+
+  it('flags a location note containing a safety keyword', () => {
+    expect(isRiskFlagged({ priority: 'normal', location_note_text: 'Officer safety: aggressive dog on premises' })).toBe(true);
+  });
+
+  it('does not flag a routine item with a benign note', () => {
+    expect(isRiskFlagged({ priority: 'routine', location_note_text: 'Best served after 5pm' })).toBe(false);
+  });
+
+  it('does not flag when there is nothing notable', () => {
+    expect(isRiskFlagged({ priority: 'normal', location_note_text: null })).toBe(false);
+  });
+
+  it('flags a safety keyword in service_instructions (ServeJob shape, no location_note_text)', () => {
+    expect(isRiskFlagged({ priority: 'normal', service_instructions: 'Aggressive dog on property, use caution' })).toBe(true);
+  });
+
+  it('does not flag benign service_instructions', () => {
+    expect(isRiskFlagged({ priority: 'routine', service_instructions: 'Gate code is 1234' })).toBe(false);
+  });
+});
+
+describe('matchesDeadlineFilter', () => {
+  const now = new Date(NOW_ISO).getTime(); // new-date-ok — Z-suffixed UTC literal
+
+  it('"all" matches everything including no deadline', () => {
+    expect(matchesDeadlineFilter(null, 'all', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-09-01T00:00:00Z', 'all', now)).toBe(true);
+  });
+
+  it('"overdue" matches past deadlines but not served jobs', () => {
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'overdue', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-07-29T00:00:00Z', 'overdue', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'overdue', now, 'served')).toBe(false);
+  });
+
+  it('"today" matches deadlines within 24 hours including overdue', () => {
+    expect(matchesDeadlineFilter('2026-07-29T06:00:00Z', 'today', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-07-30T06:00:00Z', 'today', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-28T00:00:00Z', 'today', now)).toBe(true);
+  });
+
+  it('"three_days" matches within 72 hours including overdue', () => {
+    expect(matchesDeadlineFilter('2026-07-31T00:00:00Z', 'three_days', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-02T00:00:00Z', 'three_days', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'three_days', now)).toBe(true);
+  });
+
+  it('"week" matches within 7 days including overdue', () => {
+    expect(matchesDeadlineFilter('2026-08-03T00:00:00Z', 'week', now)).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-10T00:00:00Z', 'week', now)).toBe(false);
+    expect(matchesDeadlineFilter('2026-07-27T00:00:00Z', 'week', now)).toBe(true);
+  });
+
+  it('no-deadline items only match "all"', () => {
+    expect(matchesDeadlineFilter(null, 'today', now)).toBe(false);
+  });
+
+  it('"served" matches only items with status "served"', () => {
+    expect(matchesDeadlineFilter(null, 'served', now, 'served')).toBe(true);
+    expect(matchesDeadlineFilter('2026-08-01T00:00:00Z', 'served', now, 'pending')).toBe(false);
+    expect(matchesDeadlineFilter(null, 'served', now)).toBe(false);
+  });
+});

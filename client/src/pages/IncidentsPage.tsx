@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -55,7 +55,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
@@ -469,7 +469,7 @@ export default function IncidentsPage() {
         method: 'PUT',
         body: JSON.stringify({ narrative }),
       }).then(() => {
-        setNarrativeLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        setNarrativeLastSaved(new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' }));
       }).catch(() => { /* silent fail — unmount save is the fallback */ });
     }, 10000);
     return () => { if (narrativeAutoSaveTimer.current) clearTimeout(narrativeAutoSaveTimer.current); };
@@ -1442,15 +1442,29 @@ export default function IncidentsPage() {
         if (callDetail) {
           if (callDetail.caller_name) pdfData.caller_name = callDetail.caller_name;
           if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
-          // Build call notes from dispatch notes
+          // Build call notes from dispatch notes. PSO briefing notes are stored
+          // as a structured JSON array (author/text/timestamp per entry); plain
+          // dispatch notes are flat strings joined with timestamps.
           if (callDetail.notes?.length > 0) {
-            // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
-            // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
-            // and the DB strings are MST-stamped. safeDateTimeStr applies the
-            // correct Mountain-Time offset before formatting.
-            pdfData.call_notes = callDetail.notes.map((n: any) =>
-              `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
-            ).join('\n');
+            const firstNote = callDetail.notes[0];
+            const isStructured = firstNote && typeof firstNote === 'object'
+              && typeof firstNote.author === 'string' && typeof firstNote.text === 'string';
+            if (isStructured) {
+              // Route to the typed field so the PDF renderer draws author-badged
+              // sub-sections with per-entry colors (items 42-44).
+              pdfData.pso_briefing_notes = callDetail.notes.map((n: any) => ({
+                author: String(n.author || 'SYSTEM'),
+                text: String(n.text || ''),
+                timestamp: n.timestamp ?? undefined,
+              }));
+            } else {
+              // Use safeDateTimeStr — raw toLocaleString() on a naive UTC timestamp
+              // parses inconsistently (Chrome=local, others=UTC) and the DB strings
+              // are MST-stamped. See parseTimestamp() in dateUtils.ts.
+              pdfData.call_notes = callDetail.notes.map((n: any) =>
+                `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
+              ).join('\n');
+            }
           }
           // Inherit lat/lng from call if incident doesn't have them
           if (pdfData.latitude == null && callDetail.latitude != null) {
@@ -1514,7 +1528,7 @@ export default function IncidentsPage() {
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData);
                 setPdfBlobUrl(blobUrl);
-                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()}`);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${toDisplayLabel(reportType).toUpperCase()}`);
                 setPdfViewerOpen(true);
               } catch (err: any) {
                 console.error('[IncidentsPage] PDF preview failed:', err);
@@ -1532,14 +1546,14 @@ export default function IncidentsPage() {
                 const pdfData = await buildIncidentPdfData();
                 const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
                 setPdfBlobUrl(blobUrl);
-                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${toDisplayLabel(reportType).toUpperCase()} (MOBILE)`);
                 setPdfViewerOpen(true);
               } catch (err) {
                 console.error('[IncidentsPage] Mobile PDF preview failed:', err);
               }
             }}
           />
-        <button type="button"
+        <button aria-label="Close" type="button"
           onClick={() => {
             setSelectedIncident(null);
             setIsEditing(false);
@@ -1717,7 +1731,7 @@ export default function IncidentsPage() {
                 <label className="field-label">Disposition:</label>
                 <p className="text-sm text-rmpg-200">
                   <span className="inline-block px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1">
-                    {(inc.disposition || '').replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(inc.disposition || '').toUpperCase()}
                   </span>
                   {(() => {
                     const match = dispositionCodes.find((d) => d.code === inc.disposition);
@@ -1896,7 +1910,7 @@ export default function IncidentsPage() {
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {(lp.role || 'involved').replace(/_/g, ' ')}
+                        {toDisplayLabel(lp.role || 'involved')}
                       </span>
                       <span className="text-sm text-rmpg-100 font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
@@ -1949,7 +1963,7 @@ export default function IncidentsPage() {
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {(lv.role || 'involved').replace(/_/g, ' ')}
+                      {toDisplayLabel(lv.role || 'involved')}
                     </span>
                     <span className="text-sm text-rmpg-100 font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
@@ -1999,7 +2013,7 @@ export default function IncidentsPage() {
                 <div key={offense.id} className="flex items-start gap-2 px-2 py-1.5 rounded-sm" style={{ background:"var(--surface-sunken)", border: '1px solid var(--border-default)' }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--rmpg-500)' }}>
+                      <span className="text-[10px] font-mono font-bold" style={{ color: offense.offense_level === 'felony' ? 'var(--sev-critical)' : offense.offense_level === 'misdemeanor' ? 'var(--sev-warn)' : 'var(--text-muted)' }}>
                         {offense.offense_code}
                       </span>
                       <span className="text-xs text-rmpg-100 font-medium truncate">{offense.description}</span>
@@ -2130,15 +2144,20 @@ export default function IncidentsPage() {
                 // PR #1605 / SW v1029 — chart-code 16-entity palette stays
                 // hex because --sev-* can't differentiate that many types).
                 // Two parallel maps because the original `color + '20'` hex-
-                // opacity trick doesn't work on `var(--…)` references — we
-                // need to drive alpha tints from the *-rgb companion tokens.
+                // opacity trick doesn't work on `var(--…)` references.
+                // NOTE: new code should not reach for the `*-rgb` companion
+                // tokens this comment used to recommend — use
+                // `withAlpha(color, '20')` from utils/withAlpha.ts, which emits
+                // color-mix() for tokens and plain hex concat for raw hex. The
+                // parallel maps below are left as-is because they already
+                // render correctly; collapsing them is a separate cleanup.
                 const typeColors: Record<string, string> = {
                   incident: 'var(--spm-text-muted)',
                   call: 'var(--sev-ok)',
                   case: 'var(--sev-special-soft)',
                   warrant: 'var(--sev-critical)',
                   citation: 'var(--sev-warn)',
-                  arrest: 'var(--pink-400, #ec4899)',
+                  arrest: 'var(--pink-400, var(--sev-high))',
                 };
                 const typeColorRgb: Record<string, string> = {
                   incident: 'var(--spm-text-muted-rgb)',
@@ -2148,7 +2167,7 @@ export default function IncidentsPage() {
                   citation: 'var(--sev-warn-rgb)',
                   arrest: 'var(--pink-400-rgb, 236 72 153)',
                 };
-                const fg = typeColors[link.linked_type] || 'var(--rmpg-500)';
+                const fg = typeColors[link.linked_type] || 'var(--text-muted)';
                 const rgb = typeColorRgb[link.linked_type] || 'var(--rmpg-500-rgb)';
                 const typeLabels: Record<string, string> = { incident: 'Incident', call: 'CFS', case: 'Case', warrant: 'Warrant', citation: 'Citation', arrest: 'Arrest' };
                 return (
@@ -2165,7 +2184,7 @@ export default function IncidentsPage() {
                     )}
                     {link.detail?.incident_type && <span className="text-[10px] text-rmpg-400">{toDisplayLabel(link.detail.incident_type)}</span>}
                     {link.detail?.status && <span className="text-[10px] text-rmpg-500 capitalize">{toDisplayLabel(link.detail.status)}</span>}
-                    {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{link.link_reason}</span>}
+                    {link.link_reason && <span className="text-[9px] text-rmpg-400 italic ml-auto truncate max-w-[150px]">{formatEnumValue(link.link_reason)}</span>}
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={() => {
                         const linkLabel = [link.linked_type, link.detail?.incident_number || link.detail?.call_number || link.detail?.case_number || `#${link.linked_id}`].filter(Boolean).join(' ');
@@ -2346,7 +2365,7 @@ export default function IncidentsPage() {
                           <span className="text-xs text-rmpg-100 font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
-                              {(sup.report_type || sup.type || '').replace(/_/g, ' ').toUpperCase()}
+                              {toDisplayLabel(sup.report_type || sup.type || '').toUpperCase()}
                             </span>
                           )}
                           {sup.status && (
@@ -2837,9 +2856,9 @@ export default function IncidentsPage() {
 
       {/* Custody Transfer Modal */}
       {custodyTransfer && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setCustodyTransfer(null)}>
           <div
-            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
+            className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw] my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2924,7 +2943,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Offense Modal ═══ */}
       {showAddOffenseModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowAddOffenseModal(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowAddOffenseModal(false)}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[500px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -2941,7 +2960,7 @@ export default function IncidentsPage() {
               } catch { /* error */ }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Offense / Charge</h3>
               <IconButton onClick={() => setShowAddOffenseModal(false)} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add offense"><X className="w-4 h-4" /></IconButton>
             </div>
@@ -2976,7 +2995,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Officer Modal ═══ */}
       {showAddOfficerModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[450px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -3011,7 +3030,7 @@ export default function IncidentsPage() {
               }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Add Responding Officer</h3>
               <IconButton onClick={() => { setShowAddOfficerModal(false); setAddOfficerPickerId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add officer"><X className="w-4 h-4" /></IconButton>
             </div>
@@ -3057,7 +3076,7 @@ export default function IncidentsPage() {
 
       {/* ═══ Add Cross-Reference Link Modal ═══ */}
       {showAddLinkModal && selectedIncident && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }}>
           <form
             className="bg-surface-raised border border-rmpg-600 shadow-xl w-[400px] max-w-[95vw]"
             style={{ borderRadius: 2 }}
@@ -3074,7 +3093,7 @@ export default function IncidentsPage() {
               } catch { /* error */ }
             }}
           >
-            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between">
+            <div className="px-4 py-2.5 border-b border-rmpg-600 flex items-center justify-between my-auto">
               <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Link Record</h3>
               <IconButton onClick={() => { setShowAddLinkModal(false); setAddLinkType(''); setAddLinkId(null); }} className="text-rmpg-400 hover:text-rmpg-100" aria-label="Close add link"><X className="w-4 h-4" /></IconButton>
             </div>

@@ -12,7 +12,7 @@
 // ============================================================
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
 
 const TOKEN_KEY = 'rmpg_token';

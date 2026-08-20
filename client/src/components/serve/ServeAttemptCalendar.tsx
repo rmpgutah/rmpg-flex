@@ -126,10 +126,10 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
 
   if (!schedule.length) {
     return (
-      <div className="flex flex-col items-center gap-2 text-rmpg-500 text-xs py-8 px-4">
+      <div className="flex flex-col items-center gap-2 text-fg-muted text-xs py-8 px-4">
         <CalendarDays size={20} />
         <span>No upcoming attempt windows scheduled.</span>
-        <span className="text-rmpg-600">Submit a serve intake packet to auto-generate attempt slots.</span>
+        <span className="text-fg-muted">Submit a serve intake packet to auto-generate attempt slots.</span>
       </div>
     );
   }
@@ -141,7 +141,7 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
           <CalendarDays size={13} />
           Attempt Schedule
         </div>
-        <button onClick={load} className="text-rmpg-500 hover:text-rmpg-300 text-[10px] transition-colors">
+        <button onClick={load} className="text-fg-muted hover:text-rmpg-300 text-[10px] transition-colors">
           Refresh
         </button>
       </div>
@@ -155,7 +155,7 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
               ${isToday ? 'bg-brand-400/10 border-b border-brand-400/30 text-brand-300' : 'bg-surface-raised border-b border-surface-border text-rmpg-300'}`}>
               <span>{day.weekday} {day.date}</span>
               {isToday && <span className="text-brand-400 normal-case font-normal">Today</span>}
-              <span className="text-rmpg-600 font-normal normal-case">{day.slots.length} window{day.slots.length > 1 ? 's' : ''}</span>
+              <span className="text-fg-muted font-normal normal-case">{day.slots.length} window{day.slots.length > 1 ? 's' : ''}</span>
             </div>
 
             {/* Slots */}
@@ -173,10 +173,10 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                       <div className="text-rmpg-200 text-[11px] font-mono font-semibold leading-tight">
                         {slot.window_start}
                       </div>
-                      <div className="text-rmpg-500 text-[9px] font-mono">
+                      <div className="text-fg-muted text-[9px] font-mono">
                         –{slot.window_end}
                       </div>
-                      <div className="text-rmpg-600 text-[9px] mt-0.5">
+                      <div className="text-fg-muted text-[9px] mt-0.5">
                         #{slot.attempt_number}
                       </div>
                     </div>
@@ -199,19 +199,19 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                           {(slot.priority || '').toUpperCase()}
                         </span>
                       </div>
-                      <div className="text-rmpg-500 text-[10px] truncate mt-0.5">
+                      <div className="text-fg-muted text-[10px] truncate mt-0.5">
                         {[slot.recipient_address, slot.recipient_city, slot.recipient_state].filter(Boolean).join(', ')}
                       </div>
                       {slot.case_number && (
-                        <div className="text-rmpg-600 text-[10px] truncate">Case {slot.case_number}</div>
+                        <div className="text-fg-muted text-[10px] truncate">Case {slot.case_number}</div>
                       )}
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`flex items-center gap-0.5 text-[9px] ${slot.notified ? 'text-green-500' : 'text-rmpg-500'}`}>
+                        <span className={`flex items-center gap-0.5 text-[9px] ${slot.notified ? 'text-green-500' : 'text-fg-muted'}`}>
                           {slot.notified ? <Bell size={9} /> : <Clock size={9} />}
                           {slot.notified ? 'Notified' : `Alert ${notifyLabel(slot.notify_before_secs)}`}
                         </span>
                         {slot.window_label && (
-                          <span className="text-rmpg-600 text-[9px] truncate">{slot.window_label}</span>
+                          <span className="text-fg-muted text-[9px] truncate">{slot.window_label}</span>
                         )}
                       </div>
                     </div>
@@ -221,7 +221,7 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                       {onSelectQueue && (
                         <button
                           onClick={() => onSelectQueue(slot.queue_id)}
-                          className="text-rmpg-600 hover:text-brand-400 transition-colors p-0.5"
+                          className="text-fg-muted hover:text-brand-400 transition-colors p-0.5"
                           title="Open queue entry"
                         >
                           <ChevronRight size={12} />
@@ -230,7 +230,7 @@ export default function ServeAttemptCalendar({ onSelectQueue }: Props) {
                       <button
                         onClick={() => dismissSlot(slot.id)}
                         disabled={isDismissing}
-                        className="text-rmpg-600 hover:text-red-400 transition-colors p-0.5"
+                        className="text-fg-muted hover:text-red-400 transition-colors p-0.5"
                         title="Dismiss this window"
                       >
                         <BellOff size={11} className={isDismissing ? 'opacity-50' : ''} />

@@ -32,7 +32,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const pastBorderColor = (status: string) => {

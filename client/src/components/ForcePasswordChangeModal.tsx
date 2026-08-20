@@ -95,25 +95,25 @@ export default function ForcePasswordChangeModal() {
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
+      className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Password change required"
-      style={{ background: 'rgba(0,0,0,0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      style={{ background: 'rgba(0 0 0 / 0.90)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
     >
       <div
-        className="w-full max-w-md mx-4 p-6 space-y-5"
+        className="w-full max-w-md mx-4 p-6 space-y-5 my-auto"
         style={{
           background: 'var(--surface-overlay)',
           border: '1px solid var(--border-default)',
-          borderTop: '3px solid #888888',
+          borderTop: '3px solid var(--text-secondary)',
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties}
       >
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
-            <Shield style={{ width: 20, height: 20, color: '#888888' }} />
+            <Shield style={{ width: 20, height: 20, color: 'var(--text-secondary)' }} />
             <div className="text-lg font-bold text-rmpg-100">Password Change Required</div>
           </div>
           <div className="text-xs text-rmpg-400 max-w-sm mx-auto">
@@ -124,7 +124,7 @@ export default function ForcePasswordChangeModal() {
 
         {success ? (
           <div className="text-center space-y-3 py-4">
-            <Check style={{ width: 32, height: 32, color: '#22c55e', margin: '0 auto' }} />
+            <Check style={{ width: 32, height: 32, color: 'var(--sev-ok)', margin: '0 auto' }} />
             <div className="text-sm text-green-400 font-bold">Password changed successfully!</div>
             <div className="text-xs text-rmpg-400">Redirecting to login...</div>
           </div>
@@ -146,7 +146,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPw(!showCurrentPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-rmpg-100"
                 >
                   {showCurrentPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -171,7 +171,7 @@ export default function ForcePasswordChangeModal() {
                 <button
                   type="button"
                   onClick={() => setShowNewPw(!showNewPw)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted hover:text-rmpg-100"
                 >
                   {showNewPw
                     ? <EyeOff style={{ width: 14, height: 14 }} />
@@ -199,11 +199,11 @@ export default function ForcePasswordChangeModal() {
               {rules.map((rule, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px]">
                   {rule.met ? (
-                    <Check style={{ width: 10, height: 10, color: '#22c55e', flexShrink: 0 }} />
+                    <Check style={{ width: 10, height: 10, color: 'var(--sev-ok)', flexShrink: 0 }} />
                   ) : (
-                    <AlertCircle style={{ width: 10, height: 10, color: 'var(--rmpg-500)', flexShrink: 0 }} />
+                    <AlertCircle style={{ width: 10, height: 10, color: 'var(--text-muted)', flexShrink: 0 }} />
                   )}
-                  <span className={rule.met ? 'text-green-400' : 'text-rmpg-500'}>
+                  <span className={rule.met ? 'text-green-400' : 'text-fg-muted'}>
                     {rule.label}
                   </span>
                 </div>

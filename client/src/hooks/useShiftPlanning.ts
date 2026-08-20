@@ -44,10 +44,10 @@ export interface ShiftPlan {
 export type ShiftType = 'day' | 'swing' | 'night' | 'custom';
 
 export const SHIFT_TYPES: Record<ShiftType, { label: string; defaultStart: string; defaultEnd: string; color: string }> = {
-  day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: '#f59e0b' },
-  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: '#888888' },
+  day:    { label: 'Day Shift',   defaultStart: '06:00', defaultEnd: '14:00', color: 'var(--sev-warn)' },
+  swing:  { label: 'Swing Shift', defaultStart: '14:00', defaultEnd: '22:00', color: 'var(--text-muted)' },
   night:  { label: 'Night Shift', defaultStart: '22:00', defaultEnd: '06:00', color: '#a855f7' },
-  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: 'var(--rmpg-500)' },
+  custom: { label: 'Custom',      defaultStart: '08:00', defaultEnd: '16:00', color: 'var(--text-muted)' },
 };
 
 const LS_KEY = 'rmpg_shift_plans';

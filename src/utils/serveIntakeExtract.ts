@@ -1,5 +1,6 @@
 import { bytesToBase64 } from './anthropic';
 import { callAi } from './callAi';
+import { precleanText } from './serveIntakePreclean';
 
 // ============================================================
 // RMPG Flex — Serve Intake structured-field extraction
@@ -21,8 +22,44 @@ import { callAi } from './callAi';
 // fields it filled.
 // ============================================================
 
-const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
-const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
+// ── Model selection ───────────────────────────────────────────
+// ⚠️ LLAMA 4 SCOUT WAS MEASURED AND REJECTED (2026-07-26). This is a
+// SETTLED decision, not an unfinished migration — do not "complete" it.
+//
+// scripts/serve-intake-model-ab.ts graded all three candidates against
+// tests/fixtures/serve-intake/expected.json:
+//   llama-3.3-70b-instruct-fp8-fast (incumbent)  33/36  (35/36 after prompt fixes)
+//   mistral-small-3.1-24b-instruct               32/36  (33/36)
+//   llama-4-scout-17b-16e-instruct               26/36  (28/36)
+// The later prompt fixes lifted every candidate and reordered nothing.
+// Note the harness grades RAW model output, before normalizeFields —
+// see the header of scripts/serve-intake-model-ab.ts.
+//
+// Scout's failure is not merely "lower accuracy". It read the ICU
+// LETTERHEAD address (250 N Red Cliffs Dr, Saint George) as the SERVICE
+// address. For a process server that is a wrong-building dispatch — an
+// officer sent to their own company's office instead of the recipient.
+// A cheaper model that confidently emits a wrong service address is
+// strictly worse than a dearer one that emits the right one.
+//
+// Scout does bill less per token (77,273 neurons/M output vs 204,805),
+// but the incumbent was retained, so the packet cost stays at ~520
+// neurons — see the cost envelope in the design spec §3.5.
+//
+// (The LoRA hazard once noted here is moot: SERVE_INTAKE_LORA is
+// unconfigured, so no fine-tune is at risk either way. It is not a
+// reason to keep the incumbent; the measured accuracy is.)
+export const TEXT_MODEL_LEGACY = '@cf/meta/llama-3.3-70b-instruct-fp8-fast' as const;
+export const TEXT_MODEL_SCOUT = '@cf/meta/llama-4-scout-17b-16e-instruct' as const;
+export const VISION_MODEL_LEGACY = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
+// Moondream 3.1 is a CANDIDATE only — the vision A/B the spec §6 requires
+// before adoption has not been run. Only the three text models were measured.
+export const VISION_MODEL_MOONDREAM = '@cf/moondream/moondream3.1-9B-A2B' as const;
+
+// Defaults stay on the measured winners: the incumbent text model (A/B
+// above) and the incumbent vision model (no vision A/B run yet).
+const TEXT_MODEL = TEXT_MODEL_LEGACY;
+const VISION_MODEL = VISION_MODEL_LEGACY;
 
 // Field set sourced from the client's OcrScanResult + IntakeResult
 // shapes (client/src/pages/ServeIntakePage.tsx). Keeping the list
@@ -60,6 +97,22 @@ export const TARGET_FIELDS = [
   // ── Service mechanics ─────────────────────────────────────
   'process_type', 'service_windows', 'service_instructions',
   'server_name', 'priority',
+  // ── Timing & service constraints (PR 1, 2026-07-26) ───────
+  // address_class is a property of the LOCATION, never the recipient —
+  // a registered agent may sit at a residence and must then get
+  // residential attempt windows (operator decision D-2).
+  'address_class',                  // residential | business | unknown
+  'service_days_allowed',           // 'all' | 'weekdays' | 'friday' | 'no_sunday' | free text
+  'client_attempt_schedule',        // 'HH:MM-HH:MM;HH:MM-HH:MM' verbatim bands
+  'attempt_start_not_before',       // ISO date — "start attempts on or after X"
+  // ── Physical items & service authority (PR 1, 2026-07-26) ──
+  // A witness fee is a THING the server must carry. It appears inside the
+  // Documents list ("Check VV787 $18.50") and was previously invisible to
+  // the officer until they opened the packet.
+  'witness_fee_tendered',                    // yes | no | ''
+  'witness_fee_instrument',                  // verbatim, e.g. 'Check VV787 $18.50'
+  'registered_agent_address',                // distinct from recipient_address
+  'sub_service_authorized_first_attempt',    // yes | no | ''
 ] as const;
 
 export type TargetField = typeof TARGET_FIELDS[number];
@@ -119,8 +172,11 @@ B) Court forms — Summons (e.g. CA Judicial Council SUM-100), Complaint, Civil
    attorney_name/phone.
 
 EXTRACTION RULES (learned from real packets):
-  • job_number = the ServeManager job number in the page header (the larger one).
-    client_reference = the client's own job number (smaller, secondary).
+  • job_number = the FIRST number in the page header (e.g. "Job: 90000001 (90000002)").
+    client_reference = the SECOND value, printed in parentheses right after it — the client's
+    own job number. Go by POSITION, not size: client_reference is frequently the larger number
+    and is sometimes non-numeric (an alphanumeric client code like "AZ900001E"), so never use
+    magnitude or "is it numeric" to decide which is which.
   • Recipient name: split into first / middle / last. A single middle initial
     ("John Q Sample") → middle="Q". Keep suffixes (Jr/Sr/III) with the last name.
   • DOB frequently appears as a bare date after "DOB:" OR inside a free-text
@@ -142,6 +198,13 @@ EXTRACTION RULES (learned from real packets):
   • service_deadline: ONLY a concrete calendar date (e.g. a due date). A relative
     answer window like "30 calendar days" / "21 days" is NOT a deadline — leave
     service_deadline empty (capture the phrase in service_windows if useful).
+    POSITIVE CASE: the date printed in the ServeManager / ICU JOB header — the third
+    value on the header line, and any date labeled "Due:" / "Due Date" — IS the
+    service_deadline. Emit it as ISO. A 2-digit year is 20xx ("6/15/26" → 2026-06-15).
+  • priority: one of 'routine' | 'normal' | 'rush' | 'urgent'. A "RUSH" stamp,
+    banner, or instruction anywhere on the document → 'rush'. "HOT RUSH",
+    "SAME DAY", "EMERGENCY" → 'urgent'. Explicit "routine"/"standard" →
+    'routine'. No urgency language at all → '' (do not guess).
   • Bilingual documents (English + Spanish, etc.): extract from the ENGLISH text;
     ignore the translated duplicate.
   • Multiple defendants on a court form: list them in 'defendant'; do not force a
@@ -158,7 +221,28 @@ EXTRACTION RULES (learned from real packets):
   • If an embedded "Imported CSV Row" shows a service_city that disagrees with the
     city printed in the rendered "Recipient:" block, TRUST the rendered
     Recipient-block city — the CSV value is often a county seat, not the actual
-    municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).`;
+    municipality (e.g. CSV "Salt Lake City" vs printed "Holladay" → use Holladay).
+
+TIMING & SERVICE CONSTRAINTS — read the Instructions block carefully:
+• address_class — 'business' ONLY when the document says the service address is a business,
+  office, suite, or place of employment. 'residential' for a residence/abode/dwelling.
+  'unknown' otherwise. A "registered agent" mention is NOT evidence of a business address —
+  agents are frequently at residences.
+• service_days_allowed — e.g. "Service allowed 7 days a week" → 'all';
+  "NO SERVICE ON SUNDAY" → 'no_sunday'; "SERVE ON FRIDAY" → 'friday'.
+• client_attempt_schedule — when the client dictates attempt bands ("1 between 6AM-9AM,
+  1 between 9AM-6PM and 1 between 6PM-9PM"), emit them as 24h ranges joined by semicolons:
+  "06:00-09:00;09:00-18:00;18:00-21:00". Empty when the client dictates nothing.
+• attempt_start_not_before — "Start attempts on or after June 26" → the ISO date.
+
+PHYSICAL ITEMS & SERVICE AUTHORITY:
+• witness_fee_instrument — a subpoena packet often lists a witness-fee check inside the
+  documents line ("Check VV787 $18.50"). Copy it VERBATIM. Set witness_fee_tendered='yes'
+  when such an instrument is listed, 'no' when the document says no fee is tendered, else ''.
+• registered_agent_address — the agent's service address when it differs from the entity's
+  own address (e.g. a corporate-agent service company). Empty when they are the same.
+• sub_service_authorized_first_attempt — 'yes' when the client expressly permits substitute
+  service on the FIRST attempt ("may be sub-served on the 1st attempt"), else ''.`;
 
 // Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
 // far too conservative — a multi-document packet (e.g. a 47K-char court
@@ -213,6 +297,10 @@ const FEWSHOT_OUTPUT = JSON.stringify({
     client_name: { value: 'Example Collections, PLLC', confidence: 1 },
     job_number: { value: '13572468', confidence: 1 },
     client_reference: { value: '880231', confidence: 0.9 },
+    // The header's third value (6/15/26) IS the due date. Omitting this from
+    // the one-shot actively taught the model that a header due date does not
+    // populate service_deadline, and it came back empty on every fixture.
+    service_deadline: { value: '2026-06-15', confidence: 0.9 },
     server_name: { value: 'ICU Investigations, LLC', confidence: 1 },
     service_instructions: { value: 'Sub-serve on 1st attempt to any occupant 16+. Personal only at POE.', confidence: 1 },
   },
@@ -254,9 +342,176 @@ ${text.slice(0, MAX_PROMPT_CHARS)}
 // keeping it in one place makes that class of bug structurally impossible.
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
-export function buildExtractionMessages(rawText: string): ChatMessage[] {
+// ── Document-family prompts ───────────────────────────────────
+// One universal prompt makes the model hedge across layouts it isn't
+// looking at. A packet has three distinct document families (ServeManager
+// Information Form, ICU Field Sheet, court filing), each with its own
+// layout and its own hazards. Each gets guidance for ITS hazards.
+const FAMILY_PROMPTS: Record<string, string> = {
+  field_sheet: `This is an ICU Investigations FIELD SHEET.
+Layout: a header with Job / Party to Serve / Due date; a table of Case, Court, Plaintiff,
+Defendant; a Documents line; and a free-text Instructions block.
+HAZARD: a diagonal watermark ("RUSH") can leave stray single letters inside the table cells.
+Ignore isolated single letters that do not form a word.
+The Instructions block is the richest source of timing constraints, address class, and
+substitute-service authorization — read it in full.`,
+
+  court_filing: `This is a COURT FILING (summons, subpoena, complaint, or docket).
+The caption is authoritative for case_number, court_name, plaintiff, and defendant — prefer it
+over any other document. Utah courts caption as "<Ordinal> Judicial District Court, State of
+Utah - <courthouse name>" (e.g. "Third Judicial District Court, State of Utah - Matheson") —
+capture that whole phrase as court_name verbatim; it does not name the county. Do NOT treat the
+party being served as a case party: on a subpoena the recipient is usually a non-party witness.`,
+
+  info_page: `This is a ServeManager INFORMATION FORM — the authoritative operational record.
+Prefer it for recipient, service address, service instructions, job numbers, and due date.
+The JOB header carries two numbers: the FIRST (position, not size) is job_number; the SECOND
+— printed in parentheses right after it, e.g. "Job: 90000001 (90000002)" — is client_reference.
+Go by position, not magnitude: client_reference is often the larger number, and it is sometimes
+not numeric at all (an alphanumeric client code like "AZ900001E"), so "larger"/"numeric" is never
+a safe test — only position after the job number is reliable.
+The DATE in that same JOB header (the value printed after the two job numbers, and any
+"Due:" / "Due Date" / due_date field) IS service_deadline — emit it as ISO, reading a
+2-digit year as 20xx. It is a concrete calendar date, not a relative answer window.
+An embedded "Imported CSV Row" JSON block, when present, is the single most reliable source.`,
+};
+
+const GENERIC_FAMILY_PROMPT =
+  'Extract every field you can locate. Return empty strings for fields not present.';
+
+export function buildFamilyPrompt(docType: string): string {
+  return FAMILY_PROMPTS[docType] ?? GENERIC_FAMILY_PROMPT;
+}
+
+// ── File-name → document family ───────────────────────────────
+// Intake packets follow a fixed ICU naming convention: each file in a
+// packet is named "<job number> Field Sheet.pdf" / "<job number> Court
+// Docket.pdf" / "<job number> Information Form.pdf" (or close human-typed
+// variants — casing, spacing, punctuation all drift). Matching on a
+// distinctive substring (not exact equality) lets this survive that drift.
+// Returns undefined rather than guessing on anything that doesn't clearly
+// match one of the three known conventions — a WRONG family prompt would
+// describe the wrong layout to the model, which is worse than none.
+const FIELD_SHEET_NAME_HINT = /field[\s_-]*sheet/i;
+const COURT_FILING_NAME_HINT = /court[\s_-]*(docket|filing)|docket/i;
+const INFO_PAGE_NAME_HINT = /information[\s_-]*(form|page)|info[\s_-]*(form|page)/i;
+
+export function familyFromFileName(fileName: string): string | undefined {
+  const name = (fileName || '').trim();
+  if (!name) return undefined;
+  if (FIELD_SHEET_NAME_HINT.test(name)) return 'field_sheet';
+  if (COURT_FILING_NAME_HINT.test(name)) return 'court_filing';
+  if (INFO_PAGE_NAME_HINT.test(name)) return 'info_page';
+  return undefined;
+}
+
+// ── Bounded critic pass ───────────────────────────────────────
+// Re-asking the model about EVERY field would double neuron spend on
+// every packet. Only genuinely doubtful critical fields qualify, capped
+// so a badly-scanned document cannot blow the daily free allocation.
+const CRITIC_FIELDS: TargetField[] = [
+  'case_number', 'court_name', 'recipient_address', 'service_deadline',
+  'recipient_dob', 'recipient_phone', 'address_class',
+];
+const CRITIC_CONFIDENCE_FLOOR = 0.6;
+const CRITIC_MAX_FIELDS = 5;
+
+export function needsCriticPass(
+  fields: Record<string, ExtractedField>,
+  issues: Array<{ field: string; severity: 'warn' | 'error' }>,
+): string[] {
+  const flagged = new Set(
+    issues.filter((i) => i.severity === 'error').map((i) => i.field),
+  );
+  // Validator-flagged errors qualify even for fields outside the fixed
+  // CRITIC_FIELDS list (the validator already knows the field is wrong;
+  // that's a stronger signal than the static critical-field allowlist).
+  // Checked first, in issue order, before the low-confidence sweep, so a
+  // known-bad field never loses its slot under the cap to a merely-doubtful one.
+  const candidates: TargetField[] = [
+    ...(Array.from(flagged) as TargetField[]),
+    ...CRITIC_FIELDS.filter((f) => !flagged.has(f)),
+  ];
+  const out: string[] = [];
+  for (const f of candidates) {
+    const ef = fields[f];
+    if (!ef) continue;
+    const doubtful = !!ef.value && ef.confidence < CRITIC_CONFIDENCE_FLOOR;
+    if (doubtful || flagged.has(f)) out.push(f);
+    if (out.length >= CRITIC_MAX_FIELDS) break;
+  }
+  return out;
+}
+
+// Merge a critic pass's answers back over the original field map. Only
+// fields the critic was actually asked about are eligible, and an empty
+// critic answer never destroys a value the first pass found — a second
+// opinion that says "I don't know" is not evidence the first was wrong.
+export function applyCriticResults(
+  fields: Record<string, ExtractedField>,
+  critic: Partial<Record<string, ExtractedField>>,
+): Record<string, ExtractedField> {
+  const out: Record<string, ExtractedField> = {};
+  for (const [k, v] of Object.entries(fields)) out[k] = { ...v };
+  for (const [k, v] of Object.entries(critic)) {
+    if (!v) continue;
+    if (!(k in out)) continue;                 // not a target field — ignore
+    const value = (v.value || '').trim();
+    if (!value) continue;                      // critic had nothing — keep the original
+    out[k] = { value, confidence: v.confidence ?? 0.5 };
+  }
+  return out;
+}
+
+// A SECOND look at a SHORT list of doubtful fields. Deliberately not a
+// full re-extraction: the prompt names only the requested fields, so the
+// model has one narrow job and the output is small. Cost is bounded by
+// needsCriticPass's cap (CRITIC_MAX_FIELDS), so a badly-scanned packet
+// cannot blow the 10,000-neuron/day free allocation.
+export const CRITIC_TIMEOUT_MS = 20_000;
+
+const CRITIC_SYSTEM = `You are re-checking a SMALL number of fields another extraction pass was unsure about, in a legal process-service document.
+Return STRICT JSON only — no commentary, no markdown fences — shaped exactly:
+{"<field>": {"value": "<string>", "confidence": <0..1>}, ...}
+Include ONLY the fields you were asked about.
+If you cannot find a field, return an empty string with confidence 0. NEVER guess — an empty answer leaves the first pass's value in place, which is the safe outcome.
+Dates use ISO YYYY-MM-DD. Phone numbers are digits only.`;
+
+export async function criticExtract(
+  env: { DB: D1Database; AI: Ai; KV?: KVNamespace },
+  rawText: string,
+  fieldNames: string[],
+): Promise<Partial<Record<string, ExtractedField>>> {
+  if (!fieldNames.length || !rawText.trim()) return {};
+  const asked = fieldNames.join(', ');
+  const res = await callAi(env, {
+    system: CRITIC_SYSTEM,
+    text: `Re-read the document below and report ONLY these fields: ${asked}\n\n---\n${rawText.slice(0, 24_000)}`,
+    maxTokens: 512,
+  });
+  const parsed = tryParseModelJson({ response: res.text });
+  const out: Partial<Record<string, ExtractedField>> = {};
+  for (const name of fieldNames) {
+    const v = (parsed as any)?.[name];
+    if (!v) continue;
+    const value = typeof v === 'string' ? v : String(v?.value ?? '');
+    const confidence = typeof v === 'object' && typeof v.confidence === 'number' ? v.confidence : 0.5;
+    out[name] = { value: value.trim(), confidence };
+  }
+  return out;
+}
+
+// docType is optional: extractFromText doesn't know the document's family
+// until AFTER extraction, so its call site omits it and behavior is
+// unchanged. Callers that already know the family (e.g. a future critic
+// pass re-invocation) can pass it to sharpen the system prompt for that
+// family's specific hazards.
+export function buildExtractionMessages(rawText: string, docType?: string): ChatMessage[] {
+  const system = docType
+    ? `${SYSTEM_PROMPT}\n\n${buildFamilyPrompt(docType)}`
+    : SYSTEM_PROMPT;
   return [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: system },
     { role: 'user', content: buildUserPrompt(rawText.trim()) },
   ];
 }
@@ -401,6 +656,11 @@ export async function extractFromText(
   // uses the chat template the adapter was trained on (the one emitted by
   // training/build-dataset.ts) instead of the default. Unset → stock 70B.
   lora?: string,
+  // Optional document family (see familyFromFileName / buildFamilyPrompt).
+  // Callers that can derive it from the source file name should pass it so
+  // the system prompt gets that family's specific layout guidance. Unset →
+  // behavior is byte-identical to before this parameter existed.
+  docType?: string,
 ): Promise<ExtractionResult> {
   const trimmed = rawText.trim();
   if (trimmed.length < 20) {
@@ -428,7 +688,7 @@ export async function extractFromText(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const out = await ai.run(TEXT_MODEL, {
-        messages: buildExtractionMessages(trimmed),
+        messages: buildExtractionMessages(trimmed, docType),
         temperature: 0.1,
         max_tokens: 2048,
         // raw:true ONLY with a LoRA — the adapter's training data carries the
@@ -531,15 +791,20 @@ export async function extractFromImageClaude(
 // drop-in for extractFromText that runs the SAME rich serve-doc system prompt on
 // Claude instead of Llama-70B. Returns null (not a failure result) when the key
 // is absent or the call errors, so callers fall back to the Workers-AI path.
+// `docType` is the packet family (see familyFromFileName / buildFamilyPrompt).
+// It appends the family's layout-specific guidance to the system prompt the
+// SAME way the Workers-AI leg does, so the family wiring is not silently inert
+// on the primary path the moment anthropic_api_key is set. Omitting it yields
+// the bare SYSTEM_PROMPT — byte-identical to the pre-parameter behavior.
 export async function extractFromTextClaude(
-  env: { DB: D1Database; AI: Ai }, rawText: string,
+  env: { DB: D1Database; AI: Ai }, rawText: string, docType?: string,
 ): Promise<ExtractionResult | null> {
   const trimmed = (rawText || '').trim();
   if (trimmed.length < 20) return null;
   const started = Date.now();
   try {
     const r = await callAi(env, {
-      system: SYSTEM_PROMPT,
+      system: docType ? `${SYSTEM_PROMPT}\n\n${buildFamilyPrompt(docType)}` : SYSTEM_PROMPT,
       text: `${buildUserPrompt(trimmed)}\n\nReturn ONLY the JSON object, no prose.`,
       maxTokens: 2048,
       providers: ['claude', 'openai'],
@@ -549,6 +814,112 @@ export async function extractFromTextClaude(
   } catch {
     return null;
   }
+}
+
+// ── Structured PDF text via Workers AI Markdown Conversion ────
+// env.AI.toMarkdown() converts PDFs WITHOUT invoking a model: it walks
+// the PDF StructTree (ISO 14289 / PDF-UA) and emits semantic Markdown,
+// falling back to raw text extraction when no structure tree exists.
+// That means it costs ZERO neurons and — critically — it does not
+// interleave the two-column Information Form the way positional text
+// extraction does.
+//
+// Verified against the Cloudflare docs 2026-07-26. Prefer this over the
+// container /extract-text round-trip; keep the container as fallback for
+// documents toMarkdown cannot read.
+
+export interface PdfTextResult {
+  text: string;
+  source: 'tomarkdown' | 'container' | 'empty';
+  structured: boolean;     // true when the converter produced heading structure
+  page_count: number;
+}
+
+interface ConversionResult {
+  name?: string;
+  format?: 'markdown' | 'text' | 'error';
+  data?: string;
+  error?: string;
+}
+
+// Workers AI toMarkdown() emits a FIXED scaffold around EVERY successful
+// conversion, model-free or not — verified against the live endpoint
+// 2026-07-26:
+//   # <filename>
+//   ## Metadata
+//   - PDFFormatVersion=1.4
+//   ...
+//   ## Contents
+//   ### Page 1
+//   <page text>
+// Those four heading forms (`# <name>`, `## Metadata`, `## Contents`,
+// `### Page N`) are unconditional boilerplate the converter prints
+// regardless of whether it found a real StructTree — a flat-text fallback
+// produces exactly this scaffold too. The old `HAS_STRUCTURE = /^#{1,6}\s+\S/m`
+// matched ANY ATX heading, so it matched the scaffold on every successful
+// call and `structured` was always true, unable to distinguish a genuine
+// semantic conversion from flat text wrapped in boilerplate.
+//
+// Only a heading that appears WITHIN the page content, beyond that fixed
+// scaffold, is evidence the converter actually walked the PDF's StructTree.
+const SCAFFOLD_HEADING = /^(#\s+\S.*|##\s+Metadata\s*|##\s+Contents\s*|###\s+Page\s+\d+\s*)$/;
+const ANY_HEADING = /^#{1,6}\s+\S/;
+
+function hasSemanticStructure(markdown: string): boolean {
+  return markdown.split('\n').some((rawLine) => {
+    const line = rawLine.trimEnd();
+    return ANY_HEADING.test(line) && !SCAFFOLD_HEADING.test(line);
+  });
+}
+
+// `Pick<Ai, 'toMarkdown'>` (not a hand-rolled `(files: unknown) => Promise<unknown>`
+// shape) so the real `env.AI` binding — whose `toMarkdown` is overloaded
+// (0-arg service accessor / array-in / single-doc-in) — is structurally
+// assignable. A collapsed single-signature shape rejects `Ai` at the call
+// site because TS resolves overload assignability against the FIRST
+// matching signature, which for `toMarkdown` is the 0-arg
+// `ToMarkdownService` accessor.
+export async function extractPdfMarkdown(
+  ai: Pick<Ai, 'toMarkdown'>,
+  pdfBytes: Uint8Array,
+  fileName: string,
+): Promise<PdfTextResult> {
+  const empty: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+  try {
+    const raw = await ai.toMarkdown({
+      name: fileName,
+      blob: new Blob([pdfBytes], { type: 'application/pdf' }),
+    });
+    const list: ConversionResult[] = Array.isArray(raw) ? raw as ConversionResult[] : [raw as ConversionResult];
+    const doc = list.find((d) => d?.name === fileName) ?? list[0];
+    if (!doc || doc.format === 'error' || !doc.data) return empty;
+
+    const structured = hasSemanticStructure(doc.data);
+    // Page count is derivable from the converter's own page headings.
+    const page_count = (doc.data.match(/^#{2,4}\s+Page\s+\d+/gim) || []).length;
+    return {
+      text: precleanText(doc.data),
+      source: 'tomarkdown',
+      structured,
+      page_count,
+    };
+  } catch {
+    // Binding unavailable or conversion blew up — the caller falls back to
+    // the container path. Never throw: a single unreadable document must
+    // not fail the whole packet.
+    return empty;
+  }
+}
+
+// A document whose text layer is a scan stub needs vision OCR. Threshold
+// is per-page so a 10-page scan isn't rescued by one page of metadata.
+const MIN_CHARS_PER_PAGE = 40;
+
+export function isScanStub(text: string, pageCount: number): boolean {
+  const len = (text || '').trim().length;
+  if (len === 0) return true;
+  const pages = Math.max(1, pageCount || 1);
+  return len / pages < MIN_CHARS_PER_PAGE;
 }
 
 // ── Container OCR helper ──────────────────────────────────────
@@ -720,10 +1091,51 @@ export function scrubPartyNoise(raw: string): string {
   s = s.replace(/\bfiling\s*#?\s*\d+/ig, ' ');                     // "Filing# 237921303"
   s = s.replace(/\be-?filed\b[^,;]*?(?:\bam\b|\bpm\b|\d{4})/ig, ' '); // "E-Filed 12/17/2025 11:28:33 AM"
   s = s.replace(/\b\d{1,3}(?:\s+\d{1,3}){1,}\b/g, ' ');            // line-number runs "8 9 10" (2+ only → keeps "Pizzeria 24")
-  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|et\s+al\.?)\b\.?/ig, ''); // trailing descriptors
+  // "et al" appears in the wild as "et al", "et al.", AND "et. al." — the
+  // period-after-"et" spelling is common on real captions and used to survive
+  // into `defendant` verbatim. `\bet\.?\s+al\.?` covers all three. The
+  // leading `\b` is required: without it "et" also matches mid-word (e.g.
+  // "Comet. Al Ventures" → "et. Al" inside "Comet." matches and truncates
+  // the name to "Com Ventures").
+  s = s.replace(/,?\s*(?:an\s+individual|individually|a\s+domestic[^,;]*|\bet\.?\s+al\.?)\b\.?/ig, ''); // trailing descriptors
   // Trim leftover separators — but keep a TRAILING period/hyphen: it's usually
   // part of an abbreviation ("N.A.", "Inc.", "L.L.C."), not noise.
   return s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.-]+/, '').replace(/[\s,;:]+$/, '').trim();
+}
+
+// Address class drives which attempt-window defaults apply. Only
+// CONFIRMED business language yields 'business'; everything else falls to
+// 'unknown', which the planner treats as residential (wider windows —
+// being wrong that way costs a wasted window, not a missed service).
+const BUSINESS_HINTS = /\b(business address|place of employment|commercial|office|suite|corporate address)\b/i;
+const RESIDENTIAL_HINTS = /\b(residen\w*|abode|dwelling|home address|apartment|apt\b)/i;
+
+export function normalizeAddressClass(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return 'unknown';
+  const lower = s.toLowerCase();
+  if (lower === 'business' || lower === 'residential' || lower === 'unknown') return lower;
+  // RESIDENTIAL IS TESTED FIRST, DELIBERATELY. Spec decision D-2: an
+  // unconfirmed address must never yield business timing. Real instructions
+  // mix both vocabularies — "SERVE AT HOME ADDRESS — apartment complex, use
+  // the leasing office entrance" contains "office" — and with business first
+  // that string returned 'business', which schedules weekday-only business
+  // windows at a residence and misses every evening and weekend attempt.
+  // Being wrong the other way costs one wasted window; being wrong this way
+  // costs the service.
+  if (RESIDENTIAL_HINTS.test(s)) return 'residential';
+  if (BUSINESS_HINTS.test(s)) return 'business';
+  return 'unknown';
+}
+
+// Tri-state: 'yes' | 'no' | '' (unknown). Never guess — an unknown
+// sub-service authorization must read as unknown, not as permission.
+export function normalizeYesNo(raw: string): string {
+  const s = (raw || '').trim().toLowerCase();
+  if (!s) return '';
+  if (/^(y|yes|true|1|authorized|permitted|allowed)$/.test(s)) return 'yes';
+  if (/^(n|no|false|0|not authorized|prohibited|denied)$/.test(s)) return 'no';
+  return '';
 }
 
 // Which target fields get which normalizer. Centralized so adding a new
@@ -733,11 +1145,23 @@ const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
 const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
 const DATE_FIELDS = new Set<TargetField>([
   'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
+  'attempt_start_not_before',
 ]);
+const ADDRESS_CLASS_FIELDS = new Set<TargetField>(['address_class']);
 // Party / institutional name fields that get the caption de-noiser.
+// ⚠️ ADDRESS FIELDS DO NOT BELONG HERE. scrubPartyNoise is a party-NAME
+// de-noiser; its line-number rule (`\b\d{1,3}(?:\s+\d{1,3}){1,}\b`) strips
+// any run of two or more short number tokens, which mangles a real street
+// address: "Apt 5 210 Main St" → "Apt Main St". registered_agent_address was
+// in this set and survived only because the sample's house number happened
+// to be four digits.
 const NAME_FIELDS = new Set<TargetField>([
   'plaintiff', 'defendant', 'recipient_business_name', 'registered_agent_name',
   'court_name', 'attorney_name',
+]);
+// Tri-state yes/no/'' fields — see normalizeYesNo.
+const YES_NO_FIELDS = new Set<TargetField>([
+  'witness_fee_tendered', 'sub_service_authorized_first_attempt',
 ]);
 
 // Apply the deterministic normalizers across a merged field map. Returns
@@ -767,6 +1191,8 @@ export function normalizeFields(
         if (iso) next = iso;
         else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
       }
+      else if (ADDRESS_CLASS_FIELDS.has(key)) next = normalizeAddressClass(value);
+      else if (YES_NO_FIELDS.has(key)) next = normalizeYesNo(value);
       else if (NAME_FIELDS.has(key)) {
         next = scrubPartyNoise(value);
         if (!next) conf = 0;            // scrubbed to nothing → it was all noise
@@ -799,6 +1225,9 @@ export interface QueueRow {
   plaintiff: string | null;
   defendant: string | null;
   court_date: string | null;
+  // Attorney/client job reference extracted from the document header (e.g. "Job: 16623863").
+  // Stored in sm_job_id when the intake is not sourced from ServeManager directly.
+  sm_job_id: string | null;
 }
 
 export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
@@ -837,5 +1266,7 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     defendant: get('defendant'),
     // hearing date → court_date; only a real calendar date (same guard as deadline).
     court_date: normalizeDeadline(get('hearing_date') || ''),
+    // Attorney/client job reference number from the document header.
+    sm_job_id: get('job_number'),
   };
 }

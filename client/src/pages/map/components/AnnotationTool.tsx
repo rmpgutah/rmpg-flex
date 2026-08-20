@@ -1,8 +1,11 @@
 // client/src/pages/map/components/AnnotationTool.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../../../utils/mapboxSafeLayer';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface Annotation {
   id: number;
@@ -120,17 +123,21 @@ export default function AnnotationTool({ map, onClose }: Props) {
   };
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-52 text-xs space-y-2 shadow-lg">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">Map Annotations</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-52 text-xs space-y-2 p-2" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="Map Annotations">
+        <IconButton aria-label="Close" onClick={onClose} className="text-rmpg-400 hover:text-rmpg-200 p-0.5">
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       {pendingLat !== null
         ? <div className="text-rmpg-300 text-[10px]">📍 {pendingLat.toFixed(5)}, {pendingLng!.toFixed(5)}</div>
         : <div className="text-rmpg-400 text-[10px]">Click map to place pin</div>}
       <input value={title} onChange={e => setTitle(e.target.value)}
         placeholder="Title…"
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px]" />
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px]" style={{ borderRadius: 2 }} />
       <textarea value={body} onChange={e => setBody(e.target.value)}
         placeholder="Notes (optional)…" rows={2}
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px] resize-none" />
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px] resize-none" style={{ borderRadius: 2 }} />
       <div className="flex gap-1">
         {COLORS.map(c => (
           <button key={c} aria-label={`Color ${c}`} onClick={() => setColor(c)}
@@ -139,16 +146,10 @@ export default function AnnotationTool({ map, onClose }: Props) {
         ))}
       </div>
       {error && <div className="text-red-400 text-[10px]">{error}</div>}
-      <div className="flex gap-2">
-        <button onClick={handleSave} disabled={saving}
-          className="flex-1 bg-brand-500 text-black font-bold py-1 rounded text-[10px] disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button onClick={onClose}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Done
-        </button>
-      </div>
+      <button onClick={handleSave} disabled={saving}
+        className="w-full bg-brand-500 text-black font-bold py-1 text-[10px] disabled:opacity-50" style={{ borderRadius: 2 }}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
       {annotations.length > 0 && (
         <div className="border-t border-surface-raised pt-2 space-y-1">
           {annotations.slice(0, 5).map(a => (

@@ -168,9 +168,9 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Search */}
       <div>
-        <label htmlFor="ff-linkpersonmodal-0" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Search Person</label>
+        <label htmlFor="ff-linkpersonmodal-0" className="block text-xs text-[color:var(--field-label-color)] font-bold uppercase tracking-wider mb-1">Search Person</label>
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-secondary" />
           <input id="ff-linkpersonmodal-0"
             type="text"
             className="input-dark pl-8"
@@ -211,7 +211,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-3 text-[11px] text-rmpg-400 mt-0.5">
+                  <div className="flex gap-3 text-[11px] text-text-secondary mt-0.5">
                     {person.dob && <span>DOB: {person.dob}</span>}
                     {person.phone && <span>{person.phone}</span>}
                   </div>
@@ -223,7 +223,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
         {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && !selectedPerson && (
           <div className="mt-1 flex items-center gap-2">
-            <p className="text-xs text-rmpg-400">No persons found</p>
+            <p className="text-xs text-text-secondary">No persons found</p>
             <button
               type="button"
               onClick={() => setShowCreatePerson(true)}
@@ -243,7 +243,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
             <span className="text-sm text-rmpg-100 font-medium">
               {selectedPerson.last_name}, {selectedPerson.first_name}
             </span>
-            <div className="flex gap-3 text-[11px] text-rmpg-400 mt-0.5">
+            <div className="flex gap-3 text-[11px] text-text-secondary mt-0.5">
               {selectedPerson.dob && <span>DOB: {selectedPerson.dob}</span>}
               {selectedPerson.phone && <span>{selectedPerson.phone}</span>}
             </div>
@@ -251,7 +251,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           <button
             type="button"
             onClick={() => { setSelectedPerson(null); setSearchQuery(''); setWarrantWarning(null); }}
-            className="text-xs text-rmpg-300 hover:text-rmpg-100"
+            className="text-xs text-text-secondary hover:text-text-primary"
           >
             Change
           </button>
@@ -284,7 +284,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Role */}
       <div>
-        <label htmlFor="ff-linkpersonmodal-1" className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Role</label>
+        <label htmlFor="ff-linkpersonmodal-1" className="block text-xs text-[color:var(--field-label-color)] font-bold uppercase tracking-wider mb-1">Role</label>
         <select id="ff-linkpersonmodal-1" className="select-dark" value={role} onChange={(e) => setRole(e.target.value)}>
           {options.person_role.map((r) => (
             <option key={r.value} value={r.value}>{r.label}</option>
@@ -294,7 +294,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
 
       {/* Notes */}
       <div>
-        <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
+        <label className="block text-xs text-[color:var(--field-label-color)] font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
         <RichTextArea
           className="textarea-dark"
           rows={2}
@@ -303,7 +303,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
           onChange={(e) => setNotes(e.target.value)}
           maxLength={2000}
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{notes.length}/2000</div>
+        <div className="text-[9px] text-fg-muted text-right mt-0.5">{notes.length}/2000</div>
       </div>
       {/* Create Person Modal */}
       <PersonFormModal

@@ -129,8 +129,8 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'left' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'left' ? '#fff' : 'var(--rmpg-500)',
-                borderBottom: mobileTab === 'left' ? '2px solid #888888' : '2px solid transparent',
+                color: mobileTab === 'left' ? '#fff' : 'var(--text-muted)',
+                borderBottom: mobileTab === 'left' ? '2px solid var(--text-muted)' : '2px solid transparent',
               }}
             >
               {leftLabel}
@@ -140,8 +140,8 @@ export default function SplitPanel({
               className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider text-center transition-colors"
               style={{
                 background: mobileTab === 'right' ? 'rgba(136, 136, 136, 0.2)' : 'transparent',
-                color: mobileTab === 'right' ? '#fff' : 'var(--rmpg-500)',
-                borderBottom: mobileTab === 'right' ? '2px solid #888888' : '2px solid transparent',
+                color: mobileTab === 'right' ? '#fff' : 'var(--text-muted)',
+                borderBottom: mobileTab === 'right' ? '2px solid var(--text-muted)' : '2px solid transparent',
               }}
             >
               {rightLabel}
@@ -191,7 +191,7 @@ export default function SplitPanel({
           style={{
             [isHorizontal ? 'width' : 'height']: '4px',
             cursor: isHorizontal ? 'col-resize' : 'row-resize',
-            background: isDragging ? '#888888' : 'linear-gradient(90deg, #242424, #2a2a2a, #242424)',
+            background: isDragging ? 'var(--border-default)' : 'linear-gradient(90deg, var(--surface-sunken), var(--surface-raised), var(--surface-sunken))',
             borderTop: '1px solid var(--border-strong)',
             borderBottom: '1px solid var(--border-subtle)',
             transition: isDragging ? 'none' : 'background 0.15s ease',

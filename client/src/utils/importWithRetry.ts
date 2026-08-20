@@ -14,42 +14,46 @@
 // references a chunk the CDN is still replicating (a reload there re-fails
 // instantly), then reload ONCE per 30s to pick up the fresh index.
 
-import { isChunkLoadError, tryReloadForChunkFailure } from './chunkRetry';
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+import React from 'react';
+import {
+  isChunkLoadError, tryReloadForChunkFailure, normalizeChunkError,
+  retryChunkImportInBrowser,
+} from './chunkRetry';
 
 /**
  * Dynamically import a module with stale-chunk resilience. Retries the import
  * in place, and on persistent failure reloads the page once to fetch the fresh
  * bundle. Returns a never-settling promise while a reload is in flight so the
  * caller doesn't surface a transient error to the user.
+ *
+ * The retry ladder itself (repair-then-retry, at 0/1.5s/4s) lives in
+ * `retryChunkImportInBrowser` (chunkRetry.ts) — shared with `lazyRetry` so a
+ * fix to the ladder applies to both call sites at once.
  */
 export async function importWithRetry<T>(factory: () => Promise<T>): Promise<T> {
   try {
-    return await factory();
-  } catch {
-    // First failure — retry in place before escalating to a reload.
-  }
-  try {
-    await sleep(1500);
-    return await factory();
-  } catch {
-    /* fall through to the longer retry */
-  }
-  try {
-    await sleep(4000);
-    return await factory();
+    return await retryChunkImportInBrowser(factory);
   } catch (err) {
     if (isChunkLoadError(err)) {
-      // Reload once per 30s to pick up the fresh index, holding this promise
-      // pending while the reload navigates away. The hold is BOUNDED: if the
-      // reload never tears the page down (CDN still propagating, offline, stale
-      // SW shell), it rejects after ~10s so the awaiting caller's catch fires
-      // (a toast) instead of the feature hanging silently forever. Returns null
-      // inside the 30s window → fall through and rethrow.
       const held = tryReloadForChunkFailure<T>(err);
       if (held) return held;
     }
     throw err;
   }
+}
+
+/**
+ * React.lazy() with stale-chunk resilience: retry ladder → poison repair →
+ * bounded reload. Shared by App.tsx route splits and any component-level lazy
+ * import (Layout, MobileHomePage, map, etc.).
+ */
+export function lazyRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>,
+): React.LazyExoticComponent<T> {
+  const withRetry = () => retryChunkImportInBrowser(factory);
+  return React.lazy(() => withRetry().catch((err) => {
+    const held = tryReloadForChunkFailure<{ default: T }>(err);
+    if (held) return held;
+    throw normalizeChunkError(err);
+  }));
 }

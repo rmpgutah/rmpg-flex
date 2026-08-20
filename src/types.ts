@@ -2,6 +2,7 @@
 // time the import is elided, so containers/pdfToolsContainer.ts → types.ts
 // stays one-way at runtime.
 import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+import type { TesseractOcrContainer } from './containers/tesseractOcrContainer';
 import type { AnalyticsPipeline } from './utils/analytics';
 
 export type Bindings = {
@@ -14,14 +15,33 @@ export type Bindings = {
   // User-uploaded files. PR-E uses the business-photos/ prefix; future
   // R2-backed routes share this bucket with their own key prefixes.
   UPLOADS: R2Bucket;
+  TESSERACT_TRAINING: R2Bucket;
   // Desktop/mobile installers R2 bucket. Served via /downloads/* and
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
+  // Kiosk Linux sub-project 4: device registry. Optional — routes in
+  // src/routes/kioskLinux.ts return { ok:false, code:'not_configured' }
+  // when unset, per the established pattern for optional integrations.
+  KIOSK_DB?: D1Database;
+  KIOSK_DEVICES?: R2Bucket;
+  // R2 S3-API credentials for presigned direct uploads (src/utils/r2Presign.ts).
+  // Optional — presign routes return `{ ok:false, code:'not_configured' }` when
+  // unset instead of crashing. Set via `wrangler secret put R2_ACCESS_KEY_ID`
+  // and `wrangler secret put R2_SECRET_ACCESS_KEY` (never committed).
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  // Cloudflare account id — not secret, also set as a plain var below.
+  R2_ACCOUNT_ID?: string;
   JWT_SECRET: string;
   // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
   // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
   // a stable seed from JWT_SECRET so signing still works (see pdfTools.ts).
   PDF_SIGNING_KEY?: string;
+  // Master Key-Encryption-Key for envelope-encrypted R2 storage (src/utils/encryptedR2.ts).
+  // Wraps a fresh random per-file Data Encryption Key for each protected upload. Base64 of
+  // 32 random bytes — provision via:
+  //   node scripts/generate-quantum-key.mjs 32 | wrangler secret put FILE_ENCRYPTION_KEK
+  FILE_ENCRYPTION_KEK?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —
@@ -33,6 +53,9 @@ export type Bindings = {
   // the geocode route also hands it to the client. Absent → ETA falls back to
   // a straight-line estimate and the client geocoder falls back to Nominatim.
   MAPBOX_ACCESS_TOKEN?: string;
+  // Secret Mapbox token for server-side route matrix calls (Directions API).
+  // Optional — route optimization falls back to haversine when unset.
+  MAPBOX_SECRET_TOKEN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // DeepResearchDO namespace — one instance per research job; alarm-driven
@@ -65,6 +88,12 @@ export type Bindings = {
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
   // the stub type correctly.
   PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
+  // Custom Tesseract OCR sidecar — self-hosted, fine-tuned, data-sovereignty
+  // motivated (see docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+  // NOT wired into production OCR — measurement-only via
+  // scripts/serve-intake-vision-ab.ts. Parameterized so getContainer<T>
+  // narrows the stub type correctly, matching the PDF_TOOLS pattern above.
+  TESSERACT_OCR: DurableObjectNamespace<TesseractOcrContainer>;
   // Workers AI — vision-LLM OCR + structured field extraction for
   // process-service intake. See src/routes/serveIntake.ts.
   AI: Ai;
@@ -79,9 +108,17 @@ export type Bindings = {
   FIRECRAWL_API_URL?: string;
   ALPR_EDGE_SECRET?: string;
   CPG_ENC_KEY?: string;
+  TRACCAR_ENC_KEY?: string;
   ROBOFLOW_API_KEY?: string;
   ROBOFLOW_API_URL?: string;
+  USPS_USER_ID?: string;
+  OPENCORPORATES_API_KEY?: string;
+  NUMVERIFY_API_KEY?: string;
+  CARXE_API_KEY?: string;
+  CARXE_API_BASE?: string;
+  RESEND_API_KEY?: string;
   IPED_API_KEY?: string;
+  EMAIL_FIELD_ENCRYPTION_KEK?: string;
   // Analytics pipeline (optional — provisioned separately)
   ANALYTICS?: AnalyticsPipeline;
   EVENTS?: AnalyticsPipeline;
@@ -100,12 +137,31 @@ export type Bindings = {
   DIALER_OIDC_CLIENT_ID?: string;
   DIALER_OIDC_CLIENT_SECRET?: string;
   DIALER_OIDC_REDIRECT_URI?: string;
+  // Outbound status-sync webhook to Dial Connect (fire-and-forget, called
+  // from POST /:id/status in src/routes/dispatch/calls.ts). Set via
+  // wrangler.toml vars (URL) + `wrangler secret put DIAL_CONNECT_WEBHOOK_SECRET`.
+  DIAL_CONNECT_WEBHOOK_URL?: string;
+  DIAL_CONNECT_WEBHOOK_SECRET?: string;
+  // WebBrowserSessionDO namespace — one instance per active Web Company
+  // Browser session (idFromName(sessionId)). Holds a real headless Chrome
+  // instance via Browser Rendering and streams screenshot frames to the
+  // one connected client. See src/durable-objects/WebBrowserSessionDO.ts.
+  WEB_BROWSER_SESSION: DurableObjectNamespace;
+  // Browser Rendering binding — passed to @cloudflare/puppeteer's
+  // puppeteer.launch(). Fetcher is the correct binding type here (same
+  // shape as a service binding); puppeteer.launch() accepts it structurally.
+  BROWSER: Fetcher;
 };
 
 export type Variables = {
   user: { id: number; username: string; role: string; full_name: string };
   userId: number;
+  sessionId?: string | null;
   traceId?: string;
+  // Set by src/middleware/kioskDeviceAuth.ts on successful device-bearer-token
+  // auth (checkin/upload routes in src/routes/kioskLinux.ts) — distinct from
+  // the JWT `user` above, since devices have no user account.
+  kioskDevice?: { id: string; label: string };
 };
 
 export type Env = { Bindings: Bindings; Variables: Variables };

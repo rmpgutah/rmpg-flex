@@ -65,7 +65,7 @@ export default function PlateMagnifier({
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); rafRef.current = null; };
   }, [videoRef]);
 
-  const col = confirmed ? '#22d3ee' : '#f59e0b';
+  const col = confirmed ? 'var(--sev-info)' : 'var(--sev-warn)';
   return (
     <div className="absolute bottom-16 right-3 w-[230px] bg-black/85 border" style={{ borderColor: col }}>
       <div className="flex items-center justify-between px-1.5 py-0.5 border-b" style={{ borderColor: col }}>

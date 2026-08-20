@@ -8,18 +8,21 @@
 // ============================================================
 
 import { useRef, useState, useEffect } from 'react';
-import { X, Video, Shield, Maximize2, Minimize2, Edit2, Printer } from 'lucide-react';
+import { X, Video, Shield, Maximize2, Minimize2, Edit2, Printer, ScanSearch, AlertTriangle, Loader2 } from 'lucide-react';
 import type { BodyCamVideo } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
 // Note: VideoHudOverlay was imported but never referenced — the HUD is
 // rendered inline below. Removed during the page-25 audit pass.
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiPostForm } from '../hooks/useApi';
 import {
   openBodycamVideoCustodyPdf,
   type BodycamCustodyEntry,
 } from '../utils/bodycamVideoCustodyPdf';
+import { sampleFramesForAnalysis } from '../utils/videoAiAnalyze';
+import type { AnalysisResult } from '../utils/videoAiAnalyze';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Props {
   isOpen: boolean;
@@ -41,6 +44,34 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [printing, setPrinting] = useState(false);
+
+  // AI object-detection ("Analyze") — samples frames from the already-loaded
+  // <video> element and posts them to the Worker for weapon/force/vehicle/
+  // scene detection. `localAnalysis` (this session's freshly-run result)
+  // takes priority over `video.ai_analysis_json` (a prior run persisted on
+  // the row), so re-running Analyze always reflects the latest pass.
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [localAnalysis, setLocalAnalysis] = useState<AnalysisResult | null>(null);
+  // Synchronous re-entrancy guard for handleAnalyze — `analyzing` state is
+  // only visible after React commits, so two rapid clicks before that commit
+  // can both pass an `if (analyzing) return` check. A ref is readable/settable
+  // synchronously within the same event-handler invocation, closing that race.
+  const analyzingRef = useRef(false);
+
+  // Reset all per-video AI-analysis state whenever the displayed video
+  // changes. VideoPlayer is a single reused instance (BodyCamerasPage renders
+  // it with no `key`), so without this reset a prior video's findings
+  // (weapon-detection banner, seek buttons, etc.) would stay visible against
+  // a newly opened, unrelated video — a misattribution risk for evidence.
+  useEffect(() => {
+    setLocalAnalysis(null);
+    setAnalyzeError(null);
+    setAnalyzing(false);
+    setAnalyzeProgress(null);
+    analyzingRef.current = false;
+  }, [video?.id]);
 
   // Fire a chain-of-custody "viewed" event on open so the audit_log
   // captures WHO opened the player and WHEN, even when no metadata
@@ -94,6 +125,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     const d = video.recorded_at ? parseTimestamp(video.recorded_at) : new Date();
     const playback = new Date(d.getTime() + seconds * 1000);
     return playback.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: '2-digit', day: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     }).replace(',', '');
@@ -121,10 +153,26 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();
+  const classLabel = (cls: string) => toDisplayLabel(cls).toUpperCase();
+
+  // Prefer this-session's freshly-run analysis over whatever was already
+  // persisted on the row.
+  const analysis: AnalysisResult | null = localAnalysis ?? (video.ai_analysis_json ? (() => {
+    try { return JSON.parse(video.ai_analysis_json); } catch { return null; }
+  })() : null);
+
+  const seekToTime = (t: number) => {
+    if (videoRef.current) videoRef.current.currentTime = t;
+  };
+
+  const formatMmSs = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
 
   // Empty until signing resolves — the <video> element gets no src rather
   // than a JWT-bearing URL it would immediately fetch.
@@ -153,6 +201,60 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
     }
   };
 
+  // Sample frames off the live <video> element and post them for AI object
+  // detection (weapons/force indicators/vehicles/scenes/officer-safety
+  // flags). Advisory only — a review aid, not a determination.
+  const handleAnalyze = async () => {
+    const vid = videoRef.current;
+    if (!vid || !video || analyzing || analyzingRef.current) return;
+    analyzingRef.current = true;
+    // Capture the video this request belongs to so a late-resolving result
+    // can be discarded if the user has since switched to a different video.
+    const requestedVideoId = video.id;
+    setAnalyzing(true);
+    setAnalyzeError(null);
+    setAnalyzeProgress(null);
+    try {
+      const frames = await sampleFramesForAnalysis(vid, (done, total) => {
+        if (requestedVideoId !== video?.id) return;
+        setAnalyzeProgress({ done, total });
+      });
+      if (requestedVideoId !== video?.id) return; // user navigated away — discard silently
+      if (frames.length === 0) {
+        setAnalyzeError('No frames could be captured for analysis.');
+        return;
+      }
+      const formData = new FormData();
+      frames.forEach((f) => {
+        formData.append('frame', f.blob, `frame_${f.timestamp}.jpg`);
+      });
+      formData.append('timestamps', JSON.stringify(frames.map((f) => f.timestamp)));
+
+      // Server analyzes frames sequentially against Workers AI's vision model
+      // (up to ANALYSIS_MAX_FRAMES = 20, deliberately not parallelized — see
+      // src/routes/personnel/bodyCameraUploads.ts). 20 sequential vision calls
+      // can comfortably exceed the default 60s fetch timeout, so this request
+      // gets a generous 3-minute allowance instead.
+      const result = await apiPostForm<{ success: boolean; frames_analyzed: number; frames_requested: number; analysis: AnalysisResult }>(
+        `/personnel/bodycam-videos/${requestedVideoId}/analyze`,
+        formData,
+        { timeoutMs: 180_000 },
+      );
+      if (requestedVideoId !== video?.id) return; // stale result — video switched mid-request
+      setLocalAnalysis(result.analysis);
+    } catch (err: any) {
+      if (requestedVideoId !== video?.id) return; // stale error — don't surface against the new video
+      console.warn('[VideoPlayer] AI analysis failed:', err);
+      setAnalyzeError(err?.message || 'AI analysis failed.');
+    } finally {
+      if (requestedVideoId === video?.id) {
+        setAnalyzing(false);
+        setAnalyzeProgress(null);
+        analyzingRef.current = false;
+      }
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -165,7 +267,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   const classColor = VIDEO_CLASSIFICATION_COLORS[video.classification] || 'bg-rmpg-700 text-rmpg-300';
 
   const overlayInfo = video.overlay_status ? {
-    label: video.overlay_status.replace(/_/g, ' ').toUpperCase(),
+    label: toDisplayLabel(video.overlay_status).toUpperCase(),
     cls: video.overlay_status === 'complete' ? 'border-green-500 text-green-400' : video.overlay_status === 'error' ? 'border-red-500 text-red-400' : 'border-amber-500 text-amber-400'
   } : null;
 
@@ -174,7 +276,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
       <div
         ref={containerRef}
         className={`bg-black border border-rmpg-800 rounded-sm shadow-md overflow-hidden ${
-          isFullscreen ? 'w-full h-full' : 'w-[900px] max-h-[90vh]'
+          isFullscreen ? 'w-full h-full' : 'w-[900px] max-w-[calc(100vw-2rem)] max-h-[88dvh]'
         }`}
         onClick={e => e.stopPropagation()}
       >
@@ -218,7 +320,17 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-rmpg-500 hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              className="toolbar-btn p-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Run AI object detection on this footage (review aid, not a determination)"
+              aria-label="Analyze footage with AI object detection"
+            >
+              {analyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ScanSearch className="w-3.5 h-3.5" />}
+            </button>
+            <button type="button" onClick={() => setHudVisible(!hudVisible)} className="text-[9px] font-mono text-fg-muted hover:text-rmpg-200 px-1.5 py-0.5 transition-colors" title="Toggle HUD overlay">
               HUD {hudVisible ? 'ON' : 'OFF'}
             </button>
             <button type="button" onClick={toggleFullscreen} className="toolbar-btn p-1" title="Toggle fullscreen">
@@ -243,7 +355,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
               Your browser does not support the video tag.
             </video>
           ) : (
-            <div className="w-full h-[40vh] flex items-center justify-center text-[11px] text-rmpg-500">
+            <div className="w-full h-[40vh] flex items-center justify-center text-[11px] text-fg-muted">
               AUTHORIZING STREAM…
             </div>
           )}
@@ -308,17 +420,110 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
             <span>DUR: <span className="text-rmpg-200">{formatDuration(video.duration_seconds)}</span></span>
             <span>SIZE: <span className="text-rmpg-200">{formatSize(video.file_size)}</span></span>
             <span>REC: <span className="text-rmpg-200">{formatDate(video.recorded_at)}</span></span>
-            <span>RETENTION: <span className="text-rmpg-200 capitalize">{video.retention_status?.replace(/_/g, ' ') || '-'}</span></span>
+            <span>RETENTION: <span className="text-rmpg-200 capitalize">{toDisplayLabel(video.retention_status) || '-'}</span></span>
           </div>
           {video.notes && (
-            <p className="text-[9px] text-rmpg-500 italic mt-1 truncate">{video.notes}</p>
+            <p className="text-[9px] text-fg-muted italic mt-1 truncate">{video.notes}</p>
           )}
         </div>
 
         {video.transcript && (
           <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
-            <p className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wide mb-1">Transcript</p>
+            <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide mb-1">Transcript</p>
             <p className="text-[10px] text-rmpg-300 leading-relaxed max-h-24 overflow-y-auto scrollbar-dark">{video.transcript}</p>
+          </div>
+        )}
+
+        {/* AI Findings — advisory review aid, not a determination. */}
+        {(analyzing || analyzeError || analysis) && (
+          <div className="px-3 py-2 bg-surface-deep border-t border-rmpg-800">
+            {analyzing ? (
+              <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide flex items-center gap-1.5">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                {analyzeProgress ? `Analyzing — frame ${analyzeProgress.done} of ${analyzeProgress.total}` : 'Analyzing…'}
+              </p>
+            ) : (
+              <>
+                {analyzeError && (
+                  <p className="text-[9px] font-mono text-amber-400 flex items-center gap-1.5 mb-1">
+                    <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                    {analyzeError}
+                  </p>
+                )}
+                {analysis && (
+                  <>
+                    <p className="text-[9px] font-mono text-fg-muted uppercase tracking-wide mb-1">
+                      AI Findings — {analysis.frame_count} frame(s) analyzed
+                    </p>
+                    {!analysis.weapon && !analysis.force_indicators && analysis.vehicles.length === 0 &&
+                      analysis.scene_types.length === 0 && analysis.officer_safety_flags.length === 0 ? (
+                      <p className="text-[10px] text-fg-muted italic">No findings.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {analysis.weapon && (
+                          <button
+                            type="button"
+                            onClick={() => seekToTime(analysis.weapon!.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Weapon detected — {Math.round(analysis.weapon.max_confidence * 100)}% confidence — review required
+                            <span className="text-fg-muted">(jump to {formatMmSs(analysis.weapon.timestamps[0])})</span>
+                          </button>
+                        )}
+                        {analysis.force_indicators && (
+                          <button
+                            type="button"
+                            onClick={() => seekToTime(analysis.force_indicators!.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Force indicator detected — {Math.round(analysis.force_indicators.max_confidence * 100)}% confidence — review required
+                            <span className="text-fg-muted">(jump to {formatMmSs(analysis.force_indicators.timestamps[0])})</span>
+                          </button>
+                        )}
+                        {analysis.officer_safety_flags.map((flag, i) => (
+                          <button
+                            key={`safety-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(flag.timestamp)}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                            Officer safety flag: {flag.flag} — review required
+                            <span className="text-fg-muted">(jump to {formatMmSs(flag.timestamp)})</span>
+                          </button>
+                        ))}
+                        {analysis.vehicles.map((v, i) => (
+                          <button
+                            key={`vehicle-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(v.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                          >
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-fg-muted" />
+                            Vehicle: {v.description}
+                            <span className="text-fg-muted">(jump to {formatMmSs(v.timestamps[0])})</span>
+                          </button>
+                        ))}
+                        {analysis.scene_types.map((s, i) => (
+                          <button
+                            key={`scene-${i}`}
+                            type="button"
+                            onClick={() => seekToTime(s.timestamps[0])}
+                            className="w-full text-left flex items-center gap-1.5 text-[10px] text-rmpg-300 hover:text-rmpg-100 transition-colors"
+                          >
+                            <ScanSearch className="w-2.5 h-2.5 flex-shrink-0 text-fg-muted" />
+                            Scene: {s.type}
+                            <span className="text-fg-muted">(jump to {formatMmSs(s.timestamps[0])})</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

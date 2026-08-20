@@ -19,8 +19,6 @@ import {
   type GalleryCapture, type CaptureFilter, type CaptureSource, type ConfidenceBand,
 } from '../utils/alprOverlay';
 
-const GOLD = '#d4a017';
-
 /** One capture tile: image + overlay (box or plate chip) + meta footer. */
 function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: (p: string) => void; onEdit?: (c: GalleryCapture) => void }) {
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
@@ -31,7 +29,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
   const boxes = useMemo(() => detectionBoxes(cap.detections, nat?.w, nat?.h), [cap.detections, nat]);
   const band = confidenceBand(cap.confidence, cap.accepted);
   const source = captureSource(cap);
-  const boxColor = cap.alerted ? '#ef4444' : band === 'high' ? GOLD : 'var(--rmpg-400)';
+  const boxColor = cap.alerted ? 'var(--sev-critical)' : band === 'high' ? 'var(--accent-gold-300)' : 'var(--rmpg-400)';
 
   // Display plate: prefer canonical_plate (from the trust package) if available.
   const displayPlate = (cap as any).canonical_plate || cap.plate;
@@ -79,7 +77,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
             {sourceLabel(source)}
           </span>
           {cap.event_type && (
-            <span className="text-[8px] px-1 py-[1px] bg-black/75 text-[#888] border border-border-subtle">
+            <span className="text-[8px] px-1 py-[1px] bg-black/75 text-fg-muted border border-border-subtle">
               {toDisplayLabel(String(cap.event_type))}
             </span>
           )}
@@ -96,7 +94,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
           <div className="flex items-end justify-between gap-1">
             <span
               className="text-base leading-none tracking-[0.18em] font-semibold"
-              style={{ color: cap.alerted ? '#fca5a5' : band === 'high' ? '#fff' : 'var(--rmpg-200)' }}>
+              style={{ color: cap.alerted ? 'var(--sev-critical-soft)' : band === 'high' ? 'var(--text-primary)' : 'var(--text-primary)' }}>
               {displayPlate || '—'}
             </span>
             <TrustBadge trust={trust} />
@@ -105,7 +103,7 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
       </button>
       <div className="px-1.5 py-1 text-[9px] text-rmpg-400 flex items-center justify-between gap-1">
         <span className="truncate">{cap.state ? `${cap.state} · ` : ''}{cap.device_name || cap.location_text || '—'}</span>
-        <span className="shrink-0">{cap.created_at ? parseTimestamp(cap.created_at).toLocaleString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+        <span className="shrink-0">{cap.created_at ? parseTimestamp(cap.created_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</span>
       </div>
       {/* Human-verification row — distinct from the OCR TrustBadge above. */}
       <div className="px-1.5 pb-1 flex items-center justify-between gap-1">
@@ -116,10 +114,10 @@ function CaptureTile({ cap, onPlate, onEdit }: { cap: GalleryCapture; onPlate?: 
         ) : reviewStatus === 'rejected' ? (
           <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-red-800 text-red-400">REJECTED</span>
         ) : (
-          <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-border-subtle text-[#888]">UNVERIFIED</span>
+          <span className="text-[8px] font-bold tracking-wider px-1 py-[1px] border border-border-subtle text-fg-muted">UNVERIFIED</span>
         )}
         <button type="button" onClick={() => onEdit?.(cap)}
-          className="text-[8px] font-bold tracking-wider px-1.5 py-[1px] border border-[#d4a017] text-[#d4a017] hover:bg-[#1a1400] flex items-center gap-0.5">
+          className="text-[8px] font-bold tracking-wider px-1.5 py-[1px] border border-[color:var(--field-label-color)] [color:var(--field-label-color)] hover:bg-surface-sunken flex items-center gap-0.5">
           <Pencil className="w-2.5 h-2.5" /> EDIT
         </button>
       </div>
@@ -176,28 +174,28 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
       {/* Filter bar */}
       <div className="border border-border-default bg-surface-sunken p-2 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[9px] font-semibold text-[#d4a017] tracking-wider">CAPTURE GALLERY</span>
-          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-[#888] hover:text-rmpg-100 flex items-center gap-1">
+          <span className="text-[9px] font-semibold [color:var(--field-label-color)] tracking-wider">CAPTURE GALLERY</span>
+          <button onClick={load} aria-label="Refresh captures" title="Refresh captures" className="text-[9px] text-fg-muted hover:text-rmpg-100 flex items-center gap-1">
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> {shown.length}/{caps.length}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {SOURCE_TABS.map((t) => (
             <button key={t.key} onClick={() => setFilter((f) => ({ ...f, source: t.key }))}
-              className={`text-[9px] px-2 py-1 border ${filter.source === t.key ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#888]'}`}>
+              className={`text-[9px] px-2 py-1 border ${filter.source === t.key ? 'border-[color:var(--field-label-color)] [color:var(--field-label-color)] bg-surface-sunken' : 'border-border-default text-fg-muted'}`}>
               {t.label}
             </button>
           ))}
           <span className="w-px h-4 bg-border-default mx-0.5" />
           {BAND_TABS.map((t) => (
             <button key={t.key} onClick={() => setFilter((f) => ({ ...f, band: t.key }))}
-              className={`text-[9px] px-2 py-1 border ${filter.band === t.key ? 'border-[#d4a017] text-[#d4a017] bg-[#1a1400]' : 'border-border-default text-[#888]'}`}>
+              className={`text-[9px] px-2 py-1 border ${filter.band === t.key ? 'border-[color:var(--field-label-color)] [color:var(--field-label-color)] bg-surface-sunken' : 'border-border-default text-fg-muted'}`}>
               {t.label}
             </button>
           ))}
           <span className="w-px h-4 bg-border-default mx-0.5" />
           <button onClick={() => setFilter((f) => ({ ...f, hits: f.hits === 'hits' ? 'all' : 'hits' }))}
-            className={`text-[9px] px-2 py-1 border flex items-center gap-1 ${filter.hits === 'hits' ? 'border-red-600 text-red-300 bg-red-950/50' : 'border-border-default text-[#888]'}`}>
+            className={`text-[9px] px-2 py-1 border flex items-center gap-1 ${filter.hits === 'hits' ? 'border-red-600 text-red-300 bg-red-950/50' : 'border-border-default text-fg-muted'}`}>
             <AlertTriangle className="w-2.5 h-2.5" /> HITS{hitCount ? ` (${hitCount})` : ''}
           </button>
         </div>
@@ -205,24 +203,24 @@ export default function AlprCaptureGallery({ onPlate }: { onPlate?: (plate: stri
           <input
             value={filter.plate || ''} onChange={(e) => setFilter((f) => ({ ...f, plate: e.target.value }))}
             placeholder="Plate…"
-            className="text-[10px] bg-black border border-border-default text-rmpg-300 px-2 py-1 w-24 focus:border-[#d4a017] focus:outline-none font-mono uppercase" />
+            className="text-[10px] bg-black border border-border-default text-rmpg-300 px-2 py-1 w-24 focus:border-[color:var(--field-label-color)] focus:outline-none font-mono uppercase" />
           {eventTypes.length > 0 && (
             <select value={filter.eventType || ''} onChange={(e) => setFilter((f) => ({ ...f, eventType: e.target.value || undefined }))}
-              className="text-[10px] bg-black border border-border-default text-rmpg-300 px-1 py-1 focus:border-[#d4a017] focus:outline-none">
+              className="text-[10px] bg-black border border-border-default text-rmpg-300 px-1 py-1 focus:border-[color:var(--field-label-color)] focus:outline-none">
               <option value="">All events</option>
               {eventTypes.map((t) => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
             </select>
           )}
           {(filter.plate || filter.eventType || filter.source !== 'all' || filter.band !== 'all' || filter.hits === 'hits') && (
             <button onClick={() => setFilter({ source: 'all', band: 'all', hits: 'all' })}
-              className="text-[9px] px-2 py-1 border border-border-default text-[#888] hover:text-rmpg-100">CLEAR</button>
+              className="text-[9px] px-2 py-1 border border-border-default text-fg-muted hover:text-rmpg-100">CLEAR</button>
           )}
         </div>
       </div>
 
       {err && <div className="border border-red-600 text-red-300 text-[11px] px-3 py-2 bg-red-950/40">{err}</div>}
       {!loading && !err && shown.length === 0 && (
-        <div className="border border-border-default text-[11px] text-[#888] px-3 py-6 text-center">
+        <div className="border border-border-default text-[11px] text-fg-muted px-3 py-6 text-center">
           {caps.length === 0
             ? 'No captures yet. Dashcam reads appear here once media sync runs; field/manual scans land here too.'
             : 'No captures match the current filters.'}

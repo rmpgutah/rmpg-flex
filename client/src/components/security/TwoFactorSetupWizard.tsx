@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Shield, QrCode, Keyboard, Copy, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import BackupCodesDisplay from './BackupCodesDisplay';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 type WizardStep = 'intro' | 'scan' | 'verify' | 'backup' | 'complete';
 
@@ -41,7 +42,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       let qr = data.qrCodeDataUri as string | null;
       if (!qr && data.otpauthUrl) {
         // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
-        const QRCode = (await import('qrcode')).default;
+        const QRCode = (await importWithRetry(() => import('qrcode'))).default;
         qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
       }
       setQrDataUri(qr || '');
@@ -49,8 +50,9 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       setStep('scan');
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const confirmSetup = async () => {
@@ -76,8 +78,9 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
     } catch (err: any) {
       setError(err.message);
       setVerifyCode('');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const copyManualKey = async () => {
@@ -102,12 +105,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         {(['intro', 'scan', 'verify', 'backup'] as WizardStep[]).map((s, i) => (
           <div
             key={s}
-            className="flex-1 h-1 transition-colors duration-300"
-            style={{
-              background: ['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i
-                ? '#888888'
-                : 'var(--border-subtle)',
-            }}
+            className={`flex-1 h-1 transition-colors duration-300 ${['intro', 'scan', 'verify', 'backup'].indexOf(step) >= i ? 'bg-fg-muted' : 'bg-[color:var(--border-subtle)]'}`}
           />
         ))}
       </div>
@@ -116,20 +114,20 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {step === 'intro' && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 panel-inset" style={{ background: 'rgba(42,42,42,0.6)' }}>
-              <Shield className="w-5 h-5" style={{ color: '#d4a017' }} />
+            <div className="p-2 panel-inset bg-black/60">
+              <Shield className="w-5 h-5 text-accent-silver-400" />
             </div>
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
                 Enable Two-Factor Authentication
               </h3>
-              <p className="text-[10px] mt-0.5 text-rmpg-500">
+              <p className="text-[10px] mt-0.5 text-fg-muted">
                 Add an extra layer of security to your account
               </p>
             </div>
           </div>
 
-          <div className="space-y-2 text-[10px]" style={{ color: '#888888' }}>
+          <div className="space-y-2 text-[10px] text-fg-muted">
             <p>You will need an authenticator app such as:</p>
             <ul className="space-y-1 pl-4">
               <li className="flex items-center gap-2">
@@ -168,13 +166,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Scan QR */}
       {step === 'scan' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#888888' }}>
+          <p className="text-[10px] text-fg-muted">
             Scan this QR code with your authenticator app:
           </p>
 
           {/* QR code */}
           <div className="flex justify-center">
-            <div className="p-3" style={{ background: '#ffffff', borderRadius: 2 }}>
+            <div className="p-3 bg-white" style={{ borderRadius: 2 }}>
               {qrDataUri && <img src={qrDataUri} alt="2FA QR Code" width={180} height={180} />}
             </div>
           </div>
@@ -182,8 +180,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           {/* Manual key toggle */}
           <button type="button"
             onClick={() => setShowManual(!showManual)}
-            className="text-[10px] flex items-center gap-1 mx-auto"
-            style={{ color: '#888888' }}
+            className="text-[10px] flex items-center gap-1 mx-auto text-fg-muted"
           >
             <Keyboard className="w-3 h-3" />
             {showManual ? 'Hide manual key' : "Can't scan? Enter key manually"}
@@ -198,7 +195,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
                 {manualKey}
               </span>
               <button type="button" onClick={copyManualKey} className="toolbar-btn p-1">
-                {keyCopied ? <Check className="w-3 h-3" style={{ color: '#22c55e' }} /> : <Copy className="w-3 h-3" />}
+                {keyCopied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
               </button>
             </div>
           )}
@@ -215,7 +212,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {/* Step: Verify */}
       {step === 'verify' && (
         <div className="space-y-4">
-          <p className="text-[10px]" style={{ color: '#888888' }}>
+          <p className="text-[10px] text-fg-muted">
             Enter the 6-digit code from your authenticator app to confirm setup:
           </p>
 
@@ -234,7 +231,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
           />
 
           {error && (
-            <div className="flex items-center gap-2 text-[10px]" style={{ color: '#ef4444' }}>
+            <div className="flex items-center gap-2 text-[10px] text-red-500">
               <AlertTriangle className="w-3 h-3" />
               {error}
             </div>
@@ -263,7 +260,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <span className="led-dot led-green" />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>
+            <span className="text-xs font-bold uppercase tracking-wider text-green-500">
               2FA Enabled Successfully
             </span>
           </div>
@@ -282,14 +279,14 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
       {step === 'complete' && (
         <div className="text-center py-4 space-y-3">
           <div className="flex justify-center">
-            <div className="p-3 panel-inset" style={{ background: 'rgba(34,197,94,0.1)' }}>
-              <Shield className="w-8 h-8" style={{ color: '#22c55e' }} />
+            <div className="p-3 panel-inset bg-green-500/10">
+              <Shield className="w-8 h-8 text-green-500" />
             </div>
           </div>
           <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
             Setup Complete
           </h3>
-          <p className="text-[10px] text-rmpg-500">
+          <p className="text-[10px] text-fg-muted">
             Your account is now protected with two-factor authentication.
           </p>
         </div>
@@ -297,7 +294,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
 
       {/* Error display (for intro/scan steps) */}
       {error && step !== 'verify' && (
-        <div className="flex items-center gap-2 text-[10px]" style={{ color: '#ef4444' }}>
+        <div className="flex items-center gap-2 text-[10px] text-red-500">
           <AlertTriangle className="w-3 h-3" />
           {error}
         </div>

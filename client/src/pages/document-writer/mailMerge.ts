@@ -6,7 +6,7 @@
 // replaces every token in the document HTML in one pass. Pure string/regex work
 // over the editor's own HTML — no extra npm packages.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { apiFetch } from '../../hooks/useApi';
 
 /** Match {{ token }} allowing dots, underscores, spaces inside the braces. */

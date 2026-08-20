@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
-import { getPdfSigningKey, bytesToBase64 } from '../utils/pdfSign';
+import { signTriple } from '../utils/pdfSign';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 const pdfTools = new Hono<Env>();
@@ -83,16 +83,13 @@ pdfTools.post('/encrypt', async (c) => {
 });
 
 // POST /api/pdf-tools/sign-payload — signs a (formKey, caseNumber, payloadHash)
-// triple with the server's Ed25519 key so a generated PDF can be later verified
-// offline (court/exhibit chain-of-custody). Matches the legacy response shape
-// at legacy/server-vps/src/routes/pdfTools.ts:60.
-//
-// Now always signs (was a hard 503 "SIGNING_NOT_CONFIGURED"): the key is
-// derived from PDF_SIGNING_KEY when provisioned, else stably from JWT_SECRET,
-// so no secret-provisioning step is required. Returns { signature, signedAt,
-// algorithm:'Ed25519', keyId, ... } — the shape client/src/utils/pdfIntegrity.ts
-// expects. The client still tolerates a null/!signature response (older
-// graceful-unsigned fallback) if signing ever errors.
+// triple with THREE algorithms (Ed25519 + ML-DSA-87 + SLH-DSA-256f — see
+// src/utils/pdfSign.ts) so a generated PDF can be later verified offline
+// (court/exhibit chain-of-custody) even against a future quantum computer.
+// Always signs (key derives from PDF_SIGNING_KEY when provisioned, else
+// stably from JWT_SECRET — no secret-provisioning step required). Returns
+// { signedAt, keyId, ed25519, mlDsa87, slhDsa256f, formKey, caseNumber,
+// payloadHash } — the shape client/src/utils/pdfIntegrity.ts expects.
 pdfTools.post('/sign-payload', async (c) => {
   try {
     const body = await c.req.json<{ formKey?: string; caseNumber?: string; payloadHash?: string }>();
@@ -103,27 +100,15 @@ pdfTools.post('/sign-payload', async (c) => {
     if (!formKey || !payloadHash) {
       return c.json({ error: 'formKey and payloadHash are required' }, 400);
     }
-    // SHA-256 hex sanity check (mirror legacy validation) — reject obvious
-    // typos before paying the signature cost.
     if (!/^[0-9a-f]{64}$/.test(payloadHash)) {
       return c.json({ error: 'payloadHash must be a 64-char lowercase SHA-256 hex string' }, 400);
     }
 
-    // Sign the (formKey | caseNumber | payloadHash) triple with the server's
-    // stable Ed25519 key. Any tamper to those three fields invalidates the
-    // signature — the chain-of-custody guarantee the trailer page relies on.
-    const { key, keyId } = await getPdfSigningKey(c.env);
-    const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
-    const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
-    const signature = bytesToBase64(new Uint8Array(sigBuf));
-    // Server-minted signing timestamp (current wall-clock, not a parsed value).
-    const signedAt = new Date().toISOString(); // new-date-ok
+    const ctx = (() => { try { return c.executionCtx; } catch { return undefined; } })();
+    const signed = await signTriple(c.env, formKey, caseNumber, payloadHash, ctx);
 
     return c.json({
-      signature,
-      signedAt,
-      algorithm: 'Ed25519',
-      keyId,
+      ...signed,
       formKey,
       caseNumber: caseNumber || '',
       payloadHash,

@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { safeTimeStr } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface DuplicateCall {
   id: number;
@@ -54,13 +55,13 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
       className="animate-fade-in"
       style={{
         background: 'rgba(180, 130, 0, 0.12)',
-        border: '1px solid #b48200',
+        border: '1px solid var(--sev-warn)',
         padding: '6px 8px',
         marginTop: 4,
       }}
     >
       <div className="flex items-center gap-1.5 mb-1">
-        <AlertTriangle style={{ width: 11, height: 11, color: '#f59e0b' }} />
+        <AlertTriangle style={{ width: 11, height: 11, color: 'var(--sev-warn)' }} />
         <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
           Possible Duplicate — {duplicates.length} Active Call{duplicates.length !== 1 ? 's' : ''} at This Address
         </span>
@@ -69,9 +70,9 @@ export default function DuplicateCallWarning({ address }: DuplicateCallWarningPr
         {duplicates.slice(0, 3).map((d) => (
           <div key={d.id} className="flex items-center gap-2 text-[9px] text-rmpg-300 font-mono">
             <span className="text-amber-500 font-bold">{d.call_number}</span>
-            <span>{d.incident_type?.replace(/_/g, ' ').toUpperCase()}</span>
-            <span className="text-rmpg-500">({(d.status || '').toUpperCase()})</span>
-            <span className="text-rmpg-500 flex items-center gap-0.5">
+            <span>{toDisplayLabel(d.incident_type).toUpperCase()}</span>
+            <span className="text-fg-muted">({(d.status || '').toUpperCase()})</span>
+            <span className="text-fg-muted flex items-center gap-0.5">
               <Clock style={{ width: 8, height: 8 }} />
               {safeTimeStr(d.created_at)}
             </span>

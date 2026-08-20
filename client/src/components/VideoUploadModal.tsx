@@ -473,7 +473,7 @@ export default function VideoUploadModal({
                 <Video className="w-4 h-4 text-brand-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-rmpg-200 truncate">{file.name}</p>
-                  <p className="text-[9px] text-rmpg-500">
+                  <p className="text-[9px] text-fg-muted">
                     {formatSize(file.size)} &bull; {file.type}
                     {duration != null && <> &bull; {formatDurationHMS(duration)}</>}
                     {file.size >= 50 * 1024 * 1024 && (
@@ -484,7 +484,7 @@ export default function VideoUploadModal({
                   </p>
                 </div>
                 {!isUploading && (
-                  <button type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
+                  <button aria-label="Close" type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
                     <X className="w-3 h-3" />
                   </button>
                 )}
@@ -495,9 +495,9 @@ export default function VideoUploadModal({
                 onClick={() => fileRef.current?.click()}
                 className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-sm hover:border-brand-500 transition-colors flex flex-col items-center gap-2"
               >
-                <Upload className="w-6 h-6 text-rmpg-500" />
+                <Upload className="w-6 h-6 text-fg-muted" />
                 <span className="text-xs text-rmpg-400">Click to select video</span>
-                <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM — Up to 10 GB</span>
+                <span className="text-[9px] text-fg-muted">MP4, MOV, AVI, WebM — Up to 10 GB</span>
               </button>
             )}
             <input id="ff-videouploadmodal-0"
@@ -582,7 +582,7 @@ export default function VideoUploadModal({
 
               {/* Speed / ETA / Bytes */}
               {phase === 'uploading' && (
-                <div className="flex items-center justify-between text-[9px] font-mono text-rmpg-500">
+                <div className="flex items-center justify-between text-[9px] font-mono text-fg-muted">
                   <span>{formatSize(bytesUploaded)} / {file ? formatSize(file.size) : '-'}</span>
                   <span className="flex items-center gap-3">
                     <span>{formatSpeed(speed)}</span>

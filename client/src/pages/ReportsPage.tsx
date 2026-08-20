@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   BarChart3,
   Calendar,
@@ -23,14 +23,13 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
   Cell,
   LineChart,
   Line,
   Legend,
   AreaChart,
   Area,
+  LabelList,
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -46,6 +45,7 @@ import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
+import { chartSeriesColors, chartPriorityColor } from '../utils/chartPalette';
 
 // ============================================================
 // Types
@@ -85,6 +85,10 @@ interface ResponseTimesData {
     minResponseMinutes: number;
     maxResponseMinutes: number;
     totalCalls: number;
+    /** Calls meeting the SLA, counted PER CALL in SQL — not derived from daily averages. */
+    slaMetCount: number;
+    /** Server's SLA target, so the tile and the chart's target line cannot drift from it. */
+    slaTargetMinutes: number;
   };
   byPriority: Array<{ priority: string; avg_response_minutes: number; count: number }>;
   dailyTrend: Array<{ date: string; avg_response_minutes: number; count: number }>;
@@ -103,27 +107,23 @@ interface OfficerActivityData {
 // Constants
 // ============================================================
 
-const PIE_COLORS = ['var(--text-muted)', 'var(--brand-gold)', 'var(--text-muted)', '#a855f7', '#22c55e', '#22c55e', 'var(--rmpg-500)', '#ec4899', '#8b5cf6'];
-
-const PRIORITY_COLORS: Record<string, string> = {
-  P1: '#dc2626',
-  P2: 'var(--brand-gold)',
-  P3: 'var(--text-muted)',
-  P4: 'var(--rmpg-500)',
-};
-
-const CHART_TOOLTIP_STYLE = {
-  contentStyle: {
-    backgroundColor: 'var(--surface-deep)',
-    border: '1px solid var(--border-default)',
-    borderRadius: '2px',
-    color: 'var(--text-primary)',
-    fontSize: '11px',
-    fontFamily: 'monospace',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-  },
-  cursor: { fill: 'rgba(212,160,23,0.12)' },
-};
+// Built at render time (not module scope) — the cursor fill is derived from
+// the theme-resolved gold series color, which is only correct once the theme
+// class has been stamped on <html>.
+function chartTooltipStyle() {
+  return {
+    contentStyle: {
+      backgroundColor: 'var(--surface-deep)',
+      border: '1px solid var(--border-default)',
+      borderRadius: '2px',
+      color: 'var(--text-primary)',
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      boxShadow: '0 4px 12px rgb(0 0 0 / 0.4)',
+    },
+    cursor: { fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 12%, transparent)` },
+  };
+}
 
 // ============================================================
 // Helper Functions
@@ -188,7 +188,7 @@ function formatGroupKey(key: string): string {
 
 function formatDateLabel(dateStr: string): string {
   const date = parseTimestamp(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
 }
 
 function exportToCSV(
@@ -394,7 +394,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
@@ -449,7 +449,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
       {/* Inline return-reason modal — replaces the native window.prompt(). */}
       {returnTarget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="return-modal-title"
@@ -457,7 +457,7 @@ function ReportApprovalQueue({ canDelete }: { canDelete: boolean }) {
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" role="presentation" />
           <div
-            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in"
+            className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div
@@ -657,9 +657,9 @@ function WeeklyDigestCard() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {[
               { label: 'Calls', value: digest.summary?.totalCalls || 0, color: 'var(--text-muted)' },
-              { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
-              { label: 'Citations', value: digest.summary?.totalCitations || 0, color: '#f59e0b' },
-              { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: '#ef4444' },
+              { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: 'var(--stat-accent-green)' },
+              { label: 'Citations', value: digest.summary?.totalCitations || 0, color: 'var(--stat-accent-amber)' },
+              { label: 'Arrests', value: digest.summary?.totalArrests || 0, color: 'var(--stat-accent-red-bright)' },
               { label: 'Avg Response', value: digest.summary?.avgResponseMinutes ? `${digest.summary.avgResponseMinutes}m` : 'N/A', color: 'var(--text-muted)' },
             ].map(s => (
               <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
@@ -674,9 +674,9 @@ function WeeklyDigestCard() {
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' })} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -729,15 +729,15 @@ function CrimeTrendCard() {
             <AreaChart data={data.monthlyTrend}>
               <defs>
                 <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0.02} />
+                  <stop offset="5%" stopColor="var(--sev-critical)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--sev-critical)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} allowDecimals={false} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
-              <Area type="monotone" dataKey="count" stroke="#ef4444" strokeWidth={2} fill="url(#trendGrad)" />
+              <Tooltip {...chartTooltipStyle()} />
+              <Area type="monotone" dataKey="count" stroke="var(--sev-critical)" strokeWidth={2} fill="url(#trendGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -800,9 +800,9 @@ function CitationRevenueCard() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
             { label: 'Total Fines', value: `$${(data.summary?.total_fines || 0).toLocaleString()}`, color: 'var(--text-muted)' },
-            { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: '#22c55e' },
-            { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: '#f59e0b' },
-            { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: '#ef4444' },
+            { label: 'Collected', value: `$${(data.summary?.collected || 0).toLocaleString()}`, color: 'var(--stat-accent-green)' },
+            { label: 'Outstanding', value: `$${(data.summary?.outstanding || 0).toLocaleString()}`, color: 'var(--stat-accent-amber)' },
+            { label: 'Dismissed', value: `$${(data.summary?.dismissed || 0).toLocaleString()}`, color: 'var(--stat-accent-red-bright)' },
           ].map(s => (
             <div key={s.label} className="panel-beveled bg-surface-sunken p-2 text-center">
               <div className="text-sm font-bold font-mono" style={{ color: s.color }}>{s.value}</div>
@@ -816,10 +816,10 @@ function CitationRevenueCard() {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} />
-              <Tooltip {...CHART_TOOLTIP_STYLE} />
+              <Tooltip {...chartTooltipStyle()} />
               <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '9px' }} />
-              <Bar dataKey="collected" name="Collected" fill="#22c55e" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="outstanding" name="Outstanding" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="collected" name="Collected" fill="var(--sev-ok)" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="outstanding" name="Outstanding" fill="var(--sev-warn)" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -1191,34 +1191,66 @@ export default function ReportsPage() {
 
   // Compute stats
   const stats = {
-    totalCalls: incidentsData?.total || 0,
+    // Was `incidentsData?.total` — identical to incidentsFiled below, so the
+    // KPI ribbon showed "Total Calls" and "Incidents Filed" as the same
+    // number (both 0) while the "This Week vs Last Week" panel correctly
+    // showed real call volume from a different endpoint. responseTimesData
+    // already carries a real per-range call count; use that instead.
+    totalCalls: responseTimesData?.overall?.totalCalls || 0,
     incidentsFiled: incidentsData?.total || 0,
     avgResponse: responseTimesData?.overall?.avgTotalResponseMinutes
       ? `${responseTimesData.overall.avgTotalResponseMinutes.toFixed(1)}m`
       : '0.0m',
+    // PER-CALL SLA compliance, straight from the server.
+    //
+    // This used to be derived from dailyTrend by crediting a whole day's calls
+    // when that DAY'S AVERAGE was <= 5 — wrong in both directions: a day
+    // averaging 4.9 counted every call as met even if several took 20 minutes,
+    // and a day averaging 5.1 counted none even if most were under target.
+    // dailyTrend carries only averages, so the correct figure is not derivable
+    // here at all; overall.slaMetCount is computed per row in SQL.
     slaMet: responseTimesData?.overall?.totalCalls
-      ? `${Math.round(((responseTimesData.dailyTrend || []).reduce((acc, d) => acc + (d.avg_response_minutes <= 5 ? d.count : 0), 0) / responseTimesData.overall.totalCalls) * 100)}%`
+      ? `${Math.round(((responseTimesData.overall.slaMetCount ?? 0) / responseTimesData.overall.totalCalls) * 100)}%`
       : '0%',
     activeOfficers: dashboardData?.officersOnDuty?.length || 0,
   };
 
   // Prepare chart data
-  const incidentsChartData = (incidentsData?.by_type ?? []).map((item, i) => ({
-    name: formatGroupKey(item.type),
-    value: item.count,
-    fill: PIE_COLORS[i % PIE_COLORS.length],
-  }));
+  // Sorted descending; the bar length encodes the count and the Y axis encodes
+  // the category, so color carries no information and stays constant.
+  // Beyond MAX_INCIDENT_BARS the tail folds into a visible "Other" bar rather
+  // than being silently dropped.
+  const MAX_INCIDENT_BARS = 10;
+  const incidentsSorted = [...(incidentsData?.by_type ?? [])].sort((a, b) => b.count - a.count);
+  const incidentsHead = incidentsSorted.slice(0, MAX_INCIDENT_BARS);
+  const incidentsTail = incidentsSorted.slice(MAX_INCIDENT_BARS);
+  const incidentsChartData = [
+    ...incidentsHead.map((item) => ({ name: formatGroupKey(item.type), value: item.count })),
+    ...(incidentsTail.length
+      ? [{ name: `Other (${incidentsTail.length})`, value: incidentsTail.reduce((s, i) => s + i.count, 0) }]
+      : []),
+  ];
 
-  const priorityChartData = (Array.isArray(dashboardData?.callsByPriority) ? dashboardData.callsByPriority : []).map(item => ({
+  // Sourced from responseTimesData, NOT dashboardData.callsByPriority. The
+  // dashboard field is scoped to CURRENTLY-ACTIVE calls (StatusBar and the
+  // Dashboard P1-P4 tiles both want that), so on this page — which is driven
+  // by a date-range selector — it rendered "No data for selected filters"
+  // whenever nothing was active, even with 23 calls in the window. Same fix
+  // already applied to totalCalls above.
+  const priorityChartData = (Array.isArray(responseTimesData?.byPriority) ? responseTimesData.byPriority : []).map(item => ({
     priority: item.priority,
     count: item.count,
-    fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+    fill: chartPriorityColor(item.priority),
   }));
 
+  // The chart's target line reads the SAME server value the SLA tile is scored
+  // against, so the dashed line can never disagree with the percentage beside
+  // it. Both were independently hardcoded to 5 before.
+  const slaTarget = responseTimesData?.overall?.slaTargetMinutes ?? 5;
   const responseTimeChartData = (Array.isArray(responseTimesData?.dailyTrend) ? responseTimesData.dailyTrend : []).map(item => ({
     date: formatDateLabel(item.date),
     avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
-    targetMinutes: 5,
+    targetMinutes: slaTarget,
   }));
 
   const officerChartData = officerActivity.map(officer => ({
@@ -1431,10 +1463,10 @@ export default function ReportsPage() {
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
               { label: 'Total Calls', value: stats.totalCalls, color: 'var(--text-muted)', border: 'border-l-rmpg-500' },
-              { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
-              { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
-              { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },
-              { label: 'Active Officers', value: stats.activeOfficers, color: '#ef4444', border: 'border-l-red-500' },
+              { label: 'Incidents Filed', value: stats.incidentsFiled, color: 'var(--sev-ok)', border: 'border-l-green-500' },
+              { label: 'Avg Response', value: stats.avgResponse, color: 'var(--sev-warn)', border: 'border-l-amber-500' },
+              { label: 'SLA Met', value: stats.slaMet, color: 'var(--stat-accent-purple)', border: 'border-l-purple-500' },
+              { label: 'Active Officers', value: stats.activeOfficers, color: 'var(--sev-critical)', border: 'border-l-red-500' },
             ].map((s) => (
               <div key={s.label} className={`bg-surface-base panel-beveled p-3 border-l-[3px] ${s.border} hover:bg-surface-raised transition-all duration-200 group cursor-default`}>
                 <p className="text-2xl font-black font-mono group-hover:brightness-110 transition-all" style={{ color: s.color }}>{s.value}</p>
@@ -1508,7 +1540,7 @@ export default function ReportsPage() {
 
           {/* Charts Grid */}
           <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-2 gap-4'}`}>
-            {/* Incidents by Type (Pie) */}
+            {/* Incidents by Type (sorted horizontal bar) */}
             <div className="bg-surface-base panel-beveled hover:border-rmpg-600 transition-all duration-150">
               <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5 text-brand-400" />
@@ -1521,35 +1553,31 @@ export default function ReportsPage() {
                     <p className="text-sm">No data for selected filters</p>
                   </div>
                 ) : (
-                <div className={isMobile ? '' : 'flex items-start gap-4'}>
-                  <ResponsiveContainer width={isMobile ? '100%' : '55%'} height={220}>
-                    <PieChart>
-                      <Pie
-                        data={incidentsChartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={90}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {incidentsChartData.map((entry: { name: string; fill: string }) => (
-                          <Cell key={entry.name} fill={entry.fill} />
-                        ))}
-                      </Pie>
-                      <Tooltip {...CHART_TOOLTIP_STYLE} />
-                    </PieChart>
+                <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
+                  <ResponsiveContainer width="100%" height={Math.max(200, incidentsChartData.length * 26)}>
+                    <BarChart
+                      data={incidentsChartData}
+                      layout="vertical"
+                      margin={{ top: 4, right: 36, bottom: 4, left: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" horizontal={false} />
+                      <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={110}
+                        tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
+                      />
+                      <Tooltip {...chartTooltipStyle()} />
+                      <Bar dataKey="value" fill={chartSeriesColors()[0]} radius={[0, 2, 2, 0]}>
+                        <LabelList
+                          dataKey="value"
+                          position="right"
+                          style={{ fill: 'var(--text-secondary)', fontSize: 10, fontFamily: 'monospace' }}
+                        />
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
-                  {/* Legend */}
-                  <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
-                    {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
-                      <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
-                        <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
-                        <span className="text-[10px] text-rmpg-200 min-w-0 truncate flex-1">{entry.name}</span>
-                        <span className="text-[10px] text-rmpg-400 font-mono font-bold tabular-nums">{entry.value}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
                 )}
               </div>
@@ -1568,12 +1596,13 @@ export default function ReportsPage() {
                   <p className="text-sm">No data for selected filters</p>
                 </div>
               ) : (
+              <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={priorityChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Bar dataKey="count" radius={[2, 2, 0, 0]}>
                     {priorityChartData.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />
@@ -1581,6 +1610,7 @@ export default function ReportsPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
               )}
               </div>
             </div>
@@ -1603,7 +1633,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} domain={[0, 'auto']} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Line type="monotone" dataKey="avgMinutes" name="Avg Response" stroke="var(--text-muted)" strokeWidth={2} dot={{ fill: 'var(--text-muted)', r: 3 }} />
                   <Line type="monotone" dataKey="targetMinutes" name="Target" stroke="var(--brand-gold)" strokeDasharray="5 5" strokeWidth={1} dot={false} />
@@ -1631,7 +1661,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={70} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--text-muted)" radius={[0, 4, 4, 0]} />
                   <Bar dataKey="incidents" name="Incidents" fill="var(--brand-gold)" radius={[0, 4, 4, 0]} />
@@ -1664,7 +1694,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} allowDecimals={false} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Area type="monotone" dataKey="calls" name="Calls" stroke="var(--text-muted)" strokeWidth={2} fill="url(#callVolumeGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
@@ -1680,25 +1710,27 @@ export default function ReportsPage() {
                 <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Response Time by Priority (minutes)</h3>
               </div>
               <div className="p-4">
+              <div className="p-2" style={{ background: 'var(--chart-plot-surface)' }}>
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={responseTimesData.byPriority.map(item => ({
                   priority: item.priority,
                   avgMinutes: parseFloat((Number(item.avg_response_minutes) || 0).toFixed(1)),
                   count: item.count,
-                  fill: PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)',
+                  fill: chartPriorityColor(item.priority),
                 }))}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="priority" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                  <Tooltip {...CHART_TOOLTIP_STYLE} />
+                  <Tooltip {...chartTooltipStyle()} />
                   <Legend wrapperStyle={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'monospace' }} />
                   <Bar dataKey="avgMinutes" name="Avg Response (min)" radius={[4, 4, 0, 0]}>
                     {responseTimesData.byPriority.map((item, i) => (
-                      <Cell key={i} fill={PRIORITY_COLORS[item.priority] || 'var(--rmpg-500)'} />
+                      <Cell key={i} fill={chartPriorityColor(item.priority)} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+              </div>
               </div>
             </div>
           )}

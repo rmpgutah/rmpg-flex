@@ -35,21 +35,34 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import { getContainer } from '@cloudflare/containers';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
 import {
   extractFromText,
-  extractFromImage,
-  extractFromImageClaude,
-  extractFromTextClaude,
   extractTextFromPdf,
+  extractPdfMarkdown,
+  isScanStub,
   fieldsToQueueRow,
+  familyFromFileName,
+  needsCriticPass,
+  applyCriticResults,
+  criticExtract,
+  CRITIC_TIMEOUT_MS,
   normalizeFields,
+  toIsoDate,
   type ExtractionResult,
   type ExtractedField,
+  type PdfTextResult,
 } from '../utils/serveIntakeExtract';
+import { withTimeout, ocrImage, ocrText } from '../utils/serveIntakeOcr';
+import { loadFlags } from './adminDev';
+import { estimateNeurons, estimatePacketNeurons, FREE_NEURONS_PER_DAY } from '../utils/serveIntakeNeurons';
+import { precleanText, detectHomoglyphs } from '../utils/serveIntakePreclean';
+import { arbitrateFields, reconcileIdentityConflicts, type DocCandidate, type FieldConflict, type IdentityWinnerDoc } from '../utils/serveIntakeArbitrate';
+import { finalizeFields } from '../utils/serveIntakeValidate';
 import { judgeMerged } from '../utils/serveIntakeJudge';
 import { parseDefendants } from '../utils/serveIntakeDefendants';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
@@ -67,12 +80,18 @@ import {
   type AttemptWindow,
 } from '../utils/serveDiligencePlanner';
 import { persistAttemptSchedule, appendAttemptSlot } from '../utils/serveAttemptScheduler';
+import {
+  loadPersistedPlanContext, planContextFromRow,
+  PLAN_CONTEXT_COLUMNS, type PlanContextRow,
+} from '../utils/servePlanContext';
 import { broadcastAll } from './ws';
 import { recordAudit } from '../utils/auditLog';
 import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
+import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
 // One-shot per Worker instance (cold starts re-run, idempotent).
@@ -127,7 +146,9 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
 let qualityGateReconciled = false;
 async function ensureQualityGateColumns(db: D1Database): Promise<void> {
   if (qualityGateReconciled) return;
-  qualityGateReconciled = true;
+  // Set the flag only after DDL succeeds so a caught failure on this isolate
+  // doesn't permanently skip reconciliation for subsequent requests.
+  let allOk = true;
 
   try {
     await execute(db, `CREATE TABLE IF NOT EXISTS serve_intake_judge_runs (
@@ -141,7 +162,10 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       fallback_chain TEXT NOT NULL,
       upload_user_id INTEGER
     )`);
-  } catch (err) { console.warn('[serve-intake] judge_runs create failed:', err); }
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs create failed:', err);
+    allOk = false;
+  }
 
   for (const [name, type] of [
     ['quality_status', "TEXT NOT NULL DEFAULT 'clean'"],
@@ -153,8 +177,13 @@ async function ensureQualityGateColumns(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) {
+      console.warn(`[serve-intake] reconcile ${name} failed:`, err);
+      allOk = false;
+    }
   }
+
+  if (allOk) qualityGateReconciled = true;
 }
 
 const si = new Hono<Env>();
@@ -174,7 +203,7 @@ function csvEscape(v: unknown): string {
 }
 
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
-const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled', 'archived']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -216,6 +245,13 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // container fetch is raced against this timeout and we fall back.
 const CONTAINER_TIMEOUT_MS = 12_000;
 
+// Ceiling on the Workers AI toMarkdown() call. It walks the PDF StructTree
+// and invokes no model, so it's normally fast — but it's still a binding
+// call, and a stalled one shouldn't hang the request. On timeout we fall
+// through to the container path exactly like a rejected/empty result.
+const TOMARKDOWN_TIMEOUT_MS = 8_000;
+const EMPTY_PDF_TEXT: PdfTextResult = { text: '', source: 'empty', structured: false, page_count: 0 };
+
 // Per-call ceiling on any single Workers AI invocation (per-doc text
 // extraction or per-image Vision). Without this a slow/stalled model
 // call hangs the whole /upload request — the original "stuck on upload"
@@ -224,45 +260,71 @@ const CONTAINER_TIMEOUT_MS = 12_000;
 // json_schema constraint, so 25s left only a 3-5s margin and tipped over
 // under model load. Calls run in PARALLEL, so this is the per-doc ceiling
 // AND roughly the whole-request ceiling — not additive across docs.
-const AI_TIMEOUT_MS = 35_000;
+// Per-ATTEMPT ceiling. Raised from 35s on 2026-07-24: the recorded live failure
+// (`Extraction failed: Text extraction timed out`) was a legitimately slow
+// extraction on a large document, not a hung call, so the old ceiling was simply
+// too tight.
+//
+// aiBudget/withTimeout/ocrImage/ocrText now live in ../utils/serveIntakeOcr —
+// hoisted out (2026-07-26) so they're importable from plain Node vitest tests
+// without dragging in this file's @cloudflare/containers import (which needs
+// a real Workers/Miniflare runtime). AI_TIMEOUT_MS stays here too since it's
+// used directly below (not just via aiBudget's default).
+const AI_TIMEOUT_MS = 45_000;
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
-  ]);
-}
+const TESSERACT_CONTAINER_NAME = 'shared'; // matches src/routes/tesseractOcr.ts's CONTAINER_NAME
 
-// Claude-first OCR with Workers-AI fallback. Claude (extractFrom*Claude) uses the
-// SAME rich serve-doc prompt + parser, so the result shape is identical and the
-// merge/commit code is unchanged. Returns null from the Claude leg (no key / no
-// credits / error) → we transparently fall back to the free Workers-AI path.
-// extraction.model carries 'claude:…' vs the Llama id so callers can label engine.
-async function ocrImage(env: Env['Bindings'], bytes: Uint8Array, mime: string): Promise<ExtractionResult> {
-  const claude = await withTimeout(
-    extractFromImageClaude(env, bytes, mime), AI_TIMEOUT_MS, 'Claude OCR timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(extractFromImage(env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
-}
-async function ocrText(env: Env['Bindings'], text: string): Promise<ExtractionResult> {
-  const claude = await withTimeout(
-    extractFromTextClaude(env, text), AI_TIMEOUT_MS, 'Claude text timed out',
-  ).catch(() => null);
-  return claude ?? withTimeout(
-    extractFromText(env.AI, text, env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out',
-  );
+// Tesseract-first OCR leg, gated behind the tesseract_ocr_primary feature
+// flag (default OFF — see src/routes/adminDev.ts DEFAULT_FLAGS). When
+// enabled, calls the self-hosted Tesseract container for raw text, then
+// runs that text through the SAME Claude-first/Workers-AI-fallback field
+// extraction as every other text-based leg (ocrText) — Tesseract only
+// replaces the OCR step, not field extraction. Falls back to the existing
+// Claude-vision -> Workers-AI-vision chain (ocrImage) on ANY container
+// error, exactly like every other leg in this pipeline degrades rather
+// than failing the request.
+async function ocrImageWithTesseractGate(
+  env: Env['Bindings'], bytes: Uint8Array, mime: string,
+): Promise<ExtractionResult> {
+  let tesseractEnabled = false;
+  try {
+    const flags = await loadFlags(env.KV);
+    tesseractEnabled = flags.tesseract_ocr_primary;
+  } catch {
+    tesseractEnabled = false; // KV read failure must not block OCR — fall through to the existing chain
+  }
+
+  if (tesseractEnabled) {
+    try {
+      const form = new FormData();
+      form.append('image', new Blob([bytes], { type: mime }), 'input');
+      const container = getContainer(env.TESSERACT_OCR, TESSERACT_CONTAINER_NAME);
+      const res = await container.fetch(new Request('http://container/ocr', { method: 'POST', body: form }));
+      if (res.ok) {
+        const body = await res.json() as { text?: string };
+        const text = (body.text ?? '').trim();
+        if (text.length >= 20) {
+          const extraction = await ocrText(env, text);
+          if (extraction.success) {
+            return { ...extraction, model: `tesseract+${extraction.model}` };
+          }
+        }
+      }
+    } catch {
+      // Container unreachable, timed out, or returned unusable text — fall
+      // through to the existing chain below, same as every other leg here.
+    }
+  }
+
+  return ocrImage(env, bytes, mime);
 }
 
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
   const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await env.UPLOADS.put(key, file.stream(), {
+  await putEncrypted(env.UPLOADS, getDb(env), env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
-    customMetadata: {
-      original_name: file.name || '',
-      uploaded_by: String(uploaderId ?? ''),
-    },
   });
   return key;
 }
@@ -307,12 +369,36 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await ocrImage(c.env, bytes, file.type);
-      ocrEngine = extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+      extraction = await ocrImageWithTesseractGate(c.env, bytes, file.type);
+      ocrEngine = extraction.model.startsWith('tesseract+')
+        ? 'tesseract'
+        : extraction.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let text: string;
-      if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+      // Zero-neuron structured tier first: env.AI.toMarkdown() walks the PDF
+      // StructTree and does not interleave two-column layouts the way the
+      // client's naive positional pdfjs concatenation (item.str joined by
+      // reading order) does. Try it BEFORE the client text — pdfjs-client is
+      // exactly the two-column interleaving hazard toMarkdown exists to avoid,
+      // and any real intake form clears MIN_CLIENT_TEXT_CHARS, so putting
+      // pdfjs-client first meant toMarkdown almost never ran. Only fall
+      // through to pdfjs-client, then the container (not rolled out in prod
+      // anyway), when toMarkdown comes back empty or looks like an unreadable
+      // scan stub.
+      const md = await withTimeout(
+        extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+        TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+      ).catch(() => EMPTY_PDF_TEXT);
+      if (md.text && !isScanStub(md.text, md.page_count)) {
+        text = md.text;
+        pageCount = md.page_count;
+        ocrEngine = 'workers-ai-tomarkdown';
+        log.info('scan-document: toMarkdown structured extraction used', {
+          traceId: c.get('traceId'), file: file.name, structured: md.structured,
+          chars: md.text.length, page_count: md.page_count,
+        });
+      } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
         text = clientText;
         ocrEngine = 'pdfjs-client';
       } else {
@@ -335,8 +421,28 @@ async function scanDocumentHandler(c: any): Promise<Response> {
           ocrEngine = 'container-unavailable';
         }
       }
+      // Single choke point for OCR-noise scrubbing — see the matching note
+      // on /upload. Applying precleanText after tier selection (rather than
+      // only on the container leg) is what keeps the pdfjs-client tier, the
+      // exact tier where the RUSH watermark and Cyrillic homoglyphs survive,
+      // from reaching the model and the state/ZIP validator uncleaned.
+      // Idempotent, so the already-cleaned toMarkdown/container text is safe.
+      const rawTextForHomoglyphCheck = text;
+      text = precleanText(text);
+      const homoglyphSubstitutions = detectHomoglyphs(rawTextForHomoglyphCheck);
+      if (homoglyphSubstitutions.length > 0) {
+        log.info('scan-document: homoglyph substitutions detected', {
+          traceId: c.get('traceId'),
+          substitutions: homoglyphSubstitutions,
+        });
+      }
+      // Same family-derivation as /upload — this is the pre-commit PREVIEW
+      // the officer actually reviews, so it must use the SAME prompt guidance
+      // the eventual /upload commit extraction gets. Without this, the two
+      // paths could disagree on the same document.
+      const docFamily = familyFromFileName(file.name);
       extraction = text.trim().length >= 20
-        ? await ocrText(c.env, text)
+        ? await ocrText(c.env, text, docFamily)
         : emptyExtraction('none', 'Insufficient text to extract');
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
@@ -345,11 +451,26 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     return dbErrorResponse(c, err, 'Extraction failed');
   }
 
+  // This is the PREVIEW the officer reviews before committing. It must show
+  // the same values /upload will actually write — previously this returned
+  // the model's raw fields while /upload normalized+validated them, so the
+  // screen said `6/26/2026` / `Utah` / `(435) 986-1200` and the record said
+  // `2026-06-26` / `UT` / `4359861200`. Same seam, same result.
+  const previewValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (previewValidation.issues.length) {
+    log.warn('scan-document validation issues', {
+      traceId: c.get('traceId'),
+      count: previewValidation.issues.length,
+      issues: previewValidation.issues.slice(0, 10),
+    });
+  }
+
   return c.json({
     success: extraction.success,
     documentType: extraction.documentType,
     confidence: extraction.confidence,
-    fields: extraction.fields,
+    fields: previewValidation.adjusted,
+    validationIssues: previewValidation.issues,
     rawText: extraction.rawText,
     allDates: extraction.allDates,
     pageCount,
@@ -397,12 +518,14 @@ si.post('/upload', async (c) => {
     }
   }
 
-  // Client-provided pdfjs text, keyed by filename. The browser already
-  // ran pdfjs on each PDF during drag-drop; we use that text directly
-  // for born-digital PDFs instead of round-tripping through the PDF
-  // Tools container (which is NOT rolled out in prod — deploy uses
-  // --containers-rollout=none — so a container fetch would hang).
-  // Only genuinely empty PDFs (scans) fall through to the container.
+  // Client-provided pdfjs text, keyed by filename. The browser already ran
+  // pdfjs on each PDF during drag-drop. toMarkdown (see below) is tried
+  // FIRST for every PDF — this client text is only the fallback for
+  // born-digital PDFs toMarkdown can't read, used instead of round-tripping
+  // through the PDF Tools container (which is NOT rolled out in prod —
+  // deploy uses --containers-rollout=none — so a container fetch would
+  // hang). Only PDFs that toMarkdown AND client text both fail on fall
+  // through to the container.
   const clientTextByName = new Map<string, string>();
   const clientTextRaw = form.get('client_text');
   if (typeof clientTextRaw === 'string') {
@@ -443,21 +566,46 @@ si.post('/upload', async (c) => {
     ocrEngine: string;
     r2Key: string | null;
     ex: ExtractionResult;   // per-document field extraction
+    // Packet family derived from the uploaded FILE NAME (ICU's fixed naming
+    // convention), independent of what the model guessed the document was.
+    // Arbitration ranks on this when present: the filename is the reliable
+    // signal, and the model's DOC_TYPES classification is not — it will
+    // reasonably call "Court Docket.pdf" a 'subpoena'. undefined when the
+    // name doesn't match a known convention, in which case arbitration
+    // falls back to ex.documentType.
+    family?: string;
     error?: string;          // file-level (read/store) error
+    // Positive fact: true only if this doc's extraction call was actually
+    // invoked (extractFromText/ocrImage), regardless of whether it then
+    // succeeded or timed out. False for unsupported types, read/store
+    // errors, and PDFs with too little text to bother calling — those get
+    // an emptyExtraction() stand-in but never touch the model, so they must
+    // never be priced. See serveIntakeNeurons.ts PacketDocNeuronInput.
+    modelCalled: boolean;
   }
 
   const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
     const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
+    // Intake packets follow a fixed naming convention ("<job#> Field
+    // Sheet.pdf" / "Court Docket.pdf" / "Information Form.pdf") — derive
+    // the document family from the uploaded file's own name so the system
+    // prompt gets that family's layout-specific guidance AND arbitration
+    // ranks on the reliable signal rather than the model's guess. Falls
+    // back to undefined (generic prompt / ex.documentType) for anything
+    // that doesn't clearly match one of the three conventions.
+    const docFamily = familyFromFileName(file.name);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
 
       // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
-        const ex = await ocrImage(c.env, bytes, file.type)
+        const ex = await ocrImageWithTesseractGate(c.env, bytes, file.type)
           .catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
-        const engine = ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
+        const engine = ex.model.startsWith('tesseract+')
+          ? 'tesseract'
+          : ex.model.startsWith('claude') ? 'claude-vision' : 'workers-ai-vision';
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: engine, r2Key, ex, family: docFamily, modelCalled: true };
       }
 
       // PDFs: acquire text, then extract fields from THIS doc alone.
@@ -467,7 +615,22 @@ si.post('/upload', async (c) => {
         let ocrUsed = false;
         let pageCount = 0;
         const clientText = clientTextByName.get(file.name) || '';
-        if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+        // Same zero-neuron structured tier as /scan-document: try toMarkdown
+        // BEFORE the pdfjs-client text (that positional-concatenation text is
+        // exactly the two-column interleaving hazard toMarkdown exists to
+        // avoid) and before the container round-trip.
+        const md = await withTimeout(
+          extractPdfMarkdown(c.env.AI, bytes, file.name || 'doc.pdf'),
+          TOMARKDOWN_TIMEOUT_MS, 'toMarkdown timed out',
+        ).catch(() => EMPTY_PDF_TEXT);
+        if (md.text && !isScanStub(md.text, md.page_count)) {
+          text = md.text; pageCount = md.page_count;
+          ocrEngine = 'workers-ai-tomarkdown';
+          log.info('upload: toMarkdown structured extraction used', {
+            traceId: c.get('traceId'), file: file.name, structured: md.structured,
+            chars: md.text.length, page_count: md.page_count,
+          });
+        } else if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
           text = clientText;
         } else {
           const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
@@ -482,49 +645,150 @@ si.post('/upload', async (c) => {
             text = clientText; ocrEngine = 'container-unavailable';
           }
         }
-        const ex = text.trim().length >= 20
+        // ── Single choke point for OCR-noise scrubbing ──────────────
+        // precleanText MUST run on whichever tier won, not just on the
+        // container leg. The pdfjs-client tier is precisely where the
+        // hazard lives: positional concatenation leaves a diagonal RUSH
+        // watermark as isolated H/S/U/R lines, and homoglyph substitutions
+        // ("СA" with a Cyrillic С) survive into recipient_state, where
+        // validateFields' STATE_ZIP_PREFIX lookup then misses entirely and
+        // SILENTLY skips the ZIP↔state check. precleanText is idempotent,
+        // so applying it once here after tier selection covers every tier
+        // (including the already-cleaned container text) with no double-
+        // scrub risk, and no future tier can escape it.
+        const rawTextForHomoglyphCheck = text;
+        text = precleanText(text);
+        const homoglyphSubstitutions = detectHomoglyphs(rawTextForHomoglyphCheck);
+        if (homoglyphSubstitutions.length > 0) {
+          log.info('upload: homoglyph substitutions detected', {
+            traceId: c.get('traceId'),
+            substitutions: homoglyphSubstitutions,
+          });
+        }
+        // modelCalled is set true ONLY inside the branch that actually
+        // invokes extractFromText — not derived from the outcome, so a
+        // timeout/error caught below still counts as "reached the model"
+        // (real neuron cost was incurred even though the call failed).
+        const willCallModel = text.trim().length >= 20;
+        const ex = willCallModel
           ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA, docFamily),
               AI_TIMEOUT_MS, 'Field extraction timed out',
             ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
         ex.rawText = text;
         for (const d of ex.allDates) allDates.add(d);
-        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex };
+        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex, family: docFamily, modelCalled: willCallModel };
       }
 
       return {
         file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key,
         ex: emptyExtraction(EXTRACT_MODEL, `Unsupported type ${file.type}`),
         error: `Unsupported type ${file.type}`,
+        family: docFamily,
+        modelCalled: false,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg };
+      return {
+        file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key,
+        ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg, family: docFamily, modelCalled: false,
+      };
     }
   }));
 
-  // ── Merge per-document fields by confidence ──
-  // Field-sheet / info-form docs (structured, recipient-dense) usually win
-  // each field; the court docket fills gaps. Highest-confidence value per
-  // field survives — so a timed-out docket simply contributes nothing
-  // rather than blanking the recipient the field sheet already provided.
-  const mergedFields: Record<string, ExtractedField> = {};
+  // ── Neuron cost accounting (spec §6) ────────────────────────
+  // Estimates Workers AI Neuron consumption so the 10k/day free ceiling is
+  // observable before it's hit. Per doc, not per combined string: /upload
+  // runs one extraction call PER DOCUMENT (see the "why per-doc" note
+  // above), each capped at PER_DOC_CAP chars — so `sentChars` mirrors the
+  // exact slice handed to extractFromText, not the doc's full raw text.
+  // extraction.model is read per-doc too, since ocrText/extractFromText can
+  // fall back to a different model than the configured default.
+  //
+  // Vision docs (images) are excluded from the input-token estimate: their
+  // model input is the image itself, not text, and c2.text there holds the
+  // OCR'd OUTPUT, not what was sent in. There's no chars/4-style proxy for
+  // image input given here, and guessing one would measure the wrong thing
+  // — worse than omitting it. Their neuron cost still exists; it's just not
+  // estimable from values already in hand, so this total is a floor, not a
+  // ceiling, for image-heavy packets — surfaced below via `vision_docs` /
+  // `partial` so the log is self-describing instead of relying on a source
+  // comment nobody watching the log can see.
+  //
+  // Documents that never reached the model (unsupported type, read/store
+  // error, insufficient text) are excluded via `modelCalled` — a positive
+  // fact set at the point of the actual call, NOT inferred from `ocrEngine`
+  // string matching. String matching only covers the engines someone
+  // remembered to list, and previously let unsupported/errored/skipped PDFs
+  // get priced at ~105 phantom neurons apiece for calls that never happened.
+  const visionDocs = collected.filter(
+    (c2) => c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  ).length;
+  const intakeNeurons = estimatePacketNeurons(collected.map((c2) => ({
+    model: c2.ex.model,
+    textLength: Math.min(c2.text.length, PER_DOC_CAP),
+    modelCalled: c2.modelCalled,
+    isVision: c2.ocrEngine === 'workers-ai-vision' || c2.ocrEngine === 'claude-vision',
+  })));
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    neurons: intakeNeurons,
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: collected.length,
+    vision_docs: visionDocs,
+    partial: visionDocs > 0,
+  });
+
+  // ── Cross-document arbitration ──
+  // Was: highest-confidence value per field wins, source-blind. That lets
+  // a confidently-wrong value from the wrong document beat an authoritative
+  // one — the Field Sheet's Case/Court cells are frequently blank or
+  // watermark-corrupted while the Court Docket has them authoritatively,
+  // and the Information Form is the operational record for service
+  // mechanics. arbitrateFields() ranks candidates by source precedence
+  // (confidence only breaks a tie within the same rank) and RETAINS the
+  // losing candidate in `conflicts` so a human can pick it later (PR 4
+  // review UI) instead of silently discarding it.
+  //
+  // Rank on the FILENAME-derived family first. The model classifies the lead
+  // document specifically — it will reasonably call "Court Docket.pdf" a
+  // 'subpoena' — and a specific-but-correct classification that isn't one of
+  // the three packet-family names would otherwise rank 0 and lose to the
+  // field sheet, inverting precedence on the modal packet. (arbitrateFields
+  // also collapses court-form enum members onto court_filing as a second line
+  // of defense for the ex.documentType fallback.)
+  // Normalize per-candidate BEFORE arbitration so the conflicts audit records
+  // the values that will actually be committed. Previously arbitration ran on
+  // raw model output and normalization ran once afterwards (via
+  // finalizeFields, below), so a persisted conflict could read
+  // chosen: "6/26/2026" while the row held "2026-06-26" — PR 4's resolver
+  // would show a value that disagrees with the record it is resolving.
+  const docCandidates: DocCandidate[] = collected.map((c2) => ({
+    docType: c2.family ?? c2.ex.documentType,
+    fields: normalizeFields(c2.ex.fields),
+  }));
+  const arbitration = arbitrateFields(docCandidates);
+  const mergedFields: Record<string, ExtractedField> = arbitration.merged;
+  let conflicts: FieldConflict[] = arbitration.conflicts;
   let bestConfidence = 0;
   let bestDocType = 'other';
   // synthetic combined.error placeholder so downstream warning logic can
   // report the most relevant extraction failure.
   let combinedError: string | null = null;
   for (const c2 of collected) {
-    for (const [k, v] of Object.entries(c2.ex.fields)) {
-      const cur = mergedFields[k];
-      if (!cur || (v.value && v.confidence > cur.confidence)) mergedFields[k] = v;
-    }
     if (c2.ex.confidence > bestConfidence) {
       bestConfidence = c2.ex.confidence;
       bestDocType = c2.ex.documentType;
     }
     if (c2.ex.error && !combinedError) combinedError = c2.ex.error;
+  }
+  if (conflicts.length) {
+    log.info('serve-intake: cross-document field conflicts arbitrated', {
+      traceId: c.get('traceId'),
+      count: conflicts.length,
+      fields: conflicts.map((cf) => cf.field),
+    });
   }
 
   // ── Name-coherence guard ──────────────────────────────────────
@@ -540,43 +804,104 @@ si.post('/upload', async (c) => {
     'recipient_type', 'recipient_first_name', 'recipient_middle_name',
     'recipient_last_name', 'recipient_business_name', 'recipient_dob',
   ] as const;
-  const recipientScore = (ex: ExtractionResult): number => {
-    const f = ex.fields;
+  // Score (and select) from the NORMALIZED docCandidates, not the raw
+  // c2.ex extraction results. Two reasons: (1) the winner's fields flow
+  // straight into reconcileIdentityConflicts as `winnerDoc`, and that
+  // function writes `winnerDoc.fields[k]` verbatim into both
+  // `mergedFields` and `conflicts[].chosen` — if that source were raw
+  // model output, an identity field the guard overrides (e.g.
+  // recipient_dob in `M/D/YYYY`) would persist a conflict whose `chosen`
+  // disagrees with the normalized value finalizeFields commits, exactly
+  // the chosen≠committed bug part (a) above exists to close, just via
+  // this second path. (2) a name field that normalizes to empty (all
+  // placeholder/noise) should score 0, not the model's optimistic
+  // confidence — docCandidates already reflects that via normalizeFields.
+  const recipientScore = (fields: Record<string, ExtractedField>): number => {
     // Weight the name-defining fields; a doc that only mentions a DOB
     // shouldn't outrank one that has the actual first+last name.
-    return (f.recipient_first_name?.value ? f.recipient_first_name.confidence : 0)
-      + (f.recipient_last_name?.value ? f.recipient_last_name.confidence : 0)
-      + (f.recipient_business_name?.value ? f.recipient_business_name.confidence : 0);
+    return (fields.recipient_first_name?.value ? fields.recipient_first_name.confidence : 0)
+      + (fields.recipient_last_name?.value ? fields.recipient_last_name.confidence : 0)
+      + (fields.recipient_business_name?.value ? fields.recipient_business_name.confidence : 0);
   };
-  let bestDoc: ExtractionResult | null = null;
+  let bestDoc: IdentityWinnerDoc | null = null;
   let bestScore = 0;
-  for (const c2 of collected) {
-    const s = recipientScore(c2.ex);
-    if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
+  for (const dc of docCandidates) {
+    const s = recipientScore(dc.fields);
+    if (s > bestScore) { bestScore = s; bestDoc = { documentType: dc.docType, fields: dc.fields }; }
   }
-  if (bestDoc) {
-    for (const k of IDENTITY_GROUP) {
-      const v = bestDoc.fields[k];
-      // Only override with a non-empty value — a blank field on the
-      // winning doc shouldn't wipe a value another doc legitimately
-      // supplied (e.g. winner has the name, a second doc has the DOB).
-      if (v && v.value) mergedFields[k] = v;
+  // This guard can override arbitration's per-field pick (it selects the
+  // whole name group from one document, not per-field precedence), so
+  // `conflicts`/`mergedFields` must be reconciled — pulled out as a pure,
+  // independently-tested function (see serveIntakeArbitrate.ts) since the
+  // rest of this handler needs D1/R2/AI bindings a unit test can't supply.
+  conflicts = reconcileIdentityConflicts(conflicts, mergedFields, docCandidates, bestDoc, IDENTITY_GROUP);
+
+  // ── Deterministic normalization + cross-field validation ───────
+  // finalizeFields() is the ONE seam that applies both, in order:
+  //   normalize — enforce the shapes the prompt only *requests* (digits-only
+  //   phones, 2-letter states, 5(+4) ZIPs, ISO dates), so every downstream
+  //   consumer (queue row, person/property writes, the success card) sees
+  //   clean values;
+  //   validate — the model self-reports confidence and it is optimistic, so
+  //   check what can be checked without a model (ZIP↔state agreement, phone
+  //   digit count, date sanity) and fold the result back into the score.
+  // /scan-document runs the identical seam, so the preview an officer
+  // reviews and the record that commits can no longer disagree.
+  const nowIso = new Date().toISOString();
+  const validation = finalizeFields(mergedFields, nowIso);
+  if (validation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      count: validation.issues.length,
+      issues: validation.issues.slice(0, 10),
+    });
+  }
+  let validatedFields = validation.adjusted;
+  // The issue set that will be PERSISTED alongside the committed record.
+  // Starts as the first-pass issues, but the critic pass below re-runs
+  // finalizeFields on its own output — if that revalidation isn't also
+  // captured here, a persisted validation_issues can go stale relative to
+  // `validatedFields`: it can show an issue the critic already resolved,
+  // or omit one the critic-adjusted revalidation newly introduced. The
+  // officer reading the reason for a lowered confidence must see the
+  // reason for the value actually on the record, not the pre-critic one.
+  let committedValidationIssues = validation.issues;
+
+  // ── Bounded critic pass (spec item 10) ──────────────────────────
+  // Re-ask the model ONLY about the doubtful critical fields (capped at 5
+  // by needsCriticPass), so a badly-scanned packet gets a second look
+  // without doubling neuron spend on every packet. A critic failure must
+  // never fail the upload — the catch below keeps the first-pass fields,
+  // and applyCriticResults() never lets an empty critic answer overwrite
+  // a value the first pass already found.
+  // needsCriticPass deliberately reads the PRE-critic `validation.issues`
+  // — that's the correct input for deciding whether to run the critic at
+  // all, a different job from explaining the committed record.
+  const criticFields = needsCriticPass(validatedFields, validation.issues);
+  if (criticFields.length) {
+    const combinedText = collected.map((c2) => c2.text || '').filter(Boolean).join('\n\n');
+    log.info('serve-intake critic pass', { traceId: c.get('traceId'), fields: criticFields });
+    try {
+      const critic = await withTimeout(
+        criticExtract(c.env, combinedText, criticFields),
+        CRITIC_TIMEOUT_MS, 'Critic pass timed out',
+      );
+      const postCritic = finalizeFields(applyCriticResults(validatedFields, critic), nowIso);
+      validatedFields = postCritic.adjusted;
+      committedValidationIssues = postCritic.issues;
+    } catch (e) {
+      log.warn('serve-intake critic pass failed; keeping first-pass fields', {
+        traceId: c.get('traceId'),
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   }
-
-  // ── Deterministic field normalization ─────────────────────────
-  // Enforce the shapes the prompt only *requests*: digits-only phones,
-  // 2-letter states, 5(+4) ZIPs, ISO dates. Runs on the merged set so
-  // every downstream consumer (queue row, person/property writes, the
-  // success card) sees clean values.
-  const normalizedFields = normalizeFields(mergedFields);
 
   // ── Phase 1 Quality Gate: judge the merged result ──────────────
   const rawDocsForJudge = collected.map(c2 => ({ name: c2.file.name, text: c2.text || '' }));
   const docTypesForJudge = collected.map(c2 => c2.ex.documentType);
   const judgeResult = await judgeMerged(
     c.env,
-    normalizedFields,
+    validatedFields,
     rawDocsForJudge,
     docTypesForJudge,
   );
@@ -590,9 +915,17 @@ si.post('/upload', async (c) => {
   if (typeof overridesRaw === 'string') {
     try {
       const overrides = JSON.parse(overridesRaw) as Record<string, string>;
+      // Date fields typed manually by the operator arrive as free text (e.g. "Aug 25, 2026").
+      // normalizeFields() ran before this point on AI values but not on operator overrides,
+      // so we apply toIsoDate() here for known date fields to keep storage consistent.
+      const DATE_OVERRIDE_FIELDS = new Set([
+        'service_deadline', 'hearing_date', 'filing_date', 'attempt_start_not_before', 'recipient_dob',
+      ]);
       for (const [k, v] of Object.entries(overrides)) {
         if (typeof v === 'string' && v.trim()) {
-          normalizedFields[k] = { value: v.trim(), confidence: 1.0 };
+          const raw = v.trim();
+          const normalized = DATE_OVERRIDE_FIELDS.has(k) ? (toIsoDate(raw) || raw) : raw;
+          validatedFields[k] = { value: normalized, confidence: 1.0 };
         }
       }
       for (const k of Object.keys(overrides)) {
@@ -603,20 +936,25 @@ si.post('/upload', async (c) => {
     } catch { /* ignore malformed overrides blob */ }
   }
 
-  const judgeInsert = await db.prepare(`
-    INSERT INTO serve_intake_judge_runs
-      (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    judgeResult.model,
-    judgeResult.ms,
-    judgeResult.raw_response,
-    judgeResult.flagged_field_count,
-    judgeResult.overall_status,
-    JSON.stringify(judgeResult.fallback_chain),
-    user.id,
-  ).run();
-  const judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  let judgeRunId: number | null = null;
+  try {
+    const judgeInsert = await db.prepare(`
+      INSERT INTO serve_intake_judge_runs
+        (model, ms, raw_response, flagged_field_count, overall_status, fallback_chain, upload_user_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      judgeResult.model,
+      judgeResult.ms,
+      judgeResult.raw_response,
+      judgeResult.flagged_field_count,
+      judgeResult.overall_status,
+      JSON.stringify(judgeResult.fallback_chain),
+      user.id,
+    ).run();
+    judgeRunId = judgeInsert.meta?.last_row_id ?? null;
+  } catch (err) {
+    console.warn('[serve-intake] judge_runs insert failed — proceeding without judge run id:', err);
+  }
 
   // Operator-selected client_id (integer FK) sent as a separate FormData field
   // so it doesn't get coerced through the string-only field_overrides path.
@@ -704,8 +1042,8 @@ si.post('/upload', async (c) => {
 
   // ── Commit the merged extraction into the full RMS record set:
   //    business / person / property / call / serve_queue + links.
-  const row = fieldsToQueueRow(normalizedFields);
-  const docSummary = buildCallDescription(row, normalizedFields, documents.length);
+  const row = fieldsToQueueRow(validatedFields);
+  const docSummary = buildCallDescription(row, validatedFields, documents.length);
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
@@ -715,7 +1053,7 @@ si.post('/upload', async (c) => {
   if (row.recipient_name || row.recipient_address) {
     await reconcileScheduleSchema(db);
     commit = await commitIntake(db, {
-      fields: normalizedFields,
+      fields: validatedFields,
       queueRow: row,
       userId: user.id,
       documentSummary: docSummary,
@@ -732,6 +1070,8 @@ si.post('/upload', async (c) => {
         success: !!d.success, page_count: d.page_count ?? null,
       })),
       allDates: [...allDates],
+      conflicts,
+      validationIssues: committedValidationIssues,
       env: c.env,
     });
     // Back-link the document rows to the new queue entry — and to the
@@ -824,7 +1164,7 @@ si.post('/upload', async (c) => {
     // Legacy IntakeResult shape so the existing success card on
     // ServeIntakePage renders without any client-side branching on
     // which endpoint was hit.
-    extracted: buildExtractedBlock(normalizedFields),
+    extracted: buildExtractedBlock(validatedFields),
     confidence: bestConfidence,
     documentType: bestDocType,
     // Server-side advanced fields (the /intake legacy path can't
@@ -840,11 +1180,11 @@ si.post('/upload', async (c) => {
     judge_verdicts: judgeResult.verdicts,
     quality_status: judgeResult.overall_status === 'error' ? 'needs_review' : judgeResult.overall_status,
     judge_run_id: judgeRunId,
-    defendants_detected: parseDefendants(normalizedFields.defendant?.value),
+    defendants_detected: parseDefendants(validatedFields.defendant?.value),
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
-      fields: normalizedFields,
+      fields: validatedFields,
       allDates: [...allDates],
       queue_row: row,
     },
@@ -871,6 +1211,8 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
     jobNumber: get('job_number'),
     caseNumber: get('case_number'),
     dueDate: get('service_deadline'),
+    hearingDate: get('hearing_date'),
+    jurisdiction: get('jurisdiction'),
     attorney: {
       name: get('attorney_name'),
       phone: get('attorney_phone'),
@@ -884,6 +1226,7 @@ function buildExtractedBlock(fields: Record<string, { value: string; confidence:
     serverName: get('server_name'),
     registeredAgent: get('registered_agent_name'),
     businessName: get('recipient_business_name'),
+    recipientType: get('recipient_type'),
   };
 }
 
@@ -1000,11 +1343,45 @@ si.post('/intake', async (c) => {
   const docs: Array<{ type?: string; text?: string }> = Array.isArray(body.documents) ? body.documents : [];
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
-  const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
+  // This route receives browser-extracted pdfjs text — positional
+  // concatenation, the exact tier where a diagonal RUSH watermark lands as
+  // isolated single letters and where Cyrillic homoglyphs ("СA") survive
+  // into recipient_state and silently defeat validateFields' ZIP↔state
+  // check. precleanText was never applied here; it is idempotent, so
+  // scrubbing per-document before concatenation is safe regardless of what
+  // the client already did.
+  const combined = docs
+    .map((d) => `--- ${d.type || 'document'} ---\n${precleanText(d.text || '')}`)
+    .join('\n\n');
   const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
-  // Same deterministic normalization the /upload path applies, so the
-  // legacy single-call route produces equally clean field shapes.
-  const normalized = normalizeFields(extraction.fields);
+  // Neuron cost accounting (spec §6): `combined` is exactly the text sent to
+  // extractFromText above (no slicing/capping on this legacy route), and
+  // extraction.model is whichever model actually ran — not necessarily the
+  // configured default, since extractFromText can itself fall back. Output
+  // tokens are a fixed 512 estimate for the structured JSON field payload;
+  // Workers AI doesn't report actual usage back to this call. Pure
+  // arithmetic — no extra AI/network call.
+  log.info('serve-intake neurons', {
+    traceId: c.get('traceId'),
+    model: extraction.model,
+    neurons: estimateNeurons(extraction.model, Math.ceil(combined.length / 4), 512),
+    free_daily: FREE_NEURONS_PER_DAY,
+    docs: docs.length,
+  });
+  // Same normalize+validate seam /upload and /scan-document apply, so this
+  // legacy single-call route produces equally clean field shapes AND the
+  // same cross-field validation (ZIP↔state, phone digit count, date sanity)
+  // — without this, a cross-state paste through /intake would commit at an
+  // un-penalized confidence with no validation-issue log line.
+  const intakeValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (intakeValidation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      traceId: c.get('traceId'),
+      count: intakeValidation.issues.length,
+      issues: intakeValidation.issues.slice(0, 10),
+    });
+  }
+  const normalized = intakeValidation.adjusted;
   const row = fieldsToQueueRow(normalized);
 
   let commit: CommitResult = {
@@ -1023,6 +1400,11 @@ si.post('/intake', async (c) => {
       documentSummary: buildCallDescription(row, normalized, docs.length),
       docCount: docs.length,
       env: c.env,
+      // R9: these were computed and logged two lines above but never passed,
+      // so the row persisted `validation_issues: []` while the log said
+      // otherwise — an audit-trail lie on one of the two paths most likely
+      // to HAVE issues.
+      validationIssues: intakeValidation.issues,
     });
   }
 
@@ -1094,9 +1476,25 @@ si.get('/documents/:docId/file', async (c) => {
     docId,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  const obj = await c.env.UPLOADS.get(doc.r2_key);
-  if (!obj) return c.json({ error: 'File missing in R2' }, 404);
-  return new Response(obj.body, {
+  // getDecrypted() cleanly returns null when there's no file_encryption_keys
+  // row (the legacy pre-encryption case — this feature has been live, and
+  // production R2 already holds serve-intake/ objects written before this
+  // task shipped). A genuine decrypt failure (bad KEK, tampered ciphertext)
+  // THROWS instead and must propagate as a real error, not silently fall
+  // back to raw bytes — so this is deliberately NOT wrapped in .catch().
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  if (decrypted) {
+    return new Response(decrypted.bytes, {
+      headers: {
+        'Content-Type': doc.file_type || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  }
+  const legacy = await c.env.UPLOADS.get(doc.r2_key);
+  if (!legacy) return c.json({ error: 'File missing in R2' }, 404);
+  return new Response(legacy.body, {
     headers: {
       'Content-Type': doc.file_type || 'application/octet-stream',
       'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
@@ -1118,16 +1516,44 @@ async function reprocessDocument(
   const db = getDb(c.env);
   let extraction: ExtractionResult | null = null;
   if (isImage(doc.file_type) && doc.r2_key) {
-    const obj = await c.env.UPLOADS.get(doc.r2_key);
-    if (obj) extraction = await ocrImage(c.env, new Uint8Array(await obj.arrayBuffer()), doc.file_type).catch(() => null);
+    // getDecrypted() cleanly returns null for the legacy pre-encryption case
+    // (no file_encryption_keys row — production already holds serve-intake/
+    // objects written before this task shipped); it THROWS for a genuine
+    // decrypt failure, which is deliberately left uncaught here so it
+    // propagates as a real error instead of masquerading as "no image".
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+    let bytes: Uint8Array | null = decrypted ? decrypted.bytes : null;
+    if (!bytes) {
+      const legacy = await c.env.UPLOADS.get(doc.r2_key);
+      if (legacy) bytes = new Uint8Array(await legacy.arrayBuffer());
+    }
+    if (bytes) extraction = await ocrImageWithTesseractGate(c.env, bytes, doc.file_type).catch(() => null);
   } else if ((doc.raw_text || '').trim().length >= 20) {
-    extraction = await ocrText(c.env, doc.raw_text).catch(() => null);
+    // Same family derivation as /upload and /scan-document, from the
+    // originally-uploaded file name stored on the document row.
+    const docFamily = familyFromFileName(doc.file_name || '');
+    // Rows written before precleanText existed on this path still hold raw,
+    // uncleaned OCR text — reprocess is precisely the recovery path for
+    // those rows, so it must not assume upstream cleaning already happened.
+    // precleanText is idempotent, so already-clean text is unaffected.
+    extraction = await ocrText(c.env, precleanText(doc.raw_text), docFamily).catch(() => null);
   }
   if (!extraction) {
     return { success: false, documentType: doc.doc_type || 'other', confidence: 0, model: '',
       committedQueueId: null, note: 'No image or stored text to re-extract (scanned PDF — re-upload as images)' };
   }
-  const normalized = normalizeFields(extraction.fields);
+  // Same normalize+validate seam every other entry point applies — without
+  // it, a re-extracted row would commit at an un-penalized confidence with
+  // no validation-issue log line, even though this is the exact recovery
+  // path for previously-failed rows.
+  const reprocessValidation = finalizeFields(extraction.fields, new Date().toISOString());
+  if (reprocessValidation.issues.length) {
+    log.warn('serve-intake validation issues', {
+      count: reprocessValidation.issues.length,
+      issues: reprocessValidation.issues.slice(0, 10),
+    });
+  }
+  const normalized = reprocessValidation.adjusted;
   const queueRow = fieldsToQueueRow(normalized);
   await execute(db,
     `UPDATE serve_intake_documents SET fields_json=?, confidence=?, extraction_model=?, doc_type=?,
@@ -1142,6 +1568,10 @@ async function reprocessDocument(
       env: c.env, fields: normalized, queueRow, userId,
       documentSummary: (normalized.documents_to_serve?.value || doc.doc_type || '').trim(),
       docCount: 1,
+      // R9: same drop as the /intake path — computed + logged above, never
+      // persisted. Reprocess is the recovery path for previously-failed
+      // rows, so it is the MOST likely to carry real validation issues.
+      validationIssues: reprocessValidation.issues,
     });
     if (commit.serve_queue_id) {
       committedQueueId = commit.serve_queue_id;
@@ -1158,6 +1588,7 @@ async function reprocessDocument(
 
 // GET /review-queue — serve_queue entries filtered by quality_status.
 // Defaults to 'needs_review'; accepts ?quality_status=clean|needs_review|reviewed_ok|reviewed_fixed.
+// Also accepts ?count=1 to return only { count } for badge display.
 si.get('/review-queue', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !INTAKE_ROLES.includes(user.role)) {
@@ -1166,18 +1597,27 @@ si.get('/review-queue', async (c) => {
   const db = getDb(c.env);
   await ensureQualityGateColumns(db);
   const status = c.req.query('quality_status');
-  let sql = `SELECT id, recipient_name, recipient_address, quality_status, judge_run_id, created_at
-             FROM serve_queue
-             WHERE 1 = 1`;
-  const bindings: unknown[] = [];
-  if (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed') {
-    sql += ` AND quality_status = ?`;
-    bindings.push(status);
-  } else {
-    sql += ` AND quality_status = 'needs_review'`;
+  const countOnly = c.req.query('count') === '1';
+
+  const qualityFilter = (status === 'needs_review' || status === 'clean' || status === 'reviewed_ok' || status === 'reviewed_fixed')
+    ? status : 'needs_review';
+
+  if (countOnly) {
+    const row = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM serve_queue WHERE quality_status = ?`, qualityFilter);
+    return c.json({ count: row?.n ?? 0 });
   }
-  sql += ` ORDER BY created_at DESC LIMIT 200`;
-  const rows = await query(db, sql, ...bindings);
+
+  // LEFT JOIN serve_intake_judge_runs to surface flagged_field_count + raw verdicts.
+  const sql = `SELECT sq.id, sq.recipient_name, sq.recipient_address, sq.case_number,
+                      sq.quality_status, sq.judge_run_id, sq.created_at,
+                      sq.deadline, sq.priority,
+                      jr.flagged_field_count, jr.raw_response AS judge_raw_response
+               FROM serve_queue sq
+               LEFT JOIN serve_intake_judge_runs jr ON jr.id = sq.judge_run_id
+               WHERE sq.quality_status = ?
+               ORDER BY sq.created_at DESC LIMIT 200`;
+  const rows = await query(db, sql, qualityFilter);
   return c.json({ rows });
 });
 
@@ -1228,7 +1668,7 @@ si.post('/documents/:docId/reprocess', async (c) => {
 si.post('/reprocess-failed', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
-  const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '10', 10)));
+  const limit = clampIntParam(c.req.query('limit'), 10, 1, 25);
   const docs = await query<any>(getDb(c.env),
     `SELECT * FROM serve_intake_documents
       WHERE serve_queue_id IS NULL AND (status = 'failed' OR confidence < 0.4)
@@ -1253,7 +1693,7 @@ si.get('/stats', async (c) => {
   const served = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status='served'");
   const overdue = await queryFirst<{ n: number }>(
     db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime('now','localtime') AND status NOT IN ('served','cancelled','failed')",
+    "SELECT COUNT(*) AS n FROM serve_queue WHERE deadline IS NOT NULL AND deadline < datetime('now') AND status NOT IN ('served','cancelled','failed')",
   );
   return c.json({
     total: total?.n ?? 0,
@@ -1274,7 +1714,7 @@ si.get('/', async (c) => {
   const officerId = c.req.query('officer_id');
   const priority = c.req.query('priority');
   const search = c.req.query('q');
-  const limit = Math.min(parseInt(c.req.query('limit') || '100', 10), 500);
+  const limit = clampIntParam(c.req.query('limit'), 100, 1, 500);
 
   const where: string[] = [];
   const args: any[] = [];
@@ -1308,7 +1748,18 @@ si.get('/queue', async (c) => {
   await reconcileScheduleSchema(db);
   const officerParam = c.req.query('officer_id');
   const statusParam = c.req.query('status') ?? 'pending,assigned';
-  const statuses = statusParam.split(',').map((s) => s.trim()).filter(Boolean);
+  // Allowlist rather than pass the raw split through: `status` is caller-supplied
+  // and fed straight into an IN-list, so an unfiltered `?status=a,a,a,…` past 100
+  // entries throws at D1's bound-parameter cap. Constraining to the known enum
+  // bounds the list by construction and drops junk filters that could only ever
+  // match zero rows.
+  const VALID_QUEUE_STATUSES = new Set([
+    'pending', 'assigned', 'in_progress', 'served',
+    'attempted', 'failed', 'cancelled', 'archived',
+  ]);
+  const statuses = [...new Set(
+    statusParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  )].filter((s) => VALID_QUEUE_STATUSES.has(s));
   if (!statuses.length) return c.json([]);
   const placeholders = statuses.map(() => '?').join(',');
 
@@ -1439,11 +1890,14 @@ si.post('/schedule/backfill', async (c) => {
     attempt_count: number; max_attempts: number;
     business_id: number | null; created_at: string;
     recipient_type: string | null;
-  }>(
+  } & PlanContextRow>(
     db,
+    // R6: pull the persisted address class + client constraints in the SAME
+    // query rather than one round trip per job.
     `SELECT q.id, q.deadline, q.priority, q.attempt_count, q.max_attempts,
             q.business_id, q.created_at,
-            q.parsed_data->>'recipient_type' AS recipient_type
+            q.parsed_data->>'recipient_type' AS recipient_type,
+            ${PLAN_CONTEXT_COLUMNS.replace(/parsed_data/g, 'q.parsed_data')}
      FROM serve_queue q
      WHERE q.status IN ('pending', 'in_progress')
        AND NOT EXISTS (
@@ -1466,7 +1920,18 @@ si.post('/schedule/backfill', async (c) => {
       const uploadedToday = job.created_at?.slice(0, 10) === todayYmd;
       const baseIso = uploadedToday ? job.created_at : nowIso;
 
-      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', { isBusiness });
+      // R6: use the address class + client hours/days/start bar commitIntake
+      // persisted, not an interim isBusiness mapping with no client
+      // constraints. D-2: an unconfirmed class yields residential timing.
+      const ctx = planContextFromRow(job);
+      const plan = planAttemptWindows(baseIso, job.deadline ?? null, 'America/Denver', {
+        isBusiness,
+        addressClass: ctx.addressClass,
+        addressClassConfirmed: ctx.addressClassConfirmed,
+        clientBands: ctx.clientBands,
+        allowedDays: ctx.allowedDays,
+        startNotBefore: ctx.startNotBefore,
+      });
       // Trim plan to only remaining attempts and only future dates.
       const futurePlan = plan
         .filter((w) => w.date >= todayYmd)
@@ -1514,7 +1979,21 @@ si.patch('/schedule/:slotId', async (c) => {
   await reconcileScheduleSchema(db);
 
   const body = await c.req.json<any>().catch(() => ({}));
+  // Ordinary reschedules are open to dispatchers, but FORCING an overlap
+  // deliberately double-books an officer, so it needs supervisor or above —
+  // the same MANAGE_ROLES set the clients gate their drag handlers on. Checked
+  // separately from the route gate above so a dispatcher's normal move still
+  // succeeds and only the override is refused.
   const force = c.req.query('force') === '1';
+  if (force) {
+    const forceDenied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (forceDenied) {
+      return c.json({
+        error: 'Forcing an overlapping move requires supervisor or above',
+        code: 'force_forbidden',
+      }, 403);
+    }
+  }
   const userId = (c.get('userId') as number | undefined) ?? null;
   const ifUnmodifiedSince = c.req.header('If-Unmodified-Since') ?? body.if_unmodified_since ?? null;
 
@@ -1562,15 +2041,30 @@ si.patch('/schedule/:slotId', async (c) => {
 
   if (!force) {
     // Pull all other slots on the candidate (officer, date) for overlap detection.
+    //
+    // `s.dismissed = 0` is load-bearing: GET /schedule hides dismissed rows
+    // (see the WHERE at the schedule listing above), so leaving them in the
+    // peer set makes a dismissed slot an INVISIBLE blocker — the operator sees
+    // an empty band, drops onto it, and gets "conflicts with another scheduled
+    // attempt" with nothing on screen that could explain it.
+    //
+    // recipient_name/case_number ride along so the 409 body can NAME the
+    // conflicting job; the client renders them in the force-overlap confirm.
     const peers = await query<{
       id: number; queue_id: number; officer_id: number | null;
       scheduled_date: string; window_start: string; window_end: string;
       updated_at: string;
+      recipient_name: string | null; case_number: string | null;
     }>(
       db,
-      `SELECT id, queue_id, officer_id, scheduled_date, window_start, window_end, updated_at
-         FROM serve_attempt_schedules
-        WHERE scheduled_date = ? AND officer_id IS ?`,
+      `SELECT s.id, s.queue_id, s.officer_id, s.scheduled_date,
+              s.window_start, s.window_end, s.updated_at,
+              q.recipient_name, q.case_number
+         FROM serve_attempt_schedules s
+         JOIN serve_queue q ON q.id = s.queue_id
+        WHERE s.dismissed = 0
+          AND s.scheduled_date = ?
+          AND s.officer_id IS ?`,
       candidateDate, candidateOfficer,
     );
     const conflicts = detectSlotOverlap(
@@ -1778,6 +2272,8 @@ si.get('/clients', async (c) => {
 // param-only branch to numeric ids. See properties.ts:43-45 for the
 // codebase's precedent fix for the same trap.
 si.get('/:id{[0-9]+}', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -1917,10 +2413,45 @@ si.put('/:id', async (c) => {
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
-  if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now','localtime')");
-  args.push(id);
-  await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  // Scheduling constraint fields live inside the parsed_data JSON blob.
+  // They're written via json_set() alongside the flat column update, or in a
+  // separate statement when no flat columns changed, rather than reading the
+  // blob out and back in (avoids a round-trip race on a concurrent save).
+  const PARSED_DATA_FIELDS: Record<string, string> = {
+    address_class:              '$._intake.address_class.klass',
+    attempt_start_not_before:   '$.attempt_start_not_before',
+    service_days_allowed:       '$.service_days_allowed',
+  };
+  const parsedPatches: { path: string; value: string }[] = [];
+  for (const [fieldKey, jsonPath] of Object.entries(PARSED_DATA_FIELDS)) {
+    if (fieldKey in body && typeof body[fieldKey] === 'string') {
+      parsedPatches.push({ path: jsonPath, value: body[fieldKey] });
+    }
+  }
+
+  if (!sets.length && !parsedPatches.length) return c.json({ error: 'No fields to update' }, 400);
+
+  if (sets.length) {
+    sets.push("updated_at = datetime('now')");
+    args.push(id);
+    await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
+  }
+
+  if (parsedPatches.length) {
+    // Build a chained json_set call: json_set(json_set(parsed_data, path1, ?), path2, ?)
+    let expr = 'COALESCE(parsed_data, \'{}\')'
+    const patchArgs: string[] = [];
+    for (const { path, value } of parsedPatches) {
+      expr = `json_set(${expr}, ?, ?)`;
+      patchArgs.push(path, value);
+    }
+    await execute(
+      db,
+      `UPDATE serve_queue SET parsed_data = ${expr}, updated_at = datetime('now') WHERE id = ?`,
+      ...patchArgs,
+      id,
+    );
+  }
 
   // Propagate officer_id to auto-placed schedule slots so the lane timeline stays in sync.
   // Manually-moved slots (manually_moved=1) keep their officer assignment intact.
@@ -1958,6 +2489,9 @@ si.delete('/:id', async (c) => {
   // foreign_keys, so FK CASCADE/SET NULL clauses may not fire. Tables
   // without any REFERENCES clause (serve_nudges, case_serve_jobs) are
   // guaranteed orphans without these DELETEs.
+  // ── serve_qr_scans: REFERENCES serve_queue(id) with no ON DELETE clause
+  //    (default NO ACTION) — blocks parent delete on any scanned job
+  await execute(db, 'DELETE FROM serve_qr_scans WHERE job_id = ?', id);
   // ── serve_nudges: no FK constraint (migration 0105) — would orphan
   await execute(db, 'DELETE FROM serve_nudges WHERE serve_queue_id = ?', id);
   // ── case_serve_jobs: FK on case_id only, no FK on serve_queue_id (migration 0146)
@@ -2000,6 +2534,8 @@ si.delete('/:id', async (c) => {
 
 // ── GET /:id/attempts ───────────────────────────────────────
 si.get('/:id/attempts', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
@@ -2082,11 +2618,11 @@ si.post('/:id/attempts', async (c) => {
   else newStatus = 'attempted';
 
   const closedClause = (newStatus === 'served' || newStatus === 'failed')
-    ? ", closed_at = datetime('now','localtime')"
+    ? ", closed_at = datetime('now')"
     : '';
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime')${closedClause} WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now')${closedClause} WHERE id = ?`,
     nextNum, newStatus, id,
   );
 
@@ -2104,7 +2640,9 @@ si.post('/:id/attempts', async (c) => {
   // logAttempt(), but this intake path is the OTHER attempt-logging route and
   // never called it either — jobs completed here never notified anyone.
   if (newStatus === 'served' || newStatus === 'failed') {
-    notifyServeCompletion(db, id, newStatus).catch(() => {});
+    notifyServeCompletion(db, id, newStatus).catch((err) => {
+      log.error('notifyServeCompletion failed', { src: 'src/routes/serveIntake.ts', serveQueueId: id, newStatus }, err);
+    });
   }
 
   // Auto-replan on failure (PR 1) — spawn next slot, recompute tier
@@ -2134,6 +2672,11 @@ si.post('/:id/attempts', async (c) => {
 
     if (q && q.attempt_count < q.max_attempts) {
       const isBusiness = (q.recipient_type ?? '').toLowerCase() === 'business';
+      // R6: read the class + the client's dictated hours/days/start bar that
+      // commitIntake persisted. Before this, EVERY attempt after the first
+      // ignored the client's authorized hours — the court-exposure case, on
+      // the path that generates most attempts.
+      const planCtx = await loadPersistedPlanContext(db, id);
 
       const next = replanAfterFailedAttempt(
         {
@@ -2148,6 +2691,11 @@ si.post('/:id/attempts', async (c) => {
           recipient_lat: q.recipient_lat,
           recipient_lng: q.recipient_lng,
           isBusiness,
+          addressClass: planCtx.addressClass,
+          addressClassConfirmed: planCtx.addressClassConfirmed,
+          clientBands: planCtx.clientBands,
+          allowedDays: planCtx.allowedDays,
+          startNotBefore: planCtx.startNotBefore,
         },
       );
 
@@ -2228,6 +2776,17 @@ si.post('/:id/attempts', async (c) => {
   });
 });
 
+// ── GET /:id/skip-trace ─────────────────────────────────────
+si.get('/:id/skip-trace', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const rows = await query(db, 'SELECT * FROM serve_skip_traces WHERE serve_queue_id = ? ORDER BY created_at DESC', id);
+  return c.json({ data: rows });
+});
+
 // ── POST /:id/skip-trace ────────────────────────────────────
 si.post('/:id/skip-trace', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
@@ -2253,6 +2812,8 @@ si.post('/:id/skip-trace', async (c) => {
 
 // ── GET /routes ─────────────────────────────────────────────
 si.get('/routes', async (c) => {
+  const denied = requireRole(c, ...INTAKE_ROLES);
+  if (denied) return c.json({ error: denied }, 403);
   const db = getDb(c.env);
   const officerId = c.req.query('officer_id');
   const date = c.req.query('date');
@@ -2281,8 +2842,11 @@ si.post('/routes', async (c) => {
       start_lat, start_lng, end_lat, end_lng, notes
     ) VALUES (?,?,?,?, ?,?, ?,?,?,?, ?)`,
     body.officer_id ?? user?.id, body.route_date ?? null,
-    JSON.stringify(body.optimized_order ?? []),
-    JSON.stringify(body.waypoints ?? []),
+    // Same dual-spelling normalization as POST /api/process-server/routes —
+    // see src/utils/serveRoutePayload.ts. Reading only the bare keys stored
+    // "[]" for any caller sending the *_json spelling.
+    routeJsonColumn(body.optimized_order_json, body.optimized_order),
+    routeJsonColumn(body.waypoints_json, body.waypoints),
     body.total_distance_miles ?? null, body.total_time_minutes ?? null,
     body.start_lat ?? null, body.start_lng ?? null,
     body.end_lat ?? null, body.end_lng ?? null,
@@ -2339,8 +2903,8 @@ si.get('/map-items', async (c) => {
             q.recipient_name, q.recipient_address, q.recipient_city, q.recipient_state,
             q.document_type, q.case_number, q.deadline, q.attempt_count,
             q.parsed_data->>'recipient_type' AS recipient_type,
-            q.parsed_data->>'recipient_lat'  AS recipient_lat,
-            q.parsed_data->>'recipient_lng'  AS recipient_lng,
+            COALESCE(q.recipient_lat, CAST(q.parsed_data->>'recipient_lat' AS REAL))  AS recipient_lat,
+            COALESCE(q.recipient_lng, CAST(q.parsed_data->>'recipient_lng' AS REAL))  AS recipient_lng,
             sn.id   AS location_note_id,
             sn.note_text AS location_note_text,
             ns.scheduled_date AS next_attempt_date,

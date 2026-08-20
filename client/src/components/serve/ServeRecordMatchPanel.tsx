@@ -78,12 +78,14 @@ export default function ServeRecordMatchPanel({ address, businessName }: Props) 
 
   if (!hasPropData && !hasBizData) return null;
 
+  // Borders and the icon are structural chrome — silver, not gold. Only the
+  // panel header itself takes the gold role variable.
   return (
-    <div className="panel-beveled bg-surface-raised border border-[#d4a017]/30">
-      <div className="flex items-center gap-2 px-3 py-[5px] border-b border-[#d4a017]/20">
-        <KeyRound className="w-3 h-3 text-[#d4a017]" />
-        <span className="text-[10px] uppercase font-bold tracking-wider text-[#d4a017]">Records Match</span>
-        <span className="text-[9px] text-rmpg-500 ml-1">— existing record found for this {hasPropData ? 'address' : 'business'}</span>
+    <div className="panel-beveled bg-surface-raised border border-accent-silver-600/30">
+      <div className="flex items-center gap-2 px-3 py-[5px] border-b border-accent-silver-600/20">
+        <KeyRound className="w-3 h-3 text-accent-silver-400" />
+        <span className="text-[10px] uppercase font-bold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Records Match</span>
+        <span className="text-[9px] text-fg-muted ml-1">— existing record found for this {hasPropData ? 'address' : 'business'}</span>
       </div>
 
       <div className="p-3 space-y-3">
@@ -92,26 +94,26 @@ export default function ServeRecordMatchPanel({ address, businessName }: Props) 
             <div className="flex items-center gap-1.5 mb-1.5">
               <Home className="w-3 h-3 text-rmpg-400" />
               <span className="text-[9px] uppercase font-bold tracking-wider text-rmpg-400">Property Record</span>
-              <span className="text-[9px] text-rmpg-600 truncate">{property.name || property.address}</span>
+              <span className="text-[9px] text-fg-muted truncate">{property.name || property.address}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
               {property.gate_code && (
                 <div className="flex items-center gap-1">
-                  <span className="text-rmpg-500">Gate:</span>
-                  <span className="font-mono text-[#d4a017] font-bold">{property.gate_code}</span>
+                  <span className="text-fg-muted">Gate:</span>
+                  <span className="font-mono text-rmpg-100 font-bold">{property.gate_code}</span>
                 </div>
               )}
               {property.alarm_code && (
                 <div className="flex items-center gap-1">
-                  <span className="text-rmpg-500">Alarm:</span>
-                  <span className="font-mono text-[#d4a017] font-bold">{property.alarm_code}</span>
-                  {property.alarm_company && <span className="text-rmpg-600">({property.alarm_company})</span>}
+                  <span className="text-fg-muted">Alarm:</span>
+                  <span className="font-mono text-rmpg-100 font-bold">{property.alarm_code}</span>
+                  {property.alarm_company && <span className="text-fg-muted">({property.alarm_company})</span>}
                 </div>
               )}
               {property.key_holder_name && (
                 <div className="flex items-center gap-1 col-span-2">
-                  <User className="w-3 h-3 text-rmpg-500" />
-                  <span className="text-rmpg-500">Key holder:</span>
+                  <User className="w-3 h-3 text-fg-muted" />
+                  <span className="text-fg-muted">Key holder:</span>
                   <span className="text-rmpg-200">{property.key_holder_name}</span>
                   {property.key_holder_phone && (
                     <span className="text-rmpg-400 flex items-center gap-0.5">
@@ -138,26 +140,26 @@ export default function ServeRecordMatchPanel({ address, businessName }: Props) 
             <div className="flex items-center gap-1.5 mb-1.5">
               <Building2 className="w-3 h-3 text-rmpg-400" />
               <span className="text-[9px] uppercase font-bold tracking-wider text-rmpg-400">Business Record</span>
-              <span className="text-[9px] text-rmpg-600 truncate">{business.name}</span>
+              <span className="text-[9px] text-fg-muted truncate">{business.name}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
               {business.owner_name && (
                 <div className="flex items-center gap-1">
-                  <span className="text-rmpg-500">Owner:</span>
+                  <span className="text-fg-muted">Owner:</span>
                   <span className="text-rmpg-200">{business.owner_name}</span>
                   {business.owner_phone && <span className="text-rmpg-400">{business.owner_phone}</span>}
                 </div>
               )}
               {business.contact_name && (
                 <div className="flex items-center gap-1">
-                  <span className="text-rmpg-500">Contact:</span>
+                  <span className="text-fg-muted">Contact:</span>
                   <span className="text-rmpg-200">{business.contact_name}</span>
                   {business.contact_phone && <span className="text-rmpg-400">{business.contact_phone}</span>}
                 </div>
               )}
               {business.phone && business.phone !== business.owner_phone && business.phone !== business.contact_phone && (
                 <div className="flex items-center gap-1">
-                  <Phone className="w-2.5 h-2.5 text-rmpg-500" />
+                  <Phone className="w-2.5 h-2.5 text-fg-muted" />
                   <span className="text-rmpg-400">{business.phone}</span>
                 </div>
               )}

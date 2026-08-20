@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { formatDateTime } from '../utils/dateUtils';
 import { CheckCircle, Star, ThumbsUp, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 import OfficerPicker from '../components/OfficerPicker';
+import { formatEnumValue } from '../utils/formatters';
 
 interface QAStats {
   total_reviews: number;
@@ -231,11 +232,11 @@ export default function QAPage() {
       {/* Review form modal */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={closeForm}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); closeForm(); } }}
@@ -326,7 +327,7 @@ export default function QAPage() {
         details={deleteTarget ? (
           <>
             <div><span className="text-rmpg-400">Review #:</span> {deleteTarget.review_number}</div>
-            <div><span className="text-rmpg-400">Type:</span> {deleteTarget.review_type}</div>
+            <div><span className="text-rmpg-400">Type:</span> {formatEnumValue(deleteTarget.review_type)}</div>
             {deleteTarget.reviewer_name && (
               <div><span className="text-rmpg-400">Reviewer:</span> {deleteTarget.reviewer_name}</div>
             )}

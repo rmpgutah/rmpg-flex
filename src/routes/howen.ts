@@ -21,6 +21,8 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const howen = new Hono<Env>();
 
 // GET /api/howen/status — device-fleet rollup tile.
@@ -65,9 +67,9 @@ howen.get('/devices', async (c) => {
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
     if (search?.trim()) {
-      where += ' AND (d.label LIKE ? OR d.imei LIKE ? OR d.plate_number LIKE ? OR d.device_id LIKE ?)';
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s, s);
+      const m = containsAnyClause(['d.label', 'd.imei', 'd.plate_number', 'd.device_id']);
+      where += ` AND ${m.sql}`;
+      params.push(...m.binds(search.trim()));
     }
 
     const [{ total }] = await query<{ total: number }>(db, `
@@ -114,6 +116,7 @@ howen.get('/devices/:id', async (c) => {
     if (!device) return c.json({ error: 'Device not found' }, 404);
     return c.json(device);
   } catch (err) {
+    log.error('GET /devices/:id failed', { src: 'src/routes/howen.ts' }, err);
     return c.json({ error: 'Failed to get device' }, 500);
   }
 });

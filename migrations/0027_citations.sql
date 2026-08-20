@@ -104,8 +104,8 @@ CREATE TABLE IF NOT EXISTS citations (
   -- Notes
   notes TEXT,
   -- Audit
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (person_id) REFERENCES persons(id),
   FOREIGN KEY (incident_id) REFERENCES incidents(id),
   FOREIGN KEY (issuing_officer_id) REFERENCES users(id),
@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS citation_violations (
   disposition TEXT,
   disposition_date TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE
 );
 
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS citation_payments (
   reference_number TEXT,
   notes TEXT,
   recorded_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
   FOREIGN KEY (recorded_by) REFERENCES users(id)
 );

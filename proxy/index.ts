@@ -189,17 +189,28 @@ const STUBS: StubRule[] = [
   // Categorized by page to make removal triage obvious — when a real
   // handler lands for a subsystem, drop ALL its stubs together.
   //
-  // ── Fleet sub-tabs that aren't ported yet ─────────────────────────────
-  // Bare /api/fleet, /api/fleet/:id, /api/fleet/map, /api/fleet/analytics,
-  // and /api/fleet/dashcam-videos[/:id[/neighbors]] are now real handlers
-  // in src/routes/fleet.ts. The list below is sub-paths the rewrite still
-  // doesn't implement; they 404 from the rewrite without a stub.
-  {
-    match: /^\/api\/fleet\/(fuel-cards|fuel|fuel\/.*|recalls|health-scores|maintenance-schedule|driver-performance|service-alerts|cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|notifications|overdue-inspections|dash-cameras|pretrip)(\/.*)?$/,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    body: { data: [], total: 0 },
-    reason: 'fleet sub-tab handler not ported; tab renders empty until implemented',
-  },
+  // (removed 2026-08-01) The single /api/fleet/(fuel-cards|fuel|fuel/*|recalls|
+  // health-scores|maintenance-schedule|driver-performance|service-alerts|
+  // cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|
+  // notifications|overdue-inspections|dash-cameras|pretrip) stub — its
+  // "handler not ported" reason was STALE. Every one of those 15 paths has a
+  // real handler in src/routes/fleet.ts (verified by grep, 2026-08-01: each
+  // resolves to >= 1 fleet.get/post/put/delete registration). Routed to
+  // env.API below.
+  //
+  // Because the rule listed methods GET/POST/PUT/DELETE, it did not merely
+  // render tabs empty — it silently swallowed WRITES. `PUT /api/fleet/fuel/:id`
+  // and `DELETE /api/fleet/fuel/:id` returned 200 {data:[],total:0} without
+  // ever reaching the Worker, so the Fuel tab reported "updated successfully"
+  // while the row never changed (confirmed live: a PUT setting notes on row
+  // 115 left notes NULL in D1). Every fleet analytics panel reading one of
+  // these endpoints likewise rendered stub data no matter what the Worker
+  // returned.
+  //
+  // A stub that answers a mutating method is strictly worse than a 404: a 404
+  // surfaces as a visible error, whereas a 200 with an empty body is
+  // indistinguishable from success. If a future stub is genuinely needed here,
+  // restrict it to ['GET'] so writes fail loudly instead of vanishing.
   // Howen handlers now live in src/routes/howen.ts (devices, events, status,
   // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
   // rule below.
@@ -341,17 +352,10 @@ const STUBS: StubRule[] = [
   },
   // (removed 2026-07-12) /api/iped/download/info stub — real handler
   // exists (iped.ts .get('/download/info')) and was being shadowed.
-  // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
-  // integrity-check: kept stubbed — its real handler in admin.ts is
-  // GET-only while the client calls it via POST, so removing the stub
-  // would just turn a fake-success 200 into a real 404. Needs a proper
-  // fix (add a POST handler or fix the client) before this stub can go.
-  {
-    match: /^\/api\/admin\/database\/integrity-check$/,
-    methods: ['POST'],
-    body: { status: 'not_implemented', message: 'D1 integrity check not exposed by Cloudflare Workers runtime' },
-    reason: 'admin.ts has a GET /database/integrity-check handler but the client POSTs; method mismatch, not yet fixed',
-  },
+  // (removed 2026-07-20, PR #2905) /api/admin/database/integrity-check
+  // (POST) stub — admin.ts now registers the handler on both GET and
+  // POST (admin.on(['GET','POST'], ...)), so the method mismatch this
+  // stub worked around no longer exists. Was shadowing real results.
   // (removed 2026-07-12) /api/admin/database/vacuum (POST) stub — real
   // handler exists (admin.ts .post('/database/vacuum')) and the client
   // does call it via POST, so this was being shadowed.
@@ -657,6 +661,12 @@ const API_ROUTES: RouteRule[] = [
   // this session — route the whole namespace to env.API so the new
   // pipeline is what runs in prod. Legacy serve-intake is dead code
   // after this entry lands.
+  // Recipient-facing QR acknowledgement form (public, no auth) and the
+  // officer-side admin surface (auth-required). Both live in
+  // src/routes/serveReceipt.ts — route both prefixes so neither falls
+  // through to the legacy worker (which has no handler for them).
+  { kind: 'prefix', value: '/api/serve-receipt' },
+  { kind: 'prefix', value: '/api/serve-receipts' },
   { kind: 'prefix', value: '/api/serve-intake' },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is

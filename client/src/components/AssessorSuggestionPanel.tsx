@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import type { LookupCode, LookupSource, ParcelSummary } from '../hooks/useAssessorLookup';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Props {
   parcels: ParcelSummary[] | null;
@@ -129,7 +130,7 @@ export function AssessorSuggestionPanel({
         🏠 Salt Lake County Assessor — {parcels.length} parcel{parcels.length === 1 ? '' : 's'} match
       </div>
       {degraded && note && (
-        <div className="mb-1 text-rmpg-500 italic">⚠ {note}</div>
+        <div className="mb-1 text-fg-muted italic">⚠ {note}</div>
       )}
       <div className="space-y-1">
         {parcels.map((p) => (
@@ -145,9 +146,25 @@ export function AssessorSuggestionPanel({
             />
             <div className="flex-1">
               <div className="font-mono">{p.parcel_number}  <span className="font-sans text-rmpg-200">{p.owner_of_record ?? '—'}</span></div>
-              <div className="text-rmpg-400">
-                {p.situs_address ?? '—'} · {fmtSqft(p.land_sqft)} · {fmtMoney(p.total_market_value)}
-              </div>
+              {p.recorded_document_url ? (
+                <div className="text-rmpg-400">
+                  {p.recorded_document_type && (
+                    <span className="mr-1 font-semibold">{formatEnumValue(p.recorded_document_type)}</span>
+                  )}
+                  <a
+                    href={p.recorded_document_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-brand-400 underline">
+                    View recorded document
+                  </a>
+                </div>
+              ) : (
+                <div className="text-rmpg-400">
+                  {p.situs_address ?? '—'} · {fmtSqft(p.land_sqft)} · {fmtMoney(p.total_market_value)}
+                </div>
+              )}
             </div>
           </label>
         ))}
@@ -185,7 +202,7 @@ export function AssessorSuggestionPanel({
                 Refresh ↺
               </button>
             )}
-            <div className="text-rmpg-500">cached</div>
+            <div className="text-fg-muted">cached</div>
           </div>
         )}
       </div>

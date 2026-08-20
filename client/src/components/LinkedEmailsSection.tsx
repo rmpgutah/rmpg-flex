@@ -10,6 +10,7 @@ import { Mail, Loader2, RefreshCw } from 'lucide-react';
 import CollapsibleSection from './CollapsibleSection';
 import { apiFetch } from '../hooks/useApi';
 import { parseTimestamp } from '../utils/dateUtils';
+import { formatEnumValue } from '../utils/formatters';
 
 type EntityType = 'cfs' | 'call' | 'incident' | 'warrant' | 'person';
 
@@ -40,7 +41,7 @@ function fmtDate(s: string | null): string {
   if (!s) return '';
   const d = parseTimestamp(s);
   if (Number.isNaN(d.getTime())) return s.slice(0, 16);
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail, title = 'Linked Emails', defaultOpen = false }: Props) {
@@ -92,7 +93,7 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
         <p className="text-[10px] text-red-400 px-1 pb-1">{error}</p>
       )}
       {!error && !loading && links.length === 0 && (
-        <p className="text-xs text-rmpg-500">No emails linked yet. The cron poller auto-links inbound mail referencing this record.</p>
+        <p className="text-xs text-fg-muted">No emails linked yet. The cron poller auto-links inbound mail referencing this record.</p>
       )}
       {links.length > 0 && (
         <div className="space-y-1">
@@ -116,7 +117,7 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
                   )}
                   {l.link_type && l.source !== 'autolinker' && (
                     <span className="text-[8px] uppercase font-bold px-1 py-0.5 bg-surface-base text-rmpg-300 border border-rmpg-700 rounded-sm">
-                      {l.link_type}
+                      {formatEnumValue(l.link_type)}
                     </span>
                   )}
                 </div>
@@ -124,10 +125,10 @@ export default function LinkedEmailsSection({ entityType, entityId, onOpenEmail,
                   <span className="min-w-0 truncate flex-1">
                     {l.from_name || l.from_address || 'Unknown sender'}
                     {l.from_name && l.from_address && (
-                      <span className="text-rmpg-600"> &lt;{l.from_address}&gt;</span>
+                      <span className="text-fg-muted"> &lt;{l.from_address}&gt;</span>
                     )}
                   </span>
-                  <span className="text-rmpg-500 flex-shrink-0">{fmtDate(l.received_at)}</span>
+                  <span className="text-fg-muted flex-shrink-0">{fmtDate(l.received_at)}</span>
                 </div>
               </div>
             </button>

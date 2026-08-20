@@ -4,9 +4,9 @@ const TILE = 'border border-border-default bg-surface-overlay rounded-[2px] p-3 
 
 export default function StatTiles({ stats }: { stats: IntelOverview['stats'] }) {
   const items = [
-    { n: stats.active_warrants, l: 'Active Warrants', c: 'text-[#ff6b5e]' },
-    { n: stats.on_watchlist, l: 'On Watchlist', c: 'text-[#d4a017]' },
-    { n: stats.gang_flagged, l: 'Gang-Flagged', c: 'text-[#c07ff0]' },
+    { n: stats.active_warrants, l: 'Active Warrants', c: 'text-red-400' },
+    { n: stats.on_watchlist, l: 'On Watchlist', c: 'text-rmpg-100' },
+    { n: stats.gang_flagged, l: 'Gang-Flagged', c: 'text-purple-400' },
   ];
   return (
     <div className="grid grid-cols-3 gap-[10px]">

@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS radio_channels (
   is_default INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by INTEGER REFERENCES users(id)
 );
 
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS radio_transmissions (
   channel_id INTEGER REFERENCES radio_channels(id),
   user_id INTEGER REFERENCES users(id),
   unit_label TEXT,
-  transmitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  transmitted_at TEXT NOT NULL DEFAULT (datetime('now')),
   duration_seconds REAL NOT NULL DEFAULT 0,
   transcript TEXT,
   audio_url TEXT,
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS radio_recordings (
   bookmark_seconds REAL,
   loop_start_seconds REAL,
   loop_end_seconds REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_radio_rec_user ON radio_recordings(user_id, created_at DESC);

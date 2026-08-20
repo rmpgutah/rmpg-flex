@@ -20,8 +20,10 @@ import {
   loadPdfAssets,
   setActiveFormKey,
   setActiveCaseNumber,
+  setActiveSectionStyle,
   sanitizePdfText,
   finalizePoliceReport,
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -32,6 +34,8 @@ import {
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { addLocationMapSection } from './recordPdfGenerator';
+import { toDisplayLabel } from './formatters';
+import { localToday } from './dateUtils';
 
 // ── Data Interface ───────────────────────────────────────────
 
@@ -114,12 +118,10 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   await loadPdfAssets();
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
+  setActiveSectionStyle('light');
   setActiveFormKey('PS-300');
   setActiveCaseNumber(data.caseNumber || `JOB-${data.jobId}`);
-  setGenerationTimestamp(new Date().toLocaleString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  }));
+  stampGenerationTime();
 
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -145,7 +147,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   { const sec = openAutoSection(doc, '1. Job Information', y); y = sec.contentY;
     const r1a = addFieldPair(doc, 'Job ID', `JOB-${data.jobId}`, lx, y, qw);
     const r1b = addFieldPair(doc, 'Priority', PRIORITY_LABEL[data.priority] || (data.priority || 'N/A').toUpperCase(), lx + qw + SPACING.SM, y, qw);
-    const r1c = addFieldPair(doc, 'Status', (data.status || 'N/A').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+    const r1c = addFieldPair(doc, 'Status', toDisplayLabel(data.status || 'N/A').toUpperCase(), rx, y, hfw);
     y = Math.max(r1a, r1b, r1c);
     const r2a = addFieldPair(doc, 'Serve Date', data.serveDate || 'N/A', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Deadline', data.deadline || 'N/A', rx, y, hfw);
@@ -203,7 +205,13 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('SERVICE INSTRUCTIONS', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
+      // addWrappedText treats its `y` as the first line's own BASELINE (it
+      // has no leading capHeight offset like addFieldPair's value renderer
+      // does), so advancing only SPACING.LG past the label's baseline left
+      // the value's first line landing almost on top of it — the label and
+      // "MUST ATTEMPT WITHIN 48 HOURS..." rendered on the same row (live PDF
+      // 2026-08-08). Clear the value font's own cap height too.
+      y += SPACING.LG + getCapHeight(FONT.SIZE_FIELD_VALUE ?? 9);
       y = addWrappedText(doc, sanitizePdfText(data.serviceInstructions), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
       y += SPACING.SM;
     }
@@ -212,7 +220,8 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text('NOTES', lx, y + getCapHeight(FONT.SIZE_FIELD_LABEL));
-      y += SPACING.LG;
+      // Same first-line-baseline clearance fix as SERVICE INSTRUCTIONS above.
+      y += SPACING.LG + getCapHeight(FONT.SIZE_FIELD_VALUE ?? 9);
       y = addWrappedText(doc, sanitizePdfText(data.notes), lx, y, ffw, FONT.SIZE_FIELD_VALUE ?? 9);
       y += SPACING.SM;
     }
@@ -245,7 +254,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
         sanitizePdfText(a.date || '—'),
         sanitizePdfText(a.time || '—'),
         sanitizePdfText((a.type || '').toUpperCase()),
-        sanitizePdfText((a.result || '—').toUpperCase().replace(/_/g, ' ')),
+        sanitizePdfText(toDisplayLabel(a.result || '—').toUpperCase()),
         sanitizePdfText(a.officerName || '—'),
         sanitizePdfText(a.notes || ''),
       ]);
@@ -278,25 +287,34 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   }
 
   // ── Section 6: Skip Trace Results ─────────────────────────
-  if (data.skipTraces && data.skipTraces.length > 0) {
-    y = checkPageBreak(doc, y, 30);
-    const sec = openAutoSection(doc, `6. Skip Trace Results  (${data.skipTraces.length} searches)`, y); y = sec.contentY;
-
-    const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
-    const headers = [
-      { label: 'DATE',      x: cols[0] },
-      { label: 'SOURCE',    x: cols[1] },
-      { label: '# ADDRS',   x: cols[2] },
-      { label: 'ADDRESSES', x: cols[3] },
-    ];
-    const rows = (data.skipTraces || []).map(t => [
-      sanitizePdfText(t.date || '—'),
-      sanitizePdfText((t.searchType || '').toUpperCase()),
-      String(t.addressesFound),
-      sanitizePdfText(t.addressesTried.join('; ') || 'None'),
-    ]);
-    y = addTableWithShading(doc, headers, rows, y, cols);
-    y += SPACING.SM;
+  // Always rendered — skipping it entirely causes a 5→7 numbering gap on
+  // the printed form, which looks like a missing page to the recipient.
+  y = checkPageBreak(doc, y, 30);
+  { const count = data.skipTraces?.length ?? 0;
+    const sec = openAutoSection(doc, `6. Skip Trace Results  (${count} searches)`, y); y = sec.contentY;
+    if (count > 0) {
+      const cols = getProportionalColumns(doc, [1.5, 1.5, 0.7, 4]);
+      const headers = [
+        { label: 'DATE',      x: cols[0] },
+        { label: 'SOURCE',    x: cols[1] },
+        { label: '# ADDRS',   x: cols[2] },
+        { label: 'ADDRESSES', x: cols[3] },
+      ];
+      const rows = data.skipTraces!.map(t => [
+        sanitizePdfText(t.date || '—'),
+        sanitizePdfText((t.searchType || '').toUpperCase()),
+        String(t.addressesFound),
+        sanitizePdfText(t.addressesTried.join('; ') || 'None'),
+      ]);
+      y = addTableWithShading(doc, headers, rows, y, cols);
+      y += SPACING.SM;
+    } else {
+      doc.setFont('Arial', 'italic');
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.text('No skip trace searches recorded.', getLeftX(), y);
+      y += 6;
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -315,11 +333,11 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
       'I certify that the information above is accurate and complete to the best of my knowledge, ' +
       'and that I am a licensed or authorized process server acting in an official capacity for ' +
       'Rocky Mountain Protective Group.';
-    y = addWrappedText(doc, certText, lx, y, ffw, FONT.SIZE_FIELD_LABEL);
+    y = addWrappedText(doc, certText, lx, y, ffw, FONT.SIZE_CERTIFICATION);
     y += SPACING.LG;
 
-    const fy1 = addFieldPair(doc, 'Officer Name', data.officerName, lx, y, hfw);
-    const fy2 = addFieldPair(doc, 'Badge / License #', data.officerBadge || 'N/A', rx, y, hfw);
+    const fy1 = addFieldPair(doc, 'Officer Name', data.officerName, lx, y, hfw, undefined, FONT.SIZE_FIELD_LABEL);
+    const fy2 = addFieldPair(doc, 'Badge / License #', data.officerBadge || 'N/A', rx, y, hfw, undefined, FONT.SIZE_FIELD_LABEL);
     y = Math.max(fy1, fy2);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -342,7 +360,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
         caseNumber: data.caseNumber || `JOB-${data.jobId}`,
         agency: 'RMPG',
         agencyOri: 'UT0180100',
-        reportDate: new Date().toISOString().slice(0, 10),
+        reportDate: localToday(),
         officer: data.officerName,
         badge: data.officerBadge,
       },

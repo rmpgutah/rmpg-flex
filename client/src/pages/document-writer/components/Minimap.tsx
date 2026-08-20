@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Map as MapIcon, X } from 'lucide-react';
 
 /** Document minimap — a scaled-down live thumbnail of the editor page with a
@@ -97,11 +97,11 @@ export default function Minimap({
         <div
           ref={holderRef}
           className="writer-content pointer-events-none origin-top-left"
-          style={{ width: pageW, transform: `scale(${scale})`, color: '#111', padding: '16px' }}
+          style={{ width: pageW, transform: `scale(${scale})`, color: 'var(--text-primary)', padding: '16px' }}
         />
         {/* Viewport indicator. */}
         <div
-          className="absolute left-0 right-0 bg-[#d4a017]/25 border-y border-[#d4a017]/60 pointer-events-none"
+          className="absolute left-0 right-0 bg-accent-silver-500/25 border-y border-accent-silver-500/60 pointer-events-none"
           style={{ top: `${scrollFrac * (1 - viewFrac) * 100}%`, height: `${viewFrac * 100}%` }}
         />
       </div>

@@ -24,6 +24,11 @@ interface Env {}
 const ALLOWED_CONNECT = [
   "'self'",
   'ws:', 'wss:',
+  // fetch() of an in-page blob: URL (e.g. PrintRecordButton re-reading its own
+  // generated PDF blob to attach it to an email) is subject to connect-src,
+  // not img-src/media-src — Chrome blocks it without this explicit token even
+  // though the blob was created same-origin.
+  'blob:',
   'https://api.rmpgutah.us',
   'https://*.rmpgutah.us',
   'https://api.mapbox.com',
@@ -32,6 +37,17 @@ const ALLOWED_CONNECT = [
   'https://js.arcgis.com',
   'https://*.arcgisonline.com',
   'https://api.open-meteo.com',
+  // RainViewer live weather radar overlay (Map tab): frame index JSON.
+  'https://api.rainviewer.com',
+  // RainViewer radar TILES — a DIFFERENT host from the index above. Mapbox
+  // GL v3 pulls raster tiles via fetch() (for cancellation/CORS control),
+  // which connect-src governs, not img-src — despite img-src's permissive
+  // `https:` making tiles load fine as a bare <img>. Confirmed live 2026-08-09:
+  // this host was missing here (though present in index.html's meta-tag CSP,
+  // which loses to this enforced header), so the radar control panel showed
+  // live frame data while the map painted nothing, with no console error from
+  // our own code. See client/src/utils/__tests__/mapExternalTileHosts.test.ts.
+  'https://tilecache.rainviewer.com',
   'https://basemaps.cartocdn.com',
   'https://*.basemaps.cartocdn.com',
   'https://*.cartocdn.com',
@@ -39,6 +55,9 @@ const ALLOWED_CONNECT = [
   'https://overpass-api.de',
   'https://api.fbi.gov',
   'https://photon.komoot.io',
+  // Mapillary street-level imagery lookup (client/src/utils/locationImagery.ts)
+  // — same silent-block pattern as the RainViewer tile host above.
+  'https://graph.mapillary.com',
   'https://static.cloudflareinsights.com',
   // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
   // module CDN + the model-weights origin.
@@ -48,6 +67,15 @@ const ALLOWED_CONNECT = [
   // ffmpeg.wasm core (in-browser dashcam redaction MP4 encode) — fetched via
   // toBlobURL(), which is a connect-src request.
   'https://unpkg.com',
+  // R2 presigned direct-upload (attachments >20MB fallback path + admin Map
+  // Data Files tab): the browser PUTs straight to this host using a
+  // presigned URL, bypassing the Worker entirely — without this entry the
+  // fetch/XHR is blocked by CSP before it ever reaches the network.
+  'https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com',
+  // Desktop network/IP widgets (DesktopNetworkStatusWidget, DesktopIpInfoWidget,
+  // DesktopNetworkDiag) fetch the Cloudflare trace endpoint for connectivity checks.
+  'https://www.cloudflare.com',
+  'https://cloudflare.com',
 ].join(' ');
 
 const FULL_CSP = [
@@ -57,7 +85,11 @@ const FULL_CSP = [
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
   `connect-src ${ALLOWED_CONNECT}`,
-  `frame-src 'self' blob: https://*.arcgis.com`,
+  // dialer.rmpgutah.us: DialerPanel's embedded Dial Connect iframe (see
+  // client/src/components/DialerPanel.tsx) -- without this the browser
+  // blocks the embed outright, even though the meta-tag CSP in index.html
+  // allows it, because this HTTP header enforces alongside it.
+  `frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us`,
   `media-src 'self' blob: data:`,
   `worker-src 'self' blob:`,
   `child-src 'self' blob:`,
@@ -81,5 +113,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // after deploy, remove the source in the Cloudflare Dashboard (see comment
   // at the top of this file for exact locations).
   out.headers.set('Content-Security-Policy-Report-Only', FULL_CSP);
+
+  // Prevent the browser (and Cloudflare edge) from caching HTML responses.
+  // Without this, the zone-level 4h Browser Cache TTL applies to index.html
+  // — the same issue that was caching sw.js until _headers/sw.js got its
+  // explicit no-store rule. Users who load the app without an active service
+  // worker (first visit, after SW unregistration, Electron post-forceRefresh)
+  // could receive a 4-hour-old index.html that references deleted chunk hashes
+  // from a previous build, wedging the app on the INITIALIZING splash. Hashed
+  // assets (/assets/*.js, *.css) keep their immutable headers — this only
+  // applies to text/html responses (index.html served for every SPA route).
+  const ct = out.headers.get('Content-Type') ?? '';
+  if (ct.includes('text/html')) {
+    out.headers.set('Cache-Control', 'no-store, max-age=0');
+  }
+
   return out;
 };

@@ -80,7 +80,7 @@ export default function ShortcutsHelp({ onClose }: Props) {
       >
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default sticky top-0 bg-surface-sunken">
           <span className="flex items-center gap-2 font-semibold text-rmpg-100 uppercase tracking-wider text-[11px]">
-            <Keyboard className="w-3.5 h-3.5 text-[#d4a017]" /> Keyboard Shortcuts
+            <Keyboard className="w-3.5 h-3.5 text-accent-silver-400" /> Keyboard Shortcuts
           </span>
           <button type="button" onClick={onClose} aria-label="Close shortcuts" className="text-rmpg-500 hover:text-rmpg-100">
             <X className="w-4 h-4" />
@@ -89,7 +89,7 @@ export default function ShortcutsHelp({ onClose }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 p-4">
           {GROUPS.map((g) => (
             <div key={g.title}>
-              <h4 className="text-[9px] uppercase tracking-wider text-[#d4a017] mb-1.5">{g.title}</h4>
+              <h4 className="text-[9px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--panel-header-color)' }}>{g.title}</h4>
               <div className="space-y-1">
                 {g.items.map((s) => (
                   <div key={s.keys} className="flex items-center justify-between gap-3">

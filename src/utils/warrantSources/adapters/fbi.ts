@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { WarrantSourceAdapter, RawWarrantHit, FullListResult } from '../types';
 import { cleanName, normalizeDate } from '../normalize';
+import { fetchWithTimeout } from '../fetchTimeout';
 
 const API = 'https://api.fbi.gov/wanted/v1/list';
 // FBI's Cloudflare front 403s identifier-style UAs; use a browser UA (same trick as utahWarrantPoller).
@@ -53,7 +54,7 @@ async function fetchList(): Promise<FbiItem[]> {
   try {
     const out: FbiItem[] = [];
     for (let page = 1; page <= 60; page++) {  // ~1200 records / 50 = ~24 pages; cap at 60
-      const res = await fetch(`${API}?page=${page}&pageSize=50`, {
+      const res = await fetchWithTimeout(`${API}?page=${page}&pageSize=50`, {
         headers: { 'User-Agent': UA, Accept: 'application/json' },
       });
       if (!res.ok) break;

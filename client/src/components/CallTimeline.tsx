@@ -35,6 +35,7 @@ function formatTimestamp(dateStr: string): string {
   const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return '--:--:--';
   return date.toLocaleTimeString('en-US', {
+    timeZone: 'America/Denver',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -85,7 +86,7 @@ export default function CallTimeline({ entries, className = '' }: CallTimelinePr
                 <p className="font-mono text-[9px] text-rmpg-400 mt-0.5 leading-none">
                   {entry.user_name}
                   {entry.badge_number && (
-                    <span className="text-rmpg-500 ml-1">#{entry.badge_number}</span>
+                    <span className="text-fg-muted ml-1">#{entry.badge_number}</span>
                   )}
                 </p>
               )}

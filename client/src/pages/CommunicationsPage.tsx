@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   MessageSquare,
@@ -541,7 +541,17 @@ export default function CommunicationsPage() {
     else if (activePanel === 'bolos') fetchBolos({ silent: true });
     else if (activePanel === 'activity') fetchActivity({ silent: true });
   }, [activePanel, fetchMessages, fetchBolos, fetchActivity]);
-  useLiveSync('dispatch', silentRefreshComms);
+  // Subscribe to the 'comms' WS module (server broadcasts data_changed {module:'comms'}
+  // after every send/emergency-broadcast). This is best-effort; the poll below is the
+  // guaranteed freshness path for clients in different isolates.
+  useLiveSync('comms', silentRefreshComms);
+
+  // Polling fallback — ensures cross-device freshness even when WS misses (per-isolate)
+  useEffect(() => {
+    const POLL_MS = 15_000;
+    const timer = setInterval(silentRefreshComms, POLL_MS);
+    return () => clearInterval(timer);
+  }, [silentRefreshComms]);
 
   // ============================================================
   // Actions
@@ -1022,7 +1032,7 @@ export default function CommunicationsPage() {
                 style={{ minWidth: '120px', maxWidth: '180px' }}
               />
               {searchQuery && (
-                <button type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => setSearchQuery('')} className="text-rmpg-500 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -1060,7 +1070,7 @@ export default function CommunicationsPage() {
                 style={{ minWidth: '120px', maxWidth: '180px' }}
               />
               {boloSearch && (
-                <button type="button" onClick={() => setBoloSearch('')} className="text-rmpg-500 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => setBoloSearch('')} className="text-rmpg-500 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -1139,7 +1149,7 @@ export default function CommunicationsPage() {
           )}
           <span className="text-rmpg-400 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
-            {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+            {new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false })}
           </span>
         </div>
       </div>
@@ -1151,7 +1161,7 @@ export default function CommunicationsPage() {
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300 ml-2">
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -1312,7 +1322,7 @@ export default function CommunicationsPage() {
                       >
                         <Printer className="w-4 h-4" />
                       </button>
-                      <button type="button" onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
+                      <button aria-label="Close" type="button" onClick={() => setSelectedThreadId(null)} className="p-1 hover:bg-rmpg-700 text-rmpg-400">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -1461,7 +1471,7 @@ export default function CommunicationsPage() {
                   <h3 className="text-sm font-bold text-red-400 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> Create New BOLO
                   </h3>
-                  <button type="button" onClick={() => setShowNewBOLO(false)} className="text-rmpg-300 hover:text-rmpg-100">
+                  <button aria-label="Close" type="button" onClick={() => setShowNewBOLO(false)} className="text-rmpg-300 hover:text-rmpg-100">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1541,7 +1551,7 @@ export default function CommunicationsPage() {
                   {boloStats.byCategory.slice(0, 2).map((cat) => (
                     <div key={cat.category} className="bg-surface-sunken p-2 text-center">
                       <div className="text-lg font-bold text-rmpg-200">{cat.active_count}</div>
-                      <div className="text-[9px] text-rmpg-400 uppercase">{(cat.category || '').replace(/_/g, ' ')}</div>
+                      <div className="text-[9px] text-rmpg-400 uppercase">{toDisplayLabel(cat.category || '')}</div>
                     </div>
                   ))}
                 </div>
@@ -1626,7 +1636,7 @@ export default function CommunicationsPage() {
                   // yellow-500 / green-500 in CSS, but inline-style needs a
                   // value, not a class). Kept verbatim to match the
                   // priority-badge palette used elsewhere on this page.
-                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
+                  style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? 'var(--sev-critical)' : bolo.priority === 'P2' ? 'var(--sev-high)' : bolo.priority === 'P3' ? 'var(--sev-caution)' : 'var(--sev-ok)' }}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">

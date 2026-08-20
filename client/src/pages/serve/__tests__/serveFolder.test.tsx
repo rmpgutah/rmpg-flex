@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // ── Types under test ────────────────────────────────────────────────────────
 
@@ -40,6 +40,25 @@ function makeJob(overrides: Partial<ServeJob> = {}): ServeJob {
     jurisdiction: 'Salt Lake County',
     client_name: 'RMPG',
     attorney_name: null,
+    plaintiff_name: null,
+    defendant_name: null,
+    recipient_phone: null,
+    recipient_email: null,
+    recipient_dob: null,
+    recipient_employer: null,
+    recipient_employer_address: null,
+    serve_type: 'personal',
+    case_type: null,
+    return_date: null,
+    co_defendants: null,
+    relationship: null,
+    serve_fee: null,
+    rush_fee: null,
+    payment_status: 'unpaid',
+    diligence_required: 0,
+    mileage_actual: null,
+    contact_restrictions: null,
+    building_access_notes: null,
     priority: 'normal',
     time_window: 'anytime',
     deadline: null,

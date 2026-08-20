@@ -9,7 +9,7 @@
 // All functions are individually exported so they can be wired into the
 // toolbar piecemeal or invoked from a command palette / slash menu.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 // Wave-5 actions live in their own module; appended to ACTION_REGISTRY below.
 // (docActions3 imports DocAction from here as a TYPE only — erased at runtime,
 // so there is no import cycle.)
@@ -202,7 +202,13 @@ export function insertBandedTable(editor: Editor, rows = 4, cols = 3): void {
   const headerCells = Array.from({ length: cols }, (_, i) =>
     `<th style="background:#d4a017;color:#000;padding:6px;border:1px solid #222;">Col ${i + 1}</th>`).join('');
   const bodyRows = Array.from({ length: rows }, (_, r) => {
-    const bg = r % 2 ? '#0a0a0a' : 'var(--surface-base)';
+    // Banding is baked into the inserted document HTML, so it cannot follow the
+    // app theme and must read correctly on a printed/exported page. Literals on
+    // purpose. Was `r % 2 ? '#0a0a0a' : 'var(--surface-base)'` — near-black and
+    // Blue & Silver navy, which is unreadable banding in a light document.
+    // Matches the light document-table convention already used elsewhere
+    // (features/index.ts uses #f0f0f0 for document table cells).
+    const bg = r % 2 ? '#f0f0f0' : '#ffffff';
     const cells = Array.from({ length: cols }, () =>
       `<td style="background:${bg};padding:6px;border:1px solid #222;">&nbsp;</td>`).join('');
     return `<tr>${cells}</tr>`;

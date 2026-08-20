@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -275,14 +275,14 @@ export default function AssetsPage() {
       {/* ── Asset form modal ─────────────────────────────────────── */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={closeForm}
           role="dialog"
           aria-modal="true"
           aria-label={editingRecord ? 'Edit Asset' : 'New Asset'}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >

@@ -7,7 +7,11 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { queryFirst, query, execute, executeBatch } from './db';
+import { queryFirst, query, execute, executeBatch, executeInChunks } from './db';
+import { log } from './logger';
+import { denverHourExpr, denverStrftimeExpr } from './denverTime';
+import { toDisplayLabel } from './displayLabel';
+import { computeMileageForQueue, haversineMiles } from './serveMileage';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -441,7 +445,7 @@ export async function createInvoiceWithItems(
        (invoice_number, client_id, contract_id, issue_date, due_date,
         subtotal, tax_rate, tax_amount, total_amount, paid_amount, status, created_at)
      VALUES (?, ?, (SELECT contract_id FROM serve_queue WHERE id = ?),
-             date('now','localtime'), ?, ?, ?, ?, ?, 0, 'draft', datetime('now','localtime'))`,
+             date('now'), ?, ?, ?, ?, ?, 0, 'draft', datetime('now'))`,
     invoiceNumber,
     clientId,
     queueId,
@@ -530,7 +534,7 @@ export async function trackPayment(
   const payResult = await execute(
     db,
     `INSERT INTO payments (invoice_id, client_id, payment_date, amount, payment_method, reference_number, created_at)
-     VALUES (?, ?, date('now','localtime'), ?, ?, ?, datetime('now','localtime'))`,
+     VALUES (?, ?, date('now'), ?, ?, ?, datetime('now'))`,
     invoiceId,
     inv.client_id,
     amount,
@@ -541,7 +545,7 @@ export async function trackPayment(
   await execute(
     db,
     `UPDATE invoices
-     SET paid_amount = ?, status = ?, updated_at = datetime('now','localtime')
+     SET paid_amount = ?, status = ?, updated_at = datetime('now')
      WHERE id = ?`,
     newPaidAmount,
     newStatus,
@@ -620,13 +624,13 @@ export async function getOverdueInvoices(
        i.paid_amount,
        i.due_date,
        i.status,
-       CAST(julianday('now','localtime') - julianday(i.due_date) AS INTEGER) as days_since_due
+       CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_since_due
      FROM invoices i
      JOIN clients c ON c.id = i.client_id
-     WHERE i.due_date < date('now','localtime')
+     WHERE i.due_date < date('now')
        AND i.status IN ('sent', 'partial', 'overdue')
        AND (i.total_amount - i.paid_amount) > 0
-       AND CAST(julianday('now','localtime') - julianday(i.due_date) AS INTEGER) >= ?
+       AND CAST(julianday('now') - julianday(i.due_date) AS INTEGER) >= ?
      ORDER BY i.due_date ASC`,
     daysOverdue,
   );
@@ -634,13 +638,18 @@ export async function getOverdueInvoices(
   // Auto-mark overdue
   const invoiceIds = rows.map((r) => r.id);
   if (invoiceIds.length > 0) {
-    const placeholders = invoiceIds.map(() => '?').join(',');
-    await execute(
-      db,
-      `UPDATE invoices SET status = 'overdue', updated_at = datetime('now','localtime')
+    // The select above has no LIMIT, so this UPDATE grew with the data and
+    // blew D1's 100-bound-parameter cap once more than 100 invoices were
+    // overdue at once. The bare catch made it silent: invoices simply never
+    // got marked overdue, and the aging report kept showing them as 'sent'.
+    // Now chunked, and a failure is logged rather than swallowed.
+    await executeInChunks(
+      db, invoiceIds,
+      (placeholders) => `UPDATE invoices SET status = 'overdue', updated_at = datetime('now')
        WHERE id IN (${placeholders}) AND status != 'overdue'`,
-      ...invoiceIds,
-    ).catch(() => {});
+    ).catch((err) => {
+      log.error('Failed to auto-mark overdue invoices', { count: invoiceIds.length }, err as Error);
+    });
   }
 
   return rows.map((r) => ({
@@ -870,13 +879,13 @@ async function _deprecatedNotifyServeCompletion(
 
     if (sender) {
       const who = job.defendant_name ?? `Job #${queueId}`;
-      const docType = (job.document_type ?? 'documents').replace(/_/g, ' ');
+      const docType = toDisplayLabel(job.document_type ?? 'documents');
       const caseRef = job.case_number ? ` (Case ${job.case_number})` : '';
       const subject = `Service Update: ${who}${caseRef}`;
 
       const body = `<p>Dear ${clientName ?? 'Client'},</p>
 <p>Service status has been updated for <strong>${who}</strong>${caseRef}.</p>
-<p>Status: <strong>${attempt.result ?? job.status}</strong></p>
+<p>Status: <strong>${toDisplayLabel(attempt.result ?? job.status)}</strong></p>
 <p>Thank you for choosing RMPG Flex Process Services.</p>`;
 
       const payload = JSON.stringify({
@@ -914,9 +923,9 @@ async function _deprecatedNotifyServeCompletion(
   await execute(
     db,
     `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-     VALUES (?, ?, datetime('now','localtime'))
+     VALUES (?, ?, datetime('now'))
      ON CONFLICT(serve_queue_id, condition)
-     DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+     DO UPDATE SET last_notified_at = datetime('now')`,
     queueId,
     `completion_notify_${attempt.result ?? 'update'}_${attemptId}`,
   ).catch(() => {});
@@ -1090,70 +1099,25 @@ export async function calculateMileageReimbursement(
   };
 }
 
-// ── Internal helpers ────────────────────────────────────────
-
-/** Haversine distance in miles between two lat/lng points. */
-function haversineMiles(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
-): number {
-  const R = 3958.8; // Earth radius in miles
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-/** Sum haversine distances for GPS breadcrumbs linked to a serve job. */
-async function computeMileageForQueue(db: D1Database, queueId: number): Promise<number> {
-  const rows = await query<{
-    latitude: number;
-    longitude: number;
-    recorded_at: string;
-  }>(
-    db,
-    `SELECT gb.latitude, gb.longitude, gb.recorded_at
-     FROM gps_breadcrumbs gb
-     JOIN serve_attempts sa ON sa.officer_id = gb.officer_id
-       AND gb.recorded_at >= sa.attempt_at
-       AND gb.recorded_at <= datetime(sa.attempt_at, '+2 hours')
-     WHERE sa.serve_queue_id = ?
-       AND gb.latitude IS NOT NULL
-       AND gb.longitude IS NOT NULL
-     ORDER BY gb.recorded_at ASC`,
-    queueId,
-  ).catch(() => []);
-
-  let totalMiles = 0;
-  for (let i = 1; i < rows.length; i++) {
-    const dist = haversineMiles(
-      rows[i - 1].latitude, rows[i - 1].longitude,
-      rows[i].latitude, rows[i].longitude,
-    );
-    if (dist <= 50) totalMiles += dist;
-  }
-  return totalMiles;
-}
-
 /** Total wait time in minutes across attempts for a serve job. */
 async function computeWaitTimeForQueue(db: D1Database, queueId: number): Promise<number> {
   // If the job has planned_at + window info, derive wait time.
   // Otherwise return 0 (no stakeout data available).
   const row = await queryFirst<{ wait_minutes: number }>(
     db,
+    // serve_attempts has no planned_at — the planned time lives on
+    // serve_attempt_schedules.window_start, matched by queue + attempt number.
     `SELECT COALESCE(SUM(
        CASE
-         WHEN sa.planned_at IS NOT NULL AND sa.attempt_at IS NOT NULL
-         THEN MAX(0, (julianday(sa.attempt_at) - julianday(sa.planned_at)) * 1440)
+         WHEN sch.window_start IS NOT NULL AND sa.attempt_at IS NOT NULL
+         THEN MAX(0, (julianday(sa.attempt_at) - julianday(sch.window_start)) * 1440)
          ELSE 0
        END
      ), 0) as wait_minutes
      FROM serve_attempts sa
+     LEFT JOIN serve_attempt_schedules sch
+            ON sch.queue_id = sa.serve_queue_id
+           AND sch.attempt_number = sa.attempt_number
      WHERE sa.serve_queue_id = ?`,
     queueId,
   ).catch(() => ({ wait_minutes: 0 }));
@@ -1165,13 +1129,25 @@ async function computeWaitTimeForQueue(db: D1Database, queueId: number): Promise
 async function countAfterHoursAttempts(db: D1Database, queueId: number): Promise<number> {
   const row = await queryFirst<{ cnt: number }>(
     db,
+    // BILLING CORRECTNESS. attempt_at is stored UTC, so reading its hour and
+    // weekday raw asked "was this outside business hours in LONDON". On live
+    // data that flips the surcharge flag on 38 of 54 attempts -- 70% -- and
+    // in BOTH directions: a 13:00 MT attempt reads as 19:00 UTC and is
+    // wrongly surcharged, while an 07:00 MT attempt reads as 13:00 UTC and
+    // silently loses a surcharge it had earned. The weekday is wrong the same
+    // way -- a Sunday 19:00 MT attempt is Monday 01:00 UTC and stops counting
+    // as a weekend.
+    //
+    // The denver* helpers shift to Mountain wall-clock and are DST-aware.
+    // Same consolidation the 2026-07-22 UTC/DST audit applied across the rest
+    // of the Worker; the serve subsystem was missed by it.
     `SELECT COUNT(*) as cnt
      FROM serve_attempts
      WHERE serve_queue_id = ?
        AND (
-         CAST(strftime('%H', attempt_at) AS INTEGER) < 8
-         OR CAST(strftime('%H', attempt_at) AS INTEGER) >= 18
-         OR CAST(strftime('%w', attempt_at) AS INTEGER) IN (0, 6)
+         ${denverHourExpr('attempt_at')} < 8
+         OR ${denverHourExpr('attempt_at')} >= 18
+         OR ${denverStrftimeExpr('%w', 'attempt_at')} IN (0, 6)
        )`,
     queueId,
   ).catch(() => ({ cnt: 0 }));

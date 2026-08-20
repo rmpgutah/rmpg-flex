@@ -1,10 +1,13 @@
 // Incident Markers Overlay — display RMS incidents on the map
 // Fetches from /api/incidents and renders as diamond markers with incident type icons.
 import { useCallback, useState, useRef } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+import { formatIncidentType } from '../utils/caseNumbers';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Incident {
   id: number;
@@ -42,12 +45,18 @@ const INCIDENT_COLORS: Record<string, string> = {
 export function useMapboxIncidents(map: mapboxgl.Map | null) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     try {
+      safeRemoveLayer(map, LAYER_ID + '-single');
+      safeRemoveLayer(map, LAYER_ID + '-count');
       safeRemoveLayer(map, LAYER_ID);
       safeRemoveSource(map, SOURCE_ID);
     } catch { /* ignore */ }
@@ -131,22 +140,61 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
         'circle-stroke-width': 1,
       },
     });
+
+    // Clicking a cluster zooms in to break it apart; clicking a single
+    // incident shows its details. Both need hover-cursor feedback so
+    // operators know the layer is interactive.
+    m.on('click', LAYER_ID, (e) => {
+      const f = e.features?.[0];
+      const clusterId = f?.properties?.cluster_id;
+      if (clusterId == null) return;
+      const source = m.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err || !f || f.geometry.type !== 'Point') return;
+        m.easeTo({ center: f.geometry.coordinates as [number, number], zoom: zoom ?? m.getZoom() + 1 });
+      });
+    });
+    m.on('mouseenter', LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
+
+    m.on('click', LAYER_ID + '-single', (e) => {
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== 'Point') return;
+      const p = f.properties || {};
+      popupRef.current?.remove();
+      popupRef.current = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
+        .setLngLat(f.geometry.coordinates as [number, number])
+        .setHTML(buildDetailPopupHtml(String(p.incident_number || 'Incident'), [
+          ['Type', p.incident_type ? formatIncidentType(p.incident_type) : null],
+          ['Priority', p.priority],
+          ['Status', p.status ? formatEnumValue(p.status) : null],
+          ['Address', p.address],
+          ['Weapons', p.weapons ? 'Yes' : null],
+          ['Domestic Violence', p.dv ? 'Yes' : null],
+          ['Injuries', p.injuries ? 'Yes' : null],
+        ]))
+        .addTo(m);
+    });
+    m.on('mouseenter', LAYER_ID + '-single', () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', LAYER_ID + '-single', () => { m.getCanvas().style.cursor = ''; });
   }, [clearFromMap]);
 
   const fetchIncidents = useCallback(async (limit = 2000) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       const data = await apiFetch<{ data: Incident[]; pagination: unknown }>(`/incidents?limit=${limit}`);
       const incs = Array.isArray(data?.data) ? data.data : [];
       setIncidents(incs);
       whenStyleReady(map, () => { renderOnMap(incs, map); });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxIncidents] fetch failed:', err);
+      setError(err?.message || 'Failed to load incidents');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { incidents, loading, fetchIncidents, clear: clearFromMap };
+  return { incidents, loading, error, fetchIncidents, clear: clearFromMap };
 }

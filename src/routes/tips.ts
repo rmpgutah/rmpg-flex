@@ -11,7 +11,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const tips = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -44,8 +46,10 @@ tips.get('/', async (c) => {
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (status) { conditions.push('t.status = ?'); params.push(status); }
     if (search) {
-      conditions.push('(t.tracking_number LIKE ? OR t.description LIKE ? OR t.location LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['t.tracking_number', 't.description', 't.location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const where = conditions.join(' AND ');
     const rows = await query<Record<string, unknown>>(db, `
@@ -71,6 +75,7 @@ tips.get('/', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to list tips' }, 500);
   }
 });
@@ -83,6 +88,7 @@ tips.get('/investigators', async (c) => {
       `SELECT id, full_name as name, username FROM users WHERE role IN ('officer','supervisor','manager','admin') AND status = 'active' ORDER BY full_name`);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /investigators failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to list investigators' }, 500);
   }
 });
@@ -105,6 +111,7 @@ tips.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM investigative_tips WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to create tip' }, 500);
   }
 });
@@ -121,11 +128,12 @@ tips.put('/:id/status', async (c) => {
     const isReview = status === 'reviewed';
     const u = c.get('user') as { id: number } | undefined;
     await execute(db,
-      `UPDATE investigative_tips SET status = ?, updated_at = datetime('now','localtime')${isReview ? ", reviewed_at = datetime('now','localtime'), reviewed_by = ?" : ''} WHERE id = ?`,
+      `UPDATE investigative_tips SET status = ?, updated_at = datetime('now')${isReview ? ", reviewed_at = datetime('now'), reviewed_by = ?" : ''} WHERE id = ?`,
       ...(isReview ? [status, u?.id ?? null, id] : [status, id]),
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/status failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to update status' }, 500);
   }
 });
@@ -139,10 +147,11 @@ tips.put('/:id/assign', async (c) => {
     const id = parseInt(c.req.param('id'), 10);
     const { assigned_to } = await c.req.json<{ assigned_to?: string | number }>();
     await execute(db,
-      `UPDATE investigative_tips SET assigned_to = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE investigative_tips SET assigned_to = ?, updated_at = datetime('now') WHERE id = ?`,
       assigned_to ?? null, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/assign failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to assign tip' }, 500);
   }
 });
@@ -159,10 +168,11 @@ tips.put('/:id/link-case', async (c) => {
     const caseRow = await queryFirst<{ id: number }>(db, 'SELECT id FROM cases WHERE case_number = ?', case_number);
     if (!caseRow) return c.json({ error: 'Case not found' }, 404);
     await execute(db,
-      `UPDATE investigative_tips SET linked_case_id = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE investigative_tips SET linked_case_id = ?, updated_at = datetime('now') WHERE id = ?`,
       caseRow.id, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/link-case failed', { src: 'src/routes/tips.ts' }, err);
     return c.json({ error: 'Failed to link case' }, 500);
   }
 });

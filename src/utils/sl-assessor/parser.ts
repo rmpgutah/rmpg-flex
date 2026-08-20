@@ -9,10 +9,38 @@
 // pulling in a DOM lib (Workers don't ship cheerio or jsdom).
 
 import { AssessorParseError } from './types';
+import { normalizeParcelNumber } from './camaParser';
 import type { OwnerType, Parcel, ParcelSale, ParcelSummary } from './types';
 
 const ENTITY_TOKENS = /\b(LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|TRUST|LP|LLP|LTD|HOLDINGS|GROUP|COMPANY|CO|FOUNDATION|CHURCH)\b/;
-const PARCEL_NO_RE = /(\d{2}-\d{2}-\d{3}-\d{3})/;
+// ⚠️ The 4-digit ENCUMBRANCE suffix is part of the parcel id and must be
+// captured. An earlier form of this regex stopped after 12 digits, yielding
+// "16-31-127-029" — a 10-digit BLOCK id. The county answers a 10-digit id
+// with HTTP 200 and the SEARCH FORM, so every detail fetch built from a
+// search result failed silently and the picker showed a truncated number.
+const PARCEL_NO_RE = /(\d{2}-\d{2}-\d{3}-\d{3}(?:-\d{4})?)/;
+const PARCEL_NO_GLOBAL_RE = /\d{2}-\d{2}-\d{3}-\d{3}(?:-\d{4})?/g;
+
+// ⚠️ DECOY. The county's search form — which is embedded at the top of the
+// detail page and is the whole body of the no-match page — carries
+// <input id="parcelid" placeholder="00-00-000-000-0000">. That placeholder
+// matches PARCEL_NO_RE exactly, so a naive "first match wins" scan reports
+// an all-zero parcel number whenever the form's markup precedes the parcel
+// data. That is the literal "00-00-000-000" the picker was rendering.
+const PLACEHOLDER_PARCEL_RE = /^0{2}-0{2}-0{3}-0{3}(?:-0{4})?$/;
+
+/**
+ * First real parcel number in a chunk of HTML, skipping the form
+ * placeholder. Returns the normalized dashed 14-digit form so callers can
+ * pass it straight to a detail URL.
+ */
+export function findParcelNumber(html: string): string | null {
+  for (const cand of html.match(PARCEL_NO_GLOBAL_RE) ?? []) {
+    if (PLACEHOLDER_PARCEL_RE.test(cand)) continue;
+    return normalizeParcelNumber(cand) ?? cand;
+  }
+  return null;
+}
 
 export function inferOwnerType(name: string | null | undefined): OwnerType {
   if (!name || !name.trim()) return 'unknown';
@@ -58,9 +86,8 @@ export function parseParcelList(html: string): ParcelSummary[] {
   const rows = html.split(/<tr[^>]*>/i).slice(1);
   const out: ParcelSummary[] = [];
   for (const rowHtml of rows) {
-    const parcelMatch = rowHtml.match(PARCEL_NO_RE);
-    if (!parcelMatch) continue;
-    const parcel_number = parcelMatch[1];
+    const parcel_number = findParcelNumber(rowHtml);
+    if (!parcel_number) continue;
     const cells = rowHtml.split(/<\/?td[^>]*>/i).map(stripTags).filter(Boolean);
     if (cells.length < 2) continue;
     // Detail URL: search the row for a link to the parcel detail page
@@ -106,11 +133,13 @@ export function parseParcelDetail(html: string): Parcel {
   if (!html || html.length < 200) {
     throw new AssessorParseError('detail page too short', html.slice(0, 200));
   }
-  const parcelMatch = html.match(PARCEL_NO_RE);
-  if (!parcelMatch) {
+  const parcel_number = findParcelNumber(html);
+  if (!parcel_number) {
+    // Reaching here usually means the county returned the SEARCH FORM
+    // (its response to an unknown or 10-digit id) — a 200 with no parcel on
+    // it. Throwing keeps that loud instead of yielding an all-null record.
     throw new AssessorParseError('no parcel number on detail page', html.slice(0, 500));
   }
-  const parcel_number = parcelMatch[1];
   const owner_of_record = pullByLabel(html, /owner/i);
   // Build raw_data_json from every labelled key/value we can detect
   const raw_data_json: Record<string, string> = {};
@@ -145,7 +174,67 @@ export function parseParcelDetail(html: string): Parcel {
       });
     }
   }
-  return {
+
+/**
+ * Fill typed slots from the summary block's labelled key/value pairs.
+ *
+ * The pullByLabel() regexes below were written against synthetic fixtures and
+ * miss the county's real labels: the situs row is labelled "Address" (not
+ * "Situs"), lot size is "Total Acreage" (not "Acres"), and building area is
+ * "Above Grade sqft." — so situs_address, land_acres and the sqft fields came
+ * back null on every live parcel even though raw_data_json held all three.
+ *
+ * FILL-ONLY: a value pullByLabel already resolved always wins.
+ */
+function fillFromRawData(parcel: Parcel, raw: Record<string, string>): void {
+  const get = (...labels: string[]): string | null => {
+    for (const l of labels) {
+      const hit = Object.keys(raw).find((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '') === l);
+      if (hit && raw[hit]?.trim()) return raw[hit].trim();
+    }
+    return null;
+  };
+  const setIfNull = <K extends keyof Parcel>(key: K, v: unknown) => {
+    if (parcel[key] == null && v != null) (parcel as any)[key] = v;
+  };
+
+  setIfNull('situs_address', get('address'));
+  setIfNull('owner_of_record', get('owner'));
+  setIfNull('tax_district', get('taxdistrict'));
+  setIfNull('improvement_class', get('propertytype'));
+  // OVERRIDE, not fill-only. pullByLabel(/acres/i) binds to the LAND RECORD's
+  // "Acres" row, which is one land record's share — 0.06 of this parcel's
+  // 0.07, because it has two land records. "Total Acreage" is the parcel
+  // total and is what land_acres means, so it wins outright.
+  const totalAcreage = toFloat(get('totalacreage'));
+  if (totalAcreage != null) {
+    parcel.land_acres = totalAcreage;
+    parcel.land_sqft = null;   // recomputed below from the corrected acreage
+  }
+  setIfNull('total_bldg_sqft', toInt(get('abovegradesqft')));
+  setIfNull('finished_sqft', toInt(get('abovegradesqft')));
+
+  // The county publishes the CURRENT tax year inline in these labels
+  // ("2026 Market Value"), so match on the suffix rather than a fixed year.
+  const bySuffix = (suffix: string): string | null => {
+    const hit = Object.keys(raw).find((k) => /^(19|20)\d{2}\s/.test(k)
+      && k.toLowerCase().replace(/[^a-z0-9]/g, '').endsWith(suffix));
+    return hit ? raw[hit] : null;
+  };
+  setIfNull('market_value_total', toInt(bySuffix('marketvalue')));
+  setIfNull('market_value_land', toInt(bySuffix('landvalue')));
+  setIfNull('market_value_improvement', toInt(bySuffix('buildingvalue')));
+  setIfNull('taxable_value', toInt(bySuffix('taxablevalue')));
+
+  // land_sqft: the county gives acreage, not square feet. 43,560 ft²/acre.
+  if (parcel.land_sqft == null && parcel.land_acres != null) {
+    parcel.land_sqft = Math.round(parcel.land_acres * 43_560);
+  }
+  const yr = Object.keys(raw).find((k) => /^(19|20)\d{2}\s/.test(k));
+  if (parcel.tax_year == null && yr) parcel.tax_year = toInt(yr.slice(0, 4));
+}
+
+  const parcel: Parcel = {
     parcel_number,
     source: 'sl_county_assessor',
     source_url: '',  // filled by client
@@ -185,7 +274,13 @@ export function parseParcelDetail(html: string): Parcel {
     plat: pullByLabel(html, /plat/i),
     lot: pullByLabel(html, /lot/i),
     block: pullByLabel(html, /block/i),
+    recorded_document_url: null,
+    recorded_document_type: null,
+    photo_url: null,
+    layout_url: null,
     sales,
     raw_data_json,
   };
+  fillFromRawData(parcel, raw_data_json);
+  return parcel;
 }

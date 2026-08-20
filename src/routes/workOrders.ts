@@ -42,6 +42,8 @@ import { requireRole } from '../middleware/auth';
 import { emitFleetioEvent } from '../utils/fleetio/events';
 import { log } from '../utils/logger';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { putEncrypted } from '../utils/encryptedR2';
+import { containsAnyClause } from '../utils/searchText';
 import {
   isValidStatus,
   validateTransition,
@@ -184,8 +186,8 @@ wo.get('/', async (c) => {
       conds.push('scheduled_date IS NOT NULL');
     }
     if (search) {
-      conds.push('(summary LIKE ? OR number LIKE ? OR notes LIKE ?)');
-      bindings.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      const m = containsAnyClause(['summary', 'number', 'notes']);
+      conds.push(m.sql); bindings.push(...m.binds(search));
     }
     const where = conds.length > 0 ? 'WHERE ' + conds.join(' AND ') : '';
     const rows = await query<Record<string, unknown>>(
@@ -324,6 +326,7 @@ wo.get('/status-history', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /status-history failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });
@@ -618,9 +621,8 @@ wo.post('/:id{[0-9]+}/attachments', requireRole(...WRITE_ROLES), async (c) => {
 
     const buf = await file.arrayBuffer();
     const r2Key = `work-order-attachments/${id}/${Date.now()}_${filename}`;
-    await uploads.put(r2Key, buf, {
+    await putEncrypted(uploads, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buf, {
       httpMetadata: { contentType: mime },
-      customMetadata: { workOrderId: String(id), uploadedBy: String(userId) },
     });
 
     const result = await execute(db,
@@ -652,6 +654,7 @@ wo.get('/:id{[0-9]+}/parts', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /:id{[0-9]+}/parts failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });
@@ -706,6 +709,7 @@ wo.get('/:id{[0-9]+}/status-history', async (c) => {
     );
     return c.json({ count: rows.length, data: rows });
   } catch (err) {
+    log.error('GET /:id{[0-9]+}/status-history failed', { src: 'src/routes/workOrders.ts' }, err);
     return c.json({ error: 'Failed', code: 'DB_ERROR' }, 500);
   }
 });

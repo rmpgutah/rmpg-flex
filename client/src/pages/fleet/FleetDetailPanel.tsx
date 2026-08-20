@@ -14,6 +14,8 @@ import type {
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
   FleetPersonnelData,
 } from '../../types';
+import FleetRouteOptimizer from './components/FleetRouteOptimizer';
+import FleetOptimizationHistoryCard from './components/FleetOptimizationHistoryCard';
 import FleetOverviewTab from './tabs/FleetOverviewTab';
 import FleetFuelTab from './tabs/FleetFuelTab';
 import FleetInspectionsTab from './tabs/FleetInspectionsTab';
@@ -39,7 +41,7 @@ import EmailedDocuments from '../../components/EmailedDocuments';
 import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
 import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
-export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'expenses';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards' | 'expenses' | 'routes';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
@@ -51,8 +53,8 @@ const STATUS_LABEL: Record<FleetVehicleStatus, string> = {
   out_of_service: 'Out of Service', retired: 'Retired',
 };
 const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
-  in_service: '#22c55e', maintenance: '#f59e0b',
-  out_of_service: '#ef4444', retired: 'var(--rmpg-500)',
+  in_service: 'var(--sev-ok)', maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)', retired: 'var(--text-muted)',
 };
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
@@ -82,7 +84,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
 ];
 
-interface Props {
+/** Read-only vehicle record data the panel renders. */
+export interface FleetDetailData {
   detail: FleetVehicle;
   maintenance: FleetMaintenance[];
   fuelLogs: FleetFuelLog[];
@@ -93,31 +96,42 @@ interface Props {
   analyticsLoading: boolean;
   personnelData: FleetPersonnelData | null;
   personnelLoading: boolean;
-  activeTab: DetailTab;
-  onTabChange: (tab: DetailTab) => void;
-  onEditVehicle: () => void;
-  onLogMaintenance: () => void;
-  onLogFuel: () => void;
-  onNewInspection: () => void;
-  onEditFuel?: (log: FleetFuelLog) => void;
-  onDeleteFuel?: (log: FleetFuelLog) => void;
-  // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
+  gpsMileage: any;
+  gpsMileageLoading: boolean;
+  isArchived: boolean;
+}
+
+/** Cost-of-ownership tab (Loan / Insurance / Accessory / Utility / Other) — data + its own controls. */
+export interface FleetDetailCosts {
   loans: FleetLoan[];
   insurancePolicies: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
   utilities: FleetUtilityCost[];
   otherCosts: FleetOtherCost[];
-  costSummary: FleetCostSummary | null;
-  costSubTab: CostSubTab;
-  onCostSubTabChange: (t: CostSubTab) => void;
-  onAddCost: (category: CostCategory) => void;
-  onEditCost: (category: CostCategory, record: any) => void;
-  onDeleteCost: (category: CostCategory, record: any) => void;
+  summary: FleetCostSummary | null;
+  subTab: CostSubTab;
+  onSubTabChange: (t: CostSubTab) => void;
+  onAdd: (category: CostCategory) => void;
+  onEdit: (category: CostCategory, record: any) => void;
+  onDelete: (category: CostCategory, record: any) => void;
   onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
+}
+
+/** Everything the panel can ask the page to do. */
+export interface FleetDetailActions {
+  onEditVehicle: () => void;
+  onLogMaintenance: () => void;
+  onLogFuel: () => void;
+  onNewInspection: () => void;
+  onViewAllWorkOrders: () => void;
+  onEditFuel?: (log: FleetFuelLog) => void;
+  onDeleteFuel?: (log: FleetFuelLog) => void;
+  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
   onDeleteInspection?: (inspection: FleetInspection) => void;
+  onAnalyticsPeriodChange?: (period: string) => void;
   onAssignVehicle: (unitId: string) => void;
   onUnassignVehicle: () => void;
   onAddPersonnelNote: (note: string) => void;
@@ -126,13 +140,34 @@ interface Props {
   onArchiveVehicle: () => void;
   onUnarchiveVehicle: () => void;
   onDeleteVehicle: () => void;
-  isArchived: boolean;
-  // GPS mileage
-  gpsMileage: any;
-  gpsMileageLoading: boolean;
   onFetchGpsMileage: (days?: number) => void;
   onSyncGpsMileage: () => void;
   onClose: () => void;
+}
+
+interface Props {
+  data: FleetDetailData;
+  costs: FleetDetailCosts;
+  actions: FleetDetailActions;
+  // The panel's own control state — not data, not an action.
+  activeTab: DetailTab;
+  onTabChange: (tab: DetailTab) => void;
+}
+
+// fleet_maintenance rows carry the real DB columns (type/performed_at/mileage_at_service),
+// not the legacy service_type/service_date/odometer_reading names the PDF's
+// FleetMaintenanceEntry contract uses — map field-by-field rather than passing rows through.
+export function mapMaintenanceLogsForPdf(maintenance: FleetMaintenance[]) {
+  return maintenance.map((m: any) => ({
+    service_date: m.performed_at,
+    service_type: m.type,
+    description: m.description,
+    cost: m.cost,
+    odometer_reading: m.mileage_at_service,
+    vendor: m.vendor,
+    labor_cost: m.labor_cost,
+    service_tasks: m.service_tasks,
+  }));
 }
 
 // ── Fleet Print Menu (dropdown to select report type) ──
@@ -192,16 +227,7 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
       cost_per_mile: fuelSummary.cost_per_mile,
       fuel_cost_per_day: fuelSummary.fuel_cost_per_day,
     } : undefined,
-    maintenance_logs: maintenance.map((m: any) => ({
-      service_date: m.service_date,
-      service_type: m.service_type,
-      description: m.description,
-      cost: m.cost,
-      odometer_reading: m.odometer_reading,
-      vendor: m.vendor,
-      labor_cost: m.labor_cost,
-      service_tasks: m.service_tasks,
-    })),
+    maintenance_logs: mapMaintenanceLogsForPdf(maintenance),
   });
 
   const handleDirectPdf = async (key: string) => {
@@ -269,19 +295,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
   );
 }
 
-export default function FleetDetailPanel({
-  detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
-  analytics, analyticsLoading, personnelData, personnelLoading,
-  activeTab, onTabChange,
-  onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel,
-  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets,
-  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
-  onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
-  onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
-  gpsMileage, gpsMileageLoading, onFetchGpsMileage, onSyncGpsMileage,
-  onClose,
-}: Props) {
+export default function FleetDetailPanel({ data, costs, actions, activeTab, onTabChange }: Props) {
+  // Destructured back to the original identifiers so the render tree below is unchanged.
+  const {
+    detail, maintenance, fuelLogs, fuelSummary, inspections, assignments,
+    analytics, analyticsLoading, personnelData, personnelLoading,
+    gpsMileage, gpsMileageLoading, isArchived,
+  } = data;
+  const {
+    loans, insurancePolicies, accessories, utilities, otherCosts,
+    summary: costSummary, subTab: costSubTab, onSubTabChange: onCostSubTabChange,
+    onAdd: onAddCost, onEdit: onEditCost, onDelete: onDeleteCost, onSaveBudgets,
+  } = costs;
+  const {
+    onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection, onViewAllWorkOrders,
+    onEditFuel, onDeleteFuel, onBulkDeleteFuel,
+    onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+    onAnalyticsPeriodChange,
+    onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
+    onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle,
+    onFetchGpsMileage, onSyncGpsMileage, onClose,
+  } = actions;
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
 
@@ -355,7 +389,7 @@ export default function FleetDetailPanel({
               <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">SERVICE OVERDUE</span>
             )}
             {(() => {
-              const nextMi = (detail as any).next_service_mileage;
+              const nextMi = detail.next_service_mileage;
               const curMi = detail.current_mileage;
               if (nextMi && curMi) {
                 const milesLeft = nextMi - curMi;
@@ -489,6 +523,7 @@ export default function FleetDetailPanel({
             tabs: [
               { id: 'analytics', label: 'Analytics' },
               { id: 'dashcam',   label: 'Dash Cam' },
+              { id: 'routes',    label: 'Routes' },
             ],
           },
         ] as ModuleGroupSpec[]}
@@ -512,6 +547,7 @@ export default function FleetDetailPanel({
             onAddFuel={onLogFuel}
             onEditFuel={onEditFuel}
             onDeleteFuel={onDeleteFuel}
+            onBulkDeleteFuel={onBulkDeleteFuel}
             onGenerateReport={() => generateFleetFuelReport({
               vehicle: detail,
               fuelLogs,
@@ -532,6 +568,8 @@ export default function FleetDetailPanel({
         )}
         {activeTab === 'costs' && (
           <FleetCostsTab
+            vehicleId={detail.id}
+            onViewAllWorkOrders={onViewAllWorkOrders}
             loans={loans}
             insurance={insurancePolicies}
             accessories={accessories}
@@ -566,9 +604,20 @@ export default function FleetDetailPanel({
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
         {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
-        {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
-        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
+        {activeTab === 'analytics' && (
+          <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} onPeriodChange={onAnalyticsPeriodChange} />
+        )}
         {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
+        {activeTab === 'routes' && (
+          <div className="p-3 space-y-3">
+            <FleetRouteOptimizer
+              vehicleId={detail.id}
+              unitId={detail.assigned_unit_id ?? null}
+              callSign={detail.assigned_unit_call_sign || detail.vehicle_number}
+            />
+            <FleetOptimizationHistoryCard />
+          </div>
+        )}
       </div>
     </div>
   );

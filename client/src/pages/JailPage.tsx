@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -20,6 +20,7 @@ import {
   type InmateChargeRow,
 } from '../utils/jailBookingSheetPdf';
 import { parseTimestamp } from '../utils/dateUtils';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -104,8 +105,16 @@ export default function JailPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const r = await apiFetch<{ total: number; housed: number; booked: number }>('/jail/stats');
-      setStats(r);
+      // /jail/stats actually returns { total_inmates, by_status, by_classification }
+      // — the old { total, housed, booked } shape here never matched, so
+      // stats.total/.housed/.booked were always undefined and the three
+      // StatsCards on this page silently rendered blank.
+      const r = await apiFetch<{ total_inmates: number; by_status: Record<string, number> }>('/jail/stats');
+      setStats({
+        total: r.total_inmates ?? 0,
+        housed: r.by_status?.housed ?? 0,
+        booked: r.by_status?.booked ?? 0,
+      });
     } catch { /* ignore */ }
   }, []);
 
@@ -558,7 +567,7 @@ export default function JailPage() {
           <>
             <div><span className="text-rmpg-500">Booking #</span> {deleteTarget.booking_number}</div>
             <div><span className="text-rmpg-500">Name</span> {[deleteTarget.last_name, deleteTarget.first_name].filter(Boolean).join(', ')}</div>
-            <div><span className="text-rmpg-500">Status</span> {deleteTarget.status}</div>
+            <div><span className="text-rmpg-500">Status</span> {formatEnumValue(deleteTarget.status)}</div>
             {deleteTarget.housing_unit && (
               <div><span className="text-rmpg-500">Housing</span> {deleteTarget.housing_unit}{deleteTarget.housing_cell ? ` / ${deleteTarget.housing_cell}` : ''}</div>
             )}

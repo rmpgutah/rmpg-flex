@@ -2,22 +2,17 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { log } from '../../utils/logger';
-import { denverOffsetHours } from '../../utils/denverTime';
+import { denverDateExpr, denverNowDateExpr, denverOffsetHours } from '../../utils/denverTime';
 import { LIST_VIEW_COLUMNS } from './calls';
+import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
-// Same day-boundary shift used in reports.ts (denverDateExpr/denverNowDateExpr)
-// — D1 stores UTC, so a bare DATE(created_at) = DATE('now') comparison uses
-// UTC calendar days. A call at 11pm MT (still "today" in Denver) lands after
-// UTC midnight and gets excluded from "today," or a call just after UTC
-// midnight (still yesterday evening in MT) gets counted as "today."
-function denverDateExpr(column: string): string {
-  const offset = denverOffsetHours();
-  return `DATE(${column}, '${offset} hours')`;
-}
-function denverNowDateExpr(): string {
-  const offset = denverOffsetHours();
-  return `DATE('now', '${offset} hours')`;
-}
+// Same day-boundary shift used elsewhere (reports.ts, admin.ts, dispatch/
+// units.ts) via the shared denverDateExpr/denverNowDateExpr helpers in
+// utils/denverTime.ts — D1 stores UTC, so a bare DATE(created_at) =
+// DATE('now') comparison uses UTC calendar days. A call at 11pm MT (still
+// "today" in Denver) lands after UTC midnight and gets excluded from
+// "today," or a call just after UTC midnight (still yesterday evening in
+// MT) gets counted as "today."
 
 // Shared with /dispatch/calls — keeps the queue rows shape-compatible with
 // the list rows the dispatch panel already knows how to render.
@@ -49,9 +44,9 @@ aggregates.get('/', async (c) => {
         SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
         SUM(CASE WHEN status = 'enroute' THEN 1 ELSE 0 END) as enroute,
         SUM(CASE WHEN status = 'onscene' THEN 1 ELSE 0 END) as onscene,
-        SUM(CASE WHEN priority = 'P1' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p1_count,
-        SUM(CASE WHEN priority = 'P2' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p2_count,
-        SUM(CASE WHEN priority = 'P3' AND status NOT IN ('cleared','closed','cancelled','archived') THEN 1 ELSE 0 END) as p3_count
+        SUM(CASE WHEN priority = 'P1' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN priority = 'P3' AND ${ACTIVE_CALL_WHERE} THEN 1 ELSE 0 END) as p3_count
       FROM calls_for_service
     `);
 
@@ -72,6 +67,7 @@ aggregates.get('/', async (c) => {
       units: unitStats,
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);
     return c.json({ error: 'Failed to get aggregates' }, 500);
   }
 });
@@ -91,6 +87,7 @@ aggregates.get('/disposition-stats', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /disposition-stats failed', { src: 'src/routes/dispatch/aggregates.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -370,7 +367,7 @@ aggregates.get('/heatmap/predictions', async (c) => {
         MAX(created_at) AS last_incident
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND CAST(strftime('%H', created_at) AS INTEGER) IN (${hours.join(',')})
+        AND CAST(strftime('%H', datetime(created_at, '+6 hours')) AS INTEGER) IN (${hours.join(',')})
         AND created_at >= datetime('now', '-90 days')
       GROUP BY ROUND(latitude, 2), ROUND(longitude, 2)
       HAVING incident_count >= 2
@@ -514,8 +511,8 @@ aggregates.get('/stats/dashboard', async (c) => {
     const [calls, units, priority] = await Promise.all([
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
-                SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed
+                SUM(CASE WHEN status IN ('pending','dispatched','enroute','onscene') THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN status IN ('closed','cancelled') THEN 1 ELSE 0 END) AS closed
          FROM calls_for_service WHERE created_at >= datetime('now', '-24 hours')`),
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS total,
@@ -524,7 +521,7 @@ aggregates.get('/stats/dashboard', async (c) => {
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS p1_count
          FROM calls_for_service
-         WHERE priority = 'P1' AND status = 'active'`),
+         WHERE priority = 'P1' AND status IN ('pending','dispatched','enroute','onscene')`),
     ]);
     return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
   } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
@@ -542,9 +539,9 @@ aggregates.get('/integration-dashboard', async (c) => {
       // Dispatch: active/pending/closed calls in last 24h
       queryFirst<Record<string, unknown>>(db, `
         SELECT COUNT(*) as total_24h,
-          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+          SUM(CASE WHEN status IN ('pending','dispatched','enroute','onscene') THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-          SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
+          SUM(CASE WHEN status IN ('closed','cancelled') THEN 1 ELSE 0 END) as closed,
           SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
           SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
           -- Excludes negative deltas (odometer reset / data-entry error) —
@@ -606,7 +603,7 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'completed' THEN distance_miles ELSE 0 END) as miles_today,
           AVG(CASE WHEN status = 'completed' THEN max_speed_mph END) as avg_max_speed_today
         FROM nav_trip_log
-        WHERE date(start_time) = date('now', 'localtime')`),
+        WHERE ${denverDateExpr('start_time')} = ${denverNowDateExpr()}`),
 
       // Fleet alerts: vehicles needing attention
       query<Record<string, unknown>>(db, `
@@ -666,10 +663,10 @@ aggregates.get('/history-map', async (c) => {
     const db = getDb(c.env);
     const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
     const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
-    const csv = (q?: string) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean) : []);
-    const statuses = csv(c.req.query('status'));
-    const types = csv(c.req.query('types'));
-    const priorities = csv(c.req.query('priority'));
+    const csv = (q?: string, cap = 20) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean).slice(0, cap) : []);
+    const statuses = csv(c.req.query('status'), 10);
+    const types = csv(c.req.query('types'), 30);
+    const priorities = csv(c.req.query('priority'), 5);
 
     const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
     const params: unknown[] = [`-${days} days`];
@@ -771,11 +768,107 @@ aggregates.get('/by-zone', async (c) => {
     const daysRaw = parseInt(c.req.query('days') || '7', 10);
     const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
     const rows = await query<{ zone: string; count: number }>(db,
-      `SELECT COALESCE(dispatch_zone, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
+      // No dispatch_zone on live calls_for_service — zone_name is the label,
+      // zone_beat the fallback identifier.
+      `SELECT COALESCE(zone_name, zone_beat, 'Unzoned') AS zone, COUNT(*) AS count FROM calls_for_service
        WHERE created_at >= datetime('now','-${days} days')
-       GROUP BY dispatch_zone ORDER BY count DESC LIMIT 20`);
+       GROUP BY zone ORDER BY count DESC LIMIT 20`);
     return c.json({ by_zone: rows, days });
   } catch { return c.json({ by_zone: [], days: 7 }); }
+});
+
+// GET /dispatch/aggregates/priority-distribution?days=7
+// P1/P2/P3/P4 call counts for the analytics strip priority donut chart.
+aggregates.get('/priority-distribution', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
+    const rows = await query<{ priority: string; count: number }>(db,
+      `SELECT COALESCE(priority, 'Unknown') AS priority, COUNT(*) AS count
+       FROM calls_for_service
+       WHERE created_at >= datetime('now', '-${days} days')
+         AND priority IS NOT NULL AND priority != ''
+       GROUP BY priority
+       ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
+    return c.json({ by_priority: rows, days });
+  } catch { return c.json({ by_priority: [], days: 7 }); }
+});
+
+// GET /dispatch/aggregates/hourly-today
+// Call counts grouped by hour of day for the current Denver calendar day.
+// Uses the same MT day-boundary offset as other Denver-aware endpoints.
+aggregates.get('/hourly-today', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Use MT day boundary (UTC-6 standard / UTC-7 MDT). Cloudflare Workers run
+    // UTC — a bare date('now') boundary skips calls 00:00–06:00 MT that landed
+    // before UTC midnight. Offset 6h shifts the boundary to match midnight MT.
+    const offset = denverOffsetHours();
+    const rows = await query<{ hour: number; count: number }>(db,
+      `SELECT CAST(strftime('%H', datetime(created_at, '${offset} hours')) AS INTEGER) AS hour, COUNT(*) AS count
+       FROM calls_for_service
+       WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
+       GROUP BY hour
+       ORDER BY hour`);
+    // Fill all 24 hours so the chart never has gaps
+    const byHour: Record<number, number> = {};
+    for (const r of rows) byHour[r.hour] = r.count;
+    const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: byHour[h] ?? 0 }));
+    return c.json({ hours });
+  } catch { return c.json({ hours: [] }); }
+});
+
+// GET /dispatch/aggregates/response-times?days=7
+// Average response time in minutes by priority for cleared/closed calls.
+// response_time_seconds is set when calls transition out of pending/dispatched.
+aggregates.get('/response-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '7', 10);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(daysRaw, 1), 90) : 7;
+    const rows = await query<{ priority: string; avg_minutes: number; count: number }>(db,
+      `SELECT COALESCE(priority, 'Unknown') AS priority,
+              ROUND(AVG(response_time_seconds) / 60.0, 1) AS avg_minutes,
+              COUNT(*) AS count
+       FROM calls_for_service
+       WHERE response_time_seconds IS NOT NULL
+         AND response_time_seconds > 0
+         AND created_at >= datetime('now', '-${days} days')
+         AND status IN ('cleared', 'closed')
+       GROUP BY priority
+       ORDER BY CASE priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 ELSE 5 END`);
+    return c.json({ by_priority: rows, days });
+  } catch { return c.json({ by_priority: [], days: 7 }); }
+});
+
+// GET /dispatch/ambient-stats — lightweight screensaver data (active calls, unit counts).
+// Auth required (gated in routesConfig under /api/dispatch). Returns gracefully
+// on any DB error so the screensaver never crashes from a bad query.
+aggregates.get('/ambient-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [callRow, critRow, unitRow] = await Promise.all([
+      queryFirst<{ count: number }>(db,
+        `SELECT COUNT(*) AS count FROM calls_for_service
+         WHERE status NOT IN ('closed','cancelled','duplicate','archived')
+         AND created_at >= datetime('now', '-24 hours')`),
+      queryFirst<{ count: number }>(db,
+        `SELECT COUNT(*) AS count FROM calls_for_service
+         WHERE priority IN ('1','P1','critical') AND status NOT IN ('closed','cancelled','duplicate','archived')
+         AND created_at >= datetime('now', '-24 hours')`),
+      queryFirst<{ total: number; available: number }>(db,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available
+         FROM units WHERE status != 'off_duty'`),
+    ]);
+    return c.json({
+      active_calls: callRow?.count ?? 0,
+      critical_calls: critRow?.count ?? 0,
+      total_units: unitRow?.total ?? 0,
+      available_units: unitRow?.available ?? 0,
+    });
+  } catch { return c.json({ active_calls: 0, critical_calls: 0, total_units: 0, available_units: 0 }); }
 });
 
 export default aggregates;

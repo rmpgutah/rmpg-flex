@@ -14,7 +14,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Radio, Mic, MicOff, RadioTower } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -66,7 +66,7 @@ export default function PttController() {
     const el = document.createElement('style');
     el.id = 'rmpg-ptt-style';
     el.textContent =
-      '@keyframes rmpg-ptt-pulse{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,0.5),0 0 0 0 rgba(239,68,68,0.5)}50%{box-shadow:0 2px 8px rgba(0,0,0,0.5),0 0 0 6px rgba(239,68,68,0)}}' +
+      '@keyframes rmpg-ptt-pulse{0%,100%{box-shadow:0 2px 8px rgba(0 0 0 / 0.5),0 0 0 0 rgba(239,68,68,0.5)}50%{box-shadow:0 2px 8px rgba(0 0 0 / 0.5),0 0 0 6px rgba(239,68,68,0)}}' +
       '@keyframes rmpg-ptt-blink{0%,100%{opacity:1}50%{opacity:0.25}}';
     document.head.appendChild(el);
   }, []);
@@ -185,13 +185,13 @@ export default function PttController() {
   if (!active || resolvedChannelId == null) return null;
 
   // ── HUD state → color + label ──
-  let bg = 'var(--surface-overlay)', border = 'var(--border-default)', dot = 'var(--rmpg-500)', label = 'STANDBY', Icon = Radio;
-  if (!voice.supported) { label = 'NO MIC'; dot = 'var(--rmpg-500)'; Icon = MicOff; }
-  else if (voice.transmitting) { bg = '#3a0d0d'; border = '#ef4444'; dot = '#ef4444'; label = 'ON AIR'; Icon = Mic; }
-  else if (voice.activeSpeaker) { bg = '#0d2a14'; border = '#22c55e'; dot = '#22c55e'; label = `RX · ${voice.activeSpeaker.label}`; Icon = RadioTower; }
-  else if (voice.busy) { bg = '#2a220a'; border = '#d4a017'; dot = '#d4a017'; label = 'CHANNEL BUSY'; Icon = Radio; }
-  else if (voice.connected) { dot = '#22c55e'; label = 'MONITORING'; }
-  else { dot = '#d4a017'; label = 'CONNECTING…'; }
+  let bg = 'var(--surface-overlay)', border = 'var(--border-default)', dot = 'var(--text-muted)', label = 'STANDBY', Icon = Radio;
+  if (!voice.supported) { label = 'NO MIC'; dot = 'var(--text-muted)'; Icon = MicOff; }
+  else if (voice.transmitting) { bg = 'rgb(var(--sev-critical-rgb) / 0.25)'; border = 'var(--sev-critical)'; dot = 'var(--sev-critical)'; label = 'ON AIR'; Icon = Mic; }
+  else if (voice.activeSpeaker) { bg = 'rgb(var(--sev-ok-rgb) / 0.15)'; border = 'var(--sev-ok)'; dot = 'var(--sev-ok)'; label = `RX · ${voice.activeSpeaker.label}`; Icon = RadioTower; }
+  else if (voice.busy) { bg = 'rgb(var(--sev-warn-rgb) / 0.12)'; border = 'var(--accent-silver-400)'; dot = 'var(--accent-silver-400)'; label = 'CHANNEL BUSY'; Icon = Radio; }
+  else if (voice.connected) { dot = 'var(--sev-ok)'; label = 'MONITORING'; }
+  else { dot = 'var(--accent-silver-400)'; label = 'CONNECTING…'; }
 
   return (
     <>
@@ -205,7 +205,7 @@ export default function PttController() {
         display: 'flex', alignItems: 'stretch', gap: 0,
         background: bg, border: `1px solid ${border}`,
         borderRadius: 2, userSelect: 'none',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+        boxShadow: '0 2px 8px rgba(0 0 0 / 0.5)',
         fontFamily: "'JetBrains Mono', monospace",
         animation: voice.transmitting ? 'rmpg-ptt-pulse 1s ease-in-out infinite' : undefined,
       }}
@@ -217,6 +217,7 @@ export default function PttController() {
         onMouseLeave={holdUp}
         onTouchStart={(e) => { e.preventDefault(); holdDown(); }}
         onTouchEnd={(e) => { e.preventDefault(); holdUp(); }}
+        onTouchCancel={(e) => { e.preventDefault(); holdUp(); }}
         title={`Hold ${keyCodeLabel(prefs.keyCode)} (or click-hold) to transmit on ${channelName}`}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -234,8 +235,8 @@ export default function PttController() {
           <kbd style={keycapStyle}>{keyCodeLabel(prefs.keyCode)}</kbd>
         ) : (
           <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
-            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', color: '#fff' }}>{label}</span>
-            <span style={{ fontSize: 8, color: '#888', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', color: 'var(--text-primary)' }}>{label}</span>
+            <span style={{ fontSize: 8, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
               {channelName} · {voice.members} on ·
               <kbd style={keycapStyle}>{keyCodeLabel(prefs.keyCode)}</kbd>
               PTT
@@ -253,7 +254,7 @@ export default function PttController() {
         title={collapsed ? 'Expand radio status' : 'Minimize — tuck the radio status out of the way'}
         style={{
           flexShrink: 0, width: 16, border: 'none', borderLeft: `1px solid ${border}`,
-          background: 'transparent', color: '#888', cursor: 'pointer',
+          background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer',
           fontSize: 11, lineHeight: 1, padding: 0,
         }}
       >

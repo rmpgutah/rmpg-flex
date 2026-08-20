@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -164,7 +164,7 @@ export default function ReconConnectPage() {
     const term = new XTerm({
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       fontSize: 12,
-      theme: { background: 'var(--surface-overlay)', foreground: '#d4d4d4', cursor: '#d4a017' },
+      theme: { background: 'var(--surface-overlay)', foreground: 'var(--text-secondary)', cursor: 'var(--field-label-color)' },
       cursorBlink: true,
       convertEol: true,
       scrollback: 5000,

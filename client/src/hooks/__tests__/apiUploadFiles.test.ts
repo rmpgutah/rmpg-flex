@@ -85,4 +85,45 @@ describe('apiUploadFiles auto-retry', () => {
     await expect(apiUploadFiles([file()], 'company_document')).rejects.toThrow(/Failed to fetch/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // Direct-to-R2 presigned upload is disabled for the general attachments
+  // uploader (DIRECT_UPLOAD_THRESHOLD_BYTES = Infinity in useApi.ts) — the
+  // Worker-proxied multipart route now encrypts every attachment via
+  // putEncrypted() before writing to R2, and a presigned PUT bypasses the
+  // Worker entirely, so it would land unencrypted. This asserts even a
+  // large file still goes through the encrypted multipart path, not presign.
+  it('does not route a large file through presign — direct-upload is disabled pending encryption-at-rest parity', async () => {
+    const bigFile = new File(['x'.repeat(21 * 1024 * 1024)], 'big.mp4', { type: 'video/mp4' });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { file_id: 'big-1', original_name: 'big.mp4' },
+    ]), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+
+    const out = await apiUploadFiles([bigFile]);
+
+    expect(out).toEqual([{ file_id: 'big-1', original_name: 'big.mp4' }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/uploads');
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('presign');
+  });
+
+  it('preserves file order for a mixed-size batch, all via the multipart route', async () => {
+    const small1 = new File(['x'], 'small1.jpg', { type: 'image/jpeg' });
+    const large = new File(['x'.repeat(21 * 1024 * 1024)], 'large.mp4', { type: 'video/mp4' });
+    const small2 = new File(['x'], 'small2.jpg', { type: 'image/jpeg' });
+
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify([
+      { file_id: 'small1-id', original_name: 'small1.jpg' },
+      { file_id: 'large-id', original_name: 'large.mp4' },
+      { file_id: 'small2-id', original_name: 'small2.jpg' },
+    ]), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+
+    const out = await apiUploadFiles([small1, large, small2]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(out).toEqual([
+      { file_id: 'small1-id', original_name: 'small1.jpg' },
+      { file_id: 'large-id', original_name: 'large.mp4' },
+      { file_id: 'small2-id', original_name: 'small2.jpg' },
+    ]);
+  });
 });

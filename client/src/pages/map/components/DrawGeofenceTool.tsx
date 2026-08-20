@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import type mapboxgl from 'mapbox-gl';
+import { X } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import PanelTitleBar from '../../../components/PanelTitleBar';
+import IconButton from '../../../components/IconButton';
 
 interface Props {
   map: mapboxgl.Map;
@@ -83,14 +86,23 @@ export default function DrawGeofenceTool({ map, onClose }: Props) {
   };
 
   return (
-    <div className="tactical-dark border border-surface-raised rounded p-3 w-52 text-xs space-y-2 shadow-lg">
-      <div className="text-brand-400 font-bold uppercase tracking-wider text-[10px]">Draw Geofence</div>
+    <div className="bg-surface-raised/95 border border-border-default backdrop-blur-sm w-52 text-xs space-y-2 p-2" style={{ borderRadius: 2 }}>
+      <PanelTitleBar title="Create Geofence Zone">
+        <IconButton
+          aria-label="Close"
+          onClick={() => { drawRef.current?.deleteAll(); onClose(); }}
+          className="text-rmpg-400 hover:text-rmpg-200 p-0.5"
+        >
+          <X className="w-3 h-3" />
+        </IconButton>
+      </PanelTitleBar>
       <div className="flex gap-1">
         {(['polygon', 'circle'] as const).map(m => (
           <button key={m} onClick={() => setMode(m)}
-            className={`flex-1 py-1 rounded text-[10px] capitalize ${
+            className={`flex-1 py-1 text-[10px] capitalize ${
               mode === m ? 'bg-brand-500 text-black font-bold' : 'bg-surface-raised text-rmpg-300'
-            }`}>
+            }`}
+            style={{ borderRadius: 2 }}>
             {m}
           </button>
         ))}
@@ -98,29 +110,23 @@ export default function DrawGeofenceTool({ map, onClose }: Props) {
       <div className="flex gap-1 flex-wrap">
         {COLORS.map(c => (
           <button key={c} aria-label={`Color ${c}`} onClick={() => setColor(c)}
-            className={`w-5 h-5 rounded border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
-            style={{ backgroundColor: c }} />
+            className={`w-5 h-5 border-2 ${color === c ? 'border-white' : 'border-transparent'}`}
+            style={{ backgroundColor: c, borderRadius: 2 }} />
         ))}
       </div>
       <select value={zoneType} onChange={e => setZoneType(e.target.value as ZoneType)}
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-1 py-0.5 text-[10px]">
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-1 py-0.5 text-[10px]" style={{ borderRadius: 2 }}>
         {ZONE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
       <input value={zoneName} onChange={e => setZoneName(e.target.value)}
         placeholder="Zone name…"
-        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 rounded px-2 py-1 text-[10px]" />
+        className="w-full bg-surface-base border border-surface-raised text-rmpg-200 px-2 py-1 text-[10px]" style={{ borderRadius: 2 }} />
       {error && <div className="text-red-400 text-[10px]">{error}</div>}
       <div className="text-rmpg-400 text-[10px]">Click map to draw</div>
-      <div className="flex gap-2">
-        <button onClick={handleSave} disabled={saving}
-          className="flex-1 bg-brand-500 text-black font-bold py-1 rounded text-[10px] disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button onClick={() => { drawRef.current?.deleteAll(); onClose(); }}
-          className="flex-1 bg-surface-raised text-rmpg-300 py-1 rounded text-[10px]">
-          Cancel
-        </button>
-      </div>
+      <button onClick={handleSave} disabled={saving}
+        className="w-full bg-brand-500 text-black font-bold py-1 text-[10px] disabled:opacity-50" style={{ borderRadius: 2 }}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
     </div>
   );
 }

@@ -23,19 +23,30 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, chunkBindings } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { configFromEnv, createVehicle, listVehicles, listFuelEntries, createVendor, createPart, ping } from '../utils/fleetio/client';
+import { configFromEnv, createVehicle, listAllVehicles, listAllFuelEntries, createVendor, createPart, ping } from '../utils/fleetio/client';
+import { FLEETIO_LINK_RESOURCE, RMPG_TABLE_TO_KIND, acceptedLinkResources } from '../utils/fleetio/resources';
+import { getOwnership } from '../utils/fleetio/ownership';
 import { FleetioConfigError, FleetioError } from '../utils/fleetio/errors';
 import { buildVehiclePayload } from '../utils/fleetio/seed';
 import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buildFuelLogInsertFromFleetio, type LocalVehicleForMatch, type PullOutcome } from '../utils/fleetio/pull';
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
-import { rmpgTableToResource } from '../utils/fleetio/sync';
+import { rmpgTableToResource, getQueueHealth, isPermanentFailureMessage } from '../utils/fleetio/sync';
 import { emitFleetioEvent, type FleetioEmitKind } from '../utils/fleetio/events';
 
 const fleetio = new Hono<Env>();
+
+/** Inter-request spacing for every paced Fleet.io loop in this file.
+ *  Fleet.io's account ceiling is 50 req/min (confirmed 2026-06-21 against the
+ *  Token-scope settings page), so 1.2 s lands exactly at the ceiling with
+ *  headroom for a concurrent sync. Shared by /seed, /seed-vendors, /seed-parts
+ *  and /pull so one endpoint can't quietly diverge and start earning 429s. */
+const PACE_MS = 1200;
+
+const pace = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 // Mount the PR 4 webhook subrouter at the bare /webhook path. The bypass
 // in src/middleware/auth.ts lets the request through without a JWT; the
@@ -153,6 +164,50 @@ fleetio.get('/health', requireRole('admin'), async (c) => {
   }
 });
 
+/** Requeue a dead-lettered outbound event (status='failed', attempts exhausted
+ *  at maxAttempts()) so the next reconciliation cron tick retries it. Needed
+ *  because attempts < maxAttempts() is a hard SELECT filter in applyOutbound
+ *  — once an event hits 'failed' it never retries on its own, even after the
+ *  underlying bug (e.g. a bad payload mapping) is fixed server-side. Admin
+ *  only; only resets rows already in 'failed' state. */
+fleetio.post('/events/:id{[0-9]+}/retry', requireRole('admin'), async (c) => {
+  const id = parseInt(c.req.param('id') ?? '0', 10);
+  if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+
+  // Refuse to re-arm a PERMANENT failure. A 4xx is Fleet.io's verdict on the
+  // payload, so replaying it burns the retry budget and re-pages an operator
+  // for a rejection that was correct every time — the loop observed live on
+  // 2026-08-01 with fuel_entry event id=23. The fix for one of these is to
+  // correct the source record in RMPG, which emits a fresh event naturally.
+  const existing = await queryFirst<{ status: string; error: string | null }>(
+    db,
+    `SELECT status, error FROM fleetio_events WHERE id = ?`,
+    id,
+  );
+  if (!existing || existing.status !== 'failed') {
+    return c.json({ error: 'Event not found or not in failed state' }, 404);
+  }
+  if (isPermanentFailureMessage(existing.error)) {
+    return c.json({
+      error: 'This event failed permanently and cannot be retried — Fleet.io rejected the data itself. Correct the source record in RMPG; saving it queues a fresh event.',
+      code: 'permanent_failure',
+      reason: existing.error,
+    }, 409);
+  }
+
+  const result = await execute(
+    db,
+    `UPDATE fleetio_events SET status = 'pending', attempts = 0, error = NULL
+     WHERE id = ? AND status = 'failed'`,
+    id,
+  );
+  if (!result.meta?.changes) {
+    return c.json({ error: 'Event not found or not in failed state' }, 404);
+  }
+  return c.json({ success: true, id });
+});
+
 /** List unresolved conflicts, optionally filtered by table / id. Auth: required
  *  (not admin-only) so fleet V2 pages can show conflict badges for non-admin
  *  users. Supports `?table=fleet_vehicles&ids=1,2,3` to filter multiple rows. */
@@ -162,29 +217,65 @@ fleetio.get('/conflicts', async (c) => {
   const id = c.req.query('id');
   const ids = c.req.query('ids');
 
-  let sql = `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
-             FROM fleetio_conflicts WHERE resolved_at IS NULL`;
-  const bindings: unknown[] = [];
+  const select = `SELECT id, rmpg_table, rmpg_id, field, local_value, remote_value, resolution, created_at
+                  FROM fleetio_conflicts WHERE resolved_at IS NULL`;
+  const RESULT_LIMIT = 50;
 
-  if (table) {
-    sql += ' AND rmpg_table = ?';
-    bindings.push(table);
-  }
-  if (id) {
-    sql += ' AND rmpg_id = ?';
-    bindings.push(parseInt(id, 10));
-  } else if (ids) {
-    const parsed = ids.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
-    if (parsed.length > 0) {
-      sql += ` AND rmpg_id IN (${parsed.map(() => '?').join(',')})`;
-      bindings.push(...parsed);
-    }
+  // ── Single-id and no-filter forms: one query, bounded bindings ──
+  if (!ids || id) {
+    let sql = select;
+    const bindings: unknown[] = [];
+    if (table) { sql += ' AND rmpg_table = ?'; bindings.push(table); }
+    if (id) { sql += ' AND rmpg_id = ?'; bindings.push(parseInt(id, 10)); }
+    sql += ` ORDER BY id DESC LIMIT ${RESULT_LIMIT}`;
+    const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
+    return c.json({ conflicts: rows, count: rows.length });
   }
 
-  sql += ' ORDER BY id DESC LIMIT 50';
+  // ── Multi-id form: MUST be chunked ──
+  // 🔴 D1 caps a query at 100 BOUND PARAMETERS
+  // (developers.cloudflare.com/d1/platform/limits). This route built one
+  // `rmpg_id IN (?,?,…)` list sized by however many rows the caller was
+  // rendering, so the query's shape grew with the dataset: FleetFuelTab asking
+  // about 109 fuel rows sent 110 bindings (1 table + 109 ids), D1 rejected the
+  // statement before executing it, and the request 500'd. Observed live
+  // 2026-07-26 — four retries, then the conflict badges silently never loaded.
+  // It never reached `error_log` either, because D1 rejects at bind time inside
+  // query() rather than throwing from the route body into the global onError.
+  //
+  // Chunk size comes from chunkBindings (src/utils/db.ts), which owns the cap —
+  // `reservedBindings` accounts for the optional `table` filter so the IN-list
+  // can never squeeze it out of the budget.
+  const parsed = Array.from(new Set(
+    ids.split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0),
+  ));
+  if (parsed.length === 0) {
+    return c.json({ conflicts: [], count: 0 });
+  }
 
-  const rows = await query<Record<string, unknown>>(db, sql, ...bindings);
-  return c.json({ conflicts: rows, count: rows.length });
+  const chunks = chunkBindings(parsed, table ? 1 : 0);
+
+  const results = await Promise.all(chunks.map((chunk) => {
+    let sql = select;
+    const bindings: unknown[] = [];
+    if (table) { sql += ' AND rmpg_table = ?'; bindings.push(table); }
+    sql += ` AND rmpg_id IN (${chunk.map(() => '?').join(',')})`;
+    bindings.push(...chunk);
+    // Per-chunk LIMIT matches the overall one: no single chunk can contribute
+    // more rows than the caller will ever be shown, but the merge below is what
+    // actually enforces the response size.
+    sql += ` ORDER BY id DESC LIMIT ${RESULT_LIMIT}`;
+    return query<Record<string, unknown>>(db, sql, ...bindings);
+  }));
+
+  // Merge, then re-sort and truncate globally — a per-chunk limit alone would
+  // bias the result toward whichever chunk happened to be queried, so the
+  // ordering contract (newest first) has to be re-established after the merge.
+  const merged = results.flat()
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .slice(0, RESULT_LIMIT);
+
+  return c.json({ conflicts: merged, count: merged.length });
 });
 
 /** Resolve a single conflict by id with a chosen resolution.
@@ -217,9 +308,33 @@ fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) =
   );
   if (!conflict) return c.json({ error: 'Conflict not found or already resolved' }, 404);
 
+  // `rmpg_table` and `field` are interpolated as SQL IDENTIFIERS below (they
+  // can't be bound as parameters). Both are written by our own code today —
+  // resourceToRmpgTable() and the ownership maps — so neither is raw user
+  // input. Validate anyway: this is the only place in the integration where a
+  // stored string reaches the SQL text, and "a table/column name that came out
+  // of the database" is exactly the assumption that quietly stops holding when
+  // someone adds a new writer. An unknown identifier means the row is
+  // malformed, so refuse rather than execute.
+  const conflictKind = RMPG_TABLE_TO_KIND[conflict.rmpg_table];
+  if (!conflictKind) {
+    return c.json({ error: 'Conflict references an unsupported table', code: 'UNSUPPORTED_TABLE' }, 422);
+  }
+  // The field check is scoped to the branches that WRITE the field, not applied
+  // up front: recordPullConflict files rows with field='fleetio_id', which is a
+  // link-collision marker rather than a real column, and an admin must still be
+  // able to clear those with resolution='manual'.
+  const fieldIsRealColumn = getOwnership(conflictKind, conflict.field) !== null;
+
   let applied: 'remote_applied' | 'outbound_requeued' | 'none' = 'none';
   try {
     if (body.resolution === 'remote_wins') {
+      if (!fieldIsRealColumn) {
+        return c.json({
+          error: `Cannot auto-apply the remote value for field '${conflict.field}' — it is not a synced column on ${conflict.rmpg_table}. Resolve this conflict manually.`,
+          code: 'UNSUPPORTED_FIELD',
+        }, 422);
+      }
       let remoteValue: unknown = null;
       try { remoteValue = conflict.remote_value ? JSON.parse(conflict.remote_value) : null; } catch { /* leave null */ }
       await execute(db,
@@ -228,7 +343,7 @@ fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) =
       applied = 'remote_applied';
     } else if (body.resolution === 'local_wins') {
       const mapping = rmpgTableToResource(conflict.rmpg_table);
-      if (mapping) {
+      if (mapping && fieldIsRealColumn) {
         const current = await queryFirst<Record<string, unknown>>(
           db, `SELECT ${conflict.field} AS v FROM ${conflict.rmpg_table} WHERE id = ?`, conflict.rmpg_id,
         );
@@ -317,17 +432,31 @@ fleetio.get('/analytics', async (c) => {
 
 fleetio.get('/sync-status', requireRole('admin'), async (c) => {
   const db = getDb(c.env);
-  const [links, eventsPending, eventsFailed, conflicts] = await Promise.all([
+  const [links, eventsPending, eventsFailed, conflicts, queueHealth] = await Promise.all([
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_links'),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE direction='outbound' AND status='pending'"),
     queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM fleetio_events WHERE status='failed'"),
     queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM fleetio_conflicts WHERE resolved_at IS NULL'),
+    // Same query the cron alert (isFleetioQueueUnhealthy) uses — reused here
+    // (rather than a hand-rolled 6th parallel query) so the outbound-failed
+    // count and the oldest-pending timestamp can never drift from the
+    // worker-side "unhealthy" definition.
+    getQueueHealth(db),
   ]);
   return c.json({
     links_total: links?.n ?? 0,
     outbound_pending: eventsPending?.n ?? 0,
+    // Legacy all-directions failed count — kept for backward compatibility
+    // with other consumers of this field. The "unhealthy" threshold does
+    // NOT use this; see outbound_failed_total below.
     failed_total: eventsFailed?.n ?? 0,
+    // The failed count the "unhealthy" badge threshold actually applies to —
+    // matches the worker-side getQueueHealth()/isFleetioQueueUnhealthy()
+    // definition (outbound-only) exactly, so the dashboard and the cron
+    // alert can't disagree.
+    outbound_failed_total: queueHealth.failedTotal,
     conflicts_unresolved: conflicts?.n ?? 0,
+    oldest_pending_created_at: queueHealth.oldestPendingCreatedAt,
   });
 });
 
@@ -372,14 +501,10 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
     limit,
   );
 
-  // Rate-limit pacing: Fleet.io's account limit is 50 req/min (confirmed
-  // 2026-06-21 against the Token-scope settings page). Space POSTs at 1.2 s
-  // so we hit the 50 req/min ceiling exactly — never trigger a 429, and
-  // leave headroom if another sync runs concurrently. For 18 vehicles this
-  // takes ~22 s (well under the Worker 30 s response deadline). If `limit`
-  // is set high (200 max), the caller should run `/seed` repeatedly rather
-  // than one long call — each invocation auto-skips already-linked rows.
-  const PACE_MS = 1200;
+  // Paced via the shared PACE_MS above. For 18 vehicles that's ~22 s, well
+  // under the Worker's 30 s response deadline. If `limit` is set high (200
+  // max), call /seed repeatedly rather than in one long request — each
+  // invocation auto-skips already-linked rows.
   const outcomes: SeedOutcome[] = [];
   let firstWrite = true;
   for (const row of rows) {
@@ -394,16 +519,29 @@ fleetio.post('/seed', requireRole('admin'), async (c) => {
       outcomes.push({ rmpg_id: row.id, status: 'created', fleetio_id: 0 });
       continue;
     }
-    if (!firstWrite) await new Promise((r) => setTimeout(r, PACE_MS));
+    if (!firstWrite) await pace(PACE_MS);
     firstWrite = false;
     try {
       const created = await createVehicle({ config, payload });
-      await execute(
+      // INSERT OR IGNORE, not a bare INSERT. The remote vehicle already exists
+      // at this point, so a throw here (unique-index collision from a
+      // concurrent /pull, or transient D1 failure) would surface as an 'error'
+      // outcome while leaving an UNLINKED remote vehicle behind — which the
+      // next /seed run then creates a SECOND copy of, since its LEFT JOIN still
+      // sees the local row as unlinked. Swallowing the duplicate keeps the
+      // create-then-link pair effectively idempotent.
+      const linked = await execute(
         db,
-        `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+        `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
          VALUES (?, ?, ?, ?, datetime('now'))`,
-        'fleet_vehicles', row.id, 'vehicles', created.id,
+        'fleet_vehicles', row.id, FLEETIO_LINK_RESOURCE.vehicle, created.id,
       );
+      if (!linked.meta?.changes) {
+        // A link row already existed for this local vehicle (or this Fleet.io
+        // id). The remote create still happened, so report it rather than
+        // letting a silent no-op read as a clean link.
+        console.warn('[fleetio.seed] created Fleet.io vehicle but a link row already existed', { rmpg_id: row.id, fleetio_id: created.id });
+      }
       outcomes.push({ rmpg_id: row.id, status: 'created', fleetio_id: created.id });
     } catch (err) {
       // err.message is safe (fixed-format `Fleet.io ${status}` or
@@ -511,11 +649,24 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   }
 
   const db = getDb(c.env);
+  // Accept the legacy singular `fleetio_resource` spellings alongside the
+  // canonical plural ones. Links written by the pre-canonicalization sync
+  // engine used 'vehicle'/'fuel_entry', and a strict `='vehicles'` filter (what
+  // this route used to have) made those rows invisible here — so /pull
+  // re-processed already-linked vehicles every run and its fuel phase skipped
+  // them entirely. migration 0206 normalizes the stored values; this keeps the
+  // route correct during the rollout window and for any row an older bundle
+  // writes mid-deploy.
+  const vehicleLinkResources = acceptedLinkResources('vehicle');
+  const fuelLinkResources = acceptedLinkResources('fuel_entry');
   const locals = await query<LocalVehicleForMatch>(
     db, `SELECT id, vin, plate_number, vehicle_number, vehicle_name FROM fleet_vehicles WHERE COALESCE(archived_at, '') = ''`,
   );
   const existingLinks = await query<{ fleetio_id: number; rmpg_id: number }>(
-    db, `SELECT fleetio_id, rmpg_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
+    db,
+    `SELECT fleetio_id, rmpg_id FROM fleetio_links
+     WHERE rmpg_table='fleet_vehicles' AND fleetio_resource IN (${vehicleLinkResources.map(() => '?').join(',')})`,
+    ...vehicleLinkResources,
   );
   const alreadyLinkedIds = new Set(existingLinks.map((r) => r.fleetio_id));
   // Tracks every rmpg_id that now has (or will have, within this run) a
@@ -530,13 +681,27 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   const linkedFleetioIdByRmpgId = new Map(existingLinks.map((r) => [r.rmpg_id, r.fleetio_id]));
 
   const outcomes: PullOutcome[] = [];
-  let page = 1;
-  let totalPages = 1;
+  let vehiclesTruncated = false;
   try {
-    do {
-      const resp = await listVehicles({ config, page, perPage: 100 });
-      totalPages = resp.pagination?.total_pages ?? 1;
-      for (const fioVehicle of resp.records) {
+    // Fetch the WHOLE roster first, across every page, under whichever
+    // pagination contract the API key's version uses (see iterateList /
+    // FleetioListPage). The previous hand-rolled `do { … } while (page <=
+    // resp.pagination.total_pages)` read a body field neither Fleet.io contract
+    // emits, so `total_pages` was always undefined, the loop always exited after
+    // one iteration, and any fleet beyond the first 100 vehicles was silently
+    // never reconciled.
+    //
+    // `onPage` paces between page requests at the same 1.2 s the /seed route
+    // uses (Fleet.io's account ceiling is 50 req/min) — /pull previously paced
+    // nothing at all, so a multi-page roster plus a per-vehicle fuel fetch for
+    // every linked vehicle blew straight through the limit and the resulting 429
+    // aborted the entire reconcile with a 502.
+    const roster = await listAllVehicles({
+      config, perPage: 100, onPage: () => pace(PACE_MS),
+    });
+    vehiclesTruncated = roster.truncated;
+    {
+      for (const fioVehicle of roster.records) {
         if (alreadyLinkedIds.has(fioVehicle.id)) {
           outcomes.push({ fleetio_id: fioVehicle.id, status: 'already_linked', rmpg_id: -1 });
           continue;
@@ -555,8 +720,8 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
           await execute(
             db,
             `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
-             VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
-            match.id, fioVehicle.id,
+             VALUES ('fleet_vehicles', ?, ?, ?, datetime('now'))`,
+            match.id, FLEETIO_LINK_RESOURCE.vehicle, fioVehicle.id,
           );
           linkedRmpgIds.add(match.id);
           linkedFleetioIdByRmpgId.set(match.id, fioVehicle.id);
@@ -583,8 +748,8 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
           await execute(
             db,
             `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
-             VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
-            dup.id, fioVehicle.id,
+             VALUES ('fleet_vehicles', ?, ?, ?, datetime('now'))`,
+            dup.id, FLEETIO_LINK_RESOURCE.vehicle, fioVehicle.id,
           );
           linkedRmpgIds.add(dup.id);
           linkedFleetioIdByRmpgId.set(dup.id, fioVehicle.id);
@@ -602,16 +767,15 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
         await execute(
           db,
           `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
-           VALUES ('fleet_vehicles', ?, 'vehicles', ?, datetime('now'))`,
-          newId, fioVehicle.id,
+           VALUES ('fleet_vehicles', ?, ?, ?, datetime('now'))`,
+          newId, FLEETIO_LINK_RESOURCE.vehicle, fioVehicle.id,
         );
         linkedRmpgIds.add(newId);
         linkedFleetioIdByRmpgId.set(newId, fioVehicle.id);
         outcomes.push({ fleetio_id: fioVehicle.id, status: 'created', rmpg_id: newId });
         locals.push({ id: newId, vin: insertRow.vin, plate_number: insertRow.plate_number, vehicle_number: insertRow.vehicle_number, vehicle_name: insertRow.vehicle_name });
       }
-      page++;
-    } while (page <= totalPages);
+    }
   } catch (err) {
     const message = err instanceof FleetioError
       ? `${err.name}: ${err.message}`
@@ -624,52 +788,120 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
   // vehicle's fuel_entries shouldn't block importing the rest.
   type FuelPullOutcome =
     | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_created'; rmpg_id: number }
+    // Adopted a pre-existing native RMPG row via the natural-key dedupe
+    // instead of inserting a duplicate. Distinct from 'fuel_linked_existing',
+    // which means the Fleet.io id was already in fleetio_links.
+    | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_matched_existing'; rmpg_id: number }
     | { fleetio_vehicle_id: number; fleetio_fuel_id: number; status: 'fuel_linked_existing' }
     | { fleetio_vehicle_id: number; status: 'fuel_pull_failed'; error: string };
   const fuelOutcomes: FuelPullOutcome[] = [];
   const linkedVehicles = await query<{ rmpg_id: number; fleetio_id: number }>(
-    db, `SELECT rmpg_id, fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_vehicles' AND fleetio_resource='vehicles'`,
+    db,
+    `SELECT rmpg_id, fleetio_id FROM fleetio_links
+     WHERE rmpg_table='fleet_vehicles' AND fleetio_resource IN (${vehicleLinkResources.map(() => '?').join(',')})`,
+    ...vehicleLinkResources,
   );
   const existingFuelLinks = await query<{ fleetio_id: number }>(
-    db, `SELECT fleetio_id FROM fleetio_links WHERE rmpg_table='fleet_fuel_log' AND fleetio_resource='fuel_entries'`,
+    db,
+    `SELECT fleetio_id FROM fleetio_links
+     WHERE rmpg_table='fleet_fuel_log' AND fleetio_resource IN (${fuelLinkResources.map(() => '?').join(',')})`,
+    ...fuelLinkResources,
   );
   const alreadyLinkedFuelIds = new Set(existingFuelLinks.map((r) => r.fleetio_id));
 
+  let firstFuelFetch = true;
   for (const link of linkedVehicles) {
     try {
-      let fuelPage = 1;
-      let fuelTotalPages = 1;
-      do {
-        const fuelResp = await listFuelEntries({ config, vehicleId: link.fleetio_id, page: fuelPage, perPage: 100 });
-        fuelTotalPages = fuelResp.pagination?.total_pages ?? 1;
-        for (const fioFuel of fuelResp.records) {
+      // Pace between vehicles as well as between pages — this loop is the
+      // request-heaviest part of /pull (one walk per linked vehicle).
+      if (!firstFuelFetch) await pace(PACE_MS);
+      firstFuelFetch = false;
+      const fuelPage = await listAllFuelEntries({
+        config, vehicleId: link.fleetio_id, perPage: 100, onPage: () => pace(PACE_MS),
+      });
+      if (fuelPage.filteredOut > 0) {
+        // The ?vehicle_id= filter didn't take (see listAllFuelEntries) — the
+        // entries were dropped rather than misattributed, but say so loudly:
+        // silently discarding records reads identically to "there were none".
+        console.warn(`[fleetio.pull] vehicle ${link.fleetio_id}: dropped ${fuelPage.filteredOut} fuel entr(ies) belonging to other vehicles — server-side vehicle_id filter appears to be ignored`);
+      }
+      {
+        for (const fioFuel of fuelPage.records) {
           if (alreadyLinkedFuelIds.has(fioFuel.id)) {
             fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: 'fuel_linked_existing' });
             continue;
           }
           const insertRow = buildFuelLogInsertFromFleetio(fioFuel);
-          // Not wrapped in db.batch() — matches the vehicle-linking phase's
-          // pattern above; a crash between these two writes could leave an
-          // unlinked fuel row that re-imports as a duplicate on the next
-          // /pull. Acceptable for now since fleet_fuel_log has no natural
-          // dedup key to enforce this at the DB level either way.
-          const result = await execute(
+
+          // ── Natural-key dedupe ───────────────────────────────────────
+          // `fleetio_links` answers "did I import this Fleet.io id before?",
+          // NOT "does this fill already exist in RMPG?". Any fill entered by
+          // an officer AND present in Fleet.io therefore imported as a SECOND
+          // row carrying only gallons/date — no odometer, driver, or cost.
+          // Live D1 accumulated 22 such rows (2026-08-01), inflating the
+          // dashboard's 30-day gallons from a true 36.4 to 107.9 (~3x) and
+          // skewing utilization, cost-per-mile and the fuel z-scores.
+          //
+          // Match on the physical fill: same vehicle, same gallons (to 0.01 —
+          // gallons is recorded to 3dp, so an accidental collision would need
+          // two fills of identical volume within hours), close in time. Only
+          // rows NOT already bound to a different Fleet.io entry are eligible.
+          const twin = insertRow.gallons == null ? null : await queryFirst<{ id: number }>(
             db,
-            `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
-            link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
+            `SELECT f.id
+               FROM fleet_fuel_log f
+               LEFT JOIN fleetio_links fl
+                 ON fl.rmpg_table = 'fleet_fuel_log' AND fl.rmpg_id = f.id
+              WHERE f.vehicle_id = ?
+                AND f.gallons IS NOT NULL
+                AND ABS(f.gallons - ?) < 0.01
+                AND ABS(julianday(f.fuel_date) - julianday(?)) * 24 <= 6
+                AND fl.rmpg_id IS NULL
+              ORDER BY ABS(julianday(f.fuel_date) - julianday(?))
+              LIMIT 1`,
+            link.rmpg_id, insertRow.gallons, insertRow.fuel_date, insertRow.fuel_date,
           );
-          const newFuelId = Number(result.meta?.last_row_id);
+
+          let fuelRowId: number;
+          let outcome: 'fuel_created' | 'fuel_matched_existing';
+          if (twin) {
+            // Adopt the existing native row rather than duplicating it, and
+            // fill ONLY columns it is missing — an officer-entered value is
+            // authoritative and must never be overwritten by Fleet.io.
+            await execute(
+              db,
+              `UPDATE fleet_fuel_log
+                  SET total_cost      = COALESCE(total_cost, ?),
+                      cost_per_gallon = COALESCE(cost_per_gallon, ?)
+                WHERE id = ?`,
+              insertRow.total_cost, insertRow.cost_per_gallon, twin.id,
+            );
+            fuelRowId = twin.id;
+            outcome = 'fuel_matched_existing';
+          } else {
+            // Not wrapped in db.batch() — matches the vehicle-linking phase's
+            // pattern above; a crash between these two writes could leave an
+            // unlinked fuel row. The dedupe above now absorbs that row on the
+            // next /pull instead of duplicating it.
+            const result = await execute(
+              db,
+              `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon) VALUES (?, ?, ?, ?, ?)`,
+              link.rmpg_id, insertRow.fuel_date, insertRow.gallons, insertRow.total_cost, insertRow.cost_per_gallon,
+            );
+            fuelRowId = Number(result.meta?.last_row_id);
+            outcome = 'fuel_created';
+          }
+
           await execute(
             db,
             `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pulled_at)
-             VALUES ('fleet_fuel_log', ?, 'fuel_entries', ?, datetime('now'))`,
-            newFuelId, fioFuel.id,
+             VALUES ('fleet_fuel_log', ?, ?, ?, datetime('now'))`,
+            fuelRowId, FLEETIO_LINK_RESOURCE.fuel_entry, fioFuel.id,
           );
           alreadyLinkedFuelIds.add(fioFuel.id);
-          fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: 'fuel_created', rmpg_id: newFuelId });
+          fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, fleetio_fuel_id: fioFuel.id, status: outcome, rmpg_id: fuelRowId });
         }
-        fuelPage++;
-      } while (fuelPage <= fuelTotalPages);
+      }
     } catch (err) {
       const message = err instanceof FleetioError ? `${err.name}: ${err.message}` : err instanceof Error ? err.message : String(err);
       fuelOutcomes.push({ fleetio_vehicle_id: link.fleetio_id, status: 'fuel_pull_failed', error: message });
@@ -680,6 +912,9 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     total: fuelOutcomes.length,
     created: fuelOutcomes.filter((o) => o.status === 'fuel_created').length,
     already_linked: fuelOutcomes.filter((o) => o.status === 'fuel_linked_existing').length,
+    // Reported separately from `created`: a nonzero value means the dedupe
+    // caught fills that would previously have become duplicate rows.
+    matched_existing: fuelOutcomes.filter((o) => o.status === 'fuel_matched_existing').length,
     failed: fuelOutcomes.filter((o) => o.status === 'fuel_pull_failed').length,
   };
 
@@ -692,6 +927,10 @@ fleetio.post('/pull', requireRole('admin'), async (c) => {
     // Kept separate from `skipped` — these are real data problems recorded
     // into fleetio_conflicts (see recordPullConflict), not benign no-ops.
     conflicts: outcomes.filter((o) => o.status === 'skipped_conflict').length,
+    // True when the roster walk hit FLEETIO_MAX_PAGES. Reported rather than
+    // swallowed: a truncated pull that claims success reads as "everything is
+    // reconciled" when it isn't.
+    vehicles_truncated: vehiclesTruncated,
   };
 
   await recordAudit(c, {
@@ -740,7 +979,6 @@ async function seedSimpleResource(
     opts.rmpgTable, limit,
   );
 
-  const PACE_MS = 1200;
   const outcomes: SeedOutcome[] = [];
   let firstWrite = true;
   for (const row of rows) {
@@ -754,13 +992,16 @@ async function seedSimpleResource(
       outcomes.push({ rmpg_id: id, status: 'created', fleetio_id: 0 });
       continue;
     }
-    if (!firstWrite) await new Promise((r) => setTimeout(r, PACE_MS));
+    if (!firstWrite) await pace(PACE_MS);
     firstWrite = false;
     try {
       const created = await opts.create(config, payload);
+      // OR IGNORE for the same reason as the vehicle seed above: the remote
+      // record exists by now, so a failing link insert must not be reported as
+      // "create failed" and re-created on the next run.
       await execute(
         db,
-        `INSERT INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
+        `INSERT OR IGNORE INTO fleetio_links (rmpg_table, rmpg_id, fleetio_resource, fleetio_id, last_pushed_at)
          VALUES (?, ?, ?, ?, datetime('now'))`,
         opts.rmpgTable, id, opts.fleetioResource, created.id,
       );
@@ -789,7 +1030,7 @@ async function seedSimpleResource(
 fleetio.post('/seed-vendors', requireRole('admin'), (c) =>
   seedSimpleResource(c, {
     rmpgTable: 'ref_vendors',
-    fleetioResource: 'vendor',
+    fleetioResource: FLEETIO_LINK_RESOURCE.vendor,
     buildPayload: (row) => (row.name ? { name: row.name, address: row.address, city: row.city, state: row.state, zip: row.zip, phone: row.phone, email: row.email } : null),
     create: (config, payload) => createVendor({ config, payload }),
     auditAction: 'FLEETIO_SEED_VENDORS',
@@ -800,7 +1041,7 @@ fleetio.post('/seed-vendors', requireRole('admin'), (c) =>
 fleetio.post('/seed-parts', requireRole('admin'), (c) =>
   seedSimpleResource(c, {
     rmpgTable: 'fleet_parts',
-    fleetioResource: 'part',
+    fleetioResource: FLEETIO_LINK_RESOURCE.part,
     buildPayload: (row) => (row.name ? { name: row.name, part_number: row.part_number, description: row.description, unit_cost: row.unit_cost } : null),
     create: (config, payload) => createPart({ config, payload }),
     auditAction: 'FLEETIO_SEED_PARTS',

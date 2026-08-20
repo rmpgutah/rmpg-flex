@@ -87,12 +87,11 @@ export function useLiveSync(
     }, delay);
   }, [moduleList]);
 
-  // ⚠️ NOTE: The 'process-server' module is NOT broadcast over WebSocket by the
-  // server. Instead, ServePage/MyRunTab rely on a periodic silent poll (via
-  // fetchData/refreshJobs) and on cross-tab CustomEvent 'serve:statusChanged'
-  // for real-time-ish updates. The WS subscription for 'process-server' below
-  // will only fire if the server ever emits a matching broadcast; until then,
-  // consumers should NOT remove their polling fallback.
+  // NOTE: The 'process-server' module IS now broadcast over WebSocket by the
+  // server (src/routes/serve.ts logAttempt + serveReceipt.ts signing path both
+  // emit data_changed { module:'process-server' }). ServePage/MyRunTab should
+  // keep their polling fallback — WS delivery is best-effort (per-isolate fan-out)
+  // so polling is still the guaranteed freshness path for offline recovery.
   //
   // The live Worker broadcasts dispatch mutations under the 'dispatch_update'
   // message type (action discriminator), NOT the 'data_changed' shape this hook

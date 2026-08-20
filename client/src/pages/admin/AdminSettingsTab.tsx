@@ -76,7 +76,7 @@ export default function AdminSettingsTab(_props: Props) {
       await loadSystemSettings();
       addToast('Settings saved', 'success');
     } catch (err) { addToast('Failed to save settings', 'error'); }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [editValues, addToast]);
 
   const resetAll = useCallback(async () => {
@@ -87,7 +87,7 @@ export default function AdminSettingsTab(_props: Props) {
       addToast('Settings reset to defaults', 'success');
       load();
     } catch (err) { addToast('Failed to reset settings', 'error'); }
-    setSaving(false);
+    finally { setSaving(false); }
   }, [addToast, load]);
 
   const filteredSettings = Object.entries(settings).filter(([cat]) => {
@@ -101,27 +101,27 @@ export default function AdminSettingsTab(_props: Props) {
     return true;
   });
 
-  if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw className="animate-spin text-[#d4a017]" size={20} /></div>;
-  if (error) return <div className="flex flex-col items-center justify-center py-20"><p className="text-[10px] text-[#fca5a5] mb-3">{error}</p><button onClick={load} className="btn-gold"><RefreshCw size={12} /> Retry</button></div>;
+  if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw className="animate-spin text-accent-silver-500" size={20} /></div>;
+  if (error) return <div className="flex flex-col items-center justify-center py-20"><p className="text-[10px] text-red-300 mb-3">{error}</p><button onClick={load} className="btn-gold"><RefreshCw size={12} /> Retry</button></div>;
 
   return (
     <div className="flex flex-col h-full">
       {/* Action Bar */}
       <div className="flex items-center gap-3 p-3 bg-surface-overlay border-b border-border-subtle">
-        <Settings size={14} color="#d4a017" />
-        <span className="text-[10px] font-bold uppercase text-[#d4a017] tracking-wider flex-1">System Settings</span>
+        <Settings size={14} color="var(--accent-silver-500)" />
+        <span className="text-[10px] font-bold uppercase text-[color:var(--panel-header-color)] tracking-wider flex-1">System Settings</span>
         <input id="ff-adminsettingstab-0"
           type="text" placeholder="Search settings..."
           value={search} onChange={e => setSearch(e.target.value)}
-          className="px-3 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 w-48 focus:border-[#d4a017]"
+          className="px-3 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 w-48 focus:border-accent-silver-500"
         />
         <button onClick={resetAll} disabled={saving} className="btn-secondary btn-xs flex items-center gap-1"><RotateCcw size={10} />Reset</button>
         <button onClick={saveAll} disabled={saving} className="btn-gold btn-xs flex items-center gap-1"><Save size={10} />{saving ? 'Saving...' : 'Save All'}</button>
       </div>
 
       {/* Honesty note: which categories are wired to actually affect the app. */}
-      <div className="px-3 py-1.5 bg-[#0a0a0a] border-b border-[#1a1a1a] text-[9px] text-[#777] leading-relaxed">
-        <span className="text-[#d4a017] font-bold uppercase tracking-wider">Live-applied:</span>{' '}
+      <div className="px-3 py-1.5 bg-surface-sunken border-b border-border-subtle text-[9px] text-text-muted leading-relaxed">
+        <span className="text-[color:var(--field-label-color)] font-bold uppercase tracking-wider">Live-applied:</span>{' '}
         Branding (agency name, colors, classification &amp; watermark on all reports/PDFs); Display &amp; Theme
         (CRT scanline/vignette, animations, high-contrast, amber/green phosphor, grid lines, status bar, date/time format).
         Other settings are saved but not yet consumed everywhere — wiring continues per release.
@@ -136,7 +136,7 @@ export default function AdminSettingsTab(_props: Props) {
               onClick={() => setActiveCategory(cat)}
               className={`w-full text-left px-3 py-2 text-[10px] font-semibold uppercase tracking-wider border-l-3 transition-all ${
                 activeCategory === cat
-                  ? 'text-[#d4a017] border-l-[3px] border-l-[#d4a017] bg-[rgba(212,160,23,0.06)]'
+                  ? 'text-accent-silver-500 border-l-[3px] border-l-accent-silver-500 bg-accent-silver-500/[0.06]'
                   : 'text-rmpg-500 border-l-[3px] border-l-transparent hover:text-rmpg-400 hover:bg-[rgba(255,255,255,0.02)]'
               }`}
             >
@@ -150,7 +150,7 @@ export default function AdminSettingsTab(_props: Props) {
         <div className="flex-1 min-h-0 overflow-y-auto p-6">
           {activeCategory && settings[activeCategory] && (
             <div className="space-y-4 max-w-2xl">
-              <h2 className="text-[11px] font-bold uppercase text-[#d4a017] tracking-wider border-b border-border-subtle pb-2 mb-4">
+              <h2 className="text-[11px] font-bold uppercase text-[color:var(--panel-header-color)] tracking-wider border-b border-border-subtle pb-2 mb-4">
                 {CATEGORY_LABELS[activeCategory] || activeCategory}
               </h2>
               {(settings[activeCategory] || []).map((setting) => (
@@ -177,7 +177,7 @@ export default function AdminSettingsTab(_props: Props) {
                       <select id="ff-adminsettingstab-2"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
-                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-accent-silver-500"
                       >
                         {(() => { try { return JSON.parse(setting.options) as string[]; } catch { return []; } })().map((opt: string) => (
                           <option key={opt} value={opt}>{opt}</option>
@@ -187,7 +187,7 @@ export default function AdminSettingsTab(_props: Props) {
                       <div className="flex items-center gap-2">
                         <input id="ff-adminsettingstab-3"
                           type="color"
-                          value={editValues[setting.key] || '#000000'}
+                          value={editValues[setting.key] || ''}
                           onChange={e => updateValue(setting.key, e.target.value)}
                           className="w-8 h-8 bg-transparent border border-border-subtle cursor-pointer p-0"
                         />
@@ -195,7 +195,7 @@ export default function AdminSettingsTab(_props: Props) {
                           type="text"
                           value={editValues[setting.key] || ''}
                           onChange={e => updateValue(setting.key, e.target.value)}
-                          className="flex-1 px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-[#d4a017]"
+                          className="flex-1 px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-accent-silver-500"
                         />
                       </div>
                     ) : setting.type === 'number' ? (
@@ -205,14 +205,14 @@ export default function AdminSettingsTab(_props: Props) {
                         onChange={e => updateValue(setting.key, e.target.value)}
                         min={setting.min_value ?? undefined}
                         max={setting.max_value ?? undefined}
-                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 font-mono focus:border-accent-silver-500"
                       />
                     ) : (
                       <input id="ff-adminsettingstab-6"
                         type="text"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
-                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-[#d4a017]"
+                        className="w-full px-2 py-1.5 text-[10px] bg-surface-sunken border border-border-subtle text-rmpg-400 focus:border-accent-silver-500"
                       />
                     )}
                   </div>

@@ -55,6 +55,13 @@ export async function evaluateNotificationRules(
   // cross-worker bus). Optional so existing/test callers still work — they just
   // skip the live push and the row still lands (poll/reload picks it up).
   env?: { ALERT_HUB?: DurableObjectNamespace },
+  // Per-event recipients that aren't expressible as a rule's static
+  // target_roles/target_user_ids — e.g. "the person who requested this
+  // specific swap." Unioned with the rule's statically-resolved targets in
+  // fireRule. Added for shift-plan swap approve/deny notifications; any
+  // future event with a per-instance recipient can reuse this instead of
+  // bypassing the rule engine.
+  dynamicUserIds?: number[],
 ): Promise<{ rulesMatched: number; notified: number }> {
   let rulesMatched = 0;
   let notified = 0;
@@ -67,7 +74,7 @@ export async function evaluateNotificationRules(
     for (const rule of rules) {
       if (!matchesConditions(rule.conditions, context)) continue;
       rulesMatched++;
-      notified += await fireRule(db, rule, context, {}, env);
+      notified += await fireRule(db, rule, context, {}, env, dynamicUserIds);
     }
   } catch {
     // Swallow — the engine must never break the event that triggered it.
@@ -86,8 +93,10 @@ export async function fireRule(
   context: NotifyContext = {},
   opts: { testPrefix?: boolean } = {},
   env?: { ALERT_HUB?: DurableObjectNamespace },
+  dynamicUserIds?: number[],
 ): Promise<number> {
-  const userIds = await resolveTargets(db, rule.target_roles, rule.target_user_ids);
+  const staticTargets = await resolveTargets(db, rule.target_roles, rule.target_user_ids);
+  const userIds = [...new Set([...staticTargets, ...(dynamicUserIds ?? [])])];
   if (userIds.length === 0) return 0;
 
   const prefix = opts.testPrefix ? '[TEST] ' : '';
@@ -99,14 +108,14 @@ export async function fireRule(
     await execute(
       db,
       `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now','localtime'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))`,
       'alert', priority, title, message,
       context.entity_type ?? 'notification_rule', context.entity_id ?? rule.id, uid,
     );
   }
   await execute(
     db,
-    `UPDATE notification_rules SET last_fired_at = datetime('now','localtime'), fire_count = fire_count + 1 WHERE id = ?`,
+    `UPDATE notification_rules SET last_fired_at = datetime('now'), fire_count = fire_count + 1 WHERE id = ?`,
     rule.id,
   );
 

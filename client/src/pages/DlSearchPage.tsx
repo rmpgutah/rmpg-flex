@@ -7,7 +7,7 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, Calendar, Database, Plus, AlertTriangle, Loader2, X, Eye, ScanLine, UserCheck, Upload, History, Camera } from 'lucide-react';
 import { apiFetch, apiUploadFilesWithProgress } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // QR code that opens this scanner page on the officer's phone —
 // scans made there relay to this desktop session automatically.
@@ -46,7 +47,7 @@ function PhoneScanQr() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let cancelled = false;
-    import('bwip-js/browser').then(({ default: bwipjs }) => {
+    importWithRetry(() => import('bwip-js/browser')).then(({ default: bwipjs }) => {
       if (cancelled || !canvasRef.current) return;
       try {
         bwipjs.toCanvas(canvasRef.current, {
@@ -164,7 +165,7 @@ export default function DlSearchPage() {
     const { front, back } = cardImages;
     if ((!front && !back) || cardSavedTo === personId) return;
     try {
-      const { stampPhoto, getGeoFix } = await import('../utils/photoStamp');
+      const { stampPhoto, getGeoFix } = await importWithRetry(() => import('../utils/photoStamp'));
       const geo = await getGeoFix();
       const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
       const mk = (blob: Blob, side: 'FRONT' | 'BACK') =>
@@ -592,7 +593,7 @@ export default function DlSearchPage() {
           dl_state: verifyResult.dl_state || '',
           dl_class: verifyResult.dl_class || '',
           dl_expiry: verifyResult.dl_expiry || '',
-          notes: `Created from DL verification on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL verification on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_verify_imported'],
         }),
       });
@@ -639,8 +640,9 @@ export default function DlSearchPage() {
       setResults([]);
       setSource('ERROR');
       fromDeepLinkRef.current = false;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [firstName, lastName, dlNumber, state, dob, addToast]);
 
   // Apply pending deep-link once handleSearch is stable. One-shot — clears
@@ -688,7 +690,7 @@ export default function DlSearchPage() {
   // scanner, recent-scan replay, and phone-relay receipt.
   const processBarcodeText = useCallback(async (rawText: string, opts?: { silent?: boolean; skipRelay?: boolean }): Promise<boolean> => {
     try {
-      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await import('../utils/aamvaParser');
+      const { parseAamva, looksLikeAamva, describeAamva, assessAamva, formatLawEnforcement, formatLeBlock, describeRestrictions, describeEndorsements, describeClass } = await importWithRetry(() => import('../utils/aamvaParser'));
       if (!looksLikeAamva(rawText)) return false;
       const parsed = parseAamva(rawText);
       setScanReadout(describeAamva(parsed));
@@ -699,7 +701,7 @@ export default function DlSearchPage() {
       // evaluateDl() bridge call the iOS app uses, so phone + desktop produce
       // identical analysis from one parse.
       try {
-        const { evaluateDl } = await import('../utils/dlFunctions');
+        const { evaluateDl } = await importWithRetry(() => import('../utils/dlFunctions'));
         setScanEval(evaluateDl(parsed));
       } catch { setScanEval(null); }
       const resultObj = {
@@ -774,7 +776,7 @@ export default function DlSearchPage() {
     // issuing DMV encoded it. Only fall back to OCR (front of card)
     // when no barcode is found in the image.
     try {
-      const { decodePdf417 } = await import('../utils/pdf417Decoder');
+      const { decodePdf417 } = await importWithRetry(() => import('../utils/pdf417Decoder'));
       const decoded = await decodePdf417(file);
       if (decoded && await processBarcodeText(decoded.text)) {
         setOcrLoading(false);
@@ -866,7 +868,7 @@ export default function DlSearchPage() {
           dl_state: ocrResult.dl_state,
           dl_class: ocrResult.dl_class,
           dl_expiry: ocrResult.dl_expiry,
-          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString()}`,
+          notes: `Created from DL OCR scan on ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`,
           flags: ['dl_ocr_imported'],
         }),
       });
@@ -911,7 +913,7 @@ export default function DlSearchPage() {
     if (!d) return '—';
     try {
       const dt = parseTimestamp(d);
-      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString();
+      return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('en-US', { timeZone: 'America/Denver' });
     } catch { return d; }
   };
 
@@ -936,7 +938,7 @@ export default function DlSearchPage() {
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <input id="ff-dlsearchpage-2" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
         onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <select id="ff-dlsearchpage-3" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+      <select id="ff-dlsearchpage-3" className="select-dark text-[10px] w-20 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
@@ -1042,7 +1044,7 @@ export default function DlSearchPage() {
           <div className="flex items-center gap-1.5">
             <input id="ff-dlsearchpage-8" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
               onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <select id="ff-dlsearchpage-9" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+            <select id="ff-dlsearchpage-9" className="select-dark text-[10px] w-20 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -1140,23 +1142,23 @@ export default function DlSearchPage() {
                 </div>
               </div>
               {/* DL OCR Scanner */}
-              <div className="border border-[#222222] rounded-sm p-3 bg-[#050505] space-y-2 w-full max-w-xs">
+              <div className="border border-rmpg-900 rounded-sm p-3 bg-surface-deep space-y-2 w-full max-w-xs">
                 <div className="flex items-center gap-2">
-                  <CreditCard size={14} className="text-[#d4a017]" />
-                  <span className="text-[10px] font-bold text-[#c0ccdd] uppercase tracking-wider">Scan Driver's License</span>
+                  <CreditCard size={14} className="[color:var(--panel-header-color)]" />
+                  <span className="text-[10px] font-bold text-accent-silver-300 uppercase tracking-wider">Scan Driver's License</span>
                 </div>
-                <p className="text-[10px] text-[#666666]">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
+                <p className="text-[10px] text-fg-muted">Upload a photo of a driver's license to auto-extract all fields and create a person record.</p>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={ocrLoading}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#1e6ab8] disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 bg-rmpg-600 hover:bg-brand-700 disabled:opacity-40 rounded-sm text-[11px] font-bold text-white transition-colors"
                   >
                     {ocrLoading ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />}
                     {ocrLoading ? 'Scanning...' : 'Upload DL Photo'}
                   </button>
-                  <span className="text-[9px] text-[#666666]">JPG, PNG, or camera capture</span>
+                  <span className="text-[9px] text-fg-muted">JPG, PNG, or camera capture</span>
                 </div>
               </div>
             </div>
@@ -1394,7 +1396,7 @@ export default function DlSearchPage() {
                     <input className="input-dark text-[10px] w-full min-h-[32px] mt-0.5" type="password" placeholder={sourcesCfg?.sor_feed_key_set ? 'leave blank to keep current' : 'bearer token'} value={sorKey} onChange={e => setSorKey(e.target.value)} />
                   </div>
                   {sourcesCfg?.sor_last_run && (
-                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString()}</p>
+                    <p className="text-[8px] text-rmpg-500">Last poll: {sourcesCfg.sor_last_run.status} · {sourcesCfg.sor_last_run.records_upserted} upserted · {parseTimestamp(sourcesCfg.sor_last_run.ran_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</p>
                   )}
                   <button type="button" onClick={runSorPoll} className="px-2.5 py-1 bg-surface-raised border border-rmpg-700 rounded-sm text-[9px] font-bold text-rmpg-300 hover:text-rmpg-100">Run poll now</button>
 
@@ -1493,7 +1495,7 @@ export default function DlSearchPage() {
                       const flagged = !!(pf.sex_offender || pf.watchlist || pf.supervision) || dangerSrcs.length > 0;
                       return (
                         <tr key={s.id} className={`border-t border-border-subtle text-[10px] ${flagged ? 'bg-red-900/10' : ''}`}>
-                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="px-3 py-[3px] text-rmpg-400 whitespace-nowrap">{parseTimestamp(s.scanned_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                           <td className="px-3 py-[3px] text-rmpg-100">
                             {s.person_id
                               ? <button type="button" className="hover:text-brand-gold-500 hover:underline" onClick={() => { setShowScanHistory(false); navigate(`/records?tab=persons&personId=${s.person_id}`); }}>{s.subject_name || 'unknown'}</button>
@@ -1536,7 +1538,7 @@ export default function DlSearchPage() {
               // falling back to OCR on the front image.
               if (backImage) {
                 try {
-                  const { decodePdf417 } = await import('../utils/pdf417Decoder');
+                  const { decodePdf417 } = await importWithRetry(() => import('../utils/pdf417Decoder'));
                   const decoded = await decodePdf417(new File([backImage], 'id-back.jpg', { type: 'image/jpeg' }));
                   if (decoded && await processBarcodeText(decoded.text)) {
                     setShowLiveScanner(false);
@@ -2068,7 +2070,7 @@ export default function DlSearchPage() {
                 type="button"
                 onClick={async () => {
                   try {
-                    const { generateSafetySheet } = await import('../utils/dlSafetySheet');
+                    const { generateSafetySheet } = await importWithRetry(() => import('../utils/dlSafetySheet'));
                     const doc = generateSafetySheet({
                       ocrResult, leFields, scanAlerts, scanMatches, deepSweep, courtRecords, fbiRecords,
                       officerName: undefined,

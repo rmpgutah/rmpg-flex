@@ -7,9 +7,10 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { toDisplayLabel } from '../../../utils/formatters';
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 interface FitnessScore {
@@ -93,7 +94,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
     ...(f.notes ? [m.copy('Copy notes', f.notes)] : []),
   ];
   const buildCommMenu = (c: Commendation): ContextMenuItem[] => [
-    m.copy('Copy type', c.type?.replace(/_/g, ' ')),
+    m.copy('Copy type', toDisplayLabel(c.type)),
     m.copy('Copy description', c.description),
     m.separator(),
     m.copyId(c.id),
@@ -194,7 +195,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
                 <Star className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-amber-400 font-bold uppercase">{c.type?.replace(/_/g, ' ')}</span>
+                    <span className="text-[10px] text-amber-400 font-bold uppercase">{toDisplayLabel(c.type)}</span>
                     <span className="text-[10px] text-rmpg-400">{fmtDate(c.date)}</span>
                   </div>
                   <p className="text-[10px] text-rmpg-200">{c.description}</p>

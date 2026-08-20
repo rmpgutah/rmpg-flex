@@ -11,6 +11,9 @@ import React, { useState } from 'react';
 import { List, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ChoroLegend } from '../../../hooks/useActivityChoropleth';
 import { roadLegendRows, propertyLegendRows } from '../utils/landTypes';
+import OsmAttribution from '../../../components/OsmAttribution';
+import { iconSvgForCat } from '../../../utils/osmIcons';
+import type { VectorTileLayerConfig } from '../../../hooks/useVectorTileLayers';
 
 export interface UnifiedLegendProps {
   hierarchy: { area: boolean; sector: boolean; zone: boolean; beat: boolean };
@@ -24,6 +27,8 @@ export interface UnifiedLegendProps {
   bottomPx?: number;
   /** CSS left offset — shifts right of the LAYERS panel when it's open. */
   leftCss?: string;
+  /** Currently-visible OSM-sourced vector layer configs, for ODbL attribution + coverage captions. */
+  visibleOsmConfigs?: VectorTileLayerConfig[];
 }
 
 const HSWATCH: Record<string, string> = { area: '#d4a017', sector: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
@@ -37,12 +42,57 @@ const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boo
       borderRadius: dot ? 6 : 2,
       background: line ? 'transparent' : color,
       borderTop: line ? `2px solid ${color}` : undefined,
-      border: dot ? '1px solid #1a1a1a' : undefined,
+      border: dot ? '1px solid var(--border-subtle)' : undefined,
     }}
   />
 );
 
-export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28, leftCss = '12px' }: UnifiedLegendProps) {
+/**
+ * Glyph key for the OSM point overlays that are actually switched on.
+ *
+ * There was previously no key anywhere in the app: 39 distinct silhouettes
+ * shipped to the map with nothing telling an operator what any of them meant.
+ * Scoped to visible layers on purpose — a key listing all 39 regardless of
+ * what is on screen is a wall of icons nobody reads.
+ *
+ * Rendered as a data-URI <img> rather than injected markup. The strings are
+ * our own module-local artwork, but an <img> cannot execute script under any
+ * circumstances, so the key stays inert even if the artwork module ever grows
+ * a templated value. It is also the same string that gets rasterised into the
+ * map, so the key cannot drift from the sprite it documents.
+ */
+function OsmIconKey({ visibleOsmConfigs, sub }: { visibleOsmConfigs: VectorTileLayerConfig[]; sub: string }) {
+  const rows = visibleOsmConfigs
+    .filter((c) => c.categoryRender === 'point' && c.categoryFilter)
+    .map((c) => ({ label: c.label, svg: iconSvgForCat(c.categoryFilter as string) }))
+    .filter((r): r is { label: string; svg: string } => !!r.svg);
+  if (rows.length === 0) return null;
+
+  return (
+    <div>
+      <div style={{ color: sub, fontSize: 7, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 3 }}>
+        OSM Features
+      </div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-[3px]">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center gap-1">
+            <img
+              alt=""
+              aria-hidden="true"
+              className="shrink-0"
+              width={16}
+              height={16}
+              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(r.svg)}`}
+            />
+            <span style={{ fontSize: 8.5, color: sub, lineHeight: 1.15 }}>{r.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28, leftCss = '12px', visibleOsmConfigs = [] }: UnifiedLegendProps) {
   const [open, setOpen] = useState(true);
 
   const geoLevels = ([
@@ -50,23 +100,23 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   ] as const).filter(([k]) => hierarchy[k]);
 
   const anyActive = geoLevels.length > 0 || boundaries.county || boundaries.municipality
-    || statewide.roads || statewide.addresses || !!choro;
+    || statewide.roads || statewide.addresses || !!choro || visibleOsmConfigs.length > 0;
   if (!anyActive) return null;
 
   const bg = isLight ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.94)';
-  const fg = isLight ? '#222' : 'var(--rmpg-300)';
-  const sub = isLight ? '#666' : '#888';
+  const fg = isLight ? '#222' : 'var(--text-secondary)';
+  const sub = isLight ? '#666' : 'var(--text-muted)';
 
   return (
     <div
-      className="absolute z-[900] backdrop-blur-md"
-      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid #88888840', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      className="absolute z-40 backdrop-blur-md"
+      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid var(--border-subtle)', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
     >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center gap-1.5 px-2 py-1"
-        style={{ color: '#d4a017', fontSize: 9, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}
+        style={{ color: 'var(--panel-header-color)', fontSize: 9, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}
         aria-expanded={open}
       >
         <List className="w-3 h-3" /> Legend
@@ -156,6 +206,10 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
               </div>
             </div>
           )}
+
+          <OsmIconKey visibleOsmConfigs={visibleOsmConfigs} sub={sub} />
+
+          <OsmAttribution visibleOsmConfigs={visibleOsmConfigs} />
         </div>
       )}
     </div>

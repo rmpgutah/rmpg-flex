@@ -13,6 +13,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { localToday } from '../../../utils/dateUtils';
 
 interface CostCategory {
   label: string;
@@ -24,7 +25,7 @@ interface MonthlyData {
   amount: number;
 }
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   categories: CostCategory[];
   monthlyTrend?: MonthlyData[];
@@ -32,7 +33,7 @@ interface Args {
   monthsOwned?: number;
 }
 
-export function generateFleetCostOwnershipPdf({ vehicle, categories, monthlyTrend, totalMiles, monthsOwned }: Args): void {
+export function buildFleetCostOwnershipPdf({ vehicle, categories, monthlyTrend, totalMiles, monthsOwned }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -176,6 +177,13 @@ export function generateFleetCostOwnershipPdf({ vehicle, categories, monthlyTren
     doc.setTextColor(0);
   }
 
-  const filename = `tco-report-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the TCO report PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetCostOwnershipPdf(args: Args): void {
+  const doc = buildFleetCostOwnershipPdf(args);
+  const filename = `tco-report-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

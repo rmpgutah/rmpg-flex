@@ -23,7 +23,8 @@
 // ============================================================
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
+import { importWithRetry } from '../utils/importWithRetry';
 import {
   HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
   MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,
@@ -35,7 +36,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { APP_VERSION } from '../utils/version';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS,
 } from '../utils/helpReferenceData';
@@ -487,7 +488,7 @@ export default function HelpPage() {
   // help-page route bundle when nobody clicks Print).
   const onPrintQuickRef = useCallback(async () => {
     try {
-      const mod = await import('../utils/helpQuickReferencePdf');
+      const mod = await importWithRetry(() => import('../utils/helpQuickReferencePdf'));
       await mod.generateHelpQuickReferencePdfWithDefaults();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -498,7 +499,7 @@ export default function HelpPage() {
 
   const onDownloadDispatchGuide = useCallback(async () => {
     try {
-      const mod = await import('../utils/dispatchGuidePdfGenerator');
+      const mod = await importWithRetry(() => import('../utils/dispatchGuidePdfGenerator'));
       await mod.generateDispatchGuidePdf();
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -547,11 +548,11 @@ export default function HelpPage() {
               className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${!active ? 'hover:bg-surface-base' : ''}`}
               style={{
                 background: active ? 'rgba(136,136,136,0.12)' : 'transparent',
-                color: active ? 'var(--rmpg-100)' : 'var(--rmpg-400)',
-                borderLeft: active ? '3px solid var(--rmpg-400)' : '3px solid transparent',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                borderLeft: active ? '3px solid var(--text-secondary)' : '3px solid transparent',
               }}
             >
-              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--rmpg-300)' : 'var(--rmpg-500)' }} />
+              <Icon style={{ width: 14, height: 14, flexShrink: 0, color: active ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
               <span className="text-[11px] font-medium">{item.label}</span>
             </button>
           );
@@ -588,7 +589,7 @@ export default function HelpPage() {
           {/* ── Search bar ──────────────────────────────── */}
           <div
             className="flex items-center gap-2 px-3 py-2"
-            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid #d4a017' }}
+            style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', borderTop: '2px solid var(--field-label-color)' }}
           >
             <Search className="w-4 h-4 text-rmpg-300 shrink-0" />
             <input
@@ -648,7 +649,7 @@ export default function HelpPage() {
                         className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-rmpg-200"
                         style={{ background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)' }}
                       >
-                        {h.kind}
+                        {formatEnumValue(h.kind)}
                       </span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -717,7 +718,7 @@ export default function HelpPage() {
                         height: 22,
                         background: 'rgba(212,160,23,0.15)',
                         border: '1px solid rgba(212,160,23,0.3)',
-                        color: 'var(--brand-400)',
+                        color: 'var(--accent-silver-400)',
                       }}
                     >
                       {item.step}
@@ -833,7 +834,7 @@ export default function HelpPage() {
                 <div className="space-y-1.5">
                   {PRIORITIES.map((p) => (
                     <div key={p.level} className="flex items-center gap-3">
-                      <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{p.level}</span>
+                      <span className="text-[10px] font-mono font-bold w-6" style={{ color: p.color }}>{formatEnumValue(p.level)}</span>
                       <span className="text-[10px] font-bold w-24" style={{ color: p.color }}>{p.label}</span>
                       <span className="text-[10px] text-rmpg-400">{p.desc}</span>
                     </div>

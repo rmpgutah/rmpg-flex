@@ -1,0 +1,399 @@
+#!/bin/sh
+# /usr/bin/rmpg-update — over-the-air OS updater for RMPG Flex terminals.
+#
+# Downloads a new OS image into the INACTIVE A/B slot, verifies it, and flips
+# the default slot so the next reboot runs it. The running slot is never
+# touched, so a failed or interrupted update cannot break the terminal the
+# officer is currently using — worst case nothing changes and it tries again
+# later.
+#
+# This pairs with S01kiosk-boot-slot-check, which already rolls back to the
+# other slot after 3 failed boots. Together: a bad image gets one chance, fails
+# to reach a healthy state 3 times, and the terminal returns to the version it
+# was running before, unattended and with no site visit.
+#
+# Deliberately a shell script against a static manifest rather than a daemon
+# with a control channel. A terminal that can be remotely told to run arbitrary
+# code is a liability in a vehicle; this can only ever fetch a signed-by-hash
+# image from a fixed URL and reboot.
+#
+#   rmpg-update check      report what is available, change nothing
+#   rmpg-update apply      download + verify + stage + flip the slot
+#   rmpg-update status     what is installed and staged
+#   rmpg-update rollback   flip back to the other slot now (field recovery)
+#
+# ── 2026-07-25: this could not run on real hardware ───────────────────────────
+#
+# require_boot_mount used to be `mount -t ext2 /dev/vda1`. That device name only
+# exists under QEMU. On an FZ-55 the store is on NVMe or SATA, and on the no-USB
+# install path it is a directory on the Windows NTFS volume — so every invocation
+# of `apply` died at the first step with "boot partition not mounted", meaning
+# OTA updates were inoperative on every fielded terminal. Discovery now goes
+# through /usr/lib/rmpg/boot-store.sh, which probes for the store and handles
+# both the extlinux and GRUB-on-NTFS layouts.
+set -u
+
+MANIFEST_URL="${RMPG_UPDATE_MANIFEST:-https://api.rmpgutah.us/api/os/manifest}"
+CHANNEL="${RMPG_UPDATE_CHANNEL:-stable}"
+VERSION_FILE=/etc/rmpg-os-version
+LOG_TAG="rmpg-update"
+
+# Package temperature above this defers an update. The concern is not the
+# download but the reboot: a terminal already thermally saturated is one that
+# may not complete POST and re-init cleanly, and a failed boot burns an A/B
+# rollback attempt for a reason unrelated to the image. 95C is below the
+# ~100C TjMax of the FZ-55 parts, so this trips before the hardware does.
+MAX_UPDATE_TEMP_C="${RMPG_UPDATE_MAX_TEMP_C:-95}"
+
+. /usr/lib/rmpg/boot-store.sh
+
+log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null; }
+die() { log "ERROR: $*"; exit 1; }
+
+installed_version() { cat "$VERSION_FILE" 2>/dev/null || echo "0.0.0"; }
+
+active_slot()   { rmpg_bootstore_get_slot; }
+inactive_slot() { rmpg_bootstore_other_slot; }
+
+# Semantic-version compare: is $1 strictly newer than $2? Pure shell so the
+# image needs no extra tooling.
+version_gt() {
+    [ "$1" = "$2" ] && return 1
+    newest="$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)"
+    [ "$newest" = "$1" ]
+}
+
+# Locate the persistent store and set the paths derived from it. STATE_DIR sits
+# beside the slots, so it follows the store wherever discovery found it.
+require_boot_mount() {
+    rmpg_bootstore_find \
+        || die "no persistent boot store found — cannot stage an update (see the KIOSK_LINUX_BOOTSTORE lines above)"
+    STATE_DIR="$RMPG_BOOTSTORE_DIR/update-state"
+}
+
+# Remount read-write only for the moments we must write, then drop back. The
+# boot store is the one thing whose corruption cannot be recovered from in the
+# field, so it spends as little time writable as possible.
+boot_rw()  { rmpg_bootstore_rw; }
+boot_ro()  { rmpg_bootstore_ro; }
+
+fetch_manifest() {
+    # -T: never hang forever on a captive portal, which is a realistic state
+    # for a vehicle terminal parked near a hotel or municipal hotspot.
+    wget -q -T 20 -O - "$MANIFEST_URL?channel=$CHANNEL&current=$(installed_version)" 2>/dev/null
+}
+
+# The manifest is flat key=value, not JSON: no JSON parser exists in this image
+# and adding one to parse four fields is not worth the attack surface.
+#   version=1.3.0
+#   kernel_url=https://.../kiosk-os-1.3.0-bzImage
+#   kernel_sha256=...
+#   rootfs_url=https://.../kiosk-os-1.3.0-rootfs.cpio.gz
+#   rootfs_sha256=...
+manifest_field() { printf '%s\n' "$1" | grep "^$2=" | head -1 | cut -d= -f2-; }
+
+verify_sha256() {
+    file="$1"; expected="$2"
+    [ -n "$expected" ] || { log "WARNING: no checksum published — refusing"; return 1; }
+    actual="$(sha256sum "$file" 2>/dev/null | cut -d' ' -f1)"
+    [ "$actual" = "$expected" ] && return 0
+    log "checksum mismatch for $file"
+    log "  expected $expected"
+    log "  actual   $actual"
+    return 1
+}
+
+# Guards that protect the officer using the terminal, not the update.
+safe_to_update() {
+    # Never mid-call. An update that reboots a terminal during an active call is
+    # far worse than staying a version behind.
+    if [ -f /tmp/rmpg-active-call ]; then
+        log "deferring: an active call is in progress on this terminal"
+        return 1
+    fi
+
+    # Never on low battery unplugged: losing power between staging and the flip
+    # is survivable (the slot flip is last), but rebooting into a new image with
+    # no power margin is not worth the risk.
+    batteries_seen=0
+    for bat in /sys/class/power_supply/BAT*; do
+        [ -d "$bat" ] || continue
+        batteries_seen=$((batteries_seen + 1))
+        cap="$(cat "$bat/capacity" 2>/dev/null || echo 100)"
+        status="$(cat "$bat/status" 2>/dev/null || echo Unknown)"
+        if [ "$status" != "Charging" ] && [ "$status" != "Full" ] && [ "$cap" -lt 40 ]; then
+            log "deferring: battery at ${cap}% and not charging"
+            return 1
+        fi
+    done
+    # An unexpanded glob leaves this loop having done nothing, and the guard
+    # then passes — it fails OPEN. That happens either on genuinely mains-only
+    # hardware (QEMU, a bench unit) or on a kernel built without ACPI_BATTERY,
+    # and nothing here can tell those two apart. Log it so a fail-open is
+    # visibly different from a battery that was actually checked and found
+    # healthy; the kernel side is pinned in configs/kernel-fz55.fragment.
+    if [ "$batteries_seen" -eq 0 ]; then
+        log "no battery reported by the kernel; low-battery guard did not run"
+    fi
+
+    # Never while thermally saturated. Only possible to check as of 2026-07-25:
+    # CONFIG_SENSORS_CORETEMP was not enabled before, so nothing on the terminal
+    # could read its own die temperature. Reads the hottest coretemp input; a
+    # unit with no hwmon (QEMU) simply skips this.
+    #
+    # Note this guard fails OPEN for the same reason the battery one does, and
+    # deliberately so: refusing every update on a terminal that cannot report a
+    # temperature would strand exactly the units most in need of a fix.
+    hottest=0
+    for input in /sys/class/hwmon/hwmon*/temp*_input; do
+        [ -f "$input" ] || continue
+        raw="$(cat "$input" 2>/dev/null)" || continue
+        case "$raw" in ''|*[!0-9]*) continue ;; esac
+        # hwmon reports millidegrees Celsius.
+        c=$((raw / 1000))
+        [ "$c" -gt "$hottest" ] && hottest="$c"
+    done
+    if [ "$hottest" -ge "$MAX_UPDATE_TEMP_C" ]; then
+        log "deferring: die temperature ${hottest}C is at or above the ${MAX_UPDATE_TEMP_C}C update limit"
+        return 1
+    fi
+
+    return 0
+}
+
+cmd_status() {
+    require_boot_mount
+    echo "installed version : $(installed_version)"
+    echo "boot store        : $RMPG_BOOTSTORE_KIND at $RMPG_BOOTSTORE_DIR (dev ${RMPG_BOOTSTORE_DEV:-unknown})"
+    echo "active slot       : $(active_slot)"
+    echo "inactive slot     : $(inactive_slot)"
+    echo "channel           : $CHANNEL"
+    if [ -f "$STATE_DIR/staged_version" ]; then
+        echo "staged version    : $(cat "$STATE_DIR/staged_version") (pending reboot)"
+    else
+        echo "staged version    : none"
+    fi
+}
+
+cmd_check() {
+    manifest="$(fetch_manifest)" || die "could not reach $MANIFEST_URL"
+    [ -n "$manifest" ] || die "empty manifest from $MANIFEST_URL"
+    available="$(manifest_field "$manifest" version)"
+    [ -n "$available" ] || die "manifest has no version field"
+
+    current="$(installed_version)"
+    echo "installed: $current"
+    echo "available: $available (channel $CHANNEL)"
+    if version_gt "$available" "$current"; then
+        echo "UPDATE_AVAILABLE"
+        return 0
+    fi
+    echo "UP_TO_DATE"
+    return 1
+}
+
+cmd_apply() {
+    require_boot_mount
+    safe_to_update || exit 0
+
+    manifest="$(fetch_manifest)" || die "could not reach $MANIFEST_URL"
+    available="$(manifest_field "$manifest" version)"
+    [ -n "$available" ] || die "manifest has no version field"
+
+    current="$(installed_version)"
+    if ! version_gt "$available" "$current"; then
+        log "already up to date ($current)"
+        exit 0
+    fi
+
+    # Do not restage a version already waiting to boot.
+    if [ -f "$STATE_DIR/staged_version" ] && \
+       [ "$(cat "$STATE_DIR/staged_version")" = "$available" ]; then
+        log "$available is already staged and pending reboot"
+        exit 0
+    fi
+
+    kernel_url="$(manifest_field "$manifest" kernel_url)"
+    kernel_sha="$(manifest_field "$manifest" kernel_sha256)"
+    rootfs_url="$(manifest_field "$manifest" rootfs_url)"
+    rootfs_sha="$(manifest_field "$manifest" rootfs_sha256)"
+    # rootfs_url is OPTIONAL now: a chunked manifest publishes rootfs_part lines
+    # instead. Requiring it here (as this did) would have failed every chunked
+    # update with "manifest missing payload URLs" before the part-download code
+    # was ever reached.
+    [ -n "$kernel_url" ] || die "manifest missing kernel_url"
+    if [ -z "$rootfs_url" ] && ! printf '%s\n' "$manifest" | grep -q '^rootfs_part='; then
+        die "manifest has neither rootfs_url nor rootfs_part entries"
+    fi
+
+    target_slot="$(inactive_slot)"
+    log "updating $current -> $available into $target_slot"
+
+    # Download to /tmp (RAM) first and verify BEFORE anything touches the boot
+    # partition. A truncated download must never reach a slot: the A/B rollback
+    # would recover it, but only after the terminal has failed to boot three
+    # times in front of an officer.
+    tmp_kernel=/tmp/rmpg-update-bzImage
+    tmp_rootfs=/tmp/rmpg-update-rootfs.cpio.gz
+    rm -f "$tmp_kernel" "$tmp_rootfs"
+
+    log "downloading kernel"
+    wget -q -T 60 -O "$tmp_kernel" "$kernel_url" || die "kernel download failed"
+    verify_sha256 "$tmp_kernel" "$kernel_sha" || die "kernel failed verification"
+
+    # Root filesystem: fetched in PARTS, verified individually, then assembled.
+    #
+    # A single ~250 MB GET over field Wi-Fi that dies at 90% throws the entire
+    # transfer away, and these terminals have exactly that kind of link. Parts
+    # are cached in /tmp across attempts, so a retry resumes from where it got
+    # to instead of starting over, and a corrupt part is re-fetched on its own
+    # rather than after reassembling the whole payload.
+    #
+    # Falls back to the single-file form when a manifest predates chunking, so an
+    # older published release stays installable.
+    part_dir=/tmp/rmpg-update-parts
+    mkdir -p "$part_dir"
+
+    part_lines="$(printf '%s\n' "$manifest" | grep '^rootfs_part=')"
+    if [ -z "$part_lines" ]; then
+        log "manifest has no parts — using the single-file rootfs form"
+        [ -n "$rootfs_url" ] || die "manifest has neither rootfs_part nor rootfs_url"
+        wget -q -T 600 -O "$tmp_rootfs" "$rootfs_url" || die "rootfs download failed"
+        verify_sha256 "$tmp_rootfs" "$rootfs_sha" || die "rootfs failed verification"
+    else
+        total="$(printf '%s\n' "$part_lines" | wc -l | tr -d ' ')"
+        log "downloading root filesystem in $total parts"
+        idx=0
+        printf '%s\n' "$part_lines" | while IFS= read -r line; do
+            idx=$((idx + 1))
+            # "rootfs_part=<url> <sha256>"
+            spec="${line#rootfs_part=}"
+            purl="${spec%% *}"
+            psha="${spec##* }"
+            pfile="$part_dir/$(basename "$purl")"
+
+            # Already have it and it verifies? Skip — this is the resume path.
+            if [ -f "$pfile" ] && verify_sha256 "$pfile" "$psha" >/dev/null 2>&1; then
+                log "  part $idx/$total already present"
+                continue
+            fi
+
+            # Bounded retries per part. A part is small, so a failure costs
+            # seconds rather than the whole payload.
+            attempt=0
+            while [ "$attempt" -lt 3 ]; do
+                attempt=$((attempt + 1))
+                rm -f "$pfile"
+                if wget -q -T 120 -O "$pfile" "$purl" && verify_sha256 "$pfile" "$psha"; then
+                    log "  part $idx/$total ok"
+                    break
+                fi
+                log "  part $idx/$total attempt $attempt failed"
+                [ "$attempt" -ge 3 ] && { rm -f "$pfile"; exit 1; }
+                sleep 5
+            done
+        done || die "a rootfs part could not be downloaded after 3 attempts"
+
+        # Assemble in lexical order — `split` produced ordered suffixes, so a
+        # plain glob is the correct sequence.
+        log "assembling $total parts"
+        rm -f "$tmp_rootfs"
+        # Version-scoped glob. A bare *rootfs.part-* would silently mix parts
+        # left over from a DIFFERENT version still sitting in the cache — the
+        # whole-payload checksum below would catch it, but only after wasting
+        # the entire download.
+        cat "$part_dir"/kiosk-os-"$available"-rootfs.part-* > "$tmp_rootfs" 2>/dev/null \
+            || die "could not assemble the rootfs parts"
+
+        # Verify the WHOLE payload after assembly, not just the parts. Every part
+        # can be individually valid while the assembly is still wrong (a missing
+        # part, or a stale part left from an earlier version).
+        verify_sha256 "$tmp_rootfs" "$rootfs_sha" \
+            || die "assembled rootfs failed verification — parts may be from mixed versions; clear $part_dir and retry"
+        log "assembled rootfs verified"
+        rm -rf "$part_dir"
+    fi
+
+    # Enough free space in the target slot before overwriting it.
+    need_kb=$(( ($(stat -c %s "$tmp_kernel") + $(stat -c %s "$tmp_rootfs")) / 1024 ))
+    free_kb=$(df -k "$RMPG_BOOTSTORE_DIR" | tail -1 | awk '{print $4}')
+    slot_kb=$(du -sk "$RMPG_BOOTSTORE_DIR/$target_slot" 2>/dev/null | awk '{print $1}' || echo 0)
+    if [ "$need_kb" -gt $((free_kb + slot_kb)) ]; then
+        die "not enough space in $RMPG_BOOTSTORE_DIR (need ${need_kb}KB, have $((free_kb + slot_kb))KB)"
+    fi
+
+    boot_rw || die "boot store is read-only — cannot stage (see the KIOSK_LINUX_BOOTSTORE line above)"
+    mkdir -p "$RMPG_BOOTSTORE_DIR/$target_slot" "$STATE_DIR"
+
+    # Write to temp names in the slot, then rename into place. A power loss
+    # mid-copy then leaves the OLD slot contents intact rather than a truncated
+    # kernel that the bootloader would happily try to start.
+    log "staging into $target_slot"
+    cp "$tmp_kernel" "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage.new" || { boot_ro; die "copy failed"; }
+    cp "$tmp_rootfs" "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz.new" || { boot_ro; die "copy failed"; }
+    sync
+    mv "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage.new"        "$RMPG_BOOTSTORE_DIR/$target_slot/bzImage"
+    mv "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz.new" "$RMPG_BOOTSTORE_DIR/$target_slot/rootfs.cpio.gz"
+    sync
+
+    # Flip the default slot LAST — this is the commit point. Everything before
+    # it is reversible by doing nothing. The write itself is staged-and-renamed
+    # inside boot-store.sh, so a power loss here cannot leave a pointer that
+    # neither bootloader can parse.
+    log "pointing the bootloader at $target_slot"
+    rmpg_bootstore_set_slot "$target_slot" || { boot_ro; die "could not update the slot pointer"; }
+
+    # Reset the failed-boot counter so the new image gets its full 3 attempts.
+    echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"
+    echo "$available" > "$STATE_DIR/staged_version"
+    echo "$current"   > "$STATE_DIR/previous_version"
+    sync
+    boot_ro
+
+    rm -f "$tmp_kernel" "$tmp_rootfs"
+    log "KIOSK_LINUX_UPDATE_STAGED $available (reboot to apply; rollback to $current is automatic if it fails)"
+}
+
+# Manual rollback. The automatic path (3 failed boots) only fires when a slot
+# cannot reach a healthy desktop at all. It does NOT help the case where the new
+# image boots fine but is wrong in some way an officer notices — a broken
+# printer, a regressed workflow. Before this, recovering from that meant a site
+# visit with a USB stick. Now it is one command over SSH, and because it only
+# ever moves the pointer between two slots that already exist on the device, it
+# cannot fail in a way that leaves the terminal unbootable.
+cmd_rollback() {
+    require_boot_mount
+    current="$(active_slot)"
+    other="$(inactive_slot)"
+
+    # Refuse if the other slot has no kernel: pointing the bootloader at an
+    # empty slot is precisely how you brick a terminal remotely.
+    if [ ! -f "$RMPG_BOOTSTORE_DIR/$other/bzImage" ] || \
+       [ ! -f "$RMPG_BOOTSTORE_DIR/$other/rootfs.cpio.gz" ]; then
+        die "$other is not populated (missing bzImage or rootfs.cpio.gz) — refusing to point the bootloader at it"
+    fi
+
+    prev="none recorded"
+    [ -f "$STATE_DIR/previous_version" ] && prev="$(cat "$STATE_DIR/previous_version")"
+
+    boot_rw || die "boot store is read-only — cannot roll back"
+    if rmpg_bootstore_set_slot "$other"; then
+        # Give the slot we are returning to a full set of attempts of its own.
+        echo "0" > "$RMPG_BOOTSTORE_DIR/boot_attempts"
+        rm -f "$STATE_DIR/staged_version"
+        sync
+        boot_ro
+        log "KIOSK_LINUX_UPDATE_ROLLED_BACK from $current to $other (was version $prev) — reboot to apply"
+    else
+        boot_ro
+        die "could not update the slot pointer"
+    fi
+}
+
+case "${1:-check}" in
+    check)    cmd_check ;;
+    apply)    cmd_apply ;;
+    status)   cmd_status ;;
+    rollback) cmd_rollback ;;
+    *) echo "usage: rmpg-update {check|apply|status|rollback}" >&2; exit 2 ;;
+esac

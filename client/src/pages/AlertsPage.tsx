@@ -17,12 +17,12 @@
 //   - "N" shortcut opens a New Template (skipped when typing in
 //     an input/textarea/select)
 //   - Cmd/Ctrl+Enter saves the edit modal
-//   - Theme-token sweep (no more hardcoded #888888 / #991b1b /
-//     #f87171 — the inline delete modal that hardcoded those colors
+//   - Theme-token sweep (no more hardcoded var(--text-secondary) / var(--sev-critical) /
+//     var(--sev-critical-soft) — the inline delete modal that hardcoded those colors
 //     is gone)
 // ============================================================
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -36,6 +36,7 @@ import {
   Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2, Eye,
   Filter as FilterIcon, X,
 } from 'lucide-react';
+import { formatEnumValue } from '../utils/formatters';
 
 interface NotificationTemplate {
   id: number;
@@ -344,8 +345,8 @@ export default function AlertsPage() {
       />
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
-          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={() => setEditingRecord(null)}>
+          <div className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord && editingRecord.id > 0 ? 'Edit Template' : 'New Template'}</h3>
             <div className="space-y-3">
               <div><label htmlFor="ff-alertspage-0" className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>
@@ -384,7 +385,7 @@ export default function AlertsPage() {
             <div><span className="text-rmpg-500">Name:</span> {deleteTarget.template_name}</div>
             {deleteTarget.subject && <div><span className="text-rmpg-500">Subject:</span> {deleteTarget.subject}</div>}
             <div><span className="text-rmpg-500">Channel:</span> {deleteTarget.channel}</div>
-            {deleteTarget.category && <div><span className="text-rmpg-500">Category:</span> {deleteTarget.category}</div>}
+            {deleteTarget.category && <div><span className="text-rmpg-500">Category:</span> {formatEnumValue(deleteTarget.category)}</div>}
           </>
         )}
         confirmLabel="Delete"

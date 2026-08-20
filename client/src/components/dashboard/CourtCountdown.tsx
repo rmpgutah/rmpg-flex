@@ -55,12 +55,12 @@ export default function CourtCountdown({ dates, className = '' }: CourtCountdown
               <span className="countdown-value" style={{ color: isUrgent ? 'var(--sev-warn)' : undefined }}>{cd.days}</span>
               <span className="countdown-label">Days</span>
             </div>
-            <span className="text-rmpg-600 text-lg font-light">:</span>
+            <span className="text-fg-muted text-lg font-light">:</span>
             <div className="countdown-unit">
               <span className="countdown-value">{cd.hours}</span>
               <span className="countdown-label">Hours</span>
             </div>
-            <span className="text-rmpg-600 text-lg font-light">:</span>
+            <span className="text-fg-muted text-lg font-light">:</span>
             <div className="countdown-unit">
               <span className="countdown-value">{String(cd.minutes).padStart(2, '0')}</span>
               <span className="countdown-label">Min</span>

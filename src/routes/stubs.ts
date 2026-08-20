@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { encryptBrowserData, decryptBrowserData } from '../utils/companyBrowserCrypto';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { broadcastAll } from './ws';
 
 const stubs = new Hono<Env>();
 
@@ -13,16 +16,35 @@ const PREF_DEFAULTS = {
   font_scale: 1.0, compact_mode: 0, show_map_labels: 1,
   default_map_style: 'dark', dispatch_sort: 'priority',
   dispatch_show_cleared: 0, theme_preference: 'dark',
+  desktop_layout_json: null, desktop_wallpaper: 'blue-silver-default',
+  desktop_widgets_json: null,
+  desktop_accent: 'default', desktop_notes_json: null,
+  browser_bookmarks_json: null, browser_history_json: null,
 } as const;
 
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
+
+const ENCRYPTED_BROWSER_COLUMNS = ['browser_bookmarks_json', 'browser_history_json'] as const;
+
+async function decryptBrowserColumns(env: { COMPANY_BROWSER_DATA_KEY?: string; JWT_SECRET: string }, row: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const out = { ...row };
+  for (const col of ENCRYPTED_BROWSER_COLUMNS) {
+    const value = out[col];
+    if (typeof value === 'string') {
+      out[col] = await decryptBrowserData(env, value);
+    }
+  }
+  return out;
+}
 
 stubs.get('/preferences', async (c) => {
   const userId = c.get('userId') as number | undefined;
   if (userId == null) return c.json(PREF_DEFAULTS);
   const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
     .bind(userId).first();
-  return c.json(row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS);
+  if (!row) return c.json(PREF_DEFAULTS);
+  const decryptedRow = await decryptBrowserColumns(c.env, row as Record<string, unknown>);
+  return c.json({ ...PREF_DEFAULTS, ...decryptedRow });
 });
 
 stubs.put('/preferences', async (c) => {
@@ -34,14 +56,21 @@ stubs.put('/preferences', async (c) => {
   if (keys.length === 0) return c.json({ success: true, updated: 0 });
   await c.env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)')
     .bind(userId).run();
+  const values = await Promise.all(keys.map(async (k) => {
+    const value = body[k] as string | number | null;
+    if ((k === 'browser_bookmarks_json' || k === 'browser_history_json') && typeof value === 'string') {
+      return encryptBrowserData(c.env, value);
+    }
+    return value;
+  }));
   const setClause = keys.map((k) => `${k} = ?`).join(', ');
-  const values = keys.map((k) => body[k] as string | number | null);
   await c.env.DB.prepare(
     `UPDATE user_preferences SET ${setClause}, updated_at = datetime('now') WHERE user_id = ?`,
   ).bind(...values, userId).run();
   const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
     .bind(userId).first();
-  return c.json({ success: true, preferences: row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS });
+  const decryptedRow = row ? await decryptBrowserColumns(c.env, row as Record<string, unknown>) : null;
+  return c.json({ success: true, preferences: decryptedRow ? { ...PREF_DEFAULTS, ...decryptedRow } : PREF_DEFAULTS });
 });
 
 stubs.post('/preferences/reset', async (c) => {
@@ -63,21 +92,32 @@ stubs.get('/activity-feed', async (c) => {
     const db = c.env.DB;
     const limit = Math.min(parseInt(c.req.query('limit') || '50', 10) || 50, 200);
     const offset = parseInt(c.req.query('offset') || '0', 10) || 0;
+    // Optional per-user scope — AdminUsersTab's Activity Log sub-tab calls
+    // this with ?user_id=<id> and expects ONLY that user's actions back.
+    // Without this filter every admin's "Activity Log" showed the same
+    // global feed regardless of which user was selected.
+    const userIdParam = c.req.query('user_id');
+    const userId = userIdParam != null ? parseInt(userIdParam, 10) : null;
+    const userFilter = userId != null && !isNaN(userId) ? 'AND al.user_id = ?' : '';
     // Machine telemetry actions (page-view instrumentation, API-error pings —
     // see useFleetV2Audit.ts / auditEmit.ts) write raw JSON into `details` and
     // were never meant for the human-facing feed; they're consumed by
     // AdminFleetV2HealthTab via /audit/count instead. Excluding them here
     // stops unformatted JSON blobs from leaking into Recent Activity.
     const TELEMETRY_ACTIONS = "('FLEET_V2_VIEW','FLEET_V2_API_ERROR')";
-    const [{ total }] = (await db.prepare(`SELECT COUNT(*) as total FROM audit_log WHERE action NOT IN ${TELEMETRY_ACTIONS}`).all()).results as { total: number }[];
+    const countBind = userFilter ? [userId] : [];
+    const [{ total }] = (await db.prepare(
+      `SELECT COUNT(*) as total FROM audit_log al WHERE al.action NOT IN ${TELEMETRY_ACTIONS} ${userFilter}`
+    ).bind(...countBind).all()).results as { total: number }[];
+    const rowBind = userFilter ? [userId, limit, offset] : [limit, offset];
     const rows = (await db.prepare(
       `SELECT al.id, al.user_id, al.action, al.entity_type, al.entity_id, al.details,
               al.ip_address, al.created_at,
               u.full_name as user_name, u.badge_number, u.role as user_role
        FROM audit_log al LEFT JOIN users u ON u.id = al.user_id
-       WHERE al.action NOT IN ${TELEMETRY_ACTIONS}
+       WHERE al.action NOT IN ${TELEMETRY_ACTIONS} ${userFilter}
        ORDER BY al.created_at DESC LIMIT ? OFFSET ?`
-    ).bind(limit, offset).all()).results as any[];
+    ).bind(...rowBind).all()).results as any[];
     return c.json({ data: rows, total: total ?? 0, limit, offset });
   } catch (err) {
     console.error('GET /comms/activity-feed failed:', err);
@@ -154,7 +194,7 @@ stubs.post('/messages', async (c) => {
     }
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, parent_id, thread_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`
     ).bind(
       userId,
       toUserId,
@@ -172,6 +212,8 @@ stubs.post('/messages', async (c) => {
         .bind(String(newId), newId).run();
     }
     const created = await db.prepare('SELECT * FROM messages WHERE id = ?').bind(newId).first();
+    // Notify all connected clients so the inbox refreshes in real time.
+    try { broadcastAll('data_changed', { module: 'comms', entity: 'messages', id: newId, channel }); } catch { /* non-fatal */ }
     return c.json(created, 201);
   } catch (err) {
     console.error('POST /comms/messages failed:', err);
@@ -188,7 +230,7 @@ stubs.put('/messages/:id/read', async (c) => {
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
     await db.prepare(
-      `UPDATE messages SET read_at = datetime('now','localtime')
+      `UPDATE messages SET read_at = datetime('now')
        WHERE id = ? AND read_at IS NULL AND (to_user_id = ? OR channel IN ('broadcast','dispatch','zone'))`
     ).bind(id, userId).run();
     return c.json({ success: true });
@@ -207,7 +249,7 @@ stubs.put('/messages/:id/acknowledge', async (c) => {
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'invalid id' }, 400);
     await db.prepare(
-      `UPDATE messages SET read_at = COALESCE(read_at, datetime('now','localtime'))
+      `UPDATE messages SET read_at = COALESCE(read_at, datetime('now'))
        WHERE id = ? AND channel IN ('broadcast','dispatch','zone')`
     ).bind(id).run();
     return c.json({ success: true });
@@ -272,7 +314,7 @@ stubs.post('/drafts', async (c) => {
     if (!content) return c.json({ error: 'content is required' }, 400);
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, is_draft, draft_updated_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now','localtime'), datetime('now','localtime'))`
+       VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
     ).bind(
       userId,
       body.to_user_id ? Number(body.to_user_id) : null,
@@ -302,9 +344,11 @@ stubs.post('/emergency-broadcast', async (c) => {
     if (!text) return c.json({ error: 'content is required' }, 400);
     const result = await db.prepare(
       `INSERT INTO messages (from_user_id, to_user_id, channel, content, subject, priority, created_at)
-       VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now','localtime'))`
+       VALUES (?, NULL, 'broadcast', ?, ?, 'emergency', datetime('now'))`
     ).bind(userId, text, body.subject || 'EMERGENCY BROADCAST').run();
-    return c.json({ success: true, broadcast_id: result.meta.last_row_id });
+    const broadcastId = result.meta.last_row_id as number;
+    try { broadcastAll('data_changed', { module: 'comms', entity: 'messages', id: broadcastId, channel: 'broadcast' }); } catch { /* non-fatal */ }
+    return c.json({ success: true, broadcast_id: broadcastId });
   } catch (err) {
     console.error('POST /comms/emergency-broadcast failed:', err);
     return c.json({ error: 'Broadcast failed' }, 500);
@@ -331,10 +375,30 @@ stubs.get('/messages/priority-stats', async (c) => {
   }
 });
 
-// ── Stats dashboard (mounted at /api/stats) — used by ModuleDirectoryPage badges ──
-stubs.get('/dashboard', (c) => c.json({
-  open_cases: 0, pending_serve: 0, active_warrants: 0,
-}));
+// ── Stats dashboard (mounted at /api/stats) — used by ModuleDirectoryPage +
+// useNavBadges (Nav Index toolbar badges). Was a hardcoded-zero stub, which
+// made those badges permanently show nothing regardless of real counts.
+stubs.get('/dashboard', async (c) => {
+  // Same public-mount leak surface as the /bolos/* and /messages/* routes:
+  // this router is ALSO mounted at '/api/diagnostics' and '/api/updates',
+  // both `auth: 'public'`, so every path it defines was reachable there with
+  // no token — publishing live open_cases / pending_serve / active_warrants
+  // counts to anyone. On the auth-required mounts (/api/stats,
+  // /api/dispatch/stats) userId is set, so this guard costs nothing there.
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const row = await c.env.DB.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM cases WHERE status = 'open') AS open_cases,
+         (SELECT COUNT(*) FROM serve_queue WHERE status IN ('pending','assigned')) AS pending_serve,
+         (SELECT COUNT(*) FROM warrants WHERE status = 'active') AS active_warrants`
+    ).first();
+    return c.json(row ?? { open_cases: 0, pending_serve: 0, active_warrants: 0 });
+  } catch (err) {
+    console.error('GET /stats/dashboard failed:', err);
+    return c.json({ open_cases: 0, pending_serve: 0, active_warrants: 0 });
+  }
+});
 
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
@@ -344,11 +408,44 @@ stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon
 // ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));
 
-// ── Dispatch stubs (mounted at /api/dispatch/stats) ──
+// ── Dispatch stats (mounted at /api/dispatch/stats) ──
 // `stubs` is mounted at the EXACT prefix '/api/dispatch/stats', so '/' here
 // matches /api/dispatch/stats (the bare mount point). Using '/stats' would
 // have mapped to /api/dispatch/stats/stats — bug fixed 2026-06-06.
-stubs.get('/', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
+//
+// Was a hardcoded-zero stub returning {total_calls, active_calls,
+// units_online} — fields neither of its actual consumers reads.
+// Layout.tsx's header badge reads `stats.activeCalls` (camelCase) and
+// `stats.callsByPriority`; useNavBadges (Nav Index toolbar + the desktop
+// Live Ops widget) reads `active_warrants`. Real query returns all three.
+stubs.get('/', async (c) => {
+  // Public-mount guard: bare GET /api/diagnostics hit this handler with no
+  // token and returned live operational posture (active call count by
+  // priority, units currently on shift, active warrants).
+  if (c.get('userId') == null) return c.json({ error: 'unauthorized' }, 401);
+  try {
+    const [activeRow, warrantsRow, priorityRows, unitsRow] = await Promise.all([
+      c.env.DB.prepare(
+        `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`
+      ).first<{ n: number }>(),
+      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`).first<{ n: number }>(),
+      c.env.DB.prepare(
+        `SELECT priority, COUNT(*) AS count FROM calls_for_service
+         WHERE ${ACTIVE_CALL_WHERE} GROUP BY priority`
+      ).all<{ priority: string; count: number }>(),
+      c.env.DB.prepare(`SELECT COUNT(*) AS n FROM units WHERE status != 'off_duty'`).first<{ n: number }>(),
+    ]);
+    return c.json({
+      activeCalls: activeRow?.n ?? 0,
+      active_warrants: warrantsRow?.n ?? 0,
+      callsByPriority: priorityRows?.results ?? [],
+      units_online: unitsRow?.n ?? 0,
+    });
+  } catch (err) {
+    console.error('GET /dispatch/stats failed:', err);
+    return c.json({ activeCalls: 0, active_warrants: 0, callsByPriority: [], units_online: 0 });
+  }
+});
 
 // ── Integration stubs (Admin integrations tab) ──────────────
 stubs.get('/status', (c) => c.json({ configured: false }));

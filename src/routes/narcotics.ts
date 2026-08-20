@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 // Mirror CHECK constraints on narcotics_cases from migrations/0048_specialized_modules.sql
@@ -27,6 +28,12 @@ function narcEnumError(field: 'case_type' | 'status' | 'priority') {
 }
 
 const narcotics = new Hono<Env>();
+
+// Narcotics cases include ci_management (confidential-informant) records and
+// subject names — CJIS-restricted. Gate the whole router to operational roles
+// so the external contract_manager / client_viewer cannot read or write them
+// (matching intel.ts's `operational` set).
+narcotics.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 narcotics.get('/cases', async (c) => {
   try { const db = getDb(c.env); const rows = await query(db, 'SELECT * FROM narcotics_cases ORDER BY created_at DESC LIMIT 200'); return c.json(rows || []); }
@@ -57,7 +64,7 @@ narcotics.put('/cases/:id', async (c) => {
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const v = validateNarcCase(body);
     if (!v.ok) return c.json(narcEnumError(v.field), 400);
-    await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
+    await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\') WHERE id=?', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return dbErrorResponse(c, err, 'Failed to update narcotics case'); }
 });
 

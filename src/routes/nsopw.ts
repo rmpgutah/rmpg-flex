@@ -24,9 +24,11 @@ import {
   runNsopwScreening, screenPersonForSor, ensureNsopwColumns,
 } from '../utils/nsopw';
 import { isConfigured } from '../utils/nsopw/client';
+import { getDecrypted } from '../utils/encryptedR2';
 import { listRecentQueries, vacuumCache } from '../utils/nsopw/cache';
 import { recordAudit } from '../utils/auditLog';
 import { enrichPendingOffenders } from '../utils/sorEnrichment/runner';
+import { lookupFailedCoverage } from '../utils/screening/coverage';
 
 const nsopw = new Hono<Env>();
 
@@ -49,18 +51,24 @@ nsopw.get('/status', requireRole(...READ_ROLES), async (c) => {
   ).catch(() => null);
   return c.json({
     configured,
+    // null means the COUNT query itself failed — distinct from a genuine 0. The
+    // old shape collapsed both to 0 while reporting coverage OK, so a broken
+    // lookup read as "configured, 0 offenders on file".
     offenderCount: offenderCount?.n ?? 0,
+    offenderCountKnown: offenderCount !== null,
     lastRun: recentRun,
-    coverage: configured
-      ? { available: true, severity: 'ok' as const }
-      : {
+    coverage: !configured
+      ? {
           available: false,
           severity: 'warning' as const,
           message:
             'NSOPW is not configured (NSOPW_API_KEY unset). Set the secret ' +
             'once the DOJ MOU is in place. Until then, an empty search ' +
             'result CANNOT confirm a subject is not nationally registered.',
-        },
+        }
+      : offenderCount === null
+        ? lookupFailedCoverage('The national sex-offender record count')
+        : { available: true, severity: 'ok' as const },
   });
 });
 
@@ -193,13 +201,32 @@ nsopw.get('/photo/:offenderRowId', requireRole(...READ_ROLES), async (c) => {
     id,
   ).catch(() => null);
   if (!row?.local_photo_key) return c.json({ error: 'no local photo' }, 404);
-  const obj = await c.env.UPLOADS.get(row.local_photo_key).catch(() => null);
-  if (!obj) return c.json({ error: 'photo bytes missing' }, 404);
-  return new Response(obj.body, {
+
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, row.local_photo_key);
+  if (decrypted) {
+    return new Response(decrypted.bytes, {
+      headers: {
+        'content-type': row.photo_content_type || decrypted.httpMetadata?.contentType || 'image/jpeg',
+        'cache-control': 'private, max-age=3600',
+        'content-length': String(decrypted.bytes.length),
+      },
+    });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // genuinely crypto-shredded object with no key row -- neither is
+  // distinguishable here from a LEGACY object stored before this feature
+  // shipped (also "object exists, no key row"). Fall back to serving the
+  // raw R2 bytes as-is, mirroring fieldPhotos.ts's GET /file/* route. Safe
+  // today because nothing in this codebase does standalone crypto-shredding
+  // of nsopw-photos/ objects, so "object present, row absent" can currently
+  // only mean "predates encryption," never "was shredded."
+  const legacy = await c.env.UPLOADS.get(row.local_photo_key).catch(() => null);
+  if (!legacy) return c.json({ error: 'photo bytes missing' }, 404);
+  return new Response(legacy.body, {
     headers: {
-      'content-type': row.photo_content_type || obj.httpMetadata?.contentType || 'image/jpeg',
+      'content-type': row.photo_content_type || legacy.httpMetadata?.contentType || 'image/jpeg',
       'cache-control': 'private, max-age=3600',
-      'content-length': String(obj.size),
+      'content-length': String(legacy.size),
     },
   });
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -9,6 +9,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye, X, FileText } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 export default function TrainingManagementPage() {
   const { user } = useAuth();
@@ -209,8 +210,8 @@ export default function TrainingManagementPage() {
 
       {/* New / Edit Course modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
-          <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={closeForm}>
+          <div className="bg-surface-raised border border-rmpg-600 p-6 max-w-lg w-full my-auto" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-rmpg-100">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
               <button type="button" onClick={closeForm} className="toolbar-btn p-1" aria-label="Close">
@@ -230,7 +231,7 @@ export default function TrainingManagementPage() {
                 <div>
                   <label htmlFor="ff-trainingmanagementpage-2" className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
                   <select id="ff-trainingmanagementpage-2" className="select-dark mt-1 w-full" value={formData.category || 'other'} onChange={e => setFormData({ ...formData, category: e.target.value })}>
-                    {['firearms', 'defensive_tactics', 'legal', 'first_aid', 'de_escalation', 'professionalism', 'technical', 'other'].map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                    {['firearms', 'defensive_tactics', 'legal', 'first_aid', 'de_escalation', 'professionalism', 'technical', 'other'].map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
                   </select>
                 </div>
               </div>
@@ -271,7 +272,7 @@ export default function TrainingManagementPage() {
             <div className="space-y-0.5">
               <div className="font-medium text-rmpg-100">{courseToDelete.course_name}</div>
               {courseToDelete.course_code && <div className="text-rmpg-500">Code: {courseToDelete.course_code}</div>}
-              {courseToDelete.category && <div className="text-rmpg-500">Category: {String(courseToDelete.category).replace(/_/g, ' ')}</div>}
+              {courseToDelete.category && <div className="text-rmpg-500">Category: {toDisplayLabel(String(courseToDelete.category))}</div>}
             </div>
           )
         }

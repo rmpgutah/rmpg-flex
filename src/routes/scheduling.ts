@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+import { log } from '../utils/logger';
 import {
   detectCoverageGaps,
   suggestShiftSwap,
@@ -80,6 +81,7 @@ sch.get('/coverage-gaps', async (c) => {
       totalDeficit: gaps.reduce((sum, g) => sum + g.deficit, 0),
     });
   } catch (err: any) {
+    log.error('GET /coverage-gaps failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to detect coverage gaps' }, 500);
   }
 });
@@ -139,6 +141,7 @@ sch.post('/swap-request', async (c) => {
       message: 'Swap request created',
     }, 201);
   } catch (err: any) {
+    log.error('POST /swap-request failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to create swap request' }, 500);
   }
 });
@@ -164,6 +167,7 @@ sch.get('/swap-suggestions/:requestId', async (c) => {
       total: suggestions.length,
     });
   } catch (err: any) {
+    log.error('GET /swap-suggestions/:requestId failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to get swap suggestions' }, 500);
   }
 });
@@ -209,7 +213,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
       db,
       `UPDATE shift_swap_requests
          SET status = ?, reviewed_by = ?, reviewed_by_name = ?,
-             reviewed_at = datetime('now','localtime'), review_notes = ?
+             reviewed_at = datetime('now'), review_notes = ?
        WHERE id = ?`,
       decision,
       userId,
@@ -244,7 +248,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
 
         await execute(
           db,
-          `UPDATE shift_plans SET assignments = ?, updated_at = datetime('now','localtime')
+          `UPDATE shift_plans SET assignments = ?, updated_at = datetime('now')
              WHERE id = ?`,
           JSON.stringify(assignments),
           request.plan_id,
@@ -259,6 +263,7 @@ sch.post('/swap-approve/:requestId', async (c) => {
       message: `Swap request ${decision}`,
     });
   } catch (err: any) {
+    log.error('POST /swap-approve/:requestId failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to process swap request' }, 500);
   }
 });
@@ -293,6 +298,7 @@ sch.get('/overtime/:userId', async (c) => {
       dailyBreakdown: ot.dailyBreakdown,
     });
   } catch (err: any) {
+    log.error('GET /overtime/:userId failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to calculate overtime' }, 500);
   }
 });
@@ -342,6 +348,7 @@ sch.post('/auto-schedule', async (c) => {
       },
     });
   } catch (err: any) {
+    log.error('POST /auto-schedule failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to auto-schedule' }, 500);
   }
 });
@@ -360,6 +367,7 @@ sch.get('/handoff/:shiftId', async (c) => {
     const handoff = await getShiftHandoffData(c.env.DB, shiftId);
     return c.json(handoff);
   } catch (err: any) {
+    log.error('GET /handoff/:shiftId failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to get handoff data' }, 500);
   }
 });
@@ -396,6 +404,7 @@ sch.get('/officer-availability/:userId', async (c) => {
       },
     });
   } catch (err: any) {
+    log.error('GET /officer-availability/:userId failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to get officer availability' }, 500);
   }
 });
@@ -440,6 +449,7 @@ sch.get('/metrics', async (c) => {
       daily: metrics,
     });
   } catch (err: any) {
+    log.error('GET /metrics failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to calculate metrics' }, 500);
   }
 });
@@ -469,8 +479,10 @@ sch.get('/shift-comparison', async (c) => {
     if (!plan1) return c.json({ error: `Shift plan "${shift1}" not found` }, 404);
     if (!plan2) return c.json({ error: `Shift plan "${shift2}" not found` }, 404);
 
-    const assignments1 = parseAssignments(plan1);
-    const assignments2 = parseAssignments(plan2);
+    parseAssignments(plan1);
+    parseAssignments(plan2);
+    const assignments1 = plan1.assignments as any[];
+    const assignments2 = plan2.assignments as any[];
 
     const officers1 = new Set(assignments1.map((a: any) => a.officer_id ?? a.userId));
     const officers2 = new Set(assignments2.map((a: any) => a.officer_id ?? a.userId));
@@ -517,6 +529,7 @@ sch.get('/shift-comparison', async (c) => {
       },
     });
   } catch (err: any) {
+    log.error('GET /shift-comparison failed', { src: 'src/routes/scheduling.ts' }, err);
     return c.json({ error: err.message ?? 'Failed to compare shifts' }, 500);
   }
 });

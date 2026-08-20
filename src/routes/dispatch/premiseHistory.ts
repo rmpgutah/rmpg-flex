@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
 
 const premise = new Hono<Env>();
 
@@ -29,7 +30,7 @@ interface PremiseHistoryRow {
 }
 
 // GET /dispatch/premise-history?address=...&property_id=...
-premise.get('/premise-history', async (c) => {
+premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = c.req.query('address') || '';
   const propertyId = c.req.query('property_id');
@@ -52,7 +53,7 @@ premise.get('/premise-history', async (c) => {
     // street number) to widen the match. Won't match across totally
     // different streets because of the LIKE bounds.
     whereClause += ' AND UPPER(location_address) LIKE ?';
-    params.push(`%${address.trim().toUpperCase()}%`);
+    params.push(`%${address.trim().toUpperCase().slice(0, 48)}%`);
   }
 
   const rows = await query<PremiseHistoryRow>(
@@ -96,7 +97,7 @@ premise.get('/premise-history', async (c) => {
 // here. Additive + separate from premise-history so it can't regress that
 // (still-legacy) endpoint. Best-effort throughout — a miss returns an empty
 // list, never an error that would block call creation.
-premise.get('/address-occupants', async (c) => {
+premise.get('/address-occupants', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const address = (c.req.query('address') || '').trim();
   if (address.length < 5) return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
@@ -107,13 +108,13 @@ premise.get('/address-occupants', async (c) => {
       db,
       `SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.flags, p.gang_affiliation,
               (SELECT COUNT(*) FROM warrants w
-                 WHERE (w.subject_person_id = p.id OR w.person_id = p.id)
+                 WHERE w.subject_person_id = p.id
                    AND LOWER(COALESCE(w.status, '')) IN ('active', 'outstanding', 'confirmed')) AS active_warrants
        FROM persons p
        WHERE UPPER(p.address) LIKE ?
        ORDER BY active_warrants DESC, p.last_name
        LIMIT 25`,
-      `%${address.toUpperCase()}%`,
+      `%${address.toUpperCase().slice(0, 48)}%`,
     );
     const occupants = people.map((p) => {
       let flags: string[] = [];

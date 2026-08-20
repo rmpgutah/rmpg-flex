@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS dispatch_areas (
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS dispatch_sectors (
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS dispatch_sectors (
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS dispatch_zones (
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS dispatch_zones (
   sq_miles REAL,
   sort_order INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS dispatch_beats (
@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS dispatch_beats (
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS dispatch_codes (
@@ -99,8 +99,8 @@ CREATE TABLE IF NOT EXISTS dispatch_codes (
   notes TEXT,
   sort_order INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS premise_alerts (
@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS premise_alerts (
   expires_at TEXT,
   created_by INTEGER,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_premise_alerts_address ON premise_alerts(address);

@@ -10,6 +10,7 @@ import type { TrainingRecord } from '../../../types';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
 import FileAttachments from '../../../components/FileAttachments';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   training: TrainingRecord[];
@@ -25,7 +26,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const borderColor = (status: string) => {
@@ -157,7 +158,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
                   <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${
                     TRAINING_CATEGORY_COLORS[record.category] || TRAINING_CATEGORY_COLORS.other
                   }`}>
-                    {record.category.replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(record.category).toUpperCase()}
                   </span>
                 </div>
                 {statusBadge(record.status)}

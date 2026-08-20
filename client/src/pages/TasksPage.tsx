@@ -75,7 +75,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -91,6 +91,7 @@ import { getAuditEntityRoute } from '../utils/auditEntityRoute';
 import { describeDueDate, dueToneTextClass } from '../utils/taskDueCountdown';
 import { generateTasksPdf } from '../utils/taskPdf';
 import { toDisplayLabel } from '../utils/formatters';
+import { safeDateStr } from '../utils/dateUtils';
 import {
   ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2, Eye,
   FileText, X, CheckCircle2, RotateCcw, ExternalLink,
@@ -488,7 +489,7 @@ export default function TasksPage() {
       if (row.status === 'completed' || row.status === 'cancelled') {
         return (
           <span className="text-[10px] text-rmpg-500">
-            {row.completed_at ? `Closed ${row.completed_at.slice(0, 10)}` : '—'}
+            {row.completed_at ? `Closed ${safeDateStr(row.completed_at, "")}` : '—'}
           </span>
         );
       }

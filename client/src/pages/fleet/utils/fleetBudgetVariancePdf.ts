@@ -17,14 +17,15 @@
 import jsPDF from 'jspdf';
 import type { FleetFuelBudgetSummary } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
+import { localToday } from '../../../utils/dateUtils';
 
-interface Args {
+export interface Args {
   summary: FleetFuelBudgetSummary;
   /** Human-readable scope label: e.g. "#47 — 2022 Explorer" or "Fleet-wide". */
   scopeLabel: string;
 }
 
-export function generateFleetBudgetVariancePdf({ summary, scopeLabel }: Args): void {
+export function buildFleetBudgetVariancePdf({ summary, scopeLabel }: Args): jsPDF {
   if (!summary.has_budget || !summary.budget || !summary.period || !summary.spend) {
     throw new Error('No active budget to report on');
   }
@@ -200,7 +201,15 @@ export function generateFleetBudgetVariancePdf({ summary, scopeLabel }: Args): v
   doc.text('Date', marginX + 300, y + 12);
   doc.setTextColor(0);
 
-  const scopePart = budget.vehicle_id ? `vehicle-${budget.vehicle_id}` : 'fleet';
-  const filename = `budget-variance-${scopePart}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the budget variance PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetBudgetVariancePdf(args: Args): void {
+  const doc = buildFleetBudgetVariancePdf(args);
+  const { budget } = args.summary;
+  const scopePart = budget!.vehicle_id ? `vehicle-${budget!.vehicle_id}` : 'fleet';
+  const filename = `budget-variance-${scopePart}-${localToday()}.pdf`;
   doc.save(filename);
 }

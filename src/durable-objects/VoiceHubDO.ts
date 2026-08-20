@@ -47,6 +47,7 @@ import {
 import { gatherAwareness, runLookup, runAction, checkPremiseHazards, VERBATIM_LOOKUPS, type RecordRef } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
+import { putEncrypted } from '../utils/encryptedR2';
 
 interface VoiceEnv {
   DB: D1Database;
@@ -57,6 +58,9 @@ interface VoiceEnv {
   // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
   // See src/utils/aiDispatcher.ts.
   AI: Ai;
+  // Envelope-encryption master key for radio-audio/ and panic-audio/ writes.
+  // See src/utils/encryptedR2.ts.
+  FILE_ENCRYPTION_KEK?: string;
 }
 
 // Synthetic call-sign for the AI dispatcher's own transmissions. Used
@@ -178,6 +182,21 @@ export class VoiceHubDO {
     return n;
   }
 
+  // Returns true when at least one authenticated user with a dispatch-capable
+  // role is connected to this room. Used to suppress the AI dispatcher so it
+  // never talks over or ahead of a human working the console.
+  private hasLiveDispatcher(): boolean {
+    for (const meta of this.conns.values()) {
+      if (meta.authenticated && (
+        meta.role === 'dispatcher' ||
+        meta.role === 'supervisor' ||
+        meta.role === 'manager' ||
+        meta.role === 'admin'
+      )) return true;
+    }
+    return false;
+  }
+
   private async onMessage(ws: WebSocket, ev: MessageEvent): Promise<void> {
     let msg: any;
     try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data as ArrayBuffer)); }
@@ -224,9 +243,13 @@ export class VoiceHubDO {
 
     // ── PTT key-down ──
     if (msg.type === 'transmit_start') {
-      if (this.activeTx && this.activeTx.ws !== ws) {
-        // Half-duplex: someone already holds the channel.
-        this.send(ws, { type: 'voice_busy', user_id: this.activeTx.userId });
+      if (this.activeTx) {
+        if (this.activeTx.ws !== ws) {
+          // Half-duplex: a DIFFERENT socket holds the channel.
+          this.send(ws, { type: 'voice_busy', user_id: this.activeTx.userId });
+        }
+        // Same socket sent transmit_start twice (double-press / replay) —
+        // silently ignore to avoid discarding buffered chunks.
         return;
       }
       this.activeTx = { ws, userId: meta.userId, unitLabel: meta.unitLabel, chunks: [], bytes: 0, startedAt: Date.now() };
@@ -243,6 +266,20 @@ export class VoiceHubDO {
       if (!this.activeTx || this.activeTx.ws !== ws || typeof msg.chunk !== 'string') return;
       try {
         const bytes = b64ToBytes(msg.chunk);
+        // Hard cap: a stuck PTT or malicious client can push the DO past its
+        // 128 MB memory limit, evicting it mid-transmission and locking the
+        // channel. Force-end the transmission and salvage what we have.
+        const MAX_TX_BYTES = 20 * 1024 * 1024;
+        if (this.activeTx.bytes + bytes.length > MAX_TX_BYTES) {
+          const finished = this.activeTx;
+          this.activeTx = null;
+          this.relay(ws, { type: 'radio_transmit_end', user_id: finished.userId });
+          this.send(ws, { type: 'error', code: 'TX_TOO_LARGE' });
+          this.state.waitUntil(
+            this.persist(finished, null).catch((err) => console.error('[VoiceHubDO] cap persist', err)),
+          );
+          return;
+        }
         this.activeTx.chunks.push(bytes);
         this.activeTx.bytes += bytes.length;
       } catch { /* bad chunk — drop */ }
@@ -313,12 +350,16 @@ export class VoiceHubDO {
       // Recording is gated by auto_record — when off, the transmission is still
       // logged (audit trail) but no audio is kept and no play button appears.
       if (settings.auto_record) {
-        const key = `radio-audio/${id}.webm`;
-        await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
-        await execute(
-          db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
-          `/api/radio/transmissions/${id}/audio`, id,
-        );
+        try {
+          const key = `radio-audio/${id}.webm`;
+          await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+          await execute(
+            db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+            `/api/radio/transmissions/${id}/audio`, id,
+          );
+        } catch (err) {
+          console.error('[VoiceHubDO] radio R2 persist failed — broadcast continues', err);
+        }
       }
 
       // Tell the room a recording is ready so feeds can show a play button
@@ -353,9 +394,15 @@ export class VoiceHubDO {
     // "recording present" flag for the dispatcher UI.
     if (this.kind === 'panic') {
       if (this.panicRecorded) return;
+      // DB-level guard: the in-memory flag is lost on DO eviction; a second
+      // activation after eviction would overwrite the first recording without this.
+      const existing = await queryFirst<{ audio_file_id: number | null }>(
+        db, 'SELECT audio_file_id FROM panic_alerts WHERE id = ?', this.refId,
+      ).catch(() => null);
+      if (existing?.audio_file_id != null) { this.panicRecorded = true; return; }
       this.panicRecorded = true;
       const key = `panic-audio/${this.refId}.webm`;
-      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, key, blob, { httpMetadata: { contentType: 'audio/webm' } });
       await execute(
         db,
         `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
@@ -380,6 +427,11 @@ export class VoiceHubDO {
     // Master kill switch — when the AI dispatcher is disabled, the radio relay
     // still records + broadcasts; it just never speaks back.
     if (!settings.ai_dispatcher_enabled) return;
+
+    // Yield to any live human dispatcher on this channel. A connected user
+    // with a dispatch-capable role takes over — the AI stays silent so it
+    // cannot step on a live transmission or answer before the human can.
+    if (this.hasLiveDispatcher()) return;
 
     const db = getDb(this.env as any);
 
@@ -641,7 +693,7 @@ export class VoiceHubDO {
       if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
       // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
       // row is minted — the live audio still plays even if replay-by-URL 404s.
-      await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+      await putEncrypted(this.env.UPLOADS, db, this.env.FILE_ENCRYPTION_KEK, `radio-audio/${dispId}.webm`, audioBytes, {
         httpMetadata: { contentType: 'audio/mpeg' },
       }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
       await execute(

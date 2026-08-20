@@ -7,10 +7,12 @@
 // ============================================================
 
 import { playToneAsync } from './dispatchTones';
+import type { VoiceMode } from './edgeTTS';
+import { importWithRetry } from './importWithRetry';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
 // Spoken-label formatter: spells acronyms letter-by-letter so the voice says
 // "P. S. O. Client Request", not the mangled word "Pso Client Request".
-import { toSpokenLabel } from './formatters';
+import { toDisplayLabel, toSpokenLabel } from './formatters';
 
 // ─── Terseness adapter (Task 1.6) ───────────────────────────
 // Reads the user's voice persona terseness from localStorage (written
@@ -33,7 +35,7 @@ function priorityToNumber(p?: string): number | undefined {
 
 function humanizeType(t?: string): string | undefined {
   if (!t) return undefined;
-  return t.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(t).toUpperCase();
 }
 
 function toCallSlots(call: {
@@ -110,6 +112,10 @@ interface CallFlags {
 
 interface VoicePhrase {
   text: string;
+  /** Which voice chain speaks this phrase. Absent = 'conversational'
+   *  (P25 radio haze), which is what all dispatch traffic uses.
+   *  'alert_pa' routes to the station-PA chain for automated alerts. */
+  mode?: VoiceMode;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -250,13 +256,14 @@ export function getVoiceAlertsEnabled(): boolean {
 // turning off voice entirely. Each category maps to one localStorage
 // key; absent/anything-but-'false' means enabled (opt-out, not opt-in).
 
-export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status';
+export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status' | 'notification';
 
 const EVENT_KEYS: Record<VoiceEventCategory, string> = {
-  new_call: 'rmpg-voice-ev-new-call',
-  panic:    'rmpg-voice-ev-panic',
-  bolo:     'rmpg-voice-ev-bolo',
-  status:   'rmpg-voice-ev-status',
+  new_call:     'rmpg-voice-ev-new-call',
+  panic:        'rmpg-voice-ev-panic',
+  bolo:         'rmpg-voice-ev-bolo',
+  status:       'rmpg-voice-ev-status',
+  notification: 'rmpg-voice-ev-notification',
 };
 
 export function setEventEnabled(category: VoiceEventCategory, enabled: boolean): void {
@@ -283,6 +290,11 @@ export function getEventEnabled(category: VoiceEventCategory): boolean {
  * branch to reflect the policy you want.
  */
 export function isEventEnabled(category: VoiceEventCategory): boolean {
+  // Panic / officer-down alerts always speak regardless of the per-event toggle.
+  // The toggle is a quality-of-life setting; silencing a real officer-down call
+  // is a life-safety risk in an active field operation. Option (a) from the
+  // design comment above — user preference is cosmetic for this category only.
+  if (category === 'panic') return true;
   return getEventEnabled(category);
 }
 
@@ -320,12 +332,12 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
   // Route ALL speech through Edge TTS (neural voice) — no browser SpeechSynthesis
   return new Promise(async (resolve) => {
     try {
-      const { speak: edgeSpeak } = await import('./edgeTTS');
-      await edgeSpeak(phrase.text);
+      const { speak: edgeSpeak } = await importWithRetry(() => import('./edgeTTS'));
+      await edgeSpeak(phrase.text, undefined, phrase.mode ?? 'conversational');
     } catch {
       // Edge TTS unavailable — fall back to browser SpeechSynthesis as last resort
       if (isSpeechAvailable()) {
-        const { normalizeForSpeech } = await import('./speechNormalizer');
+        const { normalizeForSpeech } = await importWithRetry(() => import('./speechNormalizer'));
         const utterance = new SpeechSynthesisUtterance(normalizeForSpeech(phrase.text));
         const voice = selectFemaleVoice();
         if (voice) utterance.voice = voice;
@@ -363,7 +375,7 @@ async function processQueue(): Promise<void> {
   // Honors per-category mute so dispatchers who find it noisy can
   // silence just the beep without disabling all TTS.
   try {
-    const { isAlertSoundEnabled } = await import('./alertSoundPrefs');
+    const { isAlertSoundEnabled } = await importWithRetry(() => import('./alertSoundPrefs'));
     if (isAlertSoundEnabled('roger_beep')) {
       await playToneAsync('roger');
     }
@@ -946,10 +958,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
     enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
     enqueuePhrases([{
-      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` : ''}`
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${toDisplayLabel(disposition).toUpperCase()}.` : ''}`
     }]);
   } else {
-    const status = newStatus.replace(/_/g, ' ').toUpperCase();
+    const status = toDisplayLabel(newStatus).toUpperCase();
     enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
   }
 }
@@ -1198,19 +1210,49 @@ export async function announceBackupRequestEnhanced(unit: string, location: stri
 }
 
 /**
- * Announce call update (notes, priority change, etc.):
- * "Update on call 26-CFS00110. New note added by Dispatch."
+ * Announce that a call changed. Says exactly "Call updated." — deliberately
+ * bare, because the audio is an ATTENTION CUE, not a data channel; the
+ * dispatcher reads the detail off the screen. Total chain ~1.4s (110ms info
+ * tone + 400ms gap + 0.8s voice).
+ *
+ * `updateType` and `author` are kept for call-site compatibility and for the
+ * dedup key, but are NOT spoken.
+ *
+ * Until 2026-07-31 this built `Update on call ${callNumber}. ${updateType}`,
+ * and 14 of its 16 call sites passed callNumber = '' while using it as a
+ * generic "speak this text" channel — so production announced
+ * "Update on call ." then read unrelated text, 6.2s of it. Those call sites
+ * now use speakDispatcherResponse() below.
  */
 export async function announceCallUpdate(callNumber: string, updateType: string, author?: string): Promise<void> {
   if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
+  // Dedup still keys on the detail so repeated identical updates stay quiet.
   const dedupKey = `callupdate:${callNumber}:${updateType}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
 
-  enqueuePhrases([
-    { text: `Update on call ${callNumber}. ${updateType}${author ? ` by ${author}` : ''}.` },
-  ]);
+  void author; // intentionally unspoken — see doc comment above
+  enqueuePhrases([{ text: 'Call updated.' }]);
+}
+
+/**
+ * Speak a dispatcher tool-query readback verbatim — unit counts, weather,
+ * priority breakdowns, stacked-call checks, ETA answers.
+ *
+ * No prefix and no dedup: these are direct answers to an operator action,
+ * so repetition is intentional and a canned preamble would be noise.
+ *
+ * This exists because 14 of announceCallUpdate's 16 call sites were passing
+ * callNumber = '' and using it as a generic "speak this text" channel, which
+ * produced "Update on call ." followed by unrelated text. Those call sites
+ * live here now.
+ */
+export async function speakDispatcherResponse(text: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  enqueuePhrases([{ text: trimmed }]);
 }
 
 /**
@@ -1247,7 +1289,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
     { text: `Call ${callNumber} archived.` },
   ];
   if (disposition) {
-    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` });
+    phrases.push({ text: `Disposition: ${toDisplayLabel(disposition).toUpperCase()}.` });
   }
   if (responseTimeMin != null && responseTimeMin > 0) {
     phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
@@ -1340,10 +1382,10 @@ export async function announceServeComplete(name: string, address: string, docTy
   await delay(200);
 
   const phrases: VoicePhrase[] = [
-    { text: `Service complete. ${result.replace(/_/g, ' ').toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
+    { text: `Service complete. ${toDisplayLabel(result).toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
   ];
   if (docType) {
-    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ').toUpperCase()}.` });
+    phrases.push({ text: `Documents: ${toDisplayLabel(docType).toUpperCase()}.` });
   }
   phrases.push({ text: `Attempt ${attempt}.` });
   enqueuePhrases(phrases);
@@ -1790,3 +1832,39 @@ export function announceNarrativeUpdate(
   }
 }
 
+/**
+ * Speak a notification alert through the automated station-PA voice.
+ *
+ * Called by notificationTones.playNotificationTone AFTER its tone, so the
+ * operator hears tone-then-speech. Muting the 'notification' category
+ * silences the SPEECH only — the tone is governed by the separate
+ * rmpg_notification_sounds_<user-id> preference, so an operator can keep the
+ * tone and drop the voice, or vice versa.
+ *
+ * Prefixes carry priority because an operator may not be looking at the
+ * screen. 'normal' gets no prefix: the info pip already means "something
+ * happened", so a canned preamble would just be noise.
+ *
+ * mode: 'alert_pa' routes this through the station-PA chain rather than the
+ * P25 radio haze, so a system alert can never be mistaken for a dispatcher
+ * transmission.
+ */
+export async function announceNotification(priority: string | undefined, detail: string): Promise<void> {
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
+  if (!isEventEnabled('notification')) return;
+
+  const text = detail.trim();
+  if (!text) return;
+
+  const prefix = priority === 'critical' ? 'Critical alert. '
+    : priority === 'high' ? 'High priority. '
+    : '';
+
+  enqueuePhrases([{ text: `${prefix}${text}`, mode: 'alert_pa' }]);
+}
+
+/** Test-only seam: speak exactly one phrase, bypassing the queue.
+ *  Not for production use — callers should go through the announce* API. */
+export function __speakPhraseForTest(phrase: { text: string; mode?: VoiceMode }): Promise<void> {
+  return speakPhrase(phrase);
+}

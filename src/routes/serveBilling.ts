@@ -22,6 +22,25 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 const MANAGE = ['admin', 'manager', 'contract_manager'];
 const REVIEW = ['admin', 'manager', 'contract_manager', 'supervisor'];
 
+/**
+ * Parse a caller-supplied numeric field, or return null if it is not a finite
+ * number.
+ *
+ * This exists because `Number(x) || 0` — the idiom previously used on the
+ * pricing rate card — turns invalid input into a VALID ZERO. On a rate card
+ * that means a typo silently creates a line item that bills nothing, with a
+ * 201 and no complaint. The PUT path was worse: it had no guard at all, so a
+ * bad value bound NaN straight into D1 and destroyed a rate that had been
+ * correct.
+ *
+ * Money fields must fail loudly. Callers turn a null into a 400.
+ */
+function finiteNumber(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 async function logAudit(db: ReturnType<typeof getDb>, userId: number | null, action: string, entityType: string, entityId: number | null, details: unknown) {
   try {
     await execute(db,
@@ -32,6 +51,8 @@ async function logAudit(db: ReturnType<typeof getDb>, userId: number | null, act
 
 // ── Pricing rate card ──────────────────────────────────────
 psb.get('/ps-pricing/items', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM ps_pricing_items ORDER BY sort_order, id');
   return c.json({ data: rows });
@@ -42,6 +63,8 @@ psb.get('/ps-pricing/items', async (c) => {
 // post-completion charge uses, so the estimate matches the eventual bill. Used at
 // intake to show the client what a job will cost under their contract.
 psb.get('/cost-estimate', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const num = (q: string | undefined): number | null => {
     if (q == null || q === '') return null; const n = Number(q); return Number.isFinite(n) ? n : null;
@@ -69,12 +92,25 @@ psb.post('/ps-pricing/items', async (c) => {
   const db = getDb(c.env);
   const b = await c.req.json<any>();
   if (!b.code || !b.label) return c.json({ error: 'code and label required' }, 400);
+
+  // `amount` is required and must be a real number. Previously this was
+  // `Number(b.amount) || 0`, so "12.5o" or an empty object created a $0.00
+  // rate and returned 201 — the operator saw success and the item billed
+  // nothing until someone noticed the invoice was short.
+  const amount = finiteNumber(b.amount);
+  if (amount === null) return c.json({ error: 'amount must be a number', code: 'BAD_AMOUNT' }, 400);
+  if (amount < 0) return c.json({ error: 'amount cannot be negative', code: 'BAD_AMOUNT' }, 400);
+  const attemptsIncluded = b.attempts_included === undefined ? 0 : finiteNumber(b.attempts_included);
+  if (attemptsIncluded === null) return c.json({ error: 'attempts_included must be a number', code: 'BAD_INPUT' }, 400);
+  const sortOrder = b.sort_order === undefined ? 0 : finiteNumber(b.sort_order);
+  if (sortOrder === null) return c.json({ error: 'sort_order must be a number', code: 'BAD_INPUT' }, 400);
+
   const user = c.get('user') as { id: number } | undefined;
   const ins = await execute(db,
     `INSERT INTO ps_pricing_items (code, label, unit, amount, taxable, attempts_included, sort_order, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    b.code, b.label, b.unit ?? 'per_serve', Number(b.amount) || 0, b.taxable ? 1 : 0,
-    Number(b.attempts_included) || 0, Number(b.sort_order) || 0, user?.id ?? null);
+    b.code, b.label, b.unit ?? 'per_serve', amount, b.taxable ? 1 : 0,
+    attemptsIncluded, sortOrder, user?.id ?? null);
   const id = Number(ins.meta.last_row_id);
   await logAudit(db, user?.id ?? null, 'create', 'ps_pricing_item', id, b);
   const created = await queryFirst(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
@@ -90,18 +126,43 @@ psb.put('/ps-pricing/items/:id', async (c) => {
   const before = await queryFirst<any>(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
   if (!before) return c.json({ error: 'Not found' }, 404);
   const b = await c.req.json<any>();
+
+  // Every numeric field here was previously an unguarded `Number(...)`, so a
+  // malformed value bound NaN directly into D1 — overwriting a rate that had
+  // been correct. A partial update must never be able to destroy the field it
+  // is not validly changing, so reject rather than coerce.
+  let amount = before.amount;
+  if (b.amount !== undefined) {
+    const parsed = finiteNumber(b.amount);
+    if (parsed === null) return c.json({ error: 'amount must be a number', code: 'BAD_AMOUNT' }, 400);
+    if (parsed < 0) return c.json({ error: 'amount cannot be negative', code: 'BAD_AMOUNT' }, 400);
+    amount = parsed;
+  }
+  let attemptsIncluded = before.attempts_included;
+  if (b.attempts_included !== undefined) {
+    const parsed = finiteNumber(b.attempts_included);
+    if (parsed === null) return c.json({ error: 'attempts_included must be a number', code: 'BAD_INPUT' }, 400);
+    attemptsIncluded = parsed;
+  }
+  let sortOrder = before.sort_order;
+  if (b.sort_order !== undefined) {
+    const parsed = finiteNumber(b.sort_order);
+    if (parsed === null) return c.json({ error: 'sort_order must be a number', code: 'BAD_INPUT' }, 400);
+    sortOrder = parsed;
+  }
+
   const user = c.get('user') as { id: number } | undefined;
   await execute(db,
     `UPDATE ps_pricing_items SET
        label = ?, unit = ?, amount = ?, taxable = ?, attempts_included = ?, is_active = ?, sort_order = ?,
-       updated_at = datetime('now','localtime'), updated_by = ?
+       updated_at = datetime('now'), updated_by = ?
      WHERE id = ?`,
     b.label ?? before.label, b.unit ?? before.unit,
-    b.amount !== undefined ? Number(b.amount) : before.amount,
+    amount,
     b.taxable !== undefined ? (b.taxable ? 1 : 0) : before.taxable,
-    b.attempts_included !== undefined ? Number(b.attempts_included) : before.attempts_included,
+    attemptsIncluded,
     b.is_active !== undefined ? (b.is_active ? 1 : 0) : before.is_active,
-    b.sort_order !== undefined ? Number(b.sort_order) : before.sort_order,
+    sortOrder,
     user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'update', 'ps_pricing_item', id, { before, after: b });
   const after = await queryFirst(db, 'SELECT * FROM ps_pricing_items WHERE id = ?', id);
@@ -116,13 +177,15 @@ psb.delete('/ps-pricing/items/:id', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const user = c.get('user') as { id: number } | undefined;
   // Soft-delete: charges reference codes historically.
-  await execute(db, `UPDATE ps_pricing_items SET is_active = 0, updated_at = datetime('now','localtime'), updated_by = ? WHERE id = ?`, user?.id ?? null, id);
+  await execute(db, `UPDATE ps_pricing_items SET is_active = 0, updated_at = datetime('now'), updated_by = ? WHERE id = ?`, user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'deactivate', 'ps_pricing_item', id, {});
   return c.json({ success: true });
 });
 
 // ── Per-contract process-service terms ─────────────────────
 psb.get('/contracts/:id/ps-terms', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -153,7 +216,7 @@ psb.put('/contracts/:id/ps-terms', async (c) => {
        billing_trigger = excluded.billing_trigger, sla_days = excluded.sla_days,
        retainer_amount = excluded.retainer_amount, doc_types_json = excluded.doc_types_json,
        rate_overrides_json = excluded.rate_overrides_json, notes = excluded.notes,
-       updated_at = datetime('now','localtime'), updated_by = excluded.updated_by`,
+       updated_at = datetime('now'), updated_by = excluded.updated_by`,
     id, b.billing_trigger ?? 'on_completion', b.sla_days ?? null, b.retainer_amount ?? null,
     docTypesJson, overridesJson, b.notes ?? null, user?.id ?? null);
   await logAudit(db, user?.id ?? null, before ? 'update' : 'create', 'ps_contract', id, { before, after: b });
@@ -163,6 +226,8 @@ psb.put('/contracts/:id/ps-terms', async (c) => {
 
 // ── Audit history for a contract (from activity_log) ───────
 psb.get('/contracts/:id/audit', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
@@ -176,6 +241,8 @@ psb.get('/contracts/:id/audit', async (c) => {
 
 // ── Serve charges review queue ─────────────────────────────
 psb.get('/serve-charges', async (c) => {
+  const denied = requireRole(c, ...REVIEW);
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   const db = getDb(c.env);
   const status = c.req.query('status') ?? 'pending_review';
   const charges = await query<any>(db,
@@ -206,15 +273,42 @@ psb.put('/serve-charges/:id', async (c) => {
   const before = await queryFirst<any>(db, 'SELECT * FROM serve_charges WHERE id = ?', id);
 
   if (Array.isArray(b.lines)) {
+    // ⚠️ Validate EVERY line before touching the table. This handler deletes the
+    // existing lines and rebuilds them, so validating inside the rebuild loop is
+    // too late — the real lines are already gone by then. Combined with the old
+    // `Number(x) || 0`, a malformed payload silently replaced a priced charge
+    // with $0.00 rows and reported success.
+    const parsedLines: Array<{ pricing_code: string | null; description: string; quantity: number; unit_price: number; line_total: number; taxable: number }> = [];
+    for (const [i, l] of (b.lines as any[]).entries()) {
+      const quantity = finiteNumber(l?.quantity);
+      const unitPrice = finiteNumber(l?.unit_price);
+      if (quantity === null) {
+        return c.json({ error: `line ${i + 1}: quantity must be a number`, code: 'BAD_LINE' }, 400);
+      }
+      if (unitPrice === null) {
+        return c.json({ error: `line ${i + 1}: unit_price must be a number`, code: 'BAD_LINE' }, 400);
+      }
+      if (quantity < 0 || unitPrice < 0) {
+        return c.json({ error: `line ${i + 1}: quantity and unit_price cannot be negative`, code: 'BAD_LINE' }, 400);
+      }
+      parsedLines.push({
+        pricing_code: l?.pricing_code ?? null,
+        description: l?.description ?? '',
+        quantity,
+        unit_price: unitPrice,
+        line_total: Math.round(quantity * unitPrice * 100) / 100,
+        taxable: l?.taxable ? 1 : 0,
+      });
+    }
+
     await execute(db, 'DELETE FROM serve_charge_lines WHERE serve_charge_id = ?', id);
     let subtotal = 0;
-    for (const l of b.lines) {
-      const lineTotal = Math.round((Number(l.quantity) || 0) * (Number(l.unit_price) || 0) * 100) / 100;
-      subtotal += lineTotal;
+    for (const l of parsedLines) {
+      subtotal += l.line_total;
       await execute(db,
         `INSERT INTO serve_charge_lines (serve_charge_id, pricing_code, description, quantity, unit_price, line_total, taxable)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        id, l.pricing_code ?? null, l.description ?? '', Number(l.quantity) || 0, Number(l.unit_price) || 0, lineTotal, l.taxable ? 1 : 0);
+        id, l.pricing_code, l.description, l.quantity, l.unit_price, l.line_total, l.taxable);
     }
     await execute(db, `UPDATE serve_charges SET subtotal = ? WHERE id = ?`, Math.round(subtotal * 100) / 100, id);
   }
@@ -239,7 +333,7 @@ psb.post('/serve-charges/:id/approve', async (c) => {
   if (!cur) return c.json({ error: 'Not found' }, 404);
   if (cur.status === 'invoiced') return c.json({ error: 'Already invoiced' }, 409);
   const user = c.get('user') as { id: number } | undefined;
-  await execute(db, `UPDATE serve_charges SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now','localtime') WHERE id = ?`, user?.id ?? null, id);
+  await execute(db, `UPDATE serve_charges SET status = 'approved', reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?`, user?.id ?? null, id);
   await logAudit(db, user?.id ?? null, 'approve', 'serve_charge', id, {});
   return c.json({ success: true });
 });
@@ -358,7 +452,7 @@ psb.post('/invoices/from-serve-charges', async (c) => {
     for (const chargeId of group.ids) {
       const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', chargeId);
       for (const l of lines) {
-        subtotal += Number(l.line_total) || 0;
+        subtotal += finiteNumber(l.line_total) ?? 0;
         await execute(db,
           `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
            VALUES (?, ?, ?, ?, ?, ?)`,

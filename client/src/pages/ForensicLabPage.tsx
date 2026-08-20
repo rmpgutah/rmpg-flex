@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import { humanizeCaseType } from '../utils/statusLabels';
 import { asArray } from '../utils/asArray';
@@ -30,7 +30,8 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { openForensicCasePdf } from '../utils/forensicCasePdf';
 import { computePayloadHash } from '../utils/pdfIntegrity';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -53,21 +54,21 @@ const CASE_TYPES = [
 // hit indicators, so an officer's visual muscle memory ("red = bad / amber =
 // urgent / green = done") carries across surfaces.
 const PRIORITIES = [
-  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--rmpg-500)' },
+  { value: 'routine', label: 'Routine', desc: 'Standard processing — 30 day turnaround', color: 'var(--text-muted)' },
   { value: 'expedited', label: 'Expedited', desc: 'Priority processing — 14 day turnaround', color: 'var(--text-muted)' },
   { value: 'urgent', label: 'Urgent', desc: 'Urgent case need — 7 day turnaround', color: 'var(--sev-warn)' },
   { value: 'rush', label: 'Rush', desc: 'Immediate attention — 48 hour turnaround', color: 'var(--sev-critical)' },
 ] as const;
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
-  submitted: { label: 'Submitted', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
+  submitted: { label: 'Submitted', color: 'var(--text-secondary)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: 'var(--sev-special-soft)', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: 'var(--rmpg-400)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: 'var(--text-secondary)', bgColor: 'bg-surface-sunken/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: 'var(--sev-warn-soft)', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: 'var(--sev-ok-soft)', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: 'var(--sev-ok-soft)', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
   report_final: { label: 'Report Final', color: 'var(--sev-ok)', bgColor: 'bg-green-900/20', nextAction: 'Final report is available' },
-  closed: { label: 'Closed', color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
+  closed: { label: 'Closed', color: 'var(--text-muted)', bgColor: 'bg-surface-sunken/20', nextAction: 'Case is complete and archived' },
   cancelled: { label: 'Cancelled', color: 'var(--sev-critical)', bgColor: 'bg-red-900/20', nextAction: 'Case was cancelled' },
 };
 
@@ -487,7 +488,7 @@ export default function ForensicLabPage() {
     if (!wizardData.title.trim()) return;
     setSubmitting(true);
     try {
-      const caseRes = await apiFetch<ForensicCase>('/forensic-lab', {
+      const caseRes = await apiFetch<{ data: ForensicCase; lab_number: string }>('/forensic-lab', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -499,11 +500,12 @@ export default function ForensicLabPage() {
           notes: wizardData.notes,
         }),
       });
+      const newCaseId = caseRes.data.id;
 
       // Add exhibits
       for (const exhibit of wizardData.exhibits) {
         if (exhibit.description.trim()) {
-          await apiFetch(`/forensic-lab/${caseRes.id}/exhibits`, {
+          await apiFetch(`/forensic-lab/${newCaseId}/exhibits`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(exhibit),
@@ -515,7 +517,7 @@ export default function ForensicLabPage() {
       setWizardStep(0);
       setActiveTab('My Cases');
       fetchCases();
-      fetchCaseDetail(caseRes.id);
+      fetchCaseDetail(newCaseId);
     } catch (err) {
       console.error('Create case error:', err);
       addToast(err instanceof Error ? err.message : 'Failed to create case', 'error');
@@ -915,13 +917,13 @@ export default function ForensicLabPage() {
 
   // ── Helpers ────────────────────────────────────────────
 
-  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--rmpg-500)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
+  const getStatusConfig = (status: string) => STATUS_CONFIG[status] || { label: status, color: 'var(--text-muted)', bgColor: 'bg-surface-sunken/20', nextAction: '' };
   const getCaseTypeLabel = (t: string) => CASE_TYPES.find(c => c.value === t)?.label || t;
   const getPriorityConfig = (p: string) => PRIORITIES.find(pr => pr.value === p) || PRIORITIES[0];
 
   const formatDate = (d: string | null) => {
     if (!d) return '—';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const isOverdue = (c: ForensicCase) => {
@@ -1056,8 +1058,8 @@ export default function ForensicLabPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-brand-400">{selectedCase.lab_number || selectedCase.lab_case_number || `FC-${selectedCase.id}`}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+              <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
               {overdue && <span className="text-[9px] px-1.5 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
             </div>
             <div className="text-sm font-semibold text-rmpg-100 truncate">{selectedCase.title}</div>
@@ -1314,7 +1316,9 @@ export default function ForensicLabPage() {
                 const custodyLog = meta.custody_log || [];
                 const CUSTODY_ACTIONS = ['received', 'transferred', 'stored', 'analyzed', 'returned'] as const;
                 const actionColors: Record<string, string> = {
-                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--rmpg-500)',
+                  // `returned` must not reuse --text-muted: it is `received`'s color, and
+                  // the two are opposite ends of a custody transfer.
+                  received: 'var(--text-muted)', transferred: 'var(--sev-warn)', stored: 'var(--sev-special-soft)', analyzed: 'var(--sev-ok-soft)', returned: 'var(--text-secondary)',
                 };
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
@@ -1347,14 +1351,14 @@ export default function ForensicLabPage() {
                           {custodyLog.map((ev, i) => (
                             <div key={ev.id} className="flex gap-3 relative">
                               <div className="w-3 h-3 rounded-full border-2 flex-shrink-0 mt-0.5 z-10" style={{
-                                borderColor: actionColors[ev.action] || 'var(--rmpg-500)',
-                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--rmpg-500)') : 'var(--surface-overlay)',
+                                borderColor: actionColors[ev.action] || 'var(--text-muted)',
+                                backgroundColor: i === 0 ? (actionColors[ev.action] || 'var(--text-muted)') : 'var(--surface-overlay)',
                               }} />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm" style={{
-                                    backgroundColor: (actionColors[ev.action] || 'var(--rmpg-500)') + '20',
-                                    color: actionColors[ev.action] || 'var(--rmpg-500)',
+                                    backgroundColor: withAlpha(actionColors[ev.action] || 'var(--text-muted)', '20'),
+                                    color: actionColors[ev.action] || 'var(--text-muted)',
                                   }}>{toDisplayLabel(ev.action)}</span>
                                   <span className="text-[10px] text-rmpg-300">
                                     <span className="text-rmpg-200 font-semibold">{ev.from_person}</span>
@@ -1484,11 +1488,11 @@ export default function ForensicLabPage() {
                   {selectedCase.exhibits.map(ex => {
                     const exStatus = ex.status === 'complete' ? { color: 'var(--sev-ok)', icon: CheckCircle } :
                       ex.status === 'examining' ? { color: 'var(--sev-warn)', icon: Activity } :
-                      { color: 'var(--rmpg-400)', icon: Package };
+                      { color: 'var(--text-secondary)', icon: Package };
                     return (
                       <div key={ex.id} className="panel-beveled bg-surface-sunken p-3 border-l-[3px]" style={{ borderLeftColor: exStatus.color }}>
                         <div className="flex items-start gap-2">
-                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: exStatus.color + '20', color: exStatus.color }}>
+                          <div className="w-8 h-8 rounded-sm flex items-center justify-center text-sm font-bold font-mono" style={{ backgroundColor: withAlpha(exStatus.color, '20'), color: exStatus.color }}>
                             {ex.exhibit_number}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1496,7 +1500,7 @@ export default function ForensicLabPage() {
                             <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                               {ex.exhibit_type && <span>Type: {ex.exhibit_type}</span>}
                               {ex.condition_received && <span>Condition: {ex.condition_received}</span>}
-                              <span className="font-bold uppercase" style={{ color: exStatus.color }}>{(ex.status || '').replace(/_/g, ' ')}</span>
+                              <span className="font-bold uppercase" style={{ color: exStatus.color }}>{toDisplayLabel(ex.status || '')}</span>
                             </div>
                             {ex.examination_requested && (
                               <div className="text-[10px] text-rmpg-400 mt-1">
@@ -1562,7 +1566,7 @@ export default function ForensicLabPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <Beaker size={12} style={{ color: anStatus }} />
                           <span className="text-xs font-semibold text-rmpg-200">{typeLabel}</span>
-                          <span className="text-[9px] font-bold uppercase ml-auto" style={{ color: anStatus }}>{(an.status || '').replace(/_/g, ' ')}</span>
+                          <span className="text-[9px] font-bold uppercase ml-auto" style={{ color: anStatus }}>{toDisplayLabel(an.status || '')}</span>
                         </div>
                         {an.examiner_name && <div className="text-[10px] text-rmpg-400">Examiner: {an.examiner_name}</div>}
                         {an.methodology && <div className="text-[10px] text-rmpg-400 mt-1">Method: {an.methodology}</div>}
@@ -1817,7 +1821,7 @@ export default function ForensicLabPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Analysis Turnaround</div>
                       {turnaroundData.analysis_turnaround.map((a: any) => (
                         <div key={a.analysis_type} className="flex justify-between text-[10px] py-0.5">
-                          <span className="text-rmpg-300">{a.analysis_type}</span>
+                          <span className="text-rmpg-300">{formatEnumValue(a.analysis_type)}</span>
                           <span className="text-rmpg-400 font-mono">{a.avg_days}d avg ({a.completed})</span>
                         </div>
                       ))}
@@ -1878,7 +1882,7 @@ export default function ForensicLabPage() {
                   <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
                     {linkSearchResults.map((r: any, i: number) => (
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-rmpg-700 hover:border-brand-500/50 transition-colors">
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{String(r.type).replace(/_/g, ' ')}</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{toDisplayLabel(String(r.type))}</span>
                         <span className="text-xs text-rmpg-200 min-w-0 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link
@@ -2497,8 +2501,8 @@ export default function ForensicLabPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-[10px] font-mono text-brand-400">{c.lab_number || c.lab_case_number || `FC-${c.id}`}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: sc.color + '15', color: sc.color, borderColor: sc.color + '40' }}>{sc.label}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: pc.color + '15', color: pc.color, borderColor: pc.color + '40' }}>{pc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(sc.color, '15'), color: sc.color, borderColor: withAlpha(sc.color, '40') }}>{sc.label}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 font-bold border" style={{ backgroundColor: withAlpha(pc.color, '15'), color: pc.color, borderColor: withAlpha(pc.color, '40') }}>{pc.label}</span>
                             {overdue && <span className="text-[8px] px-1 py-0.5 bg-red-900/30 text-red-400 font-bold border border-red-700/50 animate-pulse">OVERDUE</span>}
                           </div>
                           <div className="text-xs font-semibold text-rmpg-200 truncate">{c.title}</div>

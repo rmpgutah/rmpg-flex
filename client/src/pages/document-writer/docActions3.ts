@@ -10,7 +10,7 @@
 // come from writer.css), h3/p/strong/em, <hr>, lists, and span color marks.
 // No reliance on <td style> / background fills.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import type { DocAction } from './docActions2';
 
 const esc = (s: string) =>

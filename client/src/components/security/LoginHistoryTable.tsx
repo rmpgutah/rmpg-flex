@@ -28,10 +28,10 @@ function formatDate(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
 
   const isToday = d.toDateString() === now.toDateString();
-  if (isToday) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) +
+    ' ' + d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' });
 }
 
 const PAGE_SIZE = 15;
@@ -56,7 +56,7 @@ export default function LoginHistoryTable() {
         setTotal(data.total);
       }
     } catch { /* ignore */ }
-    setLoading(false);
+    finally { setLoading(false); }
   }, [token, offset]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
@@ -67,7 +67,7 @@ export default function LoginHistoryTable() {
   if (loading && entries.length === 0) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
+        <RefreshCw className="w-4 h-4 animate-spin text-fg-muted" />
       </div>
     );
   }
@@ -75,8 +75,8 @@ export default function LoginHistoryTable() {
   if (entries.length === 0) {
     return (
       <div className="text-center py-6">
-        <History className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
-        <p className="text-[10px] text-rmpg-500">No login history</p>
+        <History className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+        <p className="text-[10px] text-fg-muted">No login history</p>
       </div>
     );
   }
@@ -100,9 +100,9 @@ export default function LoginHistoryTable() {
               <tr key={entry.id}>
                 <td className="text-center">
                   {entry.success ? (
-                    <CheckCircle className="w-3 h-3 inline-block" style={{ color: '#22c55e' }} />
+                    <CheckCircle className="w-3 h-3 inline-block text-green-500" />
                   ) : (
-                    <XCircle className="w-3 h-3 inline-block" style={{ color: '#ef4444' }} />
+                    <XCircle className="w-3 h-3 inline-block text-red-500" />
                   )}
                 </td>
                 <td className="font-mono whitespace-nowrap">{formatDate(entry.created_at)}</td>
@@ -110,9 +110,9 @@ export default function LoginHistoryTable() {
                 <td className="font-mono">{entry.ip_address}</td>
                 <td>
                   {entry.success ? (
-                    <span style={{ color: '#22c55e' }}>Success</span>
+                    <span className="text-green-500">Success</span>
                   ) : (
-                    <span style={{ color: '#ef4444' }} title={entry.failure_reason || ''}>
+                    <span className="text-red-500" title={entry.failure_reason || ''}>
                       {entry.failure_reason || 'Failed'}
                     </span>
                   )}
@@ -129,7 +129,7 @@ export default function LoginHistoryTable() {
           className="flex items-center justify-between px-3 py-1.5"
           style={{ borderTop: '1px solid var(--border-default)', background: 'var(--surface-overlay)' }}
         >
-          <span className="text-[10px] font-mono text-rmpg-500">
+          <span className="text-[10px] font-mono text-fg-muted">
             Page {page} of {totalPages} ({total} entries)
           </span>
           <div className="flex gap-1">

@@ -10,7 +10,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { toDenverWallClock } from '../utils/denverTime';
 
 const sd = new Hono<Env>();
@@ -314,7 +314,7 @@ sd.get('/workload-distribution', async (c) => {
        u.full_name AS officer_name,
        SUM(CASE WHEN q.status IN ('assigned', 'in_progress', 'attempted') THEN 1 ELSE 0 END) AS assigned_count,
        SUM(CASE WHEN q.deadline IS NOT NULL
-                  AND q.deadline < datetime('now','localtime')
+                  AND q.deadline < datetime('now')
                   AND q.status NOT IN ('served', 'cancelled', 'failed')
              THEN 1 ELSE 0 END) AS overdue_count,
        COALESCE(todays.cnt, 0) AS todays_attempts
@@ -388,7 +388,7 @@ sd.get('/stale-attempts', async (c) => {
        q.recipient_city,
        q.status,
        la.last_attempt_at,
-       ROUND((JULIANDAY(datetime('now','localtime')) - JULIANDAY(la.last_attempt_at)), 0) AS days_stale,
+       ROUND((JULIANDAY(datetime('now')) - JULIANDAY(la.last_attempt_at)), 0) AS days_stale,
        q.officer_id,
        u.full_name AS officer_name,
        q.attempt_count,
@@ -401,7 +401,7 @@ sd.get('/stale-attempts', async (c) => {
      LEFT JOIN users u ON u.id = q.officer_id
      WHERE q.status NOT IN ('served', 'cancelled', 'failed')
        AND la.last_attempt_at IS NOT NULL
-       AND la.last_attempt_at < datetime('now','localtime', '-' || ? || ' days')
+       AND la.last_attempt_at < datetime('now', '-' || ? || ' days')
      ORDER BY la.last_attempt_at ASC
      LIMIT 200`,
     staleDays,
@@ -556,10 +556,14 @@ sd.post('/bulk-reassign', async (c) => {
   if (!target) return c.json({ error: 'Target server not found or not assignable' }, 400);
 
   // Find the queue entries that own these attempts
-  const attemptRows = await query<{ id: number; serve_queue_id: number; officer_id: number | null }>(
+  // Chunked: D1 caps a query at 100 bound parameters, so a bulk reassign of
+  // 100+ attempts would have been rejected at bind time and 500'd. `attemptIds`
+  // comes straight from the request body with no upper bound.
+  const attemptIds = body.attemptIds.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+  const attemptRows = await queryInChunks<{ id: number; serve_queue_id: number; officer_id: number | null }>(
     db,
-    `SELECT id, serve_queue_id, officer_id FROM serve_attempts WHERE id IN (${body.attemptIds.map(() => '?').join(',')})`,
-    ...body.attemptIds,
+    attemptIds,
+    (ph) => `SELECT id, serve_queue_id, officer_id FROM serve_attempts WHERE id IN (${ph})`,
   );
 
   // Optionally filter by fromServerId
@@ -583,7 +587,7 @@ sd.post('/bulk-reassign', async (c) => {
   // Update officer_id on the parent queue entries
   const stmts = Array.from(queueIds).map((qid) =>
     db.prepare(
-      "UPDATE serve_queue SET officer_id = ?, status = CASE WHEN status = 'pending' THEN 'assigned' ELSE status END, updated_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET officer_id = ?, status = CASE WHEN status = 'pending' THEN 'assigned' ELSE status END, updated_at = datetime('now') WHERE id = ?",
     ).bind(body.toServerId, qid),
   );
 
@@ -704,25 +708,30 @@ sd.post('/bulk-status-update', async (c) => {
   const db = getDb(c.env);
   const user = c.get('user') as { id: number } | undefined;
 
-  // Update each attempt's parent queue status
-  const placeholders = body.attemptIds.map(() => '?').join(',');
-
-  // Get the queue IDs affected by these attempts
-  const affectedQueues = await query<{ serve_queue_id: number }>(
+  // Get the queue IDs affected by these attempts. `attemptIds` is unbounded
+  // request-body input — AnalyticsTab's bulk action posts every selected row —
+  // so the IN-list is chunked under D1's 100-bound-parameter cap. DISTINCT is
+  // per-chunk only, so the same queue id can come back from two chunks; dedupe
+  // in-process before building the UPDATE batch, or a job gets updated twice
+  // and inflates `updatedCount`.
+  const affectedQueueRows = await queryInChunks<{ serve_queue_id: number }>(
     db,
-    `SELECT DISTINCT serve_queue_id FROM serve_attempts WHERE id IN (${placeholders})`,
-    ...body.attemptIds,
+    body.attemptIds,
+    (placeholders) => `SELECT DISTINCT serve_queue_id FROM serve_attempts WHERE id IN (${placeholders})`,
   );
+  const affectedQueues = [...new Set(
+    affectedQueueRows.map((r) => r.serve_queue_id).filter((n) => Number.isFinite(n)),
+  )].map((serve_queue_id) => ({ serve_queue_id }));
 
   const closedAt = (body.status === 'served' || body.status === 'failed')
-    ? "datetime('now','localtime')"
+    ? "datetime('now')"
     : 'NULL';
 
   // Update queue status for each affected queue
   const stmts = affectedQueues.map((q) =>
     db.prepare(
       `UPDATE serve_queue
-       SET status = ?, closed_at = ${closedAt}, updated_at = datetime('now','localtime')
+       SET status = ?, closed_at = ${closedAt}, updated_at = datetime('now')
        WHERE id = ?`,
     ).bind(body.status, q.serve_queue_id),
   );

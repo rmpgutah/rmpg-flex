@@ -8,6 +8,7 @@
 
 import React, { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 
@@ -44,7 +45,8 @@ export function RichTextEditor({
 }: RichTextEditorProps): React.ReactElement {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (StarterKit as any).configure({
         heading: { levels: [1, 2, 3] },
         bulletList: { keepMarks: true },
         orderedList: { keepMarks: true },
@@ -54,7 +56,7 @@ export function RichTextEditor({
     content,
     editable,
     autofocus: autoFocus,
-    onUpdate: ({ editor: e }) => {
+    onUpdate: ({ editor: e }: { editor: Editor }) => {
       onChange?.(e.getHTML());
     },
     editorProps: {
@@ -73,11 +75,11 @@ export function RichTextEditor({
   if (!editor) return React.createElement('div', null, 'Loading editor...');
 
   return React.createElement('div', {
-    className: `rich-text-editor border border-[#222] rounded-sm bg-[#0a0a0a] ${className}`,
+    className: `rich-text-editor border border-[#222] rounded-sm bg-surface-deep ${className}`,
   },
     // Toolbar
     editable && React.createElement('div', {
-      className: 'flex items-center gap-1 px-2 py-1 border-b border-[#222] bg-[#141414]',
+      className: 'flex items-center gap-1 px-2 py-1 border-b border-[#222] bg-surface-deep',
     },
       React.createElement(ToolbarButton, {
         onClick: () => editor.chain().focus().toggleBold().run(),

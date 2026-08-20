@@ -83,7 +83,7 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[480px] max-w-full mx-4 max-h-[80vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT MAINTENANCE' : 'LOG MAINTENANCE'} icon={Wrench} id={titleId}>
           {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
@@ -91,7 +91,7 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
         </PanelTitleBar>
         <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {draftRestored && onDiscardDraft && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-3" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-3" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.1)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

@@ -12,9 +12,10 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
+import { containsClause, containsAnyClause } from '../utils/searchText';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
 import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
@@ -24,11 +25,13 @@ import { runIntelQuery } from '../utils/intelQuery';
 import { parseRosterText, ingestBookings } from '../utils/jailIngest';
 import { runJailScan } from '../utils/jailSources/runScan';
 import { chunkKey, parseSeq } from '../utils/intelRecording';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 import { intelReports, intelSources } from './intel/development';
 import { buildOverview } from '../utils/intelOverview';
 import { daysCutoffISO, finiteCoord, geoFeature, type GeoFeature } from '../utils/intelGeo';
 import { geocodeAddress } from './geocode';
 
+import { log } from '../utils/logger';
 const intel = new Hono<Env>();
 
 // Mirrors the connections.ts gate: everyone operational; client_viewer /
@@ -42,18 +45,26 @@ interface IntelHit {
   cluster?: { canonical_person_id: number | null; pending_suggestions: number };
 }
 
+// ⚠️ Both blocks below MUST use queryInChunks. This is the officer-safety
+// variant of the D1 100-bound-parameter cap, and it is the SILENT one:
+// D1 rejects a >100-parameter query at bind time, the per-block try/catch here
+// swallows that into a console line, and the function returns an EMPTY flag map.
+// The caller cannot tell "no flags" from "could not read flags", so
+// ACTIVE WARRANT / OFFICER SAFETY / GANG badges simply disappear from any
+// result set holding more than 100 persons — no error on screen, nothing in
+// error_log. CLAUDE.md documents the identical defect in intelQueryFlags.ts;
+// this was its unfixed twin. Do not reintroduce a hand-rolled IN-list here.
 async function personFlags(db: D1Database, ids: number[]): Promise<Map<number, string[]>> {
   const out = new Map<number, string[]>();
   if (!ids.length) return out;
-  const ph = ids.map(() => '?').join(',');
   try {
-    for (const w of await query<any>(db,
-      `SELECT COALESCE(subject_person_id, person_id) AS pid FROM warrants
-       WHERE status IN ('active','outstanding') AND COALESCE(subject_person_id, person_id) IN (${ph})`, ...ids))
+    for (const w of await queryInChunks<any>(db, ids,
+      (ph) => `SELECT subject_person_id AS pid FROM warrants
+       WHERE status IN ('active','outstanding') AND subject_person_id IN (${ph})`))
       out.set(w.pid, [...(out.get(w.pid) || []), 'ACTIVE WARRANT']);
   } catch (err: any) { console.error('[intel] warrant flags failed:', err?.message); }
   try {
-    for (const p of await query<any>(db, `SELECT id, flags FROM persons WHERE id IN (${ph})`, ...ids)) {
+    for (const p of await queryInChunks<any>(db, ids, (ph) => `SELECT id, flags FROM persons WHERE id IN (${ph})`)) {
       const f = isRealValue(p.flags) ? String(p.flags).toLowerCase() : '';
       if (f.includes('officer safety') || f.includes('violent')) out.set(p.id, [...(out.get(p.id) || []), 'OFFICER SAFETY']);
       if (f.includes('gang')) out.set(p.id, [...(out.get(p.id) || []), 'GANG']);
@@ -287,7 +298,7 @@ intel.get('/geo', operational, async (c) => {
 
   await addrLayer('warrants',
     `SELECT w.id, w.warrant_number, p.address, p.city FROM warrants w
-       LEFT JOIN persons p ON p.id = w.person_id
+       LEFT JOIN persons p ON p.id = w.subject_person_id
       WHERE w.status = 'active' LIMIT ?`,
     (r) => [r.address, r.city].filter(Boolean).join(', '),
     (r, lat, lng) => geoFeature('warrant', r.id, lat, lng, r.warrant_number || `WAR-${r.id}`, { geocoded: true }));
@@ -314,7 +325,7 @@ intel.post('/reindex', requireRole('admin'), async (c) => {
 // drops a HIGH-priority notification in the watcher's inbox when new
 // activity (calls, FIs, citations) links to the watched entity.
 
-const WATCHABLE = ['person', 'vehicle'];
+const WATCHABLE = ['person', 'vehicle', 'warrant'];
 
 intel.get('/watchlist', operational, async (c) => {
   const db = getDb(c.env);
@@ -323,6 +334,7 @@ intel.get('/watchlist', operational, async (c) => {
     return c.json(await query<any>(db,
       `SELECT * FROM intel_watchlist WHERE active = 1 AND added_by = ? ORDER BY created_at DESC LIMIT 200`, userId));
   } catch (err: any) {
+    log.error('GET /watchlist failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0099 may not have reached live D1' }, 500);
   }
 });
@@ -334,15 +346,24 @@ intel.post('/watchlist', operational, async (c) => {
   const entityType = String(body?.entity_type || '');
   const entityId = Number(body?.entity_id);
   if (!WATCHABLE.includes(entityType) || !Number.isFinite(entityId)) {
-    return c.json({ error: 'entity_type (person|vehicle) and entity_id required' }, 400);
+    return c.json({ error: 'entity_type (person|vehicle|warrant) and entity_id required' }, 400);
+  }
+  // Warrants are watched by row id, unlike person/vehicle — confirm the
+  // referenced warrant is real and seed last_known_status so the sweep's
+  // first pass doesn't spuriously fire a "status changed" alert.
+  let lastKnownStatus: string | null = null;
+  if (entityType === 'warrant') {
+    const warrant = await queryFirst<{ status: string }>(db, 'SELECT status FROM warrants WHERE id = ?', entityId);
+    if (!warrant) return c.json({ error: 'Warrant not found' }, 404);
+    lastKnownStatus = warrant.status;
   }
   // Reactivate an existing watch instead of violating the UNIQUE key.
   await execute(db,
-    `INSERT INTO intel_watchlist (entity_type, entity_id, reason, added_by, active, last_alert_at)
-     VALUES (?, ?, ?, ?, 1, datetime('now'))
+    `INSERT INTO intel_watchlist (entity_type, entity_id, reason, added_by, active, last_alert_at, last_known_status)
+     VALUES (?, ?, ?, ?, 1, datetime('now'), ?)
      ON CONFLICT(entity_type, entity_id, added_by) DO UPDATE SET
        active = 1, reason = excluded.reason, last_alert_at = datetime('now')`,
-    entityType, entityId, body?.reason || null, userId);
+    entityType, entityId, body?.reason || null, userId, lastKnownStatus);
   return c.json({ success: true });
 });
 
@@ -430,6 +451,7 @@ intel.get('/suggestions', operational, async (c) => {
        FROM intel_link_suggestions s WHERE s.status = ? ORDER BY s.created_at DESC LIMIT 100`, status);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /suggestions failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
@@ -450,10 +472,12 @@ intel.post('/suggestions/:id/confirm', operational, async (c) => {
       `INSERT OR IGNORE INTO ${table} (${fk}, ${col}, role) VALUES (?, ?, 'mentioned')`,
       s.source_id, s.entity_id);
   } catch (err: any) {
+    log.error('POST /suggestions/:id/confirm failed', { src: 'src/routes/intel.ts' }, err);
     // Some junction tables lack a role column — retry without it.
     try {
       await execute(db, `INSERT OR IGNORE INTO ${table} (${fk}, ${col}) VALUES (?, ?)`, s.source_id, s.entity_id);
     } catch (e2: any) {
+      log.error('POST /suggestions/:id/confirm failed', { src: 'src/routes/intel.ts' }, e2);
       return c.json({ error: `Failed to create link: ${e2?.message}` }, 500);
     }
   }
@@ -517,10 +541,11 @@ intel.get('/sightings', operational, async (c) => {
   const limit = Math.min(Number(c.req.query('limit')) || 25, 100);
   try {
     const rows = plate
-      ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE plate LIKE ? ORDER BY created_at DESC LIMIT ?`, `%${plate}%`, limit)
+      ? await query<any>(db, `SELECT * FROM vehicle_sightings WHERE ${containsClause('plate').sql} ORDER BY created_at DESC LIMIT ?`, containsClause('plate').bind(plate), limit)
       : await query<any>(db, `SELECT * FROM vehicle_sightings ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /sightings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0100 may not have reached live D1' }, 500);
   }
 });
@@ -600,6 +625,7 @@ intel.post('/quick-capture', operational, async (c) => {
       `UPDATE field_interviews SET fi_number = 'FI-' || strftime('%Y%m%d', 'now') || '-' || id WHERE id = ? AND (fi_number IS NULL OR fi_number = '')`,
       fiId);
   } catch (err: any) {
+    log.error('POST /quick-capture failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: `FI insert failed: ${err?.message}` }, 500);
   }
 
@@ -649,6 +675,7 @@ intel.post('/recordings/start', operational, async (c) => {
       Number(b?.linked_fi_id) || null, Number(b?.linked_call_id) || null, b?.notes || null, mime);
     return c.json({ id: r.meta.last_row_id, mime });
   } catch (err: any) {
+    log.error('POST /recordings/start failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0102 may not have reached live D1' }, 500);
   }
 });
@@ -665,11 +692,12 @@ intel.put('/recordings/:id/chunk', operational, async (c) => {
   if (body.byteLength === 0) return c.json({ error: 'empty chunk' }, 400);
   if (body.byteLength > 8 * 1024 * 1024) return c.json({ error: 'chunk too large' }, 413);
   try {
-    await (c.env as any).UPLOADS.put(chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, chunkKey(id, seq), body, { httpMetadata: { contentType: rec.mime || 'audio/webm' } });
     await execute(db,
       'UPDATE interaction_recordings SET chunk_count = MAX(chunk_count, ?) WHERE id = ?', seq + 1, id);
     return c.json({ success: true, seq });
   } catch (err: any) {
+    log.error('PUT /recordings/:id/chunk failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: `chunk store failed: ${err?.message}` }, 500);
   }
 });
@@ -698,6 +726,7 @@ intel.get('/recordings', operational, async (c) => {
       : await query<any>(db, 'SELECT * FROM interaction_recordings WHERE officer_id = ? ORDER BY created_at DESC LIMIT ?', userId, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /recordings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });
@@ -708,12 +737,30 @@ intel.get('/recordings/:id/chunk/:seq', operational, async (c) => {
   const seq = parseSeq(c.req.param('seq'));
   if (seq === null) return c.json({ error: 'invalid seq' }, 400);
   try {
-    const obj = await (c.env as any).UPLOADS.get(chunkKey(id, seq));
-    if (!obj) return c.json({ error: 'chunk not found' }, 404);
+    const key = chunkKey(id, seq);
+    // getDecrypted() returns null both for "object never existed" and for
+    // "object exists, no file_encryption_keys row" -- the latter is exactly
+    // what every interactions/ chunk looks like for recordings made before
+    // this task started calling putEncrypted() (this feature has been live
+    // in production). Fall back to a raw R2 read so those chunks stay
+    // servable instead of permanently 404ing -- mirrors fieldPhotos.ts's
+    // `GET /file/*` route. A genuine decrypt failure (bad/rotated KEK,
+    // tampered ciphertext) throws instead of returning null, so it is never
+    // confused with the legacy case and is not caught here -- it propagates
+    // to the outer catch below as a loud 500, never a fake 200 of raw
+    // ciphertext.
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
     const rec = await queryFirst<{ mime: string | null }>(db, 'SELECT mime FROM interaction_recordings WHERE id = ?', id).catch(() => null);
-    const mime = obj.httpMetadata?.contentType || rec?.mime || 'audio/webm';
-    return new Response(obj.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
+    if (decrypted) {
+      const mime = decrypted.httpMetadata?.contentType || rec?.mime || 'audio/webm';
+      return new Response(decrypted.bytes, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
+    }
+    const legacy = await (c.env as any).UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'chunk not found' }, 404);
+    const mime = legacy.httpMetadata?.contentType || rec?.mime || 'audio/webm';
+    return new Response(legacy.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600' } });
   } catch (err: any) {
+    log.error('GET /recordings/:id/chunk/:seq failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });
@@ -725,6 +772,7 @@ intel.get('/jail/sources', operational, async (c) => {
   try {
     return c.json(await query<any>(db, 'SELECT * FROM jail_roster_sources ORDER BY status DESC, display_name'));
   } catch (err: any) {
+    log.error('GET /jail/sources failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0101 may not have reached live D1' }, 500);
   }
 });
@@ -790,7 +838,7 @@ intel.get('/jail/bookings', operational, async (c) => {
   try {
     const where: string[] = [`entry_source LIKE 'roster%'`];
     const binds: any[] = [];
-    if (q) { where.push('(full_name LIKE ? OR charges LIKE ?)'); binds.push(`%${q}%`, `%${q}%`); }
+    if (q) { const m = containsAnyClause(['full_name', 'charges']); where.push(m.sql); binds.push(...m.binds(q)); }
     if (county) { where.push('county = ?'); binds.push(county); }
     const rows = await query<any>(db,
       `SELECT ar.id, ar.full_name, ar.booking_date, ar.charges, ar.county, ar.entry_source, ar.mugshot_url,
@@ -799,6 +847,7 @@ intel.get('/jail/bookings', operational, async (c) => {
       ...binds, limit);
     return c.json(rows);
   } catch (err: any) {
+    log.error('GET /jail/bookings failed', { src: 'src/routes/intel.ts' }, err);
     return c.json({ error: err?.message }, 500);
   }
 });
@@ -895,9 +944,9 @@ intel.get('/dossier/person/:id', operational, async (c) => {
   await section('warrants', async () =>
     (await query<any>(db,
       `SELECT id, warrant_number, charge_description, status, issued_date,
-              COALESCE(subject_person_id, person_id) AS spid
-       FROM warrants WHERE subject_person_id IN (${ph}) OR person_id IN (${ph})
-       ORDER BY issued_date DESC LIMIT 100`, ...ids, ...ids))
+              subject_person_id AS spid
+       FROM warrants WHERE subject_person_id IN (${ph})
+       ORDER BY issued_date DESC LIMIT 100`, ...ids))
       .map((r) => ({ kind: 'warrant', id: r.id, date: r.issued_date, title: r.warrant_number || `W-${r.id}`,
         subtitle: isRealValue(r.charge_description) ? String(r.charge_description) : '', status: r.status || '', source_person_id: r.spid })));
   // arrest_records has NO person FK — best-effort name+DOB match.

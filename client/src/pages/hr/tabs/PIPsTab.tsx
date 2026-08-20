@@ -5,11 +5,12 @@ import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { asArray } from '../../../utils/asArray';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 interface PIP {
   id: number;
   officer_id: number;
@@ -32,9 +33,11 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
 };
 
+const EMPTY_PIP_FORM = { officer_id: '', start_date: '', end_date: '', reason: '', goals: [''] };
+
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 export default function PIPsTab({ userRole }: { userRole: string }) {
@@ -46,7 +49,11 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   const [officers, setOfficers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [form, setForm] = useState({ officer_id: '', start_date: '', end_date: '', reason: '', goals: [''] });
+  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<typeof EMPTY_PIP_FORM>({
+    storageKey: 'rmpg_hr_pip_form',
+    defaultValue: EMPTY_PIP_FORM,
+    isActive: showForm,
+  });
   const [confirmFailId, setConfirmFailId] = useState<number | null>(null);
   const [confirmFailLoading, setConfirmFailLoading] = useState(false);
 
@@ -82,7 +89,13 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
     const goals = form.goals.filter(g => g.trim()).map(text => ({ text, completed: false }));
     if (goals.length === 0) { addToast('At least one goal is required', 'error'); return; }
     setSubmitting(true);
-    try { await apiFetch('/hr/pips', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), goals }) }); addToast('PIP created', 'success'); setShowForm(false); setForm({ officer_id: '', start_date: '', end_date: '', reason: '', goals: [''] }); load(); } catch { addToast('Failed to create PIP', 'error'); } finally { setSubmitting(false); }
+    try {
+      await apiFetch('/hr/pips', { method: 'POST', body: JSON.stringify({ ...form, officer_id: Number(form.officer_id), goals }) });
+      addToast('PIP created', 'success');
+      setShowForm(false);
+      clearDraft();
+      load();
+    } catch { addToast('Failed to create PIP', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -143,7 +156,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
           </select>
-          {isManager && <button type="button" data-hr-new-btn onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
+          {isManager && <button type="button" data-hr-new-btn onClick={() => { const next = !showForm; setShowForm(next); if (next) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> New PIP</button>}
         </div>
       </div>
 
@@ -157,6 +170,17 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
 
       {showForm && isManager && (
         <div className="panel-beveled p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_PIP_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor="ff-pipstab-2" className="field-label">Officer *</label>
@@ -190,7 +214,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id || !form.start_date || !form.end_date} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Creating...</> : 'Create PIP'}</button>
-            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -218,7 +242,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
                       <span className="text-xs font-bold text-rmpg-100">{p.officer_name}</span>
                       {p.status === 'active' && <span className={`text-[10px] ${days <= 7 ? 'text-red-400' : days <= 14 ? 'text-amber-400' : 'text-rmpg-400'}`}><Clock className="w-3 h-3 inline" /> {days}d remaining</span>}
                     </div>
-                    <p className="text-[10px] text-rmpg-300">{p.reason}</p>
+                    <p className="text-[10px] text-rmpg-300">{formatEnumValue(p.reason)}</p>
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                       <span>{fmtDate(p.start_date)} to {fmtDate(p.end_date)}</span>
                       <span>Supervisor: {p.supervisor_name}</span>

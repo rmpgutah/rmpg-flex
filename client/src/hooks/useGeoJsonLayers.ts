@@ -13,6 +13,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeMapboxColor, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import { getSectorColor, getZoneColor, formatBeatLabel } from '../utils/geographyLabels';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Tactical-dark fallback when a config color won't parse as a Mapbox color
 // (most commonly a leaked `var(--…)` string). Keeps the layer rendered while
@@ -129,7 +130,7 @@ const ASSIGNED_STROKE_OPACITY = 0.8;
 const ASSIGNED_STROKE_WEIGHT = 2;
 
 const MUNI_COLORS = [
-  '#22c55e', '#d4a017', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
+  '#22c55e', '#3b82f6', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
   '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#facc15', '#e11d48',
   '#84cc16', '#fb923c', '#d946ef', '#fde047', '#eab308', '#fbbf24',
 ];
@@ -196,7 +197,7 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   if (cfg.detailProps) {
     for (const p of cfg.detailProps) {
       if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
-        const label = p.replace(/_/g, ' ').toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
+        const label = toDisplayLabel(p).toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
       }
     }

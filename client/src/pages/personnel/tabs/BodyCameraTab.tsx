@@ -19,7 +19,7 @@ import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { authedImageUrl } from '../../../hooks/useApi';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
@@ -182,7 +182,7 @@ export default function BodyCameraTab({
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {
@@ -226,8 +226,8 @@ export default function BodyCameraTab({
 
   // ── Summary Cards ────────────────────────────────────────
 
-  // Theme: prior pure-black/very-dark hex literals (#0a1a0a, #1a150a,
-  // #1a0a0a, #0f0f0f) ignored the day/night palette swap and rendered as
+  // Theme: prior pure-black/very-dark tactical hex literals ignored the
+  // day/night palette swap and rendered as
   // near-black bars on a light-grey surface. Lifted to the semantic
   // --sev-*-rgb tokens (same alpha-tinted approach as the warning banner
   // in PR #1595/#1606/#1610) so the cards re-skin between night and day
@@ -795,7 +795,7 @@ export default function BodyCameraTab({
                           vid.retention_status === 'archived' ? 'text-rmpg-500' :
                           'text-amber-400'
                         }`}>
-                          {vid.retention_status}
+                          {formatEnumValue(vid.retention_status)}
                         </span>
                       </td>
                       <td>

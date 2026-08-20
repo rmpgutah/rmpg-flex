@@ -70,20 +70,29 @@ describe('/api/fleet-viz schema-drift regression', () => {
     const res = await buildApp(db)('/api/fleet-viz/kpi');
     expect(res.status).toBe(200);
     const all = queries.join('\n');
+    // performed_at is the populated column on live; service_date remains the
+    // fallback, so the KPI window must reference both.
+    expect(all).toContain('performed_at');
     expect(all).toContain('service_date');
     expect(all).not.toContain('maintenance_date');
   });
 
-  it('GET /dossier/:id — uses service_date / service_type, NOT maintenance_*', async () => {
+  it('GET /dossier/:id — dates via COALESCE(performed_at, service_date), NOT maintenance_*', async () => {
     const { db, queries } = inspectingDb();
     const res = await buildApp(db)('/api/fleet-viz/dossier/1');
     expect([200, 404]).toContain(res.status);
     const all = queries.join('\n');
-    // The fix routes WHERE / ORDER BY against service_date and service_type.
-    // `maintenance_date AS alias` is allowed (preserves the client JSON
+    // Originally this pinned a bare `service_date >=`. That was the right call
+    // against `maintenance_date` (which never shipped) but still wrong: on live
+    // D1 `service_date` is populated on ZERO rows while `performed_at` is
+    // populated on all of them, so the bare form matched nothing and the
+    // dossier's 90-day maintenance list was always empty. The window now reads
+    // COALESCE(performed_at, service_date), which covers either shape — so the
+    // assertion tracks that intent rather than the old literal.
+    // `maintenance_date AS alias` is still allowed (preserves the client JSON
     // contract), but the dead identifiers must not appear as column reads.
-    expect(all).toMatch(/WHERE[^]*service_date\s*>=/);
-    expect(all).toMatch(/ORDER BY service_date/);
+    expect(all).toMatch(/WHERE[^]*COALESCE\(performed_at,\s*service_date\)\s*>=/);
+    expect(all).toMatch(/ORDER BY COALESCE\(performed_at,\s*service_date\)/);
     expect(all).toContain('service_type');
     expect(all).not.toMatch(/WHERE[^]*maintenance_date\s*>=/);
     expect(all).not.toMatch(/ORDER BY maintenance_date/);
@@ -122,5 +131,52 @@ describe('/api/fleet-viz schema-drift regression', () => {
     expect(all).not.toContain('FROM officers');
     expect(all).not.toContain('FROM cad_units');
     expect(all).not.toContain('driver_id');
+  });
+});
+
+// ============================================================
+// /kpi — Avg MPG is DERIVED, not read off fleet_fuel_log.mpg
+// ============================================================
+// The column is a manual override that is NULL on 100% of the last 30 days
+// on live, so `AVG(mpg)` returned NULL -> 0 and the KPI ribbon showed
+// "0.0 MPG" while the Fleet page showed 11.3 for the same vehicle.
+describe('/api/fleet-viz/kpi — avg MPG derivation', () => {
+  it('does not average the raw mpg column', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    const all = queries.join('\n');
+    expect(all).not.toMatch(/AVG\(mpg\)/i);
+    // Derives from the odometer delta instead.
+    expect(all).toMatch(/odometer\s*-\s*prev_odo/i);
+  });
+
+  it('requires BOTH ends of a segment to be full tanks', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    const all = queries.join('\n');
+    // Checking only the current row let 635 miles / a 1.257-gal splash fill
+    // report 505 MPG, and the next segment report 2.6.
+    expect(all).toMatch(/is_full_tank\s*!=\s*0/i);
+    expect(all).toMatch(/prev_full\s*!=\s*0/i);
+  });
+
+  it('discards segments that run backwards in time', async () => {
+    const { db, queries } = inspectingDb();
+    await buildApp(db)('/api/fleet-viz/kpi');
+    // Rows are ordered by odometer, but live has entries whose dates
+    // disagree with that order; differencing non-adjacent fills produced
+    // 253.9 MPG.
+    expect(queries.join('\n')).toMatch(/julianday\(fuel_date\)\s*>=\s*julianday\(prev_date\)/i);
+  });
+
+  it('reports avg_mpg as null — not 0 — when nothing is measurable', async () => {
+    // inspectingDb().first() yields {}, i.e. no usable segments.
+    const { db } = inspectingDb();
+    const res = await buildApp(db)('/api/fleet-viz/kpi');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { avg_mpg: number | null; avg_mpg_samples: number };
+    // "No measurable data" and "zero miles per gallon" are different claims.
+    expect(body.avg_mpg).toBeNull();
+    expect(body.avg_mpg_samples).toBe(0);
   });
 });

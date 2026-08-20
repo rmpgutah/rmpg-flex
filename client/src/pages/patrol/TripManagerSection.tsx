@@ -196,6 +196,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       onChanged?.();
     } catch (err: any) {
       addToast(err?.message || 'Update failed', 'error');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -215,6 +216,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
       onChanged?.();
     } catch (err: any) {
       addToast(err?.message || 'Add failed', 'error');
+    } finally {
       setSubmitting(false);
     }
   };
@@ -260,7 +262,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
         <div className="flex gap-1 items-center">
           <input type="datetime-local" value={draft.start_local} onChange={(e) => setDraft({ ...draft, start_local: e.target.value })}
             className="bg-surface-base border border-rmpg-700 text-[10px] font-mono px-1 py-0.5" />
-          <span className="text-rmpg-500 text-[9px]">→</span>
+          <span className="text-fg-muted text-[9px]">→</span>
           <input type="datetime-local" value={draft.end_local} onChange={(e) => setDraft({ ...draft, end_local: e.target.value })}
             className="bg-surface-base border border-rmpg-700 text-[10px] font-mono px-1 py-0.5" />
         </div>
@@ -273,7 +275,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
         <div className="flex gap-1 items-center">
           <input value={draft.start_mileage} onChange={(e) => setDraft({ ...draft, start_mileage: e.target.value })}
             placeholder="odo from" inputMode="decimal" className="bg-surface-base border border-rmpg-700 text-[10px] font-mono px-1 py-0.5 w-20 text-right" />
-          <span className="text-rmpg-500 text-[9px]">→</span>
+          <span className="text-fg-muted text-[9px]">→</span>
           <input value={draft.end_mileage} onChange={(e) => setDraft({ ...draft, end_mileage: e.target.value })}
             placeholder="odo to" inputMode="decimal" className="bg-surface-base border border-rmpg-700 text-[10px] font-mono px-1 py-0.5 w-20 text-right" />
         </div>
@@ -290,7 +292,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
           >
             <Check className="w-3.5 h-3.5" />
           </IconButton>
-          <IconButton aria-label="Cancel" onClick={cancelDraft} className="text-rmpg-400 hover:text-rmpg-100">
+          <IconButton aria-label="Cancel" onClick={cancelDraft} className="text-fg-muted hover:text-rmpg-100">
             <X className="w-3.5 h-3.5" />
           </IconButton>
         </div>
@@ -301,25 +303,25 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
   return (
     <div className="bg-surface-base border border-border-default rounded-[2px]">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+        <h4 className="text-[9px] [color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
           <Route className="w-3 h-3" /> Trip Log Management ({trips.length})
         </h4>
         {canEdit && (
           <button
             onClick={startAdd}
-            className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-raised border border-rmpg-700 text-[#d4a017] hover:bg-surface-raised transition-colors"
+            className="flex items-center gap-1 text-[9px] uppercase font-bold tracking-wider px-2 py-1 bg-surface-raised border border-rmpg-700 [color:var(--panel-header-color)] hover:bg-surface-raised transition-colors"
           >
             <Plus className="w-3 h-3" /> Add Trip
           </button>
         )}
       </div>
       {loading ? (
-        <div className="h-[60px] flex items-center justify-center text-[10px] text-rmpg-500">Loading trips…</div>
+        <div className="h-[60px] flex items-center justify-center text-[10px] text-fg-muted">Loading trips…</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-rmpg-400 uppercase text-[9px] tracking-wider border-b border-border-default font-semibold">
+              <tr className="text-fg-muted uppercase text-[9px] tracking-wider border-b border-border-default font-semibold">
                 <th className="text-left px-2 py-[3px]">Type</th>
                 <th className="text-left px-2 py-[3px]">Call #</th>
                 <th className="text-left px-2 py-[3px]">Start</th>
@@ -334,7 +336,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
             <tbody>
               {adding && draftFields()}
               {trips.length === 0 && !adding && (
-                <tr><td colSpan={9} className="text-center py-4 text-[10px] text-rmpg-500">No trips in this scope/window</td></tr>
+                <tr><td colSpan={9} className="text-center py-4 text-[10px] text-fg-muted">No trips in this scope/window</td></tr>
               )}
               {trips.map((t) => {
                 const key = `${t.source}:${t.id}`;
@@ -387,7 +389,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                             className="text-green-400 hover:text-green-300">
                             <Check className="w-3.5 h-3.5" />
                           </IconButton>
-                          <IconButton aria-label="Cancel edit" onClick={cancelDraft} className="text-rmpg-400 hover:text-rmpg-100">
+                          <IconButton aria-label="Cancel edit" onClick={cancelDraft} className="text-fg-muted hover:text-rmpg-100">
                             <X className="w-3.5 h-3.5" />
                           </IconButton>
                         </div>
@@ -419,7 +421,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                           >
                             {deletingKey === key ? 'Deleting…' : 'Confirm Delete'}
                           </button>
-                          <IconButton aria-label="Cancel delete" onClick={() => { setConfirmDeleteKey(null); setDeleteReason(''); }} className="text-rmpg-400 hover:text-rmpg-100">
+                          <IconButton aria-label="Cancel delete" onClick={() => { setConfirmDeleteKey(null); setDeleteReason(''); }} className="text-fg-muted hover:text-rmpg-100">
                             <X className="w-3.5 h-3.5" />
                           </IconButton>
                         </div>
@@ -429,31 +431,31 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
                 }
                 return (
                   <tr key={key} className="border-b border-border-default hover:bg-surface-sunken transition-colors">
-                    <td className={`px-2 py-[2px] font-mono font-bold text-[10px] ${t.trip_type === 'call_response' ? 'text-[#d4a017]' : 'text-rmpg-300'}`}>
+                    <td className={`px-2 py-[2px] font-mono font-bold text-[10px] ${t.trip_type === 'call_response' ? '[color:var(--panel-header-color)]' : 'text-fg-muted'}`}>
                       {t.trip_type === 'call_response' ? 'RESPONSE' : 'PATROL'}
                     </td>
-                    <td className="px-2 py-[2px] font-mono text-[10px] text-rmpg-300">{t.call_number || '—'}</td>
+                    <td className="px-2 py-[2px] font-mono text-[10px] text-fg-muted">{t.call_number || '—'}</td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-rmpg-200">{tsLocal(t.start_time)}</td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-rmpg-200">{tsLocal(t.end_time)}</td>
                     <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-rmpg-100">
                       {t.distance_mi != null ? t.distance_mi.toFixed(1) : '—'}
                     </td>
-                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-rmpg-300">
+                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-fg-muted">
                       {t.start_mileage != null ? Number(t.start_mileage).toLocaleString() : '—'}
                     </td>
-                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-rmpg-300">
+                    <td className="px-2 py-[2px] font-mono text-[10px] tabular-nums text-right text-fg-muted">
                       {t.end_mileage != null ? Number(t.end_mileage).toLocaleString() : '—'}
                     </td>
-                    <td className="px-2 py-[2px] text-[9px] uppercase text-rmpg-500">{t.source === 'nav' ? 'NAV' : 'DISPATCH'}</td>
+                    <td className="px-2 py-[2px] text-[9px] uppercase text-fg-muted">{t.source === 'nav' ? 'NAV' : 'DISPATCH'}</td>
                     <td className="px-2 py-[2px] text-right">
                       {canEdit && (
                         <span className="inline-flex gap-1">
-                          <IconButton aria-label={`Edit trip ${t.id}`} onClick={() => startEdit(t)} className="text-rmpg-400 hover:text-[#d4a017]">
+                          <IconButton aria-label={`Edit trip ${t.id}`} onClick={() => startEdit(t)} className="text-fg-muted hover:[color:var(--panel-header-color)]">
                             <Pencil className="w-3 h-3" />
                           </IconButton>
                           <IconButton aria-label={`Delete trip ${t.id}`}
                             onClick={() => { setEditingKey(null); setAdding(false); setConfirmDeleteKey(key); setDeleteReason(''); }}
-                            disabled={deletingKey === key} className="text-rmpg-400 hover:text-red-400">
+                            disabled={deletingKey === key} className="text-fg-muted hover:text-red-400">
                             <Trash2 className="w-3 h-3" />
                           </IconButton>
                         </span>
@@ -467,7 +469,7 @@ export default function TripManagerSection({ officerId, unitId, from, to, canEdi
         </div>
       )}
       {!canEdit && (
-        <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-rmpg-500">
+        <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-fg-muted">
           Read-only — trip edits require admin / manager / supervisor.
         </div>
       )}

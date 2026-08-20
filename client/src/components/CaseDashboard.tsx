@@ -3,6 +3,7 @@
 import { Briefcase, AlertTriangle, CheckCircle, Clock, TrendingUp, Gauge } from 'lucide-react';
 import PanelTitleBar from './PanelTitleBar';
 import { computeSlaStatus, slaBadge, type SlaInput } from '../utils/caseSla';
+import { withAlpha } from '../utils/withAlpha';
 
 /** Compact SLA badge for case rows / detail header. Renders nothing when the
  *  case has no live deadline (closed, or no due_date/sla_hours). */
@@ -10,7 +11,7 @@ export function SlaBadge({ caseRow }: { caseRow: SlaInput }) {
   const b = slaBadge(computeSlaStatus(caseRow).state);
   if (!b) return null;
   return (
-    <span className="text-[8px] font-bold px-1 py-0.5 border whitespace-nowrap" style={{ color: b.color, borderColor: `${b.color}66` }}>
+    <span className="text-[8px] font-bold px-1 py-0.5 border whitespace-nowrap" style={{ color: b.color, borderColor: withAlpha(b.color, '66') }}>
       {b.label}
     </span>
   );
@@ -38,7 +39,7 @@ function StatCard({ label, value, color, icon: Icon, onClick, suffix }: {
     >
       <Icon className="w-5 h-5 flex-shrink-0" style={{ color }} />
       <div className="min-w-0">
-        <div className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">{label}</div>
+        <div className="text-[9px] font-mono text-fg-muted uppercase tracking-wider">{label}</div>
         <div className="text-lg font-bold tabular-nums" style={{ color }}>{value}{suffix || ''}</div>
       </div>
     </Tag>
@@ -50,10 +51,10 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
   const aging = s.aging || { d0_7: 0, d8_30: 0, d31_90: 0, d90p: 0 };
   const agingTotal = aging.d0_7 + aging.d8_30 + aging.d31_90 + aging.d90p;
   const agingRows: { label: string; n: number; color: string }[] = [
-    { label: '0–7 days', n: aging.d0_7, color: '#22c55e' },
-    { label: '8–30 days', n: aging.d8_30, color: '#d4a017' },
-    { label: '31–90 days', n: aging.d31_90, color: '#f59e0b' },
-    { label: '90+ days', n: aging.d90p, color: '#ef4444' },
+    { label: '0–7 days', n: aging.d0_7, color: 'var(--sev-ok)' },
+    { label: '8–30 days', n: aging.d8_30, color: 'var(--sev-warn)' },
+    { label: '31–90 days', n: aging.d31_90, color: 'var(--sev-high)' },
+    { label: '90+ days', n: aging.d90p, color: 'var(--sev-critical)' },
   ];
   const investigators = s.by_investigator || [];
 
@@ -63,19 +64,19 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-4">
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <StatCard label="Total" value={s.total ?? 0} color="var(--rmpg-300)" icon={Briefcase} />
-          <StatCard label="Open" value={s.open ?? 0} color="#22c55e" icon={Clock} />
-          <StatCard label="Overdue" value={s.overdue ?? 0} color="#ef4444" icon={AlertTriangle} onClick={onShowOverdue} />
-          <StatCard label="Closed" value={s.closed ?? 0} color="#888888" icon={CheckCircle} />
-          <StatCard label="Clearance" value={s.clearance_rate ?? 0} suffix="%" color="#d4a017" icon={TrendingUp} />
-          <StatCard label="Avg Solvability" value={s.avg_solvability ?? 0} suffix="%" color="#f59e0b" icon={Gauge} />
+          <StatCard label="Total" value={s.total ?? 0} color="var(--text-secondary)" icon={Briefcase} />
+          <StatCard label="Open" value={s.open ?? 0} color="var(--sev-ok)" icon={Clock} />
+          <StatCard label="Overdue" value={s.overdue ?? 0} color="var(--sev-critical)" icon={AlertTriangle} onClick={onShowOverdue} />
+          <StatCard label="Closed" value={s.closed ?? 0} color="var(--text-secondary)" icon={CheckCircle} />
+          <StatCard label="Clearance" value={s.clearance_rate ?? 0} suffix="%" color="var(--text-secondary)" icon={TrendingUp} />
+          <StatCard label="Avg Solvability" value={s.avg_solvability ?? 0} suffix="%" color="var(--text-secondary)" icon={Gauge} />
         </div>
 
         {/* Aging of open cases */}
         <div className="panel-beveled p-3">
-          <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-2">Open Case Aging</div>
+          <div className="text-[10px] font-mono text-fg-secondary uppercase mb-2">Open Case Aging</div>
           {agingTotal === 0 ? (
-            <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
+            <div className="text-[10px] text-fg-muted py-2">No open cases</div>
           ) : (
             <div className="space-y-1.5">
               {agingRows.map((r) => (
@@ -93,16 +94,16 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
 
         {/* Caseload by investigator */}
         <div className="panel-beveled p-3">
-          <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-2">Open Caseload by Investigator</div>
+          <div className="text-[10px] font-mono text-fg-secondary uppercase mb-2">Open Caseload by Investigator</div>
           {investigators.length === 0 ? (
-            <div className="text-[10px] text-rmpg-500 py-2">No open cases</div>
+            <div className="text-[10px] text-fg-muted py-2">No open cases</div>
           ) : (
             <div className="overflow-x-auto"><table className="w-full text-[10px]">
               <thead>
                 <tr className="border-b border-rmpg-700">
-                  <th className="text-left text-[8px] font-mono text-rmpg-500 uppercase py-[3px]">Investigator</th>
-                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-14">Open</th>
-                  <th className="text-right text-[8px] font-mono text-rmpg-500 uppercase py-[3px] w-16">Overdue</th>
+                  <th className="text-left text-[8px] font-mono text-fg-muted uppercase py-[3px]">Investigator</th>
+                  <th className="text-right text-[8px] font-mono text-fg-muted uppercase py-[3px] w-14">Open</th>
+                  <th className="text-right text-[8px] font-mono text-fg-muted uppercase py-[3px] w-16">Overdue</th>
                 </tr>
               </thead>
               <tbody>
@@ -110,7 +111,7 @@ export function CaseDashboardView({ stats, onShowOverdue }: { stats: DashStats |
                   <tr key={i} className="border-b border-rmpg-800 last:border-0">
                     <td className="py-[3px] text-rmpg-300">{row.investigator}</td>
                     <td className="py-[3px] text-right font-bold text-rmpg-100 tabular-nums">{row.count}</td>
-                    <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-600'}`}>{row.overdue || 0}</td>
+                    <td className={`py-[3px] text-right font-bold tabular-nums ${row.overdue ? 'text-red-400' : 'text-rmpg-100'}`}>{row.overdue || 0}</td>
                   </tr>
                 ))}
               </tbody>

@@ -42,8 +42,8 @@ export default function FleetFuelCardsTab() {
         apiFetch<FuelCard[]>('/fleet/fuel-cards'),
         apiFetch<{ data: any[] }>('/fleet?per_page=200'),
       ]);
-      setCards(cardsData);
-      setVehicles(vehData.data || []);
+      setCards(Array.isArray(cardsData) ? cardsData : []);
+      setVehicles(Array.isArray(vehData?.data) ? vehData.data : []);
     } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load fuel cards', 'error'); } finally { setLoading(false); }
   };
 
@@ -146,7 +146,7 @@ export default function FleetFuelCardsTab() {
                 <td className="text-rmpg-200">{c.vehicle_number || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
                 <td className="text-right text-rmpg-300 font-mono">{c.monthly_limit ? `$${c.monthly_limit}` : '-'}</td>
                 <td className="text-center"><span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${STATUS_COLORS[c.status] || ''}`}>{toDisplayLabel(c.status || '')}</span></td>
-                <td className="text-right text-rmpg-400">{c.expiry_date ? parseTimestamp(c.expiry_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</td>
+                <td className="text-right text-rmpg-400">{c.expiry_date ? parseTimestamp(c.expiry_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : '-'}</td>
                 <td className="text-right">
                   {c.status === 'active' && (
                     <button type="button" onClick={() => updateCard(c.id, { status: 'suspended' })} className="toolbar-btn text-[9px]">Suspend</button>

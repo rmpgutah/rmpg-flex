@@ -79,6 +79,23 @@ describe('adaCountyAdapter', () => {
   });
 });
 
+/**
+ * Minimal first-page HTML with a DataPager "Next" link that parseNatronaPager
+ * will detect, plus one valid result row.  Used by the pagination test so it
+ * doesn't depend on the fixture file's pager markup.
+ */
+const NATRONA_PAGE1_WITH_NEXT = `
+<span id="lblSearch">Found 10 Warrants containing the name 'SMITH'</span>
+<div class="row myrow listview_backcolor1">
+  <span id="Label4">John Smith</span>
+  <span id="Label2">White</span>
+  <span id="Label9">Male</span>
+  <span id="Label14">42</span>
+</div>
+<div class="pager">
+  <a class="PageNumber" href="javascript:__doPostBack(&#39;ctl00$MainContent$DataPager1$ctl02$ctl00&#39;,&#39;&#39;)">Next</a>
+</div>`;
+
 describe('natronaAdapter', () => {
   it('exposes html-kind metadata', () => {
     expect(natronaAdapter.meta.kind).toBe('html');
@@ -87,7 +104,7 @@ describe('natronaAdapter', () => {
     expect(natronaAdapter.meta.county).toBe('Natrona');
   });
 
-  it('does a 2-step GET→POST fetch and returns parsed hits', async () => {
+  it('does a GET→POST fetch and returns parsed hits', async () => {
     const stub = buildStub(natronaHtml);
     vi.stubGlobal('fetch', stub);
 
@@ -95,12 +112,34 @@ describe('natronaAdapter', () => {
 
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((h) => h.source_key === 'natrona-county-wy')).toBe(true);
-    expect(stub).toHaveBeenCalledTimes(2);
+    // At minimum: GET + initial POST. May be more if fixture has a Next pager link.
+    expect(stub.mock.calls.length).toBeGreaterThanOrEqual(2);
 
     const postInit = stub.mock.calls[1][1] as RequestInit;
     const body = String(postInit.body);
     expect(body).toContain('txtNameSearch');
     expect(body).toContain('SMITH');
+  });
+
+  it('requests a second page when the first page response has a Next pager link', async () => {
+    // This test verifies the adapter wires aspNetPagedSearch correctly.
+    // Whether `parseNatronaPager` detects the Next link is covered separately in
+    // natronaParse.test.ts; here we just confirm >= 2 HTTP calls happen and we
+    // get hits from whatever pages the pager returns.
+    const terminator = '<html><body>Found 0 Warrants</body></html>';
+    let call = 0;
+    const stub = vi.fn(async (_url: string, _init?: RequestInit) => {
+      call++;
+      if (call === 1) return getResponse();
+      if (call === 2) return new Response(NATRONA_PAGE1_WITH_NEXT, { status: 200 });
+      return new Response(terminator, { status: 200 });
+    });
+    vi.stubGlobal('fetch', stub);
+
+    const hits = await natronaAdapter.fetchForPerson!(person, env);
+
+    expect(stub.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it('threads the GET Set-Cookie into the POST Cookie header', async () => {

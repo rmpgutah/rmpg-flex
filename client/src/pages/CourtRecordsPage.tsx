@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Gavel, Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, Calendar,
@@ -818,7 +818,7 @@ export default function CourtRecordsPage() {
                                 <Scale className="w-3 h-3" /> Outcome
                               </h4>
                               <div className="space-y-1 text-[10px]">
-                                <DetailRow label="Outcome" value={ev.outcome?.replace(/_/g, ' ').toUpperCase()} />
+                                <DetailRow label="Outcome" value={toDisplayLabel(ev.outcome).toUpperCase()} />
                                 <DetailRow label="Sentence" value={ev.sentence} />
                                 {ev.fine_amount != null && (
                                   <DetailRow label="Fine" value={`$${Number(ev.fine_amount).toFixed(2)}`} mono />
@@ -1082,9 +1082,9 @@ export default function CourtRecordsPage() {
 
       {/* ── Outcome Modal ── */}
       {showOutcomeModal !== null && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record Outcome" onClick={() => setShowOutcomeModal(null)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Record Outcome" onClick={() => setShowOutcomeModal(null)}>
           <div
-            className="bg-surface-base border border-rmpg-700 w-full max-w-md mx-4 shadow-md animate-fadeIn"
+            className="bg-surface-base border border-rmpg-700 w-full max-w-md mx-4 shadow-md animate-fadeIn my-auto"
             onClick={e => e.stopPropagation()}
           >
             <PanelTitleBar title="RECORD OUTCOME" icon={Scale}>

@@ -2,15 +2,18 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
-  Loader2, Navigation, Trash2,
+  Loader2, Navigation, Trash2, Clock,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
-import { apiFetch, apiPostForm } from '../../hooks/useApi';
+import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import ServeReceiptActions from './ServeReceiptActions';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
   type PsoCategory,
 } from '../../constants/processServiceCodes';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -90,6 +93,50 @@ function fmtHm(hm: string): string {
   return `${h12}:${min} ${period}`;
 }
 
+// ─── Draft-persisted text/dropdown fields ────────────────────────────────
+// GPS, photos, signature, and transient UI state (step, picker category)
+// are intentionally excluded — they're not typed text at risk of loss, and
+// GPS/photos re-acquire fresh on next open anyway.
+interface AttemptDraftForm {
+  attemptType: AttemptType | null;
+  failedReason: FailedReason | null;
+  customReason: string;
+  dispositionCode: string;
+  nextAttemptDate: string;
+  nextAttemptStart: string;
+  nextAttemptEnd: string;
+  nextAttemptText: string;
+  nextAttemptTextDirty: boolean;
+  ageRange: string;
+  height: string;
+  weight: string;
+  hairColor: string;
+  clothing: string;
+  personServedName: string;
+  relationship: string;
+  notes: string;
+}
+
+const EMPTY_ATTEMPT_DRAFT: AttemptDraftForm = {
+  attemptType: null,
+  failedReason: null,
+  customReason: '',
+  dispositionCode: '',
+  nextAttemptDate: '',
+  nextAttemptStart: '',
+  nextAttemptEnd: '',
+  nextAttemptText: '',
+  nextAttemptTextDirty: false,
+  ageRange: '',
+  height: '',
+  weight: '',
+  hairColor: '',
+  clothing: '',
+  personServedName: '',
+  relationship: '',
+  notes: '',
+};
+
 // ─── Haversine Distance ─────────────────────────────────────────────────
 
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -119,44 +166,55 @@ export default function ServeAttemptModal({
     latitude: null, longitude: null, accuracy: null,
     loading: true, error: null,
   });
+  const [gpsRetryCount, setGpsRetryCount] = useState(0);
 
-  // Step 2 — Type
-  const [attemptType, setAttemptType] = useState<AttemptType | null>(null);
-  const [failedReason, setFailedReason] = useState<FailedReason | null>(null);
-  // Free-text reason captured only when failedReason === 'other'. Persisted
-  // by prepending to the notes column on submit (no dedicated column).
-  const [customReason, setCustomReason] = useState('');
-  // Structured PS code — the new source of truth. Picker writes here; submit
-  // sends it as `disposition_code`. The server derives the legacy `result`
-  // enum from the code, so we only fill `failedReason` for the legacy code
-  // path (no structured pick).
-  const [dispositionCode, setDispositionCode] = useState<string>('');
+  // Text/dropdown fields — draft-persisted so an in-progress attempt survives
+  // a lost connection, accidental close, or device switch (photos/signature/
+  // GPS are excluded; see AttemptDraftForm comment above).
+  const {
+    form: draft, setForm: setDraft, wasRestored, clearDraft, signalSaved, snapshot,
+  } = useFormDraft<AttemptDraftForm>({
+    storageKey: `rmpg_serve_attempt_draft_${job.id}`,
+    defaultValue: EMPTY_ATTEMPT_DRAFT,
+    isActive: isOpen,
+  });
+  const {
+    attemptType, failedReason, customReason, dispositionCode,
+    nextAttemptDate, nextAttemptStart, nextAttemptEnd, nextAttemptText, nextAttemptTextDirty,
+    ageRange, height, weight, hairColor, clothing, personServedName, relationship, notes,
+  } = draft;
+  // FUNCTIONAL updates, not `{ ...draft, x }`. Several handlers here fire
+  // TWO setters in a row (attempt type + failedReason, disposition code +
+  // failedReason). Spreading the render-closure `draft` meant the second
+  // call wrote back the first call's stale value, so the first selection
+  // silently reverted — Personal and Substitute Service could not be
+  // picked at all, and "Failed Attempt" worked only because it is the one
+  // branch that skips the second setter.
+  const setAttemptType = (v: AttemptType | null) => setDraft((prev) => ({ ...prev, attemptType: v }));
+  const setFailedReason = (v: FailedReason | null) => setDraft((prev) => ({ ...prev, failedReason: v }));
+  const setCustomReason = (v: string) => setDraft((prev) => ({ ...prev, customReason: v }));
+  const setDispositionCode = (v: string) => setDraft((prev) => ({ ...prev, dispositionCode: v }));
+  const setNextAttemptDate = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptDate: v }));
+  const setNextAttemptStart = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptStart: v }));
+  const setNextAttemptEnd = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptEnd: v }));
+  const setNextAttemptText = (v: string) => setDraft((prev) => ({ ...prev, nextAttemptText: v }));
+  const setNextAttemptTextDirty = (v: boolean) => setDraft((prev) => ({ ...prev, nextAttemptTextDirty: v }));
+  const setAgeRange = (v: string) => setDraft((prev) => ({ ...prev, ageRange: v }));
+  const setHeight = (v: string) => setDraft((prev) => ({ ...prev, height: v }));
+  const setWeight = (v: string) => setDraft((prev) => ({ ...prev, weight: v }));
+  const setHairColor = (v: string) => setDraft((prev) => ({ ...prev, hairColor: v }));
+  const setClothing = (v: string) => setDraft((prev) => ({ ...prev, clothing: v }));
+  const setPersonServedName = (v: string) => setDraft((prev) => ({ ...prev, personServedName: v }));
+  const setRelationship = (v: string) => setDraft((prev) => ({ ...prev, relationship: v }));
+  const setNotes = (v: string) => setDraft((prev) => ({ ...prev, notes: v }));
+
   // Category the operator drilled into on the structured picker. UI-only
   // state — drives which sub-codes are listed below the category buttons.
   const [pickerCategory, setPickerCategory] = useState<string | null>(null);
 
-  // Next-attempt window — operator-set, lives on the parent serve_queue row,
-  // surfaced verbatim on the Notice of Attempt PDF. The picker builds a
-  // sentence; the operator can override it via the editable text field.
-  const [nextAttemptDate, setNextAttemptDate] = useState('');
-  const [nextAttemptStart, setNextAttemptStart] = useState('');
-  const [nextAttemptEnd, setNextAttemptEnd] = useState('');
-  const [nextAttemptText, setNextAttemptText] = useState('');
-  // Once the user edits the text manually, stop overwriting it when they
-  // tweak the picker — they may have refined the wording on purpose.
-  const [nextAttemptTextDirty, setNextAttemptTextDirty] = useState(false);
-
   // Step 3 — Documentation
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [ageRange, setAgeRange] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [hairColor, setHairColor] = useState('');
-  const [clothing, setClothing] = useState('');
-  const [personServedName, setPersonServedName] = useState('');
-  const [relationship, setRelationship] = useState('');
-  const [notes, setNotes] = useState('');
 
   // Step 4 — Signature & Submit
   const [signature, setSignature] = useState<string | null>(null);
@@ -168,12 +226,17 @@ export default function ServeAttemptModal({
 
   // ─── GPS Acquisition ────────────────────────────────────────────────
 
-  const acquireGps = useCallback(() => {
+  const acquireGps = useCallback((retryIndex = 0) => {
     setGps({ latitude: null, longitude: null, accuracy: null, loading: true, error: null });
     if (!navigator.geolocation) {
       setGps(prev => ({ ...prev, loading: false, error: 'Geolocation not available' }));
       return;
     }
+    // First attempt: high-accuracy GPS (best for outdoor/vehicle at service address).
+    // Retries: low-accuracy IP/WiFi fix — resolves in <2s on desktop/indoor where
+    // the GPS chip times out. Accepts a 60s cached position so it returns immediately
+    // if the browser already has a recent fix from another tab.
+    const highAccuracy = retryIndex === 0;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGps({
@@ -187,38 +250,29 @@ export default function ServeAttemptModal({
       (err) => {
         setGps(prev => ({ ...prev, loading: false, error: err?.message || 'GPS error' }));
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+      {
+        enableHighAccuracy: highAccuracy,
+        timeout: highAccuracy ? 27000 : 10000,
+        maximumAge: highAccuracy ? 3000 : 60000,
+      },
     );
   }, []);
 
   useEffect(() => {
     if (isOpen) {
-      acquireGps();
-      // Reset all state on open
+      setGpsRetryCount(0);
+      acquireGps(0);
+      // Reset UI/binary state on open — text fields are handled by
+      // useFormDraft (restores a pending draft or starts from EMPTY_ATTEMPT_DRAFT).
       setStep(0);
-      setAttemptType(null);
-      setFailedReason(null);
-      setCustomReason('');
-      setDispositionCode('');
       setPickerCategory(null);
-      setNextAttemptDate('');
-      setNextAttemptStart('');
-      setNextAttemptEnd('');
-      setNextAttemptText('');
-      setNextAttemptTextDirty(false);
       setPhotos([]);
-      setAgeRange('');
-      setHeight('');
-      setWeight('');
-      setHairColor('');
-      setClothing('');
-      setPersonServedName('');
-      setRelationship('');
-      setNotes('');
       setSignature(null);
       setSubmitting(false);
       setSubmitResult(null);
+      setTimeout(() => snapshot(), 0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, acquireGps]);
 
   // ─── Picker context ────────────────────────────────────────────────
@@ -271,9 +325,17 @@ export default function ServeAttemptModal({
     try {
       for (const file of toUpload) {
         const formData = new FormData();
-        formData.append('file', file);
-        const result = await apiPostForm<{ id: string; url: string }>('/uploads', formData);
-        setPhotos(prev => [...prev, { id: result.id, url: result.url }]);
+        formData.append('files', file);
+        // Server returns an array of attachment rows; take the first one.
+        const rows = await apiPostForm<{ file_id: string }[]>('/uploads', formData);
+        const row = Array.isArray(rows) ? rows[0] : (rows as any);
+        if (row?.file_id) {
+          const fileId = row.file_id;
+          setPhotos(prev => [
+            ...prev,
+            { id: fileId, url: authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`) },
+          ]);
+        }
       }
     } catch {
       // upload failed silently — user can retry
@@ -348,6 +410,7 @@ export default function ServeAttemptModal({
       }
 
       const result = await onSubmit(data);
+      signalSaved();
       setSubmitResult(result);
     } catch {
       // error handled by parent
@@ -357,6 +420,8 @@ export default function ServeAttemptModal({
   };
 
   if (!isOpen) return null;
+
+  const guardedClose = () => { clearDraft(); onClose(); };
 
   // Failed attempts walk the 3-step fast path (Location → Reason → Submit).
   // Anything else (or before a type is picked) uses the full 4-step flow.
@@ -388,13 +453,13 @@ export default function ServeAttemptModal({
               i < displayStep
                 ? 'bg-green-600 border-green-500 text-rmpg-100 shadow-[0_0_6px_rgba(34,197,94,0.5)]'
                 : i === displayStep
-                  ? 'bg-[#d4a017] border-[#d4a017] text-rmpg-100 shadow-[0_0_6px_#d4a017]'
+                  ? 'bg-accent-silver-500 border-accent-silver-400 text-surface-base shadow-[0_0_6px_rgba(var(--accent-silver-400-rgb),0.6)]'
                   : 'bg-rmpg-700 border-rmpg-500 text-rmpg-400'
             }`}>
               {i < displayStep ? <CheckCircle className="w-4 h-4" /> : i + 1}
             </div>
             <span className={`text-[10px] font-semibold transition-colors duration-200 ${
-              i <= displayStep ? 'text-rmpg-200' : 'text-rmpg-500'
+              i <= displayStep ? 'text-rmpg-200' : 'text-fg-muted'
             }`}>{label}</span>
           </div>
         </React.Fragment>
@@ -441,34 +506,48 @@ export default function ServeAttemptModal({
             {gps.loading ? (
               <div className="flex flex-col items-center gap-3 py-8 text-rmpg-400">
                 <div className="relative">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#888888]" />
-                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_6px_rgba(34,197,94,0.5)]" />
+                  <Loader2 className="w-8 h-8 animate-spin text-[color:var(--accent-silver-400)]" />
+                  <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-green-500" />
                 </div>
                 <span className="text-sm">Acquiring GPS position...</span>
               </div>
             ) : gps.error ? (
-              <div className="bg-red-900/30 border border-red-700 rounded-sm p-3 text-sm text-red-300">
-                <p>GPS Error: {gps.error}</p>
-                <button type="button"
-                  onClick={acquireGps}
-                  className="mt-2 px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-red-200 rounded-sm"
-                >
-                  Retry
-                </button>
+              <div className="bg-red-900/30 border border-red-700 rounded-sm p-3 text-sm text-red-300 space-y-2">
+                <p className="font-semibold">GPS unavailable{gpsRetryCount > 0 ? ' — using low-accuracy fallback' : ''}</p>
+                <p className="text-xs text-red-400">{gps.error}</p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button type="button"
+                    onClick={() => {
+                      const next = gpsRetryCount + 1;
+                      setGpsRetryCount(next);
+                      acquireGps(next);
+                    }}
+                    className="px-3 py-1 text-xs bg-red-800 hover:bg-red-700 text-red-200 rounded-sm"
+                  >
+                    {gpsRetryCount === 0 ? 'Retry (low-accuracy)' : 'Retry again'}
+                  </button>
+                  <span className="text-xs text-red-500">or</span>
+                  <button type="button"
+                    onClick={() => setStep(1)}
+                    className="px-3 py-1 text-xs bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-200 rounded-sm"
+                  >
+                    Proceed without GPS
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Latitude</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Latitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.latitude?.toFixed(6)}</div>
                   </div>
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Longitude</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Longitude</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.longitude?.toFixed(6)}</div>
                   </div>
                   <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-2">
-                    <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider">Accuracy</div>
+                    <div className="text-[10px] uppercase font-semibold tracking-wider" style={{ color: 'var(--field-label-color)' }}>Accuracy</div>
                     <div className="text-sm text-rmpg-100 font-mono">{gps.accuracy}m</div>
                   </div>
                 </div>
@@ -497,7 +576,7 @@ export default function ServeAttemptModal({
               <button type="button"
                 onClick={() => setStep(1)}
                 disabled={gps.loading}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Confirm Location
               </button>
@@ -509,7 +588,7 @@ export default function ServeAttemptModal({
       case 1:
         return (
           <div className="space-y-4 p-4">
-            <h3 className="text-sm font-bold text-[#d4a017]">Select Attempt Type</h3>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Select Attempt Type</h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {typeCards.map((card) => (
@@ -524,8 +603,8 @@ export default function ServeAttemptModal({
                       card.disabled
                         ? 'opacity-40 cursor-not-allowed border-rmpg-700 bg-rmpg-800'
                         : attemptType === card.type
-                          ? 'border-[#d4a017] bg-[#d4a017]/5 shadow-[0_0_8px_rgba(212,160,23,0.15)]'
-                          : 'border-rmpg-700 bg-surface-sunken hover:border-[#d4a017] hover:bg-surface-base'
+                          ? 'border-accent-silver-400 bg-accent-silver-400/5 shadow-[0_0_8px_rgba(var(--accent-silver-400-rgb),0.15)]'
+                          : 'border-rmpg-700 bg-surface-sunken hover:border-accent-silver-400 hover:bg-surface-base'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
@@ -574,7 +653,7 @@ export default function ServeAttemptModal({
                 {(dispositionCode === 'PS/00.99' || failedReason === 'other') && (
                   <div className="space-y-1">
                     <label htmlFor="ff-serveattemptmodal-other-reason" className="block text-[10px] font-semibold text-rmpg-300 uppercase">
-                      Specify reason <span className="text-rmpg-500 normal-case">(prepended to notes on the notice)</span>
+                      Specify reason <span className="text-fg-muted normal-case">(prepended to notes on the notice)</span>
                     </label>
                     <input
                       id="ff-serveattemptmodal-other-reason"
@@ -582,7 +661,7 @@ export default function ServeAttemptModal({
                       value={customReason}
                       onChange={(e) => setCustomReason(e.target.value.slice(0, 60))}
                       placeholder="e.g., business closed for the day"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                 )}
@@ -591,7 +670,7 @@ export default function ServeAttemptModal({
                     failed attempts (a successful service has no next attempt). */}
                 <fieldset className="space-y-2 border border-rmpg-700 rounded-[2px] p-3">
                   <legend className="text-[10px] font-semibold text-rmpg-300 uppercase px-1">
-                    Next attempt window <span className="text-rmpg-500 normal-case">(optional — shown on the notice)</span>
+                    Next attempt window <span className="text-fg-muted normal-case">(optional — shown on the notice)</span>
                   </legend>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -601,7 +680,7 @@ export default function ServeAttemptModal({
                         type="date"
                         value={nextAttemptDate}
                         onChange={(e) => setNextAttemptDate(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                     <div>
@@ -611,7 +690,7 @@ export default function ServeAttemptModal({
                         type="time"
                         value={nextAttemptStart}
                         onChange={(e) => setNextAttemptStart(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                     <div>
@@ -621,13 +700,13 @@ export default function ServeAttemptModal({
                         type="time"
                         value={nextAttemptEnd}
                         onChange={(e) => setNextAttemptEnd(e.target.value)}
-                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888]"
+                        className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)]"
                       />
                     </div>
                   </div>
                   <div>
                     <label htmlFor="ff-na-text" className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
-                      Notice wording {nextAttemptTextDirty && <span className="text-[#d4a017] normal-case">(edited)</span>}
+                      Notice wording {nextAttemptTextDirty && <span className="text-accent-silver-300 normal-case">(edited)</span>}
                     </label>
                     <textarea
                       id="ff-na-text"
@@ -638,7 +717,7 @@ export default function ServeAttemptModal({
                       }}
                       placeholder="Auto-builds from the picker — or type your own"
                       rows={2}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] resize-none"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] resize-none"
                     />
                   </div>
                 </fieldset>
@@ -666,7 +745,7 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={goBack}
-                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Back
               </button>
@@ -676,7 +755,7 @@ export default function ServeAttemptModal({
                   !attemptType
                   || (attemptType === 'failed' && !dispositionCode && !failedReason)
                 }
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 {isFailedPath ? 'Continue' : 'Next'}
               </button>
@@ -687,8 +766,8 @@ export default function ServeAttemptModal({
       // ─── Step 3: Documentation ─────────────────────────────
       case 2:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
-            <h3 className="text-sm font-bold text-[#d4a017]">Documentation</h3>
+          <div className="space-y-4 p-4">
+            <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Documentation</h3>
 
             {/* Camera input */}
             <div className="space-y-2">
@@ -722,7 +801,7 @@ export default function ServeAttemptModal({
                   {photos.map((photo) => (
                     <div key={photo.id} className="relative w-16 h-16 rounded-sm border border-rmpg-600 overflow-hidden group">
                       <img src={photo.url} alt="Attempt photo" className="w-full h-full object-cover" />
-                      <button type="button"
+                      <button aria-label="Remove" type="button"
                         onClick={() => removePhoto(photo.id)}
                         className="absolute top-0.5 right-0.5 w-4 h-4 bg-red-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                       >
@@ -744,7 +823,7 @@ export default function ServeAttemptModal({
                     <select id="ff-serveattemptmodal-2"
                       value={ageRange}
                       onChange={(e) => setAgeRange(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {AGE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
@@ -755,7 +834,7 @@ export default function ServeAttemptModal({
                     <select id="ff-serveattemptmodal-3"
                       value={hairColor}
                       onChange={(e) => setHairColor(e.target.value)}
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     >
                       <option value="">Select...</option>
                       {HAIR_COLORS.map(c => <option key={c} value={c}>{c}</option>)}
@@ -768,7 +847,7 @@ export default function ServeAttemptModal({
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
                       placeholder="e.g., 5'10"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                   <div>
@@ -778,7 +857,7 @@ export default function ServeAttemptModal({
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
                       placeholder="e.g., 180 lbs"
-                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     />
                   </div>
                 </div>
@@ -789,7 +868,7 @@ export default function ServeAttemptModal({
                     value={clothing}
                     onChange={(e) => setClothing(e.target.value)}
                     placeholder="Describe clothing worn"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                   />
                 </div>
               </fieldset>
@@ -808,7 +887,7 @@ export default function ServeAttemptModal({
                     value={personServedName}
                     onChange={(e) => setPersonServedName(e.target.value)}
                     placeholder="Full name of person served"
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                     required
                   />
                 </div>
@@ -817,7 +896,7 @@ export default function ServeAttemptModal({
                   <select id="ff-serveattemptmodal-8"
                     value={relationship}
                     onChange={(e) => setRelationship(e.target.value)}
-                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[color:var(--accent-silver-400)] focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/40 transition-colors"
                   >
                     <option value="">Select...</option>
                     {RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -832,14 +911,14 @@ export default function ServeAttemptModal({
             <div className="flex justify-between pt-2">
               <button type="button"
                 onClick={goBack}
-                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Back
               </button>
               <button type="button"
                 onClick={goNext}
                 disabled={attemptType === 'substitute' && !personServedName.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-[#888888] hover:bg-[#888888]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
+                className="px-4 py-2 text-sm font-semibold bg-[color:var(--accent-silver-500)] hover:bg-[color:var(--accent-silver-500)]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
               >
                 Next
               </button>
@@ -850,7 +929,7 @@ export default function ServeAttemptModal({
       // ─── Step 4: Review & Signature (or fast-path Submit for failed) ─
       case 3:
         return (
-          <div className="space-y-4 p-4 max-h-[60vh] overflow-y-auto scrollbar-dark">
+          <div className="space-y-4 p-4">
             {submitResult ? (
               // Post-submit result
               <div className="space-y-4 text-center py-4">
@@ -858,6 +937,41 @@ export default function ServeAttemptModal({
                 <h3 className="text-sm font-bold text-rmpg-100">
                   Attempt #{submitResult.attemptNumber} Recorded
                 </h3>
+                {/* ── Civil Process Record ──
+                    Presented HERE, on the completion of the attempt, rather
+                    than behind a separate button on the job card. An officer
+                    who has just recorded handing papers to someone is exactly
+                    the officer who needs the acknowledgement signed, and they
+                    are still standing at the door.
+
+                    Only for attempts that actually delivered something. A
+                    posting or a failed attempt has no recipient to sign, and
+                    offering the form there would invite a signature on a
+                    service that did not happen. */}
+                {(attemptType === 'personal' || attemptType === 'substitute') && (
+                  <div className="border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-left">
+                    <p className="text-[11px] font-bold uppercase tracking-wider"
+                       style={{ color: 'var(--panel-header-color)' }}>
+                      Civil Process Record
+                    </p>
+                    <p className="text-[11px] text-fg-secondary leading-snug">
+                      Have {personServedName?.trim() || 'the recipient'} sign the
+                      Acknowledgement of Service — on their phone, or on paper.
+                      Who you served and their relationship carry over from this
+                      attempt.
+                    </p>
+                    <ServeReceiptActions
+                      job={job}
+                      triggerLabel="Acknowledgement of Service"
+                      seed={{
+                        isNamedParty: attemptType === 'personal',
+                        recipientName: personServedName?.trim() || null,
+                        relationship: relationship?.trim() || null,
+                      }}
+                    />
+                  </div>
+                )}
+
                 {submitResult.dueDiligenceComplete && (
                   <div className="bg-green-900/30 border border-green-700 rounded-sm p-3 space-y-2">
                     <p className="text-sm text-green-300 font-semibold">
@@ -875,14 +989,14 @@ export default function ServeAttemptModal({
                 )}
                 <button type="button"
                   onClick={onClose}
-                  className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                  className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
                 >
                   Close
                 </button>
               </div>
             ) : (
               <>
-                <h3 className="text-sm font-bold text-[#d4a017]">Review & Submit</h3>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--panel-header-color)' }}>Review & Submit</h3>
 
                 {/* Summary card */}
                 <div className="bg-surface-sunken border border-rmpg-700 rounded-[2px] p-3 space-y-2 text-sm">
@@ -892,7 +1006,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Type</span>
-                    <span className="text-rmpg-100 capitalize">{attemptType?.replace(/_/g, ' ')}</span>
+                    <span className="text-rmpg-100 capitalize">{toDisplayLabel(attemptType)}</span>
                   </div>
                   {attemptType === 'failed' && failedReason && (
                     <div className="flex justify-between">
@@ -900,7 +1014,7 @@ export default function ServeAttemptModal({
                       <span className="text-rmpg-100 capitalize">
                         {failedReason === 'other' && customReason.trim()
                           ? customReason.trim()
-                          : failedReason.replace(/_/g, ' ')}
+                          : toDisplayLabel(failedReason)}
                       </span>
                     </div>
                   )}
@@ -960,7 +1074,7 @@ export default function ServeAttemptModal({
                     <NotesField value={notes} onChange={setNotes} />
                     <div className="space-y-2">
                       <label className="block text-xs font-semibold text-rmpg-300 uppercase">
-                        Photos ({photos.length}/5) <span className="text-rmpg-500 normal-case">(optional)</span>
+                        Photos ({photos.length}/5) <span className="text-fg-muted normal-case">(optional)</span>
                       </label>
                       <label className={`flex items-center justify-center gap-2 px-3 py-2 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
                         photos.length >= 5
@@ -1018,14 +1132,14 @@ export default function ServeAttemptModal({
                 <div className="flex justify-between pt-2">
                   <button type="button"
                     onClick={goBack}
-                    className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+                    className="px-4 py-2 text-sm font-semibold bg-surface-raised hover:bg-surface-raised text-rmpg-200 rounded-[2px] border border-rmpg-700 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
                   >
                     Back
                   </button>
                   <button type="button"
                     onClick={handleSubmit}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm font-semibold bg-[#d4a017] hover:bg-[#d4a017]/80 text-rmpg-100 rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.3)]"
+                    className="px-4 py-2 text-sm font-semibold bg-accent-silver-500 hover:bg-accent-silver-400 text-surface-base rounded-[2px] disabled:opacity-40 transition-all duration-150 flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-accent-silver-300/50"
                   >
                     {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     {isFailedPath ? 'Record Failed Attempt' : 'Record Service'}
@@ -1052,18 +1166,29 @@ export default function ServeAttemptModal({
             Document Service Attempt — {job.recipient_name}
           </h2>
           <button type="button"
-            onClick={onClose}
-            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+            onClick={guardedClose}
+            className="text-rmpg-400 hover:text-rmpg-200 transition-colors p-1 rounded-[2px] hover:bg-surface-raised focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
             aria-label="Close modal">
             <X className="w-4 h-4" />
           </button>
         </div>
 
+        {wasRestored && (
+          <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/30 bg-amber-950/20">
+            <div className="flex items-center gap-1.5 text-[10px] text-amber-400 font-medium">
+              <Clock className="w-3.5 h-3.5" /> Restored unsaved attempt details
+            </div>
+            <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+              Discard
+            </button>
+          </div>
+        )}
+
         {/* Step indicator */}
         <StepIndicator />
 
-        {/* Step content */}
-        <div className="flex-1 overflow-hidden">
+        {/* Step content — single scroll region; steps must not add their own overflow */}
+        <div className="flex-1 overflow-y-auto scrollbar-dark">
           {renderStep()}
         </div>
       </div>
@@ -1090,7 +1215,7 @@ function NotesField({
     <div>
       <div className="flex items-baseline justify-between mb-1">
         <label htmlFor="ff-serveattemptmodal-notes" className="block text-xs font-semibold text-rmpg-300 uppercase">Notes</label>
-        <span className={`text-[10px] font-mono ${over ? 'text-red-400' : near ? 'text-yellow-400' : 'text-rmpg-500'}`}>
+        <span className={`text-[10px] font-mono ${over ? 'text-red-400' : near ? 'text-yellow-400' : 'text-fg-muted'}`}>
           {len} / {NOTES_CHAR_LIMIT} on notice{over ? ' — will truncate' : ''}
         </span>
       </div>
@@ -1102,7 +1227,7 @@ function NotesField({
         rows={3}
         className={`w-full bg-rmpg-800 border rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:ring-1 transition-colors resize-none ${
           over ? 'border-red-600 focus:border-red-500 focus:ring-red-500/40'
-            : 'border-rmpg-600 focus:border-[#888888] focus:ring-[#888888]/40'
+            : 'border-rmpg-600 focus:border-[color:var(--accent-silver-400)] focus:ring-[color:var(--accent-silver-400)]/40'
         }`}
       />
     </div>
@@ -1139,7 +1264,7 @@ function PsoCodePicker({
   const subCodes = pickerCategory ? codesInCategory(pickerCategory) : [];
 
   const toneClass = (tone: PsoCategory['tone'], active: boolean): string => {
-    if (active) return 'border-[#d4a017] bg-[#d4a017]/10 text-rmpg-100 shadow-[0_0_6px_rgba(212,160,23,0.2)]';
+    if (active) return 'border-accent-silver-400 bg-accent-silver-400/10 text-rmpg-100 shadow-[0_0_6px_rgba(var(--accent-silver-400-rgb),0.2)]';
     switch (tone) {
       case 'success': return 'border-rmpg-700 bg-surface-sunken hover:border-green-500 text-rmpg-200';
       case 'attempt': return 'border-rmpg-700 bg-surface-sunken hover:border-yellow-500 text-rmpg-200';
@@ -1152,7 +1277,7 @@ function PsoCodePicker({
   return (
     <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
       <legend className="text-[10px] font-semibold text-rmpg-300 uppercase px-1">
-        Disposition code <span className="text-rmpg-500 normal-case">— structured PS code (printed on the notice)</span>
+        Disposition code <span className="text-fg-muted normal-case">— structured PS code (printed on the notice)</span>
       </legend>
 
       {/* Category row */}
@@ -1165,7 +1290,7 @@ function PsoCodePicker({
             className={`text-left p-2 rounded-[2px] border-2 transition-all duration-150 ${toneClass(cat.tone, pickerCategory === cat.code)}`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-mono font-bold text-[#d4a017]">{cat.code}</span>
+              <span className="text-[10px] font-mono font-bold text-rmpg-100">{cat.code}</span>
               {cat.isService && <span className="text-[9px] uppercase text-green-400">Completion</span>}
             </div>
             <div className="text-xs font-semibold leading-tight">{cat.label}</div>
@@ -1177,7 +1302,7 @@ function PsoCodePicker({
       <button
         type="button"
         onClick={() => setShowAll(!showAll)}
-        className="text-[10px] uppercase tracking-wider text-rmpg-400 hover:text-[#d4a017] transition-colors"
+        className="text-[10px] uppercase tracking-wider text-rmpg-400 hover:text-accent-silver-300 transition-colors"
       >
         {showAll
           ? `Show only suggested for ${attemptType}`
@@ -1193,7 +1318,7 @@ function PsoCodePicker({
               htmlFor={`ff-psocode-${c.code}`}
               className={`flex items-start gap-2 p-1.5 rounded-[2px] cursor-pointer transition-colors ${
                 dispositionCode === c.code
-                  ? 'bg-[#d4a017]/10 border-l-2 border-[#d4a017]'
+                  ? 'bg-accent-silver-400/10 border-l-2 border-accent-silver-400'
                   : 'hover:bg-surface-raised border-l-2 border-transparent'
               }`}
             >
@@ -1204,11 +1329,11 @@ function PsoCodePicker({
                 value={c.code}
                 checked={dispositionCode === c.code}
                 onChange={() => setDispositionCode(c.code)}
-                className="mt-0.5 accent-[#d4a017]"
+                className="mt-0.5 accent-[color:var(--accent-silver-400)]"
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[10px] font-mono font-bold text-[#d4a017]">{c.code}</span>
+                  <span className="text-[10px] font-mono font-bold text-rmpg-100">{c.code}</span>
                   <span className="text-xs font-semibold text-rmpg-100">{c.label}</span>
                 </div>
                 {c.hint && <div className="text-[10px] text-rmpg-400 italic">{c.hint}</div>}

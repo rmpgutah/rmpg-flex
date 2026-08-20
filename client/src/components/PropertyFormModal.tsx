@@ -8,8 +8,12 @@ import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
+import { buildAssessorFormPatch, type AssessorParcelDetail } from '../utils/assessorFormPatch';
 import { useAssessorLookup } from '../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from './AssessorSuggestionPanel';
+import { JurisdictionButton } from './JurisdictionButton';
+import { RecordPhotoGallery } from './RecordPhotoGallery';
+import { ParcelDetailDrawer } from './ParcelDetailDrawer';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
@@ -168,7 +172,7 @@ export default function PropertyFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<PropertyFormData>({
-    storageKey: 'rmpg_property_form',
+    storageKey: `rmpg_property_form_${editingProperty?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -184,7 +188,34 @@ export default function PropertyFormModal({
   useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
 
   const onApplyAssessor = useCallback(async (parcelNumber: string) => {
-    if (!recordId) return;
+    // UNSAVED record: there is no row for /assessor/apply to write to, so
+    // fill the FORM instead. Previously this was a bare `if (!recordId)
+    // return;` while the panel still rendered an enabled Apply button —
+    // clicking it did nothing at all, with no request and no error, which
+    // is indistinguishable from a broken backend.
+    if (!recordId) {
+      try {
+        const res = await apiFetch<{ ok: boolean; parcel: AssessorParcelDetail | null }>(
+          `/assessor/parcel/${encodeURIComponent(parcelNumber)}`,
+        );
+        if (!res?.parcel) return;
+        setForm((prev) => {
+          const { patch, skipped } = buildAssessorFormPatch(
+            res.parcel!, prev as unknown as Record<string, unknown>,
+          );
+          setSkippedCount(skipped.length);
+          if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+          if (skipped.length > 0) {
+            skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+          }
+          return { ...prev, ...(patch as Partial<typeof prev>) };
+        });
+        assessor.dismiss();
+      } catch (err) {
+        console.error('Assessor apply (unsaved record) failed', err);
+      }
+      return;
+    }
     try {
       const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
         '/assessor/apply',
@@ -206,6 +237,14 @@ export default function PropertyFormModal({
       console.error('Assessor apply failed', err);
     }
   }, [recordId, assessor, setForm]);
+
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = useCallback((address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', '), [form.city, form.state, form.zip]);
 
   useEffect(() => {
     if (isOpen) {
@@ -261,7 +300,11 @@ export default function PropertyFormModal({
           zone_id: (editingProperty as any).zone_id || '',
           beat_id: (editingProperty as any).beat_id || '',
         };
-        setForm(initial);
+        // parcel_number isn't a declared PropertyFormData field (server-only,
+        // applied via the never-clobber assessor patch) — seed it here too so
+        // ParcelDetailDrawer shows for an already-applied record on open, not
+        // just immediately after a fresh Apply in this session.
+        setForm({ ...initial, parcel_number: (editingProperty as any).parcel_number || '' } as any);
         snapshot();
       } else {
         setForm(EMPTY_FORM);
@@ -343,11 +386,21 @@ export default function PropertyFormModal({
                   longitude: (addr.longitude as any) ?? prev.longitude,
                 }));
                 // Trigger Assessor lookup on the picked street so the suggestion
-                // panel below the input populates immediately.
-                assessor.lookup(street);
+                // panel below the input populates immediately. Use the addr
+                // object's city/state/zip directly rather than `form` (which
+                // hasn't re-rendered with the setForm call above yet) so
+                // resolveCountyFromAddress has what it needs on the first try.
+                const cityStateZip = [addr.city, [addr.state, addr.zip].filter(Boolean).join(' ')]
+                  .filter(Boolean).join(', ');
+                assessor.lookup(cityStateZip ? `${street}, ${cityStateZip}` : street);
               }}
-              onResolveTyped={(v) => { assessor.lookup(v); }}
+              onResolveTyped={(v) => { assessor.lookup(fullAddress(v)); }}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={fullAddress(form.address)} recordType="property" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -363,7 +416,9 @@ export default function PropertyFormModal({
               onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
-              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+              <div className="text-xs text-rmpg-400 mt-1">
+                Applying fills these fields now; they save with the record.
+              </div>
             )}
             {skippedCount > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
@@ -743,7 +798,7 @@ export default function PropertyFormModal({
             onChange={handleChange}
             maxLength={5000}
           />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.post_orders.length}/5000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.post_orders.length}/5000</div>
         </FormField>
       </FormSection>
 
@@ -760,7 +815,7 @@ export default function PropertyFormModal({
               onChange={handleChange}
               maxLength={3000}
             />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.hazard_notes.length}/3000</div>
           </FormField>
           <FormField label="Utility Shutoffs">
             <RichTextArea
@@ -823,6 +878,19 @@ export default function PropertyFormModal({
           </label>
         </div>
       </FormSection>
+
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="property" recordId={recordId} />
+          {(form as any)?.parcel_number && (
+            <div className="mt-2">
+              {/* form (not editingProperty) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={(form as any).parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
     </FormModal>
   );
 }

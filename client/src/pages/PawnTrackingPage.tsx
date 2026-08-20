@@ -9,6 +9,7 @@ import IconButton from '../components/IconButton';
 import ViewOnMapLink from '../components/ViewOnMapLink';
 import { apiFetch } from '../hooks/useApi';
 import { asArray } from '../utils/asArray';
+import { formatEnumValue } from '../utils/formatters';
 
 // ─── Types ───────────────────────────────────────────────────
 interface PawnTransaction {
@@ -231,7 +232,7 @@ export default function PawnTrackingPage() {
         </button>
         <button
           onClick={openNewForm}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold bg-[#d4a017]/20 text-[#d4a017] border border-[#d4a017]/40 hover:bg-[#d4a017]/30 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold bg-accent-silver-500/20 text-accent-silver-500 border border-accent-silver-600/40 hover:bg-accent-silver-500/30 transition-colors"
           style={{ borderRadius: 2 }}
         >
           <Plus className="w-3.5 h-3.5" />
@@ -259,14 +260,14 @@ export default function PawnTrackingPage() {
             </IconButton>
           </div>
           {stolenMatches.length === 0 ? (
-            <p className="text-[11px] text-[#888888]">No matches found against evidence records.</p>
+            <p className="text-[11px] text-rmpg-400">No matches found against evidence records.</p>
           ) : (
             <div className="space-y-1">
               {stolenMatches.map(m => (
                 <div key={m.id} className="flex items-center gap-3 text-[11px] text-red-300 bg-red-900/30 px-2 py-1 border border-red-800/40" style={{ borderRadius: 2 }}>
                   <span className="font-mono">{m.serial_number}</span>
                   <span>{m.item_description}</span>
-                  <span className="text-[#888888]">{m.shop_name}</span>
+                  <span className="text-rmpg-400">{m.shop_name}</span>
                 </div>
               ))}
             </div>
@@ -277,20 +278,20 @@ export default function PawnTrackingPage() {
       {/* ── Search & Filter ── */}
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#888888]" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-accent-silver-500" />
           <input
             type="text"
             placeholder="Search serial #, seller name, shop name…"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] placeholder-[#555555] focus:border-[#d4a017]/50 focus:outline-none"
+            className="w-full pl-8 pr-3 py-1.5 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 placeholder-rmpg-500 focus:border-accent-silver-600/50 focus:outline-none"
             style={{ borderRadius: 2 }}
           />
         </div>
         <select
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
-          className="px-2.5 py-1.5 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] focus:border-[#d4a017]/50 focus:outline-none"
+          className="px-2.5 py-1.5 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 focus:border-accent-silver-600/50 focus:outline-none"
           style={{ borderRadius: 2 }}
         >
           {STATUS_OPTIONS.map(o => (
@@ -298,7 +299,7 @@ export default function PawnTrackingPage() {
           ))}
         </select>
         <IconButton onClick={fetchTransactions} aria-label="Refresh transactions">
-          <RotateCcw className="w-4 h-4 text-[#888888]" />
+          <RotateCcw className="w-4 h-4 text-accent-silver-500" />
         </IconButton>
       </div>
 
@@ -310,44 +311,44 @@ export default function PawnTrackingPage() {
       )}
 
       {/* ── Table ── */}
-      <div className="border border-[#222222] overflow-x-auto" style={{ borderRadius: 2 }}>
+      <div className="border border-border-default overflow-x-auto" style={{ borderRadius: 2 }}>
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="bg-[#141414] border-b border-[#222222]">
+            <tr className="bg-surface-raised border-b border-border-subtle">
               {['Date', 'Shop', 'Item', 'Serial #', 'Seller', 'Amount', 'Hold Expires', 'Status', 'Actions'].map(h => (
-                <th key={h} className="text-left text-[9px] font-semibold uppercase tracking-wider text-[#888888] px-3 py-[3px]">{h}</th>
+                <th key={h} className="text-left text-[9px] font-semibold uppercase tracking-wider text-rmpg-400 px-3 py-[3px]">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-8 text-[#555555]"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-rmpg-500"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-8 text-[#555555]">No pawn transactions found.</td></tr>
+              <tr><td colSpan={9} className="text-center py-8 text-rmpg-500">No pawn transactions found.</td></tr>
             ) : (
               transactions.map(txn => (
                 <tr
                   key={txn.id}
                   onClick={() => openEditForm(txn)}
-                  className="border-b border-[#1a1a1a] hover:bg-[#141414] cursor-pointer transition-colors"
+                  className="border-b border-border-subtle hover:bg-surface-hover cursor-pointer transition-colors"
                 >
-                  <td className="px-3 py-[2px] text-[#cccccc] font-mono whitespace-nowrap">{txn.transaction_date}</td>
-                  <td className="px-3 py-[2px] text-[#cccccc]">{txn.shop_name}</td>
-                  <td className="px-3 py-[2px] text-[#cccccc] max-w-[200px] truncate">{txn.item_description}</td>
-                  <td className="px-3 py-[2px] text-[#cccccc] font-mono">{txn.serial_number || '—'}</td>
-                  <td className="px-3 py-[2px] text-[#cccccc] whitespace-nowrap">
+                  <td className="px-3 py-[2px] text-rmpg-200 font-mono whitespace-nowrap">{txn.transaction_date}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200">{txn.shop_name}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200 max-w-[200px] truncate">{txn.item_description}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200 font-mono">{txn.serial_number || '—'}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200 whitespace-nowrap">
                     {txn.seller_last_name ? `${txn.seller_last_name}, ${txn.seller_first_name || ''}`.trim() : '—'}
                   </td>
-                  <td className="px-3 py-[2px] text-[#cccccc] font-mono text-right">
+                  <td className="px-3 py-[2px] text-rmpg-200 font-mono text-right">
                     {txn.amount != null ? `$${Number(txn.amount).toFixed(2)}` : '—'}
                   </td>
-                  <td className="px-3 py-[2px] text-[#cccccc] font-mono whitespace-nowrap">{txn.hold_expires || '—'}</td>
+                  <td className="px-3 py-[2px] text-rmpg-200 font-mono whitespace-nowrap">{txn.hold_expires || '—'}</td>
                   <td className="px-3 py-[2px]">
                     <span
-                      className={`inline-block px-1.5 py-[1px] text-[10px] font-semibold uppercase border ${STATUS_BADGES[txn.status] || 'text-[#888888] border-[#333333]'}`}
+                      className={`inline-block px-1.5 py-[1px] text-[10px] font-semibold uppercase border ${STATUS_BADGES[txn.status] || 'text-rmpg-400 border-rmpg-600'}`}
                       style={{ borderRadius: 2 }}
                     >
-                      {txn.status}
+                      {formatEnumValue(txn.status)}
                     </span>
                   </td>
                   <td className="px-3 py-[2px]" onClick={e => e.stopPropagation()}>
@@ -373,22 +374,22 @@ export default function PawnTrackingPage() {
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
           <div
-            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0a0a0a] border border-[#222222] shadow-xl"
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-surface-base border border-border-default shadow-xl"
             style={{ borderRadius: 2 }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[#222222] bg-[#141414]">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[#d4a017]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-surface-raised">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[color:var(--panel-header-color)]">
                 {editingId ? 'Edit Transaction' : 'New Transaction'}
               </span>
               <IconButton onClick={() => setFormOpen(false)} aria-label="Close form">
-                <X className="w-4 h-4 text-[#888888]" />
+                <X className="w-4 h-4 text-accent-silver-500" />
               </IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
               {/* Shop Info */}
               <fieldset className="space-y-2">
-                <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Shop Information</legend>
+                <legend className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 mb-1">Shop Information</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <FormField label="Shop Name *" value={formData.shop_name} onChange={v => setField('shop_name', v)} required />
                   <div>
@@ -400,15 +401,15 @@ export default function PawnTrackingPage() {
 
               {/* Transaction Details */}
               <fieldset className="space-y-2">
-                <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Transaction Details</legend>
+                <legend className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 mb-1">Transaction Details</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <FormField label="Date *" type="date" value={formData.transaction_date} onChange={v => setField('transaction_date', v)} required />
                   <div>
-                    <label className="block text-[9px] font-semibold uppercase text-[#888888] mb-0.5">Type</label>
+                    <label className="block text-[9px] font-semibold uppercase text-rmpg-400 mb-0.5">Type</label>
                     <select
                       value={formData.transaction_type}
                       onChange={e => setField('transaction_type', e.target.value)}
-                      className="w-full px-2 py-1 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] focus:border-[#d4a017]/50 focus:outline-none"
+                      className="w-full px-2 py-1 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 focus:border-accent-silver-600/50 focus:outline-none"
                       style={{ borderRadius: 2 }}
                     >
                       <option value="pawn">Pawn</option>
@@ -421,11 +422,11 @@ export default function PawnTrackingPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <FormField label="Hold Period (days)" type="number" value={String(formData.hold_period_days)} onChange={v => setField('hold_period_days', Number(v))} />
                   <div>
-                    <label className="block text-[9px] font-semibold uppercase text-[#888888] mb-0.5">Status</label>
+                    <label className="block text-[9px] font-semibold uppercase text-rmpg-400 mb-0.5">Status</label>
                     <select
                       value={formData.status}
                       onChange={e => setField('status', e.target.value)}
-                      className="w-full px-2 py-1 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] focus:border-[#d4a017]/50 focus:outline-none"
+                      className="w-full px-2 py-1 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 focus:border-accent-silver-600/50 focus:outline-none"
                       style={{ borderRadius: 2 }}
                     >
                       <option value="held">Held</option>
@@ -440,7 +441,7 @@ export default function PawnTrackingPage() {
 
               {/* Item Details */}
               <fieldset className="space-y-2">
-                <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Item Details</legend>
+                <legend className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 mb-1">Item Details</legend>
                 <FormField label="Description *" value={formData.item_description} onChange={v => setField('item_description', v)} required />
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <FormField label="Category" value={formData.item_category} onChange={v => setField('item_category', v)} />
@@ -453,7 +454,7 @@ export default function PawnTrackingPage() {
 
               {/* Seller Details */}
               <fieldset className="space-y-2">
-                <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Seller Information</legend>
+                <legend className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 mb-1">Seller Information</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <FormField label="First Name" value={formData.seller_first_name} onChange={v => setField('seller_first_name', v)} />
                   <FormField label="Last Name" value={formData.seller_last_name} onChange={v => setField('seller_last_name', v)} />
@@ -474,26 +475,26 @@ export default function PawnTrackingPage() {
 
               {/* Notes */}
               <fieldset className="space-y-2">
-                <legend className="text-[9px] font-bold uppercase tracking-wider text-[#888888] mb-1">Additional</legend>
+                <legend className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 mb-1">Additional</legend>
                 <FormField label="Entered By" value={formData.entered_by} onChange={v => setField('entered_by', v)} />
                 <div>
-                  <label className="block text-[9px] font-semibold uppercase text-[#888888] mb-0.5">Notes</label>
+                  <label className="block text-[9px] font-semibold uppercase text-rmpg-400 mb-0.5">Notes</label>
                   <textarea
                     value={formData.notes}
                     onChange={e => setField('notes', e.target.value)}
                     rows={3}
-                    className="w-full px-2 py-1 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] placeholder-[#555555] focus:border-[#d4a017]/50 focus:outline-none resize-none"
+                    className="w-full px-2 py-1 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 placeholder-rmpg-500 focus:border-accent-silver-600/50 focus:outline-none resize-none"
                     style={{ borderRadius: 2 }}
                   />
                 </div>
               </fieldset>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-[#222222]">
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
                 <button
                   type="button"
                   onClick={() => setFormOpen(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-[#888888] bg-[#141414] border border-[#222222] hover:bg-[#1a1a1a] transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-400 bg-surface-raised border border-border-default hover:bg-surface-hover transition-colors"
                   style={{ borderRadius: 2 }}
                 >
                   Cancel
@@ -501,7 +502,7 @@ export default function PawnTrackingPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-[#d4a017] bg-[#d4a017]/20 border border-[#d4a017]/40 hover:bg-[#d4a017]/30 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-accent-silver-500 bg-accent-silver-500/20 border border-accent-silver-600/40 hover:bg-accent-silver-500/30 transition-colors disabled:opacity-50"
                   style={{ borderRadius: 2 }}
                 >
                   {submitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
@@ -528,13 +529,13 @@ function FormField({
 }) {
   return (
     <div>
-      <label className="block text-[9px] font-semibold uppercase text-[#888888] mb-0.5">{label}</label>
+      <label className="block text-[9px] font-semibold uppercase text-rmpg-400 mb-0.5">{label}</label>
       <input
         type={type}
         value={value}
         onChange={e => onChange(e.target.value)}
         required={required}
-        className="w-full px-2 py-1 text-[11px] bg-[#141414] border border-[#222222] text-[#cccccc] placeholder-[#555555] focus:border-[#d4a017]/50 focus:outline-none"
+        className="w-full px-2 py-1 text-[11px] bg-surface-raised border border-border-default text-rmpg-200 placeholder-rmpg-500 focus:border-accent-silver-600/50 focus:outline-none"
         style={{ borderRadius: 2 }}
       />
     </div>

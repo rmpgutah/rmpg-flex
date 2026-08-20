@@ -1,0 +1,37 @@
+# kiosk-linux/configs/kernel-bluetooth.fragment
+# Bluetooth for the FZ-55. Confirmed on the Mk3 datasheet: "Bluetooth v5.3
+# (Class 1)", and independently by Panasonic's own factory driver inventory,
+# which ships "Bluetooth software for Intel AX211/AX201/9560/8265/8260/7265"
+# as a package SEPARATE from the WLAN driver. Mk1/Mk2 also ship BT — it rides
+# on the same Intel wireless combo card as Wi-Fi.
+#
+# CORRECTION (2026-07-25, second audit pass): this comment previously claimed
+# "zero additional firmware cost — kernel-wifi.fragment's existing iwlwifi
+# firmware selections already cover the BT side of these combo chips." That is
+# FALSE, and it shipped an image with a Bluetooth radio that cannot come up.
+#
+# Sharing an antenna and a package is not sharing firmware. The Bluetooth side
+# of every one of these Intel combo chips loads its own blob pair from
+# intel/ibt-<hw>-<fw>.sfi + .ddc — 85 such files in the pinned
+# linux-firmware-20240115 tarball, none of which the iwlwifi options install.
+# Verified by listing the built rootfs, not by reading the config: the shipped
+# image had NO /lib/firmware/intel directory at all. BT_INTEL then enumerates
+# the radio, fails to push firmware, and leaves it in bootloader mode — the
+# adapter is simply never usable, and nothing in the boot log says "firmware"
+# unless someone thinks to grep dmesg for "Direct firmware load ... failed".
+# The fix is BR2_PACKAGE_LINUX_FIRMWARE_IBT in configs/desktop.fragment.
+#
+# Genuinely required rather than a nice-to-have: with no kernel BT stack at
+# all (which is what existed before this fragment), Bluetooth peripherals —
+# barcode-scanner accessories, wireless headsets for radio traffic — simply
+# cannot pair, with no error message a user would ever see; the radio just
+# never appears.
+#
+# Symbols verified against the real pinned kernel 6.6.63 source.
+CONFIG_BT=y
+CONFIG_BT_HCIBTUSB=y
+# Intel-specific firmware/vendor-command handling. Without this the generic
+# HCI USB driver can still enumerate an Intel BT radio but cannot load its
+# firmware, so it stays stuck in an inert bootloader-only state.
+CONFIG_BT_INTEL=y
+CONFIG_BT_LE=y

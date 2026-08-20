@@ -2,13 +2,14 @@ import { User, Car, Flag as FlagIcon } from 'lucide-react';
 import { authedImageUrl } from '../../../hooks/useApi';
 import type { Bolo } from '../useBolos';
 import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
+import { safeDateStr } from '../../../utils/dateUtils';
 
 // Priority tags. Kept as inline hex for the warning red/amber bands — these
 // are alert semantics (officer-safety), not theme decoration, and live as
 // the same hex across every alert surface in the system.
 const PRIORITY_TAG: Record<string, string> = {
-  P1: 'bg-[#3a0d0a] text-red-400 border-red-700/50',
-  P2: 'bg-[#3a2a08] text-amber-300 border-amber-700/50',
+  P1: 'bg-red-950/80 text-red-400 border-red-700/50',
+  P2: 'bg-amber-950/80 text-amber-300 border-amber-700/50',
   P3: 'bg-surface-raised text-rmpg-400 border-border-subtle',
 };
 
@@ -51,7 +52,7 @@ export default function BoloCard({ bolo, canDelete, onResolve, onDelete }: {
           {bolo.description && <div className="text-[10px] text-rmpg-400 mt-1 line-clamp-2">{bolo.description}</div>}
           <div className="flex items-center gap-2 mt-2 text-[9px] text-rmpg-500 font-mono">
             <span>{bolo.issued_by_name || 'Unknown'}</span>
-            {bolo.expires_at && <span>· expires {bolo.expires_at.slice(0, 10)}</span>}
+            {bolo.expires_at && <span>· expires {safeDateStr(bolo.expires_at, "")}</span>}
           </div>
         </div>
       </div>

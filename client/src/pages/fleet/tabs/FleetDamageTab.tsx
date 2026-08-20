@@ -6,7 +6,7 @@ import { useToast } from '../../../components/ToastProvider';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface DamageReport {
@@ -41,6 +41,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const [reports, setReports] = useState<DamageReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const {
     form,
     setForm,
@@ -49,7 +50,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     clearDraft,
     snapshot,
   } = useFormDraft({
-    storageKey: 'rmpg_fleet_damage_form',
+    storageKey: `rmpg_fleet_damage_form_${editingId ?? 'new'}`,
     defaultValue: {
       damage_date: localToday(), damage_type: '', location_on_vehicle: '',
       severity: 'minor', description: '', repair_estimate: '',
@@ -57,12 +58,11 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     isActive: showForm,
   });
   const [submitting, setSubmitting] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(data);
+      const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(Array.isArray(data) ? data : []);
     } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load damage reports', 'error'); } finally { setLoading(false); }
   };
 
@@ -190,13 +190,13 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{r.severity}</span>
-                <span className="text-[10px] text-rmpg-100 font-bold">{r.damage_type}</span>
+                <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{formatEnumValue(r.severity)}</span>
+                <span className="text-[10px] text-rmpg-100 font-bold">{formatEnumValue(r.damage_type)}</span>
                 {(r.location_on_vehicle || (r as any).location) && <span className="text-[10px] text-rmpg-400">({r.location_on_vehicle || (r as any).location})</span>}
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>
               <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 <span>By: {r.reported_by_name}</span>
                 {(r.repair_cost || r.repair_estimate) && <span>Est: ${r.repair_cost || r.repair_estimate}</span>}
                 {r.insurance_claim_number && <span>Claim: {r.insurance_claim_number}</span>}

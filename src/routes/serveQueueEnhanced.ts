@@ -15,14 +15,18 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
+import { getServeConfig } from '../utils/serveConfig';
 import { toDenverWallClock } from '../utils/denverTime';
 import {
-  optimizeRoute,
-  haversineDistance,
+  optimizeRouteForServer as optimizeRoute,
+  haversineDistanceMiles as haversineDistance,
   estimateDriveTime,
 } from '../utils/serveRouteOptimizer';
+import { containsAnyClause } from '../utils/searchText';
+import { log as logger, logErrorToDb } from '../utils/logger';
 import {
   crossReferenceDefendant,
   validateCharges,
@@ -35,6 +39,16 @@ import {
 const sqe = new Hono<Env>();
 
 // ── Helpers ─────────────────────────────────────────────────
+
+// Only 2 of ~17 routes in this file checked role before this fix — the rest
+// checked only "is logged in," letting any authenticated user reassign any
+// serve job, bulk-fail hundreds of active jobs, or fabricate a completed
+// proof-of-service for a job they were never assigned. Mirrors serve.ts's
+// own READ/WRITE convention (client_viewer/contract_manager excluded from
+// both; officer excluded from bulk/admin-tier actions).
+const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
+const READ = [...WRITE, 'dispatcher'];
+const BULK = ['admin', 'manager', 'supervisor'];
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
   const user = c.get('user');
@@ -51,6 +65,8 @@ const SERVICE_METHODS = new Set(['personal', 'substitute', 'posting']);
 sqe.get('/enhanced', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedEnhanced = requireRole(c, ...READ);
+  if (deniedEnhanced) return c.json({ error: deniedEnhanced }, 403);
 
   const db = getDb(c.env);
   const status = c.req.query('status');
@@ -61,8 +77,8 @@ sqe.get('/enhanced', async (c) => {
   const dateTo = c.req.query('dateTo');
   const documentType = c.req.query('documentType');
   const search = c.req.query('search');
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
-  const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') || '50', 10)), 500);
+  const page = clampIntParam(c.req.query('page'), 1, 1, 1000000);
+  const limit = clampIntParam(c.req.query('limit'), 50, 1, 500);
   const offset = (page - 1) * limit;
 
   const where: string[] = [];
@@ -76,9 +92,10 @@ sqe.get('/enhanced', async (c) => {
   if (dateTo) { where.push('q.created_at <= ?'); args.push(dateTo + ' 23:59:59'); }
   if (documentType) { where.push('q.document_type = ?'); args.push(documentType); }
   if (search) {
-    where.push('(q.defendant_name LIKE ? OR q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    const s = `%${search}%`;
-    args.push(s, s, s, s);
+    // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+    const _m = containsAnyClause(['q.defendant_name', 'q.recipient_name', 'q.case_number', 'q.recipient_address']);
+    where.push(_m.sql);
+    args.push(..._m.binds(search));
   }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -119,6 +136,8 @@ sqe.get('/enhanced', async (c) => {
 sqe.post('/batch-reassign', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedBatchReassign = requireRole(c, ...BULK);
+  if (deniedBatchReassign) return c.json({ error: deniedBatchReassign }, 403);
 
   const body: { attempts?: Array<{ attemptId: number; newServerId: number }> } =
     await c.req.json().catch(() => ({}));
@@ -170,7 +189,7 @@ sqe.post('/batch-reassign', async (c) => {
     const newStatus = queue.status === 'pending' ? 'assigned' : queue.status;
     await execute(
       db,
-      "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET officer_id = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
       newServerId, newStatus, queue.id,
     );
 
@@ -194,6 +213,8 @@ sqe.post('/batch-reassign', async (c) => {
 sqe.post('/priority-score', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedPriorityScore = requireRole(c, ...READ);
+  if (deniedPriorityScore) return c.json({ error: deniedPriorityScore }, 403);
 
   const body: { queueIds?: number[] } = await c.req.json().catch(() => ({}));
   const db = getDb(c.env);
@@ -226,6 +247,8 @@ sqe.post('/priority-score', async (c) => {
 sqe.get('/optimize-route/:serverId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedOptimizeRouteServer = requireRole(c, ...READ);
+  if (deniedOptimizeRouteServer) return c.json({ error: deniedOptimizeRouteServer }, 403);
 
   const serverId = parseInt(c.req.param('serverId'), 10);
   if (isNaN(serverId)) return c.json({ error: 'Invalid serverId' }, 400);
@@ -270,6 +293,8 @@ sqe.get('/optimize-route/:serverId', async (c) => {
 sqe.post('/detect-duplicates', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedDetectDuplicates = requireRole(c, ...READ);
+  if (deniedDetectDuplicates) return c.json({ error: deniedDetectDuplicates }, 403);
 
   const body: {
     caseNumber?: string;
@@ -340,6 +365,8 @@ sqe.post('/detect-duplicates', async (c) => {
 sqe.post('/auto-close-stale', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedAutoCloseStale = requireRole(c, ...BULK);
+  if (deniedAutoCloseStale) return c.json({ error: deniedAutoCloseStale }, 403);
 
   const body: { days?: number } = await c.req.json().catch(() => ({}));
   const staleDays = Math.max(1, body.days || 30);
@@ -356,8 +383,8 @@ sqe.post('/auto-close-stale', async (c) => {
        ) la ON la.serve_queue_id = q.id
        WHERE q.status NOT IN ('served', 'cancelled', 'failed')
          AND (
-           (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','localtime','-' || ? || ' days'))
-           OR (la.last_activity IS NULL AND q.created_at < datetime('now','localtime','-' || ? || ' days'))
+           (la.last_activity IS NOT NULL AND la.last_activity < datetime('now','-' || ? || ' days'))
+           OR (la.last_activity IS NULL AND q.created_at < datetime('now','-' || ? || ' days'))
          )
        LIMIT 500`,
     staleDays, staleDays,
@@ -365,15 +392,21 @@ sqe.post('/auto-close-stale', async (c) => {
 
   let closedCount = 0;
   if (staleJobs.length > 0) {
-    const placeholders = staleJobs.map(() => '?').join(',');
-    await execute(
+    // The SELECT above is `LIMIT 500`, so this IN-list is not merely *able* to
+    // exceed D1's 100-bound-parameter cap — it is designed to fetch five times
+    // it. Any sweep finding more than 100 stale jobs threw at bind time, and
+    // because this runs from cron the throw surfaced nowhere: no rows closed,
+    // no error_log entry, and the next sweep found the same backlog.
+    // Report rows actually changed, not rows attempted. Chunked writes are not
+    // atomic, so a partial sweep is possible; `staleJobs.length` would report a
+    // clean full close either way and hide it.
+    closedCount = await executeInChunks(
       db,
-      `UPDATE serve_queue
-       SET status = 'failed', updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime')
+      staleJobs.map((j) => j.id),
+      (placeholders: string) => `UPDATE serve_queue
+       SET status = 'failed', updated_at = datetime('now'), closed_at = datetime('now')
        WHERE id IN (${placeholders})`,
-      ...staleJobs.map((j) => j.id),
     );
-    closedCount = staleJobs.length;
 
     await execute(
       db,
@@ -392,6 +425,8 @@ sqe.post('/auto-close-stale', async (c) => {
 sqe.get('/attempt-history/:queueId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedAttemptHistory = requireRole(c, ...READ);
+  if (deniedAttemptHistory) return c.json({ error: deniedAttemptHistory }, 403);
 
   const queueId = parseInt(c.req.param('queueId'), 10);
   if (isNaN(queueId)) return c.json({ error: 'Invalid queueId' }, 400);
@@ -508,6 +543,8 @@ sqe.get('/attempt-history/:queueId', async (c) => {
 sqe.post('/complete-with-proof', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedCompleteWithProof = requireRole(c, ...WRITE);
+  if (deniedCompleteWithProof) return c.json({ error: deniedCompleteWithProof }, 403);
 
   const body: {
     attemptId?: number;
@@ -542,12 +579,18 @@ sqe.post('/complete-with-proof', async (c) => {
   );
   if (!attempt) return c.json({ error: 'Attempt not found' }, 404);
 
-  const queue = await queryFirst<{ id: number; status: string; attempt_count: number; max_attempts: number }>(
+  const queue = await queryFirst<{ id: number; status: string; attempt_count: number; max_attempts: number; assigned_officer_id: number | null }>(
     db,
-    'SELECT id, status, attempt_count, max_attempts FROM serve_queue WHERE id = ?',
+    'SELECT id, status, attempt_count, max_attempts, assigned_officer_id FROM serve_queue WHERE id = ?',
     attempt.serve_queue_id,
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
+  // Proof-of-service is a legal attestation — only the officer actually
+  // assigned to this job (or a supervisor-tier override) may file it, or any
+  // authenticated WRITE-role user could fabricate service on someone else's job.
+  if (queue.assigned_officer_id != null && queue.assigned_officer_id !== userId && requireRole(c, ...BULK)) {
+    return c.json({ error: 'Only the assigned officer or a supervisor may complete this job' }, 403);
+  }
   if (['served', 'cancelled', 'failed'].includes(queue.status)) {
     return c.json({ error: `Queue already in terminal status: ${queue.status}` }, 400);
   }
@@ -569,7 +612,7 @@ sqe.post('/complete-with-proof', async (c) => {
   await execute(
     db,
     `UPDATE serve_queue
-     SET status = ?, updated_at = datetime('now','localtime'), closed_at = datetime('now','localtime')
+     SET status = ?, updated_at = datetime('now'), closed_at = datetime('now')
      WHERE id = ?`,
     newStatus, attempt.serve_queue_id,
   );
@@ -608,6 +651,8 @@ sqe.post('/complete-with-proof', async (c) => {
 sqe.get('/eta/:attemptId', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedEta = requireRole(c, ...READ);
+  if (deniedEta) return c.json({ error: deniedEta }, 403);
 
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   if (isNaN(attemptId)) return c.json({ error: 'Invalid attemptId' }, 400);
@@ -641,10 +686,13 @@ sqe.get('/eta/:attemptId', async (c) => {
 
   const serverLocation = await queryFirst<{ lat: number; lng: number }>(
     db,
+    // clearpathgps_reports does not exist. The live officer-keyed location
+    // source is gps_breadcrumbs (cpgps_locations is vehicle-keyed and has no
+    // user column), so the server's last known position comes from there.
     `SELECT latitude AS lat, longitude AS lng
-       FROM clearpathgps_reports
-       WHERE user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
+       FROM gps_breadcrumbs
+       WHERE officer_id = ?
+       ORDER BY recorded_at DESC LIMIT 1`,
     userId,
   );
 
@@ -684,6 +732,8 @@ sqe.get('/eta/:attemptId', async (c) => {
 sqe.post('/schedule-attempt', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedScheduleAttempt = requireRole(c, ...WRITE);
+  if (deniedScheduleAttempt) return c.json({ error: deniedScheduleAttempt }, 403);
 
   const body: {
     queueId?: number;
@@ -696,6 +746,7 @@ sqe.post('/schedule-attempt', async (c) => {
   if (!body.scheduledDate) return c.json({ error: 'scheduledDate required' }, 400);
 
   const db = getDb(c.env);
+  const serveConfig = await getServeConfig(db);
 
   const queue = await queryFirst<{
     id: number;
@@ -729,9 +780,19 @@ sqe.post('/schedule-attempt', async (c) => {
   const minute = scheduledDateTime.getMinutes();
   const timeDecimal = hour + minute / 60;
 
-  if (isBusinessServe && (timeDecimal < 9 || timeDecimal > 17)) {
+  const parseTimeDecimal = (t: string): number => {
+    const [h, m] = t.split(':').map(Number);
+    return h + (m || 0) / 60;
+  };
+  const bizStart = parseTimeDecimal(serveConfig.business_hours_start);
+  const bizEnd = parseTimeDecimal(serveConfig.business_hours_end);
+  const dayOfWeek = scheduledDateTime.getDay();
+  const isAllowedDay = serveConfig.business_hours_days.includes(dayOfWeek);
+  if (isBusinessServe && (!isAllowedDay || timeDecimal < bizStart || timeDecimal > bizEnd)) {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const allowedDayStr = serveConfig.business_hours_days.map(d => dayNames[d]).join('/');
     return c.json({
-      error: 'Business serves must be scheduled during business hours (09:00–17:00)',
+      error: `Business serves must be scheduled during business hours (${serveConfig.business_hours_start}–${serveConfig.business_hours_end}, ${allowedDayStr})`,
       warning: 'Time window outside business hours for this document type',
     }, 400);
   }
@@ -772,6 +833,8 @@ sqe.post('/schedule-attempt', async (c) => {
 sqe.get('/workload-summary', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedWorkloadSummary = requireRole(c, ...READ);
+  if (deniedWorkloadSummary) return c.json({ error: deniedWorkloadSummary }, 403);
 
   const db = getDb(c.env);
   const today = toDenverWallClock(new Date()).slice(0, 10);
@@ -790,7 +853,7 @@ sqe.get('/workload-summary', async (c) => {
        u.full_name AS officer_name,
        SUM(CASE WHEN q.status IN ('assigned', 'in_progress', 'attempted') THEN 1 ELSE 0 END) AS active_assigned,
        SUM(CASE WHEN q.deadline IS NOT NULL
-                  AND q.deadline < datetime('now','localtime')
+                  AND q.deadline < datetime('now')
                   AND q.status NOT IN ('served', 'cancelled', 'failed')
              THEN 1 ELSE 0 END) AS overdue,
        COALESCE(today_completed.cnt, 0) AS completed_today,
@@ -843,6 +906,8 @@ sqe.get('/workload-summary', async (c) => {
 sqe.post('/intake-scan', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'Unauthorized' }, 401);
+  const deniedIntakeScan = requireRole(c, ...WRITE);
+  if (deniedIntakeScan) return c.json({ error: deniedIntakeScan }, 403);
 
   const body: {
     text?: string;
@@ -926,10 +991,13 @@ sqe.get('/cross-reference/dispatch', async (c) => {
     incident_type: string;
   }>(
     db,
+    // calls_for_service has no `jurisdiction` (and is at D1's 100-column cap,
+    // so it can't gain one) — the overflow table's area_name carries it.
     `SELECT c.id, c.call_number, c.priority, c.status,
-            c.location_address, c.jurisdiction, c.created_at,
+            c.location_address, e.area_name AS jurisdiction, c.created_at,
             c.incident_type
        FROM calls_for_service c
+       LEFT JOIN calls_for_service_ext e ON e.id = c.id
       WHERE c.incident_type = 'pso_client_request'
         AND c.status NOT IN ('cancelled', 'archived')
         AND NOT EXISTS (
@@ -945,43 +1013,52 @@ sqe.get('/cross-reference/dispatch', async (c) => {
 // Accepts user's current GPS coordinates as the route origin so the
 // optimized order starts from wherever the officer actually is.
 sqe.post('/optimize-route', async (c) => {
+  const deniedOptimizeRoute = requireRole(c, ...READ);
+  if (deniedOptimizeRoute) return c.json({ error: deniedOptimizeRoute }, 403);
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
-    const body = await c.req.json<{ attempt_ids: number[]; user_lat?: number; user_lng?: number }>();
-    if (!Array.isArray(body.attempt_ids) || !body.attempt_ids.length) {
-      return c.json({ error: 'attempt_ids array required' }, 400);
-    }
-    const { optimizeRoute, optimizeRouteFromUserLocation } = await import('../utils/serveRouteOptimizer');
-    let result;
-    if (body.user_lat != null && body.user_lng != null && isFinite(body.user_lat) && isFinite(body.user_lng)) {
-      result = await optimizeRouteFromUserLocation(db, body.attempt_ids, body.user_lat, body.user_lng);
-    } else {
-      result = await optimizeRoute(db, userId ?? 0, body.attempt_ids);
-    }
+    const { optimizeRouteFullPipeline } = await import('../utils/serveRouteOptimizer');
+    type RouteStop = import('../utils/serveRouteOptimizer').RouteStop;
+    const body = await c.req.json<{ stops: RouteStop[]; departAt?: string }>();
+    const departAt = body.departAt ?? new Date().toISOString();
+    const mapboxToken = c.env.MAPBOX_SECRET_TOKEN ?? '';
+    const result = await optimizeRouteFullPipeline(body.stops, departAt, db, mapboxToken);
     return c.json(result);
   } catch (err) {
-    console.error('[serve-queue] optimize-route error', err);
+    logger.error('[serve-queue] optimize-route error', {}, err as Error);
+    logErrorToDb(c.env.DB, {
+      severity: 'error',
+      category: 'route',
+      message: (err as Error)?.message ?? String(err),
+      details: { route: 'POST /serve-queue/optimize-route' },
+      traceId: c.get('traceId') ?? '',
+      source: 'serveQueueEnhanced',
+      statusCode: 500,
+    }, c.executionCtx);
     return c.json({ error: 'Route optimization failed' }, 500);
   }
 });
 
 // ── POST /route-progress — update route completion progress ──
 sqe.post('/route-progress', async (c) => {
+  const deniedRouteProgress = requireRole(c, ...WRITE);
+  if (deniedRouteProgress) return c.json({ error: deniedRouteProgress }, 403);
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
+    if (!userId) return c.json({ error: 'Unauthorized' }, 401);
     const body = await c.req.json<{ route_id: number; visited_queue_ids: number[]; current_lat?: number; current_lng?: number }>();
     if (!body.route_id || !Array.isArray(body.visited_queue_ids)) {
       return c.json({ error: 'route_id and visited_queue_ids required' }, 400);
     }
     await execute(db,
-      `UPDATE serve_routes SET visited_queue_ids = ?, current_lat = ?, current_lng = ?, updated_at = datetime('now','localtime')
+      `UPDATE serve_routes SET visited_queue_ids = ?, current_lat = ?, current_lng = ?, updated_at = datetime('now')
        WHERE id = ? AND officer_id = ?`,
       JSON.stringify(body.visited_queue_ids), body.current_lat ?? null, body.current_lng ?? null,
       body.route_id, userId);
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Progress update failed' }, 500); }
+  } catch (err) {
+    logger.error('POST /route-progress failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Progress update failed' }, 500); }
 });
 
 // ── POST /batch-optimize — optimize routes for all servers at once ──
@@ -1001,6 +1078,8 @@ sqe.post('/batch-optimize', async (c) => {
 
 // ── GET /nearest-unassigned — find closest unassigned job to a location ──
 sqe.get('/nearest-unassigned', async (c) => {
+  const deniedNearestUnassigned = requireRole(c, ...READ);
+  if (deniedNearestUnassigned) return c.json({ error: deniedNearestUnassigned }, 403);
   try {
     const db = getDb(c.env);
     const lat = parseFloat(c.req.query('lat') || '');
@@ -1010,7 +1089,47 @@ sqe.get('/nearest-unassigned', async (c) => {
     const { getNearestUnassignedAttempt } = await import('../utils/serveRouteOptimizer');
     const result = await getNearestUnassignedAttempt(db, lat, lng, radius);
     return c.json(result);
-  } catch { return c.json({ error: 'Lookup failed' }, 500); }
+  } catch (err) {
+    logger.error('GET /nearest-unassigned failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err); return c.json({ error: 'Lookup failed' }, 500); }
+});
+
+// ── POST /route/traffic-check — mid-shift traffic degradation check ──
+sqe.post('/route/traffic-check', async (c) => {
+  try {
+    const body = await c.req.json<{
+      remainingStops: import('../utils/serveRouteOptimizer').RouteStop[];
+      currentOrder: number[];
+      currentPosition: { lat: number; lng: number };
+      originalEtas: string[];
+    }>();
+    const { remainingStops, currentOrder, currentPosition, originalEtas } = body;
+
+    if (!remainingStops?.length) {
+      return c.json<import('../utils/serveRouteOptimizer').TrafficCheckResult>({
+        degraded: false,
+        addedMinutes: 0,
+        newOrder: [],
+        newEtas: [],
+        degradedSegments: [],
+        matrixFallback: false,
+      });
+    }
+
+    const { checkTrafficDegradation } = await import('../utils/serveRouteOptimizer');
+    const db = getDb(c.env);
+    const result = await checkTrafficDegradation(
+      remainingStops,
+      currentOrder,
+      currentPosition,
+      originalEtas,
+      db,
+      c.env.MAPBOX_SECRET_TOKEN ?? '',
+    );
+    return c.json(result);
+  } catch (err) {
+    logger.error('POST /route/traffic-check failed', { src: 'src/routes/serveQueueEnhanced.ts' }, err);
+    return c.json({ error: 'Traffic check failed' }, 500);
+  }
 });
 
 export default sqe;

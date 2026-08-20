@@ -35,12 +35,21 @@ import {
 } from './store';
 import { reconcileHits, type CanonicalHit } from './reconcile';
 import { normalizeCharge } from './chargeNormalize';
-import { jitterDelayMs } from './resilience';
+import { jitterDelayMs, isCircuitOpen } from './resilience';
 import type { WarrantSourceAdapter, RawWarrantHit, PersonRow } from './types';
 
-// Cap each firing to the SAME roster slice the Utah poller uses, so the scraped
-// leg's CPU/time budget mirrors the proven Utah path.
-const MAX_PERSONS_PER_RUN = 50;
+// Upper bound on how many persons are loaded for the per-person leg to work
+// through. Historically pinned to the Utah poller's old default (50) "so the
+// scraped leg's CPU/time budget mirrors the proven Utah path" — but the Utah
+// poller's own cap is now separately configurable (warrant_scraper_config
+// .max_persons_per_run, default 150) and this leg has its OWN hard wall-clock
+// guard (PER_PERSON_LEG_BUDGET_MS below) that already truncates the loop
+// regardless of how many persons were loaded — so raising this cap doesn't
+// change per-tick runtime, only how many persons are ELIGIBLE to be reached
+// before the budget cuts the loop off. Bumped to match Utah's default so a
+// small persons roster (fewer than the budget would otherwise get through)
+// isn't artificially starved to 50 rows.
+const MAX_PERSONS_PER_RUN = 150;
 
 // Base inter-person delay for the scraped leg (mirrors the poller's 8s polite
 // pacing). Overridable via opts.delayMs for tests (pass () => 0).
@@ -72,6 +81,8 @@ export interface RunAllSourceScansOptions {
   delayMs?: (i: number) => number;
   /** Skip the live Utah fetch (tests). Defaults to false — Utah ALWAYS runs in prod. */
   skipUtah?: boolean;
+  /** Wall-clock budget (ms) for the whole per-person leg. Defaults to PER_PERSON_LEG_BUDGET_MS; override in tests. */
+  perPersonBudgetMs?: number;
 }
 
 // ── Local promotion helper (mirrors poller.syncLocalWarrantRecord) ──────────
@@ -107,13 +118,13 @@ async function promoteCanonicalWarrant(
       `UPDATE warrants SET
          status='active', archived_at=NULL,
          subject_person_id=?, subject_name=?, subject_first_name=?, subject_last_name=?,
-         charge_description=?, offense=?, offense_level=?, issuing_court=?, court=?, issued_date=?,
+         charge_description=?, offense_level=?, issuing_court=?, issued_date=?,
          scraped_source=?, scraped_raw=?, confirmed=1, auto_created=1,
          last_checked_at=datetime('now'), last_check_result='active',
          updated_at=datetime('now')
        WHERE id=?`,
       localPersonId, subjectName, hit.first_name ?? null, hit.last_name ?? null,
-      chargeText, chargeText, offenseLevel, courtName, courtName, issuedDate,
+      chargeText, offenseLevel, courtName, issuedDate,
       sourceKey, JSON.stringify(hit), existing.id,
     );
     return false;
@@ -124,18 +135,18 @@ async function promoteCanonicalWarrant(
     await execute(
       db,
       `INSERT INTO warrants (
-         warrant_number, type, warrant_type, status,
+         warrant_number, type, status,
          subject_person_id, subject_name, subject_first_name, subject_last_name,
-         charge_description, offense, offense_level, issuing_court, court, issued_date,
+         charge_description, offense_level, issuing_court, issued_date,
          source, external_warrant_id, external_source_key, scraped_source, scraped_raw,
          auto_created, confirmed, last_checked_at, last_check_result, created_at, updated_at
-       ) VALUES (?, 'arrest', 'arrest', 'active',
-         ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       ) VALUES (?, 'arrest', 'active',
+         ?, ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?, ?, ?,
          1, 1, datetime('now'), 'active', datetime('now'), datetime('now'))`,
       `${sourceKey}-${hit.warrant_id}`,
       localPersonId, subjectName, hit.first_name ?? null, hit.last_name ?? null,
-      chargeText, chargeText, offenseLevel, courtName, courtName, issuedDate,
+      chargeText, offenseLevel, courtName, issuedDate,
       sourceKey, hit.warrant_id, sourceKey, sourceKey, JSON.stringify(hit),
     );
     return true;
@@ -208,15 +219,60 @@ async function loadPersons(db: D1Database): Promise<PersonRow[]> {
  * that source not seen this run. Isolated per adapter: a throwing source does
  * not abort the remaining adapters. Returns one ScrapedSourceSummary per adapter.
  */
+// Wall-clock budget for the WHOLE full-list leg (all adapters combined), not
+// per-adapter. 2026-07-22 incident: even with every individual fetch() now
+// timeout-guarded (fetchTimeout.ts), a source that iterates many sequential
+// pages (e.g. ohio-drc-pval: up to 26 letters × 25 pages = 650 requests) can
+// still legitimately or pathologically consume the entire cron invocation's
+// execution budget, starving every OTHER enabled source queued after it in
+// this loop — the same "one bad source silently kills the whole run"
+// signature as the original incident, just moved one level up. A skipped
+// adapter gets no scraper_runs row this tick and is simply retried next
+// cron tick, same effect as a transient failure.
+const FULL_LIST_LEG_BUDGET_MS = 90_000;
+
+// Mirrors the warrant_scraper_config consecutive_errors fix above, for the
+// OTHER health-tracking table: config-driven full-list sources (socrata/
+// arcgis/pdf/xml/csv) live in national_warrant_sources, which had ZERO
+// write path from the cron at all — consecutive_errors (and therefore
+// ScrapersTab's circuit-breaker/health-grade display for these sources)
+// could only ever change via a human clicking "reset" or a manual trigger.
+// A no-op for code-resident adapters (FBI/Utah County/Ohio DRC) that have
+// no row in this table — the UPDATE simply matches zero rows for those.
+async function updateNationalSourceHealth(db: D1Database, sourceKey: string, hadErrors: boolean): Promise<void> {
+  try {
+    await execute(
+      db,
+      `UPDATE national_warrant_sources
+          SET consecutive_errors = CASE WHEN ? THEN consecutive_errors + 1 ELSE 0 END
+        WHERE source_key = ?`,
+      hadErrors ? 1 : 0, sourceKey,
+    );
+  } catch (err) {
+    console.warn(
+      `[warrantSources.runScan.fullList] ${sourceKey} national_warrant_sources health update failed:`,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
 export async function runFullListLeg(
   db: D1Database,
   adapters: WarrantSourceAdapter[],
-  opts: { now?: () => string } = {},
+  opts: { now?: () => string; budgetMs?: number } = {},
 ): Promise<ScrapedSourceSummary[]> {
   const now = opts.now ?? (() => new Date().toISOString());
+  const budgetMs = opts.budgetMs ?? FULL_LIST_LEG_BUDGET_MS;
+  const legStartedAt = Date.now();
   const out: ScrapedSourceSummary[] = [];
   for (const adapter of adapters) {
     if (adapter.mode !== 'full-list') continue;
+    if (Date.now() - legStartedAt > budgetMs) {
+      console.warn(
+        `[warrantSources.runScan.fullList] leg budget (${budgetMs}ms) exceeded; skipping remaining adapters this tick (starting at ${adapter.meta.key}), will retry next cron tick.`,
+      );
+      break;
+    }
 
     // ── Chunked path (cursor-driven; large rosters across many ticks) ────────
     if (typeof adapter.fetchChunk === 'function') {
@@ -268,6 +324,7 @@ export async function runFullListLeg(
       }
       // checked:0 — the chunked leg walks the REMOTE roster, not the local persons
       // list, so the per-person 'checked' metric doesn't apply here.
+      await updateNationalSourceHealth(db, key, errors > 0);
       out.push({ source_key: key, checked: 0, found, cleared, errors, degraded });
       continue;
     }
@@ -318,6 +375,7 @@ export async function runFullListLeg(
         err instanceof Error ? err.message : String(err),
       );
     }
+    await updateNationalSourceHealth(db, adapter.meta.key, errors > 0);
     out.push({ source_key: adapter.meta.key, checked: 0, found, cleared, errors, degraded });
   }
   return out;
@@ -385,7 +443,29 @@ export async function runAllSourceScans(
     (a) => a.mode === 'per-person' && typeof a.fetchForPerson === 'function',
   );
 
+  // Wall-clock budget for the WHOLE per-person leg (all adapters combined).
+  // 2026-07-22 incident, part 2: even after the full-list leg got timeout +
+  // budget protection (see runFullListLeg), the cron STILL produced zero
+  // scraper_runs/error_log rows — including for the separately-implemented
+  // Utah leg, which sometimes succeeds and sometimes doesn't. Root cause:
+  // this leg has a DELIBERATE ~8-9s rate-limit sleep between each person
+  // (to stay under small county sites' anti-scraper heuristics), with no
+  // overall cap — up to 50 persons × 2 adapters (ada-county, natrona) ≈ 15
+  // minutes of pure pacing sleep alone, stacked before the full-list leg
+  // ever runs, on top of the Utah leg's own similarly-paced ~7.5 minutes.
+  // That total plausibly exceeds whatever wall-clock ceiling Cloudflare
+  // enforces on a scheduled event's waitUntil work, silently truncating the
+  // ENTIRE invocation with no exception ever thrown. A budget here — same
+  // pattern as runFullListLeg's — guarantees the leg (and therefore the
+  // whole runAllSourceScans call) always finishes in bounded time, even if
+  // that means checking fewer persons this tick and picking up the rest
+  // next tick, rather than risking the whole cron going dark again.
+  const PER_PERSON_LEG_BUDGET_MS = opts.perPersonBudgetMs ?? 120_000;
+  const perPersonLegStartedAt = Date.now();
+  let perPersonBudgetExceeded = false;
+
   for (const adapter of perPersonAdapters) {
+    if (perPersonBudgetExceeded) break;
     const sourceKey = adapter.meta.key;
     const runStartedAt = new Date().toISOString();
     const summary: ScrapedSourceSummary = {
@@ -397,12 +477,35 @@ export async function runAllSourceScans(
       degraded: false,
     };
 
-    // TODO(phase-2): gate each source on circuit-breaker state derived from
-    // per-source run history (isCircuitOpen over trailing error counts) once a
-    // per-source run-history table exists. For now every adapter is attempted
-    // and each person fetch is individually try/caught.
+    // Circuit breaker: mirrors the same isCircuitOpen(consecutive_errors)
+    // trick circuitOpenFromConsecutiveErrors() uses for the ScrapersTab
+    // badge (src/routes/scrapers.ts) and runUtahWarrantScan now uses to gate
+    // itself — no separate per-source run-history table needed, the single
+    // running tally is enough. Before this, a source could rack up dozens of
+    // real consecutive cron-tick failures (ada-county-id hit 50 in one tick
+    // on 2026-07-18) while every subsequent tick kept hammering it anyway;
+    // this closes that gap for the per-person adapters (ada-county, natrona).
+    const cfgRow = await queryFirst<{ consecutive_errors: number | null }>(
+      db, 'SELECT consecutive_errors FROM warrant_scraper_config WHERE source_name = ?', sourceKey,
+    );
+    if (isCircuitOpen(Array(cfgRow?.consecutive_errors ?? 0).fill(1))) {
+      console.warn(
+        `[warrantSources.runScan] ${sourceKey} circuit open (${cfgRow?.consecutive_errors} consecutive failures) — skipping this tick.`,
+      );
+      scraped.push(summary);
+      continue;
+    }
 
     for (let i = 0; i < persons.length; i++) {
+      if (Date.now() - perPersonLegStartedAt > PER_PERSON_LEG_BUDGET_MS) {
+        perPersonBudgetExceeded = true;
+        console.warn(
+          `[warrantSources.runScan] per-person leg budget (${PER_PERSON_LEG_BUDGET_MS}ms) exceeded ` +
+          `at ${sourceKey} (${i}/${persons.length} persons checked this adapter); ` +
+          `stopping this tick, will resume next cron tick.`,
+        );
+        break;
+      }
       const person = persons[i];
       try {
         const hits = await adapter.fetchForPerson!(person, { DB: db });
@@ -428,11 +531,13 @@ export async function runAllSourceScans(
     }
 
     // Per-source clear sweep (rows of THIS source not seen since runStartedAt).
-    // ONLY when every person fetch succeeded — mirrors the full-list leg's guard.
-    // If any fetch errored, this run's last_seen_at refreshes are incomplete, so a
-    // sweep would wrongly clear warrants for persons we failed to re-check (a total
-    // endpoint outage would otherwise wipe the whole source's active roster).
-    if (summary.errors === 0) {
+    // ONLY when every person fetch succeeded AND the leg budget didn't cut this
+    // adapter's pass short — mirrors the full-list leg's guard. If any fetch
+    // errored, or we bailed early on the budget, this run's last_seen_at
+    // refreshes are incomplete, so a sweep would wrongly clear warrants for
+    // persons we failed (or didn't get to) re-check (a total endpoint outage,
+    // or a budget cutoff, would otherwise wipe the whole source's active roster).
+    if (summary.errors === 0 && !perPersonBudgetExceeded) {
       try {
         summary.cleared = await markScrapedCleared(db, sourceKey, runStartedAt);
       } catch (err) {
@@ -444,6 +549,14 @@ export async function runAllSourceScans(
     }
 
     // Persist scraper state (mirror the poller's CASE update). Best-effort.
+    // consecutive_errors drives ScrapersTab's circuit-breaker/health-grade UI
+    // (src/routes/scrapers.ts's circuitOpenFromConsecutiveErrors) but this
+    // cron sweep — the ONLY thing that runs unattended — never updated it,
+    // so the column only ever moved via a human clicking "reset" or a manual
+    // per-source trigger. A source could rack up dozens of real consecutive
+    // cron-tick failures (ada-county-id hit 50 fetch errors in one tick on
+    // 2026-07-18) while the UI kept showing it as healthy/circuit-closed.
+    // Found during the 2026-07-22 warrant-poller audit.
     try {
       const status = summary.errors > 0 ? 'failed' : 'completed';
       const errMsg = summary.errors > 0 ? `${summary.errors} fetch error(s)` : null;
@@ -452,9 +565,10 @@ export async function runAllSourceScans(
         `UPDATE warrant_scraper_config
             SET last_run_at = datetime('now'),
                 last_success_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE last_success_at END,
-                last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END
+                last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END,
+                consecutive_errors = CASE WHEN ? = 'failed' THEN consecutive_errors + 1 ELSE 0 END
           WHERE source_name = ?`,
-        status, status, errMsg, sourceKey,
+        status, status, errMsg, status, sourceKey,
       );
     } catch (err) {
       console.warn(

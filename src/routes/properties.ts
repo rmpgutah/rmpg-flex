@@ -3,7 +3,22 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const properties = new Hono<Env>();
+
+// Mirrors the sentinel logic in records.ts. properties.client_id is NOT NULL,
+// so a null/0 client_id must resolve to the "Unaffiliated" sentinel rather than
+// failing with a constraint error.
+async function resolvePropertyClientId(db: D1Database, raw: unknown): Promise<number> {
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  const found = await queryFirst<{ id: number }>(db, "SELECT id FROM clients WHERE name = 'Unaffiliated — No Client' LIMIT 1");
+  if (found) return found.id;
+  const result = await execute(db,
+    "INSERT INTO clients (name, contact_name, status, notes) VALUES ('Unaffiliated — No Client', 'system', 'active', 'Auto-created for hand-entered property records with no parent client. Do not delete — used as the default client_id for those rows.')");
+  return Number(result.meta.last_row_id);
+}
 
 // GET /records/properties
 properties.get('/', async (c) => {
@@ -13,13 +28,14 @@ properties.get('/', async (c) => {
     let sql = 'SELECT p.*, c.name as client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id';
     const params: unknown[] = [];
     const wheres: string[] = [];
-    if (search) { wheres.push('(p.name LIKE ? OR p.address LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+    if (search) { const m = containsAnyClause(['p.name', 'p.address']); wheres.push(m.sql); params.push(...m.binds(search)); }
     if (client_id) { wheres.push('p.client_id = ?'); params.push(client_id); }
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
     sql += ' ORDER BY p.name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/properties.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties — create a property.
@@ -31,7 +47,7 @@ properties.post('/', async (c) => {
     const result = await execute(db,
       `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id ?? 1, body.name, body.address, body.property_type || null,
+      await resolvePropertyClientId(db, body.client_id), body.name, body.address, body.property_type || null,
       body.latitude || null, body.longitude || null, body.gate_code || null,
       body.alarm_code || null, body.emergency_contact || null, body.post_orders || null,
       body.hazard_notes || null, body.city || null, body.state || null, body.zip || null,
@@ -52,7 +68,8 @@ properties.get('/export', async (c) => {
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /export failed', { src: 'src/routes/properties.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/properties/:id
@@ -91,7 +108,11 @@ properties.put('/:id', async (c) => {
       'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
       'assessor_last_synced_at', 'assessor_source_url']);
     const cols: string[] = []; const params: unknown[] = [];
-    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    for (const [key, val] of Object.entries(body)) {
+      if (!writable.has(key)) continue;
+      if (key === 'client_id') { cols.push('client_id = ?'); params.push(await resolvePropertyClientId(db, val)); }
+      else { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     cols.push("updated_at = datetime('now')");
     await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);

@@ -29,6 +29,7 @@ import { getSaveBuilder, hasSaveHandler, requiresIncident } from '../utils/docum
 import IncidentPicker, { type IncidentSummary } from './IncidentPicker';
 import ConfirmDialog from './ConfirmDialog';
 import { generateDocumentIntakePdf, suggestFilename } from '../utils/documentIntakePdf';
+import { formatEnumValue } from '../utils/formatters';
 
 export interface ExtractedField {
   key: string;
@@ -225,7 +226,7 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
         <div className="flex items-center gap-3 flex-wrap">
           <div>
             <div className="text-[10px] uppercase text-rmpg-400">Detected Kind</div>
-            <div className="text-[15px] font-semibold text-brand-gold-500">{extraction.kind}</div>
+            <div className="text-[15px] font-semibold text-brand-gold-500">{formatEnumValue(extraction.kind)}</div>
           </div>
           <div className="border-l border-border-default pl-3">
             <div className="text-[10px] uppercase text-rmpg-400">Tier</div>
@@ -267,7 +268,7 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
       <div className="bg-surface-base border border-border-default panel-beveled" style={{ borderRadius: 2 }}>
         <div className="px-3 py-2 border-b border-border-default text-[10px] uppercase font-semibold text-rmpg-400 flex justify-between">
           <span>Extracted Fields ({extraction.fields.length})</span>
-          <span className="text-rmpg-500">edit anything before saving · click revert to reset to OCR value</span>
+          <span className="text-fg-muted">edit anything before saving · click revert to reset to OCR value</span>
         </div>
         <div className="divide-y divide-[var(--border-subtle)]">
           {extraction.fields.map((f) => {
@@ -281,7 +282,7 @@ export default function DocumentIntakeReviewer({ extraction, filename, onReset }
                     <span className="inline-block w-1.5 h-1.5 rounded-full mr-2 align-middle" style={{ background: c.dot }} />
                     {f.matchedAnchor || f.key}
                   </div>
-                  <div className="text-[9px] text-rmpg-500 font-mono mt-0.5">{f.key}</div>
+                  <div className="text-[9px] text-fg-muted font-mono mt-0.5">{f.key}</div>
                 </div>
                 <div className="col-span-7">
                   <input id={`ff-documentintakereviewer-${f.key}`}

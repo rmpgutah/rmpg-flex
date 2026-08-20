@@ -145,10 +145,10 @@ export default function PdfPreviewModal({
       aria-modal="true"
       aria-label={`${title} — ${targetLabel} preview`}
     >
-      <div className="w-full max-w-5xl h-[90vh] bg-surface-sunken border border-rmpg-700 flex flex-col">
+      <div className="w-full max-w-5xl h-[90dvh] bg-surface-sunken border border-rmpg-700 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between bg-gradient-to-r from-[#1a1a1a] to-[#242424] border-b border-rmpg-700 px-4 py-2">
-          <div className="flex items-center gap-2 text-[#d4a017]">
+          <div className="flex items-center gap-2 [color:var(--panel-header-color)]">
             <TargetIcon className="w-4 h-4" aria-hidden="true" />
             <span className="text-xs font-semibold uppercase tracking-wider">
               {title} <span className="text-rmpg-400">— {targetLabel}</span>
@@ -161,7 +161,7 @@ export default function PdfPreviewModal({
               disabled={!blobUrl}
               aria-label="Download PDF"
               title="Download PDF"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-surface-base hover:bg-surface-raised border border-rmpg-700 text-[#d4a017] transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-surface-base hover:bg-surface-raised border border-rmpg-700 [color:var(--panel-header-color)] transition-colors disabled:opacity-50"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
               Download
@@ -172,7 +172,7 @@ export default function PdfPreviewModal({
               disabled={!blobUrl}
               aria-label="Print PDF"
               title="Print PDF"
-              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-[#d4a017] hover:bg-[#b8881a] border border-[#d4a017] text-black transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold uppercase tracking-wider bg-[#d4a017] hover:bg-[#b8881a] border [border-color:var(--field-label-color)] text-black transition-colors disabled:opacity-50"
             >
               <Printer className="w-3.5 h-3.5" aria-hidden="true" />
               Print
@@ -199,7 +199,7 @@ export default function PdfPreviewModal({
             </div>
           ) : !blobUrl ? (
             <div className="h-full flex flex-col items-center justify-center gap-2 text-rmpg-400">
-              <Loader2 className="w-8 h-8 animate-spin text-[#d4a017]" />
+              <Loader2 className="w-8 h-8 animate-spin [color:var(--panel-header-color)]" />
               <div className="text-xs uppercase tracking-wider">Generating {targetLabel} preview...</div>
             </div>
           ) : (

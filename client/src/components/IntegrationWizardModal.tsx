@@ -211,15 +211,15 @@ export default function IntegrationWizardModal({
   const currentStepIndex = STEPS.indexOf(step);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="bg-surface-raised border border-rmpg-700/50 panel-beveled w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4" onClick={onClose}>
+      <div className="bg-surface-raised border border-rmpg-700/50 panel-beveled w-full max-w-lg mx-4 my-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700/30">
           <div className="flex items-center gap-2">
             <Icon className="w-4 h-4 text-brand-400" />
             <span className="text-xs font-bold text-rmpg-100 uppercase tracking-wide">Setup {config.name}</span>
           </div>
-          <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
+          <button aria-label="Close" onClick={onClose} className="text-fg-muted hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
 
         {/* Step indicator bar */}
@@ -230,7 +230,7 @@ export default function IntegrationWizardModal({
               <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold ${
                 step === s ? 'bg-brand-500 text-rmpg-100' :
                 currentStepIndex > i ? 'bg-green-600 text-rmpg-100' :
-                'bg-rmpg-700 text-rmpg-500'
+                'bg-rmpg-700 text-fg-muted'
               }`}>{i + 1}</div>
             </React.Fragment>
           ))}
@@ -355,7 +355,7 @@ export default function IntegrationWizardModal({
                 <>
                   <Loader2 className="w-8 h-8 text-brand-400 mx-auto animate-spin" />
                   <p className="text-xs text-rmpg-300">Syncing data from {config.name}...</p>
-                  <p className="text-[9px] text-rmpg-500">This may take a moment</p>
+                  <p className="text-[9px] text-fg-muted">This may take a moment</p>
                 </>
               ) : syncResult ? (
                 <>

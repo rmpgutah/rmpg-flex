@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { UserCog } from 'lucide-react';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { usePersistedTab } from '../../hooks/usePersistedState';
@@ -20,8 +20,6 @@ import DocumentsTab from './tabs/DocumentsTab';
 import AttendanceTab from './tabs/AttendanceTab';
 import BenefitsTab from './tabs/BenefitsTab';
 import PIPsTab from './tabs/PIPsTab';
-import SpillmanModuleGroup from '../../components/spillman/SpillmanModuleGroup';
-import type { ModuleGroupSpec } from '../../components/spillman/SpillmanModuleGroup';
 
 const VALID_TABS: readonly HRTab[] = ['dashboard', 'leave', 'disciplinary', 'reviews', 'payroll', 'grievances', 'documents', 'attendance', 'benefits', 'pips'] as const;
 

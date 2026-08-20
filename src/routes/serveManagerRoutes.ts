@@ -7,12 +7,32 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey } from '../utils/serveManagerClient';
-import { pollServeManagerJobs } from '../utils/serveManagerPoller';
+import { testConnection, setApiKey as smSetApiKey, clearApiKey as smClearApiKey, fetchJobById, fetchDocumentBinary } from '../utils/serveManagerClient';
+import { pollServeManagerJobs, createDispatchCallForJob } from '../utils/serveManagerPoller';
 
+import { log } from '../utils/logger';
 const sm = new Hono<Env>();
+
+// This router backs the ADMIN ServeManager tab, but had no role gate at all:
+// with only readOnlyRoleGuard on the mount, any authenticated non-client_viewer
+// role (officer, dispatcher, contract_manager, human_resources) could overwrite
+// or clear the stored integration API key, repoint the poller, or force a sync.
+// Substituting an attacker's key makes the poller pull jobs from an
+// attacker-controlled ServeManager account; clearing it sabotages the feed.
+// Gate every mutating method to admin/manager (reads/status stay open to the
+// tab's viewers). Matches the adminOnly pattern in traccar.ts / clearpathgps.ts.
+sm.use('*', async (c, next) => {
+  const method = c.req.method;
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  return next();
+});
 
 // GET /servemanager/status — top-level integration status card on
 // AdminServeManagerTab. Distinct from /poller/status (auto-poller config);
@@ -48,7 +68,7 @@ sm.post('/sync', async (c) => {
     const body = await c.req.json().catch(() => ({}));
     type = body?.type === 'full' ? 'full' : 'incremental';
     const inserted = await execute(db,
-      "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now','localtime'))",
+      "INSERT INTO sm_sync_log (sync_type, status, jobs_synced, attempts_synced, started_at) VALUES (?, 'running', 0, 0, datetime('now'))",
       type);
     syncId = inserted.meta?.last_row_id;
 
@@ -62,17 +82,18 @@ sm.post('/sync', async (c) => {
 
     const result = await pollServeManagerJobs(c.env as any);
     await execute(db,
-      "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
-      result.error ? 'failed' : 'completed', result.synced, 0, result.error || null, syncId);
+      "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now') WHERE id = ?",
+      result.error ? 'failed' : 'completed', result.synced, result.attemptsSynced, result.error || null, syncId);
     return c.json({
       success: !result.error, sync_id: syncId, type,
-      jobs_synced: result.synced, attempts_synced: 0,
+      jobs_synced: result.synced, attempts_synced: result.attemptsSynced,
     });
   } catch (err) {
+    log.error('POST /sync failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
     const message = err instanceof Error ? err.message : 'Sync failed';
     if (syncId != null) {
       await execute(db,
-        "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now','localtime') WHERE id = ?",
+        "UPDATE sm_sync_log SET status = 'failed', error_message = ?, completed_at = datetime('now') WHERE id = ?",
         message, syncId).catch(() => {});
     }
     return c.json({ success: false, sync_id: syncId ?? null, type, jobs_synced: 0, attempts_synced: 0, error: message }, 500);
@@ -82,10 +103,22 @@ sm.post('/sync', async (c) => {
 sm.get('/sync/log', async (c) => {
   try {
     const db = getDb(c.env);
+    // sm_sync_log has NO `created_at` — its timestamps are started_at /
+    // completed_at (verified on live D1). Selecting and ordering by
+    // created_at threw "no such column" on every request, and the catch
+    // below turned that into an empty list, so the ServeManager sync history
+    // has always rendered as "no syncs yet" no matter how many ran.
     const rows = await query<Record<string, unknown>>(db,
-      'SELECT id, created_at AS started_at, status, jobs_synced, attempts_synced, error_message FROM sm_sync_log ORDER BY created_at DESC LIMIT 50');
+      `SELECT id, started_at, completed_at, sync_type, status, jobs_synced,
+              attempts_synced, error_message
+         FROM sm_sync_log ORDER BY started_at DESC LIMIT 50`);
     return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+  } catch (err) {
+    // Keep the endpoint non-fatal, but stop it from reporting "no history"
+    // when the truth is "the query failed" — those are not the same answer.
+    log.error('GET /sync/log failed', { src: 'src/routes/serveManagerRoutes.ts' }, err as Error);
+    return c.json({ data: [], error: 'Sync log unavailable' });
+  }
 });
 
 sm.get('/poller/status', async (c) => {
@@ -114,7 +147,7 @@ sm.get('/poller/status', async (c) => {
 sm.get('/jobs', async (c) => {
   try {
     const db = getDb(c.env);
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const page = clampIntParam(c.req.query('page'), 1, 1, 1000000);
     const perPage = Math.min(100, Math.max(1, parseInt(c.req.query('per_page') || '25', 10)));
     const q = c.req.query('q')?.trim();
 
@@ -136,7 +169,8 @@ sm.get('/jobs', async (c) => {
       data: jobs,
       pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) },
     });
-  } catch { return c.json({ data: [], pagination: { page: 1, per_page: 25, total: 0, totalPages: 0 } }, 500); }
+  } catch (err) {
+    log.error('GET /jobs failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ data: [], pagination: { page: 1, per_page: 25, total: 0, totalPages: 0 } }, 500); }
 });
 
 sm.get('/jobs/:jobId', async (c) => {
@@ -154,21 +188,79 @@ sm.get('/jobs/:jobId', async (c) => {
   } catch { return c.json({ error: 'Not found' }, 404); }
 });
 
+// GET /documents/:documentId/download — proxies a cached job's document PDF
+// (Fieldsheet, Address Label, etc.) through the Worker. The client can't hit
+// documents_json's pdf_download_url directly — that's ServeManager's own
+// authenticated API, not a public link, so it 401s without the stored key.
+sm.get('/documents/:documentId/download', async (c) => {
+  const documentId = c.req.param('documentId');
+  const result = await fetchDocumentBinary(getDb(c.env), c.env.JWT_SECRET, documentId);
+  if (!result.ok) {
+    log.error('GET /documents/:documentId/download failed', { src: 'src/routes/serveManagerRoutes.ts', documentId, status: result.status });
+    return c.json({ error: 'Download failed' }, result.status === 503 ? 503 : 502);
+  }
+  return new Response(result.body, { headers: { 'Content-Type': result.contentType } });
+});
+
+// POST /jobs/:jobId/create-dispatch — manual override of the target-client
+// filter and the "Auto-Create Dispatch Calls" toggle. An admin/manager (the
+// router-wide gate above) can push a specific job through even when the
+// poller wouldn't have (wrong/no target client, auto-create off, or the
+// poller itself disabled) rather than waiting on config changes. Re-fetches
+// the job fresh from ServeManager rather than trusting the sm_jobs cache, so
+// the manually-created call captures current data — see fetchJobById.
+sm.post('/jobs/:jobId/create-dispatch', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const jobId = parseInt(c.req.param('jobId'), 10);
+    if (!Number.isFinite(jobId)) return c.json({ error: 'Invalid job id' }, 400);
+
+    const existing = await queryFirst<{ linked_call_id: number | null }>(
+      db, 'SELECT linked_call_id FROM sm_jobs WHERE sm_job_id = ?', jobId,
+    );
+    if (existing?.linked_call_id) {
+      return c.json({ error: 'Job already has a linked dispatch call', code: 'ALREADY_LINKED', call_id: existing.linked_call_id }, 409);
+    }
+
+    const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
+    if (!job) return c.json({ error: 'Job not found in ServeManager (or API key not configured)' }, 404);
+
+    const result = await createDispatchCallForJob(c.env, job);
+    return c.json({ success: true, ...result });
+  } catch (err) {
+    log.error('POST /jobs/:jobId/create-dispatch failed', { src: 'src/routes/serveManagerRoutes.ts' }, err);
+    return c.json({ error: 'Failed to create dispatch call' }, 500);
+  }
+});
+
 sm.put('/api-key', async (c) => {
   try {
     const body = await c.req.json<{ api_key: string }>();
     if (!body.api_key) return c.json({ error: 'api_key required' }, 400);
     await smSetApiKey(getDb(c.env), c.env.JWT_SECRET, body.api_key);
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save key' }, 500); }
+  } catch (err) {
+    log.error('PUT /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to save key' }, 500); }
 });
 
 sm.delete('/api-key', async (c) => {
   try { await smClearApiKey(getDb(c.env)); return c.json({ success: true }); }
-  catch { return c.json({ error: 'Failed to clear key' }, 500); }
+  catch (err) {
+    log.error('DELETE /api-key failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to clear key' }, 500); }
 });
 
+// Enabling/toggling the poller (turning the feed on, flipping auto-create,
+// repointing Target Client) is a step above the router's general admin/
+// manager gate above: this is the one action that starts pulling data from
+// ServeManager and auto-creating dispatch calls unattended on every cron
+// tick, so it requires the 'admin' role specifically — a manager can still
+// trigger a one-off Poll Now / Full Sync (still gated admin/manager by the
+// router-wide middleware), but cannot arm the always-on poller.
 sm.put('/poller/settings', async (c) => {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (actor?.role !== 'admin') {
+    return c.json({ error: 'Only an admin can change poller settings', code: 'ADMIN_REQUIRED' }, 403);
+  }
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ enabled?: boolean; poll_interval?: number; target_client?: string; auto_create_calls?: boolean }>();
@@ -179,20 +271,23 @@ sm.put('/poller/settings', async (c) => {
     if (body.auto_create_calls !== undefined) pairs['servemanager_auto_create_calls'] = body.auto_create_calls ? 'true' : 'false';
     for (const [key, value] of Object.entries(pairs)) {
       await execute(db, "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'", key);
-      await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now','localtime'), datetime('now','localtime'))`, key, value);
+      await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, key, value);
     }
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save settings' }, 500); }
+  } catch (err) {
+    log.error('PUT /poller/settings failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to save settings' }, 500); }
 });
 
 sm.post('/poller/poll-now', async (c) => {
   try { return c.json(await pollServeManagerJobs(c.env as any)); }
-  catch { return c.json({ synced: 0, callsCreated: 0, error: 'Poll failed' }, 500); }
+  catch (err) {
+    log.error('POST /poller/poll-now failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ synced: 0, callsCreated: 0, attemptsSynced: 0, error: 'Poll failed' }, 500); }
 });
 
 sm.post('/test-connection', async (c) => {
   try { return c.json(await testConnection(getDb(c.env), c.env.JWT_SECRET)); }
-  catch { return c.json({ success: false, error: 'Connection test failed' }, 500); }
+  catch (err) {
+    log.error('POST /test-connection failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ success: false, error: 'Connection test failed' }, 500); }
 });
 
 export default sm;

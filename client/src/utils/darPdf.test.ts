@@ -1,6 +1,42 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { parseDarArray, darCounts, darSectionRows } from './darPdf';
 import type { DailyActivityReport } from '../types';
+
+// `save` is assigned as an own instance property inside jsPDF's constructor
+// (not on the prototype), so vi.spyOn(jsPDF.prototype, 'save') cannot see it.
+// Wrap the constructor instead so every instance's `save` is a spy — this
+// lets the wrapper test assert generateDarPdf still triggers a save without
+// vitest actually writing a file.
+const saveSpy = vi.fn();
+vi.mock('jspdf', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('jspdf')>();
+  class PatchedJsPDF extends actual.jsPDF {
+    constructor(...args: ConstructorParameters<typeof actual.jsPDF>) {
+      super(...args);
+      const self = this;
+      // jsPDF#save is overloaded — sync, returning `jsPDF`, by default, or
+      // `Promise<void>` when called with `{ returnPromise: true }`. A single
+      // arrow function can't satisfy both overload signatures at once (that's
+      // the TS2352 the coordinator hit), so this is declared with real
+      // overload signatures, same as the library's own type, instead of
+      // casting past the mismatch — a lossy cast here would be the one place
+      // proving generateDarPdf's save behaviour didn't change.
+      function patchedSave(filename?: string): PatchedJsPDF;
+      function patchedSave(filename: string, options: { returnPromise: true }): Promise<void>;
+      function patchedSave(
+        filename?: string,
+        options?: { returnPromise: true },
+      ): PatchedJsPDF | Promise<void> {
+        saveSpy(filename);
+        return options?.returnPromise ? Promise.resolve() : self;
+      }
+      this.save = patchedSave;
+    }
+  }
+  return { ...actual, default: PatchedJsPDF, jsPDF: PatchedJsPDF };
+});
+
+import { generateDarPdf, buildDarPdf } from './darPdf';
 
 describe('darPdf helpers', () => {
   it('parseDarArray is tolerant', () => {
@@ -38,5 +74,50 @@ describe('darPdf helpers', () => {
   it('darSectionRows yields empty strings for missing fields, never throws', () => {
     const rows = darSectionRows([{}], 'incidents');
     expect(rows[0]).toEqual(['', '', '']);
+  });
+
+  it('generateDarPdf still returns void and triggers a save (builder-extraction wrapper is behaviour-preserving)', () => {
+    saveSpy.mockClear();
+    const r = {
+      id: 701,
+      dar_number: 'DAR-2026-0044',
+      status: 'submitted',
+      officer_id: 42,
+      shift_date: '2026-06-21',
+      calls_handled: '[]',
+      incidents_created: '[]',
+      citations_issued: '[]',
+      patrols_completed: '[]',
+      created_at: '2026-06-21T18:05:00Z',
+      updated_at: '2026-06-21T18:05:00Z',
+    } as DailyActivityReport;
+
+    const result = generateDarPdf(r);
+
+    expect(result).toBeUndefined();
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy).toHaveBeenCalledWith('DAR_DAR-2026-0044.pdf');
+  });
+
+  it('buildDarPdf returns the jsPDF document without saving', () => {
+    saveSpy.mockClear();
+    const r = {
+      id: 701,
+      dar_number: 'DAR-2026-0044',
+      status: 'submitted',
+      officer_id: 42,
+      shift_date: '2026-06-21',
+      calls_handled: '[]',
+      incidents_created: '[]',
+      citations_issued: '[]',
+      patrols_completed: '[]',
+      created_at: '2026-06-21T18:05:00Z',
+      updated_at: '2026-06-21T18:05:00Z',
+    } as DailyActivityReport;
+
+    const doc = buildDarPdf(r);
+
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+    expect(saveSpy).not.toHaveBeenCalled();
   });
 });

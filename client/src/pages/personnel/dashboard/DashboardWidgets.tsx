@@ -16,14 +16,14 @@ import {
 } from 'recharts';
 import { apiFetch } from '../../../hooks/useApi';
 import { dateToLocalYMD } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import type { Credential, TimeEntry, TrainingRecord } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 
 // Brand-aligned role colors (zero-blue Spillman palette)
 export const ROLE_HEX: Record<string, string> = {
-  admin: '#ef4444', manager: '#a855f7', supervisor: '#f59e0b',
-  officer: '#22c55e', dispatcher: '#888888', contract_manager: '#22c55e',
+  admin: 'var(--sev-critical)', manager: 'var(--stat-accent-purple)', supervisor: 'var(--sev-warn)',
+  officer: 'var(--sev-ok)', dispatcher: 'var(--text-secondary)', contract_manager: 'var(--sev-ok)',
 };
 
 export const ChartTooltip = ({ active, payload }: any) => {
@@ -45,9 +45,9 @@ export function CredentialComplianceCard({ credentials }: { credentials: Credent
   const credCompliance = credentials.length > 0 ? Math.round((validCreds / credentials.length) * 100) : 100;
 
   const credPieData = useMemo(() => [
-    { name: 'Valid', value: validCreds, color: '#22c55e' },
-    { name: 'Expiring', value: expiringCreds, color: '#f59e0b' },
-    { name: 'Expired', value: expiredCreds, color: '#ef4444' },
+    { name: 'Valid', value: validCreds, color: 'var(--sev-ok)' },
+    { name: 'Expiring', value: expiringCreds, color: 'var(--sev-warn)' },
+    { name: 'Expired', value: expiredCreds, color: 'var(--sev-critical)' },
   ].filter(d => d.value > 0), [validCreds, expiringCreds, expiredCreds]);
 
   return (
@@ -122,7 +122,7 @@ export function RoleDistributionCard({ officers }: { officers: OfficerWithStatus
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={roleData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} strokeWidth={0} paddingAngle={2}>
-                  {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || 'var(--rmpg-500)'} />)}
+                  {roleData.map((d, i) => <Cell key={i} fill={ROLE_HEX[d.name] || 'var(--text-muted)'} />)}
                 </Pie>
                 <Tooltip content={<ChartTooltip />} />
               </PieChart>
@@ -131,8 +131,8 @@ export function RoleDistributionCard({ officers }: { officers: OfficerWithStatus
           <div className="flex-1 space-y-1.5">
             {roleData.map(d => (
               <div key={d.name} className="flex items-center gap-2 text-xs">
-                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || 'var(--rmpg-500)' }} />
-                <span className="text-rmpg-200 capitalize flex-1">{d.name.replace(/_/g, ' ')}</span>
+                <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || 'var(--text-muted)' }} />
+                <span className="text-rmpg-200 capitalize flex-1">{toDisplayLabel(d.name)}</span>
                 <span className="font-mono text-rmpg-100">{d.value}</span>
               </div>
             ))}
@@ -152,9 +152,9 @@ export function TrainingStatusCard({ training }: { training: TrainingRecord[] })
   const pendingTraining = training.length - completedTraining - overdueTraining;
 
   const trainingBarData = useMemo(() => [
-    { name: 'Completed', value: completedTraining, fill: '#22c55e' },
-    { name: 'Overdue', value: overdueTraining, fill: '#ef4444' },
-    { name: 'Pending', value: Math.max(0, pendingTraining), fill: 'var(--rmpg-500)' },
+    { name: 'Completed', value: completedTraining, fill: 'var(--sev-ok)' },
+    { name: 'Overdue', value: overdueTraining, fill: 'var(--sev-critical)' },
+    { name: 'Pending', value: Math.max(0, pendingTraining), fill: 'var(--text-muted)' },
   ], [completedTraining, overdueTraining, pendingTraining]);
 
   return (
@@ -296,7 +296,7 @@ export function CertWarningsPanel() {
         {data.warnings.slice(0, 8).map((w) => (
           <div key={w.credential_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200 min-w-0 flex-1 truncate">{w.officer_name}</span>
-            <span className="text-rmpg-400 min-w-0 flex-1 truncate">{w.credential_type}</span>
+            <span className="text-rmpg-400 min-w-0 flex-1 truncate">{formatEnumValue(w.credential_type)}</span>
             <span className={`font-mono ${w.severity === 'expired' ? 'text-red-400' : w.severity === 'critical' ? 'text-red-300' : 'text-amber-400'}`}>
               {w.days_until < 0 ? `${Math.abs(w.days_until)}d overdue` : `${w.days_until}d`}
             </span>

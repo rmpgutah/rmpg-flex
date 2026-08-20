@@ -15,7 +15,7 @@ interface RecordFieldProps {
   icon?: React.ElementType;
   /** Render value in monospace (IDs, numbers, plates). */
   mono?: boolean;
-  /** Tint the value (e.g. '#e8b820' for aliases). Defaults to primary text. */
+  /** Tint the value using a CSS color string (e.g. for aliases). Defaults to primary text. */
   valueColor?: string;
   /** Click value to copy to clipboard. */
   copyable?: boolean;
@@ -56,10 +56,10 @@ function RecordField({
     <div
       className={`flex items-start gap-2 text-xs group/field px-1 -mx-1 py-[1px] rounded-[2px] hover:bg-white/[0.03] transition-colors ${className}`}
     >
-      {Icon && <Icon className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-muted, #8a8a8a)' }} aria-hidden="true" />}
+      {Icon && <Icon className="w-3 h-3 mt-0.5 flex-shrink-0 text-fg-muted" aria-hidden="true" />}
       <span
         className="min-w-[78px] shrink-0 select-none uppercase tracking-wide text-[9px] font-semibold mt-[1px]"
-        style={{ color: 'var(--text-muted, #8a8a8a)', letterSpacing: '0.04em' }}
+        style={{ color: 'var(--text-muted)', letterSpacing: '0.04em' }}
       >
         {label}
       </span>
@@ -67,7 +67,7 @@ function RecordField({
         onClick={handleCopy}
         className={`
           flex items-center gap-1 leading-snug min-w-0 break-words
-          ${isEmpty ? 'text-rmpg-600' : 'text-rmpg-200 group-hover/field:text-rmpg-100'}
+          ${isEmpty ? 'text-fg-muted' : 'text-rmpg-200 group-hover/field:text-rmpg-100'}
           ${mono ? 'font-mono tabular-nums tracking-tight' : ''}
           ${copyable && !isEmpty ? 'cursor-pointer' : ''}
           transition-colors

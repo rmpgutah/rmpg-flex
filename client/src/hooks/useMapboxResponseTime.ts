@@ -2,10 +2,11 @@
 // Fetches /api/dispatch/beat-activity and renders dispatch_beats GeoJSON with
 // response time color ramp. Essential for evaluating coverage and response gaps.
 import { useCallback, useState, useRef, useEffect } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
 
 interface BeatActivity {
   beat: string;
@@ -35,12 +36,15 @@ const RESPONSE_COLORS: [number, string][] = [
 export function useMapboxResponseTime(map: mapboxgl.Map | null) {
   const [beats, setBeats] = useState<BeatActivity[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     return () => {
       if (!map) return;
       try {
+        popupRef.current?.remove();
         [FILL_LAYER_ID, LINE_LAYER_ID].forEach((id) => { safeRemoveLayer(map, id); });
         safeRemoveSource(map, SOURCE_ID);
       } catch { /* ignore */ }
@@ -50,6 +54,8 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     safeRemoveLayer(map, FILL_LAYER_ID);
     safeRemoveLayer(map, LINE_LAYER_ID);
   }, [map]);
@@ -60,8 +66,9 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
     try {
       const resp = await fetch('/geojson/beat.geojson');
       beatGeojson = await resp.json();
-    } catch {
+    } catch (err: any) {
       console.warn('[useMapboxResponseTime] failed to load beat.geojson');
+      setError(err?.message || 'Failed to load beat boundaries');
       return;
     }
 
@@ -117,6 +124,22 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
               'fill-opacity': ['case', ['has', 'avg_response'], 0.4, 0.05],
             },
           });
+          m.on('click', FILL_LAYER_ID, (e) => {
+            const f = e.features?.[0];
+            if (!f) return;
+            const p = f.properties || {};
+            popupRef.current?.remove();
+            popupRef.current = new mapboxgl.Popup({ offset: 4, closeButton: true, className: 'mapbox-popup-dark' })
+              .setLngLat(e.lngLat)
+              .setHTML(buildDetailPopupHtml(`Beat ${p.beat_code || ''}`.trim(), [
+                ['Avg Response', p.avg_response != null ? `${p.avg_response} min` : 'No data'],
+                ['Calls', p.calls],
+                ['Incidents', p.incidents],
+              ]))
+              .addTo(m);
+          });
+          m.on('mouseenter', FILL_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+          m.on('mouseleave', FILL_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
         }
         if (!hasLayer(m, LINE_LAYER_ID)) {
           m.addLayer({
@@ -135,6 +158,7 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
   const fetchResponseTimes = useCallback(async (days = 30) => {
     if (!map) return;
     setLoading(true);
+    setError(null);
     try {
       // NOTE: this hits src/routes/reports.ts (mounted at /api/reports), not
       // /api/dispatch — the previous /dispatch/beat-activity path 404'd,
@@ -149,12 +173,13 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
       // whenStyleReady — no outer guard (it would wrap the async fetch and race
       // the style). See the comment in renderOnMap.
       void renderOnMap(b, map);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxResponseTime] fetch failed:', err);
+      setError(err?.message || 'Failed to load response times');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { beats, loading, fetchResponseTimes, clear: clearFromMap };
+  return { beats, loading, error, fetchResponseTimes, clear: clearFromMap };
 }

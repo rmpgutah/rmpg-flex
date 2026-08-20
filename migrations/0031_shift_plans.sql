@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS shift_plans (
     'draft','active','completed','cancelled'
   )),
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS shift_swap_requests (
   reviewed_by_name TEXT,
   reviewed_at TEXT,
   review_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_shift_swaps_status ON shift_swap_requests(status);

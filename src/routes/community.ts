@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const community = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -48,6 +49,7 @@ community.get('/events', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM community_events ${where} ORDER BY start_date DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /events failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to list events' }, 500);
   }
 });
@@ -70,6 +72,7 @@ community.post('/events', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM community_events WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /events failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to create event' }, 500);
   }
 });
@@ -90,6 +93,7 @@ community.put('/events/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM community_events WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /events/:id failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to update event' }, 500);
   }
 });
@@ -105,6 +109,7 @@ community.delete('/events/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Event not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /events/:id failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to delete event', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -130,6 +135,7 @@ community.get('/tips', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /tips failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to list tips' }, 500);
   }
 });
@@ -151,6 +157,7 @@ community.post('/tips', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM public_tips WHERE id = ?', newId);
     return c.json({ data: created, tip_number: tipNumber }, 201);
   } catch (err) {
+    log.error('POST /tips failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to submit tip' }, 500);
   }
 });
@@ -166,11 +173,12 @@ community.put('/tips/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE public_tips SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM public_tips WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /tips/:id failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to update tip' }, 500);
   }
 });
@@ -185,6 +193,7 @@ community.get('/watch-groups', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM neighborhood_watch_groups ORDER BY created_at DESC');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /watch-groups failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to list watch groups' }, 500);
   }
 });
@@ -206,6 +215,7 @@ community.post('/watch-groups', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM neighborhood_watch_groups WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /watch-groups failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to create watch group' }, 500);
   }
 });
@@ -221,6 +231,7 @@ community.get('/alerts', async (c) => {
       'SELECT ca.*, u.full_name as created_by_name FROM community_alerts ca LEFT JOIN users u ON ca.created_by = u.id ORDER BY ca.created_at DESC LIMIT 200');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /alerts failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to list alerts' }, 500);
   }
 });
@@ -245,6 +256,7 @@ community.post('/alerts', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM community_alerts WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /alerts failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to create alert' }, 500);
   }
 });
@@ -260,6 +272,7 @@ community.get('/stats', async (c) => {
     const alerts = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM community_alerts'))?.count ?? 0;
     return c.json({ events, tips, watch_groups: groups, alerts });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/community.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -46,8 +46,11 @@ beforeAll(async () => {
     call_number TEXT UNIQUE, incident_type TEXT NOT NULL,
     priority TEXT NOT NULL DEFAULT 'P3', status TEXT NOT NULL DEFAULT 'pending',
     location_address TEXT, latitude REAL, longitude REAL,
-    description TEXT, source TEXT, officer_safety_alert INTEGER,
-    dispatcher_id INTEGER, assigned_unit_ids TEXT DEFAULT '[]',
+    -- officer_safety_caution, NOT officer_safety_alert: this fixture used to
+    -- declare a column live D1 does not have, so it green-lit a route INSERT
+    -- that always failed in production.
+    description TEXT, source TEXT, officer_safety_caution INTEGER,
+    dispatcher_id INTEGER, assigned_unit_ids TEXT DEFAULT '[]', unit_call_signs TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS units (

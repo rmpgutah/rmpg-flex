@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import DetachedLayout from '../../components/DetachedLayout';
 import ReportTypeSelector from '../../components/ReportTypeSelector';
@@ -244,7 +244,7 @@ export default function IncidentDetailWindow() {
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold block">Created</label>
-            <p className="text-rmpg-200">{incident.created_at ? parseTimestamp(incident.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
+            <p className="text-rmpg-200">{incident.created_at ? parseTimestamp(incident.created_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : 'N/A'}</p>
           </div>
         </div>
       </div>
@@ -349,7 +349,7 @@ export default function IncidentDetailWindow() {
                   <tr key={p.id || `person-${i}`} className="border-t border-rmpg-700/50">
                     <td className="py-1.5">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {(p.role || '').replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(p.role || '').toUpperCase()}
                       </span>
                     </td>
                     <td className="py-1.5 text-rmpg-100 font-medium">{p.last_name}, {p.first_name}</td>
@@ -384,7 +384,7 @@ export default function IncidentDetailWindow() {
                 <tr key={v.id || `vehicle-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {(v.role || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(v.role || '').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 text-rmpg-100 font-mono">{v.plate_number || 'N/A'}{v.state ? ` (${v.state})` : ''}</td>

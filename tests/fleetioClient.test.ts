@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { buildFleetioRequest, fleetioFetch, ping, listVehicles, listFuelEntries, createVehicle, archiveVehicle, createWorkOrder, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
+import { buildFleetioRequest, fleetioFetch, ping, listVehicles, listFuelEntries, listAllVehicles, listAllFuelEntries, parseListPage, isRetryableMethod, createVehicle, archiveVehicle, archiveVendor, deleteFuelEntry, createWorkOrder, configFromEnv, type FleetioConfig } from '../src/utils/fleetio/client';
 import { FleetioConfigError } from '../src/utils/fleetio/errors';
 
 describe('buildFleetioRequest', () => {
@@ -210,13 +210,28 @@ describe('typed resource methods', () => {
     });
   }
 
-  it('ping — GET /accounts; returns { ok:true, account_id } on 200', async () => {
-    const stub = vi.fn().mockResolvedValue(jsonRespTm({ id: 42, name: 'RMPG' }));
+  // `GET /accounts` is Fleet.io's "List Accounts" — a COLLECTION endpoint.
+  // Both envelope shapes must yield the account identity, because which one
+  // arrives depends on the API version bound to the key, which we can't read.
+  it('ping — GET /accounts; reads the account out of a BARE ARRAY response', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm([{ id: 42, name: 'RMPG' }]));
     const r = await ping({ config: cfg, fetchImpl: stub });
     expect(r).toEqual({ ok: true, account_id: 42, account_name: 'RMPG' });
     const [url, init] = stub.mock.calls[0];
     expect(String(url)).toBe('https://secure.fleetio.com/api/v1/accounts');
     expect(init.method).toBe('GET');
+  });
+
+  it('ping — reads the account out of a cursor-era { records: [...] } response', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ records: [{ id: 42, name: 'RMPG' }], next_cursor: null }));
+    const r = await ping({ config: cfg, fetchImpl: stub });
+    expect(r).toEqual({ ok: true, account_id: 42, account_name: 'RMPG' });
+  });
+
+  it('ping — still reads a single-object response (version tolerance)', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ id: 42, name: 'RMPG' }));
+    const r = await ping({ config: cfg, fetchImpl: stub });
+    expect(r).toEqual({ ok: true, account_id: 42, account_name: 'RMPG' });
   });
 
   it('ping — 401 maps to { ok:false, error }', async () => {
@@ -226,25 +241,43 @@ describe('typed resource methods', () => {
     expect(r.error).toMatch(/401/);
   });
 
-  it('listVehicles — passes page/per_page; returns parsed records', async () => {
-    const stub = vi.fn().mockResolvedValue(jsonRespTm({
-      records: [{ id: 1, name: 'Unit 1' }],
-      pagination: { current_page: 1, total_pages: 1, total_entries: 1, per_page: 50 },
-    }));
-    const r = await listVehicles({ config: cfg, page: 2, perPage: 25, fetchImpl: stub });
+  it('listVehicles — first page sends per_page ONLY (no page/cursor guess)', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ records: [{ id: 1, name: 'Unit 1' }], next_cursor: null }));
+    const r = await listVehicles({ config: cfg, perPage: 25, fetchImpl: stub });
     expect(r.records).toHaveLength(1);
-    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?page=2&per_page=25');
+    // Neither `start_cursor` nor `page` — the response tells us which walk applies.
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?per_page=25');
   });
 
-  it('listFuelEntries — passes vehicle_id/page/per_page; returns parsed records', async () => {
+  it('listVehicles — sends start_cursor when resuming a cursor walk', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ records: [], next_cursor: null }));
+    await listVehicles({ config: cfg, startCursor: 'CUR2', perPage: 100, fetchImpl: stub });
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?per_page=100&start_cursor=CUR2');
+  });
+
+  it('listVehicles — sends page AND per on a legacy page walk', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm([]));
+    await listVehicles({ config: cfg, page: 3, perPage: 100, fetchImpl: stub });
+    // `per` is the legacy spelling; `per_page` is the cursor-era one. Both go
+    // out only once we've committed to the legacy walk.
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?per_page=100&page=3&per=100');
+  });
+
+  it('listVehicles — caps per_page at Fleet.io\'s documented maximum of 100', async () => {
+    const stub = vi.fn().mockResolvedValue(jsonRespTm({ records: [], next_cursor: null }));
+    await listVehicles({ config: cfg, perPage: 500, fetchImpl: stub });
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/vehicles?per_page=100');
+  });
+
+  it('listFuelEntries — filters by vehicle_id and parses records', async () => {
     const stub = vi.fn().mockResolvedValue(jsonRespTm({
       records: [{ id: 900, vehicle_id: 501, date: '2026-07-01', liters: null, us_gallons: 12.5, cost: 43.75 }],
-      pagination: { current_page: 1, total_pages: 1, total_entries: 1, per_page: 100 },
+      next_cursor: null,
     }));
-    const r = await listFuelEntries({ config: cfg, vehicleId: 501, page: 1, perPage: 100, fetchImpl: stub });
+    const r = await listFuelEntries({ config: cfg, vehicleId: 501, perPage: 100, fetchImpl: stub });
     expect(r.records).toHaveLength(1);
     expect(r.records[0].us_gallons).toBe(12.5);
-    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/fuel_entries?vehicle_id=501&page=1&per_page=100');
+    expect(stub.mock.calls[0][0]).toBe('https://secure.fleetio.com/api/v1/fuel_entries?vehicle_id=501&per_page=100');
   });
 
   it('createVehicle — POSTs JSON body, returns the created record', async () => {
@@ -318,6 +351,21 @@ describe('archiveVehicle', () => {
     expect(seen.method).toBe('PATCH');
     expect(seen.url).toBe('https://example.test/api/v1/vehicles/7777');
     expect(seen.body).toBe('{"archived_at":"2026-06-21T22:43:51.000Z"}');
+  });
+});
+
+describe('archiveVendor', () => {
+  const cfg: FleetioConfig = { apiKey: 'tok_test_a', accountToken: 'acct_test_b', apiBase: 'https://example.test/api/v1' };
+
+  it('PATCHes /vendors/:id/archive with no body (live docs confirmed PATCH, not POST)', async () => {
+    let seen: { method?: string; url?: string; body?: string } = {};
+    const fetchImpl: typeof fetch = async (url, init) => {
+      seen = { method: init?.method, url: String(url), body: String(init?.body ?? '') };
+      return new Response(null, { status: 204 });
+    };
+    await archiveVendor({ config: cfg, fleetioId: 42, fetchImpl });
+    expect(seen.method).toBe('PATCH');
+    expect(seen.url).toBe('https://example.test/api/v1/vendors/42/archive');
   });
 });
 

@@ -20,19 +20,19 @@ export interface KbResult {
 
 /** Per-type display metadata (label + accent). Icons are chosen in the UI. */
 export const KB_TYPE_META: Record<string, { label: string; color: string }> = {
-  call: { label: 'Calls', color: '#22c55e' },
-  person: { label: 'Persons', color: '#d4a017' },
-  vehicle: { label: 'Vehicles', color: '#a78bfa' },
-  warrant: { label: 'Warrants', color: '#f59e0b' },
-  citation: { label: 'Citations', color: '#38bdf8' },
-  incident: { label: 'Incidents', color: '#fb923c' },
-  personnel: { label: 'Personnel', color: 'var(--rmpg-400)' },
-  unit: { label: 'Units', color: '#34d399' },
-  evidence: { label: 'Evidence', color: '#c084fc' },
-  bolo: { label: 'BOLOs', color: '#ef4444' },
-  property: { label: 'Property', color: 'var(--rmpg-400)' },
-  arrest: { label: 'Arrests', color: '#fb7185' },
-  statute: { label: 'Statutes', color: '#d4a017' },
+  call: { label: 'Calls', color: 'var(--sev-ok)' },
+  person: { label: 'Persons', color: 'var(--accent-gold-300)' },
+  vehicle: { label: 'Vehicles', color: 'var(--sev-special)' },
+  warrant: { label: 'Warrants', color: 'var(--sev-warn)' },
+  citation: { label: 'Citations', color: 'var(--sev-info)' },
+  incident: { label: 'Incidents', color: 'var(--sev-high)' },
+  personnel: { label: 'Personnel', color: 'var(--text-secondary)' },
+  unit: { label: 'Units', color: 'var(--sev-ok-soft)' },
+  evidence: { label: 'Evidence', color: 'var(--sev-special-soft)' },
+  bolo: { label: 'BOLOs', color: 'var(--sev-critical)' },
+  property: { label: 'Property', color: 'var(--text-secondary)' },
+  arrest: { label: 'Arrests', color: 'var(--sev-critical-soft)' },
+  statute: { label: 'Statutes', color: 'var(--accent-gold-300)' },
 };
 
 export function kbTypeLabel(type: string): string {

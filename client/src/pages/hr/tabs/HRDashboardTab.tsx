@@ -18,8 +18,10 @@ interface DashboardData {
   new_hires_30d: number;
   on_leave_today: number;
   pending_approvals: number;
-  training_compliance_pct: number;
-  credential_compliance_pct: number;
+  // null = nothing tracked yet. Distinct from 0, which means "tracked and
+  // failing" — the API stopped conflating the two.
+  training_compliance_pct: number | null;
+  credential_compliance_pct: number | null;
   overdue_items: number;
   recent_activity: ActivityItem[];
 }
@@ -48,12 +50,12 @@ const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 function activityColor(type: string): string {
   switch (type) {
-    case 'leave_request': return '#f59e0b';
-    case 'leave_approved': return '#22c55e';
-    case 'disciplinary': return '#ef4444';
-    case 'review': return '#888888';
-    case 'commendation': return '#8b5cf6';
-    default: return 'var(--rmpg-500)';
+    case 'leave_request': return 'var(--sev-warn)';
+    case 'leave_approved': return 'var(--sev-ok)';
+    case 'disciplinary': return 'var(--sev-critical)';
+    case 'review': return 'var(--text-muted)';
+    case 'commendation': return 'var(--sev-special)';
+    default: return 'var(--text-muted)';
   }
 }
 
@@ -87,13 +89,13 @@ function MetricCard({
   icon: Icon,
   label,
   value,
-  accent = '#888888',
+  accentClass = 'text-fg-muted',
   onClick,
 }: {
   icon: React.ElementType;
   label: string;
   value: number;
-  accent?: string;
+  accentClass?: string;
   onClick?: () => void;
 }) {
   return (
@@ -104,7 +106,7 @@ function MetricCard({
       aria-label={`${label}: ${value}`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <Icon size={16} style={{ color: accent }} aria-hidden="true" />
+        <Icon size={16} className={accentClass} aria-hidden="true" />
         <span className="text-xs text-rmpg-400 uppercase tracking-wide">{label}</span>
       </div>
       <div className="text-2xl font-bold text-rmpg-100 font-mono">{value}</div>
@@ -113,18 +115,26 @@ function MetricCard({
 }
 
 // ─── Progress Bar ───────────────────────────────────────────
-function ProgressBar({ label, pct, color = '#888888' }: { label: string; pct: number; color?: string }) {
+function ProgressBar({ label, pct, colorClass = 'bg-fg-muted' }: { label: string; pct: number | null; colorClass?: string }) {
+  // A null pct means the requirement set is empty (no mandatory courses / no
+  // certifications on file). Rendering that as 0% claimed the department was
+  // out of compliance, so show an explicit em dash and a neutral, empty track.
+  const tracked = typeof pct === 'number';
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-rmpg-300">{label}</span>
-        <span className="text-xs font-medium text-rmpg-100">{pct}%</span>
+        <span className="text-xs font-medium text-rmpg-100" title={tracked ? undefined : 'Not tracked yet — no requirements on file'}>
+          {tracked ? `${pct}%` : '—'}
+        </span>
       </div>
       <div className="h-2 bg-surface-sunken rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
-        />
+        {tracked && (
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+            style={{ width: `${Math.min(pct as number, 100)}%` }}
+          />
+        )}
       </div>
     </div>
   );
@@ -135,12 +145,12 @@ function BalanceCard({
   label,
   used,
   total,
-  color,
+  colorClass,
 }: {
   label: string;
   used: number;
   total: number;
-  color: string;
+  colorClass: string;
 }) {
   const remaining = total - used;
   const pct = total > 0 ? Math.round((used / total) * 100) : 0;
@@ -153,8 +163,8 @@ function BalanceCard({
       </div>
       <div className="h-2 bg-surface-sunken rounded-full overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`${label}: ${pct}% used`}>
         <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, backgroundColor: color }}
+          className={`h-full rounded-full transition-all duration-500 ${colorClass}`}
+          style={{ width: `${pct}%` }}
         />
       </div>
       <div className="text-xs text-rmpg-500 mt-1">{used} used</div>
@@ -174,14 +184,14 @@ function ManagerDashboard({
     <div className="space-y-4">
       {/* Top metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="group" aria-label="HR metrics">
-        <MetricCard icon={Users} label="Total Active" value={data.total_active} accent="#888888" />
-        <MetricCard icon={UserPlus} label="New Hires (30d)" value={data.new_hires_30d} accent="#22c55e" />
-        <MetricCard icon={CalendarOff} label="On Leave Today" value={data.on_leave_today} accent="#f59e0b" />
+        <MetricCard icon={Users} label="Total Active" value={data.total_active} accentClass="text-fg-muted" />
+        <MetricCard icon={UserPlus} label="New Hires (30d)" value={data.new_hires_30d} accentClass="text-green-500" />
+        <MetricCard icon={CalendarOff} label="On Leave Today" value={data.on_leave_today} accentClass="text-amber-400" />
         <MetricCard
           icon={Clock}
           label="Pending Approvals"
           value={data.pending_approvals}
-          accent={data.pending_approvals > 0 ? '#ef4444' : 'var(--rmpg-500)'}
+          accentClass={data.pending_approvals > 0 ? 'text-red-500' : 'text-fg-muted'}
           onClick={data.pending_approvals > 0 ? onNavigateToLeave : undefined}
         />
       </div>
@@ -196,12 +206,12 @@ function ManagerDashboard({
           <ProgressBar
             label="Training Compliance"
             pct={data.training_compliance_pct}
-            color={data.training_compliance_pct >= 80 ? '#22c55e' : '#f59e0b'}
+            colorClass={(data.training_compliance_pct ?? 0) >= 80 ? 'bg-green-500' : 'bg-amber-400'}
           />
           <ProgressBar
             label="Credential Compliance"
             pct={data.credential_compliance_pct}
-            color={data.credential_compliance_pct >= 80 ? '#22c55e' : '#f59e0b'}
+            colorClass={(data.credential_compliance_pct ?? 0) >= 80 ? 'bg-green-500' : 'bg-amber-400'}
           />
           <div className="flex items-center gap-3">
             <AlertTriangle size={16} className={data.overdue_items > 0 ? 'text-red-400' : 'text-green-400'} />
@@ -285,9 +295,9 @@ function OfficerDashboard({
       {/* PTO Balances */}
       {balances ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} color="#888888" />
-          <BalanceCard label="Sick" used={balances.sick_used} total={balances.sick_total} color="#ef4444" />
-          <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} color="#8b5cf6" />
+          <BalanceCard label="Vacation" used={balances.vacation_used} total={balances.vacation_total} colorClass="bg-fg-muted" />
+          <BalanceCard label="Sick" used={balances.sick_used} total={balances.sick_total} colorClass="bg-red-500" />
+          <BalanceCard label="Personal" used={balances.personal_used} total={balances.personal_total} colorClass="bg-purple-500" />
         </div>
       ) : (
         <div className="bg-surface-base border border-rmpg-700 rounded-sm p-4">

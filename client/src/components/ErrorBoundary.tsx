@@ -5,7 +5,17 @@
 
 import React, { Component, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
-import { CHUNK_RELOAD_KEY, CHUNK_RELOAD_WINDOW_MS, isChunkLoadError } from '../utils/chunkRetry';
+import {
+  CHUNK_RELOAD_KEY,
+  CHUNK_RELOAD_WINDOW_MS,
+  isChunkLoadError,
+  repairAllPoisonedChunksInBrowser,
+  evictPoisonedChunkCachesInBrowser,
+} from '../utils/chunkRetry';
+
+/** Ceiling on the pre-reload repair fetch, so a hung network can never make the
+ *  Reload button feel dead. Mirrors index.html's 3s entry-recovery ceiling. */
+const RECOVERY_FETCH_CEILING_MS = 3_000;
 
 interface Props {
   children: ReactNode;
@@ -41,7 +51,12 @@ export default class ErrorBoundary extends Component<Props, State> {
       const lastAt = lastReload ? parseInt(lastReload, 10) : null;
       if (lastAt === null || Number.isNaN(lastAt) || Date.now() - lastAt > CHUNK_RELOAD_WINDOW_MS) {
         sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
-        window.location.reload();
+        // A plain reload is a no-op against HTTP-cache-poisoned chunks (same
+        // current index.html -> same poisoned chunk URL -> same failure), so
+        // this auto-path must run the same bounded evict+repair dance as the
+        // manual "Reload Page" button before reloading. See ErrorBoundary's
+        // `recoverThenReload` for the shared ordering rationale.
+        this.recoverThenReload(error);
         return;
       }
     }
@@ -67,10 +82,53 @@ export default class ErrorBoundary extends Component<Props, State> {
     } catch { /* silent */ }
   }
 
+  /**
+   * Bypass-refetch the poisoned chunk (and, for the manual button, purge SW
+   * caches) before reloading. A PLAIN reload cannot fix the HTTP-cache-poison
+   * failure class — same current index -> same poisoned cached chunk -> same
+   * card, forever. Bounded by RECOVERY_FETCH_CEILING_MS so a hung network can
+   * never make recovery feel dead — the same reasoning as index.html's 3s
+   * ceiling on its entry recovery.
+   *
+   * `purgeCaches` is opt-in: the BROAD service-worker purge costs offline
+   * capability until the next online load, so it stays confined to the
+   * explicit user-initiated Reload button and is skipped on the automatic
+   * componentDidCatch safety net (which must still repair the HTTP cache —
+   * a plain reload there was a guaranteed no-op — but shouldn't silently
+   * strip offline support from a unit that never asked for a reload).
+   *
+   * Repairs via `repairAllPoisonedChunksInBrowser`, not just the one URL in
+   * `err`'s message: Chrome's dynamic-import rejection only ever names the
+   * TOP-LEVEL import target, never a transitive sub-chunk that top-level
+   * module statically imports. Resource Timing catches those regardless of
+   * what the rejection message says — see chunkRetry.ts.
+   */
+  private recoverThenReload(err: Error, purgeCaches = false) {
+    // Ordering is load-bearing when purging: eviction must run FIRST, since a
+    // `fetch(..., {cache:'reload'})` bypasses the HTTP cache but is still
+    // dispatched through the service worker's fetch handler, so repairing
+    // while a poisoned SW is registered lets that same SW answer the repair
+    // request from its own bad cache.
+    const recover = async () => {
+      if (purgeCaches) await evictPoisonedChunkCachesInBrowser();
+      await repairAllPoisonedChunksInBrowser(err);
+    };
+    void Promise.race([
+      recover(),
+      new Promise((r) => setTimeout(r, RECOVERY_FETCH_CEILING_MS)),
+    ]).then(() => window.location.reload(), () => window.location.reload());
+  }
+
   handleReload = () => {
     // Clear the chunk-reload guard so the fresh load can auto-retry if chunks
     // still fail (e.g. during a multi-minute CF Pages propagation window).
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* private mode */ }
+
+    const err = this.state.error;
+    if (err && isChunkLoadError(err)) {
+      this.recoverThenReload(err, /* purgeCaches */ true);
+      return;
+    }
     window.location.reload();
   };
 
@@ -92,11 +150,11 @@ export default class ErrorBoundary extends Component<Props, State> {
 
       return (
         <div className="flex items-center justify-center min-h-[400px] p-8">
-          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid #dc2626' }}>
+          <div className="w-full max-w-lg bg-surface-base border border-red-900/50 shadow-md animate-scale-in" style={{ borderTop: '2px solid var(--sev-critical)' }}>
             {/* Header */}
             <div
               className="flex items-center gap-2 px-4 py-3 border-b border-red-900/30"
-              style={{ background: 'linear-gradient(180deg, #2a1515 0%, #141414 100%)' }}
+              style={{ background: 'linear-gradient(180deg, rgb(var(--sev-critical-rgb) / 0.08) 0%, var(--surface-sunken) 100%)' }}
             >
               <AlertTriangle className="w-5 h-5 text-red-400" />
               <h2 className="text-sm font-bold text-red-300 uppercase tracking-wider">
@@ -151,7 +209,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                   )}
                   {error?.stack && (
                     <div>
-                      <div className="text-[9px] text-rmpg-500 font-bold uppercase tracking-wider mb-1">Stack Trace</div>
+                      <div className="text-[9px] text-fg-muted font-bold uppercase tracking-wider mb-1">Stack Trace</div>
                       <pre className="p-3 bg-black/40 border border-rmpg-700 text-[10px] text-rmpg-400 font-mono overflow-auto max-h-[150px] whitespace-pre-wrap">
                         {error.stack}
                       </pre>

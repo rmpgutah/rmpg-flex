@@ -9,11 +9,25 @@
 // shape validation, not SQL correctness.
 // ============================================================
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Hono } from 'hono';
 import warrants from '../src/routes/warrants';
 import type { Env } from '../src/types';
 import { makeFakeDb } from './helpers/fakeD1';
+
+const fetchWarrantsForPersonMock = vi.fn();
+const recordWarrantMock = vi.fn();
+
+vi.mock('../src/utils/utahWarrantPoller', async () => {
+  const actual = await vi.importActual<typeof import('../src/utils/utahWarrantPoller')>(
+    '../src/utils/utahWarrantPoller',
+  );
+  return {
+    ...actual,
+    fetchWarrantsForPerson: (...args: unknown[]) => fetchWarrantsForPersonMock(...args),
+    recordWarrant: (...args: unknown[]) => recordWarrantMock(...args),
+  };
+});
 
 function buildApp(db: D1Database) {
   const app = new Hono<Env>();
@@ -80,5 +94,74 @@ describe('POST /api/warrants/search-all', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { scraped: unknown[] };
     expect(body.scraped).toHaveLength(0);
+  });
+
+  it('runs a live Utah API check and persists results when both first and last name are given', async () => {
+    fetchWarrantsForPersonMock.mockReset().mockResolvedValue([
+      {
+        utah_person_id: '12345',
+        utah_warrant_id: 'W-1',
+        first_name: 'JOHN',
+        middle_name: null,
+        last_name: 'SMITH',
+        age: 40,
+        city: 'Salt Lake City',
+        issue_date: '2026-01-01',
+        court_name: 'Third District Court',
+        case_id: 'CR-1',
+        charges: JSON.stringify(['THEFT']),
+      },
+    ]);
+    recordWarrantMock.mockReset().mockResolvedValue(true);
+
+    const request = buildApp(
+      makeFakeDb([
+        { match: /FROM warrants/, rows: [] },
+        { match: /FROM utah_warrants/, rows: [{ utah_warrant_id: 'W-1', first_name: 'JOHN', last_name: 'SMITH' }] },
+      ]),
+    );
+
+    const res = await request('/api/warrants/search-all', postJson({ firstName: 'John', lastName: 'Smith' }));
+    expect(res.status).toBe(200);
+
+    expect(fetchWarrantsForPersonMock).toHaveBeenCalledTimes(1);
+    expect(fetchWarrantsForPersonMock).toHaveBeenCalledWith(
+      expect.objectContaining({ first_name: 'John', last_name: 'Smith' }),
+    );
+    expect(recordWarrantMock).toHaveBeenCalledTimes(1);
+    expect(recordWarrantMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ utah_warrant_id: 'W-1' }), null);
+
+    const body = (await res.json()) as { utah: Record<string, unknown>[] };
+    expect(body.utah).toHaveLength(1);
+    expect(body.utah[0].utah_warrant_id).toBe('W-1');
+  });
+
+  it('does not attempt a live Utah check when only one of first/last name is given', async () => {
+    fetchWarrantsForPersonMock.mockReset();
+    recordWarrantMock.mockReset();
+
+    const request = buildApp(makeFakeDb([{ match: /FROM utah_warrants/, rows: [] }]));
+    const res = await request('/api/warrants/search-all', postJson({ lastName: 'Smith' }));
+    expect(res.status).toBe(200);
+    expect(fetchWarrantsForPersonMock).not.toHaveBeenCalled();
+  });
+
+  it('degrades gracefully to cache-only results when the live Utah check fails', async () => {
+    fetchWarrantsForPersonMock.mockReset().mockRejectedValue(new Error('search 500'));
+    recordWarrantMock.mockReset();
+
+    const request = buildApp(
+      makeFakeDb([
+        { match: /FROM warrants/, rows: [] },
+        { match: /FROM utah_warrants/, rows: [{ utah_warrant_id: 'cached-1' }] },
+      ]),
+    );
+
+    const res = await request('/api/warrants/search-all', postJson({ firstName: 'John', lastName: 'Smith' }));
+    expect(res.status).toBe(200);
+    expect(recordWarrantMock).not.toHaveBeenCalled();
+    const body = (await res.json()) as { utah: Record<string, unknown>[] };
+    expect(body.utah).toHaveLength(1);
+    expect(body.utah[0].utah_warrant_id).toBe('cached-1');
   });
 });

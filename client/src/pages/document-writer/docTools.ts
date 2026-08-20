@@ -7,7 +7,7 @@
 // recent-documents history, standalone styled-HTML export, document duplication,
 // and editor-navigation helpers (select-all / go to top / go to bottom).
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

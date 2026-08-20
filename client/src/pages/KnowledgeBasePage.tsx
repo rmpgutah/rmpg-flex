@@ -10,7 +10,7 @@
 // searches on the empty state (no leak between MDT operators); keyboard
 // navigation (↑/↓/Enter) matching GlobalSearch; Esc smart-cascade (filter →
 // query → blur); court-ready PDF export of the current result list; theme-
-// token chrome (no more raw #d4a017/#0a0a0a literals).
+// token chrome (no more raw var(--field-label-color)/var(--surface-deep) literals).
 //
 // Audit v1204: ConfirmDialog guards clear-recent-searches; ?article_id= deep-
 // link highlights a specific result by record id (deepLinkRef guard); N focuses
@@ -21,7 +21,7 @@
 // (knowledgeBase.ts unwraps .results); brand tokens clean (no raw hex).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Search, Loader2, ArrowRight, BookOpen, X, User, Car, FileText, Phone,
   AlertTriangle, Shield, Building2, Users, Radio, Package, Scale, Receipt,
@@ -121,25 +121,28 @@ export default function KnowledgeBasePage() {
     setLoading(true);
     let cancelled = false;
     const t = setTimeout(async () => {
-      const r = await knowledgeBaseSearch(q, 80);
-      if (cancelled) return;
-      setResults(r);
-      setSearched(true);
-      setLoading(false);
-      setSelectedIndex(0);
-      const next: Record<string, string> = { q };
-      if (typeFilter) next.type = typeFilter;
-      setParams(next, { replace: true });
+      try {
+        const r = await knowledgeBaseSearch(q, 80);
+        if (cancelled) return;
+        setResults(r);
+        setSearched(true);
+        setSelectedIndex(0);
+        const next: Record<string, string> = { q };
+        if (typeFilter) next.type = typeFilter;
+        setParams(next, { replace: true });
 
-      // Append to recent — newest first, dedup by query, capped at MAX_RECENT.
-      const k = recentKey(user?.id);
-      if (k) {
-        setRecent((prev) => {
-          const entry: RecentSearch = { q, count: r.length, at: new Date().toISOString() };
-          const updated = [entry, ...prev.filter((p) => p.q.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENT);
-          try { localStorage.setItem(k, JSON.stringify(updated)); } catch { /* quota — ignore */ }
-          return updated;
-        });
+        // Append to recent — newest first, dedup by query, capped at MAX_RECENT.
+        const k = recentKey(user?.id);
+        if (k) {
+          setRecent((prev) => {
+            const entry: RecentSearch = { q, count: r.length, at: new Date().toISOString() };
+            const updated = [entry, ...prev.filter((p) => p.q.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENT);
+            try { localStorage.setItem(k, JSON.stringify(updated)); } catch { /* quota — ignore */ }
+            return updated;
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     }, 250);
     return () => { cancelled = true; clearTimeout(t); };
@@ -368,7 +371,7 @@ export default function KnowledgeBasePage() {
             className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border"
             style={{
               borderRadius: 2,
-              color: typeFilter === null ? 'var(--surface-base)' : 'var(--rmpg-400)',
+              color: typeFilter === null ? 'var(--surface-base)' : 'var(--text-secondary)',
               background: typeFilter === null ? 'var(--brand-500)' : 'transparent',
               borderColor: typeFilter === null ? 'var(--brand-500)' : 'var(--border-default)',
             }}
@@ -377,7 +380,7 @@ export default function KnowledgeBasePage() {
           </button>
           {typeCounts.map(({ type, count }) => {
             const active = typeFilter === type;
-            const color = KB_TYPE_META[type]?.color || 'var(--rmpg-400)';
+            const color = KB_TYPE_META[type]?.color || 'var(--text-secondary)';
             return (
               <button
                 key={type} type="button" onClick={() => setTypeFilter(active ? null : type)}
@@ -495,7 +498,7 @@ export default function KnowledgeBasePage() {
 
         {shown.map((r, idx) => {
           const Icon = iconFor(r.type);
-          const color = KB_TYPE_META[r.type]?.color || 'var(--rmpg-400)';
+          const color = KB_TYPE_META[r.type]?.color || 'var(--text-secondary)';
           const isSelected = idx === selectedIndex;
           return (
             <button

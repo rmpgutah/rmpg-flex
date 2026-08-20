@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stamp, X, Upload, Sparkles, Check, Save, AlertTriangle, RotateCcw } from 'lucide-react';
 import { addCustomStamp, type CustomStamp } from './CustomStampsGallery';
+import { localToday } from '../../../utils/dateUtils';
 
 // ============================================================
 // Stamp Studio — author transparent-PNG stamps two ways:
@@ -289,7 +290,7 @@ function renderDateStamp(s: TemplateState): HTMLCanvasElement {
   ctx.font = '15px Arial, sans-serif';
   ctx.fillText((s.dateLabel || 'RECEIVED').toUpperCase(), W / 2, 38);
   ctx.font = 'bold 36px "Courier New", monospace';
-  ctx.fillText(s.dateValue || new Date().toISOString().slice(0, 10), W / 2, 76);
+  ctx.fillText(s.dateValue || localToday(), W / 2, 76);
   return c;
 }
 
@@ -324,10 +325,10 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
   const [tpl, setTpl] = useState<TemplateState>({
     ink: '#c0392b',
     notaryName: 'NOTARY PUBLIC', notaryState: 'Utah', notaryCommission: '', notaryExpires: '',
-    decision: 'APPROVED', approvalDate: new Date().toISOString().slice(0, 10), approvalOfficer: officerName || '',
+    decision: 'APPROVED', approvalDate: localToday(), approvalOfficer: officerName || '',
     textWord: 'COPY',
     badgeOfficer: officerName || '', badgeNumber: badgeNumber || '',
-    dateValue: new Date().toISOString().slice(0, 10), dateLabel: 'RECEIVED',
+    dateValue: localToday(), dateLabel: 'RECEIVED',
   });
 
   const previewRef = useRef<HTMLCanvasElement | null>(null);
@@ -393,7 +394,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
     window.setTimeout(() => setSavedMsg(null), 3000);
   };
 
-  const field = 'w-full bg-surface-base border border-border-default rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:border-[#d4a017]';
+  const field = 'w-full bg-surface-base border border-border-default rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100 focus:outline-none focus:[border-color:var(--field-label-color)]';
   const lbl = 'block text-[9px] uppercase tracking-wider text-rmpg-500 mb-0.5';
 
   return (
@@ -402,7 +403,7 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
         {/* Header + tabs */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-default">
           <h3 className="text-sm font-semibold text-rmpg-100 inline-flex items-center gap-2">
-            <Stamp className="w-4 h-4 text-[#d4a017]" /> Stamp Studio
+            <Stamp className="w-4 h-4 [color:var(--panel-header-color)]" /> Stamp Studio
           </h3>
           <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-rmpg-100" aria-label="Close"><X className="w-4 h-4" /></button>
         </div>
@@ -453,7 +454,12 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                       <input id="ff-stampstudio-ink" type="color" value={tpl.ink}
                         onChange={(e) => setTpl({ ...tpl, ink: e.target.value })}
                         className="w-8 h-7 bg-transparent border border-border-default rounded-[2px] cursor-pointer" />
-                      {['#c0392b', 'var(--surface-base)', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
+                      {/* Literal hex only — tpl.ink feeds Canvas 2D (ctx.fillStyle) and an
+                          <input type="color">, neither of which resolves var(). Canvas
+                          silently keeps its previous color and the input sanitizes to
+                          #000000, so a CSS var here renders black while the swatch button
+                          itself (real CSS) still looks correct. */}
+                      {['#c0392b', '#0a0a0a', '#1a3a5c', '#d4a017', '#1f8b4c'].map((c) => (
                         <button key={c} type="button" aria-label={`Ink ${c}`} onClick={() => setTpl({ ...tpl, ink: c })}
                           className="w-5 h-5 rounded-full border border-border-subtle" style={{ background: c }} />
                       ))}
@@ -535,13 +541,13 @@ export default function StampStudio({ open, onClose, onUse, onSaved, officerName
                     <div>
                       <span className={lbl}>White threshold — {threshold}</span>
                       <input id="ff-ss-th" type="range" min={120} max={255} value={threshold}
-                        onChange={(e) => setThreshold(Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                        onChange={(e) => setThreshold(Number(e.target.value))} className="w-full [accent-color:var(--field-label-color)]" />
                       <div className="text-[9px] text-rmpg-600">Higher keeps more of the image; lower removes more (also clears light grays).</div>
                     </div>
                     <div>
                       <span className={lbl}>Soft edge — {soft}</span>
                       <input id="ff-ss-soft" type="range" min={0} max={60} value={soft}
-                        onChange={(e) => setSoft(Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                        onChange={(e) => setSoft(Number(e.target.value))} className="w-full [accent-color:var(--field-label-color)]" />
                     </div>
                     <div>
                       <span className={lbl}>Before</span>

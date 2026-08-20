@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import {
-  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle,
+  Crosshair, Layers, ZoomIn, ZoomOut, Trash2, MapPin, AlertCircle, Route, CloudRain,
 } from 'lucide-react';
 import {
   initMapbox, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_SATELLITE,
@@ -16,6 +16,9 @@ import {
 } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../utils/mapboxBasemap';
+import { useMapTraffic } from '../hooks/useMapTraffic';
+import { useMapWeatherRadar } from '../hooks/useMapWeatherRadar';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import type { NavRoutePoint } from '../types';
 import {
   applyNavTheme, resolveNavTheme, navThemeStyleUrl, trailFilter, speedAdaptiveZoom,
@@ -41,8 +44,10 @@ const STYLE_OPTIONS: { value: 'dark' | 'satellite' | 'streets'; label: string; u
 ];
 
 // Map the user's style selection (same signal that picks initialUrl/insetUrl)
-// to the RMPG basemap re-skin variant. 'streets' = stock light style → 'light'
-// (basemap intentionally leaves light as-is, the print path).
+// to the RMPG basemap re-skin variant. 'streets' = stock light style → 'light',
+// which now correctly receives the fixed dark Blue/Silver/Gold restyle (this is
+// an on-screen nav surface, not a print/export path — a bright map at night is
+// a driving hazard).
 function basemapVariantFor(s: 'dark' | 'satellite' | 'streets'): BasemapVariant {
   if (s === 'satellite') return 'satellite';
   if (s === 'streets') return 'light';
@@ -111,6 +116,8 @@ export default function NavMapView({
   const insetEnabled = !lowPower && showInset;
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [style, setStyle] = useState<'dark' | 'satellite' | 'streets'>(initialStyle);
@@ -118,6 +125,8 @@ export default function NavMapView({
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [userPanned, setUserPanned] = useState(false);
   const positionMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const traffic = useMapTraffic(mapRef.current, mapReady);
+  const weatherRadar = useMapWeatherRadar(mapRef.current, mapReady);
 
   // #99 inset (3D look-ahead) map — only mounted when not low-power.
   const insetContainerRef = useRef<HTMLDivElement>(null);
@@ -170,6 +179,7 @@ export default function NavMapView({
           style: initialUrl,
           center: initialCenter,
           zoom: DEFAULT_ZOOM,
+          projection: 'mercator',
           attributionControl: false,
           // 2D-only — no pitch, no rotation, no 3D. The NavPage mini-map is for
           // glanceable position + breadcrumb, not a chase cam.
@@ -191,6 +201,7 @@ export default function NavMapView({
 
         map.on('load', () => {
           if (cancelled) return;
+          onMapLoaded(map);
           // Breadcrumb trail
           map.addSource(TRAIL_SOURCE_ID, {
             type: 'geojson',
@@ -285,6 +296,7 @@ export default function NavMapView({
             return;
           }
           mapRef.current = map;
+          webglRecoveryCleanupRef.current = attach(map, 'NavMapView');
           setMapReady(true);
         });
 
@@ -309,6 +321,8 @@ export default function NavMapView({
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -316,7 +330,7 @@ export default function NavMapView({
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // ── Style change ───────────────────────────────────────────
   const handleStyleChange = useCallback((next: 'dark' | 'satellite' | 'streets') => {
@@ -469,6 +483,7 @@ export default function NavMapView({
         style: insetUrl,
         center,
         zoom: 16,
+        projection: 'mercator',
         pitch: 60, // 3D look-ahead
         bearing: 0,
         attributionControl: false,
@@ -690,7 +705,7 @@ export default function NavMapView({
     const pin: DroppedPin = {
       lat: position.latitude,
       lng: position.longitude,
-      label: `Pin ${new Date().toLocaleTimeString()}`,
+      label: `Pin ${new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' })}`,
       color: palette[Math.floor(Math.random() * palette.length)],
       created_at: new Date().toISOString(),
     };
@@ -716,7 +731,7 @@ export default function NavMapView({
           <div ref={insetContainerRef} className="absolute inset-0" />
           <span
             className="absolute top-0 left-0 px-1 text-[7px] font-mono uppercase tracking-wider"
-            style={{ background: 'rgba(0,0,0,0.7)', color: '#d4a017' }}
+            style={{ background: 'rgba(0 0 0 / 0.7)', color: 'var(--field-label-color)' }}
           >
             3D
           </span>
@@ -726,14 +741,14 @@ export default function NavMapView({
       {error && (
         <div className="absolute inset-0 flex items-center justify-center p-3 text-center" style={{ background: 'rgba(10,10,10,0.85)' }}>
           <div>
-            <AlertCircle size={20} className="mx-auto mb-1" style={{ color: '#ef4444' }} />
+            <AlertCircle size={20} className="mx-auto mb-1" style={{ color: 'var(--sev-critical)' }} />
             <p className="text-[10px]" style={{ color: '#888' }}>{error}</p>
           </div>
         </div>
       )}
 
       {!position && !error && mapReady && (
-        <div className="absolute top-2 left-2 right-2 px-2 py-1 text-center rounded-sm text-[10px] font-mono" style={{ background: 'rgba(0,0,0,0.65)', color: '#888' }}>
+        <div className="absolute top-2 left-2 right-2 px-2 py-1 text-center rounded-sm text-[10px] font-mono" style={{ background: 'rgba(0 0 0 / 0.65)', color: '#888' }}>
           Waiting for GPS fix…
         </div>
       )}
@@ -775,13 +790,40 @@ export default function NavMapView({
             </button>
           </div>
 
+          {/* Live traffic + weather radar (top-right). Positioned with a
+              generous buffer below Mapbox's native zoom control (added via
+              addControl(NavigationControl, 'top-right') above), which
+              occupies roughly the top ~70px of this corner — not
+              precisely measured, so the buffer is intentionally generous
+              rather than tight. */}
+          <div className="absolute top-24 right-2 flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => traffic.toggle()}
+              className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
+              style={{ background: 'rgba(10,10,10,0.85)', color: traffic.enabled ? '#22c55e' : '#888' }}
+              title={traffic.enabled ? 'Hide live traffic' : 'Show live traffic'}
+            >
+              <Route size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => weatherRadar.toggle()}
+              className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
+              style={{ background: 'rgba(10,10,10,0.85)', color: weatherRadar.enabled ? '#3b82f6' : '#888' }}
+              title={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+            >
+              <CloudRain size={14} />
+            </button>
+          </div>
+
           {/* Style toggle (bottom-left) */}
           <div className="absolute bottom-2 left-2">
             <button
               type="button"
               onClick={() => setStyleMenuOpen((v) => !v)}
               className="w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#d4a017' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--field-label-color)' }}
               title="Map style"
             >
               <Layers size={14} />
@@ -809,7 +851,7 @@ export default function NavMapView({
               type="button"
               onClick={handleDropPin}
               className="absolute bottom-2 left-12 w-8 h-8 flex items-center justify-center rounded-sm border border-subtle"
-              style={{ background: 'rgba(10,10,10,0.85)', color: '#22c55e' }}
+              style={{ background: 'rgba(10,10,10,0.85)', color: 'var(--sev-ok)' }}
               title="Drop a pin at your current position"
             >
               <MapPin size={14} />
@@ -822,8 +864,8 @@ export default function NavMapView({
             className="absolute right-12 px-1.5 py-0.5 rounded-sm text-[8px] font-mono uppercase tracking-wider"
             style={{ background: 'rgba(10,10,10,0.85)', color: '#888', bottom: lowPower ? 8 : 84, zIndex: 3 }}
           >
-            <span style={{ color: '#d4a017' }}>●</span> You
-            {pins.length > 0 && <span className="ml-1.5"><span style={{ color: '#22c55e' }}>●</span> Pin</span>}
+            <span style={{ color: 'var(--field-label-color)' }}>●</span> You
+            {pins.length > 0 && <span className="ml-1.5"><span style={{ color: 'var(--sev-ok)' }}>●</span> Pin</span>}
           </div>
         </>
       )}

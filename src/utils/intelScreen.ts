@@ -12,7 +12,8 @@
 import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
-import { isRealValue } from './intelMatch';
+import { isRealValue, isVehicleStolen } from './intelMatch';
+import { toDisplayLabel } from './displayLabel';
 
 export interface ScreenHit {
   kind: string;                       // active_warrant | watchlist | trespass_active | stolen | sor | caution | gang
@@ -25,8 +26,8 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
   try {
     for (const w of await query<any>(db,
       `SELECT warrant_number, charge_description FROM warrants
-       WHERE (subject_person_id = ? OR person_id = ?) AND status IN ('active','outstanding') LIMIT 5`,
-      personId, personId))
+       WHERE subject_person_id = ? AND status IN ('active','outstanding') LIMIT 5`,
+      personId))
       hits.push({ kind: 'active_warrant', severity: 'critical',
         detail: `Active warrant ${w.warrant_number || ''}${isRealValue(w.charge_description) ? ` — ${w.charge_description}` : ''}`.trim() });
   } catch (err: any) { log.error('[intel-screen] warrants failed', { error: err?.message }); }
@@ -56,7 +57,7 @@ export async function screenPerson(db: D1Database, personId: number): Promise<Sc
       const sev = a.severity === 'danger' ? 'critical' : 'warning';
       const isSor = String(a.alert_type) === 'sex_offender';
       const label = isSor ? 'Registered sex offender (registry alert)'
-                          : `Offender alert${isRealValue(a.alert_type) ? ` (${String(a.alert_type).replace(/_/g, ' ')})` : ''}`;
+                          : `Offender alert${isRealValue(a.alert_type) ? ` (${toDisplayLabel(String(a.alert_type))})` : ''}`;
       hits.push({ kind: isSor ? 'sor' : 'caution', severity: sev,
         detail: `${label}${isRealValue(a.description) ? ` — ${a.description}` : ''}`.trim() });
     }
@@ -92,7 +93,9 @@ export async function screenVehicle(
   } catch (err: any) { log.error('[intel-screen] vehicle lookup failed', { error: err?.message }); }
   if (!vehicle) return { vehicleId: null, hits };
 
-  if (vehicle.is_stolen === 1 || isRealValue(vehicle.stolen_status))
+  // isRealValue(stolen_status) was the test here, which treats the literal
+  // "Not Stolen" as a stolen flag — see isVehicleStolen for the live values.
+  if (isVehicleStolen(vehicle.is_stolen, vehicle.stolen_status))
     hits.push({ kind: 'stolen', severity: 'critical',
       detail: `STOLEN${isRealValue(vehicle.stolen_status) ? ` (${vehicle.stolen_status})` : ''} — ${vehicle.plate_number || `vehicle #${vehicle.id}`}` });
   try {

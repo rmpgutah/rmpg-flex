@@ -14,6 +14,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { withAlpha } from '../../utils/withAlpha';
 
 interface OfficerCompliance {
   user_id: number;
@@ -74,7 +75,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
     try {
       // Fetch training records + requirements and compute compliance
       const [records, users] = await Promise.all([
-        apiFetch<any[]>('/admin/training'),
+        apiFetch<any[]>('/personnel/training'),
         apiFetch<any[]>('/personnel').catch(() => []),
       ]);
 
@@ -186,7 +187,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             <CheckCircle style={{ width: 14, height: 14 }} className={stats.overall_compliance_rate >= 90 ? 'text-green-400' : stats.overall_compliance_rate >= 70 ? 'text-amber-400' : 'text-red-400'} />
           </div>
           <div>
-            <div className="text-[18px] font-black tabular-nums leading-tight" style={{ color: stats.overall_compliance_rate >= 90 ? '#22c55e' : stats.overall_compliance_rate >= 70 ? '#f59e0b' : '#ef4444' }}>
+            <div className={`text-[18px] font-black tabular-nums leading-tight ${stats.overall_compliance_rate >= 90 ? 'text-green-500' : stats.overall_compliance_rate >= 70 ? 'text-amber-400' : 'text-red-500'}`}>
               {stats.overall_compliance_rate}%
             </div>
             <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Compliance Rate</div>
@@ -220,13 +221,13 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
         {stats.by_category.map(cat => {
           const pct = cat.required > 0 ? Math.round((cat.completed / cat.required) * 100) : 100;
-          const color = pct >= 90 ? '#22c55e' : pct >= 70 ? '#f59e0b' : '#ef4444';
+          const color = pct >= 90 ? 'rgb(34 197 94)' : pct >= 70 ? 'rgb(245 158 11)' : 'rgb(239 68 68)';
           return (
             <div key={cat.category} className="panel-beveled p-2 flex items-center gap-3">
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-rmpg-100 font-semibold capitalize">
-                    {cat.category.replace(/_/g, ' ')}
+                    {toDisplayLabel(cat.category)}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color }}>
                     {pct}% ({cat.completed}/{cat.required})
@@ -259,7 +260,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         </thead>
         <tbody>
           {stats.officers.map(o => {
-            const statusColor = o.overdue === 0 ? '#22c55e' : o.overdue <= 2 ? '#f59e0b' : '#ef4444';
+            const statusColor = o.overdue === 0 ? 'rgb(34 197 94)' : o.overdue <= 2 ? 'rgb(245 158 11)' : 'rgb(239 68 68)';
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
               <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors" onContextMenu={(e) => openMenu(e, buildOfficerMenu(o))}>
@@ -267,11 +268,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>
                 <td className="px-3 py-2 text-center font-mono text-rmpg-300">{o.completed}/{o.required}</td>
-                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? '#ef4444' : 'var(--rmpg-500)' }}>
+                <td className="px-3 py-2 text-center font-mono" style={{ color: o.overdue > 0 ? 'rgb(239 68 68)' : 'var(--text-muted)' }}>
                   {o.overdue}
                 </td>
                 <td className="px-3 py-2">
-                  <span className="text-[8px] font-bold uppercase px-1.5 py-0.5" style={{ background: `${statusColor}22`, color: statusColor, border: `1px solid ${statusColor}44` }}>
+                  <span className="text-[8px] font-bold uppercase px-1.5 py-0.5" style={{ background: withAlpha(statusColor, '22'), color: statusColor, border: `1px solid ${withAlpha(statusColor, '44')}` }}>
                     {statusLabel}
                   </span>
                 </td>

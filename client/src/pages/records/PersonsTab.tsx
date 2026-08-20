@@ -24,6 +24,9 @@ import {
   User,
   Gavel,
   Navigation,
+  Heart,
+  Clock,
+  BookOpen,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -53,6 +56,7 @@ import AISearchButton from '../../components/AISearchButton';
 import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
 import { coded } from '../../utils/searchText';
 import { hasValue } from '../../utils/sentinel';
+import { toDisplayLabel } from '../../utils/formatters';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -134,6 +138,9 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     // selections were silently dropped on load (visible to the user
     // as "field reset itself" — see issue 2026-05-04). The PDF render
     // path had the same blacklist and is now also relaxed.
+    sex: row.sex ? String(row.sex) : undefined,
+    nationality: row.nationality ? String(row.nationality) : undefined,
+    aliases: row.aliases ? String(row.aliases) : undefined,
     gang_affiliation: row.gang_affiliation ? String(row.gang_affiliation) : undefined,
     is_sex_offender: row.is_sex_offender === 1 || row.is_sex_offender === true,
     is_veteran: row.is_veteran === 1 || row.is_veteran === true,
@@ -594,7 +601,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         if (filterFlag === 'warrant') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('warrant') : false);
         if (filterFlag === 'sex_offender') return p.is_sex_offender;
         if (filterFlag === 'veteran') return p.is_veteran;
-        if (filterFlag === 'gang') return !!(p as any).gang_affiliation && !['none', '0', 'n/a'].includes(String((p as any).gang_affiliation).toLowerCase());
+        if (filterFlag === 'gang') return !!p.gang_affiliation && !['none', '0', 'n/a'].includes(String(p.gang_affiliation).toLowerCase());
         if (filterFlag === 'bolo') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('bolo') : false);
         return true;
       });
@@ -720,6 +727,11 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             key={person.id}
             role="listitem"
             tabIndex={0}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/json', JSON.stringify({ type: 'person', id: person.id, name: `${person.first_name} ${person.last_name}` }));
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
             onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
@@ -738,7 +750,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                 // must-not-miss condition (WARRANT / SOR / GANG / …) shows as a
                 // small corner tab instead of a full colored ring.
                 const cornerBadge = recordCornerBadge(personPostureFlags(person));
-                const photo = (person as any).photo || person.photo_url || person.id_image_url;
+                const photo = person.photo || person.photo_url || person.id_image_url;
                 return (
                   <RecordAvatar
                     name={`${person.first_name || ''} ${person.last_name || ''}`}
@@ -973,7 +985,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
   // Same photo-source fallback chain the list row uses, so an attached
   // mugshot / DL image populates the hero tile too (else the person glyph).
   const heroPhotoSrc =
-    (selectedPerson as any).photo || selectedPerson.photo_url || selectedPerson.id_image_url;
+    selectedPerson.photo || selectedPerson.photo_url || selectedPerson.id_image_url;
   const heroPhoto = heroPhotoSrc ? authedImageUrl(heroPhotoSrc) : undefined;
 
   const heroSubtitle = (
@@ -1035,6 +1047,23 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
       {/* Scrollable Detail Sections */}
       <div className="flex-1 overflow-auto p-2 space-y-1">
 
+        {/* ── Demographics ─────────────────────────── */}
+        <CollapsibleSection title="Demographics" icon={User} defaultOpen>
+          <FieldGrid cols={3}>
+            {selectedPerson.alias_nickname && <RecordField label="Alias / AKA" value={selectedPerson.alias_nickname} />}
+            {selectedPerson.aliases && <RecordField label="Other Aliases" value={selectedPerson.aliases} />}
+            {selectedPerson.suffix && <RecordField label="Suffix" value={selectedPerson.suffix} />}
+            {selectedPerson.sex && <RecordField label="Sex (Birth/Legal)" value={selectedPerson.sex} />}
+            {selectedPerson.gender && <RecordField label="Gender Identity" value={humanizeGender(selectedPerson.gender)} />}
+            <RecordField label="Language" value={selectedPerson.language} />
+            {selectedPerson.nationality && <RecordField label="Nationality" value={selectedPerson.nationality} />}
+            <RecordField label="Place of Birth" value={selectedPerson.place_of_birth} />
+            <RecordField label="Citizenship" value={selectedPerson.citizenship} />
+            <RecordField label="Marital Status" value={selectedPerson.marital_status} />
+            <RecordField label="Blood Type" value={selectedPerson.blood_type} />
+          </FieldGrid>
+        </CollapsibleSection>
+
         {/* ── Physical Description ─────────────────── */}
         <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
           <FieldGrid cols={3}>
@@ -1043,13 +1072,12 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             <RecordField label="Build" value={selectedPerson.build} />
             <RecordField label="Complexion" value={selectedPerson.complexion} />
             <RecordField label="Hair" value={selectedPerson.hair_color} />
-            <RecordField label="Length" value={selectedPerson.hair_length} />
-            <RecordField label="Style" value={selectedPerson.hair_style} />
+            <RecordField label="Hair Length" value={selectedPerson.hair_length} />
+            <RecordField label="Hair Style" value={selectedPerson.hair_style} />
             <RecordField label="Eyes" value={selectedPerson.eye_color} />
             <RecordField label="Facial Hair" value={selectedPerson.facial_hair} />
             <RecordField label="Glasses" value={selectedPerson.glasses} />
-            <RecordField label="Shoe" value={selectedPerson.shoe_size} />
-            <RecordField label="Language" value={selectedPerson.language} />
+            <RecordField label="Shoe Size" value={selectedPerson.shoe_size} />
           </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
             <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="var(--sev-warn-soft)" /></div>
@@ -1072,9 +1100,6 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           {selectedPerson.clothing_description && (
             <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
-          {selectedPerson.alias_nickname && (
-            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="rgb(var(--brand-gold-400-rgb))" /></div>
-          )}
         </CollapsibleSection>
 
         {/* ── Contact & Address ────────────────────── */}
@@ -1082,17 +1107,24 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           <FieldGrid cols={2}>
             <RecordField label="Phone" value={selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined} icon={Phone} copyable />
             <RecordField label="Phone 2" value={selectedPerson.phone_secondary ? formatPhoneDisplay(selectedPerson.phone_secondary) : undefined} icon={Phone} copyable />
+            {selectedPerson.home_phone && <RecordField label="Home Phone" value={formatPhoneDisplay(selectedPerson.home_phone)} icon={Phone} copyable />}
+            {selectedPerson.work_phone && <RecordField label="Work Phone" value={formatPhoneDisplay(selectedPerson.work_phone)} icon={Phone} copyable />}
             <RecordField label="Email" value={selectedPerson.email} icon={Mail} copyable />
-            <RecordField label="Address" value={[formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', ')} icon={MapPin} copyable />
-            <RecordField label="Employer" value={selectedPerson.employer} icon={Briefcase} />
-            <RecordField label="Occupation" value={selectedPerson.occupation} />
+            {selectedPerson.email_secondary && <RecordField label="Email 2" value={selectedPerson.email_secondary} icon={Mail} copyable />}
+            <RecordField label="Address" value={[formatAddressDisplay(selectedPerson.address), selectedPerson.address_2, formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', ')} icon={MapPin} copyable />
             <RecordField label="Social Media" value={selectedPerson.social_media} />
-            <RecordField label="Place of Birth" value={selectedPerson.place_of_birth} />
-            <RecordField label="Citizenship" value={selectedPerson.citizenship} />
-            <RecordField label="Marital Status" value={selectedPerson.marital_status} />
-            <RecordField label="Blood Type" value={selectedPerson.blood_type} />
           </FieldGrid>
         </CollapsibleSection>
+
+        {/* ── Employment ───────────────────────────── */}
+        {(selectedPerson.employer || selectedPerson.occupation) && (
+          <CollapsibleSection title="Employment" icon={Briefcase}>
+            <FieldGrid cols={2}>
+              <RecordField label="Employer" value={selectedPerson.employer} icon={Briefcase} />
+              <RecordField label="Occupation" value={selectedPerson.occupation} />
+            </FieldGrid>
+          </CollapsibleSection>
+        )}
 
         {/* ── Identification ──────────────────────── */}
         <CollapsibleSection title="Identification" icon={CreditCard} defaultOpen>
@@ -1112,7 +1144,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   </div>
                   {selectedPerson.id_type && (
                     <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-surface-sunken/40 text-rmpg-400 border border-border-default/40 text-center w-full">
-                      {selectedPerson.id_type.replace(/_/g, ' ')}
+                      {toDisplayLabel(selectedPerson.id_type)}
                     </span>
                   )}
                 </div>
@@ -1152,7 +1184,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                 )}
                 {selectedPerson.id_number && (
                   <FieldGrid cols={2}>
-                    <RecordField label={selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'} value={selectedPerson.id_number} mono copyable />
+                    <RecordField label={selectedPerson.id_type ? toDisplayLabel(selectedPerson.id_type).toUpperCase() : 'ID'} value={selectedPerson.id_number} mono copyable />
                     <RecordField label="State" value={selectedPerson.id_state} />
                     <RecordField label="Expiry" value={selectedPerson.id_expiry ? safeDateDisplay(selectedPerson.id_expiry) : undefined} />
                   </FieldGrid>
@@ -1212,11 +1244,13 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         </CollapsibleSection>
 
         {/* ── Legal & Associations (conditional) ──── */}
-        {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
+        {(selectedPerson.probation_parole || selectedPerson.known_associates || hasValue(selectedPerson.gang_affiliation) || selectedPerson.alias_dob) && (
           <CollapsibleSection title="Legal & Associations" icon={Shield} accent="amber">
             <FieldGrid cols={2}>
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
               {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
+              {hasValue(selectedPerson.gang_affiliation) && <RecordField label="Gang Affiliation" value={selectedPerson.gang_affiliation} />}
+              {selectedPerson.alias_dob && <RecordField label="Alias DOB" value={safeDateDisplay(selectedPerson.alias_dob)} />}
             </FieldGrid>
             {selectedPerson.known_associates && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
@@ -1235,13 +1269,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           </CollapsibleSection>
         )}
 
-        {/* ── Immigration & Demographics ───────────── */}
-        {(selectedPerson.immigration_status || selectedPerson.passport_number || selectedPerson.passport_country) && (
-          <CollapsibleSection title="Immigration & Travel" icon={Shield}>
+        {/* ── Immigration ──────────────────────────── */}
+        {selectedPerson.immigration_status && (
+          <CollapsibleSection title="Immigration" icon={Shield}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {renderInfoRow('Immigration Status', selectedPerson.immigration_status)}
-              {renderInfoRow('Passport #', selectedPerson.passport_number)}
-              {renderInfoRow('Passport Country', selectedPerson.passport_country)}
             </div>
           </CollapsibleSection>
         )}
@@ -1257,6 +1289,17 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
             {selectedPerson.medication_notes && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.medication_notes}</span></div>
             )}
+          </CollapsibleSection>
+        )}
+
+        {/* ── Custody / Intake (conditional) ─────────── */}
+        {(selectedPerson.voice_description || selectedPerson.religion || selectedPerson.dietary_restrictions) && (
+          <CollapsibleSection title="Custody / Intake" icon={BookOpen}>
+            <FieldGrid cols={3}>
+              {selectedPerson.voice_description && <RecordField label="Voice Description" value={selectedPerson.voice_description} />}
+              {selectedPerson.religion && <RecordField label="Religion" value={selectedPerson.religion} />}
+              {selectedPerson.dietary_restrictions && <RecordField label="Dietary Restrictions" value={selectedPerson.dietary_restrictions} />}
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
@@ -1279,12 +1322,31 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
           </CollapsibleSection>
         )}
 
+        {/* ── Last Known Location (conditional) ────── */}
+        {(selectedPerson.date_last_seen || selectedPerson.location_last_seen) && (
+          <CollapsibleSection title="Last Known Location" icon={MapPin}>
+            <FieldGrid cols={2}>
+              {selectedPerson.date_last_seen && <RecordField label="Date Last Seen" value={safeDateDisplay(selectedPerson.date_last_seen)} />}
+              {selectedPerson.location_last_seen && <RecordField label="Location Last Seen" value={selectedPerson.location_last_seen} icon={MapPin} />}
+            </FieldGrid>
+          </CollapsibleSection>
+        )}
+
         {/* ── Notes (conditional) ──────────────────── */}
         {selectedPerson.notes && (
           <CollapsibleSection title="Notes" icon={FileText} defaultOpen={false}>
-            <p className="text-xs text-rmpg-200 leading-relaxed break-words">{selectedPerson.notes}</p>
+            <p className="text-xs text-rmpg-200 leading-relaxed break-words whitespace-pre-wrap">{selectedPerson.notes}</p>
           </CollapsibleSection>
         )}
+
+        {/* ── Record Metadata ─────────────────────── */}
+        <CollapsibleSection title="Record Info" icon={Clock} defaultOpen={false}>
+          <FieldGrid cols={2}>
+            <RecordField label="Created" value={safeDateDisplay(selectedPerson.created_at)} />
+            <RecordField label="Last Updated" value={safeDateDisplay(selectedPerson.updated_at)} />
+            <RecordField label="Record ID" value={selectedPerson.id} mono />
+          </FieldGrid>
+        </CollapsibleSection>
 
         {/* ── Criminal History (standalone component) ─ */}
         <CriminalHistorySection

@@ -68,9 +68,90 @@ function handle(method, fullPath, body) {
       return handleSearchVehicles(query);
     }
 
+    // ─── Incidents (single + update) ─────────────────────
+    if (method === 'GET' && path.match(/^\/api\/incidents\/\d+$/)) {
+      return handleGetIncidentById(path.split('/').pop());
+    }
+    if (method === 'PUT' && path.match(/^\/api\/incidents\/\d+$/)) {
+      return handleUpdateIncident(path.split('/').pop(), body);
+    }
+
     // ─── Time Entries ────────────────────────────────────
     if (method === 'POST' && (path === '/api/personnel/time/clock-in' || path === '/api/personnel/time-entries')) {
       return handleClockIn(body);
+    }
+    if (method === 'POST' && path === '/api/personnel/time/clock-out') {
+      return handleClockOut(body);
+    }
+    if (method === 'GET' && path === '/api/personnel/time-entries') {
+      return handleGetTimeEntries(query);
+    }
+
+    // ─── Units (single) ───────────────────────────────────
+    if (method === 'GET' && path.match(/^\/api\/dispatch\/units\/\d+$/)) {
+      return handleGetUnitById(path.split('/').pop());
+    }
+
+    // ─── Records (single) ────────────────────────────────
+    if (method === 'GET' && path.match(/^\/api\/records\/persons\/\d+$/)) {
+      return handleGetPersonById(path.split('/').pop());
+    }
+    if (method === 'GET' && path.match(/^\/api\/records\/vehicles\/\d+$/)) {
+      return handleGetVehicleById(path.split('/').pop());
+    }
+
+    // ─── Clients (reference data) ─────────────────────────
+    if (method === 'GET' && path === '/api/clients') {
+      return handleGetClients(query);
+    }
+    if (method === 'GET' && path.match(/^\/api\/clients\/\d+\/properties$/)) {
+      return handleGetClientProperties(path.split('/')[3]);
+    }
+
+    // ─── Patrol scans ─────────────────────────────────────
+    if (method === 'POST' && path === '/api/patrol/scans') {
+      return handleCreatePatrolScan(body);
+    }
+    if (method === 'GET' && path === '/api/patrol/scans') {
+      return handleGetPatrolScans(query);
+    }
+
+    // ─── Field Interviews ─────────────────────────────────
+    if (method === 'POST' && path === '/api/field-interviews') {
+      return handleCreateFieldInterview(body);
+    }
+    if (method === 'GET' && path === '/api/field-interviews') {
+      return handleGetFieldInterviews(query);
+    }
+
+    // ─── Citations ────────────────────────────────────────
+    if (method === 'POST' && path === '/api/citations') {
+      return handleCreateCitation(body);
+    }
+    if (method === 'GET' && path === '/api/citations') {
+      return handleGetCitations(query);
+    }
+
+    // ─── GPS trail (recent breadcrumbs) ───────────────────
+    if (method === 'GET' && path === '/api/dispatch/gps/trail') {
+      return handleGetGpsTrail(query);
+    }
+
+    // ─── Process Server (serve queue + attempts) ──────────
+    if (method === 'GET' && path === '/api/process-server') {
+      return handleGetServeQueue(query);
+    }
+    if (method === 'GET' && path.match(/^\/api\/process-server\/\d+$/)) {
+      return handleGetServeJobById(path.split('/').pop());
+    }
+    if (method === 'GET' && path.match(/^\/api\/process-server\/\d+\/attempts$/)) {
+      return handleGetServeAttempts(path.split('/')[3]);
+    }
+    if (method === 'POST' && path.match(/^\/api\/process-server\/\d+\/attempt$/)) {
+      return handleCreateServeAttempt(path.split('/')[3], body);
+    }
+    if (method === 'PUT' && path.match(/^\/api\/process-server\/\d+\/status$/)) {
+      return handleUpdateServeStatus(path.split('/')[3], body);
     }
 
     return { status: 503, error: 'Endpoint not available offline' };
@@ -388,6 +469,421 @@ function handleClockIn(body) {
 
   const created = db.prepare('SELECT * FROM time_entries WHERE local_id = ?').get(localId);
   return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/incidents/:id ─────────────────────────
+
+function handleGetIncidentById(id) {
+  const db = getLocalDb();
+  const row = db.prepare('SELECT * FROM incidents WHERE id = ? OR local_id = ?').get(id, id);
+  if (!row) return { status: 404, error: 'Incident not found' };
+  return { status: 200, data: row };
+}
+
+// ─── Handler: PUT /api/incidents/:id ─────────────────────────
+
+function handleUpdateIncident(id, body) {
+  const db = getLocalDb();
+  const existing = db.prepare('SELECT * FROM incidents WHERE id = ? OR local_id = ?').get(id, id);
+  if (!existing) return { status: 404, error: 'Incident not found' };
+
+  const updatable = ['status', 'priority', 'narrative', 'location_address', 'property_id',
+    'supervisor_id', 'call_id', 'incident_type'];
+  const sets = ['updated_at = ?', 'is_dirty = 1'];
+  const vals = [new Date().toISOString()];
+
+  for (const key of updatable) {
+    if (body[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      vals.push(body[key]);
+    }
+  }
+
+  vals.push(existing.id);
+  db.prepare(`UPDATE incidents SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+  enqueue('PUT', `/api/incidents/${existing.server_id || existing.id}`, body, existing.local_id, 'incidents');
+
+  const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(existing.id);
+  return { status: 200, data: updated };
+}
+
+// ─── Handler: POST /api/personnel/time/clock-out ─────────────
+
+function handleClockOut(body) {
+  const db = getLocalDb();
+  const userId = getConfig('current_user_id');
+  const now = new Date().toISOString();
+
+  const active = db.prepare(
+    `SELECT * FROM time_entries WHERE officer_id = ? AND status = 'active' ORDER BY clock_in DESC LIMIT 1`
+  ).get(body.officer_id || userId);
+
+  if (!active) return { status: 404, error: 'No active time entry found' };
+
+  const clockOut = body.clock_out || now;
+  // D1 timestamps are stored as naive UTC (e.g. "2026-08-12 14:30:00") without
+  // a 'Z' suffix. new Date() on such a string parses it as LOCAL time in Node.js,
+  // causing up to 7h error vs the ISO Z-string from Date.prototype.toISOString().
+  // Normalize by replacing the space with 'T' and appending 'Z' if absent.
+  function parseD1Ts(ts) {
+    if (!ts) return NaN;
+    const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T');
+    return new Date(normalized.endsWith('Z') ? normalized : normalized + 'Z').getTime();
+  }
+  const clockInMs = parseD1Ts(active.clock_in);
+  const clockOutMs = parseD1Ts(clockOut);
+  const totalHours = Math.max(0, (clockOutMs - clockInMs) / 3600000);
+
+  db.prepare(`
+    UPDATE time_entries SET clock_out = ?, clock_out_latitude = ?, clock_out_longitude = ?,
+      total_hours = ?, status = 'completed', is_dirty = 1 WHERE id = ?
+  `).run(clockOut, body.latitude, body.longitude, totalHours, active.id);
+
+  enqueue('POST', '/api/personnel/time/clock-out', { ...body, clock_out: clockOut }, active.local_id, 'time_entries');
+
+  const updated = db.prepare('SELECT * FROM time_entries WHERE id = ?').get(active.id);
+  return { status: 200, data: updated };
+}
+
+// ─── Handler: GET /api/personnel/time-entries ─────────────────
+
+function handleGetTimeEntries(query) {
+  const db = getLocalDb();
+  const userId = getConfig('current_user_id');
+  let sql = 'SELECT * FROM time_entries WHERE officer_id = ?';
+  const params = [query.officer_id || userId];
+
+  if (query.status) {
+    sql += ' AND status = ?';
+    params.push(query.status);
+  }
+
+  sql += ' ORDER BY clock_in DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 50);
+
+  const rows = db.prepare(sql).all(...params);
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: GET /api/dispatch/units/:id ────────────────────
+
+function handleGetUnitById(id) {
+  const db = getLocalDb();
+  const row = db.prepare('SELECT * FROM units WHERE id = ?').get(id);
+  if (!row) return { status: 404, error: 'Unit not found' };
+  return { status: 200, data: { ...row, capabilities: safeJsonParse(row.capabilities, []) } };
+}
+
+// ─── Handler: GET /api/records/persons/:id ───────────────────
+
+function handleGetPersonById(id) {
+  const db = getLocalDb();
+  const row = db.prepare('SELECT * FROM persons WHERE id = ?').get(id);
+  if (!row) return { status: 404, error: 'Person not found' };
+  return { status: 200, data: { ...row, flags: safeJsonParse(row.flags, []) } };
+}
+
+// ─── Handler: GET /api/records/vehicles/:id ──────────────────
+
+function handleGetVehicleById(id) {
+  const db = getLocalDb();
+  const row = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id);
+  if (!row) return { status: 404, error: 'Vehicle not found' };
+  return { status: 200, data: { ...row, flags: safeJsonParse(row.flags, []) } };
+}
+
+// ─── Handler: GET /api/clients ───────────────────────────────
+
+function handleGetClients(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM clients WHERE status = ?';
+  const params = [query.status || 'active'];
+  sql += ' ORDER BY name ASC LIMIT ?';
+  params.push(parseInt(query.limit) || 200);
+  const rows = db.prepare(sql).all(...params);
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: GET /api/clients/:id/properties ────────────────
+
+function handleGetClientProperties(clientId) {
+  const db = getLocalDb();
+  const rows = db.prepare(
+    'SELECT * FROM properties WHERE client_id = ? AND is_active = 1 ORDER BY name ASC'
+  ).all(clientId);
+  return { status: 200, data: rows };
+}
+
+// ─── Handler: POST /api/patrol/scans ─────────────────────────
+
+function handleCreatePatrolScan(body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+
+  // patrol_scans uses scanned_at (NOT created_at) per migrations README
+  db.prepare(`
+    INSERT INTO patrol_scans
+      (officer_id, unit_id, checkpoint_id, property_id, latitude, longitude,
+       notes, scanned_at, is_synced)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+  `).run(
+    body.officer_id, body.unit_id, body.checkpoint_id, body.property_id,
+    body.latitude, body.longitude, body.notes, body.scanned_at || now
+  );
+
+  const created = db.prepare('SELECT * FROM patrol_scans WHERE rowid = last_insert_rowid()').get();
+  enqueue('POST', '/api/patrol/scans', body, null, 'patrol_scans');
+  return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/patrol/scans ──────────────────────────
+
+function handleGetPatrolScans(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM patrol_scans WHERE 1=1';
+  const params = [];
+
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  if (query.property_id) { sql += ' AND property_id = ?'; params.push(query.property_id); }
+
+  sql += ' ORDER BY scanned_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 100);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: POST /api/field-interviews ─────────────────────
+
+function handleCreateFieldInterview(body) {
+  const db = getLocalDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO field_interviews
+      (local_id, officer_id, subject_first_name, subject_last_name, subject_dob,
+       subject_race, subject_sex, location_address, latitude, longitude,
+       reason, narrative, call_id, created_at, updated_at, is_dirty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `).run(
+    localId, body.officer_id,
+    body.subject_first_name, body.subject_last_name, body.subject_dob,
+    body.subject_race, body.subject_sex,
+    body.location_address, body.latitude, body.longitude,
+    body.reason, body.narrative, body.call_id, now, now
+  );
+
+  const created = db.prepare('SELECT * FROM field_interviews WHERE local_id = ?').get(localId);
+  enqueue('POST', '/api/field-interviews', body, localId, 'field_interviews');
+  return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/field-interviews ──────────────────────
+
+function handleGetFieldInterviews(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM field_interviews WHERE 1=1';
+  const params = [];
+
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  if (query.call_id) { sql += ' AND call_id = ?'; params.push(query.call_id); }
+
+  sql += ' ORDER BY created_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 50);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: POST /api/citations ────────────────────────────
+
+function handleCreateCitation(body) {
+  const db = getLocalDb();
+  const localId = `LOCAL-${crypto.randomUUID()}`;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO citations
+      (local_id, officer_id, citation_number, violation_code, violation_description,
+       subject_first_name, subject_last_name, subject_dob, subject_dl_number,
+       vehicle_plate, vehicle_make, vehicle_model, vehicle_year, vehicle_color,
+       location_address, latitude, longitude, call_id,
+       issued_at, updated_at, is_dirty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `).run(
+    localId, body.officer_id,
+    body.citation_number || `CIT-${Date.now().toString(36).toUpperCase()}`,
+    body.violation_code, body.violation_description,
+    body.subject_first_name, body.subject_last_name, body.subject_dob, body.subject_dl_number,
+    body.vehicle_plate, body.vehicle_make, body.vehicle_model, body.vehicle_year, body.vehicle_color,
+    body.location_address, body.latitude, body.longitude, body.call_id,
+    body.issued_at || now, now
+  );
+
+  const created = db.prepare('SELECT * FROM citations WHERE local_id = ?').get(localId);
+  enqueue('POST', '/api/citations', body, localId, 'citations');
+  return { status: 201, data: created };
+}
+
+// ─── Handler: GET /api/citations ─────────────────────────────
+
+function handleGetCitations(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM citations WHERE 1=1';
+  const params = [];
+
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  if (query.call_id) { sql += ' AND call_id = ?'; params.push(query.call_id); }
+
+  sql += ' ORDER BY issued_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 50);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: GET /api/dispatch/gps/trail ────────────────────
+
+function handleGetGpsTrail(query) {
+  const db = getLocalDb();
+  let sql = 'SELECT * FROM gps_breadcrumbs WHERE 1=1';
+  const params = [];
+
+  if (query.unit_id) { sql += ' AND unit_id = ?'; params.push(query.unit_id); }
+  if (query.officer_id) { sql += ' AND officer_id = ?'; params.push(query.officer_id); }
+  if (query.since) { sql += ' AND recorded_at >= ?'; params.push(query.since); }
+
+  sql += ' ORDER BY recorded_at DESC LIMIT ?';
+  params.push(parseInt(query.limit) || 500);
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: GET /api/process-server ────────────────────────
+
+function handleGetServeQueue(query) {
+  const db = getLocalDb();
+  const userId = getConfig('current_user_id');
+  let sql = 'SELECT * FROM serve_queue WHERE 1=1';
+  const params = [];
+
+  if (query.officer_id) {
+    sql += ' AND officer_id = ?';
+    params.push(parseInt(query.officer_id));
+  } else if (userId) {
+    // Default to the current officer's own queue so My Run works offline
+    sql += ' AND officer_id = ?';
+    params.push(parseInt(userId));
+  }
+
+  if (query.status) {
+    sql += ' AND status = ?';
+    params.push(query.status);
+  }
+
+  sql += ' ORDER BY sort_order ASC, priority DESC, deadline ASC LIMIT ?';
+  params.push(parseInt(query.limit) || 200);
+
+  return { status: 200, data: db.prepare(sql).all(...params) };
+}
+
+// ─── Handler: GET /api/process-server/:id ────────────────────
+
+function handleGetServeJobById(id) {
+  const db = getLocalDb();
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(parseInt(id));
+  if (!job) return { status: 404, error: 'Job not found' };
+  return { status: 200, data: job };
+}
+
+// ─── Handler: GET /api/process-server/:id/attempts ───────────
+
+function handleGetServeAttempts(jobId) {
+  const db = getLocalDb();
+  const attempts = db.prepare(
+    'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_at ASC'
+  ).all(parseInt(jobId));
+  return { status: 200, data: attempts };
+}
+
+// ─── Handler: POST /api/process-server/:id/attempt ───────────
+
+function handleCreateServeAttempt(jobId, body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+  const localId = `serve-attempt-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const jobIdInt = parseInt(jobId);
+
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(jobIdInt);
+  if (!job) return { status: 404, error: 'Job not found offline' };
+
+  const nextAttemptNumber = (job.attempt_count || 0) + 1;
+
+  db.prepare(`
+    INSERT INTO serve_attempts
+      (local_id, serve_queue_id, attempt_number, attempt_at, officer_id,
+       result, latitude, longitude, notes, attempt_type, photo_ids,
+       signature_data, planned_at, window, status, is_dirty, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+  `).run(
+    localId,
+    jobIdInt,
+    nextAttemptNumber,
+    body.attempt_at || now,
+    body.officer_id || getConfig('current_user_id'),
+    body.result || null,
+    body.latitude || null,
+    body.longitude || null,
+    body.notes || null,
+    body.attempt_type || null,
+    JSON.stringify(body.photo_ids || []),
+    body.signature_data || null,
+    body.planned_at || null,
+    body.window || null,
+    body.status || 'attempted',
+    now,
+  );
+
+  // Derive new queue_status from the attempt result so My Run tab sees it
+  const resultToStatus = { served: 'served', failed: 'failed', skipped: 'skipped' };
+  const newStatus = resultToStatus[body.result] || job.status;
+
+  db.prepare(`
+    UPDATE serve_queue
+    SET attempt_count = attempt_count + 1, status = ?, updated_at = ?, is_dirty = 1
+    WHERE id = ?
+  `).run(newStatus, now, jobIdInt);
+
+  enqueue(
+    'POST',
+    `/api/process-server/${jobId}/attempt`,
+    { ...body, attempt_at: body.attempt_at || now },
+    localId,
+    'serve_attempts',
+  );
+
+  const created = db.prepare('SELECT * FROM serve_attempts WHERE local_id = ?').get(localId);
+  return { status: 201, data: { ...created, queue_status: newStatus } };
+}
+
+// ─── Handler: PUT /api/process-server/:id/status ─────────────
+
+function handleUpdateServeStatus(jobId, body) {
+  const db = getLocalDb();
+  const now = new Date().toISOString();
+  const jobIdInt = parseInt(jobId);
+
+  const job = db.prepare('SELECT * FROM serve_queue WHERE id = ?').get(jobIdInt);
+  if (!job) return { status: 404, error: 'Job not found offline' };
+
+  const newStatus = body.status || job.status;
+  db.prepare(
+    `UPDATE serve_queue SET status = ?, updated_at = ?, is_dirty = 1 WHERE id = ?`
+  ).run(newStatus, now, jobIdInt);
+
+  enqueue(
+    'PUT',
+    `/api/process-server/${jobId}/status`,
+    body,
+    null,
+    'serve_queue',
+  );
+
+  return { status: 200, data: { id: jobIdInt, status: newStatus } };
 }
 
 // ─── Utility ─────────────────────────────────────────────────

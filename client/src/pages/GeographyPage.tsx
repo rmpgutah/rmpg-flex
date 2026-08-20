@@ -21,7 +21,7 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Download, Edit2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useGeographyTree } from '../hooks/useGeographyTree';
@@ -33,6 +33,7 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1095,7 +1096,7 @@ export default function GeographyPage() {
             <>
               <div>
                 <span className="text-rmpg-500">Tier</span>{' '}
-                <span className="text-rmpg-100 capitalize">{deletePending.tier}</span>
+                <span className="text-rmpg-100 capitalize">{formatEnumValue(deletePending.tier)}</span>
               </div>
               <div>
                 <span className="text-rmpg-500">Code</span>{' '}
@@ -1305,7 +1306,7 @@ function DetailPane({
         <div className="space-y-2 mb-6">
           {fields.map(([k, v]) => {
             const isReadOnly = READ_ONLY.has(k);
-            const label = k.replace(/_/g, ' ').toUpperCase();
+            const label = toDisplayLabel(k).toUpperCase();
 
             if (isReadOnly) {
               return (
@@ -1392,7 +1393,7 @@ function DetailPane({
           {fields.map(([k, v]) => (
             <div key={k} className="contents">
               <dt className="text-[var(--text-muted)] uppercase text-[9px] pt-0.5">
-                {k.replace(/_/g, ' ')}
+                {toDisplayLabel(k)}
               </dt>
               <dd className="text-[var(--text-primary)] break-words">
                 {v == null || v === '' ? (

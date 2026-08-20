@@ -18,6 +18,7 @@
 // We include a 24-hour KV cache so repeat queries don't burn the budget.
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { authMiddleware } from '../middleware/auth';
 
@@ -33,7 +34,22 @@ const geocode = new Hono<Env>();
 // in. (Incident 2026-05-24: that's exactly what happened to the
 // admin recovery flow.) Move the auth concern inside so the registry
 // can keep this entry as `public` without leaving the routes open.
-geocode.use('*', authMiddleware);
+//
+// ⚠️  Scope this to the paths this router actually owns — NOT `'*'`.
+// Hono's `app.route('/api', geocode)` merges a router-internal
+// `geocode.use('*', mw)` into the PARENT app's flat route table as a
+// genuinely global `/api/*` pattern (verified against hono-base.js:
+// `.route()` calls `subApp.#addRoute(r.method, r.path, ...)` where
+// `subApp._basePath` is already the merged '/api' prefix, so the '*'
+// becomes '/api/*'). That's indistinguishable from registering
+// `app.use('/api/*', authMiddleware)` directly in index.ts — the exact
+// blanket-block this router exists to avoid. Because this router is
+// registered before other bare-`/api`-adjacent public routers
+// (mobileCfs, stubs' diagnostics/updates mounts, downloads), a bare
+// `'*'` here silently 401'd all of them (found 2026-07-18 while
+// wiring mobile rate limiting — see test-workers/mobileAuthRouting.test.ts).
+geocode.use('/geocode/*', authMiddleware);
+geocode.use('/integrations/mapbox/client-token', authMiddleware);
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
@@ -85,33 +101,47 @@ export async function reverseGeocodeAddress(
 // and never block their write on it. Used by the dispatch call-create flow so
 // every CFS gets map coordinates even when the client didn't supply lat/lng
 // (created via API, the CAD command line, or a path that skipped autocomplete).
+export type GeocodeSource = 'point' | 'centroid';
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  geocodeSource: GeocodeSource;
+}
+
 export async function geocodeAddress(
   env: { KV: KVNamespace },
   address: string,
-): Promise<{ lat: number; lng: number } | null> {
+): Promise<GeocodeResult | null> {
   const q = (address || '').trim();
   if (q.length < 3) return null;
   const cacheKey = `geocode:fwd:${q.toLowerCase()}`;
   try {
-    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as { lat: number; lng: number } | null;
-    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) return cached;
+    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as GeocodeResult | { lat: number; lng: number } | null;
+    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) {
+      return { lat: cached.lat, lng: cached.lng, geocodeSource: (cached as GeocodeResult).geocodeSource ?? 'point' };
+    }
     const params = new URLSearchParams({
-      q, format: 'json', addressdetails: '0', limit: '1', countrycodes: 'us',
+      q, format: 'json', addressdetails: '1', limit: '1', countrycodes: 'us',
       viewbox: '-114.052,42.001,-109.041,36.998', bounded: '1',
     });
     const resp = await fetch(`${NOMINATIM_BASE}?${params}`, {
       headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
     });
     if (!resp.ok) return null;
-    const raw = await resp.json<Array<{ lat?: string; lon?: string }>>();
+    const raw = await resp.json<Array<{ lat?: string; lon?: string; type?: string; class?: string }>>();
     const first = raw?.[0];
     if (!first?.lat || !first?.lon) return null;
     const lat = parseFloat(first.lat);
     const lng = parseFloat(first.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    const coords = { lat, lng };
-    await env.KV.put(cacheKey, JSON.stringify(coords), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
-    return coords;
+    const geocodeSource: GeocodeSource =
+      first.type === 'administrative' || first.type === 'county' || first.type === 'city'
+        ? 'centroid'
+        : 'point';
+    const result: GeocodeResult = { lat, lng, geocodeSource };
+    await env.KV.put(cacheKey, JSON.stringify(result), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
+    return result;
   } catch {
     return null;
   }
@@ -125,7 +155,7 @@ export async function geocodeAddress(
 // in the shape AddressAutocomplete expects (Nominatim raw shape works).
 geocode.get('/geocode/search', async (c) => {
   const q = c.req.query('q')?.trim() || '';
-  const limit = Math.min(10, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+  const limit = clampIntParam(c.req.query('limit'), 5, 1, 10);
   if (q.length < 3) return c.json({ results: [] });
 
   // KV cache key — query+limit is the natural index. 24h TTL is

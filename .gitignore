@@ -5,6 +5,15 @@ node_modules/
 
 # Vite build output (deploy.yml rebuilds this; never track it)
 client/dist/
+/dist/
+
+# Local SQLite scratch DBs
+*.db
+*.db-journal
+
+# Claude Code / tool session artifacts (per-worktree, not committed)
+.claire/
+.playwright-mcp/
 
 # Claude Code tooling (per-worktree, not committed)
 .claude/
@@ -67,3 +76,18 @@ tmp/
 # Generated audit / analysis
 .audit-rms-result.json
 .worktrees/
+.serena/
+
+# kiosk-linux: compiled first-party desktop binaries (built by Buildroot)
+kiosk-linux/rmpg-shell/rmpg-shell
+kiosk-linux/rmpg-shell/rmpg-browser
+kiosk-linux/output/
+__pycache__/
+
+# OSM overlay build artifacts — 250 MB extract, generated tiles
+/.osm-build/
+
+# Tesseract fine-tuned model — fetched from R2 at deploy time, never
+# committed (real document training data-derived artifact).
+containers/tesseract-ocr/model/
+client/tmp-pdf-regen/

@@ -205,6 +205,15 @@ async function performRefresh(): Promise<string | null> {
       if (data.refreshToken) safeSet(REFRESH_TOKEN_KEY, data.refreshToken);
       if (data.sessionId) safeSet(SESSION_ID_KEY, data.sessionId);
       if (data.token) broadcast({ type: 'token', token: data.token });
+      // Keep the desktop shell's local_config cache (auth_token,
+      // refresh_token, current_user_id, current_user_role) current on every
+      // rotation — this is the SINGLE renderer-side refresh path (see the
+      // module header), so without this the cache would only ever reflect
+      // whatever token AuthContext's login() call seeded it with, going
+      // stale the moment the worker rotates the token here instead.
+      if (data.token && electron?.storeAuthSession) {
+        electron.storeAuthSession(data.token, data.refreshToken ?? null).catch(() => { /* offline cache sync is best-effort */ });
+      }
       return data.token ?? null;
     }
 

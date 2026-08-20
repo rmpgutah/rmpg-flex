@@ -27,16 +27,16 @@ function fmtDur(ms: number): string {
 
 function fmtClock(t: number): string {
   try {
-    return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); // new-date-ok
   } catch {
     return '—';
   }
 }
 
 const EVENT_META: Record<DrivingEvent['kind'], { label: string; icon: typeof TrendingUp; color: string }> = {
-  accel: { label: 'Hard accel', icon: TrendingUp, color: '#f59e0b' },
-  brake: { label: 'Hard brake', icon: TrendingDown, color: '#ef4444' },
-  corner: { label: 'Hard corner', icon: CornerUpRight, color: '#8b5cf6' },
+  accel: { label: 'Hard accel', icon: TrendingUp, color: 'var(--sev-warn)' },
+  brake: { label: 'Hard brake', icon: TrendingDown, color: 'var(--sev-critical)' },
+  corner: { label: 'Hard corner', icon: CornerUpRight, color: 'rgb(139, 92, 246)' },
 };
 
 const SOURCE_LABEL: Record<MovementReport['speedSource'], string> = {
@@ -46,9 +46,9 @@ const SOURCE_LABEL: Record<MovementReport['speedSource'], string> = {
 function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
     <div className="relative bg-surface-raised/50 border border-rmpg-800 px-2 py-1.5 overflow-hidden" style={{ borderRadius: 2 }}>
-      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01744 50%, transparent)' }} />
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(var(--accent-silver-400-rgb), 0.27) 50%, transparent)' }} />
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
-      <div className="font-mono font-bold text-[15px] leading-tight mt-0.5 tabular-nums truncate" style={{ color: accent || '#d4d4d4' }}>{value}</div>
+      <div className="font-mono font-bold text-[15px] leading-tight mt-0.5 tabular-nums truncate" style={{ color: accent || 'var(--text-primary)' }}>{value}</div>
       {sub && <div className="text-[8px] text-rmpg-600 leading-none truncate">{sub}</div>}
     </div>
   );
@@ -76,16 +76,16 @@ function SpeedProfile({ report }: { report: MovementReport }) {
     <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H }} aria-hidden="true">
       <defs>
         <linearGradient id="spd-fill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#d4a017" stopOpacity="0.32" />
-          <stop offset="100%" stopColor="#d4a017" stopOpacity="0.02" />
+          <stop offset="0%" stopColor="var(--brand-gold)" stopOpacity="0.32" />
+          <stop offset="100%" stopColor="var(--brand-gold)" stopOpacity="0.02" />
         </linearGradient>
       </defs>
       {/* avg guide */}
       {avgMovingMph > 0 && (
-        <line x1="0" y1={avgY} x2={W} y2={avgY} stroke="#22c55e" strokeWidth="0.75" strokeDasharray="3 3" opacity="0.7" />
+        <line x1="0" y1={avgY} x2={W} y2={avgY} stroke="var(--sev-ok)" strokeWidth="0.75" strokeDasharray="3 3" opacity="0.7" />
       )}
       <polyline points={path.area} fill="url(#spd-fill)" stroke="none" />
-      <polyline points={path.line} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <polyline points={path.line} fill="none" stroke="var(--brand-gold)" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
@@ -109,11 +109,11 @@ function FrictionCircle({ report, liveLongG, liveLatG }: { report: MovementRepor
       {/* history dots */}
       {dots.map((s, i) => {
         const mag = Math.min(1, Math.hypot(s.longG, s.latG));
-        const col = mag > 0.55 ? '#ef4444' : mag > 0.35 ? '#f59e0b' : '#6b7280';
+        const col = mag > 0.55 ? 'var(--sev-critical)' : mag > 0.35 ? 'var(--sev-warn)' : 'var(--text-muted)';
         return <circle key={i} cx={c + gToPx(s.latG)} cy={c - gToPx(s.longG)} r="1.4" fill={col} opacity="0.5" />;
       })}
       {/* live point */}
-      <circle cx={c + gToPx(liveLatG)} cy={c - gToPx(liveLongG)} r="3.5" fill="#d4a017" stroke="#0a0a0a" strokeWidth="1" />
+      <circle cx={c + gToPx(liveLatG)} cy={c - gToPx(liveLongG)} r="3.5" fill="var(--brand-gold)" stroke="black" strokeWidth="1" />
       <text x={c} y={11} textAnchor="middle" className="fill-rmpg-600" style={{ fontSize: 7, letterSpacing: 1 }}>ACCEL</text>
       <text x={c} y={size - 4} textAnchor="middle" className="fill-rmpg-600" style={{ fontSize: 7, letterSpacing: 1 }}>BRAKE</text>
       <text x={9} y={c - 3} textAnchor="start" className="fill-rmpg-700" style={{ fontSize: 7 }}>L</text>
@@ -126,7 +126,7 @@ const SPEED_MULTIPLIERS = [1, 2, 4, 8] as const;
 
 function fmtReplayClock(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    return parseTimestamp(iso).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
   } catch {
     return '—';
   }
@@ -268,7 +268,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
     >
       {/* header */}
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">
-        <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
+        <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(var(--accent-silver-400-rgb), 0.40), transparent)' }} />
         <Activity className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Movement Report</span>
         <span className="flex items-center gap-1 text-[8px] uppercase text-rmpg-500">
@@ -281,15 +281,15 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
         {/* live speed + session */}
         <div className="flex items-center gap-3">
           <div className="flex flex-col">
-            <span className="font-mono font-bold leading-none tabular-nums" style={{ fontSize: 40, color: liveMph != null ? '#d4a017' : '#555' }}>
+            <span className="font-mono font-bold leading-none tabular-nums" style={{ fontSize: 40, color: liveMph != null ? 'var(--brand-gold)' : 'var(--text-muted)' }}>
               {liveMph != null ? liveMph : '--'}
             </span>
             <span className="text-[8px] uppercase tracking-widest text-rmpg-500">mph · live</span>
           </div>
           <div className="flex-1 grid grid-cols-2 gap-1.5">
             <Stat label="Session" value={fmtDur(sessionMs)} />
-            <Stat label="Distance" value={`${report.totalMi.toFixed(2)} mi`} accent="#d4a017" />
-            <Stat label="Climb" value={`${Math.round(climbFt ?? 0).toLocaleString()} ft`} accent={climbFt && climbFt > 0 ? '#22c55e' : undefined} />
+            <Stat label="Distance" value={`${report.totalMi.toFixed(2)} mi`} accent="var(--brand-gold)" />
+            <Stat label="Climb" value={`${Math.round(climbFt ?? 0).toLocaleString()} ft`} accent={climbFt && climbFt > 0 ? 'var(--sev-ok)' : undefined} />
             <Stat label="Elevation" value={elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—'} />
           </div>
         </div>
@@ -314,9 +314,9 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
             <FrictionCircle report={report} liveLongG={liveLongG} liveLatG={liveLatG} />
           </div>
           <div className="flex-1 grid grid-cols-1 gap-1.5">
-            <Stat label="Peak accel" value={`${report.maxAccelG.toFixed(2)} g`} accent="#f59e0b" />
-            <Stat label="Peak brake" value={`${report.maxBrakeG.toFixed(2)} g`} accent="#ef4444" />
-            <Stat label="Peak cornering" value={`${report.maxLatG.toFixed(2)} g`} accent="#8b5cf6" />
+            <Stat label="Peak accel" value={`${report.maxAccelG.toFixed(2)} g`} accent="var(--sev-warn)" />
+            <Stat label="Peak brake" value={`${report.maxBrakeG.toFixed(2)} g`} accent="var(--sev-critical)" />
+            <Stat label="Peak cornering" value={`${report.maxLatG.toFixed(2)} g`} accent="rgb(139, 92, 246)" />
           </div>
         </div>
 
@@ -327,7 +327,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
             <span className="ml-auto font-mono text-rmpg-500">{movePct}% moving</span>
           </div>
           <div className="flex h-2 overflow-hidden border border-rmpg-800" style={{ borderRadius: 2 }}>
-            <div className="h-full" style={{ width: `${movePct}%`, background: '#22c55e' }} />
+            <div className="h-full" style={{ width: `${movePct}%`, background: 'var(--sev-ok)' }} />
             <div className="h-full" style={{ width: `${100 - movePct}%`, background: 'var(--border-default)' }} />
           </div>
           <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
@@ -359,7 +359,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
                     {/* severity pips */}
                     <span className="flex gap-0.5">
                       {[1, 2, 3].map((s) => (
-                        <span key={s} className="w-1 h-1 rounded-full" style={{ background: s <= e.severity ? meta.color : '#333' }} />
+                        <span key={s} className="w-1 h-1 rounded-full" style={{ background: s <= e.severity ? meta.color : 'var(--border-subtle)' }} />
                       ))}
                     </span>
                     <span className="ml-auto font-mono text-[9px] text-rmpg-400">{e.g.toFixed(2)} g</span>

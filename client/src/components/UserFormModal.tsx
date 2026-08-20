@@ -160,7 +160,7 @@ export default function UserFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<UserFormData>({
-    storageKey: 'rmpg_user_form',
+    storageKey: `rmpg_user_form_${editingUser?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -274,7 +274,8 @@ export default function UserFormModal({
             </div>
             <div>
               <label htmlFor="ff-userformmodal-1" className={labelCls}>Password <span className="text-red-400">*</span></label>
-              <input id="ff-userformmodal-1" type="password" autoComplete="new-password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
+              <input id="ff-userformmodal-1" type="password" autoComplete="new-password" required minLength={8} value={form.password} onChange={e => set('password', e.target.value)} placeholder="Initial password" className={inputCls} />
+              <p className="text-[9px] text-fg-muted mt-1">Minimum 8 characters</p>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -566,17 +567,18 @@ export default function UserFormModal({
         <div className="space-y-4">
           <div>
             <label htmlFor="ff-userformmodal-29" className={labelCls}>Password {!isEdit && <span className="text-red-400">*</span>}</label>
-            <input id="ff-userformmodal-29" type="password" autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
+            <input id="ff-userformmodal-29" type="password" autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} required={!isEdit} minLength={form.password ? 8 : undefined} placeholder={isEdit ? '(leave blank to keep)' : 'Enter password'} className={inputCls} />
+            <p className="text-[9px] text-fg-muted mt-1">{isEdit ? 'Leave blank to keep current password. Minimum 8 characters if changing.' : 'Minimum 8 characters'}</p>
           </div>
           <div>
             <label htmlFor="ff-userformmodal-30" className={labelCls}>Certifications</label>
             <input id="ff-userformmodal-30" type="text" value={form.certifications} onChange={e => set('certifications', e.target.value)} placeholder="CPR, First Aid, Guard Card (comma-separated)" className={inputCls} />
-            <p className="text-[9px] text-rmpg-500 mt-1">Enter certifications separated by commas</p>
+            <p className="text-[9px] text-fg-muted mt-1">Enter certifications separated by commas</p>
           </div>
           <div>
             <label className={labelCls}>Notes</label>
             <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </div>
       )}

@@ -7,6 +7,22 @@
 
 const crypto = require('crypto');
 const { getLocalDb, getConfig, setConfig } = require('./localDb');
+const { safeStorage } = require('electron');
+const { migrateOfflineSecretsToSafeStorage, decryptSecretForStorage } = require('./security/secretsStore');
+const { getOrCreateDeviceId } = require('./security/sessionAuth');
+
+function readSecretConfig(key) {
+  const raw = getConfig(key);
+  if (!raw) return null;
+  try {
+    return decryptSecretForStorage(raw, safeStorage);
+  } catch {
+    // Not yet migrated (shouldn't happen post-init(), but fail safe by
+    // treating the raw value as already-plaintext rather than crashing
+    // the PIN flow) — decrypt failure means "wasn't our ciphertext".
+    return raw;
+  }
+}
 
 let mainWindow = null;
 let expiryTimer = null;
@@ -21,6 +37,15 @@ const LOCKOUT_MINUTES = 15;
 
 function init(window) {
   mainWindow = window;
+
+  try {
+    const migrationResult = migrateOfflineSecretsToSafeStorage({ getConfig, setConfig, safeStorage });
+    if (migrationResult.migrated.length > 0) {
+      console.log('[PIN-MANAGER] Migrated offline secrets to safeStorage:', migrationResult.migrated);
+    }
+  } catch (err) {
+    console.error('[PIN-MANAGER] Offline secret migration failed (continuing with unmigrated secrets):', err.message);
+  }
 
   // Start expiry check timer (every 60 seconds)
   expiryTimer = setInterval(checkExpiredSessions, 60_000);
@@ -42,14 +67,14 @@ function destroy() {
  * @returns {{ pin: string, expiresAt: string } | { error: string }}
  */
 function generatePinForUser(userId) {
-  const adminSecret = getConfig('admin_offline_secret');
+  const adminSecret = readSecretConfig('admin_offline_secret');
   if (!adminSecret) {
     return { error: 'Admin offline secret not configured. Sync with server first.' };
   }
 
   // Get the target user's secret
   let userSecret;
-  const allSecrets = getConfig('all_user_secrets');
+  const allSecrets = readSecretConfig('all_user_secrets');
   if (allSecrets) {
     const parsed = JSON.parse(allSecrets);
     const match = parsed.find(s => String(s.user_id) === String(userId));
@@ -100,8 +125,8 @@ function validatePin(inputPin) {
   }
 
   // Get secrets for validation
-  const userSecret = getConfig('my_offline_secret');
-  const adminSecret = getConfig('admin_offline_secret');
+  const userSecret = readSecretConfig('my_offline_secret');
+  const adminSecret = readSecretConfig('admin_offline_secret');
 
   if (!userSecret || !adminSecret) {
     return { success: false, error: 'Offline secrets not configured. Must be online at least once.' };
@@ -125,13 +150,14 @@ function validatePin(inputPin) {
     // Record successful attempt
     recordAttempt(userId, true);
 
-    // Create a 24h session
+    // Create a 24h session, bound to this device
     const expiresAt = new Date(Date.now() + PIN_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    const deviceId = getOrCreateDeviceId(getConfig, setConfig, crypto.randomUUID);
 
     db.prepare(`
-      INSERT INTO pin_sessions (user_id, authorized_at, expires_at, is_active, created_at)
-      VALUES (?, ?, ?, 1, ?)
-    `).run(userId, now, expiresAt, now);
+      INSERT INTO pin_sessions (user_id, authorized_at, expires_at, is_active, created_at, device_id)
+      VALUES (?, ?, ?, 1, ?, ?)
+    `).run(userId, now, expiresAt, now, deviceId);
 
     // Notify renderer
     emit('offline:authorization-changed', { isLocalAuthorized: true, expiresAt });
@@ -172,14 +198,33 @@ function computePin(userSecret, adminSecret, windowStart) {
 /**
  * Get the start of the current 24-hour PIN window.
  * Windows start at midnight Mountain Time.
+ *
+ * Previous approach fed a locale-formatted string back into `new Date()`, which
+ * parses it in the SYSTEM local timezone — not Mountain Time. On machines in UTC
+ * or Eastern time that produced a window start hours off from MT midnight, so two
+ * officers could compute different PINs for the same moment.
+ *
+ * Fix: use Intl to extract the MT date as YYYY-MM-DD (en-CA gives ISO format) and
+ * the MT UTC offset, then build a proper ISO-8601 string with the offset embedded
+ * so `new Date()` resolves to the correct UTC instant regardless of system timezone.
  */
 function get24hWindowStart() {
   const now = new Date();
-  // Use Mountain Time for consistency with the server's TZ
-  const mtString = now.toLocaleString('en-US', { timeZone: 'America/Denver' });
-  const mt = new Date(mtString);
-  mt.setHours(0, 0, 0, 0);
-  return mt.toISOString();
+  // Get today's date in Mountain Time as "YYYY-MM-DD"
+  const dateMT = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+  // Get the current MT UTC offset (handles MDT=-06:00 vs MST=-07:00 automatically)
+  const tzParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', timeZoneName: 'shortOffset',
+  }).formatToParts(now);
+  const offsetStr = tzParts.find(p => p.type === 'timeZoneName')?.value ?? 'GMT-7';
+  const match = offsetStr.match(/GMT([+-])(\d+)/);
+  const sign = match?.[1] ?? '-';
+  const hrs = String(match?.[2] ?? '7').padStart(2, '0');
+  // Build midnight MT as an offset-aware ISO string so new Date() resolves correctly
+  return new Date(`${dateMT}T00:00:00.000${sign}${hrs}:00`).toISOString();
 }
 
 // ─── Brute-Force Protection ─────────────────────────────────

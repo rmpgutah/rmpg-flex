@@ -106,6 +106,8 @@ interface Props {
   mode: 'create' | 'edit';
   /** Optional: pre-populate form for editing. When omitted, starts empty. */
   initial?: CostFormState | null;
+  /** The id of the record being edited (undefined in create mode) — scopes the draft key per-record. */
+  recordId?: string | number | null;
   onSave: (payload: Record<string, any>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
@@ -228,7 +230,7 @@ function buildPayload(category: CostCategory, f: CostFormState): { payload: Reco
 }
 
 export default function FleetCostFormModal({
-  isOpen, category, mode, initial, onSave, onClose, saving,
+  isOpen, category, mode, initial, recordId, onSave, onClose, saving,
 }: Props) {
   const titleId = useId();
   const {
@@ -239,7 +241,7 @@ export default function FleetCostFormModal({
     clearDraft,
     snapshot,
   } = useFormDraft<CostFormState>({
-    storageKey: `rmpg_fleet_cost_form_${category}`,
+    storageKey: `rmpg_fleet_cost_form_${category}_${recordId ?? 'new'}`,
     defaultValue: EMPTY_COST_FORM,
     isActive: isOpen,
   });
@@ -293,9 +295,9 @@ export default function FleetCostFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60"
       role="dialog" aria-modal="true" aria-labelledby={titleId}
-      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
+      onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[560px] max-w-full mx-4 max-h-[90vh] flex flex-col bg-surface-raised"
         onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={`${mode === 'edit' ? 'EDIT' : 'NEW'} ${meta.title}`} icon={meta.icon} id={titleId}>
@@ -305,7 +307,7 @@ export default function FleetCostFormModal({
 
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.1)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

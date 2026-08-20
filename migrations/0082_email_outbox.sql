@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS email_outbox (
   payload TEXT NOT NULL,                       -- JSON Graph /me/sendMail body
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
-  next_attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
   status TEXT NOT NULL DEFAULT 'pending',      -- 'pending' | 'sent' | 'failed'
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   sent_at TEXT
 );
 

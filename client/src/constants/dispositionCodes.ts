@@ -10,11 +10,13 @@
 //   • Process-service CFS → PSO_DISPOSITION_GROUPS (10 categories, 53 codes
 //     from processServiceCodes.ts — PS/00.01 … PS/45.04).
 //
-// The LIVE worker's /admin/config does NOT yet return a `dispositions`
-// array, so these hardcoded defaults are what render in production; any
-// API/DB custom codes are merged ON TOP at the call sites. This chart is
-// also seeded into system_config (disposition_code rows) so it is
-// server-backed + manageable. Keep the two in sync.
+// The worker's /admin/config returns a `dispositions` array (39 built-ins
+// plus any admin-created custom rows, merged via
+// src/utils/dispositionConfig.ts); these hardcoded defaults are the
+// client-side fallback/source-of-truth and are merged with whatever the API
+// returns at the call sites. This chart is also seeded into system_config
+// (disposition_code rows) so it is server-backed + manageable. Keep the two
+// in sync.
 // ============================================================
 
 import { PSO_CATEGORIES, codesInCategory } from './processServiceCodes';
@@ -42,7 +44,7 @@ export interface DispositionGroup {
 // Semantic color tokens (kept on-theme: green/gray/amber/red, zero blue).
 const C_OK = '#44ff00';     // resolved / served / positive outcome
 const C_NEUTRAL = '#888888'; // informational / no-action
-const C_ENF = '#d4a017';    // enforcement / warning (brand gold)
+const C_ENF = '#d9bd72';    // enforcement / warning (brand gold)
 const C_NEG = '#ef4444';    // negative / failed / unable
 
 // PSO category tone → DispositionDef color
@@ -102,6 +104,34 @@ export const DISPOSITION_GROUPS: DispositionGroup[] = [
       { code: 'FIN', description: 'Field Interview (FI) Conducted', color: C_NEUTRAL },
       { code: 'CNS', description: 'Subject Counseled',            color: C_NEUTRAL },
       { code: 'DOC', description: 'Documentation Only',           color: C_NEUTRAL },
+    ],
+  },
+  {
+    label: 'Medical / Welfare',
+    codes: [
+      { code: 'AMB', description: 'Ambulance / EMS Requested',    color: C_ENF },
+      { code: 'MED', description: 'Medical Attention Rendered',   color: C_OK },
+      { code: 'WEL', description: 'Welfare Check Completed — OK', color: C_OK },
+      { code: 'MHH', description: 'Mental Health Hold Initiated', color: C_ENF },
+      { code: 'DOA', description: 'Deceased on Arrival',          color: C_NEG },
+    ],
+  },
+  {
+    label: 'Investigative',
+    codes: [
+      { code: 'INV', description: 'Investigation Initiated',      color: C_NEUTRAL },
+      { code: 'EVD', description: 'Evidence Collected',           color: C_OK },
+      { code: 'WIT', description: 'Witness Statement Taken',      color: C_NEUTRAL },
+      { code: 'SUR', description: 'Surveillance Conducted',       color: C_NEUTRAL },
+    ],
+  },
+  {
+    label: 'Escort / Standby',
+    codes: [
+      { code: 'ESC', description: 'Escort Provided',              color: C_OK },
+      { code: 'MDE', description: 'Medical Escort Provided',      color: C_OK },
+      { code: 'EVT', description: 'Event / Special Detail Complete', color: C_OK },
+      { code: 'ALM', description: 'Alarm Response Complete',      color: C_OK },
     ],
   },
 ];

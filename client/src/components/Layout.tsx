@@ -1,8 +1,10 @@
 import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { lazyRetry } from '../utils/importWithRetry';
 import { parseTimestamp } from '../utils/dateUtils';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
+  LayoutGrid,
   Radio,
   Map,
   FileText,
@@ -94,6 +96,7 @@ import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
 import { loadSystemSettings } from '../utils/systemSettings';
+import { loadFeatureFlags, isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -104,12 +107,17 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import SyncStatusChip from './SyncStatusChip';
 import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
-import UserProfileModal from './UserProfileModal';
+// Lazy: 66.6 KB (plus SignaturePad's 21.9 KB, which it statically imports) and
+// it renders behind a boolean. Layout wraps every authenticated route, so a
+// static import here landed both in the entry chunk on every cold load.
+const UserProfileModal = lazyRetry(() => import('./UserProfileModal'));
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
+import DialerPanel from './DialerPanel';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
@@ -118,12 +126,15 @@ import MobileBottomNav from './mobile/MobileBottomNav';
 import MobileContextBar from './mobile/MobileContextBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { toDisplayLabel } from '../utils/formatters';
-import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
+import { openPageWindow, isWindowablePath } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
+import { useDeviceClass } from '../hooks/useDeviceClass';
 import { applyThemePreference, writeThemeOverride } from '../utils/theme';
 import { playUiNavigate } from '../utils/uiClickSounds';
+import { useToastSafe } from './ToastProvider';
+import { onNetworkChange, getNetworkStatus } from '../utils/networkStatus';
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -247,6 +258,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
     { path: '/map', icon: Map, label: 'Live Map' },
     { path: '/navigation', icon: Route, label: 'Navigation & Route Planning' },
+    { path: '/route-builder', icon: Route, label: 'CFS Route Builder' },
     { path: '/geo-data-viewer', icon: MapPin, label: 'Geo Data Viewer' },
     { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
@@ -368,6 +380,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
   { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
+  { path: '/desktop', icon: LayoutGrid, label: 'Desktop', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
@@ -383,6 +396,7 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 ]);
 
 export default function Layout() {
+  const flagsTick = useFeatureFlags();
   const { user, logout, signOut, refreshUser } = useAuth();
   // `logout` is still exported for forced flows (password change). The
   // user-facing Sign Out button uses `signOut`, which gates on shift state.
@@ -400,11 +414,33 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
-  // child height: 100% resolves correctly for Mapbox GL / map containers.
-  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
+  // NOTE (2026-08-01): an `isFullBleedPage` flag used to be computed here,
+  // listing /map, /route-builder and /geography, with a comment claiming those
+  // pages needed `overflow-hidden` on <main> "so child height: 100% resolves
+  // correctly for Mapbox GL / map containers." It was never applied anywhere —
+  // dead since PR-2170 — and the premise was wrong: <main> already has a definite
+  // height (flex-1 + min-h-0 inside a 100dvh column), so `h-full` children
+  // resolve fine, measured live at 933px. The real reason map containers
+  // collapsed was a CSS specificity collision — mapbox-gl.css's
+  // `.mapboxgl-map { position: relative }` loads after Tailwind's `.absolute`
+  // and wins on source order, so `absolute inset-0` containers computed
+  // `relative` and shrank to ~12px. That is fixed by specificity in
+  // index.css ("MAPBOX CONTAINER POSITION COLLISION"). Removed rather than
+  // wired up, so nobody re-derives the wrong diagnosis from it. <main> keeps
+  // `overflow-auto` — the per-path scroll restore below depends on it.
+
+  // Stamps device-fz55 on <html> when running on a Toughbook FZ-55.
+  // The CSS in fz55.css scopes all layout fixes under that class.
+  useDeviceClass();
 
   const gps = useGpsTracking();
+  const toast = useToastSafe();
+  useEffect(() => {
+    if (!gps.addToastRef) return;
+    gps.addToastRef.current = toast
+      ? (toast.addToast as (msg: string, type: string, duration?: number) => void)
+      : null;
+  }, [toast]); // eslint-disable-line react-hooks/exhaustive-deps
   const presence = usePresence();
 
   // ── Dispatch voice alerts + visual banner state ──
@@ -517,7 +553,12 @@ export default function Layout() {
 
   // ── Feature 21: Password expiry warning ──
   const [showPasswordExpiryWarning, setShowPasswordExpiryWarning] = useState(false);
+  const [isOffline, setIsOffline] = useState(!getNetworkStatus());
   const [passwordExpiryDays, setPasswordExpiryDays] = useState(0);
+
+  useEffect(() => {
+    return onNetworkChange((online) => setIsOffline(!online));
+  }, []);
 
   useEffect(() => {
     if (!user?.last_password_change && !user?.passwordChangedAt) return;
@@ -630,6 +671,7 @@ export default function Layout() {
       const visibleNav = TOOLBAR_NAV.filter(item => {
         if (item.adminOnly && !isAdmin) return false;
         if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+        if (!isFeatureEnabled(item.path)) return false;
         return true;
       });
 
@@ -655,7 +697,7 @@ export default function Layout() {
 
     window.addEventListener('keydown', handleFKey);
     return () => window.removeEventListener('keydown', handleFKey);
-  }, [navigate, isAdmin, isClientViewer]);
+  }, [navigate, isAdmin, isClientViewer, flagsTick]);
 
   // ── Keyboard Shortcut Help Modal ────────────────────────
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -731,8 +773,23 @@ export default function Layout() {
     // settings to the document root. Branding/localization/report values
     // are read at their own call sites via getSystemSetting.
     loadSystemSettings();
+    loadFeatureFlags();
     return initSettingsSync();
-  }, [user]);
+    // Keyed on the user ID, NOT the user object. GET /api/settings is a pure
+    // function of the actor id (src/routes/settings.ts: org is `WHERE id = 1`,
+    // system is the whole table, and only the user blob is `WHERE user_id = ?`
+    // — the handler never reads actor.role), so nothing in this payload can
+    // change without the id changing.
+    //
+    // Depending on the object re-ran this effect on every cold boot: AuthContext
+    // seeds `user` from localStorage for an instant paint, then its background
+    // /auth/me validation calls setUser() with a FRESH OBJECT for the same
+    // person. Each run tears down and re-inits settingsSync (its `started`
+    // guard is released by the cleanup), so the pair of /api/settings reads
+    // below fired twice — 4 requests per boot against the 600 req/300 s budget
+    // in src/middleware/rateLimit.ts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Clear unsaved changes on navigation
   useEffect(() => {
@@ -749,6 +806,7 @@ export default function Layout() {
     const allow = (path: string, adminOnly?: boolean) => {
       if (adminOnly && !isAdmin) return false;
       if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(path)) return false;
+      if (!isFeatureEnabled(path)) return false;
       return true;
     };
     for (const item of TOOLBAR_NAV) {
@@ -764,7 +822,7 @@ export default function Layout() {
       });
     }
     return targets;
-  }, [isAdmin, isClientViewer]);
+  }, [isAdmin, isClientViewer, flagsTick]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -800,9 +858,25 @@ export default function Layout() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'password' | 'sessions'>('profile');
+  // Latch: once the profile modal has ever been opened, keep it mounted forever
+  // after (never unmount on close). UserProfileModal is React.lazy — a lazy
+  // component fetches its chunk the moment it is COMMITTED to the tree, not
+  // when isOpen becomes true. If we mounted it unconditionally (as before),
+  // Layout mounting on every authenticated page load would fetch the
+  // UserProfileModal + SignaturePad chunk on every boot, defeating the whole
+  // point of deferring it. Gating on a bare `profileModalOpen` instead would
+  // unmount the modal the instant it closes, killing any close/exit
+  // transition and resetting its internal state mid-animation. This latch
+  // fetches the chunk once, on first open, and never unmounts after — do not
+  // "simplify" this back to a plain boolean check.
+  const [profileModalEverOpened, setProfileModalEverOpened] = useState(false);
+  useEffect(() => {
+    if (profileModalOpen) setProfileModalEverOpened(true);
+  }, [profileModalOpen]);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
-  const fetchHeaderStats = useCallback(async () => {
+  // Lightweight poll: dispatch stats + BOLOs — runs on every dispatch/bolo event.
+  const fetchDispatchStats = useCallback(async () => {
     try {
       const stats = await apiFetch<any>('/dispatch/stats');
       setActiveCallCount(stats.activeCalls || 0);
@@ -812,35 +886,41 @@ export default function Layout() {
       const bolos = await apiFetch<any>('/comms/bolos/active');
       setActiveBOLOs(Array.isArray(bolos) ? bolos.length : 0);
     } catch { /* silent */ }
+  }, []);
+
+  // Heavier poll: scraper health + email — only on the 30 s timer, not per-event.
+  // Scraper health is a slow-changing indicator; polling it on every dispatch_update
+  // produced ×11 concurrent calls during a busy shift (F-006).
+  const fetchHeaderStats = useCallback(async () => {
+    await fetchDispatchStats();
     try {
       const email = await apiFetch<{ count: number }>('/email/unread-count');
       setEmailUnreadCount(email.count || 0);
     } catch { /* silent — email may not be configured */ }
     try {
-      // Phase 5: cheap scraper health for the conditional header badge
       const health = await apiFetch<{ healthy: number; degraded: number; failed: number; circuit_broken: number }>('/warrants/scrapers/health');
       setScraperHealth(health);
     } catch { /* silent — scraper may not be enabled */ }
-  }, []);
+  }, [fetchDispatchStats]);
 
-  // Fetch on mount and every 30 seconds
+  // Full stats on mount and every 30 seconds
   useEffect(() => {
     fetchHeaderStats();
     const interval = setInterval(fetchHeaderStats, 30000);
     return () => clearInterval(interval);
   }, [fetchHeaderStats]);
 
-  // Update on WebSocket dispatch events
+  // Lightweight dispatch/bolo event handler — no scraper health call
   useEffect(() => {
-    const unsub1 = subscribe('dispatch_update', () => fetchHeaderStats());
-    const unsub2 = subscribe('bolo_alert', () => fetchHeaderStats());
+    const unsub1 = subscribe('dispatch_update', () => fetchDispatchStats());
+    const unsub2 = subscribe('bolo_alert', () => fetchDispatchStats());
     const unsub3 = subscribe('email:new_messages', () => {
       apiFetch<{ count: number }>('/email/unread-count')
         .then(r => setEmailUnreadCount(r.count || 0))
         .catch((err) => { console.warn('[Layout] fetch email unread count failed:', err); });
     });
     return () => { unsub1(); unsub2(); unsub3(); };
-  }, [subscribe, fetchHeaderStats]);
+  }, [subscribe, fetchDispatchStats]);
 
   // Refresh header user data when personnel/admin changes occur (e.g. admin edits user profile)
   useEffect(() => {
@@ -920,13 +1000,23 @@ export default function Layout() {
   const isElectron = !!(window as any).electron;
   const isMacElectron = isElectron && (window as any).electron?.platform === 'darwin';
 
+  // Standalone mode: page is running inside a FloatingWindow iframe.
+  // Render only the page content — no nav bar, no top bar, no banners.
+  const isStandalone = new URLSearchParams(window.location.search).get('standalone') === '1';
+  if (isStandalone) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: 'var(--surface-base)', overflow: 'hidden' }}>
+        <main style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col text-rmpg-100 overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
-
-      {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
-      <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
 
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
@@ -939,7 +1029,7 @@ export default function Layout() {
       {nameSetupOpen && (
         <div
           className="fixed inset-0 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.85)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          style={{ background: 'rgba(var(--surface-overlay-rgb) / 0.92)', zIndex: 99999, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* 18: Name setup modal with shield icon and improved shadow */}
           <div
@@ -947,8 +1037,8 @@ export default function Layout() {
             style={{
               background: 'var(--surface-raised)',
               border: '1px solid var(--border-default)',
-              borderTop: '3px solid #888888',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+              borderTop: '3px solid var(--accent-silver-500)',
+              boxShadow: '0 16px 48px rgba(var(--surface-overlay-rgb) / 0.8)',
               WebkitAppRegion: 'no-drag',
             } as React.CSSProperties}
           >
@@ -1072,11 +1162,6 @@ export default function Layout() {
           <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
             <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} onClick={() => navigate('/')} className="cursor-pointer flex items-center gap-2 transition-opacity duration-150 hover:opacity-90 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none rounded-sm" title="Rocky Mountain Protective Group — Dashboard" aria-label="Go to Dashboard">
               <RmpgLogo height={44} />
-              {/* 2: Tighter line-height on app name for compact branding */}
-              <div className="flex flex-col" style={{ lineHeight: 1.1 }}>
-                <span className="text-[14px] font-bold tracking-wider text-rmpg-100 leading-none">RMPG</span>
-                <span className="text-[10px] font-bold tracking-[0.2em] leading-none" style={{ color: 'var(--desktop-shell-subtle-text)' }}>FLEX</span>
-              </div>
             </div>
             {/* Page title */}
             <div className="flex items-center gap-1.5">
@@ -1086,7 +1171,7 @@ export default function Layout() {
                 {pageTitle.toUpperCase()}
               </span>
               {/* Pop-out button — opens current page in a new window */}
-              {POPOUT_PAGES[location.pathname] && (
+              {isWindowablePath(location.pathname) && (
                 <button type="button"
                   onClick={() => openPageWindow(location.pathname)}
                   className="toolbar-btn ml-1 transition-colors duration-150 hover:text-brand-400 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none active:scale-[0.97]"
@@ -1110,7 +1195,7 @@ export default function Layout() {
                 className="flex items-center gap-1 px-2 py-0.5 panel-inset cursor-pointer transition-all duration-150 bg-surface-sunken hover:bg-rmpg-800 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
                 aria-label={`Active calls: ${activeCallCount}. Click to open dispatch.`}
               >
-                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-rmpg-500'} />
+                <Phone style={{ width: 9, height: 9 }} className={activeCallCount > 0 ? 'text-red-500' : 'text-fg-muted'} />
                 <span className="text-[9px] font-mono font-bold text-rmpg-400">CALLS:</span>
                 <span className={`text-[9px] font-mono font-bold tabular-nums ${activeCallCount > 0 ? 'text-red-400' : 'text-rmpg-100'}`}>{activeCallCount}</span>
               </button>
@@ -1120,11 +1205,11 @@ export default function Layout() {
                 <button type="button"
                   onClick={() => navigate('/communications')}
                   className="flex items-center gap-1 px-2 py-0.5 cursor-pointer transition-all duration-150 hover:brightness-125 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none"
-                  style={{ background: 'rgba(220, 38, 38, 0.25)', border: '1px solid #991b1b', boxShadow: '0 0 8px rgba(220, 38, 38, 0.2)' }}
+                  style={{ background: 'rgba(var(--sev-critical-rgb) / 0.25)', border: '1px solid rgba(var(--sev-critical-rgb) / 0.5)', boxShadow: '0 0 8px rgba(var(--sev-critical-rgb) / 0.2)' }}
                   aria-label={`${activeBOLOs} active BOLOs. Click to open communications.`}
                 >
                   <span className="led-dot led-red animate-led-blink" />
-                  <span className="text-[9px] font-mono font-bold tabular-nums" style={{ color: '#ef7a7a' }}>
+                  <span className="text-[9px] font-mono font-bold tabular-nums" style={{ color: 'var(--sev-critical-soft)' }}>
                     BOLO: {activeBOLOs}
                   </span>
                 </button>
@@ -1136,14 +1221,14 @@ export default function Layout() {
                 style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : 'var(--surface-overlay)' }}
                 title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
-                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : 'var(--rmpg-500)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
+                <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? 'var(--sev-ok)' : 'var(--text-muted)', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}
               </div>
 
               {/* 6: WS + Users with tabular-nums for stable count display */}
               <div className="flex items-center gap-1 px-1.5 py-0.5 panel-inset bg-surface-sunken" title={`${isConnected ? 'Connected' : 'Disconnected'} - ${presence.count} users online`}>
                 <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-                <Users style={{ width: 9, height: 9 }} className="text-rmpg-500" />
+                <Users style={{ width: 9, height: 9 }} className="text-fg-muted" />
                 <span className="text-[9px] font-mono font-bold text-rmpg-300 tabular-nums">{presence.count}</span>
               </div>
 
@@ -1169,6 +1254,9 @@ export default function Layout() {
                   )}
                 </button>
               )}
+
+              {/* FZ-55 server mode indicator */}
+              <SyncStatusChip />
 
               {/* Notifications */}
               <NotificationCenter />
@@ -1242,8 +1330,8 @@ export default function Layout() {
                   <div
                     className="w-8 h-8 flex items-center justify-center text-[11px] font-bold transition-shadow duration-150"
                     style={{
-                      background: 'linear-gradient(135deg, #333333, #888888)',
-                      color: '#fff',
+                      background: 'linear-gradient(135deg, var(--surface-raised), var(--accent-silver-600))',
+                      color: 'var(--text-primary)',
                       border: '2px solid var(--rmpg-400)',
                       borderRadius: '50%',
                       boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(212,160,23,0.4)' : 'none',
@@ -1257,7 +1345,7 @@ export default function Layout() {
                   style={{
                     width: 10,
                     height: 10,
-                    color: 'var(--rmpg-500)',
+                    color: 'var(--text-muted)',
                     transform: profileDropdownOpen ? 'rotate(180deg)' : undefined,
                     transition: 'transform 0.15s',
                   }}
@@ -1270,14 +1358,14 @@ export default function Layout() {
                   className="menu-dropdown absolute right-0 top-full mt-0.5 animate-dropdown-appear"
                   role="menu"
                   aria-label="User profile options"
-                  style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
+                  style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(var(--surface-overlay-rgb) / 0.7), 0 2px 8px rgba(var(--surface-overlay-rgb) / 0.45)' }}
                 >
                   {/* User info header */}
                   <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'var(--surface-sunken)' }}>
                     <div className="text-xs font-bold text-rmpg-100">
                       {user?.first_name} {user?.last_name}
                     </div>
-                    <div className="text-[9px] font-mono text-rmpg-500 mt-0.5">
+                    <div className="text-[9px] font-mono text-fg-muted mt-0.5">
                       {user?.email}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
@@ -1316,8 +1404,8 @@ export default function Layout() {
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
                   <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none">
-                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
-                    <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
+                    <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: 'var(--sev-critical)' }} /></span>
+                    <span className="menu-item-label" style={{ color: 'var(--sev-critical)' }}>Sign Out</span>
                   </button>
                 </div>
               )}
@@ -1327,13 +1415,13 @@ export default function Layout() {
       )}
 
       {/* Contract Manager Banner */}
-      {isClientViewer && (
+      {isContractManager && (
         <div
           className="flex items-center justify-center gap-2 px-4"
           style={{
             height: '22px',
-            background: 'linear-gradient(90deg, #141414, #1e2a1e, #141414)',
-            borderBottom: '1px solid #2a3a2a',
+            background: 'linear-gradient(90deg, var(--surface-overlay), var(--surface-raised), var(--surface-overlay))',
+            borderBottom: '1px solid var(--border-default)',
             flexShrink: 0,
           }}
         >
@@ -1372,7 +1460,7 @@ export default function Layout() {
         {/* 19: Operator info with distinct badge highlight */}
         <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 flex-shrink-0 whitespace-nowrap ml-4">
           <span>
-            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
+            OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-fg-muted">|</span> <span className="text-brand-400">{(toDisplayLabel(user?.role) || '---').toUpperCase()}</span>
           </span>
         </div>
       </div>
@@ -1398,7 +1486,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-border-strong focus-visible:outline-none"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1409,7 +1497,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-border-strong focus-visible:outline-none"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
@@ -1426,6 +1514,7 @@ export default function Layout() {
           return TOOLBAR_NAV.filter(item => {
             if (item.adminOnly && !isAdmin) return false;
             if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+            if (!isFeatureEnabled(item.path)) return false;
             return true;
           }).map((item) => {
             const Icon = item.icon;
@@ -1507,15 +1596,22 @@ export default function Layout() {
                         marginBottom: 1,
                       }}
                     />
-                    {/* Email unread badge on Comms toolbar button */}
+                    {/* Email unread badge on Comms toolbar button. Clicking this
+                        button navigates straight to /communications (the internal
+                        Comms Inbox), NOT /email — so without a label this count
+                        looks like it belongs to Comms Inbox and reads as a bug
+                        ("99+" badge, but the inbox says "No messages yet"). The
+                        title clarifies it's actually /email's unread count (Email
+                        is a Comms-dropdown child). */}
                     {item.path === '/communications' && emailUnreadCount > 0 && (
                       <span
                         className="absolute flex items-center justify-center font-bold animate-pulse"
+                        title={`${emailUnreadCount} unread email${emailUnreadCount === 1 ? '' : 's'}`}
                         style={{
                           top: 1, left: 30,
                           minWidth: 14, height: 14, padding: '0 3px',
                           fontSize: 8, lineHeight: 1,
-                          background: '#dc2626', color: '#fff',
+                          background: 'var(--sev-critical)', color: 'var(--text-primary)',
                           borderRadius: 2, border: '1px solid var(--border-subtle)',
                           boxShadow: '0 0 6px rgba(220, 38, 38, 0.5)',
                         }}
@@ -1536,7 +1632,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--text-muted)',
                         }}
                       >
                         {item.shortcut}
@@ -1550,7 +1646,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: isActive ? 'var(--brand-blue)' : 'var(--rmpg-600)',
+                          color: isActive ? 'var(--brand-blue)' : 'var(--text-muted)',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1575,7 +1671,7 @@ export default function Layout() {
                         left: dropdownRect.left,
                         top: dropdownRect.top,
                         minWidth: Math.max(210, dropdownRect.width),
-                        borderTop: '2px solid #888888',
+                        borderTop: '2px solid var(--accent-silver-500)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1600,12 +1696,12 @@ export default function Layout() {
                             className={`menu-item w-full ${childActive ? 'active' : ''}`}
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : undefined,
+                              color: childActive ? 'var(--text-primary)' : undefined,
                               background: childActive ? 'rgba(42,42,42,0.60)' : undefined,
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
-                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--rmpg-400)' : 'var(--rmpg-500)', flexShrink: 0 }} />
+                            <ChildIcon style={{ width: 14, height: 14, color: childActive ? 'var(--text-secondary)' : 'var(--text-muted)', flexShrink: 0 }} />
                             <span className={`text-[11px] ${childActive ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
                           </button>
                         );
@@ -1639,7 +1735,7 @@ export default function Layout() {
           id="main-content"
           className="spm-page flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark content-scroll-y"
           key={location.pathname}
-          style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}
+          style={{ background: 'var(--surface-sunken)', boxShadow: 'inset 0 1px 3px rgba(var(--surface-overlay-rgb) / 0.35)' }}
           // Persist scroll per-path so SW-update reloads (and any other full
           // page reload) put the operator back where they were instead of
           // snapping to the top — the 2026-06-11 "can't scroll" reload loop
@@ -1668,6 +1764,18 @@ export default function Layout() {
         >
           {/* Officer-facing admin broadcasts (Admin → Announcements) */}
           <AnnouncementBanner />
+
+          {/* Offline indicator — shown when the device loses network.
+              Pages still render with stale SW-cached data; this tells
+              officers the data may not be current. */}
+          {isOffline && (
+            <div className="bg-rmpg-900/80 border-b border-rmpg-700/60 px-4 py-1 flex items-center gap-2" role="status" aria-live="polite">
+              <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+              <span className="text-[11px] text-rmpg-200 font-medium tracking-wide">
+                OFFLINE — displaying cached data
+              </span>
+            </div>
+          )}
 
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
@@ -1721,12 +1829,16 @@ export default function Layout() {
       {/* Dispatcher Transcript Drawer — toggles with 'T' key */}
       <DispatcherTranscript />
 
-      {/* Profile Modal */}
-      <UserProfileModal
-        isOpen={profileModalOpen}
-        onClose={() => setProfileModalOpen(false)}
-        initialTab={profileModalTab}
-      />
+      {/* Profile Modal — mount latched on first open (see profileModalEverOpened above) */}
+      {profileModalEverOpened && (
+        <React.Suspense fallback={null}>
+          <UserProfileModal
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+            initialTab={profileModalTab}
+          />
+        </React.Suspense>
+      )}
 
       {/* Force Password Change Modal — blocks UI until password changed */}
       <ForcePasswordChangeModal />
@@ -1738,10 +1850,10 @@ export default function Layout() {
       {showShortcutHelp && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowShortcutHelp(false)}>
           {/* 14: Keyboard shortcuts modal with blue top accent */}
-          <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid #888888' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-base border border-border-default rounded-sm w-full max-w-md mx-4 shadow-md animate-dropdown-appear" style={{ borderTop: '2px solid var(--accent-silver-500)' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border-default bg-surface-overlay">
               <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><span className="text-brand-400">?</span> Keyboard Shortcuts</h3>
-              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-500 hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowShortcutHelp(false)} className="text-fg-muted hover:text-rmpg-100 transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-rmpg-500 focus-visible:outline-none" aria-label="Close keyboard shortcuts"><X className="w-4 h-4" /></button>
             </div>
             <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto scrollbar-dark">
               <div className="space-y-1.5">
@@ -1781,6 +1893,10 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
+      {/* Dialer — persistent system-wide floating panel (bottom-left).
+          Toasts for ringing/duress are self-contained inside DialerPanel
+          so they appear regardless of which page the user is on. */}
+      <DialerPanel />
 
     </div>
   );

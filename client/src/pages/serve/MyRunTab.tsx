@@ -13,14 +13,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, type NavigateFunction } from 'react-router-dom';
+import { useNavigate, type NavigateFunction } from 'react-router';
 import {
   CheckCircle2,
+  ClipboardCheck,
   Clock,
   Loader2,
   MapPin,
   Navigation,
   RefreshCw,
+  Route,
   Trophy,
   XCircle,
 } from 'lucide-react';
@@ -28,7 +30,9 @@ import { apiFetch } from '../../hooks/useApi';
 import ServeStatusFolder from '../../components/serve/ServeStatusFolder';
 import type { ServeFolder, ServeJob } from '../../types';
 import { deriveServeFolder, SERVE_FOLDER_CONFIG } from '../../types';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
+import { useServeRunOptimization } from './hooks/useServeRunOptimization';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +72,10 @@ async function quickStatusUpdate(jobId: number, result: 'served' | 'failed'): Pr
       attempt_type: attemptType,
       result,
       address_verified: false,
+      // Device clock + device timezone = the true instant of the attempt.
+      // The server default would stamp when the POST lands, which drifts on a
+      // queued or slow submit from the field.
+      attempt_at: new Date().toISOString(),
     }),
   });
   return res?.queue_status ?? result;
@@ -88,7 +96,7 @@ async function openNavigation(job: ServeJob, navigate: NavigateFunction): Promis
   if (!job.recipient_address) return;
   const full = [
     job.recipient_address,
-    (job as any).recipient_address_2,
+    job.recipient_address_2,
     job.recipient_city,
     job.recipient_state,
     job.recipient_zip,
@@ -110,9 +118,12 @@ interface RunJobRowProps {
   isNext: boolean;
   onOptimisticUpdate: (jobId: number, newStatus: ServeJob['status']) => void;
   navigate: NavigateFunction;
+  routeStop?: number;
+  /** Formatted ETA string from optimization (shown next to the address). */
+  eta?: string;
 }
 
-function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps) {
+function RunJobRow({ job, isNext, onOptimisticUpdate, navigate, routeStop, eta }: RunJobRowProps) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
 
@@ -139,15 +150,21 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
     <div
       className={`flex items-start gap-2 px-3 py-2 rounded-[2px] border transition-all duration-150 ${
         isNext
-          ? 'border-brand-400/50 bg-brand-400/5 shadow-[0_0_8px_rgba(212,160,23,0.08)]'
+          ? 'border-brand-400/50 bg-brand-400/5 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.08)]'
           : 'border-border-default bg-surface-sunken'
       }`}
     >
-      {/* Status dot */}
-      <span
-        className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${SERVE_FOLDER_CONFIG[deriveServeFolder(job)].dotClass}`}
-        aria-hidden
-      />
+      {/* Route stop number (when a plan is active) or status dot */}
+      {routeStop != null ? (
+        <span className="mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold bg-rmpg-700 text-rmpg-200 leading-none" aria-label={`Stop ${routeStop}`}>
+          {routeStop}
+        </span>
+      ) : (
+        <span
+          className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${SERVE_FOLDER_CONFIG[deriveServeFolder(job)].dotClass}`}
+          aria-hidden
+        />
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0">
@@ -156,7 +173,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
             {job.recipient_name}
           </span>
           <span className={`text-[9px] uppercase font-semibold ${priorityColor(job.priority)}`}>
-            {job.priority}
+            {formatEnumValue(job.priority)}
           </span>
           {isNext && !isClosed && (
             <span className="text-[9px] font-bold text-brand-400 uppercase tracking-wide">
@@ -166,8 +183,11 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
         </div>
         <div className="text-[10px] text-rmpg-500 truncate mt-0.5">
           {job.recipient_address
-            ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
+            ? [job.recipient_address, job.recipient_address_2, job.recipient_city].filter(Boolean).join(', ')
             : '— no address —'}
+          {eta && (
+            <span className="ml-1.5 text-[9px] text-brand-400 font-medium">ETA {eta}</span>
+          )}
         </div>
         {job.deadline && (
           <div className="text-[9px] text-rmpg-600 mt-0.5">
@@ -185,7 +205,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
             onClick={() => openNavigation(job, navigate)}
             className={`flex items-center gap-0.5 px-2 py-1 text-[10px] font-medium rounded-[2px] border transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-brand-400/40 ${
               isNext
-                ? 'text-rmpg-100 bg-brand-400/80 border-brand-400 hover:bg-brand-400 shadow-[0_0_6px_rgba(212,160,23,0.2)]'
+                ? 'text-rmpg-100 bg-brand-400/80 border-brand-400 hover:bg-brand-400 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.2)]'
                 : 'text-brand-400 border-brand-400/40 bg-transparent hover:bg-brand-400/10'
             }`}
             aria-label={`Navigate to ${job.recipient_name}`}
@@ -233,7 +253,7 @@ function RunJobRow({ job, isNext, onOptimisticUpdate, navigate }: RunJobRowProps
 
 // ─── Next Job Card ─────────────────────────────────────────────────────────────
 
-function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction }) {
+function NextJobCard({ job, onOptimisticUpdate, navigate, routeStop }: { job: ServeJob; onOptimisticUpdate: (id: number, s: ServeJob['status']) => void; navigate: NavigateFunction; routeStop?: number }) {
   const [actioning, setActioning] = useState<'served' | 'failed' | null>(null);
   const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived' || job.status === 'skipped';
   const hasAddress = !!(job.recipient_address);
@@ -259,9 +279,11 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
       {/* Header row */}
       <div className="flex items-center gap-2 mb-2">
         <MapPin size={13} className="text-brand-400 flex-shrink-0" aria-hidden />
-        <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">Next Stop</span>
+        <span className="text-[10px] font-bold text-brand-400 uppercase tracking-wider">
+          Next Stop{routeStop != null ? ` · #${routeStop}` : ''}
+        </span>
         <span className={`ml-auto text-[9px] uppercase font-bold ${priorityColor(job.priority)}`}>
-          {job.priority}
+          {formatEnumValue(job.priority)}
         </span>
       </div>
 
@@ -269,7 +291,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
       <div className="text-[13px] font-semibold text-rmpg-100 mb-0.5 truncate">{job.recipient_name}</div>
       <div className="text-[11px] text-rmpg-400 mb-2 truncate">
         {job.recipient_address
-          ? [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state]
+          ? [job.recipient_address, job.recipient_address_2, job.recipient_city, job.recipient_state]
               .filter(Boolean).join(', ')
           : '— no address on file —'}
       </div>
@@ -290,7 +312,7 @@ function NextJobCard({ job, onOptimisticUpdate, navigate }: { job: ServeJob; onO
           <button
             type="button"
             onClick={() => openNavigation(job, navigate)}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-100 bg-brand-400 hover:bg-brand-400/80 border border-brand-400 rounded-[2px] transition-all duration-150 shadow-[0_0_8px_rgba(212,160,23,0.2)] hover:shadow-[0_0_12px_rgba(212,160,23,0.35)] focus:outline-none focus:ring-2 focus:ring-brand-400/50"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-rmpg-100 bg-brand-400 hover:bg-brand-400/80 border border-brand-400 rounded-[2px] transition-all duration-150 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.2)] hover:shadow-[0_0_12px_rgb(var(--accent-silver-400-rgb)/0.35)] focus:outline-none focus:ring-2 focus:ring-brand-400/50"
             aria-label={`Navigate to ${job.recipient_name}`}
           >
             <Navigation size={12} />
@@ -351,7 +373,7 @@ function ProgressBar({ served, total }: { served: number; total: number }) {
             complete
               ? 'bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.4)]'
               : pct > 0
-                ? 'bg-brand-400 shadow-[0_0_6px_rgba(212,160,23,0.25)]'
+                ? 'bg-brand-400 shadow-[0_0_6px_rgb(var(--accent-silver-400-rgb)/0.25)]'
                 : 'bg-rmpg-700'
           }`}
           style={{ width: `${pct}%` }}
@@ -363,20 +385,86 @@ function ProgressBar({ served, total }: { served: number; total: number }) {
 
 // ─── Completion Banner ────────────────────────────────────────────────────────
 
+/**
+ * Tone for the end-of-run banner.
+ *
+ * The banner used to be unconditionally green + Trophy + "Run Complete!" — it
+ * computed `successRate` purely to print it and never let it affect the
+ * styling. On the live board that produced a gold trophy and a green
+ * celebration over "0/1 served (0% success rate)", where the single job was a
+ * non-service. Congratulating an officer for a shift that served nobody is
+ * both wrong and quietly corrosive to how much the banner is trusted.
+ *
+ * The bands below are a judgement call, made deliberately conservative:
+ *
+ *   • The banner only appears once EVERY active job is resolved for the day, so
+ *     the run is finished in all three cases. What varies is how much the tone
+ *     claims about it — not whether the officer is done.
+ *   • In process serving a documented non-service is a legitimate, diligent and
+ *     billable outcome. A low served-rate is therefore NOT failure, and none of
+ *     these bands scold. The worst case is neutral, never negative.
+ *   • Only the top band celebrates. A trophy that appears every day stops
+ *     meaning anything, and one that appears over 0/1 served actively teaches
+ *     officers to ignore the banner.
+ *
+ * Tune the two numbers here and nothing else needs to change — every consumer
+ * reads the returned tone rather than re-deriving it.
+ *
+ * Constraint enforced by the return type: accent is 'green' | 'silver' | 'amber'
+ * only. Red is reserved for CAD safety severity, and a slow serve day is not a
+ * safety event. Amber is available but unused — it reads as overdue-style
+ * urgency, which is wrong for work that is already finished.
+ */
+const RUN_TONE_CELEBRATE_AT = 80; // strong day — worth the trophy
+const RUN_TONE_NEUTRAL_AT = 40;   // ordinary day — acknowledged, not praised
+
+function runTone(successRate: number): {
+  accent: 'green' | 'silver' | 'amber';
+  title: string;
+  icon: typeof Trophy;
+} {
+  // The ICON carries as much of the message as the colour — a trophy over
+  // "Run Closed Out" would undo the whole point of the wording — so it moves
+  // with the band rather than staying pinned to Trophy.
+  if (successRate >= RUN_TONE_CELEBRATE_AT) {
+    return { accent: 'green', title: 'Run Complete!', icon: Trophy };
+  }
+  if (successRate >= RUN_TONE_NEUTRAL_AT) {
+    return { accent: 'silver', title: 'Run Complete', icon: CheckCircle2 };
+  }
+  // Amber band: some attempts were made but <40% succeeded — a caution signal,
+  // not a celebration, but also not a blank slate. 0% (all doors closed, no
+  // serves possible) stays silver — that's a diligent documented outcome, not a
+  // performance concern. A slow day is never red (not a safety event).
+  if (successRate > 0) {
+    return { accent: 'amber', title: 'Run Closed Out', icon: XCircle };
+  }
+  return { accent: 'silver', title: 'Run Closed Out', icon: ClipboardCheck };
+}
+
+const TONE_STYLES: Record<'green' | 'silver' | 'amber', { wrap: string; icon: string; title: string }> = {
+  green:  { wrap: 'border-green-500/40 bg-green-900/15',                              icon: 'text-green-400',         title: 'text-green-400' },
+  silver: { wrap: 'border-accent-silver-500/40 bg-accent-silver-500/10',              icon: 'text-accent-silver-300', title: 'text-accent-silver-300' },
+  amber:  { wrap: 'border-amber-500/40 bg-amber-900/15',                              icon: 'text-amber-400',         title: 'text-amber-400' },
+};
+
 function CompletionBanner({ startedAt, served, total }: { startedAt: number | null; served: number; total: number }) {
   const successRate = total > 0 ? Math.round((served / total) * 100) : 0;
   const elapsed = startedAt ? Date.now() - startedAt : null;
+  const tone = runTone(successRate);
+  const styles = TONE_STYLES[tone.accent];
+  const ToneIcon = tone.icon;
 
   return (
-    <div className="mx-3 mb-3 px-4 py-3 rounded-[2px] border border-green-500/40 bg-green-900/15 flex items-start gap-3">
-      <Trophy size={18} className="text-green-400 flex-shrink-0 mt-0.5" aria-hidden />
+    <div className={`mx-3 mb-3 px-4 py-3 rounded-[2px] border flex items-start gap-3 ${styles.wrap}`}>
+      <ToneIcon size={18} className={`${styles.icon} flex-shrink-0 mt-0.5`} aria-hidden />
       <div>
-        <div className="text-[12px] font-bold text-green-400 mb-0.5">Run Complete!</div>
-        <div className="text-[11px] text-rmpg-300">
+        <div className={`text-[12px] font-bold mb-0.5 ${styles.title}`}>{tone.title}</div>
+        <div className="text-[11px] text-text-secondary">
           {served}/{total} served ({successRate}% success rate)
           {elapsed && elapsed > 0 && ` · ${fmtDuration(elapsed)} total`}
         </div>
-        <div className="text-[9px] text-rmpg-500 mt-1 uppercase tracking-wide">
+        <div className="text-[9px] text-fg-muted mt-1 uppercase tracking-wide">
           All active jobs have been resolved for today.
         </div>
       </div>
@@ -392,11 +480,13 @@ export interface MyRunTabProps {
   sharedJobs?: ServeJob[];
   /** Optional: the ServePage `setJobs` dispatcher — propagates optimistic updates to the Queue tab instantly. */
   onJobsChange?: Dispatch<SetStateAction<ServeJob[]>>;
+  /** Ordered job IDs from the saved route plan — when provided, active jobs sort by route sequence and show stop numbers. */
+  routeOrderIds?: number[];
 }
 
 const FOLDER_ORDER: ServeFolder[] = ['in_progress', 'pending', 'served', 'failed', 'archived'];
 
-export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunTabProps) {
+export default function MyRunTab({ officerId, sharedJobs, onJobsChange, routeOrderIds }: MyRunTabProps) {
   const navigate = useNavigate();
   const today = useMemo(() => todayIso(), []);
   const runStartRef = useRef<number | null>(null);
@@ -405,6 +495,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
   const [localJobs, setLocalJobs] = useState<ServeJob[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastFetched, setLastFetched] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Resolve which set of jobs to display
   const allJobs: ServeJob[] = sharedJobs ?? localJobs;
@@ -417,9 +508,11 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
       // Use the main endpoint (supports officer_id) and filter by serve_date client-side
       const raw = await apiFetch<ServeJob[]>(`/process-server?officer_id=${officerId}&limit=200`);
       const todayJobs = (raw ?? []).filter(j => (j.serve_date ?? '').startsWith(today));
+      setError(null);
       setLocalJobs(todayJobs);
       setLastFetched(Date.now());
     } catch {
+      setError('Failed to load run data');
       setLocalJobs([]);
     } finally {
       setLoading(false);
@@ -429,6 +522,17 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
   useEffect(() => {
     fetchRun();
   }, [fetchRun]);
+
+  // ── Mileage today (read-only, pre-invoice visibility) ─────────────────
+  const [mileageToday, setMileageToday] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ miles: number }>(`/serve/mileage/mine?date=${today}`)
+      .then((res) => { if (!cancelled) setMileageToday(res?.miles ?? null); })
+      .catch(() => { if (!cancelled) setMileageToday(null); });
+    return () => { cancelled = true; };
+  }, [today]);
 
   // ── Listen for serve:statusChanged cross-tab events ─────────────────────
   // When running in standalone mode (no sharedJobs), we own localJobs and
@@ -486,6 +590,14 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     return allJobs; // already filtered in fetch
   }, [allJobs, sharedJobs, officerId, today]);
 
+  // Route position lookup: job id → 1-based stop number (only for jobs in the plan)
+  const routeStopIndex = useMemo((): Map<number, number> => {
+    if (!routeOrderIds || routeOrderIds.length === 0) return new Map();
+    const map = new Map<number, number>();
+    routeOrderIds.forEach((id, i) => map.set(id, i + 1));
+    return map;
+  }, [routeOrderIds]);
+
   // ── Progress metrics ──────────────────────────────────────────────────
   const { totalToday, servedToday, activeJobs } = useMemo(() => {
     const total = todayOfficerJobs.length;
@@ -508,7 +620,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
 
   // ── Next job ──────────────────────────────────────────────────────────
   const nextJob = useMemo((): ServeJob | null => {
-    // in_progress first, then pending; within each group: urgent→rush→normal→routine, then deadline ASC
+    // in_progress first, then pending; within each group: route order → priority → deadline
     const candidates = todayOfficerJobs.filter(
       (j) => j.status === 'in_progress' || j.status === 'pending',
     );
@@ -521,6 +633,12 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     return [...candidates].sort((a, b) => {
       const sr = statusRank(a.status) - statusRank(b.status);
       if (sr !== 0) return sr;
+      // Route order beats priority when a plan exists
+      if (routeStopIndex.size > 0) {
+        const ar = routeStopIndex.get(a.id) ?? Infinity;
+        const br = routeStopIndex.get(b.id) ?? Infinity;
+        if (ar !== br) return ar - br;
+      }
       const pr = priorityRank(a.priority) - priorityRank(b.priority);
       if (pr !== 0) return pr;
       if (a.deadline && b.deadline) return a.deadline.localeCompare(b.deadline);
@@ -528,7 +646,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
       if (b.deadline) return 1;
       return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     })[0];
-  }, [todayOfficerJobs]);
+  }, [todayOfficerJobs, routeStopIndex]);
 
   // ── Group by folder ───────────────────────────────────────────────────
   const byFolder = useMemo((): Record<ServeFolder, ServeJob[]> => {
@@ -538,8 +656,78 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     for (const job of todayOfficerJobs) {
       groups[deriveServeFolder(job)].push(job);
     }
+    // When a route plan exists, sort active folders by planned stop order.
+    if (routeStopIndex.size > 0) {
+      const routeSort = (a: ServeJob, b: ServeJob) => {
+        const ai = routeStopIndex.get(a.id) ?? Infinity;
+        const bi = routeStopIndex.get(b.id) ?? Infinity;
+        return ai - bi;
+      };
+      groups.in_progress.sort(routeSort);
+      groups.pending.sort(routeSort);
+    }
     return groups;
-  }, [todayOfficerJobs]);
+  }, [todayOfficerJobs, routeStopIndex]);
+
+  // ── Optimization V2 ───────────────────────────────────────────────────
+  const optRun = useServeRunOptimization();
+
+  // ETA lookup: jobId → formatted local time string
+  const etaByJobId = useMemo((): Map<number, string> => {
+    if (optRun.status !== 'complete') return new Map();
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const map = new Map<number, string>();
+    for (const stop of optRun.optimizedOrder) {
+      try {
+        map.set(stop.jobId, fmt.format(parseTimestamp(stop.eta)));
+      } catch {
+        // malformed ISO — skip
+      }
+    }
+    return map;
+  }, [optRun.status, optRun.optimizedOrder]);
+
+  // When optimization completes, reorder pending jobs to match the optimized sequence.
+  // Non-routed pending jobs stay at the end; other folders are unaffected.
+  const pendingJobsForDisplay = useMemo((): ServeJob[] => {
+    const pending = byFolder.pending;
+    if (optRun.status !== 'complete' || optRun.optimizedOrder.length === 0) return pending;
+    const orderMap = new Map(optRun.optimizedOrder.map((s, i) => [s.jobId, i]));
+    return [...pending].sort((a, b) => {
+      const ai = orderMap.get(a.id) ?? Infinity;
+      const bi = orderMap.get(b.id) ?? Infinity;
+      return ai - bi;
+    });
+  }, [byFolder.pending, optRun.status, optRun.optimizedOrder]);
+
+  // Queue jobs that have coordinates (prerequisite for routing)
+  const routableQueueCount = useMemo(
+    () => byFolder.pending.filter((j) => j.recipient_lat != null && j.recipient_lng != null).length,
+    [byFolder.pending],
+  );
+
+  // Denver shift window helpers for today
+  function denverShiftTimes(): { shiftStart: string; shiftEnd: string } {
+    const now = new Date();
+    const ymd = now.toLocaleDateString('en-CA', { timeZone: 'America/Denver' }); // YYYY-MM-DD
+    return {
+      shiftStart: `${ymd}T06:00:00-06:00`,
+      shiftEnd:   `${ymd}T18:00:00-06:00`,
+    };
+  }
+
+  const handleOptimize = useCallback(() => {
+    const { shiftStart, shiftEnd } = denverShiftTimes();
+    // TODO: wire officerUnitId from auth context when available
+    const officerUnitId = 0;
+    // TODO: wire serveRouteId from active route when available
+    const serveRouteId = 0;
+    void optRun.startOptimization(byFolder.pending, officerUnitId, shiftStart, shiftEnd, serveRouteId);
+  }, [optRun, byFolder.pending]);
 
   // ─────────────────────────────────────────────────────────────────────
   // Render
@@ -580,6 +768,61 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     <div className="flex flex-col h-full bg-surface-base">
       {/* ── Progress bar ─────────────────────────────────────────── */}
       <ProgressBar served={servedToday} total={totalToday} />
+      {error && (
+        <div className="px-3 py-2 text-[10px] text-red-400 bg-surface-sunken border-b border-border-default">
+          {error}
+        </div>
+      )}
+      {mileageToday !== null && mileageToday > 0 && (
+        <div className="px-3 py-1 border-b border-rmpg-700 bg-surface-sunken text-[9px] text-fg-muted uppercase tracking-wider flex items-center justify-between">
+          <span>Mileage today</span>
+          <span className="font-mono tabular-nums text-rmpg-100">{mileageToday.toFixed(1)} mi</span>
+        </div>
+      )}
+
+      {/* ── Optimize Run toolbar ─────────────────────────────────── */}
+      {routableQueueCount >= 2 && (
+        <div className="px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken flex items-center gap-2">
+          {(optRun.status === 'idle' || optRun.status === 'error') && (
+            <button
+              type="button"
+              onClick={handleOptimize}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-medium text-brand-400 bg-transparent border border-brand-400/40 rounded-[2px] hover:bg-brand-400/10 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-brand-400/40"
+              aria-label="Optimize route order"
+            >
+              <Route size={11} />
+              Optimize Route
+            </button>
+          )}
+          {(optRun.status === 'pending' || optRun.status === 'processing') && (
+            <span className="flex items-center gap-1.5 text-[10px] text-blue-400 animate-pulse">
+              <Loader2 size={10} className="animate-spin" />
+              Optimizing…
+            </span>
+          )}
+          {optRun.status === 'complete' && (
+            <>
+              <span className="text-[9px] text-rmpg-500">Route optimized</span>
+              <button
+                type="button"
+                onClick={optRun.reset}
+                className="text-[9px] text-rmpg-600 hover:text-rmpg-400 transition-colors focus:outline-none ml-auto"
+                aria-label="Clear optimization"
+              >
+                Clear
+              </button>
+            </>
+          )}
+          {optRun.status === 'error' && (
+            <span className="text-[9px] text-red-400 ml-1">Optimization failed</span>
+          )}
+          {optRun.status === 'complete' && optRun.droppedJobIds.length > 0 && (
+            <span className="text-[9px] text-amber-400 ml-auto">
+              {optRun.droppedJobIds.length} job{optRun.droppedJobIds.length === 1 ? '' : 's'} could not be optimally scheduled
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Scrollable body ──────────────────────────────────────── */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark">
@@ -596,13 +839,14 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
 
           {/* ── Next Job card (shown when run is NOT complete) ──── */}
           {!runComplete && nextJob && (
-            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} />
+            <NextJobCard job={nextJob} onOptimisticUpdate={handleOptimisticUpdate} navigate={navigate} routeStop={routeStopIndex.get(nextJob.id)} />
           )}
 
           {/* ── Folder-grouped job list ─────────────────────────── */}
           <div className="space-y-2">
             {FOLDER_ORDER.map((folder) => {
-              const folderJobs = byFolder[folder];
+              // Use the optimized order for pending jobs when available
+              const folderJobs = folder === 'pending' ? pendingJobsForDisplay : byFolder[folder];
               const cfg = SERVE_FOLDER_CONFIG[folder];
               // Skip the archived folder entirely if it's empty
               if (folder === 'archived' && folderJobs.length === 0) return null;
@@ -622,6 +866,8 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
                       isNext={nextJob?.id === job.id && !runComplete}
                       onOptimisticUpdate={handleOptimisticUpdate}
                       navigate={navigate}
+                      routeStop={routeStopIndex.get(job.id)}
+                      eta={folder === 'pending' ? etaByJobId.get(job.id) : undefined}
                     />
                   ))}
                 </ServeStatusFolder>
@@ -653,3 +899,7 @@ export default function MyRunTab({ officerId, sharedJobs, onJobsChange }: MyRunT
     </div>
   );
 }
+
+// Pure tone logic + the banner, exported for unit test. Not part of the public
+// surface — MyRunTab's default export is what the app mounts.
+export const __testables = { runTone, CompletionBanner };

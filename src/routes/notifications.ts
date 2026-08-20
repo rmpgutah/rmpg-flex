@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const alerts = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -33,6 +34,7 @@ alerts.get('/templates', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM notification_templates ${where} ORDER BY created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /templates failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to list templates' }, 500);
   }
 });
@@ -55,6 +57,7 @@ alerts.post('/templates', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_templates WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /templates failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to create template' }, 500);
   }
 });
@@ -70,11 +73,12 @@ alerts.put('/templates/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE notification_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_templates WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /templates/:id failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to update template' }, 500);
   }
 });
@@ -88,6 +92,7 @@ alerts.delete('/templates/:id', async (c) => {
     await execute(db, 'DELETE FROM notification_templates WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /templates/:id failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to delete template' }, 500);
   }
 });
@@ -102,6 +107,7 @@ alerts.get('/batches', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT b.*, u.full_name as created_by_name FROM notification_batches b LEFT JOIN users u ON b.created_by = u.id ORDER BY b.created_at DESC LIMIT 200');
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /batches failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to list batches' }, 500);
   }
 });
@@ -122,6 +128,7 @@ alerts.post('/batches', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_batches WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /batches failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to create batch' }, 500);
   }
 });
@@ -142,6 +149,7 @@ alerts.put('/batches/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_batches WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /batches/:id failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to update batch' }, 500);
   }
 });
@@ -157,6 +165,7 @@ alerts.get('/batches/:id/recipients', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM notification_recipients WHERE batch_id = ? ORDER BY id', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /batches/:id/recipients failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to list recipients' }, 500);
   }
 });
@@ -180,6 +189,7 @@ alerts.post('/batches/:id/recipients', async (c) => {
     await execute(db, 'UPDATE notification_batches SET recipient_count = ? WHERE id = ?', total?.count ?? 0, batchId);
     return c.json({ success: true, added: recipients.length });
   } catch (err) {
+    log.error('POST /batches/:id/recipients failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to add recipients' }, 500);
   }
 });
@@ -192,12 +202,13 @@ alerts.put('/batches/:id/send', async (c) => {
     const batchId = parseInt(c.req.param('id'), 10);
     // Mark as sent — actual delivery is stubbed (would go through email/SMS API in prod)
     await execute(db,
-      `UPDATE notification_batches SET status = 'sent', sent_at = datetime('now','localtime'), sent_count = recipient_count WHERE id = ?`, batchId);
+      `UPDATE notification_batches SET status = 'sent', sent_at = datetime('now'), sent_count = recipient_count WHERE id = ?`, batchId);
     await execute(db,
-      `UPDATE notification_recipients SET status = 'sent', sent_at = datetime('now','localtime') WHERE batch_id = ?`, batchId);
+      `UPDATE notification_recipients SET status = 'sent', sent_at = datetime('now') WHERE batch_id = ?`, batchId);
     const batch = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM notification_batches WHERE id = ?', batchId);
     return c.json({ data: batch });
   } catch (err) {
+    log.error('PUT /batches/:id/send failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to send batch' }, 500);
   }
 });
@@ -210,6 +221,7 @@ alerts.get('/stats', async (c) => {
     const sent = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM notification_batches WHERE status = 'sent'"))?.count ?? 0;
     return c.json({ templates, batches, sent_batches: sent });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/notifications.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -1,7 +1,7 @@
 // Tri-pane Intel Portal shell: left rail · center <Outlet/> · right context
 // panel. Mounts IntelProvider so every child surface shares one selection
 // and one panel. Rail badge counts piggyback on the dashboard overview poll.
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 import { IntelProvider } from './IntelContext';
 import IntelRail from './IntelRail';
 import IntelContextPanel from './IntelContextPanel';

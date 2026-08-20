@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 import { getAnthropicKey, getClaudeModel, callClaude } from '../utils/anthropic';
 import { runIntelLLM } from '../utils/intelLlm';
 import { notConfigured } from '../utils/notConfigured';
@@ -27,6 +28,17 @@ import {
 } from '../utils/intelAi';
 
 const intelAi = new Hono<Env>();
+
+// /ask runs a server-side FTS query over the WHOLE intel_index and returns
+// snippets + citations with no clearance scoping; /extract and /summarize run
+// the LLM over intel the caller supplies. All three are CJIS intelligence
+// surfaces and must exclude the external contract_manager / client_viewer
+// roles, matching intel.ts's `operational` gate. (/health stays open — it only
+// reports whether the AI key is configured.)
+const operational = requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+intelAi.use('/ask', operational);
+intelAi.use('/extract', operational);
+intelAi.use('/summarize', operational);
 
 /** Top FTS hits from intel_index for the question (LIKE fallback if absent). */
 async function topHits(db: ReturnType<typeof getDb>, q: string, limit = 12): Promise<IntelHitLite[]> {
@@ -44,7 +56,7 @@ async function topHits(db: ReturnType<typeof getDb>, q: string, limit = 12): Pro
       if (rows.length) return rows.map((r) => ({ type: r.type, id: Number(r.id), label: r.label, snippet: r.snippet }));
     } catch { /* index absent → LIKE fallback */ }
   }
-  const like = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+  const like = `%${q.slice(0, 48).replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
   const rows = await query<any>(
     db,
     `SELECT id, (first_name || ' ' || last_name) AS label FROM persons

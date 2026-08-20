@@ -6,7 +6,13 @@
 // src/routes/stubs.ts so the Reports dashboard renders real numbers.
 //
 // All handlers gated to admin/manager/supervisor — these expose
-// org-wide rollups, not officer-level data.
+// org-wide rollups, not officer-level data. Exceptions: /calls-near (the
+// patrol-view geo filter every officer hits from the dashboard) and
+// /daily-reports/* (the Fleet Daily Blotter), which is NOT open to every
+// authenticated user — it is restricted to internal operational roles
+// (admin/manager/supervisor/officer/dispatcher; see BLOTTER_ROLES below)
+// because the PDF carries call addresses, dispositions, officer names,
+// and citations. See the router-level gate below.
 //
 // Time windows are user-supplied via ?days=N (clamped to [1, 365]).
 // SQL filters on created_at (when the record entered the system) —
@@ -17,12 +23,22 @@
 import { Hono } from 'hono';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
-import { denverOffsetHours } from '../utils/denverTime';
+import { denverDateExpr, denverNowDateExpr, denverHourExpr } from '../utils/denverTime';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
 import type { Env } from '../types';
 
+import { log } from '../utils/logger';
+import { containsClause } from '../utils/searchText';
+import dailyReports from './dailyReports';
 const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
+
+/** Internal operational roles. Deliberately excludes the outward-facing
+ *  client_viewer and contract_manager, and human_resources — a blotter is
+ *  operational law-enforcement detail, not a client-facing or personnel
+ *  document. */
+const BLOTTER_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 
 // All /reports/* routes are org-wide rollups → elevated roles only, EXCEPT
 // /shift-activity/:officerId, which is an officer's own end-of-shift report
@@ -35,6 +51,28 @@ reports.use('*', async (c, next) => {
   // /calls-near is the patrol-view geo filter — every officer hits it from
   // the dashboard, not just analytics roles.
   if (c.req.path.endsWith('/calls-near')) return next();
+  // /daily-reports/* (Fleet Daily Blotter) is not an analytics rollup, so it
+  // does not take ANALYTICS_ROLES — but it is NOT open to every authenticated
+  // user either. The PDF carries every call's address, disposition and
+  // responding officer plus all citations for the day, so outward-facing
+  // accounts (client_viewer, contract_manager) and human_resources are
+  // excluded. POST /generate is separately gated to admin inside the
+  // sub-router (src/routes/dailyReports.ts).
+  //
+  // ANCHORED deliberately: a bare `.includes('/daily-reports')` also matches
+  // any future sibling whose name merely contains that substring (e.g.
+  // /api/reports/non-daily-reports-summary), silently widening this gate.
+  // Verified c.req.path is the FULL request path (e.g.
+  // "/api/reports/daily-reports/by-month"), not a router-relative path, so
+  // startsWith with the full mount prefix is correct here — but a bare
+  // startsWith('/api/reports/daily-reports') ALSO matches a hypothetical
+  // sibling like /api/reports/daily-reports-summary (no path-boundary
+  // check), so require an exact match or a '/'-delimited subpath.
+  const dailyReportsPath = c.req.path;
+  if (dailyReportsPath === '/api/reports/daily-reports'
+    || dailyReportsPath.startsWith('/api/reports/daily-reports/')) {
+    return requireRole(...BLOTTER_ROLES)(c, next);
+  }
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -49,18 +87,11 @@ function clampDays(raw: string | undefined, fallback: number): number {
 // resolve in UTC, so a call made at, say, 11pm MDT (05:00 UTC the NEXT
 // day) was silently excluded from "today," or a call from just after UTC
 // midnight (still yesterday evening in MT) was counted as "today." Shift
-// both sides of every DATE(...)/datetime(...) day comparison by the
-// current MT UTC offset so they compare in Denver-local calendar days.
-// Single current-moment offset (not per-row DST-aware) — see the
-// shift-comparison endpoint's identical tradeoff note below.
-function denverDateExpr(column: string): string {
-  const offset = denverOffsetHours();
-  return `DATE(${column}, '${offset} hours')`;
-}
-function denverNowDateExpr(modifier?: string): string {
-  const offset = denverOffsetHours();
-  return modifier ? `DATE('now', '${modifier}', '${offset} hours')` : `DATE('now', '${offset} hours')`;
-}
+// both sides of every DATE(...)/datetime(...) day comparison via the
+// shared denverDateExpr/denverNowDateExpr helpers (utils/denverTime.ts) so
+// they compare in Denver-local calendar days — and so this file's DST
+// tradeoff can never drift out of sync with the other route files using
+// the same pattern.
 
 // GET /api/reports/incidents-summary?days=30
 reports.get('/incidents-summary', async (c) => {
@@ -109,7 +140,68 @@ reports.get('/incidents-summary', async (c) => {
     by_status,
     by_day,
   });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /incidents-summary failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /api/reports/dashboard-unified-stats
+// Feeds the Dashboard's Warrants/Incidents summary panel
+// (client/src/pages/DashboardPage.tsx `unifiedStats`). That panel was built
+// against this exact shape but nothing ever fetched it, so it rendered
+// nothing — see project memory for the 2026-08 dispatch/dashboard audit.
+reports.get('/dashboard-unified-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const warrantsActive = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`
+    );
+    const warrantsByType = await query<{ type: string; count: number }>(
+      db,
+      `SELECT type, COUNT(*) AS count
+         FROM warrants
+        WHERE status = 'active'
+        GROUP BY type
+        ORDER BY count DESC`
+    );
+    const warrantsServed30d = await queryFirst<{ n: number }>(
+      db,
+      `SELECT COUNT(*) AS n FROM warrants WHERE status = 'served' AND served_at >= datetime('now', '-30 days')`
+    );
+
+    const incidentsByStatus = await query<{ status: string; count: number }>(
+      db,
+      `SELECT status, COUNT(*) AS count
+         FROM incidents
+        WHERE created_at >= datetime('now', '-30 days')
+        GROUP BY status
+        ORDER BY count DESC`
+    );
+    const incidentsByType = await query<{ type: string; count: number }>(
+      db,
+      `SELECT incident_type AS type, COUNT(*) AS count
+         FROM incidents
+        WHERE created_at >= datetime('now', '-30 days')
+        GROUP BY incident_type
+        ORDER BY count DESC`
+    );
+
+    return c.json({
+      warrants: {
+        active: warrantsActive?.n ?? 0,
+        by_type: Object.fromEntries(warrantsByType.map(r => [r.type, r.count])),
+        served_30d: warrantsServed30d?.n ?? 0,
+      },
+      incidents: {
+        by_status: incidentsByStatus,
+        by_type: incidentsByType,
+      },
+    });
+  } catch (err) {
+    log.error('GET /dashboard-unified-stats failed', { src: 'src/routes/reports.ts' }, err);
+    return c.json({ error: 'Failed' }, 500);
+  }
 });
 
 // GET /api/reports/crime-trends?days=90
@@ -189,7 +281,8 @@ reports.get('/crime-trends', async (c) => {
     .map(([month, count]) => ({ month, count }));
 
   return c.json({ days, trends: trendRows, monthlyTrend, top_categories });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /crime-trends failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/beat-activity?days=30
@@ -263,7 +356,8 @@ reports.get('/beat-activity', async (c) => {
   );
 
   return c.json({ days, beats });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /beat-activity failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/citation-revenue?days=30
@@ -341,7 +435,8 @@ reports.get('/citation-revenue', async (c) => {
     by_violation,
     payment_count: total?.payment_count ?? 0,
   });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /citation-revenue failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/schedules
@@ -422,8 +517,20 @@ reports.get('/statute-analytics', async (c) => {
   );
 
   return c.json({ days, total: total?.n ?? 0, top_statutes, by_category });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /statute-analytics failed', { src: 'src/routes/reports.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
+
+/**
+ * Response-time SLA target, in minutes. Single source of truth.
+ *
+ * Returned to the client as `overall.slaTargetMinutes` so the dashboard tile
+ * and the trend chart's target line cannot drift from the value the compliance
+ * percentage is actually computed against — ReportsPage previously hardcoded
+ * `<= 5` in one place and `targetMinutes: 5` in another, with nothing tying
+ * them to the server.
+ */
+const SLA_TARGET_MINUTES = 5;
 
 // GET /api/reports/response-times?days=N
 // Computes avg/min/max response minutes from calls_for_service using
@@ -442,12 +549,14 @@ reports.get('/response-times', async (c) => {
       minResp: number | null;
       maxResp: number | null;
       total: number;
+      slaMetCount: number;
     }>(db, `
       SELECT
         ROUND(AVG(${RESP}), 1) AS avgTotal,
         ROUND(MIN(${RESP}), 1) AS minResp,
         ROUND(MAX(${RESP}), 1) AS maxResp,
-        COUNT(*) AS total
+        COUNT(*) AS total,
+        SUM(CASE WHEN ${RESP} <= ${SLA_TARGET_MINUTES} THEN 1 ELSE 0 END) AS slaMetCount
       FROM calls_for_service
       WHERE created_at >= datetime('now', ?)
         AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
@@ -487,12 +596,20 @@ reports.get('/response-times', async (c) => {
         minResponseMinutes: overall?.minResp ?? 0,
         maxResponseMinutes: overall?.maxResp ?? 0,
         totalCalls: overall?.total ?? 0,
+        // PER-CALL SLA compliance. ReportsPage previously derived this from
+        // dailyTrend by counting a whole day's calls as met when that DAY'S
+        // AVERAGE was <= target -- wrong in both directions: a day averaging
+        // 4.9 credited every call even if several took 20 minutes, and a day
+        // averaging 5.1 credited none even if most were under target. The
+        // client cannot fix it alone, because dailyTrend carries only averages.
+        slaMetCount: overall?.slaMetCount ?? 0,
+        slaTargetMinutes: SLA_TARGET_MINUTES,
       },
       byPriority,
       dailyTrend,
     });
   } catch {
-    return c.json({ overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0 }, byPriority: [], dailyTrend: [] });
+    return c.json({ overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0, slaMetCount: 0, slaTargetMinutes: SLA_TARGET_MINUTES }, byPriority: [], dailyTrend: [] });
   }
 });
 
@@ -501,9 +618,14 @@ reports.get('/officer-activity', async (c) => {
   try {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.officer_id, usr.full_name, usr.badge_number,
-        (SELECT COUNT(*) FROM incidents i WHERE i.reporting_officer_id = u.officer_id) AS incidents_written,
+        (SELECT COUNT(*) FROM incidents i WHERE i.officer_id = u.officer_id) AS incidents_written,
         (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
-        0 AS total_hours
+        -- Was a hardcoded 0, so this column read "0 hours" for every officer
+        -- on the report even though time_entries has the real total (one
+        -- officer on live has 498.8 logged hours). A hardcoded metric is worse
+        -- than an empty one: it renders as data and looks authoritative.
+        (SELECT ROUND(COALESCE(SUM(te.total_hours), 0), 1)
+           FROM time_entries te WHERE te.officer_id = u.officer_id) AS total_hours
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.officer_id IS NOT NULL
@@ -537,23 +659,45 @@ reports.get('/command-center', async (c) => {
   };
 
   const kpis = {
-    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now','localtime')"),
-    active_calls: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed')"),
+    calls_today: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`),
+    active_calls: await one(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
     avg_response_min: 0,
     units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
     units_total: await one('SELECT COUNT(*) AS n FROM units'),
     active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
-    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+    // anomaly_alerts has no boolean `acknowledged` — acknowledged_at is the flag.
+    anomaly_alerts: await one('SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL'),
   };
 
+  // calls_for_service has no call_type/address columns — it's incident_type/
+  // location_address (see shift-activity below, anomalies.ts). Those wrong
+  // names made this SELECT throw on every request; list()'s catch swallowed
+  // it to [], while kpis.active_calls (a plain COUNT with no such columns)
+  // kept succeeding — so the KPI tile and the call-queue panel permanently
+  // disagreed (e.g. "2 ACTIVE CALLS" next to an empty "ACTIVE CALLS (0)"
+  // queue). CommandCenterPage.tsx already reads call.incident_type/
+  // call.location_address with a call_type/address fallback, so this fix
+  // alone is enough — no client change needed.
   const active_calls = await list(
-    "SELECT id, call_number, call_type, priority, status, address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
+    `SELECT id, call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE} ORDER BY created_at DESC LIMIT 50`,
   );
-  const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
+  // units has call_sign / current_call_id — no unit_number or
+  // current_call_number — so this threw "no such column: unit_number".
+  // Aliased to keep the response shape this code intended.
+  const units = await list('SELECT id, call_sign AS unit_number, status, current_call_id AS current_call_number FROM units ORDER BY call_sign LIMIT 200');
   const calls_by_hour = await list(
-    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now','localtime') GROUP BY strftime('%H', created_at) ORDER BY hour",
+    // Both the day bucket AND the hour label must be Denver-local: the hour is
+    // what the chart's x-axis shows an operator, and raw strftime('%H') reads
+    // the UTC hour, shifting every call 6-7 hours from when it actually
+    // happened. Sibling queries in this file were already converted; this one
+    // was missed.
+    `SELECT ${denverHourExpr('created_at')} AS hour, COUNT(*) AS count
+       FROM calls_for_service
+      WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}
+      GROUP BY hour ORDER BY hour`,
   );
-  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+  // No boolean `acknowledged` column — acknowledged_at is the flag.
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE acknowledged_at IS NULL ORDER BY created_at DESC LIMIT 20');
 
   return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
 });
@@ -638,7 +782,7 @@ reports.get('/dashboard', async (c) => {
   try {
     const db = getDb(c.env);
     const [calls, unitsOn, totalUnits, pending, bolos, avgResp, byPriority, byStatus, byHour, officers] = await Promise.all([
-      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled')"),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service')"),
       queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM units'),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE status IN ('draft','submitted','under_review')"),
@@ -649,7 +793,7 @@ reports.get('/dashboard', async (c) => {
       // column is also NULL on all current live rows, so fall back to the
       // onscene_at − created_at delta when it's missing.
       queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(COALESCE(response_time_seconds / 60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at) - julianday(dispatched_at)) * 1440 END)), 1) AS avg FROM calls_for_service WHERE (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL) AND created_at >= datetime('now','-24 hours')"),
-      query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
+      query<{ priority: string; count: number }>(db, `SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE} GROUP BY priority`),
       query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
       query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
       query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
@@ -736,7 +880,7 @@ reports.get('/calls-near', async (c) => {
       SELECT id, call_number, priority, status, location_address, description,
              latitude, longitude, created_at
       FROM calls_for_service
-      WHERE status NOT IN ('cleared','closed','cancelled')
+      WHERE ${ACTIVE_CALL_WHERE}
         AND latitude IS NOT NULL AND longitude IS NOT NULL
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
@@ -1028,9 +1172,10 @@ reports.get('/daily-briefing', async (c) => {
                SUM(CASE WHEN priority='P1' THEN 1 ELSE 0 END) AS p1_calls,
                SUM(CASE WHEN priority='P2' THEN 1 ELSE 0 END) AS p2_calls,
                ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS avg_response
-             FROM calls_for_service WHERE date(created_at)=date('now','localtime','-1 day')`),
-      safeList(`SELECT id, bolo_number, title, priority, category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
-      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY date_issued DESC LIMIT 10`),
+             FROM calls_for_service WHERE date(created_at)=date('now','-1 day')`),
+      // bolos has `type`, not `category`; warrants has `issued_date`, not `date_issued`.
+      safeList(`SELECT id, bolo_number, title, priority, type AS category FROM bolos WHERE status='active' ORDER BY priority ASC, created_at DESC LIMIT 10`),
+      safeList(`SELECT id, warrant_number, charge_description, status FROM warrants WHERE status='active' AND archived_at IS NULL ORDER BY issued_date DESC LIMIT 10`),
       safeList(`SELECT incident_type, COUNT(*) AS count FROM incidents WHERE created_at >= datetime('now','-7 days') GROUP BY incident_type ORDER BY count DESC LIMIT 5`),
       safeList(`SELECT u.call_sign, usr.full_name FROM units u LEFT JOIN users usr ON usr.id=u.officer_id WHERE u.status NOT IN ('off_duty','out_of_service') ORDER BY u.call_sign LIMIT 30`),
     ]);
@@ -1061,7 +1206,8 @@ reports.get('/weekly-digest', async (c) => {
       safe1(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now',?)`, since7),
       safe1(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now',?)`, since7),
-      safe1(`SELECT COUNT(*) AS n FROM arrests WHERE created_at >= datetime('now',?)`, since7),
+      // No `arrests` table on live D1 — it's arrest_records.
+      safe1(`SELECT COUNT(*) AS n FROM arrest_records WHERE created_at >= datetime('now',?)`, since7),
       (async () => {
         try {
           const r = await queryFirst<{ v: number | null }>(db, `SELECT ROUND(AVG(COALESCE(response_time_seconds/60.0, CASE WHEN dispatched_at IS NOT NULL THEN (julianday(onscene_at)-julianday(dispatched_at))*1440 END)),1) AS v FROM calls_for_service WHERE created_at >= datetime('now',?) AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)`, since7);
@@ -1119,9 +1265,11 @@ reports.get('/patrol-tracking', async (c) => {
       speed_mph: number | null; heading: number | null;
       recorded_at: string; location_address: string | null;
     }>(db, `
+      -- gps_breadcrumbs has speed (not speed_mph) and no location_address --
+      -- road_name / nearest_intersection are the only place data on the row.
       SELECT g.unit_id, u.call_sign, g.latitude, g.longitude,
-             g.speed_mph, g.heading, g.recorded_at,
-             ${geocode ? 'g.location_address' : 'NULL AS location_address'}
+             g.speed AS speed_mph, g.heading, g.recorded_at,
+             ${geocode ? 'COALESCE(g.road_name, g.nearest_intersection) AS location_address' : 'NULL AS location_address'}
         FROM gps_breadcrumbs g
         LEFT JOIN units u ON u.id = g.unit_id
        WHERE g.recorded_at >= ? ${untilFilter} ${unitFilter}
@@ -1235,7 +1383,7 @@ reports.post('/custom', async (c) => {
       if (!f.value) continue;
       switch (f.operator) {
         case 'eq':       whereParts.push(`${f.column} = ?`);           binds.push(f.value); break;
-        case 'contains': whereParts.push(`${f.column} LIKE ?`);         binds.push(`%${f.value}%`); break;
+        case 'contains': { const m = containsClause(f.column); whereParts.push(m.sql); binds.push(m.bind(f.value)); break; }
         case 'gte':      whereParts.push(`${f.column} >= ?`);           binds.push(f.value); break;
         case 'lte':      whereParts.push(`${f.column} <= ?`);           binds.push(f.value); break;
       }
@@ -1314,12 +1462,10 @@ reports.get('/shift-comparison', async (c) => {
     // Shift hours (Day=0600-1359, Swing=1400-2159, Night=2200-0559) are Mountain
     // Time, but created_at is stored UTC and strftime('%H', created_at) read the
     // UTC hour directly — a call at 13:00 UTC (06:00 MDT, start of Day shift)
-    // was bucketed as Night. Shift the timestamp into Denver wall-clock before
-    // extracting the hour. Single current-moment offset (denverOffsetHours),
-    // not per-row DST-aware — rows on the far side of a DST flip within the
-    // `days` window can be off by 1 hour, versus the prior 6-7 hour UTC/MT bug.
-    const offset = denverOffsetHours();
-    const shiftedHour = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
+    // was bucketed as Night. denverHourExpr shifts the timestamp into Denver
+    // wall-clock before extracting the hour (see utils/denverTime.ts for the
+    // shared DST tradeoff note).
+    const shiftedHour = denverHourExpr('created_at');
     const rows = await query<{ shift: string; calls: number; incidents: number; avg_resp_min: number; hours: number }>(db,
       `SELECT CASE WHEN ${shiftedHour} BETWEEN 6 AND 13 THEN 'Day'
                    WHEN ${shiftedHour} BETWEEN 14 AND 21 THEN 'Swing'
@@ -1342,8 +1488,15 @@ reports.get('/clearance-rate', async (c) => {
       `SELECT COUNT(*) AS n FROM incidents WHERE status = 'closed' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
     const total = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now','-${days} days')`))?.n ?? 1;
-    const active = total - cleared;
-    return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, days });
+    // "Pending" (report not yet submitted for review) vs. "Active" (submitted,
+    // awaiting disposition) — split out of the incidents.status CHECK enum
+    // ('draft','submitted','under_review','approved','returned') so the
+    // Dashboard clearance-rate donut (DashboardPage.tsx incidentPieData) can
+    // render its 3rd wedge instead of reading a field this endpoint never sent.
+    const pending = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM incidents WHERE status = 'draft' AND created_at >= datetime('now','-${days} days')`))?.n ?? 0;
+    const active = total - cleared - pending;
+    return c.json({ rate: Math.round((cleared / Math.max(total, 1)) * 100), cleared, total, active, pending, days });
   } catch { return c.json({ rate: 0, cleared: 0, total: 0, active: 0, days: 30 }); }
 });
 
@@ -1352,7 +1505,9 @@ reports.get('/patrol-coverage', async (c) => {
   try {
     const db = getDb(c.env);
     const totalBeats = (await queryFirst<{ n: number }>(db,
-      'SELECT COUNT(DISTINCT beat_id) AS n FROM dispatch_geography'))?.n ?? 0;
+      // No dispatch_geography table exists (in rmpg-flex or rmpg-geo) —
+      // dispatch_beats is the beat registry.
+      'SELECT COUNT(*) AS n FROM dispatch_beats WHERE COALESCE(active, 1) = 1'))?.n ?? 0;
     const coveredBeats = (await queryFirst<{ n: number }>(db,
       `SELECT COUNT(DISTINCT u.assigned_beat) AS n FROM units u WHERE u.status = 'available' AND u.assigned_beat IS NOT NULL`))?.n ?? 0;
     return c.json({ coverage: totalBeats ? Math.round((coveredBeats / totalBeats) * 100) : 0, coveredBeats, totalBeats });
@@ -1368,8 +1523,19 @@ reports.get('/evidence-pending', async (c) => {
     const total = (await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM field_photos'))?.n ?? 0;
     const reviewed = (await queryFirst<{ n: number }>(db,
       "SELECT COUNT(*) AS n FROM field_photos WHERE reviewed_at IS NOT NULL"))?.n ?? 0;
-    return c.json({ pending, total, reviewed });
-  } catch { return c.json({ pending: 0, total: 0, reviewed: 0 }); }
+    // checked_out / pending_disposal are the evidence-locker tab of this
+    // widget (client/src/pages/DashboardPage.tsx EvidenceSummary), distinct
+    // from the field_photos review-queue counts above. 'checked_out' is the
+    // status POST /records/evidence/:id/checkout writes, cleared back to
+    // 'checked_in' on check-in; 'pending_disposition' is the status
+    // PUT /records/evidence/:id/disposition writes for disposition==='pending'
+    // (see records.ts).
+    const checkedOut = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM evidence WHERE status = 'checked_out'"))?.n ?? 0;
+    const pendingDisposal = (await queryFirst<{ n: number }>(db,
+      "SELECT COUNT(*) AS n FROM evidence WHERE status = 'pending_disposition'"))?.n ?? 0;
+    return c.json({ pending, total, reviewed, checked_out: checkedOut, pending_disposal: pendingDisposal });
+  } catch { return c.json({ pending: 0, total: 0, reviewed: 0, checked_out: 0, pending_disposal: 0 }); }
 });
 
 // GET /reports/upcoming-court
@@ -1377,10 +1543,13 @@ reports.get('/upcoming-court', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<{ date: string; time: string; case_number: string; officer_name: string }>(db,
-      `SELECT ce.hearing_date AS date, ce.hearing_time AS time, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
-       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date >= DATE('now') AND ce.hearing_date <= DATE('now','+7 days')
-       ORDER BY ce.hearing_date, ce.hearing_time LIMIT 30`);
+      // Live court_events: event_date / event_time / court_case_number, and no
+      // officer_id — created_by is the only user FK (same as admin.ts).
+      `SELECT ce.event_date AS date, ce.event_time AS time,
+              ce.court_case_number AS case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.created_by
+       WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now','+7 days')
+       ORDER BY ce.event_date, ce.event_time LIMIT 30`);
     return c.json({ upcoming: rows });
   } catch { return c.json({ upcoming: [] }); }
 });
@@ -1399,5 +1568,10 @@ reports.get('/overdue-reports', async (c) => {
     return c.json({ count: rows.length, items: rows });
   } catch { return c.json({ count: 0, items: [] }); }
 });
+
+// Mounted here rather than in routesConfig so it inherits /api/reports'
+// auth:'required'. Declaration order matters in Hono — verified 2026-08-01
+// that no route above is a bare /:param that could shadow this.
+reports.route('/daily-reports', dailyReports);
 
 export default reports;

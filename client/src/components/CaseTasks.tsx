@@ -9,6 +9,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
 import { useToast } from './ToastProvider';
+import { withAlpha } from '../utils/withAlpha';
 
 export interface CaseTask {
   id: number;
@@ -31,13 +32,13 @@ export interface CaseTask {
 interface UserLite { id: number; full_name: string }
 
 const PRIORITY_COLOR: Record<string, string> = {
-  urgent: '#ef4444', high: '#f59e0b', normal: '#888888', low: '#5a5a5a',
+  urgent: 'var(--sev-critical)', high: 'var(--sev-warn)', normal: 'var(--text-secondary)', low: 'var(--text-muted)',
 };
 const STATUS_LABEL: Record<string, string> = {
   open: 'Open', in_progress: 'In Progress', done: 'Done', canceled: 'Canceled',
 };
 const STATUS_COLOR: Record<string, string> = {
-  open: '#888888', in_progress: '#f59e0b', done: '#22c55e', canceled: '#5a5a5a',
+  open: 'var(--text-secondary)', in_progress: 'var(--sev-warn)', done: 'var(--sev-ok)', canceled: 'var(--text-muted)',
 };
 
 /** Pure: a task is overdue with a past due date and still actionable. */
@@ -49,9 +50,9 @@ export function isTaskOverdue(dueDate?: string | null, status?: string): boolean
 }
 
 function StatusPill({ status }: { status: string }) {
-  const color = STATUS_COLOR[status] || '#888888';
+  const color = STATUS_COLOR[status] || 'var(--text-secondary)';
   return (
-    <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border" style={{ color, borderColor: `${color}66` }}>
+    <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border" style={{ color, borderColor: withAlpha(color, '66') }}>
       {STATUS_LABEL[status] || status}
     </span>
   );
@@ -122,7 +123,7 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="text-[10px] font-mono text-rmpg-500 uppercase">Tasks &amp; Leads ({open.length} open)</div>
+        <div className="text-[10px] font-mono text-fg-secondary uppercase">Tasks &amp; Leads ({open.length} open)</div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={applyTemplate} className="toolbar-btn text-[10px]" title="Add this case type's standard investigative tasks">
             <ListChecks style={{ width: 10, height: 10 }} /> Template
@@ -171,9 +172,9 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
+        <div className="flex items-center gap-2 text-[10px] text-fg-muted p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
       ) : tasks.length === 0 ? (
-        <div className="text-center py-6 text-rmpg-500 text-xs">No tasks for this case yet</div>
+        <div className="text-center py-6 text-fg-muted text-xs">No tasks for this case yet</div>
       ) : (
         <div className="space-y-1.5">
           {[...open, ...closed].map((t) => {
@@ -185,7 +186,7 @@ export function CaseTasksTab({ caseId, users, onChanged }: { caseId: number; use
                 <div className="flex-1 min-w-0">
                   <div className={`text-[11px] font-bold ${dimmed ? 'line-through text-rmpg-400' : 'text-rmpg-100'}`}>{t.title}</div>
                   {t.description && <div className="text-[9px] text-rmpg-400 mt-0.5">{t.description}</div>}
-                  <div className="flex items-center gap-2 mt-1 flex-wrap text-[9px] text-rmpg-500">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap text-[9px] text-fg-muted">
                     <StatusPill status={t.status} />
                     {t.assignee_name && <span>{t.assignee_name}</span>}
                     {t.due_date && (
@@ -245,21 +246,21 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
       <PanelTitleBar title="My Tasks" icon={Clock}>
-        <span className="text-[9px] font-mono text-rmpg-500">{tasks.length}</span>
+        <span className="text-[9px] font-mono text-fg-muted">{tasks.length}</span>
       </PanelTitleBar>
       <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-sunken">
         {(['active', 'overdue', 'done'] as const).map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`px-3 py-1 text-[10px] font-mono uppercase border ${filter === f ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+            className={`px-3 py-1 text-[10px] font-mono uppercase border ${filter === f ? 'bg-brand-900/40 border-brand-600/50 text-brand-300' : 'border-transparent text-fg-muted hover:text-rmpg-300'}`}>
             {f === 'active' ? 'Active' : f === 'overdue' ? 'Overdue' : 'Completed'}
           </button>
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-rmpg-700 scrollbar-track-transparent p-3 space-y-1.5">
         {loading ? (
-          <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
+          <div className="flex items-center gap-2 text-[10px] text-fg-muted p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading tasks...</div>
         ) : tasks.length === 0 ? (
-          <div className="text-center py-10 text-rmpg-500 text-xs">No {filter} tasks assigned to you</div>
+          <div className="text-center py-10 text-fg-muted text-xs">No {filter} tasks assigned to you</div>
         ) : (
           tasks.map((t) => {
             const overdue = isTaskOverdue(t.due_date, t.status);
@@ -271,7 +272,7 @@ export function CaseMyTasksView({ onOpenCase }: { onOpenCase: (caseId: number) =
                   <button type="button" onClick={() => onOpenCase(t.case_id)} className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5 mt-0.5">
                     <ExternalLink style={{ width: 9, height: 9 }} /> {t.case_number || `Case #${t.case_id}`}{t.case_title ? ` — ${t.case_title}` : ''}
                   </button>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap text-[9px] text-rmpg-500">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap text-[9px] text-fg-muted">
                     <StatusPill status={t.status} />
                     {t.due_date && (
                       <span className={`flex items-center gap-0.5 ${overdue ? 'text-red-400 font-bold' : ''}`}>

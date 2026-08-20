@@ -57,7 +57,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
     setLoading(true);
     try {
       const params = filterCat !== 'all' ? `?category=${filterCat}` : '';
-      try { const data = await apiFetch<any[]>(`/hr/documents${params}`); setDocs(data); } catch { addToast('Failed to load documents', 'error'); }
+      try { const data = await apiFetch<any[]>(`/hr/documents${params}`); setDocs(Array.isArray(data) ? data : []); } catch { addToast('Failed to load documents', 'error'); }
     } finally { setLoading(false); }
   };
 
@@ -174,7 +174,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                     <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{toDisplayLabel(doc.category)}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
-                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {!myAcks.has(doc.id) ? (
@@ -185,7 +185,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                     <span className="text-[10px] text-green-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Acknowledged</span>
                   )}
                   {isManager && (
-                    <button type="button" onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
+                    <button aria-label="Delete" type="button" onClick={e => { e.stopPropagation(); handleDelete(doc.id); }} className="toolbar-btn toolbar-btn-danger text-[9px]"><Trash2 className="w-3 h-3" /></button>
                   )}
                 </div>
               </div>
@@ -195,7 +195,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <p className="text-[10px] text-rmpg-400 font-bold mb-1">Acknowledgments ({acks.length})</p>
                   <div className="grid grid-cols-3 gap-1">
                     {acks.map(a => (
-                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? parseTimestamp(a.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
+                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? parseTimestamp(a.acknowledged_at).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) : ''}</div>
                     ))}
                   </div>
                 </div>

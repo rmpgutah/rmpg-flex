@@ -26,7 +26,7 @@ interface CollapsibleSectionProps {
   accent?: BadgeTone;
 }
 
-const GOLD = '#d4a017';
+const GOLD = 'var(--panel-header-color)';
 
 function CollapsibleSection({
   title,
@@ -93,8 +93,8 @@ function CollapsibleSection({
               className="text-[9px] font-mono font-bold tabular-nums leading-none px-1 py-[2px] rounded-[2px] shrink-0"
               style={
                 count > 0
-                  ? { color: '#0a0a0a', background: accentColor }
-                  : { color: 'var(--rmpg-500)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)' }
+                  ? { color: 'var(--surface-deep)', background: accentColor }
+                  : { color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)' }
               }
             >
               {count}

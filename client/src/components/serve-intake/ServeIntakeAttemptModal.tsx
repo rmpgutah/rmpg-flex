@@ -22,8 +22,9 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
-import { X, MapPin, Send, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, MapPin, Send, CheckCircle, AlertTriangle, Loader2, Clock } from 'lucide-react';
 import IconButton from '../IconButton';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import {
   type AttemptResult,
   type AttemptWindow,
@@ -69,6 +70,14 @@ function toneClass(tone: 'good' | 'neutral' | 'bad'): string {
   }
 }
 
+interface AttemptForm {
+  result: AttemptResult | null;
+  attemptType: string;
+  notes: string;
+}
+
+const EMPTY_ATTEMPT_FORM: AttemptForm = { result: null, attemptType: '', notes: '' };
+
 export default function ServeIntakeAttemptModal({
   isOpen,
   onClose,
@@ -78,9 +87,18 @@ export default function ServeIntakeAttemptModal({
   callNumber,
   onSuccess,
 }: ServeIntakeAttemptModalProps) {
-  const [result, setResult] = useState<AttemptResult | null>(null);
-  const [attemptType, setAttemptType] = useState<string>('');
-  const [notes, setNotes] = useState('');
+  const {
+    form, setForm, wasRestored, clearDraft, signalSaved,
+  } = useFormDraft<AttemptForm>({
+    storageKey: `rmpg_serve_intake_attempt_${queueId}`,
+    defaultValue: EMPTY_ATTEMPT_FORM,
+    isActive: isOpen,
+  });
+  const { result, attemptType, notes } = form;
+  const setResult = (v: AttemptResult | null) => setForm({ ...form, result: v });
+  const setAttemptType = (v: string) => setForm({ ...form, attemptType: v });
+  const setNotes = (v: string) => setForm({ ...form, notes: v });
+
   const [gps, setGps] = useState<{ lat: number | null; lng: number | null; loading: boolean; error: string | null }>({
     lat: null, lng: null, loading: false, error: null,
   });
@@ -129,6 +147,7 @@ export default function ServeIntakeAttemptModal({
         throw new Error(`Server returned ${resp.status}: ${await resp.text().catch(() => '')}`);
       }
       const body = await resp.json() as { id: number; attempt_number: number; queue_status: string };
+      signalSaved();
       setServerResp(body);
       // Compute the diligence recommendation from the user-written helper.
       const now = new Date();
@@ -136,17 +155,20 @@ export default function ServeIntakeAttemptModal({
       onSuccess?.(body);
     } catch (err: any) {
       setSubmitError(err?.message || 'Failed to log attempt');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
   }, [result, attemptType, notes, gps, queueId, onSuccess]);
 
   if (!isOpen) return null;
 
+  const guardedClose = () => { clearDraft(); onClose(); };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }}
-      onClick={onClose}
+      style={{ background: 'rgba(0 0 0 / 0.65)' }}
+      onClick={guardedClose}
     >
       <div
         className="bg-surface-base border border-border-default rounded-sm w-full max-w-xl max-h-[90vh] overflow-y-auto"
@@ -155,14 +177,14 @@ export default function ServeIntakeAttemptModal({
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-default sticky top-0 bg-surface-base">
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-rmpg-500 font-bold">Log Service Attempt</div>
+            <div className="text-[10px] uppercase tracking-wider text-fg-muted font-bold">Log Service Attempt</div>
             <div className="text-sm text-rmpg-100 font-bold truncate">{recipientName}</div>
             <div className="text-[10px] text-rmpg-400 truncate">
               {recipientAddress}
               {callNumber && <span className="ml-2 text-brand-400">· {callNumber}</span>}
             </div>
           </div>
-          <IconButton onClick={onClose} aria-label="Close attempt modal">
+          <IconButton onClick={guardedClose} aria-label="Close attempt modal">
             <X className="w-4 h-4" />
           </IconButton>
         </div>
@@ -205,6 +227,14 @@ export default function ServeIntakeAttemptModal({
         {/* Form */}
         {!serverResp && (
           <div className="p-4 space-y-4">
+            {wasRestored && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 bg-amber-950/20">
+                <div className="flex items-center gap-2 text-[11px] text-amber-400 font-medium">
+                  <Clock className="w-3.5 h-3.5" /> Restored unsaved attempt
+                </div>
+                <button onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+              </div>
+            )}
             {/* Result */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Result *</div>
@@ -253,7 +283,7 @@ export default function ServeIntakeAttemptModal({
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}
                 placeholder="Description, recipient demographics, witness, etc."
-                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-rmpg-600 focus:outline-none focus:border-brand-500"
+                className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-rmpg-100 placeholder:text-fg-muted focus:outline-none focus:border-brand-500"
               />
             </div>
 
@@ -281,7 +311,7 @@ export default function ServeIntakeAttemptModal({
             {/* Actions */}
             <div className="flex gap-2 pt-2">
               <button
-                onClick={onClose}
+                onClick={guardedClose}
                 disabled={submitting}
                 className="px-4 py-2 border border-rmpg-700 text-rmpg-400 hover:bg-surface-raised text-xs font-bold uppercase rounded-sm"
               >
@@ -290,7 +320,7 @@ export default function ServeIntakeAttemptModal({
               <button
                 onClick={handleSubmit}
                 disabled={!result || submitting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-rmpg-600 text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-rmpg-800 disabled:text-fg-muted text-rmpg-100 font-bold text-xs uppercase rounded-sm transition-colors"
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>

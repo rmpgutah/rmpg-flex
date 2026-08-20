@@ -67,12 +67,12 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
       <div className="relative w-full max-w-2xl mx-4 shadow-md panel-beveled" style={{ background:"var(--surface-sunken)" }} onClick={e => e.stopPropagation()}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2" style={{ background: '#d4a017' }} />
+            <div className="w-2 h-2" style={{ background: 'var(--sev-warn)' }} />
             <Users className="title-icon" />
             <span>DUPLICATE PERSON RECORDS</span>
             <span className="text-[9px] text-rmpg-400 ml-1">({pairs.length} pairs)</span>
           </div>
-          <button type="button" onClick={onClose} className="toolbar-btn" style={{ padding: '1px 4px' }}>
+          <button aria-label="Close" type="button" onClick={onClose} className="toolbar-btn" style={{ padding: '1px 4px' }}>
             <X className="w-3 h-3" />
           </button>
         </div>
@@ -101,7 +101,7 @@ export default function PersonDuplicatesModal({ isOpen, onClose, onMergeComplete
                   <div className="text-[9px] text-rmpg-400">ID #{p.id1} {p.dob1 && `• DOB: ${p.dob1}`}</div>
                 </div>
 
-                <ChevronRight className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
+                <ChevronRight className="w-3 h-3 text-fg-muted flex-shrink-0" />
 
                 {/* Person B */}
                 <div className="flex-1 min-w-0">

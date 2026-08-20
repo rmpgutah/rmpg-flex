@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const impounds = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -37,6 +38,7 @@ impounds.get('/', async (c) => {
       db, `SELECT * FROM impounds ${where} ORDER BY impound_date DESC LIMIT 500`, ...params);
     return c.json(rows);
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to list impounds' }, 500);
   }
 });
@@ -49,6 +51,7 @@ impounds.get('/stats', async (c) => {
       db, 'SELECT status, COUNT(*) as count FROM impounds GROUP BY status');
     return c.json(rows);
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });
@@ -78,6 +81,7 @@ impounds.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM impounds WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to create impound' }, 500);
   }
 });
@@ -100,12 +104,13 @@ impounds.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE impounds SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM impounds WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to update impound' }, 500);
   }
 });
@@ -124,13 +129,14 @@ impounds.put('/:id/release', async (c) => {
     const days = daysSince(row.impound_date);
     const totalFees = (days * (row.daily_fee || 0)) + (row.tow_fee || 0);
     await execute(db,
-      `UPDATE impounds SET status = 'released', release_date = datetime('now','localtime'),
+      `UPDATE impounds SET status = 'released', release_date = datetime('now'),
         days_stored = ?, total_fees = ?, released_to = ?, release_notes = ?,
-        updated_at = datetime('now','localtime') WHERE id = ?`,
+        updated_at = datetime('now') WHERE id = ?`,
       days, totalFees, b.released_to ?? null, b.release_notes ?? null, id,
     );
     return c.json({ days, total_fees: totalFees });
   } catch (err) {
+    log.error('PUT /:id/release failed', { src: 'src/routes/impounds.ts' }, err);
     return c.json({ error: 'Failed to release impound' }, 500);
   }
 });

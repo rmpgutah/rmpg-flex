@@ -49,7 +49,7 @@ function formatDuration(ms: number): string {
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 // Badge for scraper type (legacy vs firecrawl)
@@ -296,7 +296,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                   <td className="px-2 py-1.5">
                     <div className="text-xs text-rmpg-100 font-medium">{src.display_name}</div>
                     {src.base_url && (
-                      <div className="text-[10px] text-rmpg-500 truncate max-w-[180px]">{src.base_url}</div>
+                      <div className="text-[10px] text-fg-muted truncate max-w-[180px]">{src.base_url}</div>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-center">
@@ -304,7 +304,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                       <ScraperTypeBadge type={src.scraper_type} />
                       <button type="button"
                         onClick={() => handleScraperTypeToggle(src.source_key, src.scraper_type)}
-                        className="text-rmpg-500 hover:text-brand-400 ml-0.5"
+                        className="text-fg-muted hover:text-brand-400 ml-0.5"
                         title={`Switch to ${src.scraper_type === 'firecrawl' ? 'legacy' : 'firecrawl'}`}
                       >
                         <ToggleLeft className="w-3.5 h-3.5" />
@@ -314,7 +314,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                   <td className="px-2 py-1.5 text-center">
                     <button type="button"
                       onClick={() => handleToggle(src.source_key, !src.is_enabled)}
-                      className={`${src.is_enabled ? 'text-green-400' : 'text-rmpg-500'}`}
+                      className={`${src.is_enabled ? 'text-green-400' : 'text-fg-muted'}`}
                     >
                       {src.is_enabled ? <ToggleRight className="w-5 h-5" /> : <ToggleLeft className="w-5 h-5" />}
                     </button>
@@ -322,7 +322,7 @@ export default function ScraperAdminPanel({ onClose }: ScraperAdminPanelProps) {
                   <td className="px-2 py-1.5 text-[10px] text-rmpg-400">{formatDateTime(src.last_poll_at)}</td>
                   <td className="px-2 py-1.5 text-[10px] text-rmpg-400">{formatDateTime(src.last_success_at)}</td>
                   <td className="px-2 py-1.5 text-center">
-                    <span className={`text-[10px] font-mono ${src.consecutive_failures > 0 ? 'text-red-400' : 'text-rmpg-500'}`}>
+                    <span className={`text-[10px] font-mono ${src.consecutive_failures > 0 ? 'text-red-400' : 'text-fg-muted'}`}>
                       {src.consecutive_failures}
                     </span>
                   </td>

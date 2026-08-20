@@ -5,6 +5,7 @@ import type { CallForService, CallPriority, Unit } from '../../../types';
 import { unitStatusColor } from '../../../components/spillman';
 import type { StatusColumn } from '../../../components/spillman';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 /** RMPG P1..P4 → Spillman fixed priority number (1 red … 4 light green). */
 export function spillmanPriorityNumber(priority: CallPriority): number {
@@ -56,7 +57,7 @@ export function cadUnitColor(status: string | null | undefined): string {
 export function timeHHMM(iso: string | null | undefined): string {
   if (!iso || Number.isNaN(new Date(iso).getTime())) return '';
   const d = parseTimestamp(iso);
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 // ── Column layouts (Spillman CAD console) ─────────────────────
@@ -84,6 +85,7 @@ export const UNIT_COLUMNS: StatusColumn[] = [
   { key: 'status', label: 'St', width: 52, align: 'center' },
   { key: 'call_number', label: 'Call #', width: 96 },
   { key: 'beat', label: 'Beat', width: 64 },
+  { key: 'ps_route', label: 'PS Rt', width: 52, align: 'center' },
   { key: 'time', label: 'Last', width: 52, align: 'right' },
 ];
 
@@ -103,12 +105,12 @@ export function callToRow(call: CallForService): CadCallRow {
     call,
     pri: spillmanPriorityNumber(call.priority),
     call_number: call.call_number,
-    type: (call.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+    type: toDisplayLabel(call.incident_type || '').toUpperCase(),
     location: call.location || '',
     zone: call.beat_name || call.zone_name || call.zone_beat || '',
     time: timeHHMM(call.created_at),
     units: (call.assigned_units || []).join(' '),
-    status: (call.status || '').replace(/_/g, ' ').toUpperCase(),
+    status: toDisplayLabel(call.status || '').toUpperCase(),
   };
 }
 
@@ -124,6 +126,7 @@ export function unitToRow(
     status: cadUnitStatusLabel(unit.status),
     call_number: callNumberById(unit.current_call_id) || unit.current_call_number || '',
     beat: unit.assigned_beat || '',
+    ps_route: unit.ps_route_stops ? `${unit.ps_route_stops}` : '',
     time: timeHHMM(unit.last_status_change),
   };
 }

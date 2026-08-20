@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
@@ -20,7 +20,7 @@ import SubscriptExt from '@tiptap/extension-subscript';
 import { FileText, ZoomIn, ZoomOut, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, uploadsUrl } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
 import TemplateChooser from './components/TemplateChooser';
@@ -168,7 +168,8 @@ export default function DocumentWriterPage() {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (StarterKit as any).configure({ heading: { levels: [1, 2, 3, 4] } }),
       Table.configure({ resizable: true }),
       TableRow, TableCell, TableHeader, TableFormatting,
       ImageExt.configure({ inline: false, allowBase64: true }),
@@ -215,7 +216,7 @@ export default function DocumentWriterPage() {
   const handleTemplateSelect = useCallback((template: DocumentTemplate, values: Record<string, string>) => {
     if (!editor) return;
     editor.commands.setContent(populateTemplate(template, values, headerCfgRef.current));
-    setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString()}`);
+    setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
     setMode('edit');
   }, [editor]);
 
@@ -241,7 +242,7 @@ export default function DocumentWriterPage() {
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
+      const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: formData });
       if (!res.ok) {
         const detail = await res.json().catch(() => null) as any;
         throw new Error(detail?.error || `Save failed (HTTP ${res.status})`);
@@ -272,7 +273,7 @@ export default function DocumentWriterPage() {
     const cssSize = page.orientation === 'landscape' ? `${dim.css} landscape` : dim.css;
     const m = page.margins;
     const headerHtml = header.enabled ? `<div class="rh">${escapeHtml(header.text)}${header.showPageNumber ? '<span class="pn"></span>' : ''}</div>` : '';
-    const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString() : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
+    const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
     const footerHtml = footer.enabled ? `<div class="rf">${footerParts}</div>` : '';
     const watermarkHtml = watermark.text ? `<div class="wm" style="opacity:${watermark.opacity}">${escapeHtml(watermark.text)}</div>` : '';
     const letterheadHtml = docSettings.letterhead
@@ -730,7 +731,7 @@ export default function DocumentWriterPage() {
           const token = localStorage.getItem('rmpg_token');
           const headers: Record<string, string> = {};
           if (token) headers['Authorization'] = `Bearer ${token}`;
-          const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
+          const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: formData });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           setServerSaveState('saved');
         } catch (err) {
@@ -836,7 +837,13 @@ export default function DocumentWriterPage() {
   const pageW = landscape ? dim.height : dim.width;
   const pageH = landscape ? dim.width : dim.height;
   const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
-  const textColor = theme === 'dark' ? '#e8e8e8' : 'var(--surface-base)';
+  // Document body text — a LITERAL on purpose, never a theme token. This is the
+  // user's document as it will print and export, not app chrome, so it must not
+  // follow the app palette. Was `var(--surface-base)`, which resolves to the
+  // Blue & Silver navy #22405f and rendered document text navy-on-white in light
+  // mode (and exported that way to PDF). The dark branch is a screen-only
+  // dark-editing affordance; the light branch is the real print appearance.
+  const textColor = theme === 'dark' ? '#e8e8e8' : '#1a1a1a';
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';
@@ -977,7 +984,7 @@ export default function DocumentWriterPage() {
               {docSettings.footer.enabled && (
                 <div className="doc-running-footer">
                   <span>{docSettings.footer.text}</span>
-                  <span>{[docSettings.footer.showDate ? new Date().toLocaleDateString() : '', docSettings.footer.showAuthor ? author : ''].filter(Boolean).join(' • ')}</span>
+                  <span>{[docSettings.footer.showDate ? new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '', docSettings.footer.showAuthor ? author : ''].filter(Boolean).join(' • ')}</span>
                 </div>
               )}
             </div>
@@ -1030,7 +1037,7 @@ export default function DocumentWriterPage() {
             type="button"
             title="Open Tools, Snippets, Statutes, Persons, CFS, and more (140+ snippets, 25+ insert tools)"
             onClick={() => setShowFeatures(true)}
-            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-surface-base border border-accent-silver-600/30 text-accent-silver-500 rounded-[2px] hover:bg-accent-silver-500/10"
           >
             <Sparkles className="w-3 h-3" /> Tools
           </button>
@@ -1051,7 +1058,7 @@ export default function DocumentWriterPage() {
 
       {!reading && !focusMode && (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[9px] text-rmpg-600 px-1">
-          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString()}` : ''}</span>
+          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })}` : ''}</span> // new-date-ok
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
           <span>{author}</span>
         </div>

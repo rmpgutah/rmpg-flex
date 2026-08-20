@@ -18,7 +18,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import {
   Route, MapPin, Navigation, Clock, ChevronUp, ChevronDown,
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
@@ -30,10 +30,14 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useNavTrip } from '../context/NavTripContext';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 import { getDirections } from '../utils/mapboxServices';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { escapeHtml } from '../utils/sanitize';
+import { withAlpha } from '../utils/withAlpha';
+import { isValidLngLat } from './map/utils/mapMarkers';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -129,6 +133,9 @@ export default function RouteBuilderPage() {
   const [directionsDistance, setDirectionsDistance] = useState<string | null>(null);
   const [directionsDuration, setDirectionsDuration] = useState<string | null>(null);
 
+  const { rebuildNonce, attach: attachWebglRecovery, onMapLoaded } = useWebglMapRecovery();
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
   // Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -168,8 +175,9 @@ export default function RouteBuilderPage() {
 
         const map = createMapboxMap(mapContainerRef.current!, token);
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attachWebglRecovery(map, 'RouteBuilderPage');
         map.on('load', () => {
-          if (!cancelled) setMapReady(true);
+          if (!cancelled) { onMapLoaded(map); setMapReady(true); }
         });
       } catch (err) {
         console.error('Failed to load Mapbox:', err);
@@ -179,12 +187,15 @@ export default function RouteBuilderPage() {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
       }
     };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // ─── WebSocket: live call updates ───────────────────────
 
@@ -361,6 +372,7 @@ export default function RouteBuilderPage() {
       markersRef.current = [];
 
       stops.forEach((stop, idx) => {
+        if (!isValidLngLat(stop.longitude, stop.latitude)) return;
         const color = stop.completed ? '#22c55e' : (PRIORITY_COLORS[stop.priority] || '#888888');
 
         // Create custom marker element
@@ -380,14 +392,14 @@ export default function RouteBuilderPage() {
           .setHTML(`
             <div style="background:#141414;color:#e5e5e5;padding:8px 12px;border-radius:2px;min-width:200px;font-family:system-ui;">
               <div style="font-weight:600;color:#d4a017;margin-bottom:4px;">
-                Stop ${idx + 1} — ${stop.call_number}
+                Stop ${idx + 1} — ${escapeHtml(stop.call_number)}
               </div>
               <div style="font-size:12px;margin-bottom:2px;">
-                <span style="color:${color};font-weight:600;">${stop.priority}</span>
-                &nbsp;${stop.incident_type}
+                <span style="color:${color};font-weight:600;">${escapeHtml(stop.priority)}</span>
+                &nbsp;${escapeHtml(stop.incident_type)}
               </div>
-              <div style="font-size:11px;color:#888;">${stop.location_address}</div>
-              ${stop.description ? `<div style="font-size:11px;color:#666;margin-top:4px;">${stop.description.slice(0, 100)}</div>` : ''}
+              <div style="font-size:11px;color:#888;">${escapeHtml(stop.location_address)}</div>
+              ${stop.description ? `<div style="font-size:11px;color:#666;margin-top:4px;">${escapeHtml(stop.description.slice(0, 100))}</div>` : ''}
               ${stop.completed ? '<div style="color:#22c55e;font-size:11px;margin-top:4px;">✓ Completed</div>' : ''}
             </div>
           `);
@@ -547,12 +559,12 @@ export default function RouteBuilderPage() {
   return (
     <div className="flex h-full" style={{ minHeight: 0 }}>
       {/* ── Left Panel: Controls + Stop List ── */}
-      <div className="w-[420px] flex-shrink-0 bg-[#0a0a0a] border-r border-[#222222] flex flex-col overflow-hidden">
+      <div className="w-[420px] flex-shrink-0 bg-surface-deep border-r border-[#222222] flex flex-col overflow-hidden">
         <PanelTitleBar title="CFS ROUTE BUILDER" icon={Route} />
 
         {/* Unit Selector */}
         <div className="p-3 border-b border-[#222222] space-y-2">
-          <label className="text-[10px] font-mono text-[#888888] uppercase tracking-wider">
+          <label className="text-[10px] font-mono text-fg-muted uppercase tracking-wider">
             Select Unit
           </label>
           <select
@@ -566,7 +578,7 @@ export default function RouteBuilderPage() {
               setDirectionsDistance(null);
               setDirectionsDuration(null);
             }}
-            className="w-full bg-[#141414] border border-[#222222] text-[#e5e5e5] text-xs px-2 py-1.5 rounded-[2px] font-mono"
+            className="w-full bg-surface-deep border border-[#222222] text-[#e5e5e5] text-xs px-2 py-1.5 rounded-[2px] font-mono"
           >
             <option value="">— Select Unit —</option>
             {units.map((u) => (
@@ -577,13 +589,13 @@ export default function RouteBuilderPage() {
           </select>
 
           {/* Options */}
-          <div className="flex items-center gap-4 text-[10px] text-[#888888]">
+          <div className="flex items-center gap-4 text-[10px] text-fg-muted">
             <label className="flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
                 checked={priorityWeighted}
                 onChange={(e) => setPriorityWeighted(e.target.checked)}
-                className="accent-[#d4a017]"
+                className="[accent-color:var(--field-label-color)]"
               />
               Priority-weighted
             </label>
@@ -592,7 +604,7 @@ export default function RouteBuilderPage() {
                 type="checkbox"
                 checked={useMapboxDirections}
                 onChange={(e) => setUseMapboxDirections(e.target.checked)}
-                className="accent-[#d4a017]"
+                className="[accent-color:var(--field-label-color)]"
               />
               Traffic-aware
             </label>
@@ -603,7 +615,7 @@ export default function RouteBuilderPage() {
             <button
               onClick={optimizeRoute}
               disabled={!selectedUnitId || optimizing}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#d4a017] text-[#0a0a0a] text-xs font-semibold rounded-[2px] hover:bg-[#e6b422] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-[#d4a017] text-rmpg-950 text-xs font-semibold rounded-[2px] hover:bg-[#e6b422] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {optimizing ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -615,7 +627,7 @@ export default function RouteBuilderPage() {
             <button
               onClick={saveRoute}
               disabled={waypoints.length === 0 || saving}
-              className="flex items-center gap-1 px-3 py-1.5 bg-[#141414] border border-[#222222] text-[#e5e5e5] text-xs rounded-[2px] hover:bg-[#1a1a1a] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 bg-surface-deep border border-[#222222] text-[#e5e5e5] text-xs rounded-[2px] hover:bg-surface-sunken disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -641,7 +653,7 @@ export default function RouteBuilderPage() {
                 }
               }}
               aria-label="Clear route"
-              className="px-2 py-1.5 bg-[#141414] border border-[#222222] text-[#888888] rounded-[2px] hover:bg-[#1a1a1a] hover:text-red-400 transition-colors"
+              className="px-2 py-1.5 bg-surface-deep border border-[#222222] text-fg-muted rounded-[2px] hover:bg-surface-sunken hover:text-red-400 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </IconButton>
@@ -683,25 +695,25 @@ export default function RouteBuilderPage() {
           <div className="px-3 py-2 border-b border-[#222222] bg-[#050505]">
             <div className="grid grid-cols-4 gap-2 text-center">
               <div>
-                <div className="text-[10px] text-[#888888] font-mono uppercase">Stops</div>
+                <div className="text-[10px] text-fg-muted font-mono uppercase">Stops</div>
                 <div className="text-sm font-semibold text-[#e5e5e5]">
                   {completedCount}/{waypoints.length}
                 </div>
               </div>
               <div>
-                <div className="text-[10px] text-[#888888] font-mono uppercase">Distance</div>
-                <div className="text-sm font-semibold text-[#d4a017]">
+                <div className="text-[10px] text-fg-muted font-mono uppercase">Distance</div>
+                <div className="text-sm font-semibold [color:var(--panel-header-color)]">
                   {directionsDistance || `${totalDistance.toFixed(1)} mi`}
                 </div>
               </div>
               <div>
-                <div className="text-[10px] text-[#888888] font-mono uppercase">ETA</div>
+                <div className="text-[10px] text-fg-muted font-mono uppercase">ETA</div>
                 <div className="text-sm font-semibold text-[#e5e5e5]">
                   {directionsDuration || `${estimatedMinutes} min`}
                 </div>
               </div>
               <div>
-                <div className="text-[10px] text-[#888888] font-mono uppercase">Fuel $</div>
+                <div className="text-[10px] text-fg-muted font-mono uppercase">Fuel $</div>
                 <div className="text-sm font-semibold text-[#e5e5e5]">
                   ${fuelCost.toFixed(2)}
                 </div>
@@ -713,23 +725,23 @@ export default function RouteBuilderPage() {
         {/* Stop List */}
         <div className="flex-1 overflow-y-auto">
           {waypoints.length === 0 && !optimizing && (
-            <div className="p-6 text-center text-[#666666] text-xs">
+            <div className="p-6 text-center text-fg-muted text-xs">
               <Route className="w-8 h-8 mx-auto mb-2 text-[#333333]" />
-              <p>Select a unit and click <span className="text-[#d4a017]">Build Route</span> to generate an optimized route for all active CFS calls.</p>
+              <p>Select a unit and click <span className="[color:var(--panel-header-color)]">Build Route</span> to generate an optimized route for all active CFS calls.</p>
             </div>
           )}
 
           {optimizing && (
             <div className="p-6 text-center">
-              <Loader2 className="w-6 h-6 mx-auto mb-2 text-[#d4a017] animate-spin" />
-              <p className="text-[#888888] text-xs">Computing optimal route…</p>
+              <Loader2 className="w-6 h-6 mx-auto mb-2 [color:var(--panel-header-color)] animate-spin" />
+              <p className="text-fg-muted text-xs">Computing optimal route…</p>
             </div>
           )}
 
           {waypoints.map((wp, idx) => (
             <div
               key={wp.call_id}
-              className={`px-3 py-2 border-b border-[#1a1a1a] hover:bg-[#141414] transition-colors ${
+              className={`px-3 py-2 border-b border-[#1a1a1a] hover:bg-surface-deep transition-colors ${
                 wp.completed ? 'opacity-50' : ''
               }`}
             >
@@ -750,21 +762,21 @@ export default function RouteBuilderPage() {
                 {/* Call info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-mono font-semibold text-[#d4a017]">
+                    <span className="text-[11px] font-mono font-semibold [color:var(--panel-header-color)]">
                       {wp.call_number}
                     </span>
                     <span
                       className="text-[9px] font-mono font-bold px-1 rounded-[2px]"
                       style={{
                         color: PRIORITY_COLORS[wp.priority] || '#888',
-                        backgroundColor: `${PRIORITY_COLORS[wp.priority] || '#888'}20`,
+                        backgroundColor: withAlpha(PRIORITY_COLORS[wp.priority] || '#888', '20'),
                       }}
                     >
-                      {wp.priority}
+                      {formatEnumValue(wp.priority)}
                     </span>
                   </div>
                   <div className="text-[11px] text-[#e5e5e5] truncate">{toDisplayLabel(wp.incident_type)}</div>
-                  <div className="text-[10px] text-[#666666] truncate flex items-center gap-1">
+                  <div className="text-[10px] text-fg-muted truncate flex items-center gap-1">
                     <MapPin className="w-2.5 h-2.5 flex-shrink-0" />
                     {wp.location_address}
                   </div>
@@ -782,7 +794,7 @@ export default function RouteBuilderPage() {
                     onClick={() => moveStop(idx, 'up')}
                     disabled={idx === 0}
                     aria-label={`Move stop ${idx + 1} up`}
-                    className="p-0.5 text-[#666666] hover:text-[#e5e5e5] disabled:opacity-20"
+                    className="p-0.5 text-fg-muted hover:text-[#e5e5e5] disabled:opacity-20"
                   >
                     <ChevronUp className="w-3.5 h-3.5" />
                   </IconButton>
@@ -790,7 +802,7 @@ export default function RouteBuilderPage() {
                     onClick={() => moveStop(idx, 'down')}
                     disabled={idx === waypoints.length - 1}
                     aria-label={`Move stop ${idx + 1} down`}
-                    className="p-0.5 text-[#666666] hover:text-[#e5e5e5] disabled:opacity-20"
+                    className="p-0.5 text-fg-muted hover:text-[#e5e5e5] disabled:opacity-20"
                   >
                     <ChevronDown className="w-3.5 h-3.5" />
                   </IconButton>
@@ -798,7 +810,7 @@ export default function RouteBuilderPage() {
                     <IconButton
                       onClick={() => completeStop(wp.call_id)}
                       aria-label={`Complete stop ${wp.call_number}`}
-                      className="p-0.5 text-[#666666] hover:text-green-400"
+                      className="p-0.5 text-fg-muted hover:text-green-400"
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     </IconButton>
@@ -819,32 +831,32 @@ export default function RouteBuilderPage() {
 
       {/* ── Right: Map ── */}
       <div className="flex-1 relative">
-        <div ref={mapContainerRef} className="w-full h-full bg-[#0a0a0a]" />
+        <div ref={mapContainerRef} className="w-full h-full bg-surface-deep" />
 
         {!mapReady && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0a0a0a]">
+          <div className="absolute inset-0 flex items-center justify-center bg-surface-deep">
             <div className="text-center">
-              <Loader2 className="w-8 h-8 mx-auto mb-2 text-[#d4a017] animate-spin" />
-              <p className="text-[#888888] text-xs">Loading map…</p>
+              <Loader2 className="w-8 h-8 mx-auto mb-2 [color:var(--panel-header-color)] animate-spin" />
+              <p className="text-fg-muted text-xs">Loading map…</p>
             </div>
           </div>
         )}
 
         {/* Map legend overlay */}
         {waypoints.length > 0 && (
-          <div className="absolute bottom-4 left-4 bg-[#0a0a0a]/90 border border-[#222222] rounded-[2px] p-2 text-[10px] space-y-1">
-            <div className="text-[#888888] font-mono uppercase mb-1">Priority</div>
+          <div className="absolute bottom-4 left-4 bg-surface-deep/90 border border-[#222222] rounded-[2px] p-2 text-[10px] space-y-1">
+            <div className="text-fg-muted font-mono uppercase mb-1">Priority</div>
             {Object.entries(PRIORITY_COLORS).map(([p, color]) => (
               <div key={p} className="flex items-center gap-1.5">
                 <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
                 <span className="text-[#e5e5e5]">{p}</span>
-                <span className="text-[#666666]">{PRIORITY_LABELS[p]}</span>
+                <span className="text-fg-muted">{PRIORITY_LABELS[p]}</span>
               </div>
             ))}
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
               <span className="text-[#e5e5e5]">Origin</span>
-              <span className="text-[#666666]">Unit location</span>
+              <span className="text-fg-muted">Unit location</span>
             </div>
           </div>
         )}

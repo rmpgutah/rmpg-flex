@@ -1,140 +1,196 @@
 /**
- * useMapFeatureInspect — Mapbox Tilequery playground equivalent.
+ * useMapFeatureInspect — "what is HERE?", not "what geometry is under my cursor?"
  *
- * Click anywhere on the map to query vector tile features at that point.
- * Shows all layers/features within a configurable radius via the Tilequery API.
- * Replaces Google Maps feature inspection / identify tools.
+ * Click the map with Identify active to inspect RMPG's own overlay features at
+ * that point. Basemap geometry (roads, landuse, buildings) and internal render
+ * layers (the coverage-gap grid) are suppressed entirely: a click on a school
+ * used to return twelve rows, eleven of which an officer had to read past.
+ *
+ * Synchronous by design. The old implementation also queried the Tilequery API
+ * against mapbox.mapbox-streets-v8 — the BASEMAP tileset, which contains none
+ * of our overlays — so every one of those rows was discarded by the filter
+ * below. It was a billed round-trip per click that answered nothing.
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import mapboxgl from 'mapbox-gl';
-import { mapboxTilequery, type MapboxTilequeryResponse } from '../services/mapboxApiService';
+import { useState, useCallback, useEffect } from 'react';
+import type mapboxgl from 'mapbox-gl';
+import {
+  isOverlayLayer, humanLayerLabel, layerGroupLabel, configIdFromLayerId, metresToUsDistance,
+} from '../utils/osmLayerLabels';
+import { OSM_VECTOR_CONFIGS } from './useVectorTileLayers';
+import { OSM_GROUPS } from '../config/osmLayers.generated';
+import { haversineDistance } from '../utils/unitRecommendation';
+import { formatBearing } from '../utils/osmFeatureDescription';
 
-// ── Types ─────────────────────────────────────────────────
+/** Half-width of the hit box, in screen pixels. An exact-point query makes a
+ *  5px miss on a hydrant read as "no hydrant". */
+export const HIT_TOLERANCE_PX = 8;
 
 export interface InspectedFeature {
-  layer: string;
-  distance: number;
+  /** Dedupe/React key. */
+  key: string;
+  layerId: string;
+  categoryLabel: string;
+  groupLabel: string | null;
+  coverage?: string;
   properties: Record<string, unknown>;
-  geometry: { type: string; coordinates: unknown };
+  geometry: GeoJSON.Geometry;
+  /** Set only on the widened nearest-feature path, e.g. "90 ft NE". */
+  awayLabel?: string;
 }
 
 export interface InspectionResult {
   lngLat: [number, number];
   features: InspectedFeature[];
+  /** True when nothing was found at the click point and the search widened. */
+  widened: boolean;
   timestamp: number;
 }
 
-// ── Hook ──────────────────────────────────────────────────
+/** configId -> coverage caveat, so a hit can carry its layer's caveat. */
+const COVERAGE_BY_CONFIG_ID: Record<string, string> = (() => {
+  const out: Record<string, string> = {};
+  for (const c of OSM_VECTOR_CONFIGS) if (c.coverage) out[c.id] = c.coverage;
+  return out;
+})();
 
-export function useMapFeatureInspect(
-  map: mapboxgl.Map | null,
-  mapLoaded: boolean,
-) {
+/** configId -> catalog declaration order, so ranking matches the layer picker
+ *  rather than whatever order Mapbox happened to return. */
+const ORDER_BY_CONFIG_ID: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  let i = 0;
+  for (const g of OSM_GROUPS) for (const c of g.categories) out[`osm_${g.name}_${c.cat}`] = i++;
+  return out;
+})();
+
+function boxAround(p: { x: number; y: number }, tol: number):
+  [mapboxgl.PointLike, mapboxgl.PointLike] {
+  return [[p.x - tol, p.y - tol], [p.x + tol, p.y + tol]];
+}
+
+/** Overlay hits only, deduped and ranked. */
+export function collectOverlayFeatures(raw: any[]): InspectedFeature[] {
+  const byKey = new Map<string, InspectedFeature>();
+  for (const f of raw) {
+    const layerId = f?.layer?.id;
+    if (!layerId || !isOverlayLayer(layerId)) continue;
+    const props = (f.properties || {}) as Record<string, unknown>;
+    const cfgId = configIdFromLayerId(layerId) ?? layerId;
+    // A polygon spanning several tiles comes back once per tile. osm_id is the
+    // real identity; fall back to layer+name when the archive omits it.
+    const osmId = String(props.osm_id ?? '').trim();
+    const key = osmId || `${cfgId}:${String(props.name ?? '')}`;
+    if (byKey.has(key)) continue;
+    byKey.set(key, {
+      key,
+      layerId,
+      categoryLabel: humanLayerLabel(layerId) ?? layerId,
+      groupLabel: layerGroupLabel(layerId),
+      coverage: COVERAGE_BY_CONFIG_ID[cfgId],
+      properties: props,
+      geometry: f.geometry,
+    });
+  }
+  return [...byKey.values()].sort((a, b) => {
+    const ao = ORDER_BY_CONFIG_ID[configIdFromLayerId(a.layerId) ?? ''] ?? 999;
+    const bo = ORDER_BY_CONFIG_ID[configIdFromLayerId(b.layerId) ?? ''] ?? 999;
+    if (ao !== bo) return ao - bo;
+    return String(a.properties.name ?? '').localeCompare(String(b.properties.name ?? ''));
+  });
+}
+
+/** Hit box half-widths, in screen pixels. The first is the normal path; the
+ *  rest widen only when nothing was found, so a near-miss on a hydrant is not
+ *  reported as "no hydrant". */
+export const WIDEN_STEPS_PX = [HIT_TOLERANCE_PX, 40, 120];
+
+const METRES_PER_MILE = 1609.344;
+
+/** A single lng/lat standing in for any geometry, for distance purposes. */
+export function representativePoint(geometry: GeoJSON.Geometry): [number, number] | null {
+  const coords: number[][] = [];
+  const walk = (c: any) => {
+    if (!Array.isArray(c)) return;
+    if (typeof c[0] === 'number' && typeof c[1] === 'number') { coords.push(c as number[]); return; }
+    for (const child of c) walk(child);
+  };
+  walk((geometry as any)?.coordinates);
+  if (!coords.length) return null;
+  const lng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+  const lat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  return [lng, lat];
+}
+
+/** "90 ft NE" — distance and bearing from the click to a feature. */
+export function awayLabelFor(
+  from: [number, number],
+  geometry: GeoJSON.Geometry,
+): string | undefined {
+  const to = representativePoint(geometry);
+  if (!to) return undefined;
+  // ⚠️ haversineDistance returns MILES; metresToUsDistance takes METRES.
+  const metres = haversineDistance(from[1], from[0], to[1], to[0]) * METRES_PER_MILE;
+  if (!Number.isFinite(metres)) return undefined;
+  const dLng = (to[0] - from[0]) * Math.cos((from[1] * Math.PI) / 180);
+  const dLat = to[1] - from[1];
+  const deg = (Math.atan2(dLng, dLat) * 180) / Math.PI;
+  const bearing = formatBearing(String(deg))?.replace(/\s*\(.*\)$/, '') ?? '';
+  const dist = metresToUsDistance(metres);
+  return dist ? `${dist}${bearing ? ` ${bearing}` : ''}` : undefined;
+}
+
+export function useMapFeatureInspect(map: mapboxgl.Map | null, mapLoaded: boolean) {
   const [enabled, setEnabled] = useState(false);
   const [result, setResult] = useState<InspectionResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     if (!map || !mapLoaded || !enabled) return;
 
-    const handler = async (e: mapboxgl.MapMouseEvent) => {
+    const handler = (e: mapboxgl.MapMouseEvent) => {
       const { lng, lat } = e.lngLat;
-      setLoading(true);
+      const from: [number, number] = [lng, lat];
 
-      try {
-        // Query local rendered features first
-        const renderedFeatures = map.queryRenderedFeatures(e.point, {});
-        const localFeatures: InspectedFeature[] = renderedFeatures.slice(0, 15).map(f => ({
-          layer: f.layer?.id || 'unknown',
-          distance: 0,
-          properties: f.properties || {},
-          geometry: f.geometry as { type: string; coordinates: unknown },
-        }));
-
-        // Also query via Tilequery API for deeper tile data
-        let apiFeatures: InspectedFeature[] = [];
-        try {
-          const data = await mapboxTilequery(lng, lat, {
-            tileset: 'mapbox.mapbox-streets-v8',
-            radius: 50,
-            limit: 10,
-          });
-          apiFeatures = (data.features || []).map(f => ({
-            layer: f.properties?.tilequery?.layer || 'tilequery',
-            distance: f.properties?.tilequery?.distance || 0,
-            properties: f.properties || {},
-            geometry: f.geometry,
-          }));
-        } catch { /* tilequery optional */ }
-
-        // Merge and deduplicate
-        const allFeatures = [...localFeatures, ...apiFeatures];
-        const inspection: InspectionResult = {
-          lngLat: [lng, lat],
-          features: allFeatures,
+      for (let step = 0; step < WIDEN_STEPS_PX.length; step++) {
+        const raw = map.queryRenderedFeatures(boxAround(e.point, WIDEN_STEPS_PX[step])) as any[];
+        const features = collectOverlayFeatures(raw);
+        if (!features.length) continue;
+        const widened = step > 0;
+        setResult({
+          lngLat: from,
+          // Distance is load-bearing only when we widened to find these.
+          features: widened
+            ? features.map((f) => ({ ...f, awayLabel: awayLabelFor(from, f.geometry) }))
+            : features,
+          widened,
           timestamp: Date.now(),
-        };
-        setResult(inspection);
-
-        // Show popup with feature summary
-        popupRef.current?.remove();
-        const featureLines = allFeatures.slice(0, 8).map(f => {
-          const name = (f.properties as any).name || (f.properties as any).NAME || f.layer;
-          const type = (f.properties as any).type || (f.properties as any).class || '';
-          return `<div style="font-size:10px;color:#ccc;border-bottom:1px solid #222;padding:2px 0;">
-            <span style="color:#d4a017;font-weight:600;">${f.layer}</span>
-            ${name !== f.layer ? ` — ${name}` : ''}
-            ${type ? `<span style="color:#666;"> (${type})</span>` : ''}
-            ${f.distance > 0 ? `<span style="color:#555;font-size:9px;"> ${Math.round(f.distance)}m</span>` : ''}
-          </div>`;
-        }).join('');
-
-        const html = `
-          <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui;min-width:200px;max-width:320px;">
-            <div style="font-weight:700;color:#d4a017;font-size:11px;margin-bottom:4px;">
-              🔍 ${allFeatures.length} feature(s) found
-            </div>
-            <div style="font-size:9px;color:#555;margin-bottom:4px;">${lng.toFixed(5)}, ${lat.toFixed(5)}</div>
-            ${featureLines}
-            ${allFeatures.length > 8 ? `<div style="font-size:9px;color:#555;margin-top:2px;">+${allFeatures.length - 8} more</div>` : ''}
-          </div>
-        `;
-
-        popupRef.current = new mapboxgl.Popup({ offset: 12, closeButton: true, className: 'mapbox-popup-dark' })
-          .setLngLat([lng, lat])
-          .setHTML(html)
-          .addTo(map);
-      } catch (err) {
-        console.warn('[FeatureInspect] inspection failed:', err);
-      } finally {
-        setLoading(false);
+        });
+        setSelectedIndex(0);
+        return;
       }
+
+      // Nothing anywhere near. Report it explicitly — silence is
+      // indistinguishable from the tool being broken or switched off.
+      setResult({ lngLat: from, features: [], widened: false, timestamp: Date.now() });
+      setSelectedIndex(0);
     };
 
     map.getCanvas().style.cursor = 'help';
     map.on('click', handler);
-
     return () => {
       map.off('click', handler);
       map.getCanvas().style.cursor = '';
-      popupRef.current?.remove();
     };
   }, [map, mapLoaded, enabled]);
 
+  const clear = useCallback(() => { setResult(null); setSelectedIndex(0); }, []);
+  const select = useCallback((i: number) => setSelectedIndex(i), []);
   const toggle = useCallback(() => {
-    setEnabled(v => !v);
-    if (enabled) {
-      popupRef.current?.remove();
-      setResult(null);
-    }
-  }, [enabled]);
-
-  const clear = useCallback(() => {
-    popupRef.current?.remove();
-    setResult(null);
+    setEnabled((v) => {
+      if (v) { setResult(null); setSelectedIndex(0); }
+      return !v;
+    });
   }, []);
 
-  return { enabled, result, loading, toggle, clear };
+  return { enabled, result, selectedIndex, select, toggle, clear };
 }

@@ -45,7 +45,7 @@ export default function JurisdictionLookup({ address }: { address: string }) {
         {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
         Jurisdiction
       </button>
-      {!available && <span className="text-rmpg-500">unavailable</span>}
+      {!available && <span className="text-fg-muted">unavailable</span>}
       {error && <span className="text-red-400">{error}</span>}
       {result && (
         <span className="text-rmpg-300">

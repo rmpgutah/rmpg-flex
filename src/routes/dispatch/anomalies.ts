@@ -30,6 +30,7 @@ anomalies.get('/anomaly-alerts', requireRole(...READ_ROLES), async (c) => {
               acknowledged_by, acknowledged_at, created_at
          FROM anomaly_alerts
         WHERE created_at >= datetime('now', '-' || ? || ' hours')
+         AND acknowledged_at IS NULL
         ORDER BY created_at DESC
         LIMIT 200`,
       hours,
@@ -156,12 +157,17 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
 
   // Rule 3 — Priority auto-reassessment: escalate aging calls
   let escalated = 0;
+  // Only escalate calls that haven't been escalated in the last 2 hours.
+  // Without this guard a long-running P3 call would be re-escalated to P2 on
+  // every cron tick after 60 min, and a re-lowered priority would immediately
+  // bounce back up on the next run.
   const agingCalls = await query<{ id: number; call_number: string; priority: string; created_at: string }>(
     db,
     `SELECT id, call_number, priority, created_at FROM calls_for_service
       WHERE status IN ('pending', 'dispatched')
         AND priority IN ('P2', 'P3')
         AND created_at <= datetime('now', CASE WHEN priority = 'P2' THEN '-30 minutes' ELSE '-60 minutes' END)
+        AND (updated_at IS NULL OR updated_at <= datetime('now', '-2 hours'))
       LIMIT 50`,
   );
   for (const call of agingCalls) {
@@ -188,7 +194,8 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
       LIMIT 50`,
   );
   for (const b of expiredBolos) {
-    await execute(db, `UPDATE bolos SET status = 'expired', updated_at = datetime('now') WHERE id = ?`, b.id);
+    // bolos has no updated_at; expired_at is the column that records this.
+    await execute(db, `UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE id = ?`, b.id);
     candidates.push({
       dedup_key: `bolo_expired:${b.id}`,
       alert_type: 'bolo_expired',
@@ -241,7 +248,7 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'priority_escalated', 'repeat_address_hotspot', 'bolo_expired')`,
   );
   let resolved = 0;
   for (const row of active) {

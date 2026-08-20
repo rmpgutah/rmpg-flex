@@ -23,6 +23,8 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
+
+  stampGenerationTime,
 } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER,
@@ -40,13 +42,13 @@ function fmt(n: number | null | undefined): string {
 
 // ── PDF Generation ────────────────────────────────────────────
 
-export async function generateProposalPdf(proposal: any, client: any): Promise<void> {
+export async function buildProposalPdf(proposal: any, client: any): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
   setActiveFormKey('proposal');
   setActiveCaseNumber(proposal.proposal_number || 'PROP');
-  setGenerationTimestamp(new Date().toLocaleString());
+  stampGenerationTime();
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
@@ -182,7 +184,12 @@ export async function generateProposalPdf(proposal: any, client: any): Promise<v
     }
   }
 
-  // ── Save ──────────────────────────────────────────────────
+  return doc;
+}
+
+// ── Public wrapper (saves to disk) ───────────────────────────
+export async function generateProposalPdf(proposal: any, client: any): Promise<void> {
+  const doc = await buildProposalPdf(proposal, client);
   const fileName = `PROPOSAL-${proposal.proposal_number || 'DRAFT'}.pdf`;
   doc.save(fileName);
 }

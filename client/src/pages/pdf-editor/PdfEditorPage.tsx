@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square, Ruler, FileInput, Sun, Moon, Star, Type as TypeIcon, Maximize2, PenLine } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
@@ -40,8 +40,9 @@ import NUpDialog from './components/NUpDialog';
 import PageLabelsDialog from './components/PageLabelsDialog';
 import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
-import { authedImageUrl } from '../../hooks/useApi';
+import { authedImageUrl, uploadsUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // PDF rendering goes through our company-owned engine facade
 // (client/src/lib/rmpg-pdf-engine). It tries our native backend first and
@@ -1167,7 +1168,7 @@ export default function PdfEditorPage() {
     if (!original || original <= 0) { pushToast('Cannot export a blank page as PNG', 'warn'); return; }
     setSaving(true);
     try {
-      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
       const canvas = document.createElement('canvas');
       // Base page render is 72 dpi at scale 1; scale up to the chosen export DPI.
       const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: pngDpi / 72, canvas });
@@ -1328,7 +1329,7 @@ export default function PdfEditorPage() {
     const crop = state.pages[visualIdx]?.crop;
     setSaving(true);
     try {
-      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const { openAndRenderPage } = await importWithRetry(() => import('../../lib/rmpg-pdf-engine'));
       const full = document.createElement('canvas');
       const renderScale = pngDpi / 72;
       const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: renderScale, canvas: full });
@@ -1562,7 +1563,7 @@ export default function PdfEditorPage() {
         const token = localStorage.getItem('rmpg_token');
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+        const res = await fetch(uploadsUrl(), { method: 'POST', headers, body: form });
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
         const uploaded = normalizeUploadResponse(await res.json().catch(() => null));
         if (uploaded.length === 0) throw new Error('Upload did not return file');
@@ -1768,10 +1769,10 @@ export default function PdfEditorPage() {
           .rmpg-pdf-light-chrome .border-\\[\\#222222\\],
           .rmpg-pdf-light-chrome .border-\\[\\#1a1a1a\\] { border-color:#c2c2c6 !important; }
           .rmpg-pdf-light-chrome .text-rmpg-200,
-          .rmpg-pdf-light-chrome .text-rmpg-300,
-          .rmpg-pdf-light-chrome .text-rmpg-400 { color:#2a2a2a !important; }
-          .rmpg-pdf-light-chrome .text-rmpg-500,
-          .rmpg-pdf-light-chrome .text-rmpg-600 { color:#6a6a6a !important; }
+          .rmpg-pdf-light-chrome .text-fg-muted,
+          .rmpg-pdf-light-chrome .text-fg-muted { color:#2a2a2a !important; }
+          .rmpg-pdf-light-chrome .text-fg-muted,
+          .rmpg-pdf-light-chrome .text-fg-muted { color:#6a6a6a !important; }
           /* Keep the PDF page surface pure white regardless of chrome theme. */
           .rmpg-pdf-light-chrome .bg-white { background:#ffffff !important; }
         `}</style>
@@ -1959,15 +1960,15 @@ export default function PdfEditorPage() {
 
       {!hasDocument && (
         <div className="flex-1 bg-surface-base border border-border-default rounded-[2px] p-12 text-center flex flex-col items-center justify-center">
-          <FileText className="w-16 h-16 mb-4 text-rmpg-600" />
+          <FileText className="w-16 h-16 mb-4 text-fg-muted" />
           <div className="text-base text-rmpg-200 mb-2 font-semibold">PDF Editor</div>
-          <div className="text-xs text-rmpg-500 mb-6 max-w-md">View, annotate, redact, sign, stamp, watermark, reorder, rotate, merge — all running locally in your browser. Files never leave the device.</div>
+          <div className="text-xs text-fg-muted mb-6 max-w-md">View, annotate, redact, sign, stamp, watermark, reorder, rotate, merge — all running locally in your browser. Files never leave the device.</div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={onPickFile} className="btn-primary">Open PDF</button>
             <button type="button" onClick={onPickMerge} className="btn-secondary">Merge multiple PDFs</button>
           </div>
-          <div className="mt-6 text-[10px] text-rmpg-600 max-w-md">
-            <strong className="text-rmpg-500">Note on redaction:</strong> the redaction tool paints an opaque black box over content. For maximum-sensitivity material (FOIA, court submissions), follow with a print-to-PDF round trip to flatten the entire content stream.
+          <div className="mt-6 text-[10px] text-fg-muted max-w-md">
+            <strong className="text-fg-muted">Note on redaction:</strong> the redaction tool paints an opaque black box over content. For maximum-sensitivity material (FOIA, court submissions), follow with a print-to-PDF round trip to flatten the entire content stream.
           </div>
         </div>
       )}
@@ -1976,15 +1977,15 @@ export default function PdfEditorPage() {
           prefs / JSON I/O / print. These are kept out of the main EditorToolbar
           so that toolbar stays tight; quick actions live just below it. */}
       {hasDocument && !viewOnly && (
-        <div className={`flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300 ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
+        <div className={`flex items-center gap-1 bg-surface-base border border-border-default rounded-[2px] px-2 py-1 mb-2 text-[10px] text-fg-muted ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
           {isMobile && (
             <>
               <button type="button" onClick={() => setMobileToolsOpen(v => !v)} title="Toggle tools"
-                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileToolsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileToolsOpen ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
                 <Settings className="w-3 h-3" /> Tools
               </button>
               <button type="button" onClick={() => setMobileThumbsOpen(v => !v)} title="Toggle pages"
-                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileThumbsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileThumbsOpen ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
                 <Layers className="w-3 h-3" /> Pages
               </button>
             </>
@@ -1993,17 +1994,17 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Search className="w-3 h-3" /> Find</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, showAnnotationsPanel: !prefs.showAnnotationsPanel })}
             title="Toggle annotations panel"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             <Layers className="w-3 h-3" /> Panel ({state.annotations.length})
           </button>
           <button type="button" onClick={() => setShowMiniMap(v => !v)}
             title="Toggle mini-map page navigator"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             <MapIcon className="w-3 h-3" /> Mini-map
           </button>
           <button type="button" onClick={() => setForcePdfjs(v => !v)}
             title="Force the compatibility engine (PDF.js). Use if a page renders blank with the native engine."
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>
             {forcePdfjs ? '✓ Compat engine' : 'Compat engine'}
           </button>
           <button type="button" onClick={exportJson} title="Export annotations as JSON (full state)"
@@ -2026,18 +2027,18 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileInput className="w-3 h-3" /> Insert PDF</button>
           <button type="button" onClick={() => setCalibrationOpen(true)}
             title="Set a real-world measurement scale for the measure / area tools"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.calibration ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Ruler className="w-3 h-3" /> Calibrate{prefs.calibration ? ` (${prefs.calibration.unit})` : ''}</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.calibration ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Ruler className="w-3 h-3" /> Calibrate{prefs.calibration ? ` (${prefs.calibration.unit})` : ''}</button>
           <button type="button" onClick={() => setRedactOpen(true)} title="Search & redact SSN / phone / email by pattern"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><EyeOff className="w-3 h-3" /> Redact pattern</button>
           <button type="button" onClick={() => setHeaderFooterOpen(true)}
             title="Custom header & footer text"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.headerFooter ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Heading className="w-3 h-3" /> Header/Footer</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.headerFooter ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Heading className="w-3 h-3" /> Header/Footer</button>
           <button type="button" onClick={handleExtractText} title="Extract all document text to a .txt download"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileTextIcon className="w-3 h-3" /> Text</button>
           <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ImageDownIcon className="w-3 h-3" /> PNG</button>
           <label className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">DPI</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">DPI</span>
             <select id="ff-pdfeditorpage-pngdpi" value={pngDpi} onChange={e => setPngDpi(parseInt(e.target.value, 10))}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               <option value={72}>72</option>
@@ -2051,9 +2052,9 @@ export default function PdfEditorPage() {
           <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
           <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">Crop AR</span>
             <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
-              className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-rmpg-200'}`}>
+              className={`bg-surface-sunken border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? '[border-color:var(--field-label-color)] [color:var(--panel-header-color)]' : 'border-border-default text-rmpg-200'}`}>
               <option value={0}>Free</option>
               <option value={1}>1:1</option>
               <option value={4 / 3}>4:3</option>
@@ -2070,7 +2071,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Grid2x2 className="w-3 h-3" /> N-up</button>
           <button type="button" onClick={() => setLabelsOpen(true)}
             title="Custom page labels (roman / alpha / prefixed ranges) — use {label} in the footer"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.pageLabels.length > 0 ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Hash className="w-3 h-3" /> Labels{state.pageLabels.length > 0 ? ` (${state.pageLabels.length})` : ''}</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.pageLabels.length > 0 ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Hash className="w-3 h-3" /> Labels{state.pageLabels.length > 0 ? ` (${state.pageLabels.length})` : ''}</button>
           <button type="button" onClick={handleDeskew} title="Deskew (straighten) the current page by a manual angle"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Deskew</button>
           <button type="button" onClick={handleExportCroppedRegion} title="Export the current page's crop region (or full page) as PNG"
@@ -2088,7 +2089,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={() => setTypedSigMode('quicksign')} title="Quick-sign: place signature + today's date + initials together"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Quick-sign</button>
           <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
-            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
+            <span className="text-[9px] uppercase tracking-wider text-fg-muted">Note</span>
             <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
               className="bg-surface-sunken border border-border-default text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
               {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(k => (
@@ -2103,22 +2104,22 @@ export default function PdfEditorPage() {
               {prefs.annotationPresets.map(ps => (
                 <span key={ps.id} className="inline-flex items-center group">
                   <button type="button" onClick={() => applyPreset(ps)} title={`Apply "${ps.name}" (${ps.color}, ${ps.strokeWidth}px)`}
-                    className="px-1.5 py-0.5 rounded-sm border border-border-default hover:border-[#d4a017] inline-flex items-center gap-1">
+                    className="px-1.5 py-0.5 rounded-sm border border-border-default hover:[border-color:var(--field-label-color)] inline-flex items-center gap-1">
                     <span className="w-2.5 h-2.5 rounded-sm border border-border-subtle" style={{ background: ps.color }} />
                     <span className="text-[9px] max-w-[70px] truncate">{ps.name}</span>
                   </button>
                   <button type="button" onClick={() => deletePreset(ps.id)} aria-label={`Delete preset ${ps.name}`} title="Delete preset"
-                    className="text-rmpg-600 hover:text-red-400 text-[10px] px-0.5">×</button>
+                    className="text-fg-muted hover:text-red-400 text-[10px] px-0.5">×</button>
                 </span>
               ))}
             </span>
           )}
           <button type="button" onClick={() => setPrefs({ ...prefs, showGrid: !prefs.showGrid })}
             title="Toggle the grid overlay"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, snapToGrid: !prefs.snapToGrid })}
             title="Snap annotation placement to the grid"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.snapToGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>Snap</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.snapToGrid ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}>Snap</button>
           <button type="button" onClick={() => saveInteractive(false)} title="Save an interactive PDF: form fields, clickable links, bookmark outline"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Interactive</button>
           <button type="button" onClick={() => saveInteractive(true)} title="Save a flattened-form PDF: field values baked in, form locked (for filing)"
@@ -2133,7 +2134,7 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CopyIcon className="w-3 h-3" /> Save copy</button>
           <button type="button" onClick={() => setShowBookmarks(v => !v)}
             title="Toggle bookmarks panel"
-            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 [color:var(--panel-header-color)]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
           <button type="button" onClick={goFirstPage} title="Go to first page (Home)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center"><ChevronsLeft className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={goLastPage} title="Go to last page (End)"
@@ -2168,7 +2169,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={() => setPrefsOpen(true)} title="Editor preferences"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Settings className="w-3 h-3" /></button>
           {selectedIds.size > 0 && (
-            <span className="text-[#d4a017]">{selectedIds.size} selected</span>
+            <span className="[color:var(--panel-header-color)]">{selectedIds.size} selected</span>
           )}
           {selectedIds.size >= 2 && (
             <AlignmentBar count={selectedIds.size} onAlign={applyAlign} onDistribute={applyDistribute} onMatchSize={applyMatchSize} />
@@ -2177,8 +2178,8 @@ export default function PdfEditorPage() {
       )}
 
       {hasDocument && viewOnly && (
-        <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
-          <span className="text-[#d4a017] font-semibold uppercase tracking-wider">View-only</span>
+        <div className="bg-surface-base border border-border-default rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-fg-muted">
+          <span className="[color:var(--panel-header-color)] font-semibold uppercase tracking-wider">View-only</span>
           <span>— editing tools are hidden. Click "Edit this PDF" to enable annotation, redaction, signatures, and more.</span>
           <button type="button" onClick={enableEditing} className="ml-auto btn-secondary text-[10px]">Edit this PDF</button>
         </div>
@@ -2193,7 +2194,7 @@ export default function PdfEditorPage() {
               <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
               {isMobile && (
                 <button type="button" onClick={() => setMobileToolsOpen(false)} aria-label="Close tools"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-fg-muted hover:text-rmpg-100">×</button>
               )}
             </div>
           )}
@@ -2223,7 +2224,7 @@ export default function PdfEditorPage() {
               />
               {isMobile && (
                 <button type="button" onClick={() => setMobileThumbsOpen(false)} aria-label="Close pages"
-                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-rmpg-100">×</button>
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-fg-muted hover:text-rmpg-100">×</button>
               )}
             </div>
           )}
@@ -2384,11 +2385,11 @@ function EnginePanel(): React.ReactElement {
   const summary = diagnosticsSummary();
   const last = getDiagnostics()[0];
   return (
-    <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
+    <div className="text-[9px] text-fg-muted mt-2 text-center select-none">
       <div>
-        <span className="text-rmpg-500 font-semibold">RMPG PDF Engine</span> ·
-        Native: <span className="text-[#d4a017]">{summary.native}</span> · PDF.js fallback: <span className="text-rmpg-500">{summary.pdfjs}</span>
-        {last && <> · last: <span className="text-rmpg-400">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
+        <span className="text-fg-muted font-semibold">RMPG PDF Engine</span> ·
+        Native: <span className="[color:var(--panel-header-color)]">{summary.native}</span> · PDF.js fallback: <span className="text-fg-muted">{summary.pdfjs}</span>
+        {last && <> · last: <span className="text-fg-muted">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
       </div>
       <div className="mt-0.5">
         RMPG PDF Engine v1.0 — proprietary facade + writer; PDF.js (Mozilla, Apache 2.0) handles rendering for the long tail of document features (images, embedded fonts, cross-ref streams). Native renderer covers RMPG-generated PDFs and grows over time.

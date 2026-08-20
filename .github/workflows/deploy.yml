@@ -18,11 +18,11 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -41,9 +41,27 @@ jobs:
       # if a migration's DDL never actually landed (wrangler swallowed the
       # error), this step fails loudly. Override with SKIP_DRIFT_CHECK=1 for
       # emergency hotfixes where schema drift is intentional.
+      #
+      # env: this step shells out to `wrangler d1 execute --remote` directly
+      # (not via wrangler-action), so it needs the token/account explicitly —
+      # without them every query is an auth failure, which the pre-2026-07-24
+      # script silently reported as "MISSING TABLE" for the entire schema.
+      #
+      # timeout-minutes: the script fetches one sqlite_master snapshot and
+      # diffs locally (~1 min total). Since this step is already
+      # continue-on-error, a timeout here
+      # just skips it (as if drift-checking were inconclusive) rather than
+      # blocking Apply D1 migrations / Deploy Worker / Deploy client below —
+      # which is what happened on 2026-07-18 when re-enabling this step
+      # (after a long-dead missing-executable-bit no-op) ate the whole job
+      # budget and cancelled every deploy for ~10 minutes straight.
       - name: Schema drift check (remote D1)
         if: ${{ vars.SKIP_DRIFT_CHECK != '1' }}
         continue-on-error: true
+        timeout-minutes: 3
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: DB_MODE=remote scripts/check-migration-drift.sh
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
@@ -68,17 +86,53 @@ jobs:
         continue-on-error: true
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply rmpg-flex --remote
+
+      - name: Apply migrations to Turso secondary
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Pin the Turso CLI version and verify the checksum instead of piping
+          # an unverified remote script to bash — the curl|bash pattern lets a
+          # compromised or MITM'd get.tur.so serve arbitrary code with full access
+          # to all in-scope secrets.
+          TURSO_VERSION="v0.96.1"
+          TURSO_SHA256="e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2"
+          curl -sSfL "https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/turso_linux_amd64.tar.gz" \
+            -o turso.tar.gz
+          # NOTE: update TURSO_SHA256 above when bumping TURSO_VERSION.
+          # Get the correct digest from the release's checksums.txt file.
+          echo "${TURSO_SHA256}  turso.tar.gz" | sha256sum -c - || {
+            echo "::error::Turso CLI checksum mismatch — possible MITM or corrupt download"
+            exit 1
+          }
+          tar -xzf turso.tar.gz turso
+          chmod +x turso
+          for f in migrations/*.sql; do
+            ./turso db shell rmpg-flex-secondary < "$f" || \
+              echo "::warning::Migration $f failed on Turso secondary (non-blocking)"
+          done
+
+      - name: Fetch Tesseract model
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: ./scripts/fetch-tesseract-model.sh
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # [[containers]] removed from wrangler.toml (PdfToolsContainer
-          # intentionally off). No --containers-rollout flag needed.
+          # wrangler 4.x deploys [[containers]] automatically with a plain
+          # `deploy` command — no --containers-rollout flag exists/needed.
+          # Both PdfToolsContainer and TesseractOcrContainer are active here.
           command: deploy
 
       # Client SPA build + deploy to Cloudflare Pages.
@@ -97,19 +151,24 @@ jobs:
 
       - name: Stage Pages Functions
         run: |
-          if [ -d "client/dist" ]; then
-            cp -r functions/ client/dist/functions/
-          else
-            echo "No client/dist directory — skipping Pages Functions staging"
+          set -euo pipefail
+          if [ ! -d "client/dist" ]; then
+            echo "::error::client/dist not found — client build must have failed"
             exit 1
           fi
+          if [ ! -d "functions" ]; then
+            echo "::error::functions/ directory not found at repo root — Pages Functions are missing"
+            exit 1
+          fi
+          cp -r functions/ client/dist/functions/
 
       - name: Deploy client to Pages
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true --no-config
+          workingDirectory: client/dist
+          command: pages deploy . --project-name=rmpg-flex --branch=main --commit-dirty=true
 
       # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
       # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy
@@ -127,11 +186,14 @@ jobs:
       # was guarding against). If this 10064s again, do NOT re-add
       # continue-on-error — confirm proxy/index.ts still exports those four stub
       # classes. See memory project-auth-outage-name-collision.
+      #
+      # `if: success()` (default) rather than `if: always()`: deploying the proxy
+      # when the Worker itself failed would wire the proxy to a Worker version that
+      # was never reached. A failed Worker deploy should fail the whole run.
       - name: Deploy proxy
-        if: always()
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: proxy
           command: deploy

@@ -7,9 +7,10 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor } from './pdfGenerator';
-import { getCachedSealBase64 } from './pdfAssets';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle, fitPdfText, getActiveBranding, hexToRgb, resolveSectionAccentColor, isEmailOrUrlPdfValue } from './pdfGenerator';
+import { getCachedSealBase64, getCachedLogoLight } from './pdfAssets';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { computeSignatureRect, getCachedTransparentSignature } from './pdf/signatureImage';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
@@ -40,6 +41,10 @@ export interface FormCell {
   valueBold?: boolean;
   /** Override font size for value */
   valueFontSize?: number;
+  /** Override the shrink-to-fit floor (default 5pt) — use a lower floor for
+   *  values (e.g. a person's name) that must never fall back to ellipsis
+   *  truncation in a narrow cell. */
+  minFontSize?: number;
 }
 
 /** Row of cells in a form grid */
@@ -128,7 +133,14 @@ export function fitTextToWidth(
     if (doc.getTextWidth(text.slice(0, mid) + ELL) <= maxW) lo = mid;
     else hi = mid - 1;
   }
-  return { text: `${text.slice(0, lo).trimEnd()}${ELL}`, fontSize };
+  // Strip trailing whitespace AND any dangling separator punctuation
+  // (comma, hyphen, middot, slash) before appending the ellipsis — a
+  // prefix that happens to end mid-address/mid-entity-name otherwise
+  // prints "...SOUTH SALT LAKE -..." or "...GROUP,..." (a naked
+  // separator right before the ellipsis reads as a rendering fault,
+  // not a truncation marker).
+  const trimmed = text.slice(0, lo).replace(/[\s,\-·/]+$/, '');
+  return { text: `${trimmed}${ELL}`, fontSize };
 }
 
 /**
@@ -205,8 +217,9 @@ export function drawFormCell(
     // the cell edge.
     const baseFontSize = cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE;
     const maxW = w - 2 * pad;
+    const valueForDisplay = isEmailOrUrlPdfValue(cell.value) ? cell.value : cell.value.toUpperCase();
     const { text: displayVal, fontSize } = fitTextToWidth(
-      doc, cell.value.toUpperCase(), maxW, baseFontSize,
+      doc, valueForDisplay, maxW, baseFontSize, cell.minFontSize,
     );
     doc.setFontSize(fontSize);
 
@@ -627,8 +640,16 @@ export function drawNibrsHeader(
     if (config.formNumber) rows.push({ label: 'FORM', value: config.formNumber.replace(/^form\s+/i, '') });
     if (config.reportDate) rows.push({ label: 'DATE', value: sanitizePdfText(config.reportDate) });
     if (config.caseNumber) rows.push({ label: config.caseNumberLabel || 'CASE NUMBER', value: sanitizePdfText(config.caseNumber) });
-    const rowH = 5.2;
-    const boxH = Math.max(rows.length * rowH, 15.6);
+    // The box keeps a stable overall height so the letterhead does not shift
+    // between forms carrying two rows and forms carrying three. It used to do
+    // that with a MINIMUM height while leaving rowH fixed, which drew a
+    // labelled-looking EMPTY row under the last populated one -- clearly
+    // visible on the Notice of Attempt, which has only DATE + AGENCY REF #.
+    // Stretching the rows to fill the box gets the same stable geometry with
+    // no phantom row.
+    const MIN_BOX_H = 15.6;
+    const boxH = Math.max(rows.length * 5.2, MIN_BOX_H);
+    const rowH = rows.length ? boxH / rows.length : boxH;
 
     // Agency identity stack (left).
     doc.setFont(FONT_FAMILY, 'normal');
@@ -687,7 +708,12 @@ export function drawNibrsHeader(
         doc.setFont(FONT_FAMILY, 'bold');
         doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text(row.label, boxX + 1.5, ry + rowH - 1.7);
+        // Vertically CENTRE the label in its row. Bottom-aligning was fine at
+        // the old fixed 5.2mm, but rows now stretch to fill the box, so a
+        // single-row header (the affidavits, which carry only CASE NUMBER)
+        // drew its label pinned to the bottom of a 15.6mm cell with an empty
+        // band above it -- reading as another phantom row.
+        doc.text(row.label, boxX + 1.5, ry + rowH / 2 + 0.9);
         doc.setFont(FONT_FAMILY, 'bold');
         let vSize: number = FONT.SIZE_FIELD_VALUE;
         doc.setFontSize(vSize);
@@ -698,7 +724,7 @@ export function drawNibrsHeader(
           doc.setFontSize(vSize);
         }
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        doc.text(row.value, boxX + labelW + 1.5, ry + rowH - 1.7);
+        doc.text(row.value, boxX + labelW + 1.5, ry + rowH / 2 + 1.1);
       });
       doc.line(boxX + labelW, y, boxX + labelW, y + boxH);
     }
@@ -757,6 +783,19 @@ export function drawNibrsHeader(
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2;
   const textX = resolvedSeal ? sealX + sealSize + 4 : margin + 4;
+
+  // Horizontal logo — white silhouette placed at the right edge of the
+  // navy header bar. Provides a branded anchor opposite the text stack.
+  const lightLogo = getCachedLogoLight();
+  if (lightLogo) {
+    const logoW = 42;
+    const logoH = 12;
+    const logoX = margin + contentW - logoW - 2;
+    const logoY = y + (headerH - logoH) / 2;
+    try { doc.addImage(lightLogo, 'PNG', logoX, logoY, logoW, logoH); }
+    catch { /* skip if asset fails */ }
+  }
+
 
   if (config.stateIdentifier) {
     doc.setFont(FONT_FAMILY, 'normal');
@@ -1664,10 +1703,29 @@ function drawSignatureSlot(
   doc.setLineWidth(BORDER.SIGNATURE_LINE);
   doc.line(x + 1.5, sigY, x + w - 1.5, sigY);
 
-  // Optional signature image
+  // Optional signature image — dynamic, aspect-preserving fit (was a fixed
+  // 4.2mm-tall stretch, which squashed every signature). Anchored bottom on
+  // the signature line, with a bounded overshoot allowance so it reads like
+  // real ink running slightly over the rule; hardLimits keeps it from ever
+  // colliding with the role label strip above or the printed-name/badge/date
+  // row below. Runs through the transparency cache so a legacy white-boxed
+  // signature (captured before this fix) renders clean too, with no re-sign.
   if (slot.signatureImg) {
     try {
-      doc.addImage(slot.signatureImg, 'PNG', x + 3, y + 3, w - 6, 4.2);
+      const img = getCachedTransparentSignature(slot.signatureImg) ?? slot.signatureImg;
+      const props = doc.getImageProperties(img);
+      const rect = computeSignatureRect(
+        { width: props.width, height: props.height },
+        { x: x + 3, y: y + 3, w: w - 6, h: sigY - (y + 3) },
+        {
+          anchor: 'bottom',
+          align: 'left',
+          hardLimits: { x: x + 1.5, y: y + 3, w: w - 3, h: sigY + 3 - (y + 3) },
+        },
+      );
+      if (rect.w > 0 && rect.h > 0) {
+        doc.addImage(img, 'PNG', rect.x, rect.y, rect.w, rect.h);
+      }
     } catch { /* skip on failure */ }
   } else {
     // X marker on line

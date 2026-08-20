@@ -158,14 +158,14 @@ export default function ConfirmDialog({
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />
             <h2 id={titleId} className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">{title}</h2>
           </div>
-          <button type="button" onClick={onClose} className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-400 hover:text-rmpg-100 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
+          <button type="button" onClick={onClose} className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-text-secondary hover:text-rmpg-100 transition-colors" style={{ touchAction: 'manipulation' }} aria-label="Close">
             <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
         <div className="p-6">
           <p id={descId} className="text-sm text-rmpg-200 leading-relaxed">{message}</p>
           {details && (
-            <div className="mt-3 pl-3 border-l-2 border-rmpg-600 text-xs text-rmpg-300 space-y-0.5">
+            <div className="mt-3 pl-3 border-l-2 border-border-default text-xs text-text-secondary space-y-0.5">
               {details}
             </div>
           )}

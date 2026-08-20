@@ -214,7 +214,17 @@ export default function ShiftCard() {
     let alive = true;
     // High error-correction so the QR still scans from across a desk or
     // through a phone-screen glare angle — paid for in pixel density.
-    QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'H', margin: 1, width: 220, color: { dark: '#d4a017', light: '#0a0a0a' } })
+    //
+    // Dark-on-light is NOT a style choice. ISO/IEC 18004 defines the symbol as
+    // dark modules on a light background, and this QR is scanned by the
+    // officer's own phone camera, which does not try inverted polarity. The
+    // previous gold-on-near-black (accent-gold on surface-base) was inverted — the
+    // "dark" modules were ~130x LIGHTER than the "light" ones — and its
+    // near-black quiet zone dissolved into the navy card behind it, leaving no
+    // quiet zone at all. Keep the encoder margin modest and let the white tile
+    // in the markup supply the optical quiet zone, so raising the margin does
+    // not shrink the modules at this fixed width.
+    QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'H', margin: 2, width: 220, color: { dark: 'black', light: 'white' } })
       .then((url) => { if (alive) setQrDataUrl(url); })
       .catch((err) => { console.warn('[ShiftCard] QR render failed', err); if (alive) setQrDataUrl(null); });
     return () => { alive = false; };
@@ -223,7 +233,7 @@ export default function ShiftCard() {
   if (loading) {
     return (
       <section className="bg-surface-base border border-border-default p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">SHIFT</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest mb-2">SHIFT</h2>
         <div className="h-[160px] animate-pulse bg-surface-raised border border-border-default" />
       </section>
     );
@@ -236,9 +246,9 @@ export default function ShiftCard() {
   return (
     <section className="bg-surface-base border border-border-default p-3">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">SHIFT</h2>
+        <h2 className="text-[color:var(--panel-header-color)] text-[10px] font-bold tracking-widest">SHIFT</h2>
         {isActive
-          ? <span className="text-[#d4a017] text-xs font-bold uppercase">On Duty</span>
+          ? <span className="text-[color:var(--field-label-color)] text-xs font-bold uppercase">On Duty</span>
           : <span className="text-rmpg-500 text-xs uppercase">Off Duty</span>}
       </div>
 
@@ -269,9 +279,9 @@ export default function ShiftCard() {
             <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
               {state.available_vehicles.map((v) => (
                 <button key={v.id} type="button" disabled={busy} onClick={() => promptStartingMileage(v)}
-                  className="flex items-center justify-between min-h-[44px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-[#d4a017]">
+                  className="flex items-center justify-between min-h-[44px] px-2 bg-surface-raised border border-border-default text-rmpg-200 text-xs hover:border-accent-silver-400">
                   <span className="truncate">{vehicleLabel(v)}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</span>
-                  {v.is_take_home ? <span className="text-[#d4a017] text-[9px] uppercase shrink-0">Take-home</span> : null}
+                  {v.is_take_home ? <span className="text-[color:var(--field-label-color)] text-[9px] uppercase shrink-0">Take-home</span> : null}
                 </button>
               ))}
             </div>
@@ -291,7 +301,12 @@ export default function ShiftCard() {
       {isActive && qrDataUrl && (
         <div className="mb-3 border border-border-default bg-surface-base p-2 flex flex-col items-center">
           <div className="text-rmpg-400 text-[9px] uppercase tracking-widest mb-1">Scan with phone — vehicle walkthrough</div>
-          <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
+          {/* White tile is load-bearing, not decoration: it supplies the light
+              quiet zone the symbol needs. Rendering the QR straight onto the
+              navy card leaves the margin indistinguishable from the surround. */}
+          <div className="bg-white p-2">
+            <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
+          </div>
           <div className="mt-1 text-[9px] text-rmpg-500 font-mono truncate max-w-full" title={qrUrl ?? ''}>{qrUrl}</div>
         </div>
       )}
@@ -303,7 +318,7 @@ export default function ShiftCard() {
         </button>
       ) : !picking ? (
         <button type="button" disabled={busy} onClick={onStartClick}
-          className={['w-full h-11 bg-surface-raised border border-[#d4a017] text-[#d4a017] text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
+          className={['w-full h-11 bg-surface-raised border border-accent-silver-400 text-[color:var(--field-label-color)] text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
           Start Shift
         </button>
       ) : null}

@@ -14,14 +14,14 @@ export default function AppearanceDialog({
 }) {
   const set = <K extends keyof EditorAppearance>(k: K, v: EditorAppearance[K]) => onChange({ ...value, [k]: v });
   const lbl = 'text-[10px] text-rmpg-400 uppercase tracking-wide mb-1 block';
-  const sel = 'w-full bg-surface-base border border-border-default text-rmpg-100 text-[12px] rounded-[2px] px-2 py-1.5 focus:outline-none focus:border-[#d4a017]/50';
+  const sel = 'w-full bg-surface-base border border-border-default text-rmpg-100 text-[12px] rounded-[2px] px-2 py-1.5 focus:outline-none focus:border-accent-silver-500/50';
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" onMouseDown={onClose}>
-      <div className="w-full max-w-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/70" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/70 p-4 overflow-y-auto" onMouseDown={onClose}>
+      <div className="w-full max-w-sm bg-surface-sunken border border-rmpg-700 rounded-[2px] shadow-2xl shadow-black/70 my-auto" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
           <span className="flex items-center gap-1.5 text-[12px] font-semibold text-rmpg-100 uppercase tracking-wide">
-            <Sliders className="w-3.5 h-3.5 text-[#d4a017]" /> Editor Appearance
+            <Sliders className="w-3.5 h-3.5 text-accent-silver-400" /> Editor Appearance
           </span>
           <button type="button" onClick={onClose} aria-label="Close" className="text-rmpg-500 hover:text-rmpg-100"><X className="w-4 h-4" /></button>
         </div>
@@ -39,19 +39,19 @@ export default function AppearanceDialog({
             <div>
               <label className={lbl}>Font size: {value.fontSize}pt</label>
               <input type="range" min={9} max={24} step={1} value={value.fontSize}
-                onChange={(e) => set('fontSize', Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                onChange={(e) => set('fontSize', Number(e.target.value))} className="w-full accent-accent-silver-500" />
             </div>
             <div>
               <label className={lbl}>Line height: {value.lineHeight}</label>
               <input type="range" min={1} max={2.5} step={0.1} value={value.lineHeight}
-                onChange={(e) => set('lineHeight', Number(e.target.value))} className="w-full accent-[#d4a017]" />
+                onChange={(e) => set('lineHeight', Number(e.target.value))} className="w-full accent-accent-silver-500" />
             </div>
           </div>
 
           <div>
             <label className={lbl}>Writing measure (max content width): {value.maxWidth > 0 ? `${value.maxWidth}px` : 'full page'}</label>
             <input type="range" min={0} max={760} step={20} value={value.maxWidth}
-              onChange={(e) => set('maxWidth', Number(e.target.value))} className="w-full accent-[#d4a017]" />
+              onChange={(e) => set('maxWidth', Number(e.target.value))} className="w-full accent-accent-silver-500" />
             <p className="text-[9px] text-rmpg-600 mt-0.5 leading-snug">A narrower measure (≈600–700px) is easier to read while drafting. Does not affect print.</p>
           </div>
 
@@ -72,7 +72,7 @@ export default function AppearanceDialog({
             <RotateCcw className="w-3 h-3" /> Reset to defaults
           </button>
           <button type="button" onClick={onClose}
-            className="px-3 py-1 text-[10px] font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20">
+            className="px-3 py-1 text-[10px] font-medium bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20">
             Done
           </button>
         </div>

@@ -91,7 +91,7 @@ export function requireApiKeyScope(scope: string) {
     try {
       await execute(
         db,
-        `UPDATE integration_api_keys SET last_used_at = datetime('now','localtime'), request_count = request_count + 1 WHERE id = ?`,
+        `UPDATE integration_api_keys SET last_used_at = datetime('now'), request_count = request_count + 1 WHERE id = ?`,
         row.id,
       );
     } catch {

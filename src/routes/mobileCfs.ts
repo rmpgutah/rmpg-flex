@@ -19,9 +19,11 @@
 import { Hono } from 'hono';
 import { SignJWT, jwtVerify } from 'jose';
 import type { Env } from '../types';
-import { getDb, queryFirst, execute } from '../utils/db';
+import { getDb, queryFirst, execute, columnExists } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 import { requireRole } from '../middleware/auth';
+import { rateLimitAllow } from '../utils/rateLimit';
+import { log } from '../utils/logger';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
 
@@ -40,6 +42,12 @@ async function bestEffortAudit(c: any, userId: number | null, action: string, en
 interface MobileAuth { userId: number; username: string; role: string; callId: number }
 
 // Verify the scoped mobile token and confirm it's bound to the :id call.
+// Rate limiting shares the same bucket format as apiRateLimit
+// (src/middleware/rateLimit.ts) — a user active on both the desktop app
+// and the mobile PSO flow shares one budget. Returning null on a
+// rate-limit hit (rather than a distinct response) keeps this function's
+// existing MobileAuth | null contract unchanged; callers already treat
+// null as "auth required" per their existing 401 handling.
 async function verifyMobile(c: any): Promise<MobileAuth | null> {
   const header = c.req.header('authorization');
   const token = header && header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -50,8 +58,14 @@ async function verifyMobile(c: any): Promise<MobileAuth | null> {
     if (payload.scope !== 'pso-mobile' || !payload.callId || !payload.userId) return null;
     const paramId = parseInt(String(c.req.param('id') || ''), 10);
     if (paramId && paramId !== payload.callId) return null;
+    const userId = Number(payload.userId);
+    const allowed = await rateLimitAllow(c.env.KV, `api:user:${userId}`, 600, 300);
+    if (!allowed) {
+      log.warn('Mobile API rate limit exceeded', { userId });
+      return null;
+    }
     return {
-      userId: Number(payload.userId), username: String(payload.username ?? ''),
+      userId, username: String(payload.username ?? ''),
       role: String(payload.role ?? ''), callId: Number(payload.callId),
     };
   } catch { return null; }
@@ -165,11 +179,18 @@ mobileCfs.post('/cfs/:id/auth', async (c) => {
     if (!row) return c.json({ error: 'Unknown QR token' }, 404);
     if (row.revoked_at) return c.json({ error: 'QR token has been revoked' }, 403);
     if (!row.admin_override && row.scans_used >= row.max_scans) return c.json({ error: 'QR scan limit reached' }, 403);
-    // Officers enter their badge number; fall back to employee_id or users.id.
+    // Officers enter their badge number; employee_id is accepted as the
+    // documented alternate. The `OR id = ?` fallback that used to be here was
+    // removed: this endpoint is unauthenticated (it's gated only by a QR token
+    // PRINTED on paperwork handed to clients and served parties), so a raw
+    // `users.id` lookup let anyone holding that paper mint a session as an
+    // arbitrary user — `user_id: 1` reliably resolves to the first/admin row,
+    // whereas badge numbers at least have to be known and don't line up with
+    // small integers.
     const badgeStr = String(userIdNum);
     const user = await queryFirst<{ id: number; username: string; role: string; full_name: string; status: string }>(db,
       `SELECT id, username, role, full_name, status FROM users
-        WHERE badge_number = ? OR employee_id = ? OR id = ? LIMIT 1`, badgeStr, badgeStr, userIdNum);
+        WHERE badge_number = ? OR employee_id = ? LIMIT 1`, badgeStr, badgeStr);
     if (!user) return c.json({ error: 'User ID not recognized' }, 404);
     if (user.status && user.status !== 'active') return c.json({ error: `User is ${user.status}` }, 403);
     if (!row.admin_override) {
@@ -178,8 +199,12 @@ mobileCfs.post('/cfs/:id/auth', async (c) => {
       await execute(db, `UPDATE pso_qr_tokens SET last_scanned_at = datetime('now'), last_scanned_by = ? WHERE id = ?`, userIdNum, row.id);
     }
     const secret = new TextEncoder().encode(c.env.JWT_SECRET as string);
+    // 12h, not the original 30d: this is a single-shift field session minted
+    // from a printed QR code. A month-long bearer derived from paperwork that
+    // outlives the call is a standing credential, and the token is only useful
+    // for the duration of the on-scene work anyway.
     const scopedToken = await new SignJWT({ userId: user.id, username: user.username, role: user.role, scope: 'pso-mobile', callId })
-      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('30d').sign(secret);
+      .setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('12h').sign(secret);
     await bestEffortAudit(c, user.id, 'MOBILE_AUTH', callId, { user_id: userIdNum });
     return c.json({
       token: scopedToken,
@@ -211,6 +236,17 @@ mobileCfs.post('/cfs/:id/status', async (c) => {
       status, auth.callId);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', auth.callId);
     await bestEffortAudit(c, auth.userId, 'MOBILE_STATUS', auth.callId, { status, source: 'pso-mobile' });
+    // Mirror terminal status → serve_queue (same as the desktop path in extensions.ts PUT /:id/status).
+    // The crosslink self-skips for non-PSO calls, so we can fire unconditionally.
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled']);
+    if (TERMINAL_STATUSES.has(status)) {
+      const { crossLinkPsoCloseToServe } = await import('../utils/psoServeCrosslink');
+      c.executionCtx.waitUntil(
+        crossLinkPsoCloseToServe(db, auth.callId, { actorUserId: auth.userId }).catch(err =>
+          console.error('[pso-crosslink] mobile terminal status crosslink failed:', err)
+        )
+      );
+    }
     return c.json({ success: true, call: updated });
   } catch (err) {
     console.error('mobile status update failed:', err);
@@ -277,6 +313,56 @@ mobileCfs.post('/cfs/:id/pso', async (c) => {
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', auth.callId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
     await bestEffortAudit(c, auth.userId, 'MOBILE_PSO', auth.callId, { fields: sets, source: 'pso-mobile' });
+
+    // Mirror a result submission to the linked serve_queue in real time so
+    // the ServePage stays in sync during active service — before the CFS
+    // reaches a terminal status that would trigger the full crosslink.
+    // Only fires when pso_result is present in the submission (not on every
+    // ext field update like address or attempt counter increments).
+    const rawResult = body.pso_result as string | undefined;
+    if (rawResult) {
+      // Map mobile UI values to serve_attempts CHECK enum values.
+      const RESULT_MAP: Record<string, string> = {
+        served: 'served', sub_served: 'sub_served', not_home: 'no_answer',
+        refused: 'refused', bad_address: 'bad_address',
+      };
+      const legacyResult = RESULT_MAP[rawResult] ?? 'other';
+      const isServed = legacyResult === 'served' || legacyResult === 'sub_served';
+
+      c.executionCtx.waitUntil((async () => {
+        try {
+          const qRow = await queryFirst<{ id: number; attempt_count: number; status: string }>(
+            db, 'SELECT id, attempt_count, status FROM serve_queue WHERE call_id = ?', auth.callId,
+          );
+          if (!qRow) return; // no linked queue row yet; crosslink creates it on terminal status
+          const nextNum = (Number(qRow.attempt_count) || 0) + 1;
+          const newStatus = isServed ? 'served' : nextNum >= 3 ? 'failed' : 'attempted';
+          const noteText = `[Mobile PSO] ${rawResult}${body.process_served_to ? ` → ${body.process_served_to}` : ''}`;
+          const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
+          if (hasDispositionCol) {
+            await execute(db,
+              `INSERT INTO serve_attempts
+                 (serve_queue_id, attempt_number, officer_id, result, disposition_code, notes, attempt_type)
+               VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+              qRow.id, nextNum, auth.userId, legacyResult, noteText,
+              isServed ? 'personal' : 'failed');
+          } else {
+            await execute(db,
+              `INSERT INTO serve_attempts
+                 (serve_queue_id, attempt_number, officer_id, result, notes, attempt_type)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              qRow.id, nextNum, auth.userId, legacyResult, noteText,
+              isServed ? 'personal' : 'failed');
+          }
+          await execute(db,
+            `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+            nextNum, newStatus, qRow.id);
+        } catch (err) {
+          console.error('[pso-mobile] serve_queue attempt mirror failed:', err);
+        }
+      })());
+    }
+
     return c.json({ success: true, call: updated });
   } catch (err) {
     console.error('mobile pso edit failed:', err);

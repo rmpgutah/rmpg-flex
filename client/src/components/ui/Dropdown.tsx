@@ -155,7 +155,7 @@ export default function Dropdown({
           : opt.danger
             ? 'text-red-400 hover:bg-red-900/20'
             : opt.value === value
-              ? 'text-[#d4a017] bg-[#d4a017]/5'
+              ? '[color:var(--panel-header-color)] bg-[var(--field-label-color)]/5'
               : 'text-rmpg-200 hover:bg-surface-raised'
         }
       `}
@@ -163,11 +163,11 @@ export default function Dropdown({
       <span className="flex-1 min-w-0">
         <div className="truncate">{opt.label}</div>
         {opt.description && (
-          <div className="text-[10px] text-rmpg-500 truncate">{opt.description}</div>
+          <div className="text-[10px] text-fg-muted truncate">{opt.description}</div>
         )}
       </span>
       {opt.value === value && (
-        <span className="text-[#d4a017] shrink-0">&#10003;</span>
+        <span className="[color:var(--panel-header-color)] shrink-0">&#10003;</span>
       )}
     </button>
   );
@@ -176,7 +176,7 @@ export default function Dropdown({
     if (filteredGroups) {
       return filteredGroups.map((group) => (
         <div key={group.label}>
-          <div className="px-3 py-1 text-[10px] font-semibold text-rmpg-500 uppercase tracking-wider bg-surface-sunken">
+          <div className="px-3 py-1 text-[10px] font-semibold text-fg-muted uppercase tracking-wider bg-surface-sunken">
             {group.label}
           </div>
           {group.options.map(renderOption)}
@@ -186,7 +186,7 @@ export default function Dropdown({
 
     if (filteredOptions.length === 0) {
       return (
-        <div className="px-3 py-3 text-[11px] text-rmpg-500 text-center">
+        <div className="px-3 py-3 text-[11px] text-fg-muted text-center">
           No results
         </div>
       );
@@ -211,7 +211,7 @@ export default function Dropdown({
           w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors duration-100
           ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
           ${error ? 'border-red-500' : ''}
-          ${selectedOption ? 'text-rmpg-100' : 'text-rmpg-500'}
+          ${selectedOption ? 'text-rmpg-100' : 'text-fg-muted'}
           select-dark pr-7
         `}
         aria-haspopup="listbox"
@@ -224,7 +224,7 @@ export default function Dropdown({
           <button
             type="button"
             onClick={handleClear}
-            className="shrink-0 text-rmpg-500 hover:text-rmpg-100 p-0.5"
+            className="shrink-0 text-fg-muted hover:text-rmpg-100 p-0.5"
             aria-label="Clear selection"
             tabIndex={-1}
           >
@@ -233,7 +233,7 @@ export default function Dropdown({
         )}
       </button>
       {hint && !error && (
-        <p className="text-[10px] text-rmpg-500 mt-0.5">{hint}</p>
+        <p className="text-[10px] text-fg-muted mt-0.5">{hint}</p>
       )}
       {error && (
         <p className="text-[10px] text-red-400 mt-0.5">{error}</p>
@@ -245,7 +245,7 @@ export default function Dropdown({
         >
           {searchable && (
             <div className="relative border-b border-border-default">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted pointer-events-none" />
               <input id="ff-dropdown-0"
                 ref={searchRef}
                 type="text"

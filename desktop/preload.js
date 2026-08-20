@@ -5,6 +5,37 @@
 
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Inlined from deviceInfo.js (which still exports and unit-tests these same
+// two functions) rather than require()'d from there. Electron's preload
+// require() shim has been observed to fail resolving a preload script's own
+// relative require('./sibling.js') calls entirely — reproduced on Electron
+// 40.9.1 as "Unable to load preload script ... module not found:
+// ./deviceInfo", even with a freshly-reinstalled, correctly-signed Electron
+// binary and with contextIsolation/sandbox left at every combination this
+// app supports. Keeping preload.js self-contained (no local relative
+// requires) sidesteps that failure mode entirely, and is the standard
+// workaround for this class of Electron preload issue. Keep these two
+// bodies in sync with deviceInfo.js's copies if either changes — same
+// duplication rationale as main.js's FATAL_NET_ERRORS.
+function groupMediaDevicesByKind(mediaDeviceInfoList) {
+  const inputs = [];
+  const outputs = [];
+  for (const device of mediaDeviceInfoList || []) {
+    if (device.kind === 'audioinput') {
+      inputs.push({ deviceId: device.deviceId, label: device.label });
+    } else if (device.kind === 'audiooutput') {
+      outputs.push({ deviceId: device.deviceId, label: device.label });
+    }
+  }
+  return { inputs, outputs };
+}
+
+function filterVideoInputDevices(mediaDeviceInfoList) {
+  return (mediaDeviceInfoList || [])
+    .filter((device) => device.kind === 'videoinput')
+    .map((device) => ({ id: device.deviceId, label: device.label }));
+}
+
 contextBridge.exposeInMainWorld('electron', {
   // Platform info
   platform: process.platform,
@@ -14,9 +45,110 @@ contextBridge.exposeInMainWorld('electron', {
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  toggleFullScreen: () => ipcRenderer.invoke('window:toggle-fullscreen'),
+
+  // Open/close a secondary in-app window (e.g. a detached panel). `path`
+  // must be an in-app route ('/dispatch-board') — it is resolved against
+  // the same trusted server the main window loads, never treated as an
+  // arbitrary URL. Returns { id } on success or { ok:false, error } on
+  // an invalid route.
+  openSecondaryWindow: (path, opts) => ipcRenderer.invoke('window:open-secondary', path, opts),
+  closeSecondaryWindow: (id) => ipcRenderer.invoke('window:close-secondary', id),
+
+  // Opens the Company Browser — a dedicated window for general external
+  // web browsing (vendor portals, county sites, etc.) via <webview>.
+  // Electron-only; the web SPA build has no window.electron at all, so
+  // callers must feature-detect (window.electron?.isElectron) before
+  // calling this. See client/src/utils/windowManager.ts's
+  // activateNavFunction for that gate.
+  openCompanyBrowser: (role) => ipcRenderer.invoke('window:open-company-browser', role),
+
+  // Sets the dock/taskbar badge count. No-ops on platforms without
+  // app.setBadgeCount (see main.js's 'notify:dock-badge' handler).
+  setDockBadge: (count) => ipcRenderer.invoke('notify:dock-badge', count),
+
+  // Flash the window frame to grab the user's attention (e.g., for alerts).
+  // Auto-clears when the window receives focus.
+  flashFrame: () => ipcRenderer.invoke('notify:flash-frame'),
+
+  // Reflects shift state in the tray tooltip. state must be one of
+  // 'on-shift' | 'off-shift' | 'alert' — anything else is silently
+  // ignored by the main-process handler (see main.js's
+  // 'notify:tray-status' handler).
+  setTrayStatus: (state) => ipcRenderer.invoke('notify:tray-status', state),
+
+  // Clipboard read/write. Plain wrappers with no secret-value enforcement —
+  // see main.js's 'clipboard:get'/'clipboard:set' handlers.
+  getClipboardText: () => ipcRenderer.invoke('clipboard:get'),
+  setClipboardText: (text) => ipcRenderer.invoke('clipboard:set', text),
 
   // App version
   getVersion: () => ipcRenderer.invoke('app:version'),
+
+  // ─── System & Diagnostics ───────────────────────────
+  getSystemInfo: () => ipcRenderer.invoke('sys:info'),
+  getCpuUsage: () => ipcRenderer.invoke('sys:cpu-usage'),
+  getAppLogs: (lines) => ipcRenderer.invoke('sys:logs', lines),
+  openLogsFolder: () => ipcRenderer.invoke('sys:open-logs-folder'),
+  exportDiagnosticsBundle: () => ipcRenderer.invoke('sys:export-diagnostics'),
+  getCrashReports: () => ipcRenderer.invoke('sys:crash-reports'),
+  checkDiskSpace: () => ipcRenderer.invoke('sys:disk-space'),
+  getNetworkInterfaces: () => ipcRenderer.invoke('sys:network-interfaces'),
+  getBatteryStatus: () => ipcRenderer.invoke('sys:battery'),
+  getTpmStatus: () => ipcRenderer.invoke('sys:tpm-status'),
+  getIdleTime: () => ipcRenderer.invoke('sys:idle-time'),
+  restartApp: () => ipcRenderer.invoke('sys:restart'),
+  shutdownOs: () => ipcRenderer.invoke('os:shutdown'),
+  restartOs: () => ipcRenderer.invoke('os:restart'),
+  returnToWindows: (username, password) => ipcRenderer.invoke('os:return-to-windows', username, password),
+  getBodyCamStatus: () => ipcRenderer.invoke('sys:body-cam-status'),
+  startBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-start'),
+  stopBodyCamRecording: () => ipcRenderer.invoke('sys:body-cam-stop'),
+
+  // ─── File & Data Export/Import ───────────────────────
+  saveFileDialog: (opts) => ipcRenderer.invoke('fs:save-dialog', opts),
+  openFileDialog: (opts) => ipcRenderer.invoke('fs:open-dialog', opts),
+  writeExportFile: (path, data) => ipcRenderer.invoke('fs:write-export', path, data),
+  readImportFile: (path) => ipcRenderer.invoke('fs:read-import', path),
+  revealInFolder: (path) => ipcRenderer.invoke('fs:reveal', path),
+  getDownloadsPath: () => ipcRenderer.invoke('fs:downloads-path'),
+  getPrinters: () => ipcRenderer.invoke('fs:printers'),
+  printSilently: (printerName) => ipcRenderer.invoke('fs:print-silent', printerName),
+  exportLocalDbBackup: () => ipcRenderer.invoke('fs:export-db-backup'),
+  importLocalDbBackup: (path) => ipcRenderer.invoke('fs:import-db-backup', path),
+
+  // ─── Device & Hardware ───────────────────────────────
+  // listAudioDevices/listVideoDevices call navigator.mediaDevices directly
+  // — no IPC round-trip, no main.js handler. See Group D plan, Scope
+  // Decision #1: Electron's main process has no API for this; it's a Web
+  // Platform API only available in the renderer/preload context.
+  listSerialPorts: () => ipcRenderer.invoke('device:serial-ports'),
+  listAudioDevices: async () => groupMediaDevicesByKind(await navigator.mediaDevices.enumerateDevices()),
+  listVideoDevices: async () => filterVideoInputDevices(await navigator.mediaDevices.enumerateDevices()),
+  getBluetoothDevices: () => ipcRenderer.invoke('device:bluetooth'),
+  checkGpsHardwarePresent: () => ipcRenderer.invoke('device:gps-present'),
+  getDockState: () => ipcRenderer.invoke('device:dock-state'),
+  getWwanStatus: () => ipcRenderer.invoke('device:wwan-status'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('device:set-auto-launch', enabled),
+  getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
+  setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
+  getKioskShellState: () => ipcRenderer.invoke('device:kiosk-shell-state'),
+  registerGlobalShortcut: (accelerator, actionId) => ipcRenderer.invoke('device:register-shortcut', accelerator, actionId),
+  unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('device:unregister-shortcut', accelerator),
+  onShortcutTriggered: (callback) => {
+    const handler = (_e, actionId) => callback(actionId);
+    ipcRenderer.on('device:shortcut-triggered', handler);
+    return () => ipcRenderer.removeListener('device:shortcut-triggered', handler);
+  },
+  getDisplays: () => ipcRenderer.invoke('device:displays'),
+
+  // Barcode scanner (FZ-VBR551M xPAK) — HID keyboard-wedge input classified
+  // in main.js and pushed here as a single scanned payload per burst.
+  onBarcodeScanned: (callback) => {
+    const handler = (_e, payload) => callback(payload);
+    ipcRenderer.on('hardware:barcode-scanned', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scanned', handler);
+  },
 
   // Crash-safe printing — renders the page to PDF in Chromium and opens
   // it in macOS Preview. Replaces window.print(), whose native NSPrintPanel
@@ -129,8 +261,31 @@ contextBridge.exposeInMainWorld('electron', {
   // Install a downloaded update (restarts the app)
   installUpdate: () => ipcRenderer.send('updater:install'),
 
-  // Force clear all caches and reload (for update propagation)
-  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
+  // ─── System Quick-Settings ──────────────────────────────
+  getBattery: () => ipcRenderer.invoke('system:get-battery'),
+  getNetwork: () => ipcRenderer.invoke('system:get-network'),
+  setVolume:  (level) => ipcRenderer.invoke('system:set-volume', level),
+
+  // ─── WiFi Selector ──────────────────────────────────────
+  // Full detail for the currently-connected network (IP, gateway, DNS, channel, etc.)
+  wifiGetDetail:    ()              => ipcRenderer.invoke('wifi:get-detail'),
+  // Scan all visible SSIDs with signal strength, security, channel
+  wifiScanNetworks: ()              => ipcRenderer.invoke('wifi:scan-networks'),
+  // List saved Windows WLAN profiles (connectable without credentials)
+  wifiListProfiles: ()              => ipcRenderer.invoke('wifi:list-profiles'),
+  // Connect to a saved profile by name
+  wifiConnect:      (profile)       => ipcRenderer.invoke('wifi:connect', { profile }),
+  // Disconnect from the current wireless network
+  wifiDisconnect:   ()              => ipcRenderer.invoke('wifi:disconnect'),
+
+  // ─── Auth Session Bridge ────────────────────────────────
+  // Called by AuthContext.tsx right after login/2FA/token-refresh so the
+  // main process can cache the session (auth_token, refresh_token,
+  // current_user_id, current_user_role) for offline mode and PIN sessions.
+  // See main.js's 'auth:store-session' handler for what gets derived from
+  // the token and why this is the only place these keys are ever written.
+  storeAuthSession: (token, refreshToken) =>
+    ipcRenderer.invoke('auth:store-session', { token, refreshToken }),
 
   // ─── Offline Mode API ──────────────────────────────────
   // Route an API request through the local SQLite database
@@ -151,6 +306,38 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Force an immediate sync cycle
   triggerSync: () => ipcRenderer.invoke('offline:trigger-sync'),
+
+  // ─── Sync Pause/Resume ──────────────────────────────────
+  pauseSync: () => ipcRenderer.invoke('sync:pause'),
+  resumeSync: () => ipcRenderer.invoke('sync:resume'),
+
+  // Per-item sync queue detail (pending + failed rows) for diagnostics UI
+  getSyncQueueDetail: () => ipcRenderer.invoke('sync:queue-detail'),
+
+  // Get current write queue size
+  getOfflineWriteQueueSize: () => ipcRenderer.invoke('sync:write-queue-size'),
+
+  // Reset a single failed/stuck sync queue item back to pending
+  retryFailedSyncItem: (id) => ipcRenderer.invoke('sync:retry-item', id),
+
+  // Bulk-clear every failed sync queue item
+  clearFailedSyncItems: () => ipcRenderer.invoke('sync:clear-failed'),
+
+  // Most recent sync error, for diagnostics UI
+  getLastSyncError: () => ipcRenderer.invoke('sync:last-error'),
+
+  // Read-only per-table local cache stats ({table, rows, bytes}[]), for
+  // an offline-status/diagnostics panel
+  getLocalCacheStats: () => ipcRenderer.invoke('sync:cache-stats'),
+
+  // Destructive (single table): clear one mirrored cache table + its
+  // sync_metadata row. `table` is validated against the server-side
+  // allowlist in clearLocalCache() before any SQL runs.
+  clearLocalCache: (table) => ipcRenderer.invoke('sync:clear-cache', table),
+
+  // Destructive: wipe the mirrored/reference cache tables and re-pull
+  // everything fresh from the server (never touches sync_queue/gps_breadcrumbs)
+  forceFullResync: () => ipcRenderer.invoke('sync:force-full'),
 
   // Get locally cached user for offline auth
   getCachedUser: (username) =>
@@ -189,5 +376,23 @@ contextBridge.exposeInMainWorld('electron', {
     const handler = (_event, data) => callback(data);
     ipcRenderer.on('offline:authorization-changed', handler);
     return () => ipcRenderer.removeListener('offline:authorization-changed', handler);
+  },
+
+  // ─── Face Recognition Auth ───────────────────────────────────
+  faceEnroll: (userId, embedding) => ipcRenderer.invoke('face:enroll', { userId, embedding }),
+  faceVerify: (userId, embedding) => ipcRenderer.invoke('face:verify', { userId, embedding }),
+  faceClear: (userId) => ipcRenderer.invoke('face:clear', { userId }),
+  faceEnrollmentStatus: (userId) => ipcRenderer.invoke('face:enrollment-status', { userId }),
+
+  // ─── Camera QR / Barcode Scanner ─────────────────────────────
+  // Starts / stops the off-screen camera scanner window.
+  // Decoded results arrive via onBarcodeScan (hardware:barcode-scan event)
+  // with the same { payload, source } shape as the xPAK hardware scanner.
+  cameraStart: () => ipcRenderer.invoke('device:camera-scan-start'),
+  cameraStop: () => ipcRenderer.invoke('device:camera-scan-stop'),
+  onBarcodeScan: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on('hardware:barcode-scan', handler);
+    return () => ipcRenderer.removeListener('hardware:barcode-scan', handler);
   },
 });

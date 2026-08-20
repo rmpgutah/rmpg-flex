@@ -13,6 +13,7 @@ import {
 import type { DashCamera, DashCamVideo, DashCameraStatus, VideoClassification } from '../../types';
 import PrintButton from '../../components/PrintButton';
 import RmpgLogo from '../../components/RmpgLogo';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -72,11 +73,11 @@ interface Props {
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) return '-';
-  return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function statusLabel(status: string): string {
-  return status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return toDisplayLabel(status);
 }
 
 function formatFileSize(bytes: number): string {
@@ -312,8 +313,8 @@ export default function DashCameraTab({
                 </div>
                 {canManage && (
                   <div className="flex items-center gap-1">
-                    <button onClick={() => onEditCamera(cam)} className="toolbar-btn p-1"><Edit3 className="w-3 h-3" /></button>
-                    <button onClick={() => { if (confirm('Delete this dash camera?')) onDeleteCamera(cam.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
+                    <button aria-label="Edit" onClick={() => onEditCamera(cam)} className="toolbar-btn p-1"><Edit3 className="w-3 h-3" /></button>
+                    <button aria-label="Delete" onClick={() => { if (confirm('Delete this dash camera?')) onDeleteCamera(cam.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 )}
               </div>
@@ -377,14 +378,14 @@ export default function DashCameraTab({
                     {selectedVideoIds.has(vid.id) ? <CheckSquare className="w-3.5 h-3.5 text-brand-400" /> : <Square className="w-3.5 h-3.5" />}
                   </button>
                 )}
-                <button onClick={() => onPlayVideo?.(vid)} className="flex-shrink-0 w-10 h-10 rounded bg-rmpg-800 border border-rmpg-700 flex items-center justify-center hover:bg-rmpg-700 transition-colors">
+                <button aria-label="Play" onClick={() => onPlayVideo?.(vid)} className="flex-shrink-0 w-10 h-10 rounded bg-rmpg-800 border border-rmpg-700 flex items-center justify-center hover:bg-rmpg-700 transition-colors">
                   <Play className="w-4 h-4 text-brand-400" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-rmpg-200 truncate">{vid.title}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded uppercase ${CLASS_COLORS[vid.classification] || 'text-rmpg-400 bg-rmpg-800'}`}>
-                      {vid.classification}
+                      {formatEnumValue(vid.classification)}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-500">
@@ -396,7 +397,7 @@ export default function DashCameraTab({
                   </div>
                 </div>
                 {canManage && onDeleteVideo && (
-                  <button onClick={() => { if (confirm('Delete this video?')) onDeleteVideo(vid.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300">
+                  <button aria-label="Delete" onClick={() => { if (confirm('Delete this video?')) onDeleteVideo(vid.id); }} className="toolbar-btn p-1 text-red-400 hover:text-red-300">
                     <Trash2 className="w-3 h-3" />
                   </button>
                 )}

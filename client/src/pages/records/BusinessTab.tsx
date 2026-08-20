@@ -6,6 +6,8 @@ import {
   ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { buildAssessorFormPatch, type AssessorParcelDetail } from '../../utils/assessorFormPatch';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import { withOneRetry } from '../../utils/retryTransient';
 import { useAuth } from '../../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -24,6 +26,9 @@ import FormSection from '../../components/records/FormSection';
 import FormField from '../../components/records/FormField';
 import { useAssessorLookup } from '../../hooks/useAssessorLookup';
 import { AssessorSuggestionPanel } from '../../components/AssessorSuggestionPanel';
+import { JurisdictionButton } from '../../components/JurisdictionButton';
+import { RecordPhotoGallery } from '../../components/RecordPhotoGallery';
+import { ParcelDetailDrawer } from '../../components/ParcelDetailDrawer';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -110,7 +115,7 @@ export interface BusinessTabState {
   setShowFormModal: (v: boolean) => void;
   editingBusiness: Business | null;
   formSubmitting: boolean;
-  handleSubmit: (data: Partial<Business>) => Promise<void>;
+  handleSubmit: (data: Partial<Business>) => Promise<boolean>;
   openEdit: (b: Business) => void;
   linkRefreshKey: number;
   openLinkModal: (type: RecordEntityType, id: string) => void;
@@ -168,7 +173,11 @@ export function useBusinessTab(props: {
     );
   }, [businesses, searchQuery]);
 
-  const handleSubmit = useCallback(async (data: Partial<Business>) => {
+  // Returns true on a confirmed successful save, false on failure — callers
+  // (BusinessForm's useFormDraft wiring) rely on this to know when it's safe
+  // to clear the persisted draft, so a failed save never silently loses
+  // typed data.
+  const handleSubmit = useCallback(async (data: Partial<Business>): Promise<boolean> => {
     setFormSubmitting(true);
     try {
       if (editingBusiness) {
@@ -179,10 +188,13 @@ export function useBusinessTab(props: {
       setShowFormModal(false);
       setEditingBusiness(null);
       fetchBusinesses();
+      setFormSubmitting(false);
+      return true;
     } catch (err: any) {
       setError(err.message || 'Failed to save business');
+      setFormSubmitting(false);
+      return false;
     }
-    setFormSubmitting(false);
   }, [editingBusiness, fetchBusinesses, setError]);
 
   const openEdit = useCallback((b: Business) => {
@@ -257,7 +269,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
           <input id="ff-businesstab-0" type="text" className="input-dark pl-9 w-full text-[11px] min-h-[36px]" placeholder="Search businesses by name, DBA, address, EIN..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-          {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></button>}
+          {searchQuery && <button aria-label="Close" type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100"><X className="w-3 h-3" /></button>}
         </div>
       </div>
 
@@ -341,8 +353,8 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
                 {b.phone && <a href={`tel:${b.phone}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400"><Phone className="w-3 h-3" /></a>}
                 {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400"><Mail className="w-3 h-3" /></a>}
                 {b.website && <a href={b.website.startsWith('http') ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Globe className="w-3 h-3" /></a>}
-                {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
-                {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                {isAdmin && <button aria-label="Edit" type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
+                {isAdmin && <button aria-label="Delete" type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
               </div>
             </div>
           </div>
@@ -482,11 +494,11 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
 function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   initial: Business | null;
-  onSubmit: (data: Partial<Business>) => Promise<void>;
+  onSubmit: (data: Partial<Business>) => Promise<boolean>;
   onCancel: () => void;
   submitting: boolean;
 }) {
-  const [form, setForm] = useState({
+  const defaultForm = {
     name: initial?.name || '',
     dba_name: initial?.dba_name || '',
     business_type: initial?.business_type || '',
@@ -508,8 +520,28 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     employee_count: initial?.employee_count || '',
     annual_revenue: initial?.annual_revenue || '',
     notes: initial?.notes || '',
+    // Server-only field (not on the Business type), applied via the
+    // never-clobber assessor patch — seeded here so ParcelDetailDrawer
+    // shows for an already-applied record on open, and stays current
+    // immediately after a fresh Apply without reopening the form.
+    parcel_number: (initial as any)?.parcel_number || '',
+  };
+  // Cross-device draft persistence — keyed per-record (edit) or a shared
+  // "new" key (create), matching the pattern used by the other records
+  // form modals (PersonFormModal, VehicleFormModal, etc).
+  const { form, setForm, clearDraft } = useFormDraft({
+    storageKey: `rmpg_business_form_${initial?.id ?? 'new'}`,
+    defaultValue: defaultForm,
   });
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = async () => {
+    const ok = await onSubmit(form);
+    // Only clear the draft after the save is confirmed successful — a
+    // failed save (network/validation error) must not silently lose the
+    // user's typed data.
+    if (ok) clearDraft();
+  };
 
   // ── Salt Lake County Assessor on-blur lookup ──
   // Panel renders below the address input. Apply is gated on `initial?.id`
@@ -522,7 +554,33 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   useEffect(() => () => { if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current); }, []);
 
   const onApplyAssessor = useCallback(async (parcelNumber: string) => {
-    if (!recordId) return; // Apply button is disabled in this branch; defensive guard.
+    // UNSAVED record: no row exists for /assessor/apply to write to, so fill
+    // the FORM instead. The old comment here claimed "Apply button is
+    // disabled in this branch" — it never was (the panel only disables on
+    // !picked), so clicking Apply on a new business silently did nothing.
+    if (!recordId) {
+      try {
+        const res = await apiFetch<{ ok: boolean; parcel: AssessorParcelDetail | null }>(
+          `/assessor/parcel/${encodeURIComponent(parcelNumber)}`,
+        );
+        if (!res?.parcel) return;
+        setForm((prev) => {
+          const { patch, skipped } = buildAssessorFormPatch(
+            res.parcel!, prev as unknown as Record<string, unknown>,
+          );
+          setSkippedCount(skipped.length);
+          if (skippedTimerRef.current) clearTimeout(skippedTimerRef.current);
+          if (skipped.length > 0) {
+            skippedTimerRef.current = setTimeout(() => setSkippedCount(0), 5000);
+          }
+          return { ...prev, ...(patch as Partial<typeof prev>) };
+        });
+        assessor.dismiss();
+      } catch (err) {
+        console.error('Assessor apply (unsaved record) failed', err);
+      }
+      return;
+    }
     try {
       const res = await apiFetch<{ ok: boolean; patch: Record<string, unknown>; skipped: string[]; parcel_record_id: number | null }>(
         '/assessor/apply',
@@ -547,7 +605,15 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
     } catch (err) {
       console.error('Assessor apply failed', err);
     }
-  }, [recordId, assessor]);
+  }, [recordId, assessor, setForm]);
+
+  // County resolution (resolveCountyFromAddress) needs a city/ZIP to route
+  // correctly — a bare street ("10846 South Indigo Sky Way") always resolves
+  // to 'unsupported'. Build the full address for lookups/jurisdiction; the
+  // county-side parsers strip city/state/zip back off before searching.
+  const fullAddress = (address: string) =>
+    [address, form.city, [form.state, form.zip].filter(Boolean).join(' ')]
+      .filter(Boolean).join(', ');
 
   return (
     <div className="space-y-2.5">
@@ -569,8 +635,13 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={e => set('address', e.target.value)}
-              onBlur={e => assessor.lookup(e.target.value)}
+              onBlur={e => assessor.lookup(fullAddress(e.target.value))}
             />
+            {form.address.trim() && (
+              <div className="mt-1">
+                <JurisdictionButton address={fullAddress(form.address)} recordType="business" recordId={recordId} />
+              </div>
+            )}
             <AssessorSuggestionPanel
               parcels={assessor.parcels}
               cached={assessor.cached}
@@ -586,7 +657,9 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
               onRefresh={assessor.refresh}
             />
             {!recordSaved && assessor.parcels && assessor.parcels.length > 0 && (
-              <div className="text-xs text-rmpg-400 mt-1">Save record first, then apply parcel.</div>
+              <div className="text-xs text-rmpg-400 mt-1">
+                Applying fills these fields now; they save with the record.
+              </div>
             )}
             {skippedCount > 0 && (
               <div className="text-xs text-rmpg-400 mt-1">{skippedCount} field(s) skipped (already filled)</div>
@@ -623,9 +696,22 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
         <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
       </FormSection>
 
+      {recordSaved && (
+        <FormSection title="Photos & Assessor Detail" icon={FileText}>
+          <RecordPhotoGallery recordType="business" recordId={recordId} />
+          {form.parcel_number && (
+            <div className="mt-2">
+              {/* form (not initial) so the drawer picks up a parcel_number
+                  applied via onApplyAssessor immediately, without reopening the modal. */}
+              <ParcelDetailDrawer parcelNumber={form.parcel_number} />
+            </div>
+          )}
+        </FormSection>
+      )}
+
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
-        <button type="button" onClick={() => onSubmit(form)} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
+        <button type="button" onClick={handleSave} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
           {submitting ? 'Saving...' : initial ? 'Update' : 'Create'}
         </button>
       </div>

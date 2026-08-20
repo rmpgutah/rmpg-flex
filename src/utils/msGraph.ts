@@ -64,7 +64,7 @@ async function writeRefreshToken(env: Env['Bindings'], token: string): Promise<v
   const db = getDb(env);
   await execute(
     db,
-    `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+    `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
     token, KEYS.refreshToken,
   );
 }

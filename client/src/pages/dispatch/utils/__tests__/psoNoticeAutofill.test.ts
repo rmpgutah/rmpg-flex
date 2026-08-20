@@ -131,12 +131,12 @@ describe('buildNoticeOfCommunicationFromCall', () => {
         visit_history: [
           {
             id: 30, call_id: '30', visit_number: 1, status: 'cleared',
-            disposition: 'no_contact', note: 'No answer; lights off',
+            disposition: 'no_contact', notes: 'No answer; lights off',
             onscene_at: '2026-06-07 14:00:00', created_at: '2026-06-07 13:55:00',
           } as any,
           {
             id: 36, call_id: '36', visit_number: 2, status: 'cleared',
-            disposition: 'no_contact', note: 'Gate locked',
+            disposition: 'no_contact', notes: 'Gate locked',
             onscene_at: '2026-06-08 18:30:00', created_at: '2026-06-08 18:20:00',
           } as any,
         ],
@@ -164,12 +164,12 @@ describe('buildNoticeOfCommunicationFromCall', () => {
         visit_history: [
           {
             id: 30, call_id: '30', visit_number: 1, status: 'cleared',
-            disposition: 'no_contact', note: 'First',
+            disposition: 'no_contact', notes: 'First',
             onscene_at: '2026-06-07 14:00:00', created_at: '2026-06-07 13:55:00',
           } as any,
           {
             id: 42, call_id: '42', visit_number: 2, status: 'cleared',
-            disposition: 'no_contact', note: 'Should be deduped',
+            disposition: 'no_contact', notes: 'Should be deduped',
             onscene_at: '2026-06-09 03:00:00', created_at: '2026-06-09 02:55:00',
           } as any,
         ],

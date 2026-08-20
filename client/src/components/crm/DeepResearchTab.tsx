@@ -10,6 +10,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ConfirmDialog from '../ConfirmDialog';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface JobRow {
   id: string; subject: string; subject_type: string; status: string; progress: number;
@@ -205,13 +206,13 @@ export default function DeepResearchTab() {
         {/* Jobs list */}
         <div className="space-y-1.5">
           <div className="text-[10px] font-semibold text-rmpg-400 uppercase">Research Jobs</div>
-          {jobs.length === 0 && <div className="text-[11px] text-rmpg-500">No jobs yet.</div>}
+          {jobs.length === 0 && <div className="text-[11px] text-fg-muted">No jobs yet.</div>}
           {jobs.map((j) => (
             <div key={j.id} onClick={() => setActiveId(j.id)}
               className={`cursor-pointer border p-2 ${activeId === j.id ? 'border-brand-500 bg-surface-raised' : 'border-rmpg-700 bg-surface-base'}`} style={{ borderRadius: '2px' }}>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-rmpg-100 font-semibold truncate">{j.subject}</div>
-                <span className="text-[8px] text-rmpg-400 uppercase">{j.subject_type}</span>
+                <span className="text-[8px] text-rmpg-400 uppercase">{formatEnumValue(j.subject_type)}</span>
               </div>
               <div className="flex items-center justify-between mt-1">
                 <span className="text-[9px] text-rmpg-400">{ACTIVE.has(j.status) ? `${j.stage_detail || j.status} (${j.progress}%)` : j.status}</span>
@@ -227,7 +228,7 @@ export default function DeepResearchTab() {
 
         {/* Detail */}
         <div className="lg:col-span-2 space-y-3">
-          {!detail && <div className="text-[11px] text-rmpg-500">Select a job to view findings.</div>}
+          {!detail && <div className="text-[11px] text-fg-muted">Select a job to view findings.</div>}
           {detail && (
             <>
               <div className="bg-surface-raised border border-rmpg-700 p-2" style={{ borderRadius: '2px' }}>
@@ -246,7 +247,7 @@ export default function DeepResearchTab() {
                   {detail.findings.map((f) => (
                     <div key={f.id} className={`border p-2 ${f.status === 'dismissed' ? 'opacity-50 border-rmpg-800' : 'border-rmpg-700'} bg-surface-base`} style={{ borderRadius: '2px' }}>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[8px] uppercase text-rmpg-500">{f.finding_type}</span>
+                        <span className="text-[8px] uppercase text-fg-muted">{formatEnumValue(f.finding_type)}</span>
                         <TrustBadge trust={f.trust} verdict={f.verdict} />
                         {f.is_delta ? <span className="text-[8px] text-rmpg-400">NEW</span> : null}
                         <span className="text-xs text-rmpg-100 font-semibold">{f.title}</span>
@@ -279,7 +280,7 @@ export default function DeepResearchTab() {
                   {detail.sources.map((s, i) => (
                     <a key={s.id} href={s.url} target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-1.5 text-[10px] text-rmpg-400 hover:text-rmpg-300 truncate">
-                      <span className="text-rmpg-500">[{i + 1}]</span><ExternalLink className="w-3 h-3 shrink-0" />
+                      <span className="text-fg-muted">[{i + 1}]</span><ExternalLink className="w-3 h-3 shrink-0" />
                       <span className="truncate">{s.title || s.url}</span>
                     </a>
                   ))}
@@ -298,9 +299,9 @@ export default function DeepResearchTab() {
         message="This permanently removes the job and all of its findings, sources, and report. Confirmed findings linked to entities elsewhere remain on those records."
         details={jobToDelete ? (
           <div className="mt-2 text-[11px] text-rmpg-300">
-            <div><span className="text-rmpg-500">Subject:</span> {jobToDelete.subject}</div>
-            <div><span className="text-rmpg-500">Type:</span> {jobToDelete.subject_type}</div>
-            <div><span className="text-rmpg-500">Sources / Findings:</span> {jobToDelete.source_count} · {jobToDelete.finding_count}</div>
+            <div><span className="text-fg-muted">Subject:</span> {jobToDelete.subject}</div>
+            <div><span className="text-fg-muted">Type:</span> {formatEnumValue(jobToDelete.subject_type)}</div>
+            <div><span className="text-fg-muted">Sources / Findings:</span> {jobToDelete.source_count} · {jobToDelete.finding_count}</div>
           </div>
         ) : undefined}
         confirmLabel="Delete"

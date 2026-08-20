@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <title>Rocky Mountain Protective Group — Emergency Access</title>
+  <style>
+    :root {
+      --s-base:         #0d1722;
+      --silver-400:     #cfd8e2;
+      --text-primary:   #f0f4f9;
+      --text-secondary: #a8bccf;
+      --text-muted:     #8fa3b8;
+      --text-hint:      #3e5e7e;
+      --sev-critical:   #ef4444;
+      --sev-ok:         #22c55e;
+      --border-visible: rgba(207, 216, 226, 0.35);
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100vw; height: 100vh; overflow: hidden;
+      background: var(--s-base); color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px; -webkit-font-smoothing: antialiased;
+      display: flex; align-items: center; justify-content: center;
+      user-select: none;
+    }
+
+    .dialog { width: 320px; display: flex; flex-direction: column; gap: 16px; }
+
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .header svg { flex-shrink: 0; }
+    .header-text { display: flex; flex-direction: column; gap: 2px; }
+    .brand { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--silver-400); font-weight: 700; }
+    .title { font-size: 12px; color: var(--text-secondary); }
+
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+    .field input {
+      background: transparent; border: none; outline: none;
+      border-bottom: 1px solid var(--border-visible);
+      color: var(--text-primary); font-size: 13px; font-family: inherit;
+      padding: 6px 0; width: 100%; transition: border-color 0.15s;
+    }
+    .field input:focus { border-bottom-color: var(--silver-400); }
+    .field input::placeholder { color: var(--text-hint); }
+
+    #error { font-size: 11px; color: var(--sev-critical); min-height: 16px; }
+
+    button#submit {
+      width: 100%; padding: 9px 0; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      background: var(--silver-400); color: var(--s-base);
+      border: none; border-radius: 2px; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button#submit:hover { opacity: 0.88; }
+    button#submit:disabled { opacity: 0.45; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="dialog">
+    <div class="header">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--silver-400)">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <div class="header-text">
+        <span class="brand">Rocky Mountain Protective Group</span>
+        <span class="title">Emergency Access — Kiosk Mode Exit</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" type="text" placeholder="Enter username" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Admin or manager password" autocomplete="current-password" />
+    </div>
+
+    <div id="error"></div>
+
+    <button id="submit">Exit Kiosk Mode</button>
+  </div>
+
+  <script>
+    'use strict';
+    const submitEl = document.getElementById('submit');
+    submitEl.addEventListener('click', async () => {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = '';
+      submitEl.disabled = true;
+      try {
+        // ipcRenderer.invoke REJECTS when the main-process handler throws —
+        // which is exactly what the IPC sender guard does for an untrusted
+        // frame. Without this catch the rejection was swallowed by the async
+        // listener and the operator saw the button do nothing at all, on a
+        // machine with no other way out. Always surface something.
+        const result = await window.kioskEscape.attempt(username, password);
+        if (!result || !result.ok) {
+          errorEl.textContent = (result && result.error) || 'Unexpected response from the app.';
+        }
+      } catch (err) {
+        errorEl.textContent = `Could not reach the app: ${err && err.message ? err.message : String(err)}`;
+      } finally {
+        submitEl.disabled = false;
+      }
+    });
+
+    document.getElementById('password').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') submitEl.click();
+    });
+  </script>
+</body>
+</html>

@@ -19,7 +19,7 @@
 //   • Distinct empty state — when there are no active BOLOs at all, give
 //     the operator a way to act, not just a flat "No active BOLOs." string.
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Plus, Flag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
@@ -28,6 +28,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useBolos, type Bolo } from './useBolos';
 import BoloCard from './bolo/BoloCard';
 import BoloCreateModal from './bolo/BoloCreateModal';
+import { formatEnumValue } from '../../utils/formatters';
 
 const PRIORITIES = ['P1', 'P2', 'P3'] as const;
 const ADMIN_ROLES = new Set(['admin', 'manager']);
@@ -227,7 +228,7 @@ export default function BoloBoard() {
         details={cancelTarget ? (
           <>
             <div><span className="text-rmpg-500">Title:</span> {cancelTarget.title}</div>
-            <div><span className="text-rmpg-500">Priority:</span> {cancelTarget.priority}</div>
+            <div><span className="text-rmpg-500">Priority:</span> {formatEnumValue(cancelTarget.priority)}</div>
             {cancelTarget.subject_description && <div><span className="text-rmpg-500">Subject:</span> {cancelTarget.subject_description}</div>}
             {cancelTarget.vehicle_description && <div><span className="text-rmpg-500">Vehicle:</span> {cancelTarget.vehicle_description}</div>}
           </>

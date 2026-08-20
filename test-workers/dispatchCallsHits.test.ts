@@ -38,7 +38,7 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1, reason TEXT
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS warrants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, subject_person_id INTEGER, person_id INTEGER, status TEXT, warrant_number TEXT
+    id INTEGER PRIMARY KEY AUTOINCREMENT, subject_person_id INTEGER, status TEXT, warrant_number TEXT
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS national_sex_offenders (
     id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER, jurisdiction TEXT, last_name TEXT

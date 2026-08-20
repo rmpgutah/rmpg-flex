@@ -1,5 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiFetch } from './useApi';
+import {
+  writeFix, loadUnsynced, markSynced, pruneOld, migrateFromLocalStorage,
+} from '../utils/gpsStore';
+import {
+  queueClientFiring, loadUnsynced as loadUnsyncedFirings,
+  markFiringsSynced, pruneOldFirings,
+} from '../utils/automationFiringStore';
+import type { EvaluatorState, AutomationRule } from '../utils/automationEngine';
 
 // ============================================================
 // GPS Tracking Hook — 1-Second Breadcrumb Collection
@@ -94,10 +102,18 @@ interface UseGpsTrackingOptions {
  *  At ~1 position/second, each batch carries ~5 points. */
 const DEFAULT_BATCH_INTERVAL = 5000;
 
+/** Batch interval when running on the Toughbook FZ-55 with the internal u-blox
+ *  chip configured at 5 Hz (UBX-CFG-RATE). Reduces map lag from ~6 s to ~1.2 s. */
+const WINDOWS_INTERNAL_BATCH_MS = 1000;
+
+/** Skip a 'poor' quality fix (HDOP > 5) if the last accepted fix is younger than
+ *  this window. Prevents urban-canyon signal from overwriting the last good road fix. */
+const POOR_FIX_SKIP_WINDOW_MS = 30_000;
+
 /** Whether the current device is likely a desktop/laptop (no GPS hardware).
  *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
  *  vehicles typically returns 100–500m accuracy. */
-const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const IS_DESKTOP = typeof window !== 'undefined' && typeof navigator !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator?.userAgent ?? '');
 
 /** Reject GPS readings less accurate than this (meters).
  *  Mobile (GPS hardware): 100m — modern phones get 3-15m; 100m filters WiFi junk.
@@ -131,6 +147,7 @@ interface QueuedPoint {
   source: PositionSource;
   activity?: string | null;
   activity_confidence?: string | null;
+  fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
 }
 
 // ── CoreMotion activity bridge (native iOS only) ─────────────
@@ -228,47 +245,6 @@ function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number):
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
     Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-// ─── localStorage GPS Failover Queue ─────────────────────
-const LS_GPS_QUEUE_KEY = 'rmpg_gps_failover_queue';
-// Accountability requirement: never silently drop fixes over a normal field
-// outage. At the ~5s accepted cadence, 2000 fixes ≈ 2.8 h offline (was 100 ≈
-// 8 min). ~2000 × ~120 B JSON ≈ 240 KB, well within the 5 MB localStorage budget.
-// (A truly unbounded buffer would need IndexedDB — tracked as a follow-up.)
-const LS_MAX_QUEUED_POINTS = 2000;
-
-function loadFailoverQueue(): QueuedPoint[] {
-  try {
-    const raw = localStorage.getItem(LS_GPS_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.slice(-LS_MAX_QUEUED_POINTS) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFailoverQueue(points: QueuedPoint[]): void {
-  try {
-    // Overflow drops the OLDEST fixes (keep newest). Surface it rather than
-    // dropping silently, so a sustained outage that exceeds the buffer is
-    // visible in logs instead of being invisible data loss.
-    if (points.length > LS_MAX_QUEUED_POINTS) {
-      console.warn(`[gps] failover queue overflow — dropping ${points.length - LS_MAX_QUEUED_POINTS} oldest fix(es) (buffer cap ${LS_MAX_QUEUED_POINTS})`);
-    }
-    localStorage.setItem(LS_GPS_QUEUE_KEY, JSON.stringify(points.slice(-LS_MAX_QUEUED_POINTS)));
-  } catch {
-    // localStorage full or unavailable — degrade gracefully
-  }
-}
-
-function clearFailoverQueue(): void {
-  try {
-    localStorage.removeItem(LS_GPS_QUEUE_KEY);
-  } catch {
-    // ignore
-  }
 }
 
 /** How long (ms) without a position callback before heartbeat restarts watchPosition */
@@ -412,8 +388,52 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   /** Heartbeat restart counter — prevents infinite restart loops */
   const heartbeatRestartCountRef = useRef(0);
   const MAX_HEARTBEAT_RESTARTS = 5;
+  /**
+   * Independent rate limit for the staleness WARNING.
+   *
+   * The restart counter cannot throttle this log, because a successful fix
+   * resets it to 0 (see the success handlers). Under INTERMITTENT GPS — fix,
+   * 31s of silence, fix, 31s of silence — the counter never reaches
+   * MAX_HEARTBEAT_RESTARTS, so every staleness event logged at warn level,
+   * forever. Measured on a live console: 120 identical
+   * "[GPS] No position callback in 31s" warnings in one session.
+   *
+   * The throttle was therefore defeated by exactly the condition it existed to
+   * handle: no GPS at all goes quiet after 5 events, but FLAKY GPS (the real
+   * vehicle case) warns indefinitely. A CAD console stays open all shift, and
+   * that volume buries genuine errors.
+   *
+   * This gates only the LOG. Restart/retry behaviour is deliberately untouched:
+   * a vehicle CAD must keep trying to reacquire, and the surrounding code says
+   * so emphatically. Staleness is still reported every time at debug level, and
+   * the UI `error` string still surfaces the degradation.
+   */
+  const lastStaleWarnAtRef = useRef(0);
+  const STALE_WARN_INTERVAL_MS = 5 * 60 * 1000;
+  // True while a one-shot "restart on the next user gesture" listener is armed,
+  // so a heartbeat firing every 27s can't stack dozens of duplicate listeners.
+  const gestureRestartArmedRef = useRef(false);
+  // True from the moment a restart is DECIDED until it actually runs. The
+  // permission check below is async, so without this the interval keeps firing
+  // during the pending promise and queues a fresh restart every tick — caught
+  // by useGpsTracking.heartbeat.test.ts, which saw 71 watchPosition calls where
+  // the backoff should cap them near 20.
+  const restartPendingRef = useRef(false);
   /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
   const gpsSourceRef = useRef<string>('browser');
+
+  // ─── Automation engine ───────────────────────────────────
+  // State persists across re-renders; never triggers React re-renders.
+  const evaluatorStateRef = useRef<EvaluatorState>({
+    lastFired: {},
+    lastFix: null,
+    lastMovedTs: Date.now(),
+    assignedCallLatLng: null,
+  });
+  const automationRulesRef = useRef<AutomationRule[]>([]);
+  // Bridge: the consuming component wires its addToast() in here so the hook
+  // can surface notifications without being inside a ToastProvider itself.
+  const addToastRef = useRef<((msg: string, type: string, duration?: number) => void) | null>(null);
   /** True once we've confirmed the host is a Toughbook (FZ-55) with a live
    *  internal GPS stream. Internal NMEA is PRIMARY; navigator.geolocation
    *  continues to run as a SECONDARY fallback for when GPS lock is lost
@@ -457,9 +477,17 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     return () => { cancelled = true; };
   }, []);
 
+  // Load automation rules once on mount (lazy-import the engine for code-splitting).
+  useEffect(() => {
+    import('../utils/automationEngine').then(() => {}).catch(() => {});
+    apiFetch<{ rules: AutomationRule[] }>('/automation-rules')
+      .then((data) => { automationRulesRef.current = data?.rules ?? []; })
+      .catch(() => {});
+  }, []);
+
   // ─── Batch send ───────────────────────────────────────────
   // Drains the queue and POSTs all collected points to the server.
-  // On failure, persists points to localStorage so they survive page reloads.
+  // On failure, points stay in queueRef and IDB (written fire-and-forget on ingest).
   const isSendingRef = useRef(false);
   const sendBatch = useCallback(async () => {
     // Read-only consumer — never upload; drain the queue so it can't grow.
@@ -469,27 +497,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSendingRef.current = true;
 
     try {
-      // Merge any previously failed points from localStorage with the live
-      // queue, deduping by (timestamp, lat, lng). The failover queue and the
-      // in-memory queue can hold the SAME breadcrumb after a failed send (the
-      // catch below persists `allPoints` to localStorage AND re-queues the
-      // in-memory points), so a naive concat would re-insert duplicates on
-      // reconnect — compounding the double-insert this audit (GPS-3) fixes.
-      const failoverPoints = loadFailoverQueue();
+      // Snapshot the in-memory queue. IDB (gpsStore) already durably holds
+      // every accepted fix written via writeFix, so there is no separate
+      // localStorage failover queue to merge here.
       const currentPoints = [...queueRef.current]; // snapshot copy, not reference
-      const seen = new Set<string>();
-      const dedupeKey = (p: QueuedPoint) => `${p.timestamp}|${p.lat}|${p.lng}`;
-      const allPoints: QueuedPoint[] = [];
-      for (const p of [...failoverPoints, ...currentPoints]) {
-        const k = dedupeKey(p);
-        if (seen.has(k)) continue;
-        seen.add(k);
-        allPoints.push(p);
-      }
+      const allPoints = currentPoints;
       if (allPoints.length === 0) {
-        // Nothing to send — but stale failover entries may linger if every
-        // point was a duplicate already covered in-memory. Leave them; the
-        // catch path owns failover persistence.
         return;
       }
 
@@ -510,8 +523,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (result && typeof result === 'object' && (result as { error?: unknown }).error) {
           throw new Error(`GPS upload reported error: ${String((result as { error?: unknown }).error)}`);
         }
-        // Success — clear the failover queue
-        clearFailoverQueue();
+        // Success — mark the sent fixes as synced in IDB
+        loadUnsynced().then((fixes) => {
+          const sentTs = new Set(allPoints.map((p) => new Date(p.timestamp).getTime())); // new-date-ok — p.timestamp is epoch ms from IDB
+          const toMark = fixes.filter((f) => sentTs.has(f.ts)).map((f) => f.id);
+          if (toMark.length > 0) markSynced(toMark).catch(() => {});
+        }).catch(() => {});
         // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)
         const needsUnitFetch = !unitIdRef.current;
         // Adopt the unit straight from the (non-stubbed) write response. The GET
@@ -544,13 +561,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Failed to send GPS position';
         console.warn(`[GPS] Batch send failed (${allPoints.length} pts):`, errMsg);
-        // Re-enqueue failed points in front of any new arrivals
+        // Re-enqueue failed points in front of any new arrivals.
+        // IDB already holds every fix via writeFix — no separate failover save needed.
         queueRef.current = [...currentPoints, ...queueRef.current];
-        saveFailoverQueue(allPoints.slice(-LS_MAX_QUEUED_POINTS));
         setState((prev) => ({
           ...prev,
           error: errMsg,
         }));
+        if ('serviceWorker' in navigator && 'SyncManager' in window) {
+          navigator.serviceWorker.ready
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            .then((reg) => (reg as any).sync.register('gps-flush'))
+            .catch(() => {});
+        }
       }
     } finally {
       isSendingRef.current = false;
@@ -755,6 +778,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     speed: number | null;
     sourceHint?: PositionSource;
     fromInternalGps?: boolean;
+    fixQuality?: 'excellent' | 'good' | 'degraded' | 'poor' | null;
   }) => {
     const { latitude, longitude, accuracy, heading, speed } = coords;
 
@@ -764,6 +788,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     if (!coords.fromInternalGps && useInternalGpsRef.current) {
       const sinceInternal = Date.now() - lastInternalGpsAtRef.current;
       if (sinceInternal < INTERNAL_GPS_FRESH_MS) return;
+    }
+
+    // Quality gate — reject 'poor' fixes (HDOP > 5) while a good fix is recent.
+    // Prevents urban-canyon reflections from overwriting the last road position.
+    // Once the good-fix window expires (30 s), poor fixes are accepted — the
+    // officer must not be left with a stale position indefinitely.
+    if (coords.fixQuality === 'poor' && lastAcceptedRef.current) {
+      const sinceGood = Date.now() - lastAcceptedRef.current.time;
+      if (sinceGood < POOR_FIX_SKIP_WINDOW_MS) return;
     }
 
     if (coords.fromInternalGps) {
@@ -807,6 +840,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         speed,
         timestamp: new Date().toISOString(),
         source,
+        fixQuality: coords.fixQuality ?? null,
       };
 
       lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
@@ -816,6 +850,58 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
       }
       queueRef.current.push(point);
+      // Persist to IDB for offline durability — fire-and-forget, non-fatal
+      writeFix({
+        ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
+        lat: point.lat,
+        lng: point.lng,
+        accuracy: point.accuracy,
+        heading: point.heading,
+        speed: point.speed,
+        source: point.source,
+      }).catch(() => { /* non-fatal */ });
+
+      // Evaluate automation rules (lazy import keeps initial bundle small).
+      import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
+        const fix = {
+          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
+          heading: point.heading,
+          speed: point.speed,
+          source: point.source,
+        };
+        updateMovementState(fix, evaluatorStateRef.current);
+        const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
+        for (const action of actions) {
+          if (action.localAction?.type === 'notify_officer') {
+            if (action.localAction.confirmCallback === 'mark_on_scene') {
+              addToastRef.current?.(
+                `${action.localAction.message} — tap to mark on scene`,
+                'info',
+                8000,
+              );
+            } else {
+              addToastRef.current?.(
+                action.localAction.message,
+                action.localAction.severity === 'critical' ? 'error' : 'info',
+              );
+            }
+          }
+          // Queue every firing (local or server) for offline replay on reconnect
+          queueClientFiring({
+            rule_id: action.rule.id,
+            rule_name: action.rule.name,
+            trigger_type: action.rule.trigger_type,
+            action_type: action.rule.action_type,
+            trigger_lat: fix.lat,
+            trigger_lng: fix.lng,
+            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
+            context: { speed: fix.speed, accuracy: fix.accuracy },
+          }).catch(() => {}); // fire-and-forget, never blocks eval
+        }
+      }).catch(() => {});
 
       // Opt-in exportable session track (separate from the upload queue, which
       // gets drained on every batch send).
@@ -887,6 +973,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           speed: pos.speed ?? null,
           sourceHint: 'gps',
           fromInternalGps: true,
+          fixQuality: pos.fixQuality ?? null,
         });
       });
       unsubError = electron.onInternalGpsError((err: any) => {
@@ -955,10 +1042,25 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // Start tracking
   const startTracking = useCallback(() => {
-    // On Toughbook FZ-55, internal NMEA is primary but navigator.geolocation
-    // also runs as a SECONDARY fallback — when GPS lock is lost (concrete
-    // buildings, parking garages), WiFi triangulation fills the gap.
-    // ingestPosition gates browser fixes via lastInternalGpsAtRef.
+    // On Windows Electron (Toughbook FZ-55), the internal u-blox NMEA reader is
+    // the ONLY GPS source. navigator.geolocation on Windows routes through the
+    // Windows Location Platform (WiFi/IP triangulation), which is less accurate
+    // than the dedicated hardware chip and creates an unnecessary permission flow.
+    // Skip it entirely — just arm the batch send timer so queued internal-GPS
+    // fixes get uploaded. The IS_WINDOWS_ELECTRON useEffect above calls
+    // setIsTracking(true) once the COM port is confirmed, so tracking state is
+    // accurate (not prematurely "on" while the port is still being enumerated).
+    if (IS_WINDOWS_ELECTRON) {
+      setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
+      if (uploadRef.current) {
+        // Use the faster Windows interval — chip configured at 5 Hz via UBX-CFG-RATE,
+        // so 1 s batches upload fresh positions every second instead of every 5 s.
+        const interval = setInterval(sendBatch, WINDOWS_INTERNAL_BATCH_MS);
+        batchIntervalRef.current = interval;
+      }
+      return;
+    }
+
     if (!('geolocation' in navigator)) {
       setState((prev) => ({
         ...prev,
@@ -1058,6 +1160,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
         }
         queueRef.current.push(point);
+        // Persist to IDB for offline durability — fire-and-forget, non-fatal
+        writeFix({
+          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
+          lat: point.lat,
+          lng: point.lng,
+          accuracy: point.accuracy,
+          heading: point.heading,
+          speed: point.speed,
+          source: point.source,
+        }).catch(() => { /* non-fatal */ });
 
         // ── Exportable session track (PARITY FIX) ──
         // `capturedCount` drives the HUD's "Track N pts" readout and the
@@ -1093,6 +1205,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             msg = 'Location permission denied. You MUST enable location access to use RMPG Flex.';
             denied = true;
             permissionDeniedRef.current = true;
+            // startTracking() optimistically flips isTracking true as soon as the
+            // watch is armed, before any fix arrives — without resetting it here,
+            // the status bar shows "GPS: ON" at the same time this banner shows
+            // "Location disabled", which is a direct contradiction on screen.
+            setIsTracking(false);
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
@@ -1218,9 +1335,18 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (permissionDeniedRef.current) {
           return;
         }
-        // Throttle log noise: warn while still in the aggressive phase, then
-        // drop to debug so a perpetually-stale console doesn't flood the log.
-        const log = heartbeatRestartCountRef.current >= MAX_HEARTBEAT_RESTARTS ? console.debug : console.warn;
+        // Throttle log noise. Two independent conditions must BOTH hold to warn:
+        //   - still in the aggressive restart phase, AND
+        //   - we have not already warned within STALE_WARN_INTERVAL_MS.
+        // The second is what actually bounds the volume: the restart counter is
+        // reset by every successful fix, so under intermittent GPS it never
+        // reaches the cap and the first condition alone warned on every cycle.
+        const now = Date.now();
+        const withinAggressivePhase = heartbeatRestartCountRef.current < MAX_HEARTBEAT_RESTARTS;
+        const warnIntervalElapsed = now - lastStaleWarnAtRef.current >= STALE_WARN_INTERVAL_MS;
+        const shouldWarn = withinAggressivePhase && warnIntervalElapsed;
+        if (shouldWarn) lastStaleWarnAtRef.current = now;
+        const log = shouldWarn ? console.warn : console.debug;
         log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
@@ -1235,11 +1361,72 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           // Surface the degradation to UI but keep retrying.
           setState((prev) => ({ ...prev, error: `GPS signal stale (${Math.round(staleDuration / 1000)}s) — auto-retrying…` }));
         }
-        // Clear the stale watch and restart
-        navigator.geolocation.clearWatch(watchIdRef.current);
-        watchIdRef.current = null;
-        cleanupTracking(false);
-        startTracking();
+        // One restart decision in flight at a time — see restartPendingRef.
+        if (restartPendingRef.current) return;
+
+        // Clear the stale watch and restart.
+        const doRestart = () => {
+          restartPendingRef.current = false;
+          // Both callers are async relative to this tick (a Permissions promise
+          // or a user gesture), so the hook may have unmounted in between.
+          // Restarting then would recreate a watch and heartbeat with no owner.
+          if (!mountedRef.current) return;
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+            watchIdRef.current = null;
+          }
+          cleanupTracking(false);
+          startTracking();
+        };
+
+        // ⚠️ Restart from this timer ONLY when permission is already 'granted'.
+        //
+        // This callback runs from setInterval, which carries no user-activation
+        // token. Calling watchPosition() here while permission is still 'prompt'
+        // makes Chrome log "[Violation] Only request geolocation information in
+        // response to a user gesture" AND silently withhold position callbacks —
+        // which re-triggers this very watchdog, so the hook restarts the watch
+        // forever, never gets a fix, and floods the console. Observed live
+        // 2026-07-26: paired "No position callback in 45s" + violation lines,
+        // repeating.
+        //
+        // When permission IS granted no gesture is required, so the restart is
+        // legitimate and proceeds. When it isn't, arm a one-shot gesture
+        // listener instead: the next real interaction restarts tracking with a
+        // valid activation token, and we stop burning restart attempts on calls
+        // the browser will refuse. The initial-start effect below uses the same
+        // permission-then-gesture strategy.
+        const armGestureRestart = () => {
+          // Waiting on a gesture is not "in flight" — clear the flag so a later
+          // permission grant can still be picked up by the heartbeat.
+          restartPendingRef.current = false;
+          if (gestureRestartArmedRef.current) return;
+          gestureRestartArmedRef.current = true;
+          const onGesture = () => {
+            gestureRestartArmedRef.current = false;
+            window.removeEventListener('click', onGesture);
+            window.removeEventListener('keydown', onGesture);
+            window.removeEventListener('touchstart', onGesture);
+            doRestart();
+          };
+          window.addEventListener('click', onGesture, { once: true });
+          window.addEventListener('keydown', onGesture, { once: true });
+          window.addEventListener('touchstart', onGesture, { once: true });
+        };
+
+        const permApi = (navigator as any).permissions;
+        if (permApi?.query) {
+          restartPendingRef.current = true;
+          permApi.query({ name: 'geolocation' })
+            .then((res: any) => { if (res.state === 'granted') doRestart(); else armGestureRestart(); })
+            // Permissions API present but the query failed — fall back to
+            // restarting. A missing permission state is not evidence of denial,
+            // and dropping the restart would strand a vehicle with no GPS.
+            .catch(() => doRestart());
+        } else {
+          // No Permissions API (older WebView): the pre-existing behaviour.
+          doRestart();
+        }
       }
     }, HEARTBEAT_INTERVAL);
 
@@ -1277,6 +1464,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     // a prior unmount and silently disables `setState` guards.
     mountedRef.current = true;
 
+    // One-time migration from old localStorage queue
+    migrateFromLocalStorage().catch(() => {});
+    // Prune synced fixes older than 72h
+    pruneOld().catch(() => {});
+    // Prune synced automation firings older than 72h
+    pruneOldFirings().catch(() => {});
+
     let started = false;
     const start = () => {
       if (started) return;
@@ -1287,15 +1481,21 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       startTracking();
     };
 
-    const permApi = (navigator as any).permissions;
-    if (permApi?.query) {
-      permApi.query({ name: 'geolocation' }).then((res: any) => {
-        if (res.state === 'granted') start();
-      }).catch(() => { /* Permissions API absent — wait for gesture */ });
+    // On Windows Electron, the internal NMEA reader requires no browser permission
+    // prompt — start the batch timer immediately without waiting for a gesture.
+    if (IS_WINDOWS_ELECTRON) {
+      start();
+    } else {
+      const permApi = (navigator as any).permissions;
+      if (permApi?.query) {
+        permApi.query({ name: 'geolocation' }).then((res: any) => {
+          if (res.state === 'granted') start();
+        }).catch(() => { /* Permissions API absent — wait for gesture */ });
+      }
+      window.addEventListener('click', start, { once: true });
+      window.addEventListener('keydown', start, { once: true });
+      window.addEventListener('touchstart', start, { once: true });
     }
-    window.addEventListener('click', start, { once: true });
-    window.addEventListener('keydown', start, { once: true });
-    window.addEventListener('touchstart', start, { once: true });
 
     return () => {
       mountedRef.current = false;
@@ -1319,40 +1519,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   }, [isTracking, startTracking]);
 
   // ─── Durable flush on background / page close ───────────────
-  // On a real tab close, hard refresh, or the OS backgrounding the app, React's
-  // unmount cleanup is unreliable and the in-memory upload queue (up to one 5s
-  // interval of fixes) would be silently lost. `pagehide` fires reliably; persist
-  // the in-memory queue into the localStorage failover queue (synchronous, so it
-  // completes before the page is frozen/killed). Those fixes then upload on the
-  // next session. We persist (not beacon-send) to avoid duplicate breadcrumbs —
-  // the server has no fix-level dedup, so a beacon that partially succeeds plus
-  // the failover re-send would double-write and inflate trip distance. Dedupe
-  // against the existing failover so a tab-switch → resume can't double-queue
-  // (sendBatch also dedupes failover+queue on resume). Accountability: the fix is
-  // durably stored either way — never dropped.
-  useEffect(() => {
-    const persistQueue = () => {
-      try {
-        const pending = queueRef.current;
-        if (!pending.length) return;
-        const seen = new Set<string>();
-        const merged = [...loadFailoverQueue(), ...pending].filter((p) => {
-          const k = `${p.timestamp}|${p.lat}|${p.lng}`;
-          if (seen.has(k)) return false;
-          seen.add(k);
-          return true;
-        });
-        saveFailoverQueue(merged);
-      } catch { /* never block unload */ }
-    };
-    const onVisHidden = () => { if (document.visibilityState === 'hidden') persistQueue(); };
-    window.addEventListener('pagehide', persistQueue);
-    document.addEventListener('visibilitychange', onVisHidden);
-    return () => {
-      window.removeEventListener('pagehide', persistQueue);
-      document.removeEventListener('visibilitychange', onVisHidden);
-    };
-  }, []);
+  // Every accepted fix is written to IDB (gpsStore) via writeFix at the moment
+  // it is accepted, so no additional localStorage persistence is needed on
+  // pagehide. The IDB store is durable across page reloads; unsynced fixes will
+  // be marked synced by the next session's sendBatch success path.
+  // (The old localStorage failover queue was removed — replaced by IDB.)
 
   // ─── Network change listener ────────────────────────────────
   // When the device switches between WiFi ↔ cellular (e.g., entering/leaving
@@ -1402,11 +1573,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // ─── Online/offline listener ───────────────────────────────
   // Handle browser online/offline events (covers WiFi disconnect/reconnect)
   useEffect(() => {
+    const flushClientFirings = () => {
+      loadUnsyncedFirings().then((firings) => {
+        if (firings.length === 0) return;
+        apiFetch('/automation-rules/firings/client', {
+          method: 'POST',
+          body: JSON.stringify({ firings }),
+        }).then((res: any) => {
+          const inserted: number = res?.inserted ?? firings.length;
+          if (inserted >= 0) {
+            markFiringsSynced(firings.map((f) => (f as any).id)).catch(() => {});
+          }
+        }).catch(() => {
+          // Non-fatal — SW background sync covers the closed-tab case
+        });
+      }).catch(() => {});
+    };
+
     const handleOnline = () => {
       setState((prev) => ({ ...prev, connectionType: getConnectionType() }));
       if (!isTracking) {
         startTracking();
       }
+      flushClientFirings();
     };
     const handleOffline = () => {
       setState((prev) => ({ ...prev, connectionType: 'none' }));
@@ -1522,5 +1711,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     getCapturedTrack,
     clearCapturedTrack,
     exportTrack,
+    addToastRef,
   };
 }

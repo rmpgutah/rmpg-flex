@@ -11,6 +11,7 @@ import { runPhase3 as executePhase3 } from '../utils/personIntel/phase3';
 import { mergeDataPoints, deriveConfidence } from '../utils/personIntel/confidence';
 import { computeRiskScore } from '../utils/personIntel/riskScore';
 
+import { log } from '../utils/logger';
 interface DOState {
   dossierId: number;
   seed: IntelSeed;
@@ -68,6 +69,7 @@ export class PersonIntelDO {
       else if (st.stage === 'phase2') await this.runPhase2(st);
       else if (st.stage === 'phase3') await this.runPhase3(st);
     } catch (e: any) {
+      log.error('handler failed', { src: 'src/durable-objects/PersonIntelDO.ts' }, e);
       await execute(this.env.DB, `UPDATE person_intelligence SET status='error', notes=? WHERE id=?`,
         [String(e?.message ?? e).slice(0, 500), st.dossierId]);
       st.stage = 'error';
@@ -114,13 +116,15 @@ export class PersonIntelDO {
     // Auto-link: check if persons table has a match
     let linkedPersonId: number | null = null;
     if (st.seed.name) {
-      const person = await this.env.DB.prepare(`SELECT id FROM persons WHERE full_name LIKE ? LIMIT 1`).bind(`%${st.seed.name.split(' ')[0]}%`).first<{ id: number }>();
+      // persons has first_name/last_name, not full_name — this threw
+      // "no such column: full_name" and the lookup always came back empty.
+      const person = await this.env.DB.prepare(`SELECT id FROM persons WHERE (first_name || ' ' || last_name) LIKE ? LIMIT 1`).bind(`%${st.seed.name.split(' ')[0]}%`).first<{ id: number }>();
       if (person) linkedPersonId = person.id;
     }
 
     // Check warrants and NSO → additional risk flags
     if (linkedPersonId) {
-      const warrant = await this.env.DB.prepare(`SELECT id FROM warrants WHERE person_id=? AND status='active' LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
+      const warrant = await this.env.DB.prepare(`SELECT id FROM warrants WHERE subject_person_id=? AND status='active' LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
       if (warrant) allRiskFlags.push('warrant');
       const sor = await this.env.DB.prepare(`SELECT id FROM national_sex_offenders WHERE person_id=? LIMIT 1`).bind(linkedPersonId).first<{ id: number }>();
       if (sor) allRiskFlags.push('nsopw');

@@ -45,7 +45,7 @@ export default function BodyCameraDetailTab({
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatFileSize = (bytes: number) => {
@@ -63,7 +63,7 @@ export default function BodyCameraDetailTab({
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const statusLabel = (status: string) => status.replace(/_/g, ' ').toUpperCase();
+  const statusLabel = (status: string) => toDisplayLabel(status).toUpperCase();
   const classLabel = (cls: string) => toDisplayLabel(cls);
 
   const topBorderColor = (status: string) => {

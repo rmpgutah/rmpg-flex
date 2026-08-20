@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, executeBatch, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, queryInChunks, execute, executeInChunks, executeBatch, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
@@ -12,6 +12,8 @@ import { recordAudit } from '../../utils/auditLog';
 import { emitFleetioEvent } from '../../utils/fleetio/events';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
+import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
+import { assignStackGroup, leaveStackGroup, reassignStackGroup, syncToStack, type SyncFields } from '../../utils/stackSync';
 const calls = new Hono<Env>();
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
@@ -66,7 +68,7 @@ export const LIST_VIEW_COLUMNS = [
 export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
-calls.get('/', async (c) => {
+calls.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate, search, archived, page, limit, active, unit_id } = c.req.query();
@@ -77,14 +79,14 @@ calls.get('/', async (c) => {
     if (status) {
       const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
       if (statuses.length === 1) { where += ' AND c.status = ?'; params.push(statuses[0]); }
-      else if (statuses.length > 1) { where += ` AND c.status IN (${statuses.map(() => '?').join(',')})`; params.push(...statuses); }
+      else if (statuses.length > 1) { const capped = statuses.slice(0, 90); where += ` AND c.status IN (${capped.map(() => '?').join(',')})`; params.push(...capped); }
     }
     if (priority) { where += ' AND c.priority = ?'; params.push(priority.toUpperCase()); }
     if (startDate) { where += ' AND c.created_at >= ?'; params.push(startDate); }
     if (endDate) { where += ' AND c.created_at <= ?'; params.push(endDate); }
     if (search) {
       where += " AND (c.call_number LIKE ? OR c.incident_type LIKE ? OR c.location_address LIKE ? OR c.description LIKE ?)";
-      const s = `%${search}%`; params.push(s, s, s, s);
+      const s = `%${search.slice(0, 48)}%`; params.push(s, s, s, s);
     }
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
@@ -100,7 +102,7 @@ calls.get('/', async (c) => {
     // not a replacement, so unset callers correctly get "everything
     // non-archived" per the archived handling above.
     if (active === 'true') {
-      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending')";
     }
 
     // `unit_id` scopes the list to calls assigned to one unit — opt-in, so
@@ -155,7 +157,7 @@ calls.get('/', async (c) => {
 });
 
 // POST /dispatch/calls - Create call
-calls.post('/', async (c) => {
+calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
@@ -217,7 +219,7 @@ calls.post('/', async (c) => {
     // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
     // co-exist; the LIKE here only scans the new format so we don't
     // collide with the old sequence.
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const prefix = `CFS${year}-`;
     // call_number carries a UNIQUE constraint, and this read-max-then-increment
     // isn't atomic — two near-simultaneous creates can read the same MAX and
@@ -289,7 +291,7 @@ calls.post('/', async (c) => {
     // UPDATABLE_CALL_COLUMNS_BASE set so any column writable later is
     // writable on insert. Skip immutable cols (id, call_number,
     // created_at, dispatcher_id — set above).
-    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id']);
+    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id', 'status']);
     for (const [key, val] of Object.entries(body)) {
       if (skipOnCreate.has(key)) continue;
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
@@ -342,6 +344,15 @@ calls.post('/', async (c) => {
         }
       }
 
+      // ── Stack group assignment ──
+      // Best-effort: never block call creation on a sync failure.
+      try {
+        await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+        await assignStackGroup(db, callId, String(location_address || ''));
+      } catch (stackErr) {
+        log.error('assignStackGroup failed on call create (non-fatal)', { callId }, stackErr);
+      }
+
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
 
       // Audit trail entry — dispatch's Audit tab reads audit_log by
@@ -361,17 +372,30 @@ calls.post('/', async (c) => {
       // without a manual refresh. Matches the legacy POST behavior.
       broadcastAll('dispatch_update', { action: 'call_created', call });
 
-      // Reverse geocode: populate address from GPS if missing
-      if ((!body.location_address || body.location_address === '') && body.latitude != null && body.longitude != null) {
-        import('../geocode').then(async (geo) => {
-          try {
-            const coords = await geo.geocodeAddress(c.env, `${body.latitude},${body.longitude}`);
-            if (coords && coords.lat != null) {
-              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, `${coords.lat}, ${coords.lng}`, callId);
+      // Background geocoding — best-effort, never blocks the response.
+      // Two paths: forward (address → coords) and reverse (coords → address).
+      import('../geocode').then(async (geo) => {
+        try {
+          const addr = body.location_address as string | undefined;
+          const hasAddr = addr && addr.trim().length >= 3;
+          const hasCoords = body.latitude != null && body.longitude != null &&
+            Number.isFinite(Number(body.latitude)) && Number.isFinite(Number(body.longitude));
+
+          if (hasAddr && !hasCoords) {
+            // Forward geocode: address provided but no coordinates — populate lat/lng
+            const coords = await geo.geocodeAddress(c.env, addr!.trim());
+            if (coords) {
+              await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, callId);
             }
-          } catch { /* best-effort */ }
-        }).catch(() => {});
-      }
+          } else if (!hasAddr && hasCoords) {
+            // Reverse geocode: coordinates provided but no address — populate address
+            const label = await geo.reverseGeocodeAddress(c.env, Number(body.latitude), Number(body.longitude));
+            if (label) {
+              await execute(db, `UPDATE calls_for_service SET location_address = ?, updated_at = datetime('now') WHERE id = ?`, label, callId);
+            }
+          }
+        } catch { /* best-effort */ }
+      }).catch(() => {});
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
@@ -400,7 +424,7 @@ calls.post('/', async (c) => {
 });
 
 // GET /dispatch/calls/active - Active calls shortcut
-calls.get('/active', async (c) => {
+calls.get('/active', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
@@ -410,17 +434,18 @@ calls.get('/active', async (c) => {
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id
-      WHERE c.status IN ('dispatched','enroute','onscene','pending','open')
+      WHERE c.status IN ('dispatched','enroute','onscene','pending')
       ORDER BY c.created_at DESC LIMIT 200
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /active failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to get active calls' }, 500);
   }
 });
 
 // GET /dispatch/calls/export - CSV export
-calls.get('/export', async (c) => {
+calls.get('/export', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const { status, priority, startDate, endDate } = c.req.query();
@@ -460,12 +485,13 @@ calls.get('/export', async (c) => {
 
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=calls_export.csv' });
   } catch (err) {
+    log.error('GET /export failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to export calls' }, 500);
   }
 });
 
 // GET /dispatch/calls/check-duplicate
-calls.get('/check-duplicate', async (c) => {
+calls.get('/check-duplicate', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const address = c.req.query('address');
@@ -481,10 +507,10 @@ calls.get('/check-duplicate', async (c) => {
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
         FROM calls_for_service
-        WHERE status NOT IN ('cleared','closed','cancelled','archived')
+        WHERE ${ACTIVE_CALL_WHERE}
           AND UPPER(REPLACE(location_address, '  ', ' ')) LIKE ?
         ORDER BY created_at DESC LIMIT 10
-      `, `%${normalized}%`);
+      `, `%${normalized.slice(0, 48)}%`);
       textResults.push(...rows);
     }
 
@@ -499,7 +525,7 @@ calls.get('/check-duplicate', async (c) => {
         const rows = await query<Record<string, unknown>>(db, `
           SELECT id, call_number, incident_type, priority, status, location_address, latitude, longitude, created_at
           FROM calls_for_service
-          WHERE status NOT IN ('cleared','closed','cancelled','archived')
+          WHERE ${ACTIVE_CALL_WHERE}
             AND latitude IS NOT NULL AND longitude IS NOT NULL
             AND latitude BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
@@ -520,6 +546,7 @@ calls.get('/check-duplicate', async (c) => {
 
     return c.json({ duplicates: all.slice(0, 15), count: all.length });
   } catch (err) {
+    log.error('GET /check-duplicate failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Duplicate check failed' }, 500);
   }
 });
@@ -535,7 +562,7 @@ calls.get('/check-duplicate', async (c) => {
 // call_vehicles/call_persons. Generic caution/gang flags are intentionally
 // excluded: this is a "check this call" signal, not the full screening
 // detail (that still lives on the call/person/vehicle record itself).
-calls.get('/hits', async (c) => {
+calls.get('/hits', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<{ call_id: number }>(db, `
@@ -553,7 +580,7 @@ calls.get('/hits', async (c) => {
         )
         OR EXISTS (
           SELECT 1 FROM call_persons cp JOIN warrants wa
-            ON (wa.subject_person_id = cp.person_id OR wa.person_id = cp.person_id) AND wa.status IN ('active', 'outstanding')
+            ON wa.subject_person_id = cp.person_id AND wa.status IN ('active', 'outstanding')
           WHERE cp.call_id = c.id
         )
         OR EXISTS (
@@ -580,7 +607,7 @@ calls.get('/archive-bulk', async (c) => {
   return c.redirect('/dispatch/calls/archive-bulk', 307);
 });
 
-calls.post('/archive-bulk', async (c) => {
+calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // Honor the client's { statuses } body (handleBulkArchive sends
@@ -600,12 +627,13 @@ calls.post('/archive-bulk', async (c) => {
     const archived_count = (result as any)?.meta?.changes ?? 0;
     return c.json({ archived_count });
   } catch (err) {
+    log.error('POST /archive-bulk failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Bulk archive failed' }, 500);
   }
 });
 
 // ── Call Templates (CRUD for reusable dispatch patterns) ─────
-calls.get('/templates', async (c) => {
+calls.get('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -620,7 +648,7 @@ calls.get('/templates', async (c) => {
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
 // property/user/client JOIN columns or LEFT JOIN calls_for_service_ext blew
 // past the cap and produced SQLITE_ERROR 7500 "too many columns in result set".
-calls.get('/:id', async (c) => {
+calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -643,11 +671,12 @@ calls.get('/:id', async (c) => {
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null);
 
     const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
-    const assignedUnits = assignedIds.length === 0 ? [] : await query<Record<string, unknown>>(db, `
-      SELECT u.*, usr.full_name as officer_name, usr.badge_number
-      FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.id IN (${assignedIds.map(() => '?').join(',')})
-    `, ...assignedIds);
+    const assignedUnits = assignedIds.length === 0 ? [] : await queryInChunks<Record<string, unknown>>(
+      db, assignedIds,
+      (ph) => `SELECT u.*, usr.full_name as officer_name, usr.badge_number
+               FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
+               WHERE u.id IN (${ph})`,
+    );
 
     const incidents = await query<Record<string, unknown>>(db,
       'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
@@ -660,13 +689,30 @@ calls.get('/:id', async (c) => {
     // dispatchMappers.ts's `visit_history: row.visit_history` mapping has
     // something to read; the client already renders this (DispatchPage.tsx
     // ~line 5961) but it was always empty since nothing populated it.
+    // History rows are stored against the PARENT call id (the completed visit).
+    // A child call (re-dispatch) shows them by looking up its own parent_call_id;
+    // a root call has no parent so the subquery returns NULL and yields 0 rows.
     const visitHistory = await query<Record<string, unknown>>(db,
-      'SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC, id ASC LIMIT 200', id);
+      `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
+       FROM call_visit_history cvh
+       LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
+       WHERE cvh.call_id = (SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?)
+       ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, id);
+
+    // Linked serve job. CallPdfData declares `serve_queue_id` and the call
+    // report's QR gate reads it (recordPdfGenerator.ts) — but nothing ever
+    // populated it, so the recipient "scan to sign" badge never rendered on
+    // a printed run sheet. serve_queue.call_id is the link; newest job wins
+    // when a call has been redispatched.
+    const serveJob = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id)
+      .catch(() => null);
 
     return c.json({
       ...call,
       ...(ext || {}),
       ...(joined || {}),
+      serve_queue_id: serveJob?.id ?? null,
       assigned_units: assignedUnits,
       related_incidents: incidents,
       activity,
@@ -748,7 +794,7 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
 ]);
 
 // PUT /dispatch/calls/:id - Update call
-calls.put('/:id', async (c) => {
+calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -762,7 +808,11 @@ calls.put('/:id', async (c) => {
     const extParams: unknown[] = [];
     const skipped: string[] = [];
 
+    const VALID_CALL_STATUSES = new Set(['pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','merged','split']);
     for (const [key, val] of Object.entries(body)) {
+      if (key === 'status' && val != null && !VALID_CALL_STATUSES.has(String(val))) {
+        return c.json({ error: `Invalid status '${val}'`, code: 'INVALID_STATUS' }, 400);
+      }
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
         baseUpdates.push(`${key} = ?`);
         baseParams.push(val ?? null);
@@ -795,6 +845,53 @@ calls.put('/:id', async (c) => {
       db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const updatedExt = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+
+    // ── Stack sync: mileage + address changes ──
+    try {
+      // Address change: leave old group, join/create at new address.
+      const newAddr = body.location_address as string | undefined;
+      const oldAddr = String(existing.location_address ?? '');
+      if (newAddr && newAddr.trim().toLowerCase() !== oldAddr.trim().toLowerCase()) {
+        await reassignStackGroup(db, parseInt(id || '0', 10), newAddr);
+      }
+
+      // Re-read after possible reassignment — reassignStackGroup writes a new stack_group_id.
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+
+      // Mileage sync to current group.
+      if (ext?.stack_group_id) {
+        const mileageFields: SyncFields['mileage'] = {};
+        if ('starting_mileage' in body && body.starting_mileage !== undefined) {
+          mileageFields.starting_mileage = Number(body.starting_mileage);
+        }
+        if ('ending_mileage' in body && body.ending_mileage !== undefined) {
+          mileageFields.ending_mileage = Number(body.ending_mileage);
+        }
+        if (Object.keys(mileageFields).length) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id || '0', 10), { mileage: mileageFields });
+        }
+      }
+    } catch (stackErr) {
+      log.error('stack sync on PUT /calls/:id failed (non-fatal)', { callId: id }, stackErr);
+    }
+
+    // Forward geocode: if address changed and the row still has no coordinates,
+    // populate lat/lng in the background so the call appears on the map.
+    const newAddr = body.location_address as string | undefined;
+    const stillMissingCoords = updatedBase?.latitude == null && updatedBase?.longitude == null;
+    if (newAddr && newAddr.trim().length >= 3 && stillMissingCoords) {
+      import('../geocode').then(async (geo) => {
+        try {
+          const coords = await geo.geocodeAddress(c.env, newAddr.trim());
+          if (coords) {
+            await execute(db, `UPDATE calls_for_service SET latitude = ?, longitude = ?, updated_at = datetime('now') WHERE id = ?`, coords.lat, coords.lng, id);
+          }
+        } catch { /* best-effort */ }
+      }).catch(() => {});
+    }
+
     return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
@@ -807,7 +904,7 @@ calls.put('/:id', async (c) => {
 // { created_at, action, details, user_name } per row in the Audit tab
 // (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
 // so the tab doesn't break if audit_log schema drifts.
-calls.get('/:id/audit-trail', async (c) => {
+calls.get('/:id/audit-trail', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -833,10 +930,10 @@ calls.get('/:id/audit-trail', async (c) => {
 });
 
 // POST /dispatch/calls/:id/merge — consolidate duplicate CFS into a master call
-calls.post('/:id/merge', async (c) => {
+calls.post('/:id/merge', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '0', 10);
     const { merge_call_ids } = await c.req.json<{ merge_call_ids: number[] }>();
     if (!Array.isArray(merge_call_ids) || !merge_call_ids.length) {
       return c.json({ error: 'merge_call_ids array required' }, 400);
@@ -859,13 +956,17 @@ calls.post('/:id/merge', async (c) => {
          SELECT ?, user_id, '[Merged from CFS #' || cn.call_id || '] ' || note, datetime('now')
          FROM (SELECT call_id, user_id, note FROM call_notes WHERE call_id = ? LIMIT 50) cn`,
         id, mergeId);
-      // Mark merged call as merged with reference
+      // Mark merged call as merged with reference. calls_for_service has no
+      // merged_into_id and is at D1's 100-column cap, so the structured link
+      // goes to the overflow table's parent_call_id instead of a new column.
       await execute(db,
-        `UPDATE calls_for_service SET status = 'merged', merged_into_id = ?, notes = COALESCE(notes || char(10), '') || '[Merged into CFS ' || ? || ']'
-         WHERE id = ?`, id, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
+        `UPDATE calls_for_service SET status = 'merged', notes = COALESCE(notes || char(10), '') || '[Merged into CFS ' || ? || ']'
+         WHERE id = ?`, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', mergeId);
+      await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, mergeId);
       if (userId) {
         await execute(db,
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
           userId, mergeId, JSON.stringify({ merged_into: id }));
       }
       merged++;
@@ -878,39 +979,107 @@ calls.post('/:id/merge', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id
-calls.delete('/:id', async (c) => {
+// Hard-deletes a dispatch record permanently — same destructiveness class as
+// the bulk /force-close-all above, so it carries the same admin|manager gate.
+// Was ungated, letting any authenticated non-client_viewer role (officer,
+// contract_manager, human_resources) erase an in-progress officer-safety call
+// by id, wiping it from every console via the broadcast below.
+calls.delete('/:id', requireRole('admin', 'manager'), async (c) => {
+  const idStr = c.req.param('id');
+  const id = Number(idStr);
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+  }
   try {
     const db = getDb(c.env);
-    const idStr = c.req.param('id');
-    const id = Number(idStr);
-    await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+
+    // ── Detach dependents BEFORE the parent delete ──
+    // D1 runs with PRAGMA foreign_keys=1. Only three child tables declare
+    // ON DELETE CASCADE (calls_for_service_ext, call_businesses, case_calls);
+    // every other reference to calls_for_service(id) is a bare REFERENCES,
+    // which SQLite treats as NO ACTION — so the parent DELETE is REJECTED with
+    // "FOREIGN KEY constraint failed" the moment any of them holds a row.
+    // That is exactly what produced the DELETE /dispatch/calls/147 → 500 loop:
+    // a single call_persons row was enough, and the old blanket catch reported
+    // nothing, so the client retried a request that could never succeed.
+    //
+    // Policy, deliberately split by what the row IS:
+    //  - Pure link rows (call_persons, call_vehicles) carry no independent
+    //    record value — they only exist to tie a person/vehicle TO this call,
+    //    so they are removed with it.
+    //  - Standalone records that merely *point* at the call (incidents,
+    //    impounds, radio_transmissions, nav_trip_log) are records-management
+    //    artifacts in their own right. Deleting a CAD call must never silently
+    //    destroy an incident report or an impound; their pointer is NULLed and
+    //    the record survives.
+    //  - units are live operational state: release any unit still showing this
+    //    call as current/emergency rather than orphaning a dangling pointer
+    //    that makes the unit read as permanently busy.
+    await executeBatch(db, [
+      { sql: 'DELETE FROM call_persons WHERE call_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM call_vehicles WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE incidents SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE impounds SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE radio_transmissions SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      { sql: 'UPDATE nav_trip_log SET call_id = NULL WHERE call_id = ?', bindings: [id] },
+      {
+        sql: `UPDATE units SET status = 'available', current_call_id = NULL,
+              last_status_change = datetime('now') WHERE current_call_id = ?`,
+        bindings: [id],
+      },
+      { sql: 'UPDATE units SET emergency_call_id = NULL WHERE emergency_call_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM calls_for_service WHERE id = ?', bindings: [id] },
+    ]);
+
     // Emit alert for deletion
     await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id } });
     return c.json({ message: 'Call deleted' });
   } catch (err) {
+    // Never swallow this again — a bare 500 here is what made the original
+    // incident undiagnosable from the server side.
+    log.error('Failed to delete call', { route: 'DELETE /dispatch/calls/:id', callId: id }, err as Error);
     return c.json({ error: 'Failed to delete call' }, 500);
   }
 });
 
 // POST /dispatch/calls/:id/status - Status transition
-calls.post('/:id/status', async (c) => {
+calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
     const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
-    // calls_for_service.status CHECK constraint does not include 'on_hold', so
-    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
-    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
-    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
+    const callCheck = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callCheck) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+    // NOTE: 'on_hold' is intentionally NOT in this list. Hold is stored as
+    // calls_for_service_ext.held_at (migration 0041), an orthogonal flag set
+    // via POST /:id/hold and /:id/resume — not a real status value — so a
+    // direct write of 'on_hold' here would overwrite the call's true status
+    // instead of layering hold on top of it.
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
+    // Clearing/closing a call without a disposition leaves the outcome
+    // permanently blank (nothing else ever backfills it). The UI's
+    // DispositionPrompt enforces this client-side, but that's not a
+    // backstop against a direct API call or a client bug — require it
+    // here too unless the call already has one on file.
+    if (status === 'cleared' || status === 'closed') {
+      const hasDisposition = typeof disposition === 'string' && disposition.length > 0;
+      if (!hasDisposition) {
+        const existing = await queryFirst<{ disposition: string | null }>(
+          db, 'SELECT disposition FROM calls_for_service WHERE id = ?', id
+        );
+        if (!existing?.disposition) {
+          return c.json({ error: 'A disposition is required to clear or close a call', code: 'DISPOSITION_REQUIRED' }, 400);
+        }
+      }
+    }
+
     const timeField = `${status}_at`;
-    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
+    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'archived_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
 
@@ -919,6 +1088,29 @@ calls.post('/:id/status', async (c) => {
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // ── Stack sync: propagate timestamp + cascaded unit status to siblings ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext?.stack_group_id) {
+        const timestampFields: Record<string, string> = {
+          dispatched: 'dispatched_at',
+          enroute:    'enroute_at',
+          onscene:    'onscene_at',
+        };
+        const tsField = timestampFields[status as keyof typeof timestampFields];
+        const tsValue = tsField ? String(updated?.[tsField] ?? '') : '';
+        if (tsField && tsValue) {
+          await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+            timestamps: { [tsField]: tsValue } as any,
+          });
+        }
+      }
+    } catch (stackErr) {
+      log.error('syncToStack timestamps failed (non-fatal)', { callId: id, status }, stackErr);
+    }
 
     // response_time_seconds is read by every response-time report/dashboard
     // stat (see reports.ts RESP formula), but nothing ever wrote it — those
@@ -946,10 +1138,9 @@ calls.post('/:id/status', async (c) => {
       try {
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
         if (Array.isArray(assignedIds) && assignedIds.length > 0) {
-          await execute(db,
-            `UPDATE units SET status = ?, last_status_change = datetime('now')
-             WHERE id IN (${assignedIds.map(() => '?').join(',')}) AND status IN ('dispatched', 'enroute', 'onscene')`,
-            status, ...assignedIds);
+          await executeInChunks(db, assignedIds,
+            (ph) => `UPDATE units SET status = ?, last_status_change = datetime('now') WHERE id IN (${ph}) AND status IN ('dispatched', 'enroute', 'onscene')`,
+            [status]);
         }
       } catch (err) { console.error('[dispatch] failed to cascade unit status on call transition:', err); }
     }
@@ -963,17 +1154,33 @@ calls.post('/:id/status', async (c) => {
     // busy on a call that's already gone from every active view, and
     // recommended-units/closest-unit kept skipping them as unavailable.
     // Mirrors the SQL unassign-unit already uses per-unit.
-    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (TERMINAL_STATUSES.has(status)) {
       try {
         const assignedIds = JSON.parse(String(updated?.assigned_unit_ids || '[]')) as number[];
         if (Array.isArray(assignedIds) && assignedIds.length > 0) {
-          await execute(db,
-            `UPDATE units SET status = 'available', current_call_id = NULL
-             WHERE current_call_id = ? OR id IN (${assignedIds.map(() => '?').join(',')})`,
-            parseInt(id, 10), ...assignedIds);
+          // current_call_id leg: sweep any unit that still points at this call.
+          await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id = ?`, parseInt(id, 10));
+          // IN-list leg: release assigned units by explicit id, chunked to stay under D1's 100-param cap.
+          await executeInChunks(db, assignedIds,
+            (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
+          // Promote queued calls for each released unit.
+          for (const uid of assignedIds) {
+            promoteQueuedCall(db, uid).catch((qErr) =>
+              log.error('promoteQueuedCall on call close failed (non-fatal)', { unit_id: uid }, qErr),
+            );
+          }
         }
       } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
+    }
+
+    // ── Stack group: leave on terminal status ──
+    if (['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split'].includes(status)) {
+      try {
+        await leaveStackGroup(db, parseInt(id, 10));
+      } catch (stackErr) {
+        log.error('leaveStackGroup failed (non-fatal)', { callId: id }, stackErr);
+      }
     }
 
     // ── PSO cross-link: on clear/close of a process-server call, mirror
@@ -996,6 +1203,28 @@ calls.post('/:id/status', async (c) => {
       }).catch(() => {});
     }
 
+    // ── Dial Connect status webhook ──────────────────────────────
+    // Fire-and-forget: if this CFS was created via the Dial Connect
+    // integration push (POST /api/integrations/calls-for-service,
+    // external_source_system = 'dial_connect'), notify Dial Connect of the
+    // new status so its own Incident row doesn't go stale. Never blocks or
+    // fails this response -- the status transition has already succeeded
+    // by this point regardless of whether the notification lands.
+    const webhookUrl = (c.env as Record<string, unknown>).DIAL_CONNECT_WEBHOOK_URL as string | undefined;
+    const webhookSecret = (c.env as Record<string, unknown>).DIAL_CONNECT_WEBHOOK_SECRET as string | undefined;
+    if (webhookUrl && webhookSecret) {
+      queryFirst<{ external_source_system: string | null }>(
+        db, 'SELECT external_source_system FROM calls_for_service_ext WHERE id = ?', id
+      ).then((ext) => {
+        if (ext?.external_source_system !== 'dial_connect') return;
+        return fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: webhookSecret },
+          body: JSON.stringify({ cfsId: parseInt(id, 10), callNumber: updated?.call_number, status }),
+        });
+      }).catch((err) => console.error('[dispatch] Dial Connect status webhook failed:', err));
+    }
+
     // Broadcast so every connected dispatcher/map/MDT client re-renders
     // without a manual refresh. call_created already broadcasts (above, in
     // POST /) but this status-transition endpoint never did — clients only
@@ -1004,6 +1233,7 @@ calls.post('/:id/status', async (c) => {
 
     return c.json(updated);
   } catch (err) {
+    log.error('POST /:id/status failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Failed to update status' }, 500);
   }
 });
@@ -1015,6 +1245,33 @@ calls.post('/:id/status', async (c) => {
 // list (plus any extra bound params) crosses the limit, exactly when
 // the bulk tool is most needed (many open calls at once).
 const D1_PARAM_CHUNK = 90;
+// Promote the next queued call for a unit that just cleared its active slot.
+// Called after unassign-unit and after terminal call-status transitions.
+async function promoteQueuedCall(
+  db: Awaited<ReturnType<typeof getDb>>,
+  unit_id: number,
+): Promise<void> {
+  const row = await queryFirst<{ queued_call_ids: string }>(
+    db, 'SELECT queued_call_ids FROM units WHERE id = ?', unit_id,
+  );
+  if (!row) return;
+  const queue = JSON.parse(row.queued_call_ids || '[]') as number[];
+  if (queue.length === 0) return;
+  const nextCallId = queue[0];
+  const remaining = queue.slice(1);
+  const nextCall = await queryFirst<{ status: string }>(
+    db, 'SELECT status FROM calls_for_service WHERE id = ?', nextCallId,
+  );
+  if (!nextCall || nextCall.status === 'closed' || nextCall.status === 'cancelled') {
+    await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(remaining), unit_id);
+    if (remaining.length > 0) await promoteQueuedCall(db, unit_id);
+    return;
+  }
+  await executeBatch(db, [
+    { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = ? WHERE id = ?", bindings: [nextCallId, JSON.stringify(remaining), unit_id] },
+  ]);
+}
+
 function chunk<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -1104,7 +1361,7 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
     const db = getDb(c.env);
     const { disposition } = await c.req.json<{ disposition?: string }>().catch(() => ({}) as { disposition?: string });
     const open = await query<{ id: number; assigned_unit_ids: string | null }>(db,
-      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`);
+      `SELECT id, assigned_unit_ids FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`);
     if (open.length === 0) return c.json({ closed: 0 });
 
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
@@ -1147,22 +1404,28 @@ calls.post('/force-close-all', requireRole('admin', 'manager'), async (c) => {
 });
 
 // POST /dispatch/calls/:id/archive
-calls.post('/:id/archive', async (c) => {
+calls.post('/:id/archive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    if (result.meta.changes === 0) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     return c.json({ message: 'Archived' });
-  } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/archive failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Archive failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/unarchive
-calls.post('/:id/unarchive', async (c) => {
+calls.post('/:id/unarchive', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const idStr = c.req.param('id');
     const id = Number(idStr);
-    await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    const result = await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    if (result.meta.changes === 0) {
+      const exists = await queryFirst(db, 'SELECT id, status FROM calls_for_service WHERE id = ?', id);
+      return c.json({ error: exists ? 'Call is not archived' : 'Not found' }, exists ? 409 : 404);
+    }
     // Fetch the updated call and ext rows
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
@@ -1172,23 +1435,62 @@ calls.post('/:id/unarchive', async (c) => {
     }
     return c.json({ message: 'Unarchived' });
   } catch (err) {
+    log.error('POST /:id/unarchive failed', { src: 'src/routes/dispatch/calls.ts' }, err);
     return c.json({ error: 'Unarchive failed' }, 500);
   }
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
-calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+// Hold is stored as calls_for_service_ext.held_at (migration 0041), an
+// orthogonal flag — NOT calls_for_service.status='on_hold'. The client
+// (dispatchMappers.ts, CallCard.tsx) synthesizes the 'on_hold' display
+// status from held_at while the real status is left untouched, so a held
+// call resumes to whatever status it actually held (dispatched/enroute/
+// onscene) instead of always bouncing back to 'pending'.
+//
+// NOTE: #3305 landed a competing fix that wrote status='on_hold' directly
+// and left the old /resume (SET status='pending' WHERE status='on_hold')
+// in place — that combination silently drops a held call's real status on
+// resume. Superseded here by the held_at design both this route and the
+// client already commit to.
+calls.post('/:id/hold', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const callExists = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!callExists) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
+    if (!merged) return c.json({ error: 'Call not found' }, 404);
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    return c.json(merged);
+  } catch (err) {
+    log.error('POST /:id/hold failed', { src: 'src/routes/dispatch/calls.ts' }, err);
+    return c.json({ error: 'Hold failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/resume
-calls.post('/:id/resume', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) { return c.json({ error: 'Resume failed' }, 500); }
+calls.post('/:id/resume', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const resumeCallExists = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!resumeCallExists) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const ext = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const merged = call ? { ...(call || {}), ...(ext || {}) } : null;
+    if (!merged) return c.json({ error: 'Call not found' }, 404);
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    return c.json(merged);
+  } catch (err) {
+    log.error('POST /:id/resume failed', { src: 'src/routes/dispatch/calls.ts' }, err);
+    return c.json({ error: 'Resume failed' }, 500);
+  }
 });
 
 // Columns work_orders gained in migration 0158_work_orders_scheduling.sql.
@@ -1309,29 +1611,55 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       }, 409);
     }
 
-    // Reject double-dispatching a unit that's already committed to a
-    // DIFFERENT still-open call — prevents a lost-update race where two
-    // dispatchers assign the same unit to two calls simultaneously.
-    const unitRow = await queryFirst<{ current_call_id: number | null }>(
-      db, 'SELECT current_call_id FROM units WHERE id = ?', unit_id,
+    // If the unit is already working a DIFFERENT open call, queue this
+    // assignment rather than rejecting it outright. The queued call will be
+    // promoted automatically when the unit clears its active call.
+    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string }>(
+      db, 'SELECT current_call_id, queued_call_ids FROM units WHERE id = ?', unit_id,
     );
-    if (unitRow?.current_call_id != null && String(unitRow.current_call_id) !== String(id)) {
+    const activeCallId = unitRow?.current_call_id;
+    if (activeCallId != null && String(activeCallId) !== String(id)) {
       const conflictingCall = await queryFirst<{ call_number: string; status: string }>(
-        db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
+        db, 'SELECT call_number, status FROM calls_for_service WHERE id = ?', activeCallId,
       );
-      if (conflictingCall && conflictingCall.status !== 'closed' && conflictingCall.status !== 'cancelled') {
-        return c.json({
-          error: 'unit_already_dispatched',
-          message: `Unit is already assigned to call ${conflictingCall.call_number}. Unassign it there first.`,
-          code: 'UNIT_ALREADY_DISPATCHED',
-        }, 409);
+      const CONFLICT_TERMINAL = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
+      if (conflictingCall && !CONFLICT_TERMINAL.has(conflictingCall.status)) {
+        // Queue this call behind the active one instead of 409-ing.
+        const queue = JSON.parse(unitRow?.queued_call_ids || '[]') as number[];
+        const callIdNum = parseInt(id, 10);
+        if (!queue.includes(callIdNum)) queue.push(callIdNum);
+        await executeBatch(db, [
+          { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
+          { sql: 'UPDATE units SET queued_call_ids = ? WHERE id = ?', bindings: [JSON.stringify(queue), unit_id] },
+        ]);
+        return c.json({ queued: true, message: `Unit is on call ${conflictingCall.call_number} — this call has been queued.`, assigned_unit_ids: assigned, premise_pushed: 0 });
       }
     }
 
     await executeBatch(db, [
       { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
-      { sql: "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
+      { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = '[]' WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
+
+    // ── Stack sync: add unit to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: {
+            addIds: [unit_id],
+            addCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack assign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
 
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
@@ -1373,7 +1701,8 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     } catch (err) { console.error('[dispatch] premise auto-push:', err); }
 
     return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/assign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Assign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/unassign-unit
@@ -1386,9 +1715,47 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+
+    // If the unit's active call is this one, clear it and promote from queue.
+    // If this call was only queued (not active), just remove it from the queue.
+    const unitRow = await queryFirst<{ current_call_id: number | null; queued_call_ids: string }>(
+      db, 'SELECT current_call_id, queued_call_ids FROM units WHERE id = ?', unit_id,
+    );
+    const callIdNum = parseInt(id ?? '', 10);
+    if (unitRow?.current_call_id === callIdNum) {
+      await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+      try { await promoteQueuedCall(db, unit_id); } catch (qErr) {
+        log.error('promoteQueuedCall failed (non-fatal)', { unit_id }, qErr as Error);
+      }
+    } else {
+      // Remove from the queue without touching the active call.
+      const queue = (JSON.parse(unitRow?.queued_call_ids || '[]') as number[]).filter(q => q !== callIdNum);
+      await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(queue), unit_id);
+    }
+
+    // ── Stack sync: remove unit from sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRow = await queryFirst<{ call_sign: string | null }>(
+          db, 'SELECT call_sign FROM units WHERE id = ?', unit_id,
+        );
+        await syncToStack(db, ext.stack_group_id, parseInt(id ?? '', 10), {
+          units: {
+            removeIds: [unit_id],
+            removeCallSigns: unitRow?.call_sign ? [unitRow.call_sign] : [],
+          },
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack unassign-unit failed (non-fatal)', { callId: id, unit_id }, stackErr as Error);
+    }
+
     return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
-  } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/unassign-unit failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Unassign failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/dispatch - Multi-unit dispatch
@@ -1411,12 +1778,40 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
     }
 
+    // ── Stack sync: add all dispatched units to sibling calls ──
+    try {
+      const ext = await queryFirst<{ stack_group_id: string | null }>(
+        db, 'SELECT stack_group_id FROM calls_for_service_ext WHERE id = ?', id,
+      );
+      if (ext && ext.stack_group_id) {
+        const unitRows = unit_ids.length
+          ? await queryInChunks<{ id: number; call_sign: string | null }>(
+              db,
+              unit_ids,
+              (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`,
+            )
+          : [];
+        const addCallSigns = unitRows.map((u) => u.call_sign).filter(Boolean) as string[];
+        const dispatchedAtRow = await queryFirst<{ dispatched_at: string | null }>(
+          db, 'SELECT dispatched_at FROM calls_for_service WHERE id = ?', id,
+        );
+        const dispatchedAt = dispatchedAtRow?.dispatched_at ?? '';
+        await syncToStack(db, ext.stack_group_id, parseInt(id, 10), {
+          units: { addIds: unit_ids, addCallSigns },
+          ...(dispatchedAt ? { timestamps: { dispatched_at: dispatchedAt } } : {}),
+        });
+      }
+    } catch (stackErr) {
+      log.error('syncToStack dispatch failed (non-fatal)', { callId: id }, stackErr as Error);
+    }
+
     // Return the updated call row, not a {message}. The client
     // (handleMultiUnitDispatch) feeds this straight into mapDbCall() and splices
     // it into dispatch state — a bare message produced a blank-id corrupted call.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/dispatch failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Dispatch failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/split — split a call into multiple child CFS records
@@ -1430,24 +1825,51 @@ calls.post('/:id/split', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     if (!Array.isArray(splits) || !splits.length) return c.json({ error: 'splits array required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const created: number[] = [];
+    // call_number is NOT NULL UNIQUE — generate a new number for each child
+    const splitYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
+    const splitPrefix = `CFS${splitYear}-`;
+    const nextSplitCallNumber = async () => {
+      const [{ max }] = await query<{ max: string | null }>(
+        db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${splitPrefix}%`,
+      );
+      const seq = max ? String(parseInt(max.slice(splitPrefix.length), 10) + 1).padStart(5, '0') : '00001';
+      return `${splitPrefix}${seq}`;
+    };
     for (const s of splits) {
+      const childCallNumber = await nextSplitCallNumber();
       const result = await execute(db,
-        `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude, description, split_from_id, created_at, updated_at)
-         VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, id);
-      created.push(Number(result.meta.last_row_id));
+        // No split_from_id on calls_for_service (and it's at the 100-column
+        // cap) — the parent link lives on calls_for_service_ext.parent_call_id.
+        `INSERT INTO calls_for_service (call_number, incident_type, priority, status, location_address, latitude, longitude, description, dispatcher_id, created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        childCallNumber, s.incident_type, parent.priority || 'P3', s.location_address || parent.location_address, parent.latitude, parent.longitude, s.description || null, userId ?? null);
+      const childId = Number(result.meta.last_row_id);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', childId);
+      await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, childId);
+      created.push(childId);
     }
     await execute(db, 'UPDATE calls_for_service SET status = ?, notes = COALESCE(notes || char(10), \'\') || ? WHERE id = ?', 'split', `Split into ${created.length} child call(s): ${created.join(', ')}`, id);
-    if (userId) await execute(db, `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
+    // Release units assigned to the now-split parent — mirrors the unit-release
+    // block in POST /:id/status, which this handler bypasses.
+    try {
+      const assignedIdsForSplit = JSON.parse(String(parent.assigned_unit_ids || '[]')) as number[];
+      if (Array.isArray(assignedIdsForSplit) && assignedIdsForSplit.length > 0) {
+        await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL WHERE current_call_id = ?`, id);
+        await executeInChunks(db, assignedIdsForSplit,
+          (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
+      }
+    } catch (unitErr) { log.error('[dispatch] failed to release units after split', { callId: id }, unitErr); }
+    if (userId) await execute(db, `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'split_call', 'call', ?, ?)`, userId, id, JSON.stringify({ child_ids: created }));
     return c.json({ success: true, parent_id: id, child_ids: created });
-  } catch (err) { return c.json({ error: 'Call split failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/split failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Call split failed' }, 500); }
 });
 
 // GET /dispatch/calls/:id/evidence-prompt — check if evidence should be collected before clearing
-calls.get('/:id/evidence-prompt', async (c) => {
+calls.get('/:id/evidence-prompt', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = parseInt(c.req.param('id'), 10);
+    const id = parseInt(c.req.param('id') || '0', 10);
     const call = await queryFirst<{ photos_taken: number | null }>(db,
       'SELECT (SELECT COUNT(*) FROM field_photos WHERE call_id = ?) AS photos_taken', id);
     const notes = (await queryFirst<{ n: number }>(db,
@@ -1456,7 +1878,7 @@ calls.get('/:id/evidence-prompt', async (c) => {
   } catch { return c.json({ prompt_evidence: false, photos_count: 0, notes_count: 0 }); }
 });
 
-calls.post('/templates', async (c) => {
+calls.post('/templates', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
@@ -1464,20 +1886,26 @@ calls.post('/templates', async (c) => {
     if (!body.name || !body.incident_type) return c.json({ error: 'name and incident_type required' }, 400);
     const r = await execute(db,
       `INSERT INTO call_templates (name, incident_type, priority, auto_flags, notes, owner_user_id, is_shared, created_at)
-       VALUES (?,?,?,?,?,?,?,datetime('now','localtime'))`,
+       VALUES (?,?,?,?,?,?,?,datetime('now'))`,
       body.name, body.incident_type, body.priority || 'P3', JSON.stringify(body.auto_flags || {}), body.notes || null, userId, body.is_shared ? 1 : 0);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Template creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /templates failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Template creation failed' }, 500); }
 });
 
-calls.delete('/templates/:id', async (c) => {
+calls.delete('/templates/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const id = parseInt(c.req.param('id'), 10);
-    await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const r = await execute(db, 'UPDATE call_templates SET active = 0 WHERE id = ? AND owner_user_id = ?', id, userId);
+    if ((r.meta.changes ?? 0) === 0) {
+      const exists = await queryFirst<{ id: number }>(db, 'SELECT id FROM call_templates WHERE id = ?', id);
+      return c.json({ error: exists ? 'Not authorized' : 'Template not found' }, exists ? 403 : 404);
+    }
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Delete failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /templates/:id failed', { src: 'src/routes/dispatch/calls.ts' }, err); return c.json({ error: 'Delete failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/redispatch - Re-dispatch creates a NEW linked call
@@ -1497,8 +1925,8 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     if (!['pso_client_request', 'process_service'].includes(String(parent.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parent.status))) {
-      return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parent.status))) {
+      return c.json({ error: 'Call must be cleared, closed, cancelled, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
     const userId = (c.get('userId') as number | undefined) ?? null;
@@ -1521,7 +1949,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       const parsedIds = JSON.parse(String(parent.assigned_unit_ids || '[]'));
       const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((x: unknown) => typeof x === 'number' && Number.isFinite(x));
       if (unitIds.length) {
-        const units = await query<{ call_sign: string }>(db, `SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')})`, ...unitIds);
+        const units = await queryInChunks<{ call_sign: string }>(db, unitIds, (ph) => `SELECT call_sign FROM units WHERE id IN (${ph})`);
         assignedCallSigns = units.map((u) => u.call_sign).filter(Boolean);
       }
     } catch (err) { console.error('[redispatch] failed to snapshot assigned units:', err); }
@@ -1546,7 +1974,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // "Schedule Return Visit" button) can read the same MAX twice and collide
     // on insert. Recompute and retry a few times on that specific collision
     // rather than surfacing the generic SQLITE_CONSTRAINT 409 to the dispatcher.
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const prefix = `CFS${year}-`;
     const nextCallNumber = async () => {
       const [{ max }] = await query<{ max: string | null }>(db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`);
@@ -1634,6 +2062,39 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       const extValues = extCols.map((col) => (col in extOverrides ? extOverrides[col] : (parentExt as Record<string, unknown>)[col] ?? null));
       await execute(db, `UPDATE calls_for_service_ext SET ${extCols.map((c2) => `"${c2}" = ?`).join(', ')} WHERE id = ?`, ...extValues, newCallId);
     }
+
+    // Link the new call into the Process Server queue. Without this, a
+    // re-dispatched PSO call has NO serve_queue row until it's later
+    // closed (crossLinkPsoCloseToServe only seeds one on a terminal-status
+    // transition) — so GET /process-server (what officers actually work
+    // from) never shows it while it's active. Confirmed live 2026-08-10:
+    // two real re-dispatched jobs (CFS26-00145, CFS26-00153) sat pending
+    // with real deadlines and were invisible to the Process Server module
+    // the entire time, flagged only by GET /process-server/cross-reference/
+    // dispatch — the same gap #3368 closed for the ServeManager auto-poller,
+    // just on this creation path instead. Field mapping mirrors
+    // psoServeCrosslink.ts's on-close seed, reading from the new call's own
+    // PSO/ext columns (already carried forward by the schema-driven copy
+    // above) rather than the parent's serve_queue row, since serve_queue is
+    // dedup'd per call_id — each visit in the chain gets its own row.
+    try {
+      const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
+      const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
+      await execute(db,
+        `INSERT INTO serve_queue (
+           call_id, officer_id, recipient_name, recipient_address,
+           recipient_lat, recipient_lng, document_type, case_number, client_name,
+           priority, status, deadline, service_instructions
+         ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
+        newCallId, userId,
+        mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
+        mergedNew.process_served_address || mergedNew.location_address || null,
+        mergedNew.latitude ?? null, mergedNew.longitude ?? null,
+        mergedNew.process_service_type || mergedNew.pso_service_type || null,
+        mergedNew.case_number || null, mergedNew.client_name || null,
+        mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+      );
+    } catch (err) { console.error('[redispatch] serve_queue link failed:', err); }
 
     // Copy linked persons/vehicles/businesses from the parent call.
     const linkTables: Array<[string, readonly string[]]> = [

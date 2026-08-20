@@ -30,6 +30,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatHashGrouped } from './pdfIntegrity';
+import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -140,7 +142,7 @@ export function wrapText(input: string, maxChars: number): string[] {
 /** Format snake_case → Title Case for action / status / type labels. */
 export function prettyLabel(input: string | undefined | null): string {
   if (!input) return '—';
-  return input.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return toDisplayLabel(input);
 }
 
 const ellipsize = (s: string, max: number) => s.length <= max ? s : s.slice(0, max - 1) + '…';
@@ -542,8 +544,8 @@ export function generateAffairsComplaintPdf(input: IaComplaintPdfInput): jsPDF {
 /** Open the generated PDF in a new browser tab. */
 export function openAffairsComplaintPdf(input: IaComplaintPdfInput): void {
   const doc = generateAffairsComplaintPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Affairs Complaint');
 }
 // Mark the ROW_ALT constant as used (reserved for future investigation
 // alt-row striping; keeps it in the same visual contract as the

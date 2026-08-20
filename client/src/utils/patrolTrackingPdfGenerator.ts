@@ -13,6 +13,7 @@ import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBl
 import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
 import { localToday, parseTimestamp } from './dateUtils';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { toDisplayLabel } from './formatters';
 
 export interface PatrolTrackingPdfOptions {
   printTarget?: PrintTarget;
@@ -184,8 +185,10 @@ function formatPointTime(isoStr: string): string {
 
 // ── Generator ────────────────────────────────────────────────
 
-export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
-  try {
+/** Build the Patrol Tracking Report and return the jsPDF document without
+ *  saving it. Extracted from generatePatrolTrackingPdf so the gallery/audit
+ *  harness can render the doc without triggering a file download. */
+export async function buildPatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
   const accentRgb = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -570,9 +573,9 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
         pt.speed_mph != null ? `${pt.speed_mph}` : 'N/A',                // Speed
         (pt.heading_cardinal || 'N/A').toUpperCase(),                      // Heading
         (pt.source || 'UNK').toUpperCase().slice(0, 4),                // Source
-        (pt.status || 'N/A').replace(/_/g, ' ').toUpperCase(),            // Status
+        toDisplayLabel(pt.status || 'N/A').toUpperCase(),            // Status
         (pt.current_call_number || 'N/A').toUpperCase(),                   // Call #
-        (pt.current_call_type || 'N/A').replace(/_/g, ' ').toUpperCase(), // Call Type
+        toDisplayLabel(pt.current_call_type || 'N/A').toUpperCase(), // Call Type
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : 'N/A',  // Dist
         pt.lat != null && pt.lng != null ? `${Number(pt.lat).toFixed(4)},${Number(pt.lng).toFixed(4)}` : 'N/A',  // Lat/Lng
       ];
@@ -630,7 +633,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
         let rxOff = margin;
         const rRowData = [
           (seg.call_number || 'N/A').toUpperCase(),
-          (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
+          toDisplayLabel(seg.incident_type || 'N/A').toUpperCase(),
           (seg.priority ? (String(seg.priority).toUpperCase().startsWith('P') ? String(seg.priority).toUpperCase() : `P${seg.priority}`.toUpperCase()) : 'N/A'),
           seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
@@ -741,7 +744,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
       doc.text(pt.speed_mph != null ? fmtNum(pt.speed_mph, 1) : '-',      cSpd, y);
       doc.text((pt.heading_cardinal || '-').toString(),                   cHdg, y);
       doc.text(abbrevSource(pt.source),                                   cSrc, y);
-      doc.text(truncate((pt.status || '-').replace(/_/g, ' ').toUpperCase(), 10), cStat, y);
+      doc.text(truncate((toDisplayLabel(pt.status) || '-').toUpperCase(), 10), cStat, y);
       doc.text(truncate(callLabel, 18),                                   cCall, y);
       doc.text(pt.cumulative_distance_miles != null ? fmtNum(pt.cumulative_distance_miles, 1) : '-', cDist, y);
       doc.text(
@@ -755,6 +758,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
       rowsOnPage += 1;
     }
   }
+  } // close per-trail `for (let ti ...)` loop — page numbers/finalize run once below
 
   // ── Page numbers (N of M) on every page ──────────────────────
   // Drawn after all content so we know the final page count. Bottom-right
@@ -785,18 +789,25 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
     },
   });
 
-  // ── Save the PDF ─────────────────────────────────────
+  return doc;
+}
+
+/** Build the Patrol Tracking Report and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
   try {
-    const dateStr = localToday().replace(/-/g, '');
-    const firstCallSign = data.trails[0]?.call_sign || 'ALL';
-    const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-    const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
-    doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
-  } catch (err) {
-    console.error('Patrol tracking PDF generation failed:', err);
-    throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
-  }
-  }
+    const doc = await buildPatrolTrackingPdf(data, options);
+    try {
+      const dateStr = localToday().replace(/-/g, '');
+      const firstCallSign = data.trails[0]?.call_sign || 'ALL';
+      const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
+      const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+      doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
+    } catch (err) {
+      console.error('Patrol tracking PDF generation failed:', err);
+      throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   } catch (err) {
     throw err;
   }

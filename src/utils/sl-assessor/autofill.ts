@@ -4,6 +4,8 @@
 // skipped because the user already had a value.
 
 import type { Parcel } from './types';
+import type { CamaParcel } from './camaParser';
+import { PROMOTED_RECORD_FIELDS } from './camaFields';
 
 /**
  * The 11 Assessor-mappable columns we ALTER'd onto businesses + properties.
@@ -23,9 +25,13 @@ export const AUTOFILL_FIELDS = [
   'last_sale_price',
   'legal_description',
   'tax_district',
-] as const;
+  // Curated CAMA fields (mig 0221). Sourced from parcel.cama, which is
+  // populated for Salt Lake County only — the other three counties leave it
+  // null and these simply stay empty rather than erroring.
+  ...PROMOTED_RECORD_FIELDS.map((f) => f.col),
+] as const as readonly string[];
 
-export type AutofillField = (typeof AUTOFILL_FIELDS)[number];
+export type AutofillField = string;
 
 export interface ApplyResult {
   patch: Partial<Record<AutofillField, unknown>> & {
@@ -35,7 +41,20 @@ export interface ApplyResult {
   skipped: AutofillField[];
 }
 
+const PROMOTED_BY_COL = new Map(PROMOTED_RECORD_FIELDS.map((f) => [f.col, f]));
+
 function pickParcelValue(parcel: Parcel, field: AutofillField): unknown {
+  const promoted = PROMOTED_BY_COL.get(field);
+  if (promoted) {
+    const cama = parcel.cama as CamaParcel | null | undefined;
+    if (!cama) return null;
+    switch (promoted.source) {
+      case 'residence': return cama.residence[promoted.key] ?? null;
+      case 'parcel':    return cama.parcel[promoted.key] ?? null;
+      case 'land0':     return cama.land_records[0]?.[promoted.key] ?? null;
+      case 'root':      return (cama as any)[promoted.key] ?? null;
+    }
+  }
   switch (field) {
     case 'parcel_number': return parcel.parcel_number;
     case 'owner_of_record': return parcel.owner_of_record;
@@ -48,6 +67,7 @@ function pickParcelValue(parcel: Parcel, field: AutofillField): unknown {
     case 'last_sale_price': return parcel.sales[0]?.sale_price ?? null;
     case 'legal_description': return parcel.legal_description;
     case 'tax_district': return parcel.tax_district;
+    default: return null;
   }
 }
 

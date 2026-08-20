@@ -3,6 +3,9 @@ import { jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
+import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
+import { log } from '../utils/logger';
 
 const uploads = new Hono<Env>();
 
@@ -28,7 +31,23 @@ const ALLOWED_MIME = new Set([
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024;
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+
+const UPLOADS_BUCKET_NAME = 'rmpg-flex-uploads';
+const PRESIGN_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB — single-PUT ceiling
+const PRESIGN_TTL_SECONDS = 1800; // 30 min — KV metadata TTL and presigned-URL expiry
+const PRESIGN_KV_PREFIX = 'upload-presign:';
+
+interface PresignMeta {
+  r2Key: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  entityType: string | null;
+  entityId: number | null;
+  folderId: number | null;
+  userId: number;
+}
 
 function extFor(name: string, type: string): string {
   const fromName = name && name.includes('.') ? '.' + name.split('.').pop()!.toLowerCase() : '';
@@ -84,7 +103,14 @@ async function verifyJwt(token: string, secret: string): Promise<{ userId: numbe
     const p = payload as Record<string, unknown>;
     const userId = (p.user_id ?? p.userId) as number | undefined;
     if (userId == null) return null;
-    if (p.type === 'refresh') return null;
+    // /api/uploads is a PUBLIC mount, so authMiddleware never runs here and
+    // this is the only token-purpose gate. Reject the same non-session token
+    // types authMiddleware denies (refresh / pre-2FA / password-reset) and any
+    // scoped token — otherwise a pre-2FA or PSO-scoped token could read, write,
+    // or delete attachments. Keep it a deny-list so legacy tokens (no `type`)
+    // still resolve.
+    if (typeof p.type === 'string' && ['refresh', '2fa_pending', 'pwd_reset'].includes(p.type)) return null;
+    if (p.scope != null) return null;
     return {
       userId,
       username: (p.username as string) || '',
@@ -143,7 +169,7 @@ uploads.get('/entity/:type/:id', async (c) => {
     );
     return c.json(enriched);
   } catch (err) {
-    console.error('List attachments error:', err);
+    log.error('List attachments failed', { type: c.req.param('type'), id: c.req.param('id') }, err as Error);
     return c.json({ error: 'Failed to list attachments', code: 'LIST_ATTACHMENTS_ERROR' }, 500);
   }
 });
@@ -159,7 +185,7 @@ uploads.get('/sign/:fileId', async (c) => {
     const { sig, exp } = await hmacSign(fileId, c.env.JWT_SECRET);
     return c.json({ sig, exp, file_id: fileId });
   } catch (err) {
-    console.error('Sign file error:', err);
+    log.error('Sign file failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to sign file', code: 'SIGN_FILE_ERROR' }, 500);
   }
 });
@@ -177,17 +203,32 @@ uploads.get('/:fileId/thumbnail', async (c) => {
       return c.json({ error: 'Not an image', code: 'NOT_AN_IMAGE' }, 400);
     }
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // getDecrypted() returns a clean null both when the R2 object is
+      // genuinely absent and when it exists but predates this feature (no
+      // file_encryption_keys row). Fall back to a raw read so pre-encryption
+      // attachments (this prefix has been live at up to 500 MB/file for a
+      // long time) stay accessible instead of permanently 404ing. A thrown
+      // decrypt error (bad KEK, tampered ciphertext) is NOT caught here — it
+      // propagates to the outer try/catch below as a genuine failure.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=600');
     c.header('X-Content-Type-Options', 'nosniff');
     return c.body(data);
   } catch (err) {
-    console.error('Thumbnail error:', err);
+    log.error('Thumbnail fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Thumbnail failed', code: 'THUMBNAIL_FAILED' }, 500);
   }
 });
@@ -202,15 +243,26 @@ uploads.get('/:fileId/download', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // See the thumbnail route above: clean null == legacy pre-encryption
+      // object or genuinely missing; only a thrown decrypt error skips this
+      // fallback and surfaces via the outer try/catch.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', 'application/octet-stream');
     c.header('Content-Disposition', `attachment; filename="${att.original_name}"`);
     return c.body(data);
   } catch (err) {
-    console.error('Download error:', err);
+    log.error('Download fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });
@@ -225,10 +277,21 @@ uploads.get('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const obj = await c.env.UPLOADS.get(att.file_path);
-    if (!obj) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
-
-    const data = await obj.arrayBuffer();
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    let data: Uint8Array<ArrayBuffer>;
+    if (decrypted) {
+      // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
+      // (encryptedR2.ts), so it is always ArrayBuffer-backed; the cast matches
+      // Hono's Data type, which is narrower than encryptedR2's bare Uint8Array.
+      data = decrypted.bytes as Uint8Array<ArrayBuffer>;
+    } else {
+      // See the thumbnail route above: clean null == legacy pre-encryption
+      // object or genuinely missing; only a thrown decrypt error skips this
+      // fallback and surfaces via the outer try/catch.
+      const legacy = await c.env.UPLOADS.get(att.file_path);
+      if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
+      data = new Uint8Array(await legacy.arrayBuffer());
+    }
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=300');
@@ -236,7 +299,7 @@ uploads.get('/:fileId', async (c) => {
     c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
     return c.body(data);
   } catch (err) {
-    console.error('Download error:', err);
+    log.error('File fetch failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
   }
 });
@@ -304,7 +367,7 @@ uploads.post('/', async (c) => {
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
 
-      await c.env.UPLOADS.put(r2Key, buffer, {
+      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
         httpMetadata: { contentType: file.type || 'application/octet-stream' },
       });
 
@@ -350,8 +413,138 @@ uploads.post('/', async (c) => {
 
     return c.json(results, 201);
   } catch (err) {
-    console.error('Upload error:', err);
+    log.error('Upload failed', {}, err as Error);
     return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
+  }
+});
+
+uploads.post('/presign', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+
+    if (!r2CredentialsConfigured(c.env)) {
+      return c.json({ ok: false, code: 'not_configured' });
+    }
+
+    const body = await c.req.json<{
+      filename?: string; contentType?: string; size?: number;
+      entity_type?: string; entity_id?: number | string; folder_id?: number | string;
+    }>().catch(() => null);
+    if (!body) return c.json({ error: 'Invalid JSON body' }, 400);
+
+    const filename = String(body.filename || '').trim();
+    const contentType = String(body.contentType || '').trim();
+    const size = Number(body.size);
+    if (!filename) return c.json({ error: 'filename is required' }, 400);
+    if (!ALLOWED_MIME.has(contentType)) {
+      return c.json({ error: `File type ${contentType} is not allowed` }, 400);
+    }
+    if (!Number.isFinite(size) || size <= 0) {
+      return c.json({ error: 'size must be positive' }, 400);
+    }
+    if (size > PRESIGN_MAX_FILE_SIZE) {
+      return c.json({ error: `File too large — max ${PRESIGN_MAX_FILE_SIZE / 1024 / 1024} MB`, code: 'FILE_TOO_LARGE' }, 400);
+    }
+
+    const fileId = crypto.randomUUID();
+    const ext = extFor(filename, contentType);
+    const r2Key = `attachments/${fileId}${ext}`;
+
+    const entityType = body.entity_type ? String(body.entity_type) : null;
+    const entityIdRaw = body.entity_id != null ? String(body.entity_id) : null;
+    const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
+    const folderIdRaw = body.folder_id != null ? String(body.folder_id) : null;
+    const folderId = folderIdRaw && /^\d+$/.test(folderIdRaw) ? parseInt(folderIdRaw, 10) : null;
+
+    const meta: PresignMeta = {
+      r2Key, filename, contentType, size,
+      entityType, entityId, folderId, userId: auth.userId,
+    };
+    await c.env.KV.put(`${PRESIGN_KV_PREFIX}${fileId}`, JSON.stringify(meta), {
+      expirationTtl: PRESIGN_TTL_SECONDS,
+    });
+
+    const uploadUrl = await presignPutUrl(c.env, UPLOADS_BUCKET_NAME, r2Key, PRESIGN_TTL_SECONDS);
+
+    return c.json({ file_id: fileId, upload_url: uploadUrl, key: r2Key });
+  } catch (err) {
+    log.error('Presign upload failed', {}, err as Error);
+    return c.json({ error: 'Failed to create upload URL', code: 'PRESIGN_ERROR' }, 500);
+  }
+});
+
+uploads.post('/presign/:fileId/complete', async (c) => {
+  try {
+    const auth = await resolveAuth(c);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+
+    const fileId = c.req.param('fileId');
+    const raw = await c.env.KV.get(`${PRESIGN_KV_PREFIX}${fileId}`);
+    if (!raw) return c.json({ error: 'Upload session not found or expired', code: 'PRESIGN_EXPIRED' }, 410);
+    const meta = JSON.parse(raw) as PresignMeta;
+
+    if (meta.userId !== auth.userId) {
+      return c.json({ error: 'Not authorized to complete this upload' }, 403);
+    }
+
+    const head = await c.env.UPLOADS.head(meta.r2Key);
+    if (!head) {
+      return c.json({ error: 'File was not found in storage — upload may have failed', code: 'UPLOAD_NOT_FOUND' }, 400);
+    }
+    if (head.size !== meta.size) {
+      return c.json({
+        error: 'Uploaded file size does not match the presigned request',
+        code: 'SIZE_MISMATCH', expected: meta.size, actual: head.size,
+      }, 400);
+    }
+
+    const db = getDb(c.env);
+
+    let effectiveFolderId = meta.folderId;
+    if (effectiveFolderId == null && meta.entityType == null) {
+      try {
+        effectiveFolderId = await ensureDefaultDocumentsFolder(db, auth.userId);
+      } catch (e) {
+        console.warn('[uploads] default documents folder resolve failed', e);
+      }
+    }
+
+    const storedName = meta.r2Key.split('/').pop() || meta.r2Key;
+    await execute(
+      db,
+      `INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      fileId, meta.filename, storedName, meta.r2Key, meta.contentType, meta.size,
+      meta.entityType, meta.entityId, auth.userId,
+    );
+
+    if (effectiveFolderId != null) {
+      try {
+        await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', effectiveFolderId, fileId);
+      } catch (e) {
+        console.warn('Upload: folder placement failed for', fileId, e);
+      }
+    }
+
+    await c.env.KV.delete(`${PRESIGN_KV_PREFIX}${fileId}`).catch(() => undefined);
+
+    await execute(
+      db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+       VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
+      auth.userId,
+      meta.entityType || 'attachment',
+      meta.entityId,
+      `Uploaded file: ${meta.filename}`,
+      c.req.header('CF-Connecting-IP') || 'unknown',
+    );
+
+    const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    return c.json(row, 201);
+  } catch (err) {
+    log.error('Complete presign upload failed', {}, err as Error);
+    return c.json({ error: 'Failed to finalize upload', code: 'COMPLETE_UPLOAD_ERROR' }, 500);
   }
 });
 
@@ -371,7 +564,7 @@ uploads.post('/create', async (c) => {
     const ext = extFor(name, mimeType);
     const r2Key = `attachments/${fileId}${ext}`;
 
-    await c.env.UPLOADS.put(r2Key, new Uint8Array(0), {
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, new Uint8Array(0), {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -393,10 +586,33 @@ uploads.post('/create', async (c) => {
     const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     return c.json(row, 201);
   } catch (err) {
-    console.error('Create file error:', err);
+    log.error('Create file failed', {}, err as Error);
     return c.json({ error: 'Failed to create file', code: 'CREATE_FILE_ERROR' }, 500);
   }
 });
+
+// ── Attachment mutation authorization ───────────────────────
+// This router is mounted auth:'public' (so <img>/<video> can present HMAC
+// params instead of a header), which means NEITHER authMiddleware NOR
+// readOnlyRoleGuard runs for any handler here. resolveAuth() proves only
+// that a JWT is valid — it returns no scope and makes no claim about THIS
+// attachment. The DELETE handler below has always applied an owner-or-admin
+// check; /content and /link did not, so any authenticated account could
+// overwrite the bytes of any attachment by file_id (evidence included) or
+// re-parent it to a different case. Same rule for all three now.
+const ATTACHMENT_ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
+// client_viewer is listed explicitly because readOnlyRoleGuard — which
+// normally blocks it from every write — is bypassed by the public mount.
+const ATTACHMENT_READONLY_ROLES = new Set(['client_viewer']);
+
+function canMutateAttachment(
+  auth: { userId: number; role: string },
+  att: { uploaded_by?: number | null },
+): boolean {
+  if (ATTACHMENT_READONLY_ROLES.has(auth.role)) return false;
+  if (att.uploaded_by != null && att.uploaded_by === auth.userId) return true;
+  return ATTACHMENT_ADMIN_ROLES.has(auth.role);
+}
 
 // Save text content back into an existing attachment in R2.
 // PUT /api/uploads/:fileId/content  body = raw text
@@ -408,17 +624,20 @@ uploads.put('/:fileId/content', async (c) => {
     const fileId = c.req.param('fileId');
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+    if (!canMutateAttachment(auth, att)) {
+      return c.json({ error: 'Not authorized to modify this file', code: 'FORBIDDEN' }, 403);
+    }
 
     const text = await c.req.text();
     const encoded = new TextEncoder().encode(text);
-    await c.env.UPLOADS.put(att.file_path, encoded, {
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, encoded, {
       httpMetadata: { contentType: att.mime_type || 'text/plain' },
     });
     await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', encoded.byteLength, fileId);
 
     return c.json({ ok: true, file_id: fileId, file_size: encoded.byteLength });
   } catch (err) {
-    console.error('Save content error:', err);
+    log.error('Save content failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to save content', code: 'SAVE_CONTENT_ERROR' }, 500);
   }
 });
@@ -436,7 +655,16 @@ uploads.put('/:fileId/link', async (c) => {
       return c.json({ error: 'entity_type and entity_id are required', code: 'ENTITYTYPE_AND_ENTITYID_ARE' }, 400);
     }
 
-    const result = await execute(
+    // Load and authorize BEFORE writing — the previous order issued the
+    // UPDATE first and only then checked the row existed, so an unauthorized
+    // caller's re-parenting had already been committed.
+    const existing = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    if (!existing) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+    if (!canMutateAttachment(auth, existing)) {
+      return c.json({ error: 'Not authorized to modify this file', code: 'FORBIDDEN' }, 403);
+    }
+
+    await execute(
       db,
       'UPDATE attachments SET entity_type = ?, entity_id = ? WHERE file_id = ?',
       entity_type, parseInt(entity_id, 10), fileId,
@@ -447,7 +675,7 @@ uploads.put('/:fileId/link', async (c) => {
 
     return c.json(row);
   } catch (err) {
-    console.error('Link attachment error:', err);
+    log.error('Link attachment failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to link attachment', code: 'LINK_ATTACHMENT_ERROR' }, 500);
   }
 });
@@ -471,6 +699,7 @@ uploads.delete('/:fileId', async (c) => {
     }
 
     try { await c.env.UPLOADS.delete(att.file_path); } catch { /* non-fatal */ }
+    try { await deleteEncryptionKey(db, att.file_path); } catch { /* non-fatal */ }
 
     await execute(db, 'DELETE FROM attachments WHERE file_id = ?', fileId);
 
@@ -487,7 +716,7 @@ uploads.delete('/:fileId', async (c) => {
 
     return c.json({ message: 'File deleted' });
   } catch (err) {
-    console.error('Delete attachment error:', err);
+    log.error('Delete attachment failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' }, 500);
   }
 });

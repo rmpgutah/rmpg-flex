@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 // MyIdPage — the officer's own digital ID badge with a live, rotating QR.
 // GET /api/wallet/me lazily issues the credential and returns the badge + a
@@ -36,7 +37,7 @@ export default function MyIdPage() {
 
   async function renderQr(token: string) {
     try {
-      const QRCode = (await import('qrcode')).default;
+      const QRCode = (await importWithRetry(() => import('qrcode'))).default;
       const url = await QRCode.toDataURL(token, { margin: 1, width: 260, errorCorrectionLevel: 'M' });
       setQrDataUrl(url);
     } catch {
@@ -83,10 +84,10 @@ export default function MyIdPage() {
       <div className="w-full max-w-sm rounded-[2px] border border-border-default bg-surface-sunken overflow-hidden">
         {/* Header band */}
         <div className="bg-surface-base border-b border-border-default px-4 py-3 flex items-center justify-between">
-          <div className="text-[#d4a017] font-semibold tracking-wide text-sm">RMPG OFFICER ID</div>
+          <div className="text-[color:var(--panel-header-color)] font-semibold tracking-wide text-sm">RMPG OFFICER ID</div>
           <span
             className={`text-[10px] font-semibold px-2 py-[2px] rounded-[2px] ${
-              isActive ? 'bg-[#16351a] text-[#5bd17a]' : 'bg-[#3a1414] text-[#e06464]'
+              isActive ? 'bg-[rgb(var(--sev-ok-rgb)/0.12)] text-[color:var(--sev-ok)]' : 'bg-[rgb(var(--sev-critical-rgb)/0.12)] text-[color:var(--sev-critical)]'
             }`}
           >
             {isActive ? 'ACTIVE' : 'INACTIVE'}

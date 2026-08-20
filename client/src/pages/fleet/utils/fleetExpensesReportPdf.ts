@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { localToday } from '../../../utils/dateUtils';
 
 interface ExpenseRecord {
   id?: number | string;
@@ -25,7 +26,7 @@ interface ExpenseRecord {
   notes?: string;
 }
 
-interface Args {
+export interface Args {
   vehicle?: FleetVehicle | null;
   expenses: ExpenseRecord[];
   periodLabel?: string;
@@ -50,7 +51,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   misc: 'Miscellaneous',
 };
 
-export function generateFleetExpensesReportPdf({ vehicle, expenses, periodLabel }: Args): void {
+export function buildFleetExpensesReportPdf({ vehicle, expenses, periodLabel }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -183,7 +184,14 @@ export function generateFleetExpensesReportPdf({ vehicle, expenses, periodLabel 
     doc.setTextColor(0);
   }
 
-  const scopePart = vehicle ? vehicle.vehicle_number || 'vehicle' : 'fleet';
-  const filename = `expenses-report-${scopePart}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the expenses report PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetExpensesReportPdf(args: Args): void {
+  const doc = buildFleetExpensesReportPdf(args);
+  const scopePart = args.vehicle ? args.vehicle.vehicle_number || 'vehicle' : 'fleet';
+  const filename = `expenses-report-${scopePart}-${localToday()}.pdf`;
   doc.save(filename);
 }

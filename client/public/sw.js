@@ -1,8 +1,36 @@
 // ============================================================
 // RMPG Flex — Service Worker
-// Provides offline caching for static assets while always
-// fetching API data fresh from the network.
+// Provides offline caching for static assets and API GET responses.
+// API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1103: Offline data layer. API GET responses are now cached in a stable
+//        'rmpg-api-data' cache (network-first, stale fallback). Pages load
+//        with last-seen data when offline instead of going blank. Auth,
+//        health, WebSocket, and offline-sync endpoints are excluded from
+//        caching. A separate 250-entry eviction cap applies to the API
+//        cache so it does not grow unbounded. The rmpg-api-data cache
+//        survives app deployments (only the versioned rmpg-flex-* caches
+//        are pruned on activate). Write-queue flush (SYNC_PUSH_REQUESTED)
+//        now wired from the SW background-sync event to the page's
+//        processQueue() via the message channel.
+// v1101: Console-error sweep. (1) Warrants: clicking a national-scraper row
+//        no longer fires /warrants/<scraped-id> (synthetic string ids 400 on
+//        the server's numeric guard) — the detail pane, single-warrant PDF and
+//        attachment/email panels now read the unified list row, and every write
+//        action is hidden on those rows with an "External · read-only" badge.
+//        (2) New GET /api/oidc/dialer/check — the identifier-first SSO probe
+//        LoginPage has always called but which never existed (404 every login).
+//        (3) Password-change and password-reset forms now carry a hidden
+//        username field for password managers / the Chrome DOM warning.
+//        (The feature-flags 401 poll loop from the same log was already fixed
+//        on main by #2990 — that fix is kept as-is, not re-litigated here.)
+// v1102: Network-failure retry. Every `.catch()` in the fetch handler treated
+//        "this worker was replaced mid-request" identically to "the device is
+//        offline", so each deploy turned in-flight requests into synthetic
+//        503s (an EMPTY-BODY one for anything hitting the catch-all branch).
+//        fetchWithRetry() retries once before giving up, which separates the
+//        two cheaply: a genuinely offline device fails again immediately,
+//        a deploy-window blip succeeds on the retry.
 // v1096: Fleet v2 (FleetShell) — Page 73 of the full-app frontend pass.
 //        Added N shortcut (open New Vehicle modal when not typing),
 //        Esc cascade (closes New Vehicle modal before propagating),
@@ -90,6 +118,9 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // v478: Spillman CAD console (P1 structural replica) — command line +
 //       three status grids on Dispatch, toggle key rmpg_dispatch_cad_board.
+// v1103: Background sync (gps-flush tag) — flushes unsynced IDB GPS fixes to
+//        /api/dispatch/gps in ≤500-fix chunks when the device reconnects,
+//        even if the RMPG Flex tab is closed. Replaces localStorage failover.
 // ============================================================
 
 // 'rmpg-flex-BUILD' is a placeholder — the stamp-sw-version plugin in
@@ -99,15 +130,30 @@
 // (incidents: SW v321 2026-05-24, and v563 2026-07-01).
 const CACHE_NAME = 'rmpg-flex-BUILD';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
+// Separate stable cache for API GET responses so it survives app deployments.
+// Named without the build SHA so it persists across updates.
+const API_CACHE_NAME = 'rmpg-api-data';
+const MAX_API_CACHE_ENTRIES = 250;
+// API endpoints whose responses change too rapidly or are security-sensitive
+// to serve stale. All others are cached network-first.
+const API_NO_CACHE = ['/api/auth', '/api/health', '/api/ws', '/api/offline'];
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/favicon.png',
   '/rmpg flex.png',
   // Sampled console feedback sounds (soundAssets.ts) — offline-critical.
-  // UI feedback five + the full Spillman/Motorola dispatch tone library
+  // The system/UI set + the full Spillman/Motorola dispatch tone library
   // (dispatchTones.ts plays these asset-first with synth fallback).
+  //
+  // ⚠️ This list is EXPLICIT. A new sound added to client/public/sounds/ is
+  // NOT precached until it appears here, and uiClickSounds is sample-only
+  // with no synth fallback — so offline it plays silence.
   '/sounds/click.wav',
+  '/sounds/navigate.wav',
+  '/sounds/ui_open.wav',
+  '/sounds/ui_close.wav',
+  '/sounds/ui_error.wav',
   '/sounds/submit.wav',
   '/sounds/update.wav',
   '/sounds/delete.wav',
@@ -151,46 +197,130 @@ async function trimCache(cacheName, maxEntries) {
   }
 }
 
-// Install — pre-cache core shell, immediately activate
+// Cache a response and run eviction, used as a fire-and-forget side effect
+// alongside the returned network/cache response in every strategy branch
+// below. Single .catch() prevents Cache API failures (QuotaExceededError,
+// Safari private-browsing storage restrictions) from surfacing as unhandled
+// promise rejections in the SW console.
+function cachePut(cacheName, request, response) {
+  var limit = cacheName === API_CACHE_NAME ? MAX_API_CACHE_ENTRIES : MAX_CACHE_ENTRIES;
+  caches.open(cacheName)
+    .then((cache) => cache.put(request, response).then(() => trimCache(cacheName, limit)))
+    .catch(() => {});
+}
+
+// A fetch() rejection inside the SW does NOT reliably mean the device is
+// offline. When a new worker takes over via skipWaiting() + clients.claim()
+// (see the install/activate handlers below — this app swaps immediately, so
+// it happens on EVERY deploy), requests the outgoing worker already had in
+// flight are cancelled and reject with exactly the same TypeError as a real
+// network loss. The catch branches downstream then synthesize a 503 "Offline"
+// for a device that is perfectly online, which is how a routine deploy could
+// hand the app an empty-body 503 for a page it was mid-navigation to.
+//
+// Retrying once separates the two cheaply. A genuinely offline device fails
+// again right away (DNS/connect errors are sub-second), so an officer with no
+// signal waits ~300ms longer before seeing the offline UI — while a
+// deploy-window cancellation succeeds on the second attempt.
+//
+// Safe to replay: the fetch handler only ever reaches here for GET requests
+// (the guard below returns early on any other method), and a GET Request has
+// no body to consume, so the same Request object can be re-issued.
+const RETRY_DELAY_MS = 300;
+
+// Cache Storage reads can REJECT, not just miss — quota pressure, a browser
+// eviction mid-read, or storage torn down while a worker is being replaced.
+// Every fetch() chain below already ends in .catch(), but the caches.match()
+// chains did not, so one rejecting read went straight through respondWith.
+// A promise handed to respondWith must never reject: when it does the browser
+// logs "The FetchEvent for <url> resulted in a network error response: the
+// promise was rejected" and the page gets a hard failure instead of the
+// offline fallback this handler exists to provide — it does NOT quietly fall
+// back to the network. A burst of identical rejections in the same millisecond
+// is the signature, since parallel asset requests share the one failing cache.
+//
+// Treating a rejected read as a miss is right in every branch here: a miss
+// falls through to the network, which is exactly what an unusable cache wants.
+function cacheMatch(request) {
+  return caches.match(request).catch(() => undefined);
+}
+
+function fetchWithRetry(request, opts) {
+  var fetchOpts = opts || {};
+  return fetch(request, fetchOpts).catch((firstErr) =>
+    new Promise((resolve, reject) => {
+      setTimeout(() => {
+        fetch(request, fetchOpts).then(resolve, () => reject(firstErr));
+      }, RETRY_DELAY_MS);
+    })
+  );
+}
+
+// Install — pre-cache core shell, immediately activate.
+// cache.addAll is ATOMIC — if ANY single file fails (one sound file on spotty
+// cellular), NOTHING gets cached, including index.html. Use individual puts so
+// critical assets (index.html, manifest) survive even when optional sounds fail.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
+      .then((cache) =>
+        Promise.allSettled(
+          STATIC_ASSETS.map((asset) =>
+            fetch(asset, { cache: 'reload' })
+              .then((res) => {
+                if (res.ok) return cache.put(asset, res);
+              })
+              .catch(() => {})
+          )
+        )
+      )
+      .then((results) => {
+        var failed = results
+          ? results.filter((r) => r.status === 'rejected').length
+          : 0;
+        if (failed > 0) {
+          console.warn('[SW] Pre-cache: ' + failed + '/' + STATIC_ASSETS.length + ' assets failed');
+        }
+      })
       .catch((err) => {
         console.warn('[SW] Pre-cache failed:', err);
-        // Don't block install — partial cache is acceptable
       })
   );
-  // Skip waiting so the new SW activates immediately
   self.skipWaiting();
 });
 
-// Activate — clean old caches (including the retired tile cache), claim clients, notify
+// Activate — clean stale caches, claim clients, notify.
+// Keep the IMMEDIATELY PREVIOUS cache alive so in-flight sessions whose
+// index.html still references old chunk URLs can serve them from cache
+// instead of 404-ing against the new deploy. Only caches older than the
+// previous deploy (and the retired tile cache) are purged.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      // Delete every cache that isn't the current main cache. This also
-      // evicts the retired 'rmpg-flex-tiles-v2' CartoDB tile cache.
-      const oldKeys = keys.filter((k) => k !== CACHE_NAME);
-      return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
-        if (oldKeys.length > 0) {
-          // Notify v539+ clients that have an auto-reload handler.
-          // The SW-side force-reload (client.navigate) was REMOVED
-          // 2026-05-05 because it was causing perceived slowness on
-          // Electron — the cache eviction + navigation triggered a
-          // full bundle re-fetch every time a new SW activated. The
-          // v539+ client-side auto-reload (1.5s after SW_UPDATED with
-          // input-focus guard) is enough; pre-v539 sessions can do a
-          // one-time manual reload.
-          self.clients.matchAll({ type: 'window' }).then((clients) => {
-            clients.forEach((client) => {
-              client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
-            });
-          });
-        }
-      });
+      // Keep the current main cache + the immediately previous rmpg-flex-* cache
+      // (protects in-flight chunk requests from concurrent deploy). Also keep
+      // the stable API data cache unconditionally — it survives every deploy.
+      const oldKeys = keys.filter((k) => k !== CACHE_NAME && k !== API_CACHE_NAME);
+      const rmpgKeys = oldKeys
+        .filter((k) => k.startsWith('rmpg-flex-'))
+        .sort();
+      const previousCache = rmpgKeys.length > 0 ? rmpgKeys[rmpgKeys.length - 1] : null;
+      const toDelete = oldKeys.filter((k) => k !== previousCache);
+      return Promise.all(toDelete.map((k) => caches.delete(k)));
     })
     .then(() => self.clients.claim())
+    .then(() => {
+      // Notify all window clients that a new version is active. Must run AFTER
+      // clients.claim() so matchAll() returns the clients now controlled by this
+      // SW — before claim(), the new SW controls zero clients and the message
+      // goes to an empty list (the bug that caused updates to be invisible until
+      // a manual reload).
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
+        });
+      });
+    })
   );
 });
 
@@ -205,15 +335,165 @@ self.addEventListener('activate', (event) => {
 // Purely cosmetic — these are fetch()/XHR POSTs with no Subresource
 // Integrity check, so an empty synthetic body is safe.
 //
-// static.cloudflareinsights.com/beacon.min.js is deliberately NOT here —
+// static.cloudflareinsights.com/beacon.min.js is NOT in TELEMETRY_HOSTS —
 // Cloudflare auto-injects that <script> tag with an `integrity="sha512-…"`
-// attribute. A script load DOES enforce SRI, so answering it with an empty
-// body doesn't silence the console — it swaps ERR_CONNECTION_REFUSED for a
-// more confusing "Failed to find a valid digest in the integrity attribute"
-// block (confirmed: the browser's reported hash is the SHA-512 of an empty
-// string, i.e. our synthetic response). Net effect is identical either way
-// (script never loads), so just let it fail its normal, less confusing way.
+// attribute. A 204 response from TELEMETRY_HOSTS would fail the SRI check,
+// swapping one console error for another. Instead, the navigation handler
+// below strips the beacon <script> tag from the HTML response before the
+// browser ever parses it — no tag means no fetch, no SRI check, no console
+// error of any kind.
 const TELEMETRY_HOSTS = ['events.mapbox.com', 'events.mapbox.cn'];
+
+// Self-heal for the stale-chunk wedge (live incident 2026-07-30).
+//
+// When the poison guard below sees HTML for a /assets/*.js request, the real
+// culprit is the CACHED NAVIGATION SHELL: an index.html we cached earlier whose
+// entry <script> points at a hash the current deploy no longer serves. Leaving
+// that shell cached means every subsequent navigation re-serves the same dead
+// pointer, so the tab can never recover on its own.
+//
+// Drop the cached navigation entries (SPA routes have no file extension) so the
+// NEXT navigation goes to the network for fresh HTML. Best-effort and fully
+// swallowed: this runs inside waitUntil and must never affect the response.
+async function purgeCachedShell() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const keys = await cache.keys();
+    await Promise.all(
+      keys
+        .filter((req) => {
+          try {
+            const p = new URL(req.url).pathname;
+            // '/' and extensionless SPA routes are navigation shells.
+            // Anything with an extension (.js/.css/.png/…) is a real asset.
+            return p === '/' || !/\.[a-z0-9]+$/i.test(p);
+          } catch (e) {
+            return false;
+          }
+        })
+        .map((req) => cache.delete(req)),
+    );
+  } catch (e) {
+    /* best effort — never let self-heal break the fetch path */
+  }
+}
+
+// v1104: Automation firing drain — flushClientFirings() chained after GPS
+//        flush in the gps-flush sync event so offline automation firings are
+//        replayed to dispatch the moment the device reconnects.
+// ── Background sync: flush unsynced GPS fixes + automation firings ────────
+self.addEventListener('sync', (event) => {
+  if (event.tag !== 'gps-flush') return;
+  event.waitUntil(flushGpsFixes().then(() => flushClientFirings()));
+});
+
+async function flushGpsFixes() {
+  let db;
+  try {
+    db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('rmpg-gps', 1);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return; // IDB unavailable — nothing to flush
+  }
+
+  const fixes = await new Promise((resolve) => {
+    const tx = db.transaction('fixes', 'readonly');
+    const idx = tx.objectStore('fixes').index('synced');
+    const req = idx.getAll(0);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve([]);
+  });
+
+  if (!fixes || fixes.length === 0) return;
+
+  // Batch in chunks of 500 to stay within server limits
+  for (let i = 0; i < fixes.length; i += 500) {
+    const chunk = fixes.slice(i, i + 500);
+    const points = chunk.map((f) => ({
+      latitude: f.lat, longitude: f.lng,
+      accuracy: f.accuracy, heading: f.heading,
+      speed: f.speed, timestamp: new Date(f.ts).toISOString(),
+      source: f.source,
+    }));
+
+    let ok = false;
+    try {
+      const res = await fetch('/api/dispatch/gps', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points }),
+        credentials: 'include',
+      });
+      ok = res.ok;
+    } catch {
+      throw new Error('GPS flush network failure — sync will retry');
+    }
+
+    if (ok) {
+      const ids = chunk.map((f) => f.id);
+      await new Promise((resolve) => {
+        const tx = db.transaction('fixes', 'readwrite');
+        const store = tx.objectStore('fixes');
+        ids.forEach((id) => {
+          const req = store.get(id);
+          req.onsuccess = () => { if (req.result) store.put({ ...req.result, synced: 1 }); };
+        });
+        tx.oncomplete = resolve;
+      });
+    }
+  }
+}
+
+async function flushClientFirings() {
+  let db;
+  try {
+    db = await new Promise((resolve, reject) => {
+      const req = indexedDB.open('rmpg-automations', 1);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return; // IDB unavailable — nothing to flush
+  }
+
+  const firings = await new Promise((resolve) => {
+    const tx = db.transaction('firings', 'readonly');
+    const req = tx.objectStore('firings').index('synced').getAll(0);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve([]);
+  });
+
+  if (!firings || firings.length === 0) return;
+
+  let ok = false;
+  try {
+    const res = await fetch('/api/automation-rules/firings/client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ firings }),
+      credentials: 'include',
+    });
+    ok = res.ok;
+  } catch {
+    throw new Error('Automation firing flush network failure — sync will retry');
+  }
+
+  if (ok) {
+    const ids = firings.map((f) => f.id);
+    await new Promise((resolve) => {
+      const tx = db.transaction('firings', 'readwrite');
+      const store = tx.objectStore('firings');
+      ids.forEach((id) => {
+        const req = store.get(id);
+        req.onsuccess = () => { if (req.result) store.put({ ...req.result, synced: 1 }); };
+      });
+      tx.oncomplete = resolve;
+    });
+  }
+}
 
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
@@ -224,7 +504,39 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Never cache API calls, WebSocket, POST requests, or external map tiles
+  // API GET caching — network-first with stale fallback for same-origin GET
+  // /api/* requests that are not on the no-cache list. Responses are stored in
+  // the stable API_CACHE_NAME cache (survives app deploys). When the network
+  // fails, the last successful response is served so pages show stale data
+  // instead of going blank. A 503 JSON stub is served as a last resort.
+  if (
+    url.origin === self.location.origin &&
+    event.request.method === 'GET' &&
+    url.pathname.startsWith('/api') &&
+    !API_NO_CACHE.some((prefix) => url.pathname.startsWith(prefix))
+  ) {
+    event.respondWith(
+      fetchWithRetry(event.request)
+        .then((response) => {
+          if (response.ok) {
+            cachePut(API_CACHE_NAME, event.request, response.clone());
+          }
+          return response;
+        })
+        .catch(() =>
+          cacheMatch(event.request).then((cached) =>
+            cached || new Response(
+              JSON.stringify({ error: 'offline', data: null }),
+              { status: 503, headers: { 'Content-Type': 'application/json' } }
+            )
+          )
+        )
+    );
+    return;
+  }
+
+  // Never cache WebSocket, non-GET requests, or external origins.
+  // Auth / health / offline endpoints above are also passed through (API_NO_CACHE).
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/ws') ||
@@ -238,25 +550,43 @@ self.addEventListener('fetch', (event) => {
   // tile fallback was retired 2026-04-29; if any code still references
   // /tiles/, requests fall through to the default network-first handler.
 
-  // Navigation requests — always network first with offline fallback
+  // Navigation requests — always network first with offline fallback.
+  // Force cache: 'no-cache' so the browser doesn't serve a stale HTTP-cached
+  // index.html from a previous deploy (the SW cache is the offline fallback,
+  // not the HTTP cache).
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetchWithRetry(event.request, { cache: 'no-cache' })
         .then((response) => {
           if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            const ct = response.headers.get('Content-Type') || '';
+            if (ct.includes('text/html')) {
+              // Strip the Cloudflare beacon <script> tag before the browser
+              // parses the HTML. CF Pages injects it with an integrity="sha512-…"
+              // attribute; a SW 204 response fails the SRI check (empty body
+              // hash mismatch), so interception is not an option. Stripping the
+              // tag here means no element exists to CSP-check or fetch, so no
+              // console error of any kind fires regardless of CSP policy.
+              return response.text().then((html) => {
+                var stripped = html.replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '');
+                var headers = {};
+                response.headers.forEach(function(v, k) {
+                  if (k.toLowerCase() !== 'content-length') headers[k] = v;
+                });
+                var clean = new Response(stripped, { status: response.status, statusText: response.statusText, headers: headers });
+                cachePut(CACHE_NAME, event.request, clean.clone());
+                return clean;
+              });
+            }
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })
         .catch(() =>
-          caches.match(event.request)
-            .then((cached) => cached || caches.match('/'))
+          cacheMatch(event.request)
+            .then((cached) => cached || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#0a0a0a;color:#d4a017;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #222;background:#141414;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#d4a017}p{margin:0 0 20px;color:#888;font-size:13px;line-height:1.5}button{background:#d4a017;color:#000;border:0;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#f0bf38}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection and retry.</p><button onclick="window.location.reload()" type="button">Retry</button></div></body></html>',
+              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:monospace;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
             ))
         )
@@ -278,9 +608,9 @@ self.addEventListener('fetch', (event) => {
     if (isHashedAsset) {
       // Cache-first — return immediately if we have it, only hit network on miss.
       event.respondWith(
-        caches.match(event.request).then((cached) => {
+        cacheMatch(event.request).then((cached) => {
           if (cached) return cached;
-          return fetch(event.request)
+          return fetchWithRetry(event.request)
             .then((response) => {
               // Poison guard: a deploy-removed chunk hash can come back as a
               // 200 text/html SPA fallback (index.html). NEVER cache or return
@@ -290,14 +620,16 @@ self.addEventListener('fetch', (event) => {
               // dynamic import rejects and lazyRetry reloads the fresh bundle.
               const ct = response.headers.get('Content-Type') || '';
               if (ct.includes('text/html')) {
+                // Evict the cached shell that pointed at this dead hash, so the
+                // next navigation refetches fresh HTML instead of re-serving the
+                // same broken entry <script> forever. Without this the tab is
+                // wedged on the INITIALIZING splash permanently — see
+                // purgeCachedShell() above and index.html's entry error handler.
+                event.waitUntil(purgeCachedShell());
                 return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
               }
               if (response.ok) {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                  cache.put(event.request, clone);
-                  trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-                });
+                cachePut(CACHE_NAME, event.request, response.clone());
               }
               return response;
             })
@@ -309,42 +641,64 @@ self.addEventListener('fetch', (event) => {
 
     // Non-hashed JS/CSS → network first
     event.respondWith(
-      fetch(event.request)
+      fetchWithRetry(event.request)
         .then((response) => {
           // Same poison guard as the hashed branch — never cache/return HTML
           // for a JS/CSS request (see v716 note).
           const ct = response.headers.get('Content-Type') || '';
           if (ct.includes('text/html')) {
-            return caches.match(event.request).then(
+            return cacheMatch(event.request).then(
               (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
             );
           }
           if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })
-        .catch(() => caches.match(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+        .catch(() => cacheMatch(event.request).then((cached) => cached || new Response('', { status: 503, statusText: 'Offline' })))
+    );
+    return;
+  }
+
+  // GeoJSON district overlay files (/geojson/*.geojson) — loaded by the
+  // dispatch map on every visit. These files are up to 9 MB each so they are
+  // NOT in STATIC_ASSETS (that would bloat every install). Instead, cache
+  // network-first on the first successful fetch, then serve cache-first with
+  // a background refresh on repeat visits. When both network and cache fail
+  // (true offline, first visit), return an empty FeatureCollection so the map
+  // renders without overlays rather than logging a 503 console error.
+  if (url.pathname.startsWith('/geojson/') && url.pathname.endsWith('.geojson')) {
+    event.respondWith(
+      cacheMatch(event.request).then((cached) => {
+        var networkFetch = fetchWithRetry(event.request)
+          .then((response) => {
+            if (response.ok) cachePut(CACHE_NAME, event.request, response.clone());
+            return response;
+          })
+          .catch(() => cached || new Response(
+            JSON.stringify({ type: 'FeatureCollection', features: [] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          ));
+        if (cached) {
+          // Serve the cached version immediately; refresh in the background.
+          event.waitUntil(networkFetch);
+          return cached;
+        }
+        return networkFetch;
+      })
     );
     return;
   }
 
   // Images, fonts, etc. — cache first (these rarely change for same filename)
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    cacheMatch(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request)
+      return fetchWithRetry(event.request)
         .then((response) => {
           if (response.ok && url.pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$/)) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, clone);
-              trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
-            });
+            cachePut(CACHE_NAME, event.request, response.clone());
           }
           return response;
         })

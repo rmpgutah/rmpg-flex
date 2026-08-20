@@ -24,7 +24,7 @@
 //   POST   /ocr-scan    — DL image OCR (external/AI round-trip)
 //
 // Timestamps are UTC (`datetime('now')`) per the UTC-storage standard —
-// the legacy code used datetime('now','localtime'), which double-shifted
+// the legacy code used datetime('now'), which double-shifted
 // on display.
 // ============================================================
 
@@ -36,6 +36,8 @@ import { lookupCourtRecords } from '../utils/courtRecordsLookup';
 import { lookupFbiWanted } from '../utils/fbiWantedLookup';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const dlRecords = new Hono<Env>();
 
 // ── Inline role gate (mirrors arrests.ts) ───────────────────
@@ -83,6 +85,109 @@ async function audit(
   }
 }
 
+// ── upsertDlRecord — shared upsert-on-(dl_number, dl_state) logic ──
+// Extracted from the POST / handler so `from-dl-scan` in records.ts can
+// populate dl_records from the same scan that creates the person, instead
+// of the two write paths staying disconnected. Behavior-preserving: same
+// validation messages, same upsert semantics, same dl_addresses handling.
+// Distinguishes the two intentional input-validation checks in
+// upsertDlRecord from genuine runtime failures (bad column, constraint
+// violation, bind error). Callers should only convert THIS error type
+// into a 400 — anything else must propagate to the normal 500 path.
+export class DlRecordValidationError extends Error {}
+
+export async function upsertDlRecord(
+  db: ReturnType<typeof getDb>, body: Record<string, any>,
+): Promise<{ recordId: number; created: boolean }> {
+  if (!body.dl_number || !body.dl_state) {
+    throw new DlRecordValidationError('DL number and state are required');
+  }
+  if (!body.last_name || !body.first_name) {
+    throw new DlRecordValidationError('First and last name are required');
+  }
+
+  const fullName = `${body.first_name || ''} ${body.middle_name || ''} ${body.last_name || ''}`
+    .replace(/\s+/g, ' ').trim();
+  const source = typeof body.source === 'string' && body.source ? body.source : 'MANUAL_ENTRY';
+  // Scanner payloads use `dl_expiry`; the manual form uses `dl_expiration`.
+  // Accept either so a scanned license's expiry is never silently dropped.
+  const dlExpiration = body.dl_expiration || body.dl_expiry || '';
+  // Preserve the complete scanned payload — including fields with no
+  // dedicated column (REAL ID, organ donor, veteran, country, document
+  // discriminator) — so nothing from the scan is lost on persist.
+  const rawRecord = typeof body.raw_record === 'string'
+    ? body.raw_record.slice(0, 32_000)
+    : JSON.stringify(body).slice(0, 32_000);
+
+  // Upsert keyed on (dl_number, dl_state) — matches the legacy
+  // dlRecordStore contract (one row per physical license).
+  const existing = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM dl_records WHERE dl_number = ? AND dl_state = ?',
+    body.dl_number, body.dl_state,
+  );
+
+  let recordId: number;
+  let created = false;
+  if (existing) {
+    await execute(
+      db,
+      `UPDATE dl_records SET
+         dl_class = ?, dl_status = ?, dl_expiration = ?, dl_issue_date = ?,
+         dl_restrictions = ?, dl_endorsements = ?,
+         first_name = ?, middle_name = ?, last_name = ?, full_name = ?, suffix = ?,
+         date_of_birth = ?, gender = ?, height = ?, weight = ?,
+         eye_color = ?, hair_color = ?, race = ?,
+         source = ?, raw_record = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+      body.dl_class || '', body.dl_status || '', dlExpiration, body.dl_issue_date || '',
+      body.dl_restrictions || '', body.dl_endorsements || '',
+      body.first_name || '', body.middle_name || '', body.last_name || '', fullName, body.suffix || '',
+      body.date_of_birth || '', body.gender || '', body.height || '', body.weight || '',
+      body.eye_color || '', body.hair_color || '', body.race || '',
+      source, rawRecord, existing.id,
+    );
+    recordId = existing.id;
+    await execute(db, 'DELETE FROM dl_addresses WHERE dl_record_id = ?', recordId);
+  } else {
+    const result = await execute(
+      db,
+      `INSERT INTO dl_records (
+         dl_number, dl_state, dl_class, dl_status, dl_expiration, dl_issue_date,
+         dl_restrictions, dl_endorsements,
+         first_name, middle_name, last_name, full_name, suffix,
+         date_of_birth, gender, height, weight, eye_color, hair_color, race,
+         source, raw_record, fetched_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+      body.dl_number, body.dl_state, body.dl_class || '', body.dl_status || '',
+      dlExpiration, body.dl_issue_date || '',
+      body.dl_restrictions || '', body.dl_endorsements || '',
+      body.first_name || '', body.middle_name || '', body.last_name || '', fullName, body.suffix || '',
+      body.date_of_birth || '', body.gender || '', body.height || '', body.weight || '',
+      body.eye_color || '', body.hair_color || '', body.race || '',
+      source, rawRecord,
+    );
+    recordId = Number(result.meta.last_row_id);
+    created = true;
+  }
+
+  // Build address from the manual-form shape (address_state || dl_state).
+  if (body.address || body.city) {
+    const addr: DlAddress = {
+      address: body.address || '', address2: body.address2 || '', city: body.city || '',
+      state: body.address_state || body.dl_state || '', postal_code: body.postal_code || '',
+      country: 'US',
+    };
+    await execute(
+      db,
+      `INSERT INTO dl_addresses (dl_record_id, address, address2, city, state, postal_code, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      recordId, addr.address, addr.address2, addr.city, addr.state, addr.postal_code, addr.country,
+    );
+  }
+
+  return { recordId, created };
+}
+
 // ── POST / — manual create/upsert ───────────────────────────
 dlRecords.post('/', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer');
@@ -92,89 +197,16 @@ dlRecords.post('/', async (c) => {
     const userId = (c.get('userId') as number) ?? null;
     const b = await c.req.json<Record<string, any>>();
 
-    if (!b.dl_number || !b.dl_state) {
-      return c.json({ error: 'DL number and state are required', code: 'DL_NUMBER_AND_STATE' }, 400);
-    }
-    if (!b.last_name || !b.first_name) {
-      return c.json({ error: 'First and last name are required', code: 'FIRST_AND_LAST_NAME' }, 400);
-    }
-
-    const fullName = `${b.first_name || ''} ${b.middle_name || ''} ${b.last_name || ''}`
-      .replace(/\s+/g, ' ').trim();
-    const source = typeof b.source === 'string' && b.source ? b.source : 'MANUAL_ENTRY';
-    // Scanner payloads use `dl_expiry`; the manual form uses `dl_expiration`.
-    // Accept either so a scanned license's expiry is never silently dropped.
-    const dlExpiration = b.dl_expiration || b.dl_expiry || '';
-    // Preserve the complete scanned payload — including fields with no
-    // dedicated column (REAL ID, organ donor, veteran, country, document
-    // discriminator) — so nothing from the scan is lost on persist.
-    const rawRecord = typeof b.raw_record === 'string'
-      ? b.raw_record.slice(0, 32_000)
-      : JSON.stringify(b).slice(0, 32_000);
-
-    // Upsert keyed on (dl_number, dl_state) — matches the legacy
-    // dlRecordStore contract (one row per physical license).
-    const existing = await queryFirst<{ id: number }>(
-      db, 'SELECT id FROM dl_records WHERE dl_number = ? AND dl_state = ?',
-      b.dl_number, b.dl_state,
-    );
-
     let recordId: number;
-    if (existing) {
-      await execute(
-        db,
-        `UPDATE dl_records SET
-           dl_class = ?, dl_status = ?, dl_expiration = ?, dl_issue_date = ?,
-           dl_restrictions = ?, dl_endorsements = ?,
-           first_name = ?, middle_name = ?, last_name = ?, full_name = ?, suffix = ?,
-           date_of_birth = ?, gender = ?, height = ?, weight = ?,
-           eye_color = ?, hair_color = ?, race = ?,
-           source = ?, raw_record = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-        b.dl_class || '', b.dl_status || '', dlExpiration, b.dl_issue_date || '',
-        b.dl_restrictions || '', b.dl_endorsements || '',
-        b.first_name || '', b.middle_name || '', b.last_name || '', fullName, b.suffix || '',
-        b.date_of_birth || '', b.gender || '', b.height || '', b.weight || '',
-        b.eye_color || '', b.hair_color || '', b.race || '',
-        source, rawRecord, existing.id,
-      );
-      recordId = existing.id;
-      await execute(db, 'DELETE FROM dl_addresses WHERE dl_record_id = ?', recordId);
-    } else {
-      const result = await execute(
-        db,
-        `INSERT INTO dl_records (
-           dl_number, dl_state, dl_class, dl_status, dl_expiration, dl_issue_date,
-           dl_restrictions, dl_endorsements,
-           first_name, middle_name, last_name, full_name, suffix,
-           date_of_birth, gender, height, weight, eye_color, hair_color, race,
-           source, raw_record, fetched_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        b.dl_number, b.dl_state, b.dl_class || '', b.dl_status || '',
-        dlExpiration, b.dl_issue_date || '',
-        b.dl_restrictions || '', b.dl_endorsements || '',
-        b.first_name || '', b.middle_name || '', b.last_name || '', fullName, b.suffix || '',
-        b.date_of_birth || '', b.gender || '', b.height || '', b.weight || '',
-        b.eye_color || '', b.hair_color || '', b.race || '',
-        source, rawRecord,
-      );
-      recordId = Number(result.meta.last_row_id);
+    let created: boolean;
+    try {
+      ({ recordId, created } = await upsertDlRecord(db, b));
+    } catch (validationErr: any) {
+      if (!(validationErr instanceof DlRecordValidationError)) throw validationErr;
+      const code = validationErr.message.includes('name') ? 'FIRST_AND_LAST_NAME' : 'DL_NUMBER_AND_STATE';
+      return c.json({ error: validationErr.message, code }, 400);
     }
-
-    // Build address from the manual-form shape (address_state || dl_state).
-    if (b.address || b.city) {
-      const addr: DlAddress = {
-        address: b.address || '', address2: b.address2 || '', city: b.city || '',
-        state: b.address_state || b.dl_state || '', postal_code: b.postal_code || '',
-        country: 'US',
-      };
-      await execute(
-        db,
-        `INSERT INTO dl_addresses (dl_record_id, address, address2, city, state, postal_code, country)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        recordId, addr.address, addr.address2, addr.city, addr.state, addr.postal_code, addr.country,
-      );
-    }
+    void created;
 
     await audit(
       db, userId, 'dl_record_manual_entry', recordId,
@@ -200,9 +232,8 @@ dlRecords.get('/', async (c) => {
     let where = '1=1';
     const params: unknown[] = [];
     if (search) {
-      where += ' AND (full_name LIKE ? OR dl_number LIKE ? OR last_name LIKE ? OR first_name LIKE ?)';
-      const like = `%${search}%`;
-      params.push(like, like, like, like);
+      const m = containsAnyClause(['full_name', 'dl_number', 'last_name', 'first_name']);
+      where += ` AND ${m.sql}`; params.push(...m.binds(search));
     }
 
     const totalRow = await queryFirst<{ cnt: number }>(
@@ -216,6 +247,7 @@ dlRecords.get('/', async (c) => {
 
     return c.json({ data: rows, total: totalRow?.cnt ?? 0, page, per_page: perPage });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to list DL records', code: 'FAILED_TO_LIST_DL' }, 500);
   }
 });
@@ -333,7 +365,8 @@ Transcribe exactly what is printed. dl_state is the issuing state's 2-letter cod
       return c.json({ success: false, error: 'Vision model returned no structured data', raw_ocr: raw.slice(0, 500) });
     }
     let parsed: Record<string, string>;
-    try { parsed = JSON.parse(jsonMatch[0]); } catch {
+    try { parsed = JSON.parse(jsonMatch[0]); } catch (err) {
+      log.error('POST /ocr-scan failed', { src: 'src/routes/dlRecords.ts' }, err);
       return c.json({ success: false, error: 'Vision output was not valid JSON', raw_ocr: raw.slice(0, 500) });
     }
     // Drop hallucinated non-string values; keep the contract flat strings.
@@ -403,6 +436,7 @@ dlRecords.post('/scan-log', async (c) => {
 
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
+    log.error('POST /scan-log failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ success: false, error: 'Failed to log scan' }, 500);
   }
 });
@@ -423,9 +457,8 @@ dlRecords.get('/scan-log', async (c) => {
     const params: unknown[] = [];
     if (mine && userId) { where += ' AND l.user_id = ?'; params.push(userId); }
     if (search) {
-      where += ' AND (l.subject_name LIKE ? OR l.dl_number LIKE ?)';
-      const like = `%${search}%`;
-      params.push(like, like);
+      const m = containsAnyClause(['l.subject_name', 'l.dl_number']);
+      where += ` AND ${m.sql}`; params.push(...m.binds(search));
     }
 
     // Display name from the live users schema (full_name/username — there is
@@ -447,6 +480,7 @@ dlRecords.get('/scan-log', async (c) => {
     }
     return c.json({ data: rows, count: rows.length });
   } catch (err) {
+    log.error('GET /scan-log failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ data: [], count: 0, error: 'Failed to list scans' }, 500);
   }
 });
@@ -580,6 +614,7 @@ dlRecords.post('/sor/poll', async (c) => {
     const r = await runUtahSorPoll(getDb(c.env));
     return c.json(r);
   } catch (err) {
+    log.error('POST /sor/poll failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ configured: false, seen: 0, upserted: 0, error: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
@@ -631,10 +666,10 @@ dlRecords.get('/deep-sweep', async (c) => {
     const dob = (c.req.query('dob') || '').trim(); // YYYY-MM-DD, refinement only
     if (last.length < 2) return c.json({ error: 'last name (min 2 chars) required', code: 'LAST_REQUIRED' }, 400);
 
-    const lastLike = `${last}%`;
-    const firstLike = first ? `${first}%` : '%';
-    const bothLike = `%${last}%`;
-    const firstAny = first ? `%${first}%` : '%';
+    const lastLike = `${last.slice(0, 49)}%`;
+    const firstLike = first ? `${first.slice(0, 49)}%` : '%';
+    const bothLike = `%${last.slice(0, 48)}%`;
+    const firstAny = first ? `%${first.slice(0, 48)}%` : '%';
 
     const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
       try { return await fn(); } catch { return []; }
@@ -642,7 +677,7 @@ dlRecords.get('/deep-sweep', async (c) => {
 
     // MVR keys: exact-ish DL number (normalised) when supplied by the scan.
     const dlNum = (c.req.query('dl') || '').trim().replace(/\W/g, '');
-    const dlLike = dlNum ? `%${dlNum}%` : null;
+    const dlLike = dlNum ? `%${dlNum.slice(0, 48)}%` : null;
 
     const [utahWarrants, arrests, cites, fis, gang, trespass, serves, boloRows,
            sexOffenders, watchlist, aliasHits, caseHits, mvrCitations, dlHistory, utahSor] = await Promise.all([
@@ -788,7 +823,8 @@ dlRecords.get('/deep-sweep', async (c) => {
                  last_compliance_check, last_compliance_result, expiration_date
           FROM offender_alerts WHERE person_id = ? ORDER BY created_at DESC LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
-          SELECT id, plate_number, state, make, model, color, year, is_stolen, status
+          SELECT id, plate_number, state, make, model, color, year, is_stolen,
+                 stolen_status AS status
           FROM vehicles_records WHERE owner_person_id = ? LIMIT 10`, personId)),
         soft(() => query<Record<string, any>>(db, `
           SELECT id, fi_number, interview_date, date, location, contact_reason, gang_affiliation
@@ -983,6 +1019,7 @@ dlRecords.get('/:id', async (c) => {
     );
     return c.json({ ...record, addresses });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to get DL record', code: 'FAILED_TO_GET_DL' }, 500);
   }
 });
@@ -1019,6 +1056,7 @@ dlRecords.put('/:id', async (c) => {
 
     return c.json({ success: true, data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to update DL record', code: 'FAILED_TO_UPDATE_DL' }, 500);
   }
 });
@@ -1046,6 +1084,7 @@ dlRecords.delete('/:id', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({ error: 'Failed to delete DL record', code: 'FAILED_TO_DELETE_DL' }, 500);
   }
 });
@@ -1209,6 +1248,7 @@ dlRecords.post('/ocr-scan', async (c) => {
     );
     return c.json({ success: true, parsed, model: DL_VISION_MODEL });
   } catch (err) {
+    log.error('POST /ocr-scan failed', { src: 'src/routes/dlRecords.ts' }, err);
     return c.json({
       error: err instanceof Error ? err.message : 'DL scan failed',
       code: 'DL_OCR_FAILED',

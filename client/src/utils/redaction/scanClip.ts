@@ -51,7 +51,7 @@ export async function scanClip(video: HTMLVideoElement, opts: ScanOpts = {}): Pr
       }
       opts.onProgress?.(Math.min(1, t / duration));
     }
-    return mergeSamples(samples, { scanInterval: interval });
+    return mergeSamples(samples, { scanInterval: interval, minNoiseDuration: 0.4, noiseFilterKinds: ['plate'] });
   } finally {
     if (!wasPaused) video.play().catch(() => {});
   }

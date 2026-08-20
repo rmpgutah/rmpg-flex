@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS ps_pricing_items (
   attempts_included INTEGER NOT NULL DEFAULT 0,
   is_active         INTEGER NOT NULL DEFAULT 1,
   sort_order        INTEGER NOT NULL DEFAULT 0,
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
   updated_by        INTEGER
 );
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS ps_contract_terms (
   doc_types_json      TEXT,
   rate_overrides_json TEXT,
   notes               TEXT,
-  updated_at          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
   updated_by          INTEGER
 );
 
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS serve_charges (
                    CHECK(status IN ('pending_review','approved','invoiced','void')),
   subtotal       REAL NOT NULL DEFAULT 0,
   tax_amount     REAL NOT NULL DEFAULT 0,
-  computed_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  computed_at    TEXT NOT NULL DEFAULT (datetime('now')),
   reviewed_by    INTEGER,
   reviewed_at    TEXT,
   invoice_id     INTEGER,

@@ -3,14 +3,15 @@
 // lines) that cross-hits every booking against known/flagged subjects,
 // and a recent-bookings list with match badges.
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { Building2, Search, X, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
-import { parseTimestamp } from '../utils/dateUtils';
+import { parseTimestamp, safeDateStr } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
+import { formatEnumValue } from '../utils/formatters';
 
 interface Source {
   source_key: string; display_name: string; county: string | null;
@@ -315,11 +316,11 @@ export default function JailRecordsPage() {
           >
             <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[s.status] || 'bg-rmpg-500'}`} />
             <span className="text-rmpg-200 min-w-0 flex-1 truncate">{s.display_name}</span>
-            <span className="text-rmpg-500 text-[9px]">{s.kind}</span>
+            <span className="text-rmpg-500 text-[9px]">{formatEnumValue(s.kind)}</span>
             <span className="text-rmpg-500 text-[9px]">{s.row_count || 0} rec</span>
             {s.last_run_at && (
               <span className="text-rmpg-500 text-[9px]" title={s.last_run_at}>
-                {fmtRelativeAge(s.last_run_at) ?? s.last_run_at.slice(0, 10)}
+                {fmtRelativeAge(s.last_run_at) ?? safeDateStr(s.last_run_at, "")}
               </span>
             )}
             <span className="text-rmpg-500 text-[9px] w-28 truncate text-right">{s.last_status || s.status}</span>

@@ -14,7 +14,7 @@
 //   ]);
 // ═══════════════════════════════════════════════════════════════
 import React, { useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Copy, Hash, ExternalLink, MapPin } from 'lucide-react';
 import { useToast } from '../components/ToastProvider';
 import type { ContextMenuItem } from '../context/ContextMenuContext';

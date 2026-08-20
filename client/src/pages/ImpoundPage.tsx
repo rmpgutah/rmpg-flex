@@ -258,7 +258,7 @@ export default function ImpoundPage() {
     <div className="p-4 space-y-4">
       {/* Title */}
       <PanelTitleBar title="IMPOUND LOT MANAGEMENT" icon={Car}>
-        <button onClick={openNew} className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-[#d4a017] text-black hover:brightness-110 transition">
+        <button onClick={openNew} className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-accent-silver-500 text-black hover:brightness-110 transition">
           <Plus className="w-3.5 h-3.5" /> New Impound
         </button>
       </PanelTitleBar>
@@ -273,32 +273,32 @@ export default function ImpoundPage() {
 
       {/* Tabs + Search */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex border border-[#222222] overflow-hidden" style={{ borderRadius: 2 }}>
+        <div className="flex border border-border-default overflow-hidden" style={{ borderRadius: 2 }}>
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={`px-3 py-1 text-[11px] font-semibold transition ${
                 tab === t.key
-                  ? 'bg-[#d4a017] text-black'
-                  : 'bg-[#141414] text-[#888888] hover:text-white'
+                  ? 'bg-accent-silver-500 text-black'
+                  : 'bg-surface-raised text-rmpg-400 hover:text-white'
               }`}
             >
               {t.label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5 flex-1 min-w-[200px] bg-[#141414] border border-[#222222] px-2 py-1" style={{ borderRadius: 2 }}>
-          <Search className="w-3.5 h-3.5 text-[#888888]" />
+        <div className="flex items-center gap-1.5 flex-1 min-w-[200px] bg-surface-raised border border-border-default px-2 py-1" style={{ borderRadius: 2 }}>
+          <Search className="w-3.5 h-3.5 text-accent-silver-500" />
           <input
             type="text"
             placeholder="Search VIN, plate, owner…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent text-[11px] text-white placeholder-[#555] flex-1 outline-none"
+            className="bg-transparent text-[11px] text-white placeholder-rmpg-500 flex-1 outline-none"
           />
           {search && (
-            <IconButton onClick={() => setSearch('')} aria-label="Clear search" className="text-[#888888] hover:text-white">
+            <IconButton onClick={() => setSearch('')} aria-label="Clear search" className="text-rmpg-400 hover:text-white">
               <X className="w-3 h-3" />
             </IconButton>
           )}
@@ -307,18 +307,18 @@ export default function ImpoundPage() {
 
       {/* Table */}
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-[#888888]">
+        <div className="flex items-center justify-center py-16 text-rmpg-400">
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState icon={Car} title="No impound records" description="Click New Impound to add a record." action={{ label: 'New Impound', onClick: openNew }} />
       ) : (
-        <div className="overflow-x-auto border border-[#222222]" style={{ borderRadius: 2 }}>
+        <div className="overflow-x-auto border border-border-default" style={{ borderRadius: 2 }}>
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-[#222222]" style={{ background: 'linear-gradient(180deg,#1a1a1a,#242424)' }}>
+              <tr className="border-b border-border-subtle" style={{ background: 'linear-gradient(180deg, var(--surface-raised), var(--surface-hover))' }}>
                 {['Impound Date', 'Year/Make/Model', 'Color', 'Plate', 'Tow Company', 'Lot Space', 'Days', 'Fees', 'Status', ''].map((h) => (
-                  <th key={h} className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-[#d4a017]">{h}</th>
+                  <th key={h} className="px-2 py-[3px] text-[9px] font-semibold uppercase tracking-wider text-[color:var(--field-label-color)]">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -327,18 +327,18 @@ export default function ImpoundPage() {
                 <tr
                   key={r.id}
                   onClick={() => openEdit(r)}
-                  className="border-b border-[#1a1a1a] hover:bg-[#141414] cursor-pointer transition-colors"
+                  className="border-b border-border-subtle hover:bg-surface-hover cursor-pointer transition-colors"
                 >
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.impound_date?.slice(0, 10) || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white">{ymm(r)}</td>
-                  <td className="px-2 py-[2px] text-[11px] text-[#888888]">{r.vehicle_color || '—'}</td>
+                  <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.vehicle_color || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.license_plate || '—'}{r.license_state ? ` (${r.license_state})` : ''}</td>
-                  <td className="px-2 py-[2px] text-[11px] text-[#888888]">{r.tow_company || '—'}</td>
-                  <td className="px-2 py-[2px] text-[11px] text-[#888888]">{r.lot_space || '—'}</td>
+                  <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.tow_company || '—'}</td>
+                  <td className="px-2 py-[2px] text-[11px] text-rmpg-400">{r.lot_space || '—'}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{r.days_stored ?? daysSince(r.impound_date)}</td>
                   <td className="px-2 py-[2px] text-[11px] text-white font-mono">{calcFees(r)}</td>
                   <td className="px-2 py-[2px] text-[11px]">
-                    <span className={STATUS_COLORS[r.status] || 'text-[#888888]'}>{STATUS_LABELS[r.status] || r.status}</span>
+                    <span className={STATUS_COLORS[r.status] || 'text-rmpg-400'}>{STATUS_LABELS[r.status] || r.status}</span>
                   </td>
                   <td className="px-2 py-[2px] text-right" onClick={(e) => e.stopPropagation()}>
                     {r.status === 'impounded' && (
@@ -360,35 +360,35 @@ export default function ImpoundPage() {
 
       {/* ── Release Modal ── */}
       {releaseId != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setReleaseId(null)}>
-          <div className="bg-[#141414] border border-[#222222] w-full max-w-md p-4 space-y-3" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4" onClick={() => setReleaseId(null)}>
+          <div className="bg-surface-raised border border-border-default w-full max-w-md p-4 space-y-3 my-auto" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#d4a017]">Release Vehicle</h3>
+              <h3 className="text-sm font-semibold text-[color:var(--panel-header-color)]">Release Vehicle</h3>
               <IconButton onClick={() => setReleaseId(null)} aria-label="Close release dialog">
-                <X className="w-4 h-4 text-[#888888]" />
+                <X className="w-4 h-4 text-rmpg-400" />
               </IconButton>
             </div>
-            <label className="block text-[10px] text-[#888888] uppercase tracking-wider">
+            <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
               Released To
               <input
                 value={releaseTo}
                 onChange={(e) => setReleaseTo(e.target.value)}
-                className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017]"
+                className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600"
                 style={{ borderRadius: 2 }}
               />
             </label>
-            <label className="block text-[10px] text-[#888888] uppercase tracking-wider">
+            <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
               Release Notes
               <textarea
                 value={releaseNotes}
                 onChange={(e) => setReleaseNotes(e.target.value)}
                 rows={3}
-                className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017] resize-none"
+                className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600 resize-none"
                 style={{ borderRadius: 2 }}
               />
             </label>
             <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => setReleaseId(null)} className="px-3 py-1 text-[11px] text-[#888888] border border-[#222222] hover:text-white transition" style={{ borderRadius: 2 }}>
+              <button onClick={() => setReleaseId(null)} className="px-3 py-1 text-[11px] text-rmpg-400 border border-border-default hover:text-white transition" style={{ borderRadius: 2 }}>
                 Cancel
               </button>
               <button onClick={handleRelease} disabled={submitting} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold bg-green-700 text-white hover:brightness-110 transition disabled:opacity-50" style={{ borderRadius: 2 }}>
@@ -402,18 +402,18 @@ export default function ImpoundPage() {
       {/* ── Form Modal ── */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
-          <div className="bg-[#141414] border border-[#222222] w-full max-w-2xl max-h-[85vh] overflow-y-auto p-4 space-y-4 scrollbar-dark" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface-raised border border-border-default w-full max-w-2xl max-h-[85vh] overflow-y-auto p-4 space-y-4 scrollbar-dark" style={{ borderRadius: 2 }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#d4a017]">{editing ? 'Edit Impound' : 'New Impound'}</h3>
+              <h3 className="text-sm font-semibold text-[color:var(--panel-header-color)]">{editing ? 'Edit Impound' : 'New Impound'}</h3>
               <IconButton onClick={() => setFormOpen(false)} aria-label="Close form">
-                <X className="w-4 h-4 text-[#888888]" />
+                <X className="w-4 h-4 text-rmpg-400" />
               </IconButton>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Vehicle Info */}
-              <fieldset className="border border-[#222222] p-3 space-y-2" style={{ borderRadius: 2 }}>
-                <legend className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider px-1">Vehicle Info</legend>
+              <fieldset className="border border-border-default p-3 space-y-2" style={{ borderRadius: 2 }}>
+                <legend className="text-[10px] font-semibold text-[color:var(--panel-header-color)] uppercase tracking-wider px-1">Vehicle Info</legend>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {renderInput('Year', 'vehicle_year', formData.vehicle_year, setField)}
                   {renderInput('Make', 'vehicle_make', formData.vehicle_make, setField)}
@@ -428,8 +428,8 @@ export default function ImpoundPage() {
               </fieldset>
 
               {/* Tow Info */}
-              <fieldset className="border border-[#222222] p-3 space-y-2" style={{ borderRadius: 2 }}>
-                <legend className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider px-1">Tow Info</legend>
+              <fieldset className="border border-border-default p-3 space-y-2" style={{ borderRadius: 2 }}>
+                <legend className="text-[10px] font-semibold text-[color:var(--panel-header-color)] uppercase tracking-wider px-1">Tow Info</legend>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {renderInput('Tow Company', 'tow_company', formData.tow_company, setField)}
                   {renderInput('Tow Driver', 'tow_driver', formData.tow_driver, setField)}
@@ -443,12 +443,12 @@ export default function ImpoundPage() {
                   {renderInput('Tow Fee ($)', 'tow_fee', formData.tow_fee, setField, 'number')}
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  <label className="block text-[10px] text-[#888888] uppercase tracking-wider">
+                  <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
                     Status
                     <select
                       value={formData.status}
                       onChange={(e) => setField('status', e.target.value)}
-                      className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017]"
+                      className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600"
                       style={{ borderRadius: 2 }}
                     >
                       {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -456,12 +456,12 @@ export default function ImpoundPage() {
                       ))}
                     </select>
                   </label>
-                  <label className="flex items-center gap-2 text-[10px] text-[#888888] uppercase tracking-wider pt-4">
+                  <label className="flex items-center gap-2 text-[10px] text-rmpg-400 uppercase tracking-wider pt-4">
                     <input
                       type="checkbox"
                       checked={!!formData.hold_flag}
                       onChange={(e) => setField('hold_flag', e.target.checked ? 1 : 0)}
-                      className="accent-[#d4a017]"
+                      className="accent-accent-silver-500"
                     />
                     Hold Flag
                   </label>
@@ -474,17 +474,17 @@ export default function ImpoundPage() {
               </fieldset>
 
               {/* Owner Info */}
-              <fieldset className="border border-[#222222] p-3 space-y-2" style={{ borderRadius: 2 }}>
-                <legend className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider px-1">Owner Info</legend>
+              <fieldset className="border border-border-default p-3 space-y-2" style={{ borderRadius: 2 }}>
+                <legend className="text-[10px] font-semibold text-[color:var(--panel-header-color)] uppercase tracking-wider px-1">Owner Info</legend>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {renderInput('Owner Name', 'owner_name', formData.owner_name, setField)}
                   {renderInput('Owner Phone', 'owner_phone', formData.owner_phone, setField)}
-                  <label className="flex items-center gap-2 text-[10px] text-[#888888] uppercase tracking-wider pt-4">
+                  <label className="flex items-center gap-2 text-[10px] text-rmpg-400 uppercase tracking-wider pt-4">
                     <input
                       type="checkbox"
                       checked={!!formData.owner_notified}
                       onChange={(e) => setField('owner_notified', e.target.checked ? 1 : 0)}
-                      className="accent-[#d4a017]"
+                      className="accent-accent-silver-500"
                     />
                     Owner Notified
                   </label>
@@ -497,25 +497,25 @@ export default function ImpoundPage() {
               </fieldset>
 
               {/* Notes */}
-              <fieldset className="border border-[#222222] p-3 space-y-2" style={{ borderRadius: 2 }}>
-                <legend className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider px-1">Notes</legend>
-                <label className="block text-[10px] text-[#888888] uppercase tracking-wider">
+              <fieldset className="border border-border-default p-3 space-y-2" style={{ borderRadius: 2 }}>
+                <legend className="text-[10px] font-semibold text-[color:var(--panel-header-color)] uppercase tracking-wider px-1">Notes</legend>
+                <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
                   Property Inventory
                   <textarea
                     value={formData.property_inventory}
                     onChange={(e) => setField('property_inventory', e.target.value)}
                     rows={2}
-                    className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017] resize-none"
+                    className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600 resize-none"
                     style={{ borderRadius: 2 }}
                   />
                 </label>
-                <label className="block text-[10px] text-[#888888] uppercase tracking-wider">
+                <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
                   Notes
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setField('notes', e.target.value)}
                     rows={3}
-                    className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017] resize-none"
+                    className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600 resize-none"
                     style={{ borderRadius: 2 }}
                   />
                 </label>
@@ -523,10 +523,10 @@ export default function ImpoundPage() {
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-1">
-                <button type="button" onClick={() => setFormOpen(false)} className="px-3 py-1 text-[11px] text-[#888888] border border-[#222222] hover:text-white transition" style={{ borderRadius: 2 }}>
+                <button type="button" onClick={() => setFormOpen(false)} className="px-3 py-1 text-[11px] text-rmpg-400 border border-border-default hover:text-white transition" style={{ borderRadius: 2 }}>
                   Cancel
                 </button>
-                <button type="submit" disabled={submitting} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold bg-[#d4a017] text-black hover:brightness-110 transition disabled:opacity-50" style={{ borderRadius: 2 }}>
+                <button type="submit" disabled={submitting} className="flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold bg-accent-silver-500 text-black hover:brightness-110 transition disabled:opacity-50" style={{ borderRadius: 2 }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />} {editing ? 'Update' : 'Save'}
                 </button>
               </div>
@@ -547,13 +547,13 @@ function renderInput(
   type: string = 'text',
 ) {
   return (
-    <label key={key} className="block text-[10px] text-[#888888] uppercase tracking-wider">
+    <label key={key} className="block text-[10px] text-rmpg-400 uppercase tracking-wider">
       {label}
       <input
         type={type}
         value={value}
         onChange={(e) => setField(key, e.target.value)}
-        className="mt-1 w-full bg-[#0a0a0a] border border-[#222222] px-2 py-1 text-[11px] text-white outline-none focus:border-[#d4a017]"
+        className="mt-1 w-full bg-surface-sunken border border-border-default px-2 py-1 text-[11px] text-white outline-none focus:border-accent-silver-600"
         style={{ borderRadius: 2 }}
       />
     </label>

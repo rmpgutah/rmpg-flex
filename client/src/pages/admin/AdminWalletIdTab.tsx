@@ -23,9 +23,9 @@ interface Props {
 }
 
 const TONE_PILL: Record<RowTone, string> = {
-  active: 'bg-[#16351a] text-[#5bd17a]',
-  revoked: 'bg-[#3a1414] text-[#e06464]',
-  inactive: 'bg-[#3a2e14] text-[#d4a017]',
+  active: 'bg-green-900/20 text-green-400',
+  revoked: 'bg-red-900/20 text-red-400',
+  inactive: 'bg-amber-900/10 text-[color:var(--text-muted)]',
 };
 
 type PendingAction = { row: CredentialRow; action: 'revoke' | 'reinstate' } | null;
@@ -72,8 +72,8 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <CreditCard className="w-4 h-4 text-[#d4a017]" />
-        <h2 className="text-sm font-semibold text-[#d4a017] tracking-wide">OFFICER IDS</h2>
+        <CreditCard className="w-4 h-4 text-accent-silver-500" />
+        <h2 className="text-sm font-semibold text-[color:var(--panel-header-color)] tracking-wide">OFFICER IDS</h2>
         <span className="text-[11px] text-rmpg-500">{rows.length} issued</span>
       </div>
 
@@ -87,7 +87,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
         />
       </div>
 
-      {error && <div className="text-[11px] text-[#e06464]">{error}</div>}
+      {error && <div className="text-[11px] text-red-400">{error}</div>}
 
       {loading ? (
         <LoadingSpinner />
@@ -96,7 +96,7 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
-            <tr className="text-[9px] font-semibold text-[#888] uppercase border-b border-border-default">
+            <tr className="text-[9px] font-semibold text-rmpg-500 uppercase border-b border-border-default">
               <th className="py-[3px] pr-2">Officer</th>
               <th className="py-[3px] pr-2">Rank / Dept</th>
               <th className="py-[3px] pr-2">Status</th>
@@ -125,14 +125,14 @@ export default function AdminWalletIdTab({ LoadingSpinner }: Props) {
                     {revoked ? (
                       <button
                         onClick={() => setPending({ row: r, action: 'reinstate' })}
-                        className="inline-flex items-center gap-1 text-[10px] text-[#5bd17a] hover:underline"
+                        className="inline-flex items-center gap-1 text-[10px] text-green-400 hover:underline"
                       >
                         <RotateCcw className="w-3 h-3" /> Reinstate
                       </button>
                     ) : (
                       <button
                         onClick={() => setPending({ row: r, action: 'revoke' })}
-                        className="inline-flex items-center gap-1 text-[10px] text-[#e06464] hover:underline"
+                        className="inline-flex items-center gap-1 text-[10px] text-red-400 hover:underline"
                       >
                         <Ban className="w-3 h-3" /> Revoke
                       </button>

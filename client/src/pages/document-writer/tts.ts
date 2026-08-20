@@ -3,7 +3,7 @@
 // notifies a listener when speaking state changes so the toolbar button can
 // reflect it. Reads the current selection if there is one, else the whole doc.
 
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 
 export function ttsSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;

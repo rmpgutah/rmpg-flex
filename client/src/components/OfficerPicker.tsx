@@ -149,7 +149,7 @@ export default function OfficerPicker({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
+        <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
         <input
           id={id}
           ref={inputRef}
@@ -174,7 +174,7 @@ export default function OfficerPicker({
           <button
             type="button"
             onClick={clear}
-            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-rmpg-500 hover:text-rmpg-100"
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-fg-muted hover:text-rmpg-100"
             aria-label="Clear selection"
           >
             <X className="w-3 h-3" />
@@ -191,7 +191,7 @@ export default function OfficerPicker({
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">Loading officers…</div>
           )}
           {error && (
-            <div className="px-3 py-2 text-[11px] text-[#ef4444]">{error}</div>
+            <div className="px-3 py-2 text-[11px] text-[color:var(--sev-critical)]">{error}</div>
           )}
           {!loading && !error && filtered.length === 0 && (
             <div className="px-3 py-2 text-[10px] text-rmpg-400 italic">No matches.</div>
@@ -207,10 +207,10 @@ export default function OfficerPicker({
                 type="button"
                 onClick={() => select(o)}
                 {...optionProps(i, selected)}
-                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-[#1f1a08]' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
-                style={{ borderLeft: selected ? '2px solid #d4a017' : '2px solid transparent' }}
+                className={`w-full text-left px-3 py-2 border-b border-border-default flex items-start gap-2 ${selected ? 'bg-surface-deep' : ''} ${active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`}
+                style={{ borderLeft: selected ? '2px solid var(--field-label-color)' : '2px solid transparent' }}
               >
-                <Shield className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? '#d4a017' : '#666' }} />
+                <Shield className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: selected ? 'var(--field-label-color)' : '#666' }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-semibold text-rmpg-100">{name}</div>
                   <div className="text-[10px] text-rmpg-400 mt-0.5 flex gap-2 flex-wrap">

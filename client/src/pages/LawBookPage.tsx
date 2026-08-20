@@ -13,7 +13,7 @@
 // section. Any section or whole chapter can be printed to a formatted PDF.
 // ============================================================
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Scale, Search, ChevronRight, ChevronDown, ExternalLink, Loader2, BookOpen,
   Gavel, Car, ShieldCheck, FileText, X, ArrowLeft, Layers, Printer, Sparkles,
@@ -27,6 +27,7 @@ import { useToast } from '../components/ToastProvider';
 import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLookup';
 import { parseOutline } from '../utils/statuteOutline';
 import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Roles allowed to add/edit/delete statutes.
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -61,11 +62,11 @@ const CATEGORY_META: Record<string, CatMeta> = {
   wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
   alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
   protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
-  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--rmpg-400)' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: 'var(--text-secondary)' },
 };
 const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
 function getCatMeta(cat: string): CatMeta {
-  return CATEGORY_META[cat] || { label: cat.replace(/_/g, ' '), short: cat, blurb: '', icon: Layers, accent: 'var(--spm-text-muted)' };
+  return CATEGORY_META[cat] || { label: toDisplayLabel(cat), short: cat, blurb: '', icon: Layers, accent: 'var(--spm-text-muted)' };
 }
 
 // Offense-level filter chips, ordered most→least severe, color-coded.
@@ -387,7 +388,7 @@ export default function LawBookPage() {
     if (showingSearch) {
       generateStatutePdf({
         docTitle: 'Search Results',
-        subtitle: query.trim() ? `"${query.trim()}"${level ? ` · ${level.replace(/_/g, ' ')}` : ''}` : 'Filtered results',
+        subtitle: query.trim() ? `"${query.trim()}"${level ? ` · ${toDisplayLabel(level)}` : ''}` : 'Filtered results',
         sections: visibleSections,
         fileName: 'RMPG-LawBook-Search',
       });
@@ -481,7 +482,7 @@ export default function LawBookPage() {
               style={{
                 background: level === l.key ? 'var(--surface-raised)' : 'var(--surface-sunken)',
                 borderColor: level === l.key ? l.dot : 'var(--border-subtle)',
-                color: level === l.key ? 'var(--rmpg-100)' : 'var(--spm-text-muted)', borderRadius: 2,
+                color: level === l.key ? 'var(--text-primary)' : 'var(--spm-text-muted)', borderRadius: 2,
               }}>
               <span className="w-2 h-2 rounded-full" style={{ background: l.dot }} />
               {l.short}
@@ -544,7 +545,7 @@ export default function LawBookPage() {
         <div className="border border-rmpg-800 bg-surface-raised" style={{ borderRadius: 2, maxHeight: '64vh', overflowY: 'auto' }}>
           <div className="px-3 py-2 border-b border-rmpg-800 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-rmpg-300 sticky top-0 bg-surface-raised z-10">
             {(chapter || showingSearch) && (
-              <button type="button" onClick={resetToBrowse} className="text-rmpg-500 hover:text-brand-gold-500 flex items-center gap-1">
+              <button aria-label="Back" type="button" onClick={resetToBrowse} className="text-rmpg-500 hover:text-brand-gold-500 flex items-center gap-1">
                 <ArrowLeft className="w-3 h-3" />
               </button>
             )}

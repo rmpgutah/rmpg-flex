@@ -7,6 +7,7 @@ import {
 import { getMapboxTokenStatus } from '../../../utils/mapboxApiKey';
 import { applyRmpgBasemap, type BasemapVariant } from '../../../utils/mapboxBasemap';
 import { devLog, devWarn } from '../../../utils/devLog';
+import { installWebglContextRecovery, type MapCamera } from '../../../utils/webglRecovery';
 import type { MapStyleId } from '../utils/mapConstants';
 import { isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 
@@ -20,7 +21,6 @@ import { useMapProjection } from '../../../hooks/useMapProjection';
 import { useMapAtmosphere } from '../../../hooks/useMapAtmosphere';
 import { useMapCameraAnimation } from '../../../hooks/useMapCameraAnimation';
 import { useMapSnapshot } from '../../../hooks/useMapSnapshot';
-import { useMapOptimization } from '../../../hooks/useMapOptimization';
 
 const DARK_STYLES: MapStyleId[] = ['dark', 'night_nav'];
 
@@ -29,16 +29,15 @@ export interface UseMapCoreOptions {
   mapStyle: MapStyleId;
   retryNonce: number;
   /**
-   * `onStyleFallback`, `onRetryNonceRequest`, and `loadBeatOverlay` must be stable
-   * references across renders (e.g. wrapped in `useCallback`) — the internal init
-   * effect closes over them without listing them as dependencies, so a new inline
-   * function on every render will be captured as a stale closure.
+   * `onStyleFallback` and `onRetryNonceRequest` must be stable references across
+   * renders (e.g. wrapped in `useCallback`) — the internal init effect closes over
+   * them without listing them as dependencies, so a new inline function on every
+   * render will be captured as a stale closure.
    */
   /** Called to switch the persisted map style (used on style-not-found retry). */
   onStyleFallback: (style: MapStyleId) => void;
   /** Called to bump the caller-owned retryNonce (used on style-not-found retry). */
   onRetryNonceRequest: () => void;
-  loadBeatOverlay: (map: mapboxgl.Map) => void | Promise<void>;
   /** Whether 3D terrain is currently enabled — replicated onto the map after a style switch. */
   terrainEnabled: boolean;
 }
@@ -50,12 +49,16 @@ export interface UseMapCoreResult {
   loading: boolean;
   mapError: string | null;
   mapLibreFallback: boolean;
+  /** True while the WebGL context is lost and a rebuild is pending (grace window). */
+  isContextLost: boolean;
+  /** True when the rebuild loop-guard tripped — manual page reload is the only fix. */
+  needsManualReload: boolean;
   /**
    * Switches the live map instance to a new style and re-applies dark-style 3D
-   * buildings, the beat overlay, and terrain (if enabled) once the new style loads.
-   * Callers must also update their own persisted `mapStyle` state after calling
-   * this (e.g. `setMapStyleId(styleId)`) — `changeStyle` only mutates the live map
-   * instance, it does not update the `mapStyle` option this hook was called with.
+   * buildings and terrain (if enabled) once the new style loads. Callers must
+   * also update their own persisted `mapStyle` state after calling this (e.g.
+   * `setMapStyleId(styleId)`) — `changeStyle` only mutates the live map instance,
+   * it does not update the `mapStyle` option this hook was called with.
    */
   changeStyle: (styleId: MapStyleId) => void;
   /** The server-fetched runtime Mapbox token (not the build-time `mapboxgl.accessToken` global). */
@@ -65,11 +68,10 @@ export interface UseMapCoreResult {
   atmosphere: ReturnType<typeof useMapAtmosphere>;
   cameraAnimation: ReturnType<typeof useMapCameraAnimation>;
   snapshot: ReturnType<typeof useMapSnapshot>;
-  optimization: ReturnType<typeof useMapOptimization>;
 }
 
 export function useMapCore({
-  preferredEngine, mapStyle, retryNonce, onStyleFallback, onRetryNonceRequest, loadBeatOverlay,
+  preferredEngine, mapStyle, retryNonce, onStyleFallback, onRetryNonceRequest,
   terrainEnabled,
 }: UseMapCoreOptions): UseMapCoreResult {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -81,11 +83,16 @@ export function useMapCore({
   // the time, not whichever style was active when the listener was attached.
   const activeStyleRef = useRef<MapStyleId>(mapStyle);
   const [token, setToken] = useState<string | null>(null);
+  // Camera to restore once the post-context-loss rebuild's new map finishes
+  // loading — set by the webglRecovery onRebuild callback below.
+  const pendingRestoreCameraRef = useRef<MapCamera | null>(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapLibreFallback, setMapLibreFallback] = useState(false);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const [needsManualReload, setNeedsManualReload] = useState(false);
 
   useEffect(() => {
     if (preferredEngine === 'maplibre' && !mapLibreFallback) {
@@ -101,6 +108,7 @@ export function useMapCore({
       return;
     }
     let cancelled = false;
+    let webglRecoveryCleanup: (() => void) | null = null;
 
     async function initMap() {
       // Reset error/loading state at the top of every (re-)run so the
@@ -183,10 +191,39 @@ export function useMapCore({
           // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
           // are already added by createMapboxMap() — don't duplicate them here.
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
-          loadBeatOverlay(map);
+          if (pendingRestoreCameraRef.current) {
+            const cam = pendingRestoreCameraRef.current;
+            pendingRestoreCameraRef.current = null;
+            map.jumpTo({ center: cam.center, zoom: cam.zoom, bearing: cam.bearing, pitch: cam.pitch });
+          }
           setMapLoaded(true);
           setLoading(false);
           devLog('[MapCore] map loaded');
+        });
+
+        // Mapbox's 'error' event never fires on WebGL context loss — that's a
+        // separate 'webglcontextlost' event Mapbox surfaces directly on the
+        // map. Without this, a lost GPU context (long shift, device sleep/
+        // wake, driver reset) leaves this page's canvas permanently blank and
+        // frozen with no error and no recovery path.
+        webglRecoveryCleanup = installWebglContextRecovery(map, {
+          label: 'MapPage',
+          onRebuild: (camera) => {
+            pendingRestoreCameraRef.current = camera;
+            setIsContextLost(false);
+            cancelled = true;
+            webglRecoveryCleanup?.();
+            webglRecoveryCleanup = null;
+            destroyMapboxMap(mapRef.current);
+            mapRef.current = null;
+            onRetryNonceRequest();
+          },
+          onContextLost: () => setIsContextLost(true),
+          onContextRestored: () => setIsContextLost(false),
+          onGiveUp: () => {
+            setIsContextLost(false);
+            setNeedsManualReload(true);
+          },
         });
 
         map.on('error', (e) => {
@@ -305,6 +342,8 @@ export function useMapCore({
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanup?.();
+      webglRecoveryCleanup = null;
       destroyMapboxMap(mapRef.current);
       mapRef.current = null;
     };
@@ -315,23 +354,27 @@ export function useMapCore({
     const map = mapRef.current;
     if (!map) return;
     activeStyleRef.current = styleId;
+    // Pause all source/layer hooks while the new style loads — they guard on
+    // mapLoaded, so setting it false prevents "Style is not done loading" throws.
+    setMapLoaded(false);
     setMapboxStyle(map, styleId);
     map.once('style.load', () => {
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
-      loadBeatOverlay(map);
       if (terrainEnabled) addMapboxTerrain(map);
+      setMapLoaded(true);
     });
-  }, [loadBeatOverlay, terrainEnabled]);
+  }, [terrainEnabled]);
 
   const daylight = useMapDaylight(mapRef.current, mapLoaded);
   const projection = useMapProjection(mapRef.current, mapLoaded);
   const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
   const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
   const snapshot = useMapSnapshot();
-  const optimization = useMapOptimization(mapRef.current, mapLoaded);
 
   return {
-    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback, changeStyle, token,
-    daylight, projection, atmosphere, cameraAnimation, snapshot, optimization,
+    mapContainerRef, mapRef, mapLoaded, loading, mapError, mapLibreFallback,
+    isContextLost, needsManualReload,
+    changeStyle, token,
+    daylight, projection, atmosphere, cameraAnimation, snapshot,
   };
 }

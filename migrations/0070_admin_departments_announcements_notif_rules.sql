@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS departments (
   parent_id   INTEGER REFERENCES departments(id) ON DELETE SET NULL,
   manager_id  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   is_active   INTEGER NOT NULL DEFAULT 1,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_id);
 
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   expires_at      TEXT,
   created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_by_name TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active);
 
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS notification_rules (
   created_by_name   TEXT,
   last_fired_at     TEXT,
   fire_count        INTEGER NOT NULL DEFAULT 0,
-  created_at        TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at        TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_notif_rules_trigger ON notification_rules(trigger_event, is_active);

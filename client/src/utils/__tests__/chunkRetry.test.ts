@@ -6,9 +6,18 @@ import {
   normalizeChunkError,
   mayReloadForChunkFailure,
   reloadAndHold,
+  extractChunkUrl,
+  isPoisonedChunkResponse,
+  repairPoisonedChunk,
+  evictPoisonedChunkCaches,
+  findFailedChunkResourceUrls,
+  findFailedChunkResourceUrlsInBrowser,
+  repairAllPoisonedChunks,
+  retryChunkImport,
   CHUNK_RELOAD_KEY,
   CHUNK_RELOAD_WINDOW_MS,
   CHUNK_RELOAD_HOLD_MS,
+  CHUNK_FAILURE_LOOKBACK_MS,
 } from '../chunkRetry';
 
 describe('isChunkLoadError', () => {
@@ -98,6 +107,416 @@ describe('reloadAndHold', () => {
     const rejection = expect(p).rejects.toThrow('Chunk load failed');
     await vi.advanceTimersByTimeAsync(100);
     await rejection;
+  });
+});
+
+describe('extractChunkUrl', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+
+  it('recovers the chunk URL from the real Chrome message (the 2026-08-01 fleet failure)', () => {
+    const err = new Error(
+      'Failed to fetch dynamically imported module: https://rmpgutah.us/assets/fleet-Bo7wm5uF.js',
+    );
+    expect(extractChunkUrl(err, ORIGIN)).toBe('https://rmpgutah.us/assets/fleet-Bo7wm5uF.js');
+  });
+
+  it('returns null for engines that omit the URL (Firefox/Safari phrasing)', () => {
+    expect(extractChunkUrl(new Error('error loading dynamically imported module'), ORIGIN)).toBeNull();
+    expect(extractChunkUrl(new Error('Importing a module script failed.'), ORIGIN)).toBeNull();
+  });
+
+  it('REFUSES an off-origin URL — this value feeds a fetch()', () => {
+    const err = new Error('Failed to fetch dynamically imported module: https://evil.example/x.js');
+    expect(extractChunkUrl(err, ORIGIN)).toBeNull();
+  });
+
+  it('refuses non-JS paths', () => {
+    const err = new Error('Failed to fetch dynamically imported module: https://rmpgutah.us/a/b.css');
+    expect(extractChunkUrl(err, ORIGIN)).toBeNull();
+  });
+
+  it('accepts .mjs and tolerates non-Error values', () => {
+    expect(extractChunkUrl(new Error('boom https://rmpgutah.us/x.mjs'), ORIGIN))
+      .toBe('https://rmpgutah.us/x.mjs');
+    expect(extractChunkUrl('https://rmpgutah.us/y.js failed', ORIGIN)).toBe('https://rmpgutah.us/y.js');
+    expect(extractChunkUrl(undefined, ORIGIN)).toBeNull();
+  });
+});
+
+describe('isPoisonedChunkResponse', () => {
+  it('flags HTML served for a JS URL (the Pages SPA fallback)', () => {
+    expect(isPoisonedChunkResponse('text/html; charset=utf-8', 5000)).toBe(true);
+  });
+  it('flags an empty body (sw.js poison-guard 404 / offline 503)', () => {
+    expect(isPoisonedChunkResponse('application/javascript', 0)).toBe(true);
+  });
+  it('accepts a real module', () => {
+    expect(isPoisonedChunkResponse('application/javascript', 393642)).toBe(false);
+  });
+});
+
+describe('repairPoisonedChunk', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+  const POISONED = new Error(
+    'Failed to fetch dynamically imported module: https://rmpgutah.us/assets/fleet-Bo7wm5uF.js',
+  );
+  const jsResponse = () => new Response('export default 1;', {
+    status: 200,
+    headers: { 'content-type': 'application/javascript' },
+  });
+
+  it("re-requests with cache:'reload' — the ONLY mode that also REPLACES the poisoned entry", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    await expect(repairPoisonedChunk(POISONED, { fetchImpl, origin: ORIGIN })).resolves.toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://rmpgutah.us/assets/fleet-Bo7wm5uF.js',
+      expect.objectContaining({ cache: 'reload' }),
+    );
+    // 'no-store' would fetch fresh but leave the poison cached, so the retried
+    // import() would fail identically. Pin the mode, not just "some fetch".
+    expect(fetchImpl.mock.calls[0][1].cache).not.toBe('no-store');
+  });
+
+  it('reports NOT-repaired when the origin itself still serves the SPA fallback', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('<!doctype html><html></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    }));
+    // Origin is genuinely poisoned → re-importing is pointless; the caller's
+    // propagation-window sleeps are the correct handling.
+    await expect(repairPoisonedChunk(POISONED, { fetchImpl, origin: ORIGIN })).resolves.toBe(false);
+  });
+
+  it('reports NOT-repaired on a propagation-window 500 (deploy still replicating)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('', { status: 500 }));
+    await expect(repairPoisonedChunk(POISONED, { fetchImpl, origin: ORIGIN })).resolves.toBe(false);
+  });
+
+  it('never throws, and never fetches at all, when the URL is unrecoverable', async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      repairPoisonedChunk(new Error('Importing a module script failed.'), { fetchImpl, origin: ORIGIN }),
+    ).resolves.toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('swallows a rejected fetch (offline) rather than replacing the caller error', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    await expect(repairPoisonedChunk(POISONED, { fetchImpl, origin: ORIGIN })).resolves.toBe(false);
+  });
+});
+
+describe('evictPoisonedChunkCaches (BROAD policy)', () => {
+  const makeCaches = (keys: string[], overrides: Partial<CacheStorage> = {}) => ({
+    keys: vi.fn().mockResolvedValue(keys),
+    delete: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  } as unknown as CacheStorage);
+
+  const makeSw = (regs: Array<{ unregister: () => Promise<boolean> }>) => ({
+    getRegistrations: vi.fn().mockResolvedValue(regs),
+  } as unknown as ServiceWorkerContainer);
+
+  it('deletes EVERY cache key and unregisters EVERY worker', async () => {
+    const cacheStorage = makeCaches(['rmpg-flex-abc123', 'rmpg-flex-def456']);
+    const unregister = vi.fn().mockResolvedValue(true);
+    const serviceWorker = makeSw([{ unregister }, { unregister }]);
+
+    await evictPoisonedChunkCaches({ cacheStorage, serviceWorker });
+
+    expect(cacheStorage.delete).toHaveBeenCalledTimes(2);
+    expect(cacheStorage.delete).toHaveBeenCalledWith('rmpg-flex-abc123');
+    expect(cacheStorage.delete).toHaveBeenCalledWith('rmpg-flex-def456');
+    expect(unregister).toHaveBeenCalledTimes(2);
+  });
+
+  it('still unregisters the SW when the cache half THROWS (independent guards)', async () => {
+    const cacheStorage = makeCaches([], { keys: vi.fn().mockRejectedValue(new Error('no cache')) });
+    const unregister = vi.fn().mockResolvedValue(true);
+    await expect(
+      evictPoisonedChunkCaches({ cacheStorage, serviceWorker: makeSw([{ unregister }]) }),
+    ).resolves.toBeUndefined();
+    // The whole point of splitting the try/catch: a dead Cache Storage must not
+    // leave the poisoned worker registered.
+    expect(unregister).toHaveBeenCalledTimes(1);
+  });
+
+  it('still deletes caches when the SW half THROWS', async () => {
+    const cacheStorage = makeCaches(['rmpg-flex-abc123']);
+    const serviceWorker = {
+      getRegistrations: vi.fn().mockRejectedValue(new Error('no sw')),
+    } as unknown as ServiceWorkerContainer;
+    await expect(evictPoisonedChunkCaches({ cacheStorage, serviceWorker })).resolves.toBeUndefined();
+    expect(cacheStorage.delete).toHaveBeenCalledWith('rmpg-flex-abc123');
+  });
+
+  it('AWAITS the surviving deletes when one cache is undeletable', async () => {
+    // NB: asserting `delete` was called 3× proves nothing — `.map()` fires all
+    // three synchronously regardless. The real guarantee of the per-key
+    // `.catch` is that Promise.all keeps WAITING for the survivors instead of
+    // rejecting on the first failure; without it we resolve early and the
+    // caller reloads while deletes are still in flight. So observe the timing.
+    let settleB: (v: boolean) => void = () => {};
+    const bDone = new Promise<boolean>((r) => { settleB = r; });
+    const del = vi.fn((key: string) => (
+      key === 'a' ? Promise.reject(new Error('locked')) : bDone
+    ));
+    const cacheStorage = makeCaches(['a', 'b'], { delete: del as unknown as CacheStorage['delete'] });
+
+    let resolved = false;
+    const p = evictPoisonedChunkCaches({ cacheStorage }).then(() => { resolved = true; });
+
+    // Cross a full macrotask boundary so EVERY pending microtask drains — a
+    // handful of `await Promise.resolve()` is not enough to let the reject →
+    // outer-catch → return chain complete, which is why a shallower drain let
+    // this mutation through. A rejecting Promise.all resolves the function here.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(resolved).toBe(false);
+
+    settleB(true);
+    await p;
+    expect(resolved).toBe(true);
+    expect(del).toHaveBeenCalledTimes(2);
+  });
+
+  it('is a safe no-op when neither API exists (non-secure context)', async () => {
+    await expect(evictPoisonedChunkCaches({})).resolves.toBeUndefined();
+  });
+});
+
+describe('findFailedChunkResourceUrls', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+  const NOW = 1_000_000;
+
+  it('flags a zero-byte /assets/*.js entry with an HTTP error status (sw.js poison-guard 404)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([
+      `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+    ]);
+  });
+
+  it('flags a network-error entry (responseStatus 0)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/map-CWZvsg5k.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 0 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([`${ORIGIN}/assets/map-CWZvsg5k.js`]);
+  });
+
+  it('does NOT flag a healthy cache hit (0 transferSize but real decoded bytes)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/fleet-Bo7wm5uF.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 393642, responseStatus: 200 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('does NOT flag a successful network fetch', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/pdfStaticMap-D5WClHGb.js`, startTime: NOW - 100, transferSize: 5000, decodedBodySize: 12000, responseStatus: 200 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('ignores off-origin, non-asset, and non-JS entries', () => {
+    const entries = [
+      { name: 'https://evil.example/assets/x-abc.js', startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/api/health`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/assets/style-abc.css`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('excludes entries outside the lookback window', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/old-abc.js`, startTime: NOW - (CHUNK_FAILURE_LOOKBACK_MS + 1), transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([]);
+  });
+
+  it('falls back to the zero-byte heuristic when responseStatus is unsupported (non-Chrome)', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/NcicQueryPanel-BQKY_wCa.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([
+      `${ORIGIN}/assets/NcicQueryPanel-BQKY_wCa.js`,
+    ]);
+  });
+
+  it('dedupes repeated failures of the same URL', () => {
+    const entries = [
+      { name: `${ORIGIN}/assets/x-abc.js`, startTime: NOW - 100, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+      { name: `${ORIGIN}/assets/x-abc.js`, startTime: NOW - 50, transferSize: 0, decodedBodySize: 0, responseStatus: 404 },
+    ];
+    expect(findFailedChunkResourceUrls(entries, ORIGIN, NOW)).toEqual([`${ORIGIN}/assets/x-abc.js`]);
+  });
+});
+
+describe('findFailedChunkResourceUrlsInBrowser (clock-basis regression)', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // PerformanceResourceTiming.startTime is relative to performance.timeOrigin
+  // (small ms-since-navigation numbers), NOT Unix-epoch time. A real page load
+  // is a few seconds/minutes old at most, so Date.now() (~1.7e12) minus a
+  // small startTime is always astronomically larger than the 15s lookback —
+  // every entry gets filtered out regardless of how recently it failed. The
+  // wrapper must use performance.now() as its clock basis to match the
+  // entries it's scanning, or the entire transitive-sub-chunk repair path
+  // (repairAllPoisonedChunksInBrowser) silently finds nothing, forever.
+  it('finds a just-failed entry when Date.now() is epoch-scale and performance.now() is page-relative', () => {
+    const perfNow = 20_000; // 20s into this page load
+    vi.stubGlobal('performance', {
+      now: () => perfNow,
+      getEntriesByType: (type: string) =>
+        type === 'resource'
+          ? [{
+              name: `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+              startTime: perfNow - 100, // failed 100ms ago
+              transferSize: 0,
+              decodedBodySize: 0,
+              responseStatus: 404,
+            }]
+          : [],
+    });
+    vi.stubGlobal('window', { location: { origin: ORIGIN } });
+    // Date.now() is epoch-scale — feeding this in (the pre-fix behaviour)
+    // must NOT be what the wrapper does internally.
+    vi.stubGlobal('Date', { now: () => 1_754_000_000_000 });
+
+    expect(findFailedChunkResourceUrlsInBrowser()).toEqual([
+      `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`,
+    ]);
+  });
+});
+
+describe('repairAllPoisonedChunks (transitive-chunk gap fix)', () => {
+  const ORIGIN = 'https://rmpgutah.us';
+  const TOP_LEVEL_ERR = new Error(
+    'Failed to fetch dynamically imported module: https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js',
+  );
+  const jsResponse = () => new Response('export default 1;', {
+    status: 200,
+    headers: { 'content-type': 'application/javascript' },
+  });
+
+  it('repairs BOTH the top-level error URL and a transitive sub-chunk the error message never named', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    const subChunk = `${ORIGIN}/assets/mapboxLoader-CDOMyCGK.js`;
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [subChunk]),
+    ).resolves.toBe(true);
+    const requestedUrls = fetchImpl.mock.calls.map((c) => c[0]);
+    expect(requestedUrls).toContain('https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js');
+    expect(requestedUrls).toContain(subChunk);
+  });
+
+  it('reports repaired=true when the top-level chunk was healthy but the sub-chunk needed repair', async () => {
+    // Mirrors the live bug: DashboardPage-IK0YJXQZ.js was ALWAYS healthy — the
+    // real poison was in a transitive sub-chunk only Resource Timing surfaces.
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [`${ORIGIN}/assets/map-CWZvsg5k.js`]),
+    ).resolves.toBe(true);
+  });
+
+  it('resolves false when there is nothing to repair', async () => {
+    const fetchImpl = vi.fn();
+    await expect(
+      repairAllPoisonedChunks(new Error('Importing a module script failed.'), { fetchImpl, origin: ORIGIN }, []),
+    ).resolves.toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not double-request a URL that is both the top-level target AND in extraUrls', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsResponse());
+    const url = 'https://rmpgutah.us/assets/DashboardPage-IK0YJXQZ.js';
+    await repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [url]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports true when one target fails to repair but another succeeds', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('<!doctype html>', { status: 200, headers: { 'content-type': 'text/html' } }))
+      .mockResolvedValueOnce(jsResponse());
+    await expect(
+      repairAllPoisonedChunks(TOP_LEVEL_ERR, { fetchImpl, origin: ORIGIN }, [`${ORIGIN}/assets/map-CWZvsg5k.js`]),
+    ).resolves.toBe(true);
+  });
+});
+
+describe('retryChunkImport (repair on EVERY rung, not just the first)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('re-attempts poison repair before EACH retry rung — a sibling sub-chunk that fails asynchronously after the first Promise.all rejection must still get repaired before the later sleep-based retries', async () => {
+    // Mirrors the live 2026-08-08 DashboardPage incident: the top-level dynamic
+    // import rejects immediately (the first sibling sub-chunk to fail), but
+    // ~11 OTHER statically-imported siblings (map, mapboxLoader,
+    // DashboardMiniMap, NewCallModal, IncidentFormModal, ...) hadn't finished
+    // failing yet, so they weren't in Resource Timing for a repair pass run
+    // only once. Every later bare `factory()` retry then re-read the same
+    // still-poisoned HTTP cache entry for one of them and failed identically,
+    // exhausting all three rungs and reaching the ErrorBoundary red card
+    // despite the poison being repairable the whole time.
+    let attempt = 0;
+    const factory = vi.fn(() => {
+      attempt++;
+      return attempt < 4
+        ? Promise.reject(new Error('Failed to fetch dynamically imported module'))
+        : Promise.resolve('ok');
+    });
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe('ok');
+
+    // One repair attempt before the immediate retry, one before the 1.5s
+    // retry, one before the 4s retry — three total, not just the first.
+    expect(repair).toHaveBeenCalledTimes(3);
+    expect(factory).toHaveBeenCalledTimes(4);
+  });
+
+  it('skips the immediate repaired-retry rung when repair reports nothing to fix, but still runs later rungs', async () => {
+    const factory = vi.fn()
+      .mockRejectedValueOnce(new Error('Failed to fetch dynamically imported module'))
+      .mockResolvedValueOnce('ok');
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    await vi.runAllTimersAsync();
+    await expect(pending).resolves.toBe('ok');
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces the final error when every rung is exhausted', async () => {
+    const err = new Error('Failed to fetch dynamically imported module');
+    const factory = vi.fn().mockRejectedValue(err);
+    const repair = vi.fn().mockResolvedValue(false);
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    const assertion = expect(pending).rejects.toThrow('Failed to fetch dynamically imported module');
+    await vi.runAllTimersAsync();
+    await assertion;
+  });
+
+  it('a repair() that itself rejects never replaces the real import error', async () => {
+    const err = new Error('Failed to fetch dynamically imported module');
+    const factory = vi.fn().mockRejectedValue(err);
+    const repair = vi.fn().mockRejectedValue(new Error('network down mid-repair'));
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const pending = retryChunkImport(factory, { repair, sleep });
+    const assertion = expect(pending).rejects.toThrow('Failed to fetch dynamically imported module');
+    await vi.runAllTimersAsync();
+    await assertion;
   });
 });
 

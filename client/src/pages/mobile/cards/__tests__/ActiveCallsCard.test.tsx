@@ -12,7 +12,7 @@ vi.mock('../../../../context/WebSocketContext', () => ({
 vi.mock('../../hooks/useGeolocation', () => ({
   useGeolocation: () => ({ status: 'idle', position: null }),
 }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+vi.mock('react-router', () => ({ useNavigate: () => mockNavigate }));
 
 describe('ActiveCallsCard (smoke)', () => {
   it('module loads', async () => {

@@ -17,8 +17,28 @@ html.theme-dark,
   --surface-sunken: #0a1018; --surface-sunken-rgb: 10 16 24;
   --surface-overlay: #060b10; --surface-overlay-rgb: 6 11 16;
   --surface-deep: #060b10;   --surface-deep-rgb: 6 11 16;
+
+  /* ── Chart palette ────────────────────────────────────────────────
+     --chart-pri-* is an ORDINAL heat ramp (P1 urgent → P4 routine), not a
+     categorical set. Generated in OKLCH: hues 30→64° (one warm arc), chroma
+     0.200→0.028 descending, lightness evenly spaced 0.075 apart, anchored so
+     P4 lands just above 3:1 on --chart-plot-surface.
+     Recession is carried by DESATURATION, not by luminance collapse — that is
+     what lets P4 recede without dropping under the contrast floor.
+     A ramp (not 4 distinct hues) is deliberate: under deuteranopia the hues
+     collapse and this degrades to a pure lightness ramp, which is still
+     readable. A 4-hue categorical set scored deutan ΔE 1.2 here.
+     P4 stays WARM (hue ~65°), never neutral gray — a gray dot is ambiguous
+     with the en-route / off-duty unit-status grays (see statusColors.ts).
+     Verified by chartTokens.test.ts. Do not hand-edit one step in isolation. */
+  --chart-pri-1: #ff6b57; --chart-pri-2: #c96e40;
+  --chart-pri-3: #936a48; --chart-pri-4: #6a5c4e;
+  --chart-plot-surface: #060b10;
+
   --border-default: #2a3a4d; --border-subtle: #1e2b3a; --border-strong: #3a4f66; --border-panel: #243a52;
-  --text-primary: #e6edf5; --text-secondary: #c3d0de; --text-muted: #8fa3b8;
+  --text-primary-rgb: 230 237 245; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 195 208 222; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 143 163 184; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #d4a017; --brand-blue: #5a85b8;
   /* Record-icon tile — steel-blue accent for no-photo glyph tiles (persons/vehicles/properties/business).
      Replaces the old per-list "black box + dull initials" look with one legible, on-system blue. */
@@ -66,21 +86,74 @@ html.theme-dark,
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
   --brand-gold-rgb: 212 160 23;
+  /* Tailwind color aliases — used by chart/data-viz components (CrimeAnalysisPage
+     SVG gradients). Fixed across themes because these are data colors, not chrome. */
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
 
   --rmpg-50-rgb: 237 241 246; --rmpg-100-rgb: 214 221 230; --rmpg-200-rgb: 184 195 208;
   --rmpg-300-rgb: 150 165 184; --rmpg-400-rgb: 122 140 162; --rmpg-500-rgb: 92 110 132;
   --rmpg-600-rgb: 60 80 102;  --rmpg-700-rgb: 30 43 58;    --rmpg-800-rgb: 21 33 46;
   --rmpg-900-rgb: 13 23 34;   --rmpg-950-rgb: 6 11 16;
+  /* Bare aliases for the ramp above. Tailwind consumes the -rgb triples via
+     rgb(var(--x-rgb) / <alpha-value>), but ~440 inline sites across ~124 files
+     consume the BARE form (style={{ color: 'var(--rmpg-500)' }}). Without these
+     the declaration is invalid at computed-value time and silently inherits —
+     which is why the /downloads headings rendered pure white. Derived from the
+     triple, never a literal hex, so the two forms cannot drift apart.
+     These MUST be repeated in every palette block, not hoisted to a single
+     :root rule: custom properties substitute var() at computed-value time on
+     the element holding the declaration, and the *substituted* result inherits.
+     A single hoisted alias would bake in the page-root theme's color and
+     .tactical-dark (a DESCENDANT class that re-declares these triples to force
+     night on map/MDT/dashcam) could never override it. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 242 244 247; --brand-100-rgb: 221 226 232; --brand-200-rgb: 191 199 209;
   --brand-300-rgb: 158 169 183; --brand-400-rgb: 127 140 158; --brand-500-rgb: 102 116 134;
   --brand-600-rgb: 76 90 108;  --brand-700-rgb: 52 66 82;    --brand-800-rgb: 31 43 56;
   --brand-900-rgb: 14 22 32;
+  /* Bare aliases for the brand ramp — same defect and same fix as --rmpg-* above.
+     19 inline sites consume var(--brand-400) and 3 consume var(--brand-500) while
+     only the -rgb triples existed, so every one of those declarations was invalid
+     at computed-value time and silently inherited (the desktop taskbar/clock
+     "active" accent was indistinguishable from its inactive state). Derived from
+     the triple, never a literal, and repeated per block for the same
+     computed-value/.tactical-dark reason spelled out for --rmpg-* above. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 244 247; --blue-100-rgb: 217 223 230; --blue-200-rgb: 189 199 209;
   --blue-300-rgb: 161 173 187; --blue-400-rgb: 122 140 162; --blue-500-rgb: 92 110 132;
   --blue-600-rgb: 60 80 102;  --blue-700-rgb: 30 43 58;     --blue-800-rgb: 21 33 46;
   --blue-900-rgb: 13 23 34;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+
+  /* ── Silver accent ramp. Added to the BASE block 2026-07-25: these tokens were
+     introduced in the 2026-07-24 accent split but declared ONLY inside
+     html.theme-blue-silver, while ~22 inline sites consume them (DownloadsPage,
+     InstallGuideParts, AdminRadioTab/Settings, AdminSettingsTab). Because this
+     block's selector includes :root — the same <html> the theme class is stamped
+     on — declaring them here is what makes them resolve under EVERY theme; the
+     day and legacy-black blocks then override with values suited to their own
+     surfaces. Without a base declaration the rmpg_theme_legacy='1' kill-switch
+     silently stripped the color off all 22 sites.
+     Steel-blue-tinted to sit on night's dark steel surfaces. Every step measured
+     ≥4.5:1 (WCAG AA) on base/raised/sunken, so no step is a trap for text. */
+  --accent-silver-300: #e3e9f0; --accent-silver-300-rgb: 227 233 240;
+  --accent-silver-400: #cfd8e2; --accent-silver-400-rgb: 207 216 226;
+  --accent-silver-500: #bfcad7; --accent-silver-500-rgb: 191 202 215;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
+  --accent-silver-600: #9caab9; --accent-silver-600-rgb: 156 170 185;
+  --accent-silver-700: #828fa0; --accent-silver-700-rgb: 130 143 160;
 
   /* Records chrome tokens — NIGHT (dark steel-blue) */
   --spm-chrome: #15212e; --spm-form: #0d1722; --spm-field: #101a26;
@@ -96,14 +169,74 @@ html.theme-dark,
   /* App chrome tokens — NIGHT (dark steel-blue) */
   --toolbar-gradient-start: #15212e; --toolbar-gradient-end: #1d2d3f;
   --grid-header-bg: #0a1018; --grid-row-alt: #111c28;
+  /* The other half of the grid family. `.spillman-grid` in index.css consumed these
+     four while only -header-bg/-row-alt were ever declared, so the table header text,
+     zebra striping and selected-row highlight all silently inherited. Note
+     --grid-row-even is the name index.css actually uses for the zebra row that
+     --grid-row-alt already described, so it aliases rather than duplicating a value. */
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #1b3350;
+  --grid-row-selected-border: var(--spm-select);
+  /* The "ON state" accent, as a role rather than a ramp step. Split out because a
+     single silver value cannot serve every theme: on DAY, silver-400 (#4a5561) sits
+     right next to --text-muted (#555555), so an active toggle read almost identical
+     to an inactive one. Day therefore uses its own steel accent; the dark themes
+     keep silver, per the rule that active/selected state stays silver. Every theme's
+     value is >= 4.5:1 on base/raised/sunken. */
+  --accent-active: var(--accent-silver-400);
+  /* ── Radio console theme (`--rt-*`). 161 occurrences across pages/radio/* and
+     DispatchRecordPanel consumed these while they were declared in NO stylesheet, so
+     the entire radio console rendered inherited colours. Declared as role aliases so
+     the console re-themes with the app instead of pinning its own palette.
+     Base-block only is correct AND sufficient here: these are aliases, not literals,
+     so the var() substitutes against whichever theme block won on the element. This
+     rule's selector includes .tactical-dark, so a force-dark radio panel re-declares
+     both the referenced token and the alias together and still resolves to night.
+     (Contrast with a hoisted standalone :root{} rule, which .tactical-dark would not
+     match and so could never re-substitute — that is the case the --rmpg-* note
+     above warns about.)
+     --rt-tx is the live-TRANSMIT indicator: red, per radio convention, and it drives
+     a waveform, a status dot, a border and a fill — all graphics. Its one text
+     consumer was a "quiet hours active" label, which is a state and not a
+     transmission, and now uses --accent-active. */
+  --rt-bg: var(--surface-base);
+  --rt-panel: var(--surface-raised);
+  --rt-border: var(--border-default);
+  --rt-text: var(--text-primary);
+  --rt-muted: var(--text-muted);
+  --rt-accent: var(--accent-active);
+  --rt-tx: var(--sev-critical);
+  --rt-led-on: var(--sev-ok);  /* active LED / transmitting indicator — semantically "signal OK" */
   --field-label-color: #d4a017;
+  /* Panel/section headers share the field-label accent in this theme, as they
+     did historically. Must be defined in EVERY theme block: components consume
+     text-[color:var(--panel-header-color)] and an undefined var silently drops
+     the color entirely. */
+  --panel-header-color: #d4a017;
+  /* accent-gold-300: the lighter AA-passing gold used for CTA button backgrounds
+     and active-state borders. Must be in all four blocks. Night = full gold. */
+  --accent-gold-300: #d4a017; --accent-gold-300-rgb: 212 160 23;
   --surface-panel: #15212e; --surface-panel-alt: #101a26; --surface-hover: #1a2736;
   --info-text: #c3d0de; --info-bg: rgba(90, 133, 184, 0.12); --info-border: rgba(90, 133, 184, 0.24);
   --desktop-shell-start: #0d1722; --desktop-shell-end: #15212e;
   --desktop-shell-raised-start: #15212e; --desktop-shell-raised-end: #1d2d3f;
   --desktop-shell-border: #2a3a4d; --desktop-shell-accent: #5a85b8;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #8fa3b8; --desktop-shell-icon: #8fa3b8;
+
+  /* Module-bar (F-key nav) + panel bevel/titlebar — NIGHT.
+     Moved out of index.css:13-33 on 2026-07-24: those were theme-invariant and
+     escaped the theme system entirely. */
+  --toolbar-nav-text: #8fa3b8;
+  --toolbar-nav-text-hover: #e6edf5;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
+  --toolbar-nav-active: #0a1018;
+  --bevel-highlight: #3a4f66;
+  --titlebar-gradient: linear-gradient(180deg, #1d2d3f 0%, #15212e 50%, #1d2d3f 100%);
 }
 
 /* ---- DAY (light grey Spillman; scale INVERTED) ---- */
@@ -113,8 +246,17 @@ html.theme-light {
   --surface-sunken: #d6d3c8; --surface-sunken-rgb: 214 211 200;
   --surface-overlay: #ffffff; --surface-overlay-rgb: 255 255 255;
   --surface-deep: #c9c5b8;   --surface-deep-rgb: 201 197 184;
+
+  /* Chart palette — see the night block for the full rationale. Day inverts:
+     marks are DARK on a light well, so the ramp runs dark→light. */
+  --chart-pri-1: #600200; --chart-pri-2: #6f2c00;
+  --chart-pri-3: #754d2c; --chart-pri-4: #78695c;
+  --chart-plot-surface: #c9c5b8;
+
   --border-default: #9a958a; --border-subtle: #c3cdd8; --border-strong: #6f7b8a; --border-panel: #9a958a;
-  --text-primary: #1a1a1a; --text-secondary: #33312b; --text-muted: #555555;
+  --text-primary-rgb: 26 26 26; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 51 49 43; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 85 85 85; --text-muted: rgb(var(--text-muted-rgb));
   --brand-gold: #936c0a; --brand-blue: #2e4a66;
   --pri-scheduled: #8a929b;
   /* Record-icon tile — day (light-grey) steel-blue on white surfaces. */
@@ -126,10 +268,23 @@ html.theme-light {
   --rmpg-300-rgb: 70 70 70;  --rmpg-400-rgb: 85 85 85;   --rmpg-500-rgb: 100 100 100;
   --rmpg-600-rgb: 150 146 136; --rmpg-700-rgb: 214 211 200; --rmpg-800-rgb: 236 233 221;
   --rmpg-900-rgb: 247 249 251; --rmpg-950-rgb: 255 255 255;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 26 26 26;  --brand-100-rgb: 40 40 40;  --brand-200-rgb: 55 55 55;
   --brand-300-rgb: 70 70 70; --brand-400-rgb: 85 85 85;  --brand-500-rgb: 100 100 100;
   --brand-600-rgb: 150 146 136; --brand-700-rgb: 214 211 200; --brand-800-rgb: 236 233 221;
   --brand-900-rgb: 247 249 251;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   /* blue token renders NEUTRAL (mirrors rmpg) — the steel accent lives in --brand-blue / --spm-* */
   --blue-50-rgb: 26 26 26;   --blue-100-rgb: 40 40 40;   --blue-200-rgb: 55 55 55;
   --blue-300-rgb: 70 70 70;  --blue-400-rgb: 85 85 85;   --blue-500-rgb: 100 100 100;
@@ -138,6 +293,18 @@ html.theme-light {
   /* gold — DAY: distinct darkening steps for hierarchy, all legible on light */
   --brand-gold-300-rgb: 176 130 30; --brand-gold-400-rgb: 160 116 18; --brand-gold-500-rgb: 147 108 10;
   --brand-gold-600-rgb: 120 88 8;   --brand-gold-700-rgb: 100 73 7;
+  /* silver — DAY: shifted into the legible-on-light range instead of inheriting
+     night's light silver, which would be near-invisible on white/#ece9dd. Keeps
+     the ramp's direction (higher index = darker), exactly as the gold ramp above
+     does for this theme. Measured ≥4.5:1 (WCAG AA) on base/raised/sunken — the
+     sunken beige #d6d3c8 is the binding constraint, so the lightest step is
+     already mid-slate. */
+  --accent-silver-300: #515c68; --accent-silver-300-rgb: 81 92 104;
+  --accent-silver-400: #4a5561; --accent-silver-400-rgb: 74 85 97;
+  --accent-silver-500: #3f4954; --accent-silver-500-rgb: 63 73 84;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
+  --accent-silver-600: #343d46; --accent-silver-600-rgb: 52 61 70;
+  --accent-silver-700: #293038; --accent-silver-700-rgb: 41 48 56;
 
   /* Records chrome tokens — DAY (current light Spillman look) */
   --spm-chrome: #d6d3c8; --spm-form: #ece9dd; --spm-field: #f7f9fb;
@@ -157,6 +324,9 @@ html.theme-light {
   --sev-ok-rgb: 21 128 61;       --sev-info-rgb: 37 99 235;
   --sev-special-rgb: 124 58 237;
   --brand-gold-rgb: 147 108 10;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
   --spm-group-head: linear-gradient(#eef3f9, #cfdcec);
   --spm-toolbar: linear-gradient(#ffffff, #e8e6da);
   --spm-toolbar-hover: linear-gradient(#ffffff, #dad7c9);
@@ -166,14 +336,38 @@ html.theme-light {
   /* App chrome tokens — DAY (light grey Spillman) */
   --toolbar-gradient-start: #ffffff; --toolbar-gradient-end: #e8e6da;
   --grid-header-bg: #d6d3c8; --grid-row-alt: #f6f5ef;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #cfe0f5;
+  --grid-row-selected-border: var(--spm-select);
+  /* DAY uses its own steel accent, NOT silver-400 (#4a5561): on light surfaces that
+     step lands beside --text-muted (#555555) and an active toggle became almost
+     indistinguishable from an inactive one. --brand-blue is 7.55/9.18/6.12 here and
+     is a saturated blue against a neutral grey, so the two separate by hue as well
+     as contrast. */
+  --accent-active: var(--brand-blue);
   --field-label-color: #936c0a;
+  --panel-header-color: #936c0a;
+  /* Day theme: warm amber gold for CTA buttons/active states on light surfaces. */
+  --accent-gold-300: #b8860b; --accent-gold-300-rgb: 184 134 11;
   --surface-panel: #ece9dd; --surface-panel-alt: #f9f7f1; --surface-hover: #e0ddd4;
   --info-text: #2e4a66; --info-bg: rgba(46, 74, 102, 0.10); --info-border: rgba(46, 74, 102, 0.22);
   --desktop-shell-start: #d6d3c8; --desktop-shell-end: #c9c5b8;
   --desktop-shell-raised-start: #ece9dd; --desktop-shell-raised-end: #d6d3c8;
   --desktop-shell-border: #9a958a; --desktop-shell-accent: #2e4a66;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.15);
+  --window-shadow: rgba(0, 0, 0, 0.2);
+  --modal-scrim: rgba(0, 0, 0, 0.4);
   --desktop-shell-subtle-text: #555555; --desktop-shell-icon: #555555;
+
+  --toolbar-nav-text: #555555;
+  --toolbar-nav-text-hover: #1a1a1a;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(0, 0, 0, 0.05);
+  --toolbar-nav-active: #d6d3c8;
+  --bevel-highlight: #c3cdd8;
+  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- LEGACY BLACK (kill-switch; pure-black pre-refactor) ---- */
@@ -183,8 +377,16 @@ html.theme-legacy-black {
   --surface-sunken: #000000; --surface-sunken-rgb: 0 0 0;
   --surface-overlay: #030303; --surface-overlay-rgb: 3 3 3;
   --surface-deep: #000000; --surface-deep-rgb: 0 0 0;
+
+  /* Chart palette — see the night block for the full rationale. */
+  --chart-pri-1: #ff614d; --chart-pri-2: #c46a3c;
+  --chart-pri-3: #8f6644; --chart-pri-4: #66584a;
+  --chart-plot-surface: #000000;
+
   --border-default: #232323; --border-subtle: #121212; --border-strong: #3a3a3a; --border-panel: #262626;
-  --text-primary: #f2f2f2; --text-secondary: #cfcfcf; --text-muted: #8a8a8a;
+  --text-primary-rgb: 242 242 242; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 207 207 207; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 138 138 138; --text-muted: rgb(var(--text-muted-rgb));
   --brand-blue: #9a9a9a; --brand-gold: #d4a017;
   --pri-scheduled: #4a4a4a;
   /* Record-icon tile — legacy pure-black keeps a restrained dark steel-blue accent. */
@@ -194,15 +396,39 @@ html.theme-legacy-black {
   --rmpg-300-rgb: 150 150 150; --rmpg-400-rgb: 117 117 117; --rmpg-500-rgb: 90 90 90;
   --rmpg-600-rgb: 67 67 67; --rmpg-700-rgb: 45 45 45; --rmpg-800-rgb: 27 27 27;
   --rmpg-900-rgb: 13 13 13; --rmpg-950-rgb: 3 3 3;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 242 242 242; --brand-100-rgb: 221 221 221; --brand-200-rgb: 191 191 191;
   --brand-300-rgb: 158 158 158; --brand-400-rgb: 127 127 127; --brand-500-rgb: 102 102 102;
   --brand-600-rgb: 76 76 76; --brand-700-rgb: 52 52 52; --brand-800-rgb: 31 31 31; --brand-900-rgb: 14 14 14;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 241 241 241; --blue-100-rgb: 217 217 217; --blue-200-rgb: 189 189 189;
   /* blue-400 intentionally lighter than 300 — mirrors original tailwind.config anomaly for exact legacy restore */
   --blue-300-rgb: 161 161 161; --blue-400-rgb: 200 200 200; --blue-500-rgb: 154 154 154;
   --blue-600-rgb: 115 115 115; --blue-700-rgb: 79 79 79; --blue-800-rgb: 46 46 46; --blue-900-rgb: 20 20 20;
   --brand-gold-300-rgb: 245 208 96; --brand-gold-400-rgb: 232 184 32; --brand-gold-500-rgb: 212 160 23;
   --brand-gold-600-rgb: 184 136 15; --brand-gold-700-rgb: 147 108 10;
+  /* silver — LEGACY BLACK: pure neutral greys, no blue tint, because this theme is
+     a deliberate greyscale restore (its --brand-blue is #9a9a9a). This block is
+     also the one the rmpg_theme_legacy='1' kill-switch selects, i.e. the exact
+     path that exposed the missing ramp. Measured ≥4.5:1 (WCAG AA) on all three
+     surfaces. */
+  --accent-silver-300: #e8e8e8; --accent-silver-300-rgb: 232 232 232;
+  --accent-silver-400: #d4d4d4; --accent-silver-400-rgb: 212 212 212;
+  --accent-silver-500: #c4c4c4; --accent-silver-500-rgb: 196 196 196;
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
+  --accent-silver-600: #a1a1a1; --accent-silver-600-rgb: 161 161 161;
+  --accent-silver-700: #7d7d7d; --accent-silver-700-rgb: 125 125 125;
 
   /* Records chrome tokens — LEGACY BLACK (dark neutrals) */
   --spm-chrome: #0b0b0b; --spm-form: #000000; --spm-field: #0d0d0d;
@@ -222,6 +448,9 @@ html.theme-legacy-black {
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
   --brand-gold-rgb: 212 160 23;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
   --spm-group-head: linear-gradient(#141414, #0b0b0b);
   --spm-toolbar: linear-gradient(#1a1a1a, #0b0b0b);
   --spm-toolbar-hover: linear-gradient(#222222, #141414);
@@ -231,14 +460,33 @@ html.theme-legacy-black {
   /* App chrome tokens — LEGACY BLACK (original pure-black) */
   --toolbar-gradient-start: #0b0b0b; --toolbar-gradient-end: #101010;
   --grid-header-bg: #050505; --grid-row-alt: #0d0d0d;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #14202c;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
   --field-label-color: #d4a017;
+  --panel-header-color: #d4a017;
+  /* Legacy black: same gold value as night. */
+  --accent-gold-300: #d4a017; --accent-gold-300-rgb: 212 160 23;
   --surface-panel: #101010; --surface-panel-alt: #0c0c0c; --surface-hover: #161616;
   --info-text: #d0d0d0; --info-bg: rgba(150, 150, 150, 0.12); --info-border: rgba(150, 150, 150, 0.24);
   --desktop-shell-start: #000000; --desktop-shell-end: #0e0e0e;
   --desktop-shell-raised-start: #050505; --desktop-shell-raised-end: #111111;
   --desktop-shell-border: #202020; --desktop-shell-accent: #7d7d7d;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #b7b7b7; --desktop-shell-icon: #8c8c8c;
+
+  --toolbar-nav-text: #9a9a9a;
+  --toolbar-nav-text-hover: #dcdcdc;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
+  --toolbar-nav-active: rgba(0, 0, 0, 0.38);
+  --bevel-highlight: #3a3a3a;
+  --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- BLUE & SILVER (optional full-override theme; same tier as legacy-black —
@@ -259,13 +507,24 @@ html.theme-blue-silver {
   --surface-sunken: #1a3350; --surface-sunken-rgb: 26 51 80;
   --surface-overlay: #142840; --surface-overlay-rgb: 20 40 64;
   --surface-deep: #142840;   --surface-deep-rgb: 20 40 64;
+
+  /* Chart palette — see the night block for the full rationale.
+     This is the DEFAULT theme and the binding case: --surface-base #22405f is a
+     mid-tone, so a 3:1 floor there pins every mark into OKLCH L ∈ [0.67, 1.0] —
+     too narrow for four steps. Charts draw on this recessed well instead. */
+  --chart-pri-1: #ff9483; --chart-pri-2: #e08355;
+  --chart-pri-3: #a87e5b; --chart-pri-4: #7e6f61;
+  --chart-plot-surface: #142840;
+
   /* Extra tonal steps (2026-07-08) so panel headers and hover states read as a
      close, deliberate shade shift off the ramp instead of a flat jump. */
   --surface-header: #284a6c; --surface-header-rgb: 40 74 108;
   --surface-hover-step: #294a6b; --surface-hover-step-rgb: 41 74 107;
   --border-default: #46688c; --border-subtle: #2a4763; --border-strong: #7996b8; --border-panel: #3d5f82;
-  --text-primary: #f0f4f9; --text-secondary: #cdd8e6; --text-muted: #9bb0c7;
-  --brand-blue: #5a9ae0; --brand-gold: #c3ccd6;
+  --text-primary-rgb: 240 244 249; --text-primary: rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 205 216 230; --text-secondary: rgb(var(--text-secondary-rgb));
+  --text-muted-rgb: 177 193 211; --text-muted: rgb(var(--text-muted-rgb));
+  --brand-blue: #5a9ae0;
   --pri-scheduled: #63768f;
   /* Record-icon tile — a brighter blue than night's for the "silver-blue" identity. */
   --record-tile-bg: #223e5c; --record-tile-border: #4a80b8; --record-tile-fg: #97c8f7;
@@ -275,17 +534,73 @@ html.theme-blue-silver {
   --rmpg-300-rgb: 157 175 194; --rmpg-400-rgb: 129 149 171; --rmpg-500-rgb: 99 118 143;
   --rmpg-600-rgb: 68 89 113;  --rmpg-700-rgb: 44 79 116;   --rmpg-800-rgb: 34 64 95;
   --rmpg-900-rgb: 26 51 80;   --rmpg-950-rgb: 20 40 64;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted. */
+  --rmpg-50: rgb(var(--rmpg-50-rgb));   --rmpg-100: rgb(var(--rmpg-100-rgb));
+  --rmpg-200: rgb(var(--rmpg-200-rgb)); --rmpg-300: rgb(var(--rmpg-300-rgb));
+  --rmpg-400: rgb(var(--rmpg-400-rgb)); --rmpg-500: rgb(var(--rmpg-500-rgb));
+  --rmpg-600: rgb(var(--rmpg-600-rgb)); --rmpg-700: rgb(var(--rmpg-700-rgb));
+  --rmpg-800: rgb(var(--rmpg-800-rgb)); --rmpg-900: rgb(var(--rmpg-900-rgb));
+  --rmpg-950: rgb(var(--rmpg-950-rgb));
   --brand-50-rgb: 245 247 250; --brand-100-rgb: 225 231 238; --brand-200-rgb: 197 209 220;
   --brand-300-rgb: 165 182 199; --brand-400-rgb: 134 154 175; --brand-500-rgb: 109 128 150;
   --brand-600-rgb: 82 101 122;  --brand-700-rgb: 58 78 98;    --brand-800-rgb: 38 58 78;
   --brand-900-rgb: 20 40 64;
+  /* Bare aliases — see the night block for why these are per-block, not hoisted.
+     ⚠️ --brand-400 here resolves to #869aaf: 3.69/2.93/4.44 on base/raised/sunken
+     navy. That clears WCAG 1.4.11's 3:1 for GRAPHICS (borders, outlines, icons)
+     but not AA 4.5:1 for TEXT — and it is the worst case of the four themes
+     (night 4.77, day 4.97, legacy-black 4.92 all pass).
+     Because of that, the 8 TEXT consumers were re-pointed to --accent-silver-400
+     when these aliases were defined, in the same commit: leaving them would have
+     rendered the ON state at 2.93 against an OFF state of --text-muted at 3.81,
+     i.e. active LESS visible than inactive. Icons/borders/outlines keep
+     --brand-400 and are fine at the 3:1 graphics threshold.
+     Do NOT "fix" the text case by giving this block a literal bare value — that
+     breaks the derived-from-triple invariant accentTokens.test.ts pins, and lets
+     the bare and -rgb forms drift apart silently. */
+  --brand-50: rgb(var(--brand-50-rgb));   --brand-100: rgb(var(--brand-100-rgb));
+  --brand-200: rgb(var(--brand-200-rgb)); --brand-300: rgb(var(--brand-300-rgb));
+  --brand-400: rgb(var(--brand-400-rgb)); --brand-500: rgb(var(--brand-500-rgb));
+  --brand-600: rgb(var(--brand-600-rgb)); --brand-700: rgb(var(--brand-700-rgb));
+  --brand-800: rgb(var(--brand-800-rgb)); --brand-900: rgb(var(--brand-900-rgb));
   --blue-50-rgb: 244 247 250; --blue-100-rgb: 221 229 237; --blue-200-rgb: 195 208 219;
   --blue-300-rgb: 168 185 200; --blue-400-rgb: 129 149 171; --blue-500-rgb: 99 118 143;
   --blue-600-rgb: 68 89 113;  --blue-700-rgb: 44 79 116;    --blue-800-rgb: 34 64 95;
   --blue-900-rgb: 26 51 80;
-  /* gold token renders SILVER here — --brand-gold above is the theme's metallic accent. */
-  --brand-gold-300-rgb: 229 233 238; --brand-gold-400-rgb: 208 216 224; --brand-gold-500-rgb: 195 204 214;
-  --brand-gold-600-rgb: 160 173 189; --brand-gold-700-rgb: 124 139 158;
+  /* ── Accent tokens (2026-07-24). Explicitly named so "silver" and "gold" are
+     separate, addressable colors instead of one overloaded --brand-gold.
+
+     --brand-gold is retained as a SILVER alias on purpose: ~500 files consume
+     the brand-gold-* Tailwind ramp expecting silver (that swap is this theme's
+     original identity). Repointing it at real gold would flip all of them at
+     once. The alias is removed only after Task 6 migrates those consumers. */
+  --accent-silver-300: #e5e9ee; --accent-silver-300-rgb: 229 233 238;
+  --accent-silver-400: #d0d8e0; --accent-silver-400-rgb: 208 216 224;
+  --accent-silver-500: #c3ccd6; --accent-silver-500-rgb: 195 204 214;
+  --accent-silver-600: #a0adbd; --accent-silver-600-rgb: 160 173 189;
+  --accent-silver-700: #7c8b9e; --accent-silver-700-rgb: 124 139 158;
+  --accent-silver: var(--accent-silver-500);
+
+  /* Deepened antique brass — NOT the legacy day/night gold hex used elsewhere
+     in this file. That legacy gold is a near-neighbour of --sev-warn #f59e0b
+     (~38 deg vs ~43 deg hue), so at 9-11px CAD type on navy
+     decorative gold became indistinguishable from "overdue/threshold breached".
+     Hue alone cannot separate them; saturation and peak brightness do. Amber is
+     ~95% saturated with a 245 peak channel and reads as a glow; this is ~74%
+     saturated with a 184 peak channel and reads as metal. Severity hues are
+     deliberately left untouched. */
+  --accent-gold-300: #d9bd72; --accent-gold-300-rgb: 217 189 114;
+  --accent-gold-400: #c9a74e; --accent-gold-400-rgb: 201 167  78;
+  --accent-gold-500: #b8912f; --accent-gold-500-rgb: 184 145  47;
+  --accent-gold-600: #977626; --accent-gold-600-rgb: 151 118  38;
+  --accent-gold-700: #745a1d; --accent-gold-700-rgb: 116  90  29;
+  --accent-gold: var(--accent-gold-500);
+
+  /* Compat alias — renders SILVER. See note above. */
+  --brand-gold: var(--accent-silver-500);
+  --brand-gold-300-rgb: 229 233 238; --brand-gold-400-rgb: 208 216 224;
+  --brand-gold-500-rgb: 195 204 214; --brand-gold-600-rgb: 160 173 189;
+  --brand-gold-700-rgb: 124 139 158;
   --brand-gold-rgb: 195 204 214;
 
   /* Severity palette — bright, like night (dark background). Fixed hues, not re-derived. */
@@ -300,12 +615,15 @@ html.theme-blue-silver {
   --sev-warn-rgb: 245 158 11;    --sev-caution-rgb: 250 204 21;
   --sev-ok-rgb: 34 197 94;       --sev-info-rgb: 96 165 250;
   --sev-special-rgb: 192 132 252;
+  --amber-500: #f59e0b; --amber-900: #78350f;
+  --green-400: #4ade80; --green-600: #16a34a;
+  --purple-400: #c084fc; --purple-600: #9333ea;
 
   /* Records chrome tokens — BLUE & SILVER */
   --spm-chrome: #1a3350; --spm-form: #142840; --spm-field: #182f4a;
   --spm-border: #46688c; --spm-field-border: #46688c; --spm-accent: #5a9ae0;
-  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #9bb0c7;
-  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 155 176 199;
+  --spm-select: #316ac5; --spm-text: #f0f4f9; --spm-text-muted: #b1c1d3;
+  --spm-text-rgb: 240 244 249; --spm-text-muted-rgb: 177 193 211;
   --spm-group-head: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar: linear-gradient(#2c4f74, #22405f);
   --spm-toolbar-hover: linear-gradient(#345c85, #294a6b);
@@ -315,14 +633,45 @@ html.theme-blue-silver {
   /* App chrome tokens — BLUE & SILVER */
   --toolbar-gradient-start: #1a3350; --toolbar-gradient-end: #2c4f74;
   --grid-header-bg: #10213a; --grid-row-alt: #1a3350;
-  --field-label-color: #c3ccd6;
+  --grid-header-text: var(--text-secondary);
+  --grid-row-even: var(--grid-row-alt);
+  --grid-row-selected: #2c5480;
+  --grid-row-selected-border: var(--spm-select);
+  --accent-active: var(--accent-silver-400);
+  /* The only two gold roles in the app (per the 2026-07-24 design decision):
+     field labels and section/panel headers. Everything else stays silver. Any
+     gold surface NOT resolving through these two vars or the map palette is a
+     defect, which is what makes the live audit assertion mechanical.
+
+     These point at the 300 step, NOT 500. Measured 2026-07-24: 500 (#b8912f)
+     is 3.63/2.88/4.36 against base/raised/sunken navy — below WCAG AA 4.5:1
+     for the 9-11px type these labels use, and raised panels are exactly where
+     field labels sit. 300 (#d9bd72) is 5.83/4.63/7.02 and passes everywhere.
+     500 is retained for map arterial LINES, which are graphical objects needing
+     only 3:1 (WCAG 1.4.11) and pass at 3.63. Do not "restore" 500 here. */
+  --field-label-color: var(--accent-gold-300);
+  --panel-header-color: var(--accent-gold-300);
   --surface-panel: #1a3350; --surface-panel-alt: #182f4a; --surface-hover: #294a6b;
   --info-text: #cdd8e6; --info-bg: rgba(90, 154, 224, 0.12); --info-border: rgba(90, 154, 224, 0.24);
   --desktop-shell-start: #142840; --desktop-shell-end: #1a3350;
   --desktop-shell-raised-start: #1a3350; --desktop-shell-raised-end: #2c4f74;
   --desktop-shell-border: #46688c; --desktop-shell-accent: #5a9ae0;
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.4);
+  --window-shadow: rgba(0, 0, 0, 0.45);
+  --modal-scrim: rgba(0, 0, 0, 0.65);
   --desktop-shell-subtle-text: #91a3ba; --desktop-shell-icon: #91a3ba;
+
+  /* Module-bar + bevel/titlebar — BLUE & SILVER. Derived from the navy ramp so
+     the active nav tile reads as *sunken navy*, not a black hole, and panel
+     title bars read as a raised navy step instead of the inherited pure black. */
+  --toolbar-nav-text: #b1c1d3;
+  --toolbar-nav-text-hover: #f0f4f9;
+  --toolbar-nav-text-active: var(--brand-blue);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.06);
+  --toolbar-nav-active: #142840;
+  --bevel-highlight: #46688c;
+  --titlebar-gradient: linear-gradient(180deg, #2c4f74 0%, #22405f 50%, #2c4f74 100%);
+  --rt-led-on: var(--sev-ok);
 }
 
 /* ---- TACTICAL DARK (force-dark scope; always NIGHT regardless of html.theme-*) ---- */
@@ -355,4 +704,104 @@ html.theme-blue-silver {
   --spm-stat-enrt:  #ef9f27;  /* en route   */
   --spm-stat-busy:  #e24b4a;  /* busy / OOS */
   --spm-stat-xbsy:  #85b7eb;  /* extra busy */
+}
+
+/* ── Public signing surface ──────────────────────────────────
+   The Acknowledgement of Service form at /m/serve-receipt/<token> is the
+   only page in this app read by a member of the public — outdoors, on a
+   doorstep, in daylight, on their own phone, under time pressure, about
+   to sign a legal instrument.
+
+   Every other surface here is a forced-dark CAD console tuned for a
+   vehicle at night. Handing that to a stranger in direct sun to read
+   eleven-point navy-on-navy is the wrong trade, so this scope inverts to
+   a light, high-contrast palette and nothing else does.
+
+   Scoped by class, not by a theme variant: it is not a preference the
+   operator picks, it is a property of who is reading. The officer's own
+   surfaces keep the console palette on the same device, in the same
+   session, one route apart. */
+.public-form {
+  --surface-base-rgb:   248 250 252;  --surface-base:   rgb(var(--surface-base-rgb));
+  --surface-raised-rgb: 255 255 255;  --surface-raised: rgb(var(--surface-raised-rgb));
+  --surface-sunken-rgb: 241 245 249;  --surface-sunken: rgb(var(--surface-sunken-rgb));
+
+  /* #0f172a on #f8fafc — 16.8:1. Legal text a stranger must actually
+     read gets far more than the 4.5:1 floor. */
+  --text-primary-rgb:   15 23 42;     --text-primary:   rgb(var(--text-primary-rgb));
+  --text-secondary-rgb: 51 65 85;     --text-secondary: rgb(var(--text-secondary-rgb));
+  /* 7.1:1 — "muted" here still clears AAA for body text, because the
+     muted tier carries the explanatory copy under each question. */
+  --text-muted-rgb:     71 85 105;    --text-muted:     rgb(var(--text-muted-rgb));
+
+  --border-subtle-rgb:  203 213 225;  --border-subtle:  rgb(var(--border-subtle-rgb));
+  --border-strong-rgb:  100 116 139;  --border-strong:  rgb(var(--border-strong-rgb));
+
+  /* Field labels and panel headers are gold on the console. Gold on white
+     fails AA at any weight that still reads as gold, so this scope uses
+     the same slate as body text — the label already reads as a label from
+     its size and letterspacing, without needing a hue to say so. */
+  --field-label-color:  #334155;
+  --panel-header-color: #0f172a;
+}
+
+/* ── Printing the signing page from a browser ────────────────
+   A signer who hits Cmd-P on /m/serve-receipt got the app's dark chrome,
+   the sticky submit bar over the content, and navy backgrounds that
+   empty a colour cartridge to produce grey.
+
+   They are not meant to print this — the officer prints the instrument,
+   and there is a Download button for their copy — but people print
+   things, and what came out was unusable rather than merely imperfect.
+
+   Scoped to .public-form so no console surface is affected. */
+@media print {
+  .public-form,
+  .public-form body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  /* Panels keep their structure but lose the fills. A printed form wants
+     rules, not blocks of ink. */
+  .public-form section,
+  .public-form header {
+    background: #fff !important;
+    border-color: #999 !important;
+    break-inside: avoid;
+  }
+  /* The sticky submit bar sits over the content in print, and the action
+     it offers cannot be taken on paper. */
+  .public-form .fixed {
+    display: none !important;
+  }
+  /* Signature and checkbox state must survive: a tick rendered as a
+     background colour disappears entirely on a mono printer. */
+  .public-form [aria-pressed='true'] {
+    outline: 2px solid #000 !important;
+  }
+  .public-form img {
+    max-width: 100% !important;
+  }
+}
+
+/* ============================================================
+   Accessibility overrides
+   Applied via html.keyboard-nav and html.reduced-motion classes
+   stamped by accessibilityPreferences.ts on boot and settings change.
+   ============================================================ */
+
+html.keyboard-nav *:focus {
+  outline: 2px solid var(--sev-warn) !important;
+  outline-offset: 2px !important;
+}
+html.keyboard-nav *:focus:not(:focus-visible) {
+  outline: none !important;
+}
+
+html.reduced-motion *,
+html.reduced-motion *::before,
+html.reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Settings,
   Users,
@@ -10,6 +10,7 @@ import {
   AlertCircle,
   XCircle,
   Activity,
+  AlertTriangle,
   Megaphone,
   Network,
   Zap,
@@ -30,6 +31,10 @@ import {
   Cloud,
   RefreshCw,
   Package,
+  Download,
+  MonitorSmartphone,
+  ScanText,
+  WifiOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -43,15 +48,18 @@ import UserFormModal, { type UserFormData } from '../components/UserFormModal';
 import ClientFormModal from '../components/ClientFormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { User, Client, UserRole } from '../types';
+import { isFleetioSyncStatusUnhealthy, type FleetioSyncStatus } from '../utils/fleetioHealth';
 
 // Tab components
 import AdminSettingsTab from './admin/AdminSettingsTab';
+import AutomationsTab from './admin/AutomationsTab';
 import AdminUsersTab from './admin/AdminUsersTab';
 import AdminWalletIdTab from './admin/AdminWalletIdTab';
 import AdminClientsTab from './admin/AdminClientsTab';
 import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
 import AdminHealthTab from './admin/AdminHealthTab';
+import AdminDownloadsTab from './admin/AdminDownloadsTab';
 import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
@@ -63,27 +71,32 @@ import AdminTrainingTab from './admin/AdminTrainingTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminPersonIntelTab from './admin/AdminPersonIntelTab';
 import AdminCloudflareTab from './admin/AdminCloudflareTab';
-import { AdminFleetV2HealthTab } from './admin/AdminFleetV2HealthTab';
 import AdminFleetioHealthTab from './admin/AdminFleetioHealthTab';
 import AdminFleetioDirectoryTab from './admin/AdminFleetioDirectoryTab';
 import AdminInspectionTemplatesTab from './admin/AdminInspectionTemplatesTab';
+import KioskDevicesTab from './admin/KioskDevicesTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
+import OfflineQueueTab from './admin/OfflineQueueTab';
 import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
 import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
+import AdminMapDataTab from './admin/AdminMapDataTab';
 import AdminRadioTab from './admin/AdminRadioTab';
 import AdminReanalysisTab from './admin/AdminReanalysisTab';
 import AdminDevSettingsTab from './admin/AdminDevSettingsTab';
-import { Book } from 'lucide-react';
+import SyncStatusTab from './admin/SyncStatusTab';
+import { Book, Server } from 'lucide-react';
 import { AdminVmrsBrowser } from './admin/AdminVmrsBrowser';
 import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
+import TesseractTrainingPage from './TesseractTrainingPage';
 import LinkageOptionsEditor from '../components/LinkageOptionsEditor';
+import { formatEnumValue } from '../utils/formatters';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -166,7 +179,12 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
   const last_name = row.last_name || (row.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
 
   // Spread all server fields through so no data is lost (profile_image, notes, etc.)
-  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, password_expires_at, force_password_change, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
+  // NOTE: the roster query only ever selected must_change_password, not a
+  // password_expires_at/force_password_change column (neither exists on
+  // `users` — passwordExpiresAt is computed on the fly by GET
+  // /admin/users/:id/security). Destructuring those two names here was a
+  // silent no-op for every row; fixed to read the real column.
+  const { status, full_name, last_login_at, totp_enabled, totp_setup_required, must_change_password, password_changed_at, ...rest } = row as PersonnelRow & Record<string, any>;
   return {
     ...rest,
     first_name,
@@ -178,8 +196,7 @@ function mapPersonnelToUser(row: PersonnelRow): User & { last_login_display?: st
     // Map snake_case security fields to camelCase for UI components
     totpEnabled: totp_enabled === 1,
     totpSetupRequired: totp_setup_required === 1,
-    passwordExpiresAt: password_expires_at || undefined,
-    forcePasswordChange: force_password_change === 1,
+    forcePasswordChange: must_change_password === 1,
     passwordChangedAt: password_changed_at || undefined,
   };
 }
@@ -248,7 +265,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleet_v2_health' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'downloads' | 'announcements' | 'departments' | 'wallet_ids' | 'linkage' | 'notif_rules' | 'alert_sounds' | 'gps_health' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'map_data_files' | 'radio' | 'cloudflare' | 'reanalysis' | 'fleetio_health' | 'fleetio_directory' | 'inspection_templates' | 'person_intel' | 'vmrs_browser' | 'dev' | 'court_lookups' | 'kiosk_devices' | 'ocr_learning' | 'automations' | 'sync_status' | 'offline-queue';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -275,7 +292,7 @@ export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleet_v2_health', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'downloads', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'map_data_files', 'radio', 'cloudflare', 'linkage', 'reanalysis', 'fleetio_health', 'fleetio_directory', 'inspection_templates', 'wallet_ids', 'person_intel', 'vmrs_browser', 'dev', 'kiosk_devices', 'ocr_learning', 'automations', 'sync_status', 'offline-queue'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link, and
@@ -315,6 +332,7 @@ export default function AdminPage() {
 
   // --- Loading / error ---
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [fleetioUnhealthy, setFleetioUnhealthy] = useState(false);
   const [loadingClients, setLoadingClients] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -707,9 +725,13 @@ export default function AdminPage() {
         { id: 'system', label: 'System Config', icon: Cog },
         { id: 'settings', label: 'Console Settings', icon: Settings },
         { id: 'map_settings', label: 'Map Settings', icon: Map },
+        { id: 'map_data_files', label: 'Map Data Files', icon: Map },
         { id: 'linkage', label: 'Linkage Options', icon: Link2 },
         { id: 'health', label: 'System Health', icon: Activity },
+        { id: 'downloads', label: 'Downloads', icon: Download },
         { id: 'reanalysis', label: 'Reanalysis', icon: RefreshCw },
+        { id: 'sync_status' as TabId, label: 'Sync Status', icon: Server },
+        { id: 'offline-queue' as TabId, label: 'Offline Queue', icon: WifiOff },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
       ],
@@ -725,6 +747,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
+        { id: 'automations', label: 'Smart Automations', icon: Zap },
         { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
     },
@@ -743,10 +766,12 @@ export default function AdminPage() {
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'person_intel', label: 'Person Intel', icon: Search },
         { id: 'cloudflare', label: 'Cloudflare', icon: Cloud },
+        { id: 'kiosk_devices', label: 'Kiosk Devices', icon: MonitorSmartphone },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
+        { id: 'ocr_learning', label: 'Tesseract OCR Learning', icon: ScanText },
       ],
     },
     {
@@ -754,7 +779,6 @@ export default function AdminPage() {
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
-        { id: 'fleet_v2_health', label: 'Fleet V2 Health', icon: Activity },
         { id: 'fleetio_health', label: 'Fleet.io Health', icon: Activity },
         { id: 'fleetio_directory', label: 'Fleet.io Vendors/Parts', icon: Package },
         { id: 'inspection_templates', label: 'Inspection Templates', icon: ClipboardList },
@@ -782,6 +806,22 @@ export default function AdminPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Administration \u2014 RMPG Flex'; }, []);
+
+  // Fleet.io queue health \u2014 small badge on the tab label so a stuck sync
+  // doesn't require an admin to remember to open the tab (see
+  // docs/superpowers/specs/2026-07-23-fleetio-reliability-observability-design.md).
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    let cancelled = false;
+    const check = () => {
+      apiFetch<FleetioSyncStatus>('/fleetio/sync-status')
+        .then((status) => { if (!cancelled && status) setFleetioUnhealthy(isFleetioSyncStatusUnhealthy(status, Date.now())); })
+        .catch(() => { /* best-effort \u2014 a failed check just leaves the badge as-is */ });
+    };
+    check();
+    const t = setInterval(check, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [user?.role]);
 
   // \u2500\u2500 /admin?user_id=<id> deep-link auto-select \u2500\u2500
   // Once the personnel roster hydrates, find the target by id, flip to the
@@ -967,7 +1007,7 @@ export default function AdminPage() {
                   className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-[0.18em] select-none border-b border-border-subtle/60 mb-0.5 text-rmpg-500"
                   aria-hidden="true"
                 >
-                  {group.category}
+                  {formatEnumValue(group.category)}
                 </div>
                 {group.tabs.map((tab) => {
                   const Icon = tab.icon;
@@ -990,6 +1030,13 @@ export default function AdminPage() {
                     >
                       <Icon style={{ width: 13, height: 13 }} className={`transition-colors duration-150 shrink-0 ${isActive ? 'text-brand-400' : 'text-rmpg-600'}`} aria-hidden="true" />
                       <span className={`truncate${tab.id === 'dev' ? ' text-red-400' : ''}`}>{tab.label}</span>
+                      {tab.id === 'fleetio_health' && fleetioUnhealthy && (
+                        <AlertTriangle
+                          style={{ width: 11, height: 11 }}
+                          className="shrink-0 text-amber-400 ml-auto"
+                          aria-label="Fleet.io sync queue needs attention"
+                        />
+                      )}
                     </button>
                   );
                 })}
@@ -1059,12 +1106,20 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'map_data_files' && (
+          <AdminMapDataTab />
+        )}
+
         {activeTab === 'health' && (
           <AdminHealthTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
           />
+        )}
+
+        {activeTab === 'downloads' && (
+          <AdminDownloadsTab />
         )}
 
         {activeTab === 'reanalysis' && (
@@ -1122,6 +1177,7 @@ export default function AdminPage() {
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+            isAdmin={user?.role === 'admin'}
           />
         )}
 
@@ -1149,10 +1205,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'fleet_v2_health' && (
-          <AdminFleetV2HealthTab />
-        )}
-
         {activeTab === 'fleetio_health' && (
           <AdminFleetioHealthTab />
         )}
@@ -1162,6 +1214,10 @@ export default function AdminPage() {
 
         {activeTab === 'inspection_templates' && (
           <AdminInspectionTemplatesTab />
+        )}
+
+        {activeTab === 'kiosk_devices' && (
+          <KioskDevicesTab />
         )}
 
         {activeTab === 'vmrs_browser' && (
@@ -1227,6 +1283,12 @@ export default function AdminPage() {
             setError={setError}
           />
         )}
+
+        {activeTab === 'ocr_learning' && <TesseractTrainingPage />}
+
+        {activeTab === 'automations' && <AutomationsTab />}
+        {activeTab === 'sync_status' && <SyncStatusTab />}
+        {activeTab === 'offline-queue' && <OfflineQueueTab />}
 
         {activeTab === 'email' && (
           <AdminEmailTab

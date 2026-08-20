@@ -1,10 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye, Clock, CalendarDays, ScanLine, ScanText } from 'lucide-react';
 import ServeAttemptCalendar from '../components/serve/ServeAttemptCalendar';
+import LiveDlScanner, { type IdScanResult } from '../components/LiveDlScanner';
+import { aamvaToServeOverrides } from '../utils/scanIdToRecipient';
+import { useToast } from '../components/ToastProvider';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -15,8 +18,23 @@ import { parseDefendants, type DetectedDefendant } from '../utils/serveIntakeDef
 import type { FieldVerdict } from '../types/serveIntakeJudge';
 import DefendantsPicker from '../components/serve-intake/DefendantsPicker';
 import JudgeFlagChip from '../components/serve-intake/JudgeFlagChip';
+import { toDisplayLabel } from '../utils/formatters';
+import { importWithRetry } from '../utils/importWithRetry';
+import QualityReviewPanel from '../components/serve-intake/QualityReviewPanel';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
+
+// Maps server CRITICAL_FIELDS human-readable labels → PUT /api/serve-intake/:id body keys.
+// Labels that don't have a corresponding PUT field (e.g. "DOB", "phone") are omitted —
+// the server doesn't accept those columns via this endpoint, so we skip them rather than
+// silently dropping data.
+const MISSING_FIELD_TO_PUT_KEY: Record<string, string> = {
+  'recipient name': 'recipient_name',
+  'address': 'recipient_address',
+  'case number': 'case_number',
+  'court': 'court_name',
+  'service deadline': 'deadline',
+};
 
 interface UploadedFile {
   name: string;
@@ -177,6 +195,19 @@ const DOCUMENT_TYPES = [
   { value: 'other', label: 'Other Legal Document', color: 'bg-surface-overlay/40 text-rmpg-400 border-rmpg-700/40' },
 ];
 
+// Human-readable label for the per-document `ocr_engine` slug shown in the
+// "Extraction Context" panel below. Kept in sync with (but not imported
+// from, since this is a client-only display concern) the server-side
+// ENGINE_LABEL map in src/utils/serveIntakeBriefing.ts — an engine slug not
+// listed here falls back to the raw slug rather than blank text.
+const OCR_ENGINE_LABELS: Record<string, string> = {
+  'pdfjs-client': 'PDF text',
+  'workers-ai-vision': 'Vision OCR',
+  'workers-ai-tomarkdown': 'Structured PDF (Markdown)',
+  tesseract: 'Tesseract OCR',
+  pdftotext: 'pdftotext',
+};
+
 function confidenceColor(conf: number): string {
   if (conf >= 0.7) return 'text-green-400';
   if (conf >= 0.4) return 'text-amber-400';
@@ -224,7 +255,7 @@ function fileMeta(f: UploadedFile): string {
   const parts: string[] = [];
   if (f.size != null) parts.push(formatBytes(f.size));
   if (f.pages && f.pages > 0) parts.push(`${f.pages} page${f.pages > 1 ? 's' : ''}`);
-  if (f.lastModified) parts.push(new Date(f.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); // new-date-ok: File.lastModified is epoch ms (number), not a naive server timestamp string
+  if (f.lastModified) parts.push(new Date(f.lastModified).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' })); // new-date-ok: File.lastModified is epoch ms (number), not a naive server timestamp string
   return parts.join(' · ');
 }
 
@@ -346,11 +377,24 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, boolean>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
-  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar
-  const [activeTab, setActiveTab] = useState<'intake' | 'schedule'>('intake');
+  // Tab: 'intake' = upload flow, 'schedule' = attempt calendar, 'enforcement' = quality review
+  const [activeTab, setActiveTab] = useState<'intake' | 'schedule' | 'enforcement'>('intake');
+  // Badge count for the Enforcement tab — shows pending needs_review items.
+  const [reviewPendingCount, setReviewPendingCount] = useState(0);
+
+  useEffect(() => {
+    apiFetch<{ count: number }>('/serve-intake/review-queue?count=1')
+      .then(d => setReviewPendingCount(d.count ?? 0))
+      .catch(() => {});
+  }, []);
   // Pre-submission field overrides: operator edits BEFORE clicking Create.
   // Keys match the server's field key names (e.g. `recipient_first_name`).
   const [editOverrides, setEditOverrides] = useState<Record<string, string>>({});
+  // Tracks which field keys were populated by OCR (vs. typed by the operator).
+  // Used to show a subtle "OCR" badge so operators know what was auto-filled.
+  const [ocrSourced, setOcrSourced] = useState<Set<string>>(new Set());
+  const [showIdScanner, setShowIdScanner] = useState(false);
+  const { addToast } = useToast();
   // Active clients for the client selector dropdown.
   const [clients, setClients] = useState<{id: number; name: string; contact_name: string | null; contact_phone: string | null}[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
@@ -365,6 +409,12 @@ export default function ServeIntakePage() {
   const [judgeVerdicts, setJudgeVerdicts] = useState<Record<string, FieldVerdict>>({});
   // ConfirmDialog for the "Process Another Set" reset — clears uploaded documents.
   const [confirmReset, setConfirmReset] = useState(false);
+  // Actionable missing-field inputs on the success screen.
+  // Keyed by the human-readable CRITICAL_FIELDS label so they stay in sync
+  // with result.missing_critical without an extra mapping step.
+  const [missingFieldValues, setMissingFieldValues] = useState<Record<string, string>>({});
+  const [missingFieldSaving, setMissingFieldSaving] = useState(false);
+  const [missingFieldSaved, setMissingFieldSaved] = useState(false);
   const [clientsLoading, setClientsLoading] = useState(true);
   useEffect(() => {
     setClientsLoading(true);
@@ -373,6 +423,23 @@ export default function ServeIntakePage() {
       .catch((err: any) => setClientLoadError(err?.message || 'Failed to load clients — refresh to retry'))
       .finally(() => setClientsLoading(false));
   }, []);
+  // Auto-match client from OCR-extracted plaintiff/client_name when no client is
+  // selected yet. Uses simple substring matching (case-insensitive, both directions)
+  // to avoid false positives from partial names.
+  useEffect(() => {
+    if (selectedClientId !== null || clients.length === 0) return;
+    const candidate = (editOverrides['client_name'] || editOverrides['plaintiff'] || '').trim().toLowerCase();
+    if (!candidate || candidate.length < 4) return;
+    const match = clients.find(c => {
+      const n = c.name.toLowerCase();
+      return n.includes(candidate) || candidate.includes(n);
+    });
+    if (match) {
+      setSelectedClientId(match.id);
+      setEditOverrides(prev => ({ ...prev, client_name: match.name }));
+    }
+  }, [editOverrides, clients, selectedClientId]);
+
   const navigate = useNavigate();
   const { user } = useAuth();
   // Roles that may create new intake records.
@@ -387,6 +454,7 @@ export default function ServeIntakePage() {
   const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   // Live upload XHR, held so the Cancel button can abort() it mid-transfer.
   const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
 
@@ -461,8 +529,12 @@ export default function ServeIntakePage() {
     if (Object.keys(best).length === 0) return;
     setEditOverrides(prev => {
       const next = { ...prev };
+      const newlySourced: string[] = [];
       for (const [k, { value }] of Object.entries(best)) {
-        if (!next[k]) next[k] = value;
+        if (!next[k]) { next[k] = value; newlySourced.push(k); }
+      }
+      if (newlySourced.length > 0) {
+        setOcrSourced(s => { const n = new Set(s); newlySourced.forEach(k => n.add(k)); return n; });
       }
       return next;
     });
@@ -529,7 +601,7 @@ export default function ServeIntakePage() {
         // transparent-background scanned PDF would render its transparent
         // regions as black and tank Vision-OCR contrast/recognition. Mirrors
         // the engine backend's pre-render fill (rmpg-pdf-engine/backends/pdfjs.ts).
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvas, canvasContext: ctx, viewport } as any).promise;
         const blob = await new Promise<Blob | null>((res) =>
@@ -674,7 +746,14 @@ export default function ServeIntakePage() {
         }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
-        if (scan?.success) {
+        // Attach whenever OCR ran at all, not just when scan.success is true.
+        // success requires a field with confidence > 0.3 (serveIntakeExtract.ts),
+        // but fields can be extracted correctly at a lower self-reported
+        // confidence — gating on success here silently dropped the whole
+        // result (and with it, the "Review" step that fills editOverrides),
+        // even though the field values were right there in scan.fields.
+        // The rasterized-scanned-PDF-page branch above never had this gate.
+        if (scan) {
           ocrResult = scan;
           type = scan.documentType === 'court_docket' ? 'court_filing'
             : scan.documentType === 'field_sheet' ? 'field_sheet'
@@ -864,9 +943,14 @@ export default function ServeIntakePage() {
         // small JSON body), so jump straight to the analyzing phase.
         setUploadPhase('analyzing');
         const documents = files.map(f => ({ type: f.type, text: f.text }));
+        const legacyBody: Record<string, unknown> = { documents };
+        if (selectedClientId) legacyBody.client_id = selectedClientId;
+        if (selectedDefendants.length > 0) legacyBody.defendants_selected = selectedDefendants;
+        const legacyOverrides = Object.fromEntries(Object.entries(editOverrides).filter(([, v]) => v.trim()));
+        if (Object.keys(legacyOverrides).length > 0) legacyBody.field_overrides = legacyOverrides;
         const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
           method: 'POST',
-          body: JSON.stringify({ documents }),
+          body: JSON.stringify(legacyBody),
         });
         if (resp && resp.success) {
           setResult(resp);
@@ -878,12 +962,13 @@ export default function ServeIntakePage() {
       // A user-initiated cancel isn't an error — reset quietly without the
       // red banner. Everything else surfaces its message.
       if (!err?.aborted) setError(err?.message || 'Failed to process documents');
+    } finally {
+      uploadXhrRef.current = null;
+      setProcessing(false);
+      setUploadPhase('idle');
+      setUploadStat(null);
     }
-    uploadXhrRef.current = null;
-    setProcessing(false);
-    setUploadPhase('idle');
-    setUploadStat(null);
-  }, [files, editOverrides, detectedDefendants, selectedDefendants]);
+  }, [files, editOverrides, detectedDefendants, selectedDefendants, selectedClientId]);
 
   // Abort an in-flight upload. Only offered during the byte-transfer phase —
   // once the server is analyzing it may already be committing records, so
@@ -892,9 +977,63 @@ export default function ServeIntakePage() {
     uploadXhrRef.current?.abort();
   }, []);
 
+  // Scan a physical DL/ID barcode to prefill recipient fields without manual
+  // typing. Only merges non-empty mapped fields into editOverrides so it
+  // never blanks a value the operator already entered/corrected.
+  const handleIdScanComplete = useCallback(async ({ barcodeText }: IdScanResult) => {
+    setShowIdScanner(false);
+    if (!barcodeText) { addToast('No barcode read — try again or enter manually', 'error'); return; }
+    try {
+      const { parseAamva, looksLikeAamva } = await importWithRetry(() => import('../utils/aamvaParser'));
+      if (!looksLikeAamva(barcodeText)) { addToast('Barcode did not decode as a DL/ID', 'error'); return; }
+      const parsed = parseAamva(barcodeText);
+      const scanFields = aamvaToServeOverrides(parsed);
+      setEditOverrides((prev) => {
+        const next = { ...prev };
+        const newlySourced: string[] = [];
+        for (const [k, v] of Object.entries(scanFields)) {
+          if (v && !next[k]) { next[k] = v; newlySourced.push(k); }
+          else if (v) next[k] = v;
+        }
+        setOcrSourced(s => { const n = new Set(s); newlySourced.forEach(k => n.add(k)); return n; });
+        return next;
+      });
+      addToast('Recipient fields filled from ID scan — review before submitting', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Scan failed to parse — enter manually', 'error');
+    }
+  }, [addToast]);
+
   const previewFields = ocrPreview?.fields
     ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
     : [];
+
+  // Field change handler: update value and clear the OCR-sourced indicator so
+  // a manually-edited field no longer shows the "OCR" autofill badge.
+  const overrideField = useCallback((key: string, value: string) => {
+    setEditOverrides(prev => ({ ...prev, [key]: value }));
+    setOcrSourced(prev => { const n = new Set(prev); n.delete(key); return n; });
+  }, []);
+
+  // Saves the operator-filled missing-critical fields to the queue entry via PATCH.
+  const handleMissingFieldSave = useCallback(async (queueId: number) => {
+    const body: Record<string, string> = {};
+    for (const [label, value] of Object.entries(missingFieldValues)) {
+      const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+      if (putKey && value.trim()) body[putKey] = value.trim();
+    }
+    if (Object.keys(body).length === 0) return;
+    setMissingFieldSaving(true);
+    try {
+      await apiFetch(`/serve-intake/${queueId}`, { method: 'PUT', body: JSON.stringify(body) });
+      setMissingFieldSaved(true);
+    } catch {
+      // Keep the inputs so the operator can retry; addToast isn't available in
+      // this callback scope — error is surfaced by the button staying active.
+    } finally {
+      setMissingFieldSaving(false);
+    }
+  }, [missingFieldValues]);
 
   // Operator-facing batch summary: count + combined size of the documents the
   // user actually dropped (rasterized scan pages are excluded — they're hidden
@@ -909,7 +1048,13 @@ export default function ServeIntakePage() {
   const oversizeFiles = visibleFiles.filter(f => (f.size || 0) > MAX_UPLOAD_BYTES);
   const uploadItemCount = files.filter(f => !!f.file).length;
   const tooManyFiles = uploadItemCount > MAX_UPLOAD_FILES;
-  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles;
+  // clientLoadError is part of this guard, not decoration. The 2026-06-21 audit
+  // added the state and wired it to the catch, but neither of the two things it
+  // exists for — surfacing the failure and blocking submit — was ever built, so
+  // the failure it describes stayed live: with the dropdown silently empty an
+  // operator cannot tell "no clients" from "the load broke", attaches no client,
+  // and downstream billing auto-assign has nothing to key on.
+  const blockProcessing = oversizeFiles.length > 0 || tooManyFiles || !!clientLoadError;
 
   // Degraded-engine warning: true when at least one document that finished
   // OCR fell back to the free Workers AI model instead of the configured
@@ -925,6 +1070,15 @@ export default function ServeIntakePage() {
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
 
+      {user && ['admin', 'manager'].includes(user.role) && (
+        <button
+          onClick={() => navigate('/tesseract-training')}
+          className="flex items-center gap-1.5 px-3 py-1 text-[11px] border border-surface-border hover:bg-surface-raised"
+        >
+          <ScanText size={12} /> OCR Learning
+        </button>
+      )}
+
       {activeTab === 'intake' && showFallbackWarning && (
         <div className="flex items-start gap-2 px-3 py-2 panel-beveled bg-amber-900/20 border border-amber-700/40 text-amber-300 text-xs">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -938,7 +1092,7 @@ export default function ServeIntakePage() {
 
       {/* Tab strip */}
       <div className="flex gap-0 border-b border-surface-border">
-        {(['intake', 'schedule'] as const).map((tab) => (
+        {(['intake', 'schedule', 'enforcement'] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -948,8 +1102,13 @@ export default function ServeIntakePage() {
                 : 'border-transparent text-rmpg-500 hover:text-rmpg-300'
             }`}
           >
-            {tab === 'intake' ? <Upload size={11} /> : <CalendarDays size={11} />}
-            {tab === 'intake' ? 'Intake' : 'Attempt Schedule'}
+            {tab === 'intake' ? <Upload size={11} /> : tab === 'schedule' ? <CalendarDays size={11} /> : <ScanText size={11} />}
+            {tab === 'intake' ? 'Intake' : tab === 'schedule' ? 'Attempt Schedule' : 'Enforcement'}
+            {tab === 'enforcement' && reviewPendingCount > 0 && (
+              <span className="ml-0.5 min-w-[16px] px-1 py-px text-[9px] font-bold rounded-full bg-amber-600 text-white leading-none">
+                {reviewPendingCount > 99 ? '99+' : reviewPendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -957,6 +1116,23 @@ export default function ServeIntakePage() {
       {/* Schedule calendar view */}
       {activeTab === 'schedule' && (
         <ServeAttemptCalendar />
+      )}
+
+      {/* Enforcement tab — Quality Review Queue */}
+      {activeTab === 'enforcement' && (
+        <div className="space-y-0">
+          <QualityReviewPanel />
+          {user && ['admin', 'manager'].includes(user.role) && (
+            <div className="px-3 pb-3 border-t border-surface-border pt-2">
+              <button
+                onClick={() => navigate('/tesseract-training')}
+                className="flex items-center gap-1.5 px-3 py-1 text-[10px] border border-surface-border hover:bg-surface-raised text-rmpg-400"
+              >
+                <ScanText size={11} /> Tesseract OCR Learning
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Intake upload flow — hidden when on schedule tab */}
@@ -983,11 +1159,28 @@ export default function ServeIntakePage() {
         <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-brand-400' : 'text-rmpg-500'}`} />
         <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
-        <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
+        <p className="text-[9px] text-rmpg-600 mt-2">
+          <span>click to browse files</span>
+          <span className="mx-1 text-rmpg-700">·</span>
+          <button
+            type="button"
+            className="underline hover:text-rmpg-400 transition-colors"
+            onClick={e => { e.stopPropagation(); folderInputRef.current?.click(); }}
+          >or pick a folder</button>
+        </p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
+          multiple
+          className="hidden"
+          onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
+        />
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-expect-error webkitdirectory is not in HTMLInputElement types but is supported by all modern browsers
+          webkitdirectory=""
           multiple
           className="hidden"
           onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
@@ -1057,8 +1250,8 @@ export default function ServeIntakePage() {
                 ))}
               </select>
               {f.ocrResult && (
-                <span className={`text-[9px] font-bold ${confidenceColor(f.ocrResult.confidence)}`}>
-                  {(f.ocrResult.confidence * 100).toFixed(0)}%
+                <span className={`text-[9px] font-bold ${confidenceColor(Number(f.ocrResult.confidence ?? 0))}`}>
+                  {(Number(f.ocrResult.confidence ?? 0) * 100).toFixed(0)}%
                 </span>
               )}
               {f.ocrScanFailed ? (
@@ -1104,40 +1297,117 @@ export default function ServeIntakePage() {
               onChange={setSelectedDefendants}
             />
             {/* Recipient identity */}
-            <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Recipient</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-              {[
-                { key: 'recipient_first_name', label: 'First Name' },
-                { key: 'recipient_last_name',  label: 'Last Name' },
-                { key: 'recipient_middle_name',label: 'Middle Name' },
-                { key: 'recipient_dob',         label: 'Date of Birth' },
-              ].map(({ key, label }) => (
-                <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
-                  <input
-                    id={`ff-intake-override-${key}`}
-                    type="text"
-                    value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
-                    placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
-                  />
-                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Recipient</p>
+              <button
+                type="button"
+                onClick={() => setShowIdScanner(true)}
+                className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-brand-400 border border-brand-400 px-2 py-1"
+                aria-label="Scan recipient ID barcode"
+              >
+                <ScanLine className="w-3 h-3" /> Scan ID
+              </button>
             </div>
+            {/* Recipient type indicator + entity-aware layout */}
+            {(() => {
+              const isBusiness = !!(editOverrides['recipient_business_name'] || editOverrides['registered_agent_name']);
+              const recipientType = editOverrides['recipient_type']?.toLowerCase();
+              const entityLabel = recipientType === 'business' ? 'Business Entity'
+                : recipientType === 'person' ? 'Individual'
+                : isBusiness ? 'Business Entity' : null;
+
+              const businessRow = isBusiness ? (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    { key: 'recipient_business_name', label: 'Business Name' },
+                    { key: 'registered_agent_name',   label: 'Registered Agent' },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                        {label}
+                        {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                      </label>
+                      <input
+                        id={`ff-intake-override-${key}`}
+                        type="text"
+                        value={editOverrides[key] ?? ''}
+                        onChange={e => overrideField(key, e.target.value)}
+                        placeholder="—"
+                        className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
+                      />
+                      {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                    </div>
+                  ))}
+                </div>
+              ) : null;
+
+              const personFieldLabel = (base: string) => isBusiness
+                ? (base === 'First Name' ? 'Agent First' : base === 'Last Name' ? 'Agent Last' : base === 'Middle Name' ? 'Agent Middle' : base)
+                : base;
+
+              const personRow = (
+                <div className="mb-3">
+                  {isBusiness && (
+                    <p className="text-[9px] text-rmpg-500 mb-1">Contact / Agent Person <span className="text-rmpg-600">(optional for business service)</span></p>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                    {[
+                      { key: 'recipient_first_name', label: 'First Name' },
+                      { key: 'recipient_last_name',  label: 'Last Name' },
+                      { key: 'recipient_middle_name',label: 'Middle Name' },
+                      { key: 'recipient_dob',        label: 'Date of Birth' },
+                      { key: 'recipient_phone',      label: 'Phone' },
+                    ].map(({ key, label }) => (
+                      <div key={key}>
+                        <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                          {personFieldLabel(label)}
+                          {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                        </label>
+                        <input
+                          id={`ff-intake-override-${key}`}
+                          type="text"
+                          value={editOverrides[key] ?? ''}
+                          onChange={e => overrideField(key, e.target.value)}
+                          placeholder="—"
+                          className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
+                        />
+                        {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+
+              return (
+                <>
+                  {entityLabel && (
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="text-[9px] px-1.5 py-0.5 border border-brand-600 text-brand-300 uppercase tracking-wider font-semibold">
+                        {entityLabel}
+                        {ocrSourced.has('recipient_type') && <span className="ml-1 text-brand-400">OCR</span>}
+                      </span>
+                    </div>
+                  )}
+                  {/* Business row first — entity name is the primary identifier */}
+                  {isBusiness ? <>{businessRow}{personRow}</> : <>{personRow}{businessRow}</>}
+                </>
+              );
+            })()}
             {/* Address */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Address</p>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
               <div className="md:col-span-2">
-                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Street</label>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                  Street
+                  {ocrSourced.has('recipient_address') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                </label>
                 <input
                   id="ff-intake-override-recipient_address"
                   type="text"
                   value={editOverrides['recipient_address'] ?? ''}
-                  onChange={e => setEditOverrides(prev => ({ ...prev, recipient_address: e.target.value }))}
+                  onChange={e => overrideField('recipient_address', e.target.value)}
                   placeholder="—"
-                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                  className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('recipient_address') ? 'border-brand-700' : 'border-border-subtle'}`}
                 />
                 {judgeVerdicts['recipient_address'] && <JudgeFlagChip verdict={judgeVerdicts['recipient_address']} />}
               </div>
@@ -1147,14 +1417,17 @@ export default function ServeIntakePage() {
                 { key: 'recipient_zip',   label: 'Zip' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label htmlFor="ff-intake-client" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
                   {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
@@ -1174,11 +1447,27 @@ export default function ServeIntakePage() {
                 }}
                 className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
               >
-                <option value="">— {clientsLoading ? 'Loading clients…' : 'Select client (optional)'} —</option>
+                <option value="">
+                  — {clientsLoading
+                    ? 'Loading clients…'
+                    : clientLoadError
+                      ? 'Client list unavailable'
+                      : 'Select client (optional)'} —
+                </option>
                 {clients.map(cl => (
                   <option key={cl.id} value={cl.id}>{cl.name}{cl.contact_name ? ` · ${cl.contact_name}` : ''}</option>
                 ))}
               </select>
+              {/* An empty dropdown is ambiguous on its own — "no clients exist"
+                  and "the request failed" look identical. Say which, and say
+                  that submit is held, so the operator isn't left guessing why
+                  the button is disabled. */}
+              {clientLoadError && (
+                <p role="alert" className="mt-1 text-[10px] text-red-400 leading-tight">
+                  {clientLoadError} — intake is held until the client list loads,
+                  so a job cannot be filed without its client.
+                </p>
+              )}
             </div>
             {/* Case details */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Case</p>
@@ -1189,45 +1478,166 @@ export default function ServeIntakePage() {
                 { key: 'case_number',       label: 'Case #' },
                 { key: 'job_number',        label: 'Job #' },
                 { key: 'service_deadline',  label: 'Due Date' },
+                { key: 'hearing_date',      label: 'Hearing Date' },
+                { key: 'jurisdiction',      label: 'Jurisdiction' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
             {/* Service */}
             <p className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1.5">Service</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
               {[
-                { key: 'attorney_name',   label: 'Attorney' },
-                { key: 'attorney_phone',  label: 'Attorney Phone' },
-                { key: 'fee_amount',      label: 'Fee' },
-                { key: 'service_windows', label: 'Service Windows' },
+                { key: 'attorney_name',       label: 'Attorney' },
+                { key: 'attorney_phone',      label: 'Attorney Phone' },
+                { key: 'attorney_email',      label: 'Attorney Email' },
+                { key: 'attorney_bar_number', label: 'Bar #' },
+                { key: 'fee_amount',          label: 'Fee' },
+                { key: 'service_windows',     label: 'Service Windows' },
               ].map(({ key, label }) => (
                 <div key={key}>
-                  <label htmlFor="ff-serveintakepage-2" className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">{label}</label>
+                  <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                    {label}
+                    {ocrSourced.has(key) && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
                   <input
                     id={`ff-intake-override-${key}`}
                     type="text"
                     value={editOverrides[key] ?? ''}
-                    onChange={e => setEditOverrides(prev => ({ ...prev, [key]: e.target.value }))}
+                    onChange={e => overrideField(key, e.target.value)}
                     placeholder="—"
-                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has(key) ? 'border-brand-700' : 'border-border-subtle'}`}
                   />
+                  {judgeVerdicts[key] && <JudgeFlagChip verdict={judgeVerdicts[key]} />}
                 </div>
               ))}
             </div>
+            {/* Process type + Priority row */}
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                  Process Type
+                  {ocrSourced.has('process_type') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                </label>
+                <select
+                  id="ff-intake-override-process_type"
+                  value={editOverrides['process_type'] ?? ''}
+                  onChange={e => overrideField('process_type', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="">— Select —</option>
+                  <option value="personal">Personal Service</option>
+                  <option value="substitute">Substitute Service</option>
+                  <option value="posted">Posted Service</option>
+                  <option value="mail">Mail Service</option>
+                  <option value="eviction">Eviction / UD</option>
+                  <option value="subpoena">Subpoena</option>
+                  <option value="restraining_order">Restraining Order</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">Priority</label>
+                <select
+                  id="ff-intake-override-priority"
+                  value={editOverrides['priority'] ?? 'normal'}
+                  onChange={e => overrideField('priority', e.target.value)}
+                  className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                >
+                  <option value="routine">Routine</option>
+                  <option value="normal">Normal</option>
+                  <option value="rush">Rush</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+            </div>
+            {/* Service instructions */}
+            <div className="mb-3">
+              <label className="text-[9px] text-rmpg-500 uppercase font-mono block mb-0.5">
+                Service Instructions
+                {ocrSourced.has('service_instructions') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+              </label>
+              <textarea
+                id="ff-intake-override-service_instructions"
+                value={editOverrides['service_instructions'] ?? ''}
+                onChange={e => overrideField('service_instructions', e.target.value)}
+                placeholder="Special access notes, gating, time restrictions…"
+                rows={2}
+                className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 resize-none ${ocrSourced.has('service_instructions') ? 'border-brand-700' : 'border-border-subtle'}`}
+              />
+              {judgeVerdicts['service_instructions'] && <JudgeFlagChip verdict={judgeVerdicts['service_instructions']} />}
+            </div>
+
+            {/* Scheduling constraints — only shown when the server extracted them or
+                the operator wants to set them manually before creating the entry. */}
+            <div className="space-y-2">
+              <p className="text-[9px] text-rmpg-500 uppercase font-bold">Scheduling Constraints</p>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Address Class
+                    {ocrSourced.has('address_class') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <select
+                    value={editOverrides['address_class'] ?? ''}
+                    onChange={e => overrideField('address_class', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('address_class') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  >
+                    <option value="">— unknown —</option>
+                    <option value="residential">Residential</option>
+                    <option value="commercial">Commercial</option>
+                    <option value="gated">Gated / HOA</option>
+                    <option value="po_box">PO Box</option>
+                  </select>
+                  {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Not Before
+                    {ocrSourced.has('attempt_start_not_before') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="date"
+                    value={editOverrides['attempt_start_not_before'] ?? ''}
+                    onChange={e => overrideField('attempt_start_not_before', e.target.value)}
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500 ${ocrSourced.has('attempt_start_not_before') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['attempt_start_not_before'] && <JudgeFlagChip verdict={judgeVerdicts['attempt_start_not_before']} />}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">
+                    Allowed Days
+                    {ocrSourced.has('service_days_allowed') && <span className="ml-1 text-[8px] text-brand-400 font-bold">OCR</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={editOverrides['service_days_allowed'] ?? ''}
+                    onChange={e => overrideField('service_days_allowed', e.target.value)}
+                    placeholder="e.g. Mon-Fri"
+                    className={`w-full bg-surface-sunken border rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-700 focus:outline-none focus:border-brand-500 ${ocrSourced.has('service_days_allowed') ? 'border-brand-700' : 'border-border-subtle'}`}
+                  />
+                  {judgeVerdicts['service_days_allowed'] && <JudgeFlagChip verdict={judgeVerdicts['service_days_allowed']} />}
+                </div>
+              </div>
+            </div>
+
             <ServeRecordMatchPanel
               address={editOverrides['recipient_address'] || ''}
-              businessName={editOverrides['recipient_last_name'] || ''}
+              businessName={editOverrides['recipient_business_name'] || ''}
             />
           </div>
         </div>
@@ -1241,8 +1651,8 @@ export default function ServeIntakePage() {
               <div className="flex items-center gap-2">
                 <Camera className="w-4 h-4 text-brand-400" />
                 <span className="text-xs font-bold text-rmpg-100 uppercase">OCR Extraction Review</span>
-                <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
-                  Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
+                <span className={`text-[10px] font-bold ${confidenceColor(Number(ocrPreview.confidence ?? 0))}`}>
+                  Confidence: {(Number(ocrPreview.confidence ?? 0) * 100).toFixed(0)}%
                 </span>
               </div>
               <IconButton onClick={() => setShowOcrPreview(false)} aria-label="Close OCR preview">
@@ -1255,17 +1665,17 @@ export default function ServeIntakePage() {
                 {' | '} Extracted Fields: <span className="text-rmpg-100 font-bold">{previewFields.length}</span>
               </div>
               <div className="w-full h-1.5 bg-surface-raised rounded-sm overflow-hidden">
-                <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
-                  style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
+                <div className={`h-full rounded-sm transition-all ${confidenceBar(Number(ocrPreview.confidence ?? 0))}`}
+                  style={{ width: `${Math.min(100, Number(ocrPreview.confidence ?? 0) * 100)}%` }} />
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                {previewFields.slice(0, 30).map(([key, field]) => (
+                {previewFields.map(([key, field]) => (
                   <div key={key} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-sm">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1">
-                        <span className="text-[9px] text-rmpg-500 uppercase font-mono">{key.replace(/_/g, ' ')}</span>
-                        <span className={`text-[8px] font-bold ${confidenceColor(field.confidence)}`}>
-                          {(field.confidence * 100).toFixed(0)}%
+                        <span className="text-[9px] text-rmpg-500 uppercase font-mono">{toDisplayLabel(key)}</span>
+                        <span className={`text-[8px] font-bold ${confidenceColor(Number(field.confidence ?? 0))}`}>
+                          {(Number(field.confidence ?? 0) * 100).toFixed(0)}%
                         </span>
                       </div>
                       {editingFields[key] ? (
@@ -1371,6 +1781,12 @@ export default function ServeIntakePage() {
       {/* Process Button */}
       {files.length > 0 && !result && (
         <>
+          {editOverrides['service_deadline'] && isNaN(Date.parse(editOverrides['service_deadline'])) && (
+            <div className="bg-amber-900/20 border border-amber-700/40 rounded-sm p-2 text-[10px] text-amber-400">
+              <AlertTriangle className="w-3 h-3 inline mr-1" />
+              Service deadline "{editOverrides['service_deadline']}" doesn't look like a valid date — update it before submitting.
+            </div>
+          )}
           <button
             onClick={processIntake}
             disabled={processing || files.every(f => f.status === 'error') || blockProcessing || !canManage}
@@ -1403,11 +1819,19 @@ export default function ServeIntakePage() {
             </div>
 
             {result.duplicate_of && (
-              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300">
-                <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
-                Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
-                {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
-                recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+              <div className="bg-amber-900/30 border border-amber-700/50 rounded-sm p-2 mb-3 text-[11px] text-amber-300 flex items-start justify-between gap-2">
+                <span>
+                  <AlertTriangle className="w-3.5 h-3.5 inline mr-1" />
+                  Duplicate intake: active serve entry #{result.duplicate_of.serve_queue_id}
+                  {result.duplicate_of.case_number ? ` (case ${result.duplicate_of.case_number})` : ''} already covers this
+                  recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
+                </span>
+                <button
+                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
+                >
+                  View Entry →
+                </button>
               </div>
             )}
 
@@ -1446,7 +1870,7 @@ export default function ServeIntakePage() {
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
                 <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
-                <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
+                <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + toDisplayLabel(result.extracted.processType.slice(1)) : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
                 </button>
@@ -1476,8 +1900,8 @@ export default function ServeIntakePage() {
                     <span className="text-rmpg-300 truncate max-w-[260px]">{d.file_name}</span>
                     {d.success !== false ? (
                       <>
-                        <span className="text-rmpg-500">{(d.doc_type || 'unclassified').replace(/_/g, ' ')}</span>
-                        <span className="text-rmpg-500">{d.ocr_engine === 'pdfjs-client' ? 'PDF text' : d.ocr_engine === 'workers-ai-vision' ? 'Vision OCR' : d.ocr_engine || ''}</span>
+                        <span className="text-rmpg-500">{toDisplayLabel(d.doc_type || 'unclassified')}</span>
+                        <span className="text-rmpg-500">{(d.ocr_engine && OCR_ENGINE_LABELS[d.ocr_engine]) || d.ocr_engine || ''}</span>
                         <span className={`font-bold ${confidenceColor(d.confidence ?? 0)}`}>{Math.round((d.confidence ?? 0) * 100)}%</span>
                       </>
                     ) : (
@@ -1486,17 +1910,65 @@ export default function ServeIntakePage() {
                   </div>
                 ))}
                 {result.missing_critical && result.missing_critical.length > 0 && (
-                  <p className="text-[10px] text-amber-400 mt-1.5">
-                    <AlertTriangle className="w-3 h-3 inline mr-1" />
-                    Not found in documents — verify before service: {result.missing_critical.join(', ')}
-                  </p>
+                  <div className="mt-2 border border-amber-700/50 rounded-sm p-2 bg-amber-900/20">
+                    <p className="text-[9px] text-amber-400 uppercase font-bold mb-1.5 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Not found in documents — fill in before dispatch
+                    </p>
+                    <div className="space-y-1.5">
+                      {result.missing_critical.map((label) => {
+                        const putKey = MISSING_FIELD_TO_PUT_KEY[label];
+                        if (!putKey) {
+                          // No PUT-body mapping (e.g. DOB, phone) — show read-only note
+                          return (
+                            <p key={label} className="text-[10px] text-amber-300/70 italic">
+                              {label} — verify manually before service
+                            </p>
+                          );
+                        }
+                        return (
+                          <div key={label} className="flex items-center gap-2">
+                            <label className="text-[9px] text-amber-400 uppercase font-semibold w-24 shrink-0">
+                              {label}
+                            </label>
+                            <input
+                              type="text"
+                              value={missingFieldValues[label] ?? ''}
+                              onChange={(e) => setMissingFieldValues(prev => ({ ...prev, [label]: e.target.value }))}
+                              placeholder={`Enter ${label}`}
+                              disabled={missingFieldSaved}
+                              className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-[2px] text-[10px] text-rmpg-100 px-2 py-[3px] placeholder-rmpg-500 focus:outline-none focus:border-brand-500 disabled:opacity-50"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {result.serve_queue_id != null && (
+                      <div className="mt-2 flex items-center gap-2">
+                        {missingFieldSaved ? (
+                          <span className="text-[10px] text-green-400 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Saved to queue entry
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleMissingFieldSave(result.serve_queue_id!)}
+                            disabled={missingFieldSaving || Object.values(missingFieldValues).every(v => !v.trim())}
+                            className="toolbar-btn py-1 text-[10px] border-amber-700/60 text-amber-300 hover:bg-amber-900/30 disabled:opacity-40"
+                          >
+                            {missingFieldSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                            Save Missing Fields
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             ) : null}
 
             {/* Diligence planner — dated attempt windows. Mirrors the
                 RECOMMENDED ATTEMPT PLAN section of the intake briefing. */}
-            {!result.duplicate_of && result.attempt_plan && result.attempt_plan.length > 0 && (
+            {result.attempt_plan && result.attempt_plan.length > 0 && (
               <div className="mt-3 pt-3 border-t border-rmpg-700">
                 <p className="text-[9px] text-rmpg-400 uppercase font-bold mb-1.5">Recommended Attempt Plan</p>
                 {result.attempt_plan.map((w) => (
@@ -1552,13 +2024,23 @@ export default function ServeIntakePage() {
       <ConfirmDialog
         isOpen={confirmReset}
         onClose={() => setConfirmReset(false)}
-        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); }}
+        onConfirm={() => { setConfirmReset(false); setFiles([]); setResult(null); setEditOverrides({}); setOcrSourced(new Set()); setJudgeVerdicts({}); setDetectedDefendants([]); setSelectedDefendants([]); setSelectedClientId(null); setMissingFieldValues({}); setMissingFieldSaved(false); }}
         title="Start New Intake?"
         message="This will clear all loaded documents and results."
         confirmLabel="Clear & Start New"
         confirmVariant="warning"
       />
       </>}
+      {showIdScanner && (
+        <LiveDlScanner
+          onComplete={handleIdScanComplete}
+          onClose={() => setShowIdScanner(false)}
+          onUploadInstead={() => {
+            setShowIdScanner(false);
+            addToast('Photo-upload scanning isn\'t available on this screen — try again or use another entry method', 'error');
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2,10 +2,12 @@
 // Fetches /api/dispatch/repeat-addresses and renders as proportional circles.
 // Critical for identifying hot properties, chronic locations, and resource drains.
 import { useCallback, useState, useRef } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { buildDetailPopupHtml } from '../pages/map/utils/mapMarkers';
+import { formatDateTime } from '../utils/dateUtils';
 
 // Matches the real shape returned by GET /dispatch/repeat-addresses
 // (src/routes/dispatch/aggregates.ts) — a rounded lat/lng cluster, not a
@@ -31,11 +33,15 @@ export interface RepeatOptions {
 export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
   const [addresses, setAddresses] = useState<RepeatAddress[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const visibleRef = useRef(false);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
+    popupRef.current?.remove();
+    popupRef.current = null;
     try {
       safeRemoveLayer(map, LABEL_LAYER_ID);
       safeRemoveLayer(map, CIRCLE_LAYER_ID);
@@ -96,12 +102,29 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
         'text-halo-width': 1.5,
       },
     });
+
+    m.on('click', CIRCLE_LAYER_ID, (e) => {
+      const f = e.features?.[0];
+      if (!f || f.geometry.type !== 'Point') return;
+      const p = f.properties || {};
+      popupRef.current?.remove();
+      popupRef.current = new mapboxgl.Popup({ offset: 10, closeButton: true, className: 'mapbox-popup-dark' })
+        .setLngLat(f.geometry.coordinates as [number, number])
+        .setHTML(buildDetailPopupHtml(String(p.address || 'Repeat Address'), [
+          ['Calls', p.call_count],
+          ['Last Call', p.last_call_at ? formatDateTime(p.last_call_at) : null],
+        ]))
+        .addTo(m);
+    });
+    m.on('mouseenter', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = 'pointer'; });
+    m.on('mouseleave', CIRCLE_LAYER_ID, () => { m.getCanvas().style.cursor = ''; });
   }, [clearFromMap]);
 
   const fetchRepeats = useCallback(async (options: RepeatOptions = {}) => {
     if (!map) return;
     const { days = 30, minCount = 3, limit = 200 } = options;
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         days: String(days), min_count: String(minCount), limit: String(limit),
@@ -112,12 +135,13 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       const addrs = data?.addresses || [];
       setAddresses(addrs);
       whenStyleReady(map, () => { renderOnMap(addrs, map); });
-    } catch (err) {
+    } catch (err: any) {
       console.warn('[useMapboxRepeatAddresses] fetch failed:', err);
+      setError(err?.message || 'Failed to load repeat addresses');
     } finally {
       setLoading(false);
     }
   }, [map, renderOnMap]);
 
-  return { addresses, loading, fetchRepeats, clear: clearFromMap };
+  return { addresses, loading, error, fetchRepeats, clear: clearFromMap };
 }

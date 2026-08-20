@@ -40,6 +40,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
 
+import { log } from '../utils/logger';
 const offline = new Hono<Env>();
 
 // ─── Stubs (preserve existing client contract) ───────────────
@@ -112,6 +113,29 @@ const PULL_TABLES: Record<string, { columns: string; cursorCol: CursorCol }> = {
   patrol_checkpoints: { columns: '*', cursorCol: 'created_at' },
   trespass_orders:    { columns: '*', cursorCol: 'updated_at' },
   warrants:           { columns: '*', cursorCol: 'created_at' },
+  // automation_rules: user sees global rules + their own user-scoped rules.
+  // The `columns` star is safe — no sensitive data in automation_rules.
+  // NOTE: this table needs a user-scoped WHERE clause, handled by the pull
+  // handler's special-case below.
+  automation_rules:   { columns: '*', cursorCol: 'updated_at' },
+  // Process Server — officer serve-job queue and attempt log.
+  // serve_queue has updated_at (migration 0033). Explicit column list
+  // keeps the 100-col SELECT cap safe (serve_queue is at 103 cols on live
+  // D1 — pulling * would silently 500 for everyone offline).
+  serve_queue: {
+    columns: [
+      'id', 'officer_id', 'recipient_name', 'recipient_address', 'recipient_city',
+      'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng',
+      'document_type', 'case_number', 'court_name', 'jurisdiction',
+      'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',
+      'max_attempts', 'service_instructions', 'notes', 'status',
+      'attempt_count', 'sort_order', 'next_attempt_note',
+      'created_at', 'updated_at',
+    ].join(', '),
+    cursorCol: 'updated_at',
+  },
+  // serve_attempts uses created_at (append-only — no updated_at column).
+  serve_attempts: { columns: '*', cursorCol: 'created_at' },
 };
 
 const PULL_DEFAULT_LIMIT = 1000;
@@ -136,6 +160,29 @@ offline.post('/sync/pull', async (c) => {
   const limit = Math.max(1, Math.min(PULL_MAX_LIMIT, Math.floor(requested)));
 
   const db = getDb(c.env);
+
+  // automation_rules: filter to global + this user's own rules
+  if (table === 'automation_rules') {
+    const userId = c.get('userId');
+    const userSql = since
+      ? `SELECT ${spec.columns} FROM automation_rules
+         WHERE (scope = 'global' OR (scope = 'user' AND scope_id = ?))
+           AND updated_at > ?
+         ORDER BY updated_at ASC LIMIT ?`
+      : `SELECT ${spec.columns} FROM automation_rules
+         WHERE (scope = 'global' OR (scope = 'user' AND scope_id = ?))
+         ORDER BY updated_at ASC LIMIT ?`;
+    try {
+      const rows = since
+        ? await query(db, userSql, userId, since, limit)
+        : await query(db, userSql, userId, limit);
+      return c.json({ rows, fullReplace: since === null });
+    } catch (err) {
+      log.error('POST /sync/pull automation_rules failed', {}, err);
+      return c.json({ error: 'Query failed' }, 500);
+    }
+  }
+
   // table + cursorCol come from the allowlist, never user input —
   // safe to interpolate. `since` + `limit` are bound.
   const sql = since
@@ -148,6 +195,7 @@ offline.post('/sync/pull', async (c) => {
       : await query(db, sql, limit);
     return c.json({ rows, fullReplace: since === null });
   } catch (err) {
+    log.error('POST /sync/pull failed', { src: 'src/routes/offline.ts' }, err);
     const msg = err instanceof Error ? err.message : 'Query failed';
     return c.json({ error: msg }, 500);
   }
@@ -178,6 +226,9 @@ const ALLOWED_ENDPOINTS: Array<{ method: string; pattern: RegExp }> = [
   // Personnel time clock
   { method: 'POST', pattern: /^\/api\/personnel\/time\/clock-in$/ },
   { method: 'POST', pattern: /^\/api\/personnel\/time\/clock-out$/ },
+  // Process Server — officers log attempts while offline in the field
+  { method: 'POST', pattern: /^\/api\/process-server\/\d+\/attempt$/ },
+  { method: 'PUT',  pattern: /^\/api\/process-server\/\d+\/status$/ },
 ];
 
 function isAllowed(method: string, endpoint: string): boolean {

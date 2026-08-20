@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { WarrantSourceAdapter, RawWarrantHit, FullListResult } from '../types';
 import { cleanName } from '../normalize';
+import { fetchWithTimeout } from '../fetchTimeout';
 
 const API = 'https://sheriff.utahcounty.gov/api/mostWanted';
 
@@ -45,7 +46,7 @@ export const utahCountyAdapter: WarrantSourceAdapter = {
   mode: 'full-list',
   async fetchAll(_env: { DB: D1Database } & Record<string, unknown>): Promise<FullListResult> {
     try {
-      const res = await fetch(API, { headers: { Accept: 'application/json' } });
+      const res = await fetchWithTimeout(API, { headers: { Accept: 'application/json' } });
       if (!res.ok) return { hits: [], degraded: true, degradedReason: `http_${res.status}` };
       const body = (await res.json()) as unknown;
       return { hits: (Array.isArray(body) ? body : []).map(normalizeUtahCountyItem).filter((h) => h.warrant_id) };

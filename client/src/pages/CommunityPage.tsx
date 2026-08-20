@@ -22,7 +22,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -31,7 +31,7 @@ import StatsCard from '../components/StatsCard';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
   Users, Calendar, MessageSquare, Bell, Plus, Pencil, Trash2,
   AlertCircle, Eye, RefreshCw,
@@ -352,13 +352,13 @@ export default function CommunityPage() {
   const eventColumns = [
     { key: 'event_name', label: 'Event' },
     { key: 'event_type', label: 'Type', render: (row: CommunityEvent) => (
-      <span className="capitalize">{row.event_type?.replace(/_/g, ' ')}</span>
+      <span className="capitalize">{toDisplayLabel(row.event_type)}</span>
     )},
     { key: 'location', label: 'Location' },
     { key: 'start_date', label: 'Date' },
     { key: 'status', label: 'Status', render: (row: CommunityEvent) => (
       <span className={`capitalize ${row.status === 'completed' ? 'text-green-400' : row.status === 'cancelled' ? 'text-red-400' : row.status === 'in_progress' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.status?.replace(/_/g, ' ')}
+        {toDisplayLabel(row.status)}
       </span>
     )},
     ...(canWrite ? [{
@@ -397,7 +397,7 @@ export default function CommunityPage() {
     )},
     { key: 'priority', label: 'Priority', render: (row: PublicTip) => (
       <span className={`capitalize ${row.priority === 'urgent' ? 'text-red-400' : row.priority === 'high' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.priority}
+        {formatEnumValue(row.priority)}
       </span>
     )},
     { key: 'status', label: 'Status', render: (row: PublicTip) => (
@@ -417,11 +417,11 @@ export default function CommunityPage() {
   const alertColumns = [
     { key: 'alert_title', label: 'Title' },
     { key: 'alert_type', label: 'Type', render: (row: CommunityAlert) => (
-      <span className="capitalize">{row.alert_type?.replace(/_/g, ' ')}</span>
+      <span className="capitalize">{toDisplayLabel(row.alert_type)}</span>
     )},
     { key: 'severity', label: 'Severity', render: (row: CommunityAlert) => (
       <span className={`capitalize ${row.severity === 'critical' ? 'text-red-400' : row.severity === 'warning' ? 'text-amber-400' : 'text-rmpg-300'}`}>
-        {row.severity}
+        {formatEnumValue(row.severity)}
       </span>
     )},
     { key: 'target_area', label: 'Target Area' },
@@ -547,12 +547,12 @@ export default function CommunityPage() {
       {/* Event form modal */}
       {showForm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={closeForm}
           role="presentation"
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
@@ -586,7 +586,7 @@ export default function CommunityPage() {
                     onChange={(e) => setFormData({ ...formData, event_type: e.target.value })}
                   >
                     {EVENT_TYPES.map((t) => (
-                      <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                      <option key={t} value={t}>{toDisplayLabel(t)}</option>
                     ))}
                   </select>
                 </div>
@@ -622,7 +622,7 @@ export default function CommunityPage() {
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   >
                     {EVENT_STATUSES.map((s) => (
-                      <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                      <option key={s} value={s}>{toDisplayLabel(s)}</option>
                     ))}
                   </select>
                 </div>

@@ -9,6 +9,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -1150,7 +1151,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(evt.event_type).toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>
@@ -1381,7 +1382,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                       <span className="text-[10px] text-purple-200 font-bold uppercase tracking-wider">
                         {jobStatus.trip_count} Trip{jobStatus.trip_count !== 1 ? 's' : ''} · Total Download
                       </span>
-                      <button type="button"
+                      <button aria-label="Close" type="button"
                         onClick={() => { setActiveJobId(null); setJobStatus(null); }}
                         className="text-rmpg-500 hover:text-rmpg-300 transition-colors">
                         <XIcon className="w-3 h-3" />
@@ -1477,7 +1478,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
               <div className="bg-surface-sunken p-2 text-center">
                 <p className="text-sm font-bold text-rmpg-200 font-mono">
                   {mediaStatus.last_media_sync
-                    ? parseTimestamp(mediaStatus.last_media_sync).toLocaleTimeString()
+                    ? parseTimestamp(mediaStatus.last_media_sync).toLocaleTimeString('en-US', { timeZone: 'America/Denver' })
                     : '—'}
                 </p>
                 <p className="field-label">Last Sync</p>
@@ -1513,7 +1514,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                     )}
                     <span className="text-rmpg-500">
                       {dev.last_media_synced_at
-                        ? `Synced ${parseTimestamp(dev.last_media_synced_at).toLocaleString()}`
+                        ? `Synced ${parseTimestamp(dev.last_media_synced_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}`
                         : 'Never synced'}
                     </span>
                   </div>

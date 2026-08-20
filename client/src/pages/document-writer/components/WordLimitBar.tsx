@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Gauge, X } from 'lucide-react';
 
 /** A word / character limit indicator. The user sets a target word count and an
@@ -33,7 +33,7 @@ export default function WordLimitBar({
   const near = !over && pct >= 0.9;
   const remaining = limit - count;
 
-  const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-[#d4a017]';
+  const barColor = over ? 'bg-red-500' : near ? 'bg-amber-500' : 'bg-accent-silver-500';
   const textColor = over ? 'text-red-400' : near ? 'text-amber-400' : 'text-rmpg-300';
 
   return (

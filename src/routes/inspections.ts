@@ -26,8 +26,10 @@ import {
   type InspectionAnswers,
 } from '../utils/inspectionTemplates';
 import { emitFleetioEvent } from '../utils/fleetio/events';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const inspections = new Hono<Env>();
 
 interface TimeEntryRow {
@@ -123,6 +125,7 @@ inspections.post('/by-token/:token', async (c) => {
       try {
         templateSchema = parseTemplateSchema(tmplRow.schema_json);
       } catch (err) {
+        log.error('POST /by-token/:token failed', { src: 'src/routes/inspections.ts' }, err);
         if (err instanceof InvalidTemplateError) {
           return c.json({ error: `Template ${templateId} has invalid schema`, code: 'TEMPLATE_INVALID_SCHEMA', detail: err.message }, 500);
         }
@@ -180,10 +183,15 @@ inspections.post('/by-token/:token', async (c) => {
         const summary = `Auto-escalated from pre-trip inspection — ${escalations.length} failed item${escalations.length === 1 ? '' : 's'}: ${escalations.map(e => e.label).join(', ')}`;
         const detail = JSON.stringify({ failed_items: escalations, inspection_id: inspectionId, phase });
         const res = await execute(db,
+          // Write BOTH date columns. fleet_maintenance carries the service date
+          // in performed_at (what 28 reader sites use, and the only one
+          // populated on live) and service_date (what FleetViz used to read).
+          // Writing only one made an escalated repair invisible to every
+          // reader on the other column.
           `INSERT INTO fleet_maintenance
-              (vehicle_id, maintenance_date, performed_by, description, notes,
-               status, maintenance_type, attachments_json)
-           VALUES (?, date('now'), ?, ?, ?, 'requested', 'inspection_failure', ?)`,
+              (vehicle_id, performed_at, service_date, performed_by, description, notes,
+               status, service_type, attachments_json)
+           VALUES (?, date('now'), date('now'), ?, ?, ?, 'requested', 'inspection_failure', ?)`,
           entry.vehicle_id, entry.officer_id, summary, detail,
           // attachments_json: thumbnail list — pull any per-item photo keys.
           JSON.stringify(escalations.map(e => e.photo_key).filter(Boolean)),
@@ -245,7 +253,7 @@ inspections.post('/by-token/:token/photos', async (c) => {
 
     const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
     const key = `vehicle-inspections/${entry.id}/${phase}/${slot}-${crypto.randomUUID()}.${ext}`;
-    await c.env.UPLOADS.put(key, body, { httpMetadata: { contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, body, { httpMetadata: { contentType } });
 
     return c.json({ key, slot, phase, size: body.byteLength });
   } catch (err) {
@@ -264,11 +272,27 @@ inspections.get('/by-token/:token/photo', async (c) => {
     const key = c.req.query('key') || '';
     const expected = `vehicle-inspections/${entry.id}/`;
     if (!key.startsWith(expected)) return c.json({ error: 'Key not in this shift', code: 'KEY_FOREIGN' }, 403);
-    const obj = await c.env.UPLOADS.get(key);
-    if (!obj) return c.json({ error: 'Photo not found' }, 404);
-    return new Response(obj.body, {
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    if (decrypted) {
+      return new Response(decrypted.bytes, {
+        headers: {
+          'Content-Type': decrypted.httpMetadata?.contentType || 'image/jpeg',
+          'Cache-Control': 'private, max-age=300',
+        },
+      });
+    }
+    // getDecrypted() cleanly returns null when there's no file_encryption_keys
+    // row for this key — the expected shape for every inspection photo
+    // uploaded before this task shipped (this feature has been live). Fall
+    // back to a raw R2 read so those photos stay reachable; only 404 if
+    // NEITHER path finds bytes. A genuine decrypt failure (bad KEK, tampered
+    // ciphertext) THROWS instead of returning null, so it propagates to the
+    // outer catch below rather than silently masquerading as "legacy."
+    const legacy = await c.env.UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'Photo not found' }, 404);
+    return new Response(legacy.body, {
       headers: {
-        'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+        'Content-Type': legacy.httpMetadata?.contentType || 'image/jpeg',
         'Cache-Control': 'private, max-age=300',
       },
     });

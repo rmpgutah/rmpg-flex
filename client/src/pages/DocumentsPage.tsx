@@ -7,8 +7,8 @@ import {
   FileImage, File as FileIcon,
 } from 'lucide-react';
 import DossierGrid from './documents/DossierGrid';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { useNavigate, useSearchParams } from 'react-router';
+import { apiFetch, authedImageUrl, apiUploadFiles } from '../hooks/useApi';
 import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -105,8 +105,9 @@ export default function DocumentsPage() {
       setBreadcrumbs(data.breadcrumbs || []);
     } catch (err: any) {
       addToast(err.message || 'Failed to load documents', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [addToast]);
 
   useEffect(() => { fetchContents(currentFolderId); }, [currentFolderId, fetchContents]);
@@ -166,24 +167,16 @@ export default function DocumentsPage() {
     setUploading(true);
     const items = Array.from(fileList);
     setUploadProgress(items.map(f => ({ name: f.name, done: false, error: false })));
-    const token = localStorage.getItem('rmpg_token');
     let successCount = 0;
-    for (let i = 0; i < items.length; i++) {
-      const file = items[i];
-      const formData = new FormData();
-      formData.append('files', file);
-      if (currentFolderId) {
-        formData.append('entity_type', 'document_folder');
-        formData.append('entity_id', String(currentFolderId));
-      }
-      try {
-        const resp = await fetch('/api/uploads', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
-          body: formData,
-        });
-        if (resp.ok) {
-          const results = await resp.json();
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const file = items[i];
+        try {
+          const results = await apiUploadFiles(
+            [file],
+            currentFolderId ? 'document_folder' : undefined,
+            currentFolderId ?? undefined,
+          );
           if (currentFolderId && results?.[0]?.file_id) {
             await apiFetch(`/documents/folders/${currentFolderId}/move-file`, {
               method: 'POST',
@@ -192,19 +185,18 @@ export default function DocumentsPage() {
           }
           successCount++;
           setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true } : p));
-        } else {
+        } catch {
           setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
         }
-      } catch {
-        setUploadProgress(prev => prev.map((p, idx) => idx === i ? { ...p, done: true, error: true } : p));
       }
+      if (successCount > 0) {
+        addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
+        fetchContents(currentFolderId);
+      }
+      setTimeout(() => setUploadProgress([]), 3000);
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} uploaded`, 'success');
-      fetchContents(currentFolderId);
-    }
-    setTimeout(() => setUploadProgress([]), 3000);
   }, [currentFolderId, addToast, fetchContents]);
 
   const navigateTo = (folderId: number | null) => {
@@ -536,7 +528,7 @@ export default function DocumentsPage() {
           <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
-            <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100">
+            <button aria-label="Close" type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           )}
@@ -718,7 +710,7 @@ export default function DocumentsPage() {
                 <span className="text-[8px] text-rmpg-500">{formatSize(file.file_size)}</span>
                 {/* Hover actions */}
                 <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                  <button type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
+                  <button aria-label="File info" type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
                   {file.mime_type === 'application/pdf' && (
                     <button type="button"
                       title="Edit PDF"
@@ -730,7 +722,7 @@ export default function DocumentsPage() {
                       className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>
                   )}
                   <a href={authedImageUrl(`/api/uploads/${file.file_id}/download`)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400"><Download className="w-3 h-3" /></a>
-                  {isAdmin && <button type="button" onClick={() => requestDeleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
+                  {isAdmin && <button aria-label="Delete" type="button" onClick={() => requestDeleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
                 </div>
               </div>
             ) : (
@@ -745,7 +737,7 @@ export default function DocumentsPage() {
                 {(() => { const { Icon, tint } = getFileIconMeta(file.mime_type); return <Icon className={`w-4 h-4 flex-shrink-0 ${tint}`} />; })()}
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
-                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
+                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString('en-US', { timeZone: 'America/Denver' })} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={() => setInfoFile(file)}
@@ -898,7 +890,7 @@ export default function DocumentsPage() {
                   <h3 className="text-sm font-bold text-rmpg-100 truncate">{f.original_name}</h3>
                   <p className="text-[10px] text-rmpg-400">{category} · .{ext}</p>
                 </div>
-                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-4 h-4" />
                 </button>
               </div>

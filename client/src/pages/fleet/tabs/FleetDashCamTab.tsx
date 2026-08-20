@@ -8,6 +8,7 @@ import { Camera, Video, Loader2, Play, FileText } from 'lucide-react';
 import type { DashCamera, DashCamVideo } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import VideoPlayer from '../../../components/VideoPlayer';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   vehicleId: string | number;
@@ -31,10 +32,11 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
     try {
       const [cams, vids] = await Promise.all([
         apiFetch<any[]>('/fleet/dash-cameras'),
-        apiFetch<any[]>('/fleet/dashcam-videos'),
+        // Server returns { videos, total }, not a bare array.
+        apiFetch<any[] | { videos: any[] }>('/fleet/dashcam-videos'),
       ]);
       const allCams: DashCamera[] = Array.isArray(cams) ? cams : [];
-      const allVids: DashCamVideo[] = Array.isArray(vids) ? vids : [];
+      const allVids: DashCamVideo[] = Array.isArray(vids) ? vids : vids.videos || [];
       setCameras(allCams.filter(c => String(c.vehicle_id) === String(vehicleId)));
       setVideos(allVids.filter(v => String(v.vehicle_id) === String(vehicleId)));
     } catch { /* ignore */ }
@@ -90,7 +92,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   <span className="text-xs font-bold text-rmpg-100 font-mono">{cam.camera_id}</span>
                   <span className={`inline-flex items-center gap-1 text-[8px] font-bold uppercase ${STATUS_LED[cam.status] ? '' : ''}`}>
                     <span className={STATUS_LED[cam.status] || 'led-dot led-off'} />
-                    {(cam.status || '').replace(/_/g, ' ')}
+                    {toDisplayLabel(cam.status || '')}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 mt-0.5">
@@ -138,7 +140,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   vid.classification === 'restricted' ? 'bg-red-900/40 text-red-400' :
                   'bg-rmpg-700 text-rmpg-400'
                 }`}>
-                  {vid.classification}
+                  {formatEnumValue(vid.classification)}
                 </span>
               </button>
             ))}

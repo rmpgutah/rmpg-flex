@@ -11,6 +11,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute, columnExists } from './db';
+import { denverDateExpr } from './denverTime';
 import { broadcastDispatchUpdate } from '../lib/broadcast';
 import { emitAlert } from './alertHub';
 import { log } from './logger';
@@ -90,8 +91,18 @@ export async function checkNcicAtAttempt(
   // ── 1a. Search local warrants ──
   try {
     const warrantQuery = firstName
-      ? `SELECT id, warrant_number, type, status, subject_name, offense,
-                charge_description, issuing_agency, severity, description
+      // warrants.issuing_agency, .severity and .description are 100% NULL on
+      // live D1 (0 of 49 rows) while issuing_court/source, offense_level/priority
+      // and charge_description are populated. Reading the dead trio made this
+      // safety briefing report agency "Unknown" and severity 'low' for EVERY
+      // warrant, which is the worst possible default for a process server
+      // walking up to an address. mapWarrantSeverity already understands
+      // 'felony'/'misdemeanor' (offense_level) and 'p1'/'p2' (priority), so the
+      // COALESCE feeds it real values with no mapper change.
+      ? `SELECT id, warrant_number, type, status, subject_name,
+                charge_description,
+                COALESCE(issuing_court, source) AS issuing_agency,
+                COALESCE(offense_level, priority) AS severity
            FROM warrants
           WHERE status = 'active'
             AND (
@@ -102,8 +113,10 @@ export async function checkNcicAtAttempt(
             CASE WHEN LOWER(subject_first_name) = ? THEN 0 ELSE 1 END,
             issued_date DESC
           LIMIT 20`
-      : `SELECT id, warrant_number, type, status, subject_name, offense,
-                charge_description, issuing_agency, severity, description
+      : `SELECT id, warrant_number, type, status, subject_name,
+                charge_description,
+                COALESCE(issuing_court, source) AS issuing_agency,
+                COALESCE(offense_level, priority) AS severity
            FROM warrants
           WHERE status = 'active'
             AND (
@@ -123,23 +136,20 @@ export async function checkNcicAtAttempt(
       type: string;
       status: string;
       subject_name: string | null;
-      offense: string | null;
       charge_description: string | null;
       issuing_agency: string | null;
       severity: string | null;
-      description: string | null;
     }>(db, warrantQuery, ...warrantBindings);
 
     for (const w of warrants) {
       hits.push({
         type: 'warrant',
         agency: w.issuing_agency || 'Unknown',
-        description: w.charge_description || w.offense || w.warrant_number || `Warrant #${w.id}`,
+        description: w.charge_description || w.warrant_number || `Warrant #${w.id}`,
         severity: mapWarrantSeverity(w.severity),
         details: [
           w.warrant_number ? `#${w.warrant_number}` : null,
           w.type ? `(${w.type})` : null,
-          w.description || null,
         ].filter(Boolean).join(' '),
       });
     }
@@ -254,8 +264,13 @@ export async function checkNcicAtAttempt(
         risk_level: string | null;
       }>(
         db,
+        // nsopw_query_cache stores QUERY responses (cache_key, raw_response,
+        // hit_offender_ids) -- it has none of these columns. The offender
+        // rows live in national_sex_offenders, which carries exactly this
+        // shape. Pointed at the cache, this threw "no such column" on every
+        // SOR screen.
         `SELECT first_name, last_name, jurisdiction, offense, risk_level
-           FROM nsopw_query_cache
+           FROM national_sex_offenders
           WHERE LOWER(last_name) = ?
             AND (? = '' OR LOWER(first_name) = ?)
           LIMIT 10`,
@@ -321,7 +336,7 @@ export async function logAttemptGpsBreadcrumb(
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         accuracy_meters REAL,
-        logged_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        logged_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`,
     );
   } catch { /* race or pre-existing — tolerated */ }
@@ -468,7 +483,7 @@ export async function retryWithBackoff(
       db,
       `UPDATE serve_queue
           SET next_attempt_note = ?,
-              updated_at = datetime('now','localtime')
+              updated_at = datetime('now')
         WHERE id = ?`,
       `Retry scheduled ${backoffDays} days out (${nextDateStr})`,
       attempt.serve_queue_id,
@@ -557,7 +572,7 @@ export async function autoEscalateStale(
         db,
         `UPDATE serve_queue
             SET urgency_tier = 'critical',
-                urgency_computed_at = datetime('now','localtime')
+                urgency_computed_at = datetime('now')
                 ${priorityClause}
           WHERE id = ?`,
         job.id,
@@ -592,7 +607,7 @@ export async function autoEscalateStale(
             reassignedTo = leastLoaded.id;
             await execute(
               db,
-              `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+              `UPDATE serve_queue SET officer_id = ?, updated_at = datetime('now') WHERE id = ?`,
               reassignedTo,
               job.id,
             );
@@ -620,7 +635,7 @@ export async function autoEscalateStale(
           db,
           `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
            VALUES ('serve_stale_escalation', 'high', 'Stale serve job escalated',
-                   ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+                   ?, 'serve_job', ?, ?, 0, datetime('now'))`,
           `Job stale >${staleDays}d: ${who}${caseRef}${reassignNote}`,
           job.id, uid,
         );
@@ -879,10 +894,14 @@ export async function getAttemptAnalytics(
   // Attempts per day
   const perDay = await query<{ date: string; count: number }>(
     db,
-    `SELECT DATE(attempt_at) AS date, COUNT(*) AS count
+    // Buckets are Mountain calendar days, not UTC ones. A 19:52 MT attempt is
+    // stored 01:52 the NEXT day in UTC, so grouping raw put it in tomorrow's
+    // bucket -- 4 of 54 live attempts land on the wrong day, and near a week
+    // boundary that moves them into the wrong week entirely.
+    `SELECT ${denverDateExpr('attempt_at')} AS date, COUNT(*) AS count
        FROM serve_attempts
       WHERE attempt_at >= ? AND attempt_at <= ?
-      GROUP BY DATE(attempt_at)
+      GROUP BY ${denverDateExpr('attempt_at')}
       ORDER BY date ASC`,
     start, end,
   );
@@ -890,12 +909,12 @@ export async function getAttemptAnalytics(
   // Success rate trend (per day)
   const successRateTrend = await query<{ date: string; total: number; served: number }>(
     db,
-    `SELECT DATE(attempt_at) AS date,
+    `SELECT ${denverDateExpr('attempt_at')} AS date,
             COUNT(*) AS total,
             SUM(CASE WHEN result IN ('served','sub_served','posted') THEN 1 ELSE 0 END) AS served
        FROM serve_attempts
       WHERE attempt_at >= ? AND attempt_at <= ?
-      GROUP BY DATE(attempt_at)
+      GROUP BY ${denverDateExpr('attempt_at')}
       ORDER BY date ASC`,
     start, end,
   );

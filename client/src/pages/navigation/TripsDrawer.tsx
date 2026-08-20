@@ -43,12 +43,12 @@ function parseMs(iso: string | null | undefined): number | null {
 function fmtClock(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '··';
-  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false }); // new-date-ok
 }
 function fmtDateShort(iso: string | null | undefined): string {
   const t = parseMs(iso);
   if (t == null) return '—';
-  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }); // new-date-ok
 }
 
 /** TripPoint (API breadcrumb) → FixPoint (telemetry engine). Only `time → timestamp` differs. */
@@ -65,9 +65,9 @@ function toFixPoints(points: TripPoint[] | undefined): FixPoint[] {
 }
 
 const HARSH_META = [
-  { key: 'A', icon: TrendingUp, color: '#f59e0b', title: 'Hard accel' },
-  { key: 'B', icon: TrendingDown, color: '#ef4444', title: 'Hard brake' },
-  { key: 'C', icon: CornerUpRight, color: '#8b5cf6', title: 'Hard corner' },
+  { key: 'A', icon: TrendingUp, color: 'var(--sev-warn)', title: 'Hard accel' },
+  { key: 'B', icon: TrendingDown, color: 'var(--sev-critical)', title: 'Hard brake' },
+  { key: 'C', icon: CornerUpRight, color: 'rgb(139, 92, 246)', title: 'Hard corner' },
 ] as const;
 
 // One trip in the timeline. `active` pins it at the top with a live badge.
@@ -75,7 +75,7 @@ const HARSH_META = [
 // (no unit assigned) view so each trip says which unit ran it.
 function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void; onDelete?: (trip: Trip) => void }) {
   const isResponse = trip.trip_type === 'call_response';
-  const accent = isResponse ? '#d4a017' : '#888888';
+  const accent = isResponse ? 'var(--brand-gold)' : 'var(--text-muted)';
   const mi = tripMiles(trip);
   const durMin = tripDurationMin(trip);
   const mph = tripMaxMph(trip);
@@ -92,65 +92,68 @@ function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; act
       role="button"
       tabIndex={0}
       onClick={onOpen}
-      className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors"
+      className="w-full text-left bg-surface-raised/40 border px-3 py-3 hover:border-brand-600 transition-colors"
       style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : 'var(--border-subtle)' }}
     >
       {/* top line: type badge + active pill + date + chevron */}
       <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: accent }} />
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: accent }} />
         {showUnit && trip.unit_id != null && (
-          <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }}>
+          <span className="text-[10px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }}>
             U{trip.unit_id}
           </span>
         )}
-        <span className="text-[10px] font-bold uppercase tracking-wide truncate" style={{ color: accent }}>
+        <span className="text-[13px] font-bold uppercase tracking-wide truncate" style={{ color: accent }}>
           {tripLabel(trip)}
         </span>
         {active && (
           <span
-            className="flex items-center gap-0.5 text-[7px] font-bold uppercase tracking-widest px-1 py-0.5 shrink-0 animate-pulse"
-            style={{ borderRadius: 2, color: '#22c55e', background: 'rgba(34,197,94,0.15)' }}
+            className="flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 shrink-0 animate-pulse"
+            style={{ borderRadius: 2, color: 'var(--sev-ok)', background: 'rgba(34,197,94,0.15)' }}
           >
-            <Radio className="w-2 h-2" /> Active
+            <Radio className="w-2.5 h-2.5" /> Active
           </span>
         )}
         {isResponse && trip.call_type && (
-          <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={trip.call_type}>
+          <span className="text-[11px] text-rmpg-400 min-w-0 truncate flex-1" title={trip.call_type}>
             {toDisplayLabel(trip.call_type)}
           </span>
         )}
-        <span className="text-[8px] font-mono text-rmpg-600 shrink-0 ml-auto">{fmtDateShort(trip.start_time)}</span>
+        <span className="text-[11px] font-mono text-rmpg-500 shrink-0 ml-auto">{fmtDateShort(trip.start_time)}</span>
         {!active && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(trip); }}
-            className="shrink-0 text-rmpg-700 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            // opacity-0-until-hover was unreachable on touch (:hover never
+            // fires on the in-vehicle tablets this runs on) — stay faintly
+            // visible always, brighten on hover/focus for mouse/keyboard.
+            className="shrink-0 text-rmpg-700 opacity-60 hover:text-red-500 group-hover:opacity-100 focus:opacity-100 transition-opacity"
             aria-label="Delete false trip record"
             title="Delete false trip record"
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 className="w-4 h-4" />
           </button>
         )}
-        <ChevronRight className="w-3 h-3 text-rmpg-600 shrink-0" />
+        <ChevronRight className="w-4 h-4 text-rmpg-600 shrink-0" />
       </div>
 
       {/* time window */}
-      <div className="flex items-center gap-1 mt-1 text-[9px] font-mono text-rmpg-400">
-        <Clock className="w-2.5 h-2.5 text-brand-500 shrink-0" />
+      <div className="flex items-center gap-1.5 mt-1.5 text-[11px] font-mono text-rmpg-400">
+        <Clock className="w-3 h-3 text-brand-500 shrink-0" />
         <span>{fmtClock(trip.start_time)}</span>
         <span className="text-rmpg-700">→</span>
-        <span style={{ color: active ? '#22c55e' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
+        <span style={{ color: active ? 'var(--sev-ok)' : undefined }}>{active && !trip.end_time ? 'now' : fmtClock(trip.end_time)}</span>
       </div>
 
       {/* metrics row */}
-      <div className="flex items-center gap-2 mt-1 text-[9px] font-mono text-rmpg-500">
-        <span title="Distance"><MapPin className="w-2.5 h-2.5 inline mr-0.5 text-brand-500" />{mi.toFixed(1)} mi</span>
-        {durMin != null && <span title="Duration"><Clock className="w-2.5 h-2.5 inline mr-0.5 text-brand-500" />{durMin} m</span>}
-        <span title="Max speed"><Gauge className="w-2.5 h-2.5 inline mr-0.5 text-brand-500" />{mph} mph</span>
+      <div className="flex items-center gap-3 mt-1.5 text-[11px] font-mono text-rmpg-500">
+        <span title="Distance"><MapPin className="w-3 h-3 inline mr-0.5 text-brand-500" />{mi.toFixed(1)} mi</span>
+        {durMin != null && <span title="Duration"><Clock className="w-3 h-3 inline mr-0.5 text-brand-500" />{durMin} m</span>}
+        <span title="Max speed"><Gauge className="w-3 h-3 inline mr-0.5 text-brand-500" />{mph} mph</span>
         {tripHarshTotal(trip) > 0 && (
-          <span className="ml-auto flex items-center gap-1.5">
+          <span className="ml-auto flex items-center gap-2">
             {harsh.filter((h) => h.n > 0).map((h) => (
               <span key={h.key} className="flex items-center gap-0.5" style={{ color: h.color }} title={h.title}>
-                <h.Icon className="w-2.5 h-2.5" />{h.key}:{h.n}
+                <h.Icon className="w-3 h-3" />{h.key}:{h.n}
               </span>
             ))}
           </span>
@@ -251,22 +254,26 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           // loading the breadcrumb points for this trip
           <div
             className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl flex items-center justify-center"
-            style={{ top: 44, bottom: 8, right: 8, width: 360, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
+            style={{ top: 44, bottom: 8, right: 8, width: 420, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
           >
             <div className="flex items-center gap-2 text-[11px] text-rmpg-500">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading trip replay…
             </div>
           </div>
         )}
-        {/* BACK to trip list */}
+        {/* BACK to trip list — `right` tracks the panel's own responsive width
+            (`width: 420, maxWidth: calc(100vw - 16px)` above) instead of a
+            fixed offset. That fixed offset assumed the panel was always
+            its full width; below narrow viewports the panel shrinks via
+            maxWidth but this button didn't, pushing it off screen. */}
         <button
           onClick={() => setSelectedTripId(null)}
-          className="absolute z-40 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide px-2 py-1 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
-          style={{ borderRadius: 2, top: 50, right: 376 }}
+          className="absolute z-40 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-1.5 border border-rmpg-700 bg-surface-deep/95 text-brand-300 hover:border-brand-500 hover:text-rmpg-100"
+          style={{ borderRadius: 2, top: 50, right: 'calc(8px + min(420px, 100vw - 16px))' }}
           aria-label="Back to trips list"
           title="Back to trips list"
         >
-          <RouteIcon className="w-3 h-3" /> Trips
+          <RouteIcon className="w-3.5 h-3.5" /> Trips
         </button>
       </>
     );
@@ -275,16 +282,16 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
   return (
     <div
       className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl flex flex-col"
-      style={{ top: 44, bottom: 8, right: 8, width: 360, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
+      style={{ top: 44, bottom: 8, right: 8, width: 420, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
     >
       {/* header */}
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">
         <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, #d4a01766, transparent)' }} />
         <RouteIcon className="w-4 h-4 text-brand-400" />
-        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Trips</span>
-        <span className="text-[9px] font-mono font-bold text-brand-300">{unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}</span>
+        <span className="text-[13px] font-bold uppercase tracking-widest text-rmpg-100">Trips</span>
+        <span className="text-[11px] font-mono font-bold text-brand-300">{unitId != null ? `UNIT ${unitId}` : 'ALL UNITS'}</span>
         <span className="flex-1" />
-        <span className="text-[10px] font-mono text-rmpg-400">{timeline.length}</span>
+        <span className="text-[11px] font-mono text-rmpg-400">{timeline.length}</span>
         <button
           onClick={handleExportPdf}
           disabled={exporting || timeline.length === 0}
@@ -300,7 +307,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
       </div>
 
       {/* timeline */}
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-1.5">
+      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-dark px-2 py-2 space-y-2.5">
         {unitId == null && (
           <div className="text-[9px] text-rmpg-600 px-2 pb-1 text-center">
             No unit assigned — showing the agency-wide trip log. Go on-duty to log your own.

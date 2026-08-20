@@ -75,7 +75,7 @@ export default function InlineEdit({
         className={`cursor-pointer hover:bg-brand-500/10 px-1 py-0.5 rounded-sm border border-transparent hover:border-brand-500/30 transition-all ${displayClassName}`}
         title="Click to edit"
       >
-        {value || <span className="text-rmpg-600 italic">{placeholder}</span>}
+        {value || <span className="text-fg-muted italic">{placeholder}</span>}
       </span>
     );
   }
@@ -110,7 +110,7 @@ export default function InlineEdit({
           disabled={saving}
         />
       )}
-      <button type="button" onClick={handleSave} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
+      <button aria-label="Save" type="button" onClick={handleSave} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
         <Check className="w-3 h-3" />
       </button>
       <button type="button" onClick={handleCancel} disabled={saving} className="p-0.5 text-red-400 hover:text-red-300" aria-label="Close" title="Close">

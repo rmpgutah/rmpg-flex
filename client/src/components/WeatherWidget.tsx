@@ -30,10 +30,13 @@ function WeatherWidget() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(false);
-    const data = await fetchWeather();
-    if (data) { setWeather(data); setError(false); }
-    else { setError(true); }
-    setLoading(false);
+    try {
+      const data = await fetchWeather();
+      if (data) { setWeather(data); setError(false); }
+      else { setError(true); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refresh().catch(() => {}); }, [refresh]);
@@ -47,8 +50,8 @@ function WeatherWidget() {
   if (loading && !weather) {
     return (
       <div className="panel-beveled bg-surface-base p-3 flex items-center justify-center gap-2">
-        <Loader2 className="w-4 h-4 text-rmpg-500 animate-spin" />
-        <span className="text-[10px] text-rmpg-500">Loading weather...</span>
+        <Loader2 className="w-4 h-4 text-fg-muted animate-spin" />
+        <span className="text-[10px] text-fg-muted">Loading weather...</span>
       </div>
     );
   }
@@ -56,8 +59,8 @@ function WeatherWidget() {
   if (error && !weather) {
     return (
       <div className="panel-beveled bg-surface-base p-3 text-center">
-        <Cloud className="w-5 h-5 text-rmpg-600 mx-auto mb-1" />
-        <p className="text-[9px] text-rmpg-500">Weather unavailable</p>
+        <Cloud className="w-5 h-5 text-fg-muted mx-auto mb-1" />
+        <p className="text-[9px] text-fg-muted">Weather unavailable</p>
         <button type="button" onClick={refresh} className="toolbar-btn text-[8px] mt-1" style={{ padding: '1px 6px' }}>
           <RefreshCw className="w-2.5 h-2.5" /> Retry
         </button>
@@ -75,7 +78,7 @@ function WeatherWidget() {
         <span className="text-[9px] text-rmpg-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
           <Cloud className="w-3 h-3" /> Current Weather
         </span>
-        <button type="button" onClick={refresh} className="text-rmpg-600 hover:text-rmpg-400" title="Refresh weather">
+        <button type="button" onClick={refresh} className="text-fg-muted hover:text-rmpg-400" title="Refresh weather">
           <RefreshCw className={`w-2.5 h-2.5 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
@@ -93,23 +96,23 @@ function WeatherWidget() {
           {/* Details grid */}
           <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-0.5 ml-3 border-l border-rmpg-700/30 pl-3">
             <div className="flex items-center gap-1.5 text-[9px]">
-              <Thermometer className="w-2.5 h-2.5 text-rmpg-500" />
-              <span className="text-rmpg-500">Feels</span>
+              <Thermometer className="w-2.5 h-2.5 text-fg-muted" />
+              <span className="text-fg-muted">Feels</span>
               <span className="text-rmpg-300 font-mono">{weather.feelsLike}°F</span>
             </div>
             <div className="flex items-center gap-1.5 text-[9px]">
-              <Wind className="w-2.5 h-2.5 text-rmpg-500" />
-              <span className="text-rmpg-500">Wind</span>
+              <Wind className="w-2.5 h-2.5 text-fg-muted" />
+              <span className="text-fg-muted">Wind</span>
               <span className="text-rmpg-300 font-mono">{weather.windSpeed} mph {getWindDirection(weather.windDirection)}</span>
             </div>
             <div className="flex items-center gap-1.5 text-[9px]">
-              <Droplets className="w-2.5 h-2.5 text-rmpg-500" />
-              <span className="text-rmpg-500">Humidity</span>
+              <Droplets className="w-2.5 h-2.5 text-fg-muted" />
+              <span className="text-fg-muted">Humidity</span>
               <span className="text-rmpg-300 font-mono">{weather.humidity}%</span>
             </div>
             <div className="flex items-center gap-1.5 text-[9px]">
-              <CloudRain className="w-2.5 h-2.5 text-rmpg-500" />
-              <span className="text-rmpg-500">Precip</span>
+              <CloudRain className="w-2.5 h-2.5 text-fg-muted" />
+              <span className="text-fg-muted">Precip</span>
               <span className="text-rmpg-300 font-mono">{weather.precipitation} in</span>
             </div>
           </div>

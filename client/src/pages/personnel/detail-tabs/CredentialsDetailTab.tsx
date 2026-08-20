@@ -42,7 +42,7 @@ export default function CredentialsDetailTab({
 
   const formatDate = (d: string) => {
     if (!d) return '-';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -83,7 +83,7 @@ export default function CredentialsDetailTab({
         <div className="space-y-3">
           {credentials.map((cred) => {
             const days = calcDaysUntilExpiry(cred.expiry_date);
-            const statusLabel = (cred.status || '').replace(/_/g, ' ').toUpperCase();
+            const statusLabel = toDisplayLabel(cred.status || '').toUpperCase();
 
             return (
               <div

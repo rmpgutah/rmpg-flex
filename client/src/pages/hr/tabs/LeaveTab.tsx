@@ -19,6 +19,8 @@ import type { LeaveRequest, LeaveBalance } from '../../../types';
 import LeaveRequestModal, { type LeaveFormData } from '../modals/LeaveRequestModal';
 import ExportButton from '../../../components/ExportButton';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { withAlpha } from '../../../utils/withAlpha';
+import { formatEnumValue } from '../../../utils/formatters';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -37,7 +39,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(dateStr: string): string {
@@ -88,11 +90,11 @@ function BalanceCard({
 // ─── Status Badge ───────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
-  const color = LEAVE_STATUS_COLORS[status] || 'var(--rmpg-500)';
+  const color = LEAVE_STATUS_COLORS[status] || 'var(--text-muted)';
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm text-xs font-medium uppercase tracking-wide"
-      style={{ backgroundColor: color + '22', color, border: `1px solid ${color}44` }}
+      style={{ backgroundColor: withAlpha(color, '22'), color, border: `1px solid ${withAlpha(color, '44')}` }}
     >
       {status}
     </span>
@@ -102,7 +104,7 @@ function StatusBadge({ status }: { status: string }) {
 // ─── Leave Type Pill ────────────────────────────────────────
 
 function TypePill({ type }: { type: string }) {
-  const color = LEAVE_TYPE_COLORS[type] || 'var(--rmpg-500)';
+  const color = LEAVE_TYPE_COLORS[type] || 'var(--text-muted)';
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs"
@@ -427,8 +429,7 @@ export default function LeaveTab() {
             <Clock size={14} className="text-amber-400" />
             Pending Approvals
             <span
-              className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold"
-              style={{ backgroundColor: '#f59e0b22', color: '#f59e0b' }}
+              className="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold bg-amber-400/10 text-amber-400"
             >
               {pendingRequests.length}
             </span>
@@ -455,7 +456,7 @@ export default function LeaveTab() {
                 </div>
                 {req.reason && (
                   <p className="text-xs text-rmpg-300 bg-surface-sunken border border-rmpg-700 rounded-sm p-2">
-                    {req.reason}
+                    {formatEnumValue(req.reason)}
                   </p>
                 )}
                 <div className="flex items-center gap-2">
@@ -468,16 +469,14 @@ export default function LeaveTab() {
                   />
                   <button type="button"
                     onClick={() => handleApprove(req.id)}
-                    className="toolbar-btn flex items-center gap-1 text-xs"
-                    style={{ color: '#22c55e', borderColor: '#22c55e44' }}
+                    className="toolbar-btn flex items-center gap-1 text-xs text-green-500 border-green-500/25"
                   >
                     <Check size={12} />
                     Approve
                   </button>
                   <button type="button"
                     onClick={() => handleDeny(req.id)}
-                    className="toolbar-btn flex items-center gap-1 text-xs"
-                    style={{ color: '#ef4444', borderColor: '#ef444444' }}
+                    className="toolbar-btn flex items-center gap-1 text-xs text-red-500 border-red-500/25"
                   >
                     <X size={12} />
                     Deny

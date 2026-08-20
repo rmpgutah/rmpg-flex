@@ -13,6 +13,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
+import { ACTIVE_CALL_WHERE } from './callStatus';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -242,8 +243,11 @@ async function getOfficerRole(db: D1Database, userId: number): Promise<string | 
 async function isOnLeave(db: D1Database, userId: number, date: string): Promise<boolean> {
   const row = await queryFirst<{ id: number }>(
     db,
-    `SELECT id FROM shift_leave_requests
-       WHERE user_id = ?
+    // Live table is leave_requests, keyed by officer_id. shift_leave_requests
+    // exists nowhere, so isOnLeave() threw on every call — scheduling could
+    // never see that anyone was on leave.
+    `SELECT id FROM leave_requests
+       WHERE officer_id = ?
          AND status = 'approved'
          AND start_date <= ?
          AND end_date >= ?
@@ -584,9 +588,21 @@ export async function getShiftHandoffData(
   // Active calls (dispatched, not cleared)
   const activeCalls = await query(
     db,
-    `SELECT id, incident_number, type, priority, status, location, assigned_units, created_at
+    // Every column here was wrong: calls_for_service has call_number /
+    // incident_type / location_address / assigned_unit_ids — there is no
+    // incident_number, type, location or assigned_units — so this threw
+    // "no such column: incident_number" and shift handoff never returned any
+    // active calls. Aliased back to the names this code intended.
+    //
+    // The status filter was wrong too: the live CHECK constraint allows only
+    // ('pending','dispatched','enroute','onscene','cleared','closed',
+    // 'cancelled','archived'), so 'en_route', 'on_scene' and 'investigating'
+    // could never match anything. Using the canonical active-call predicate
+    // instead, which also surfaces still-pending calls — what a handoff wants.
+    `SELECT id, call_number AS incident_number, incident_type AS type, priority, status,
+            location_address AS location, assigned_unit_ids AS assigned_units, created_at
        FROM calls_for_service
-       WHERE status IN ('dispatched','en_route','on_scene','investigating')
+       WHERE ${ACTIVE_CALL_WHERE}
        ORDER BY priority ASC, created_at ASC
        LIMIT 50`,
   );
@@ -594,8 +610,11 @@ export async function getShiftHandoffData(
   // Pending serve jobs
   const pendingServes = await query(
     db,
-    `SELECT id, case_number, serve_type, recipient_name, address, status, priority, created_at
-       FROM serve_jobs
+    // serve_jobs does not exist — the queue table is serve_queue, whose
+    // columns are document_type / recipient_address.
+    `SELECT id, case_number, document_type AS serve_type, recipient_name,
+            recipient_address AS address, status, priority, created_at
+       FROM serve_queue
        WHERE status IN ('pending','in_progress','attempted')
        ORDER BY priority ASC, created_at ASC
        LIMIT 50`,
@@ -607,7 +626,7 @@ export async function getShiftHandoffData(
     `SELECT te.officer_id, u.full_name, te.clock_in, te.clock_out, te.status, te.break_start
        FROM time_entries te
        JOIN users u ON te.officer_id = u.id
-       WHERE DATE(te.clock_in) = DATE('now','localtime')
+       WHERE DATE(te.clock_in) = DATE('now')
          AND te.clock_out IS NULL
        ORDER BY te.clock_in ASC`,
   );
@@ -615,7 +634,7 @@ export async function getShiftHandoffData(
   // Pending warrants
   const pendingWarrants = await query(
     db,
-    `SELECT id, warrant_number, subject_name, charge, issuing_agency, status, created_at
+    `SELECT id, warrant_number, subject_name, charge_description AS charge, issuing_agency, status, created_at
        FROM warrants
        WHERE status = 'active'
        ORDER BY created_at DESC

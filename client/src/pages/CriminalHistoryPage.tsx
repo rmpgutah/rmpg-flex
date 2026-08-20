@@ -26,7 +26,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye, Printer } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -189,8 +189,9 @@ export default function CriminalHistoryPage() {
       console.error('Person search error:', err);
       addToast('Failed to search persons', 'error');
       setPersons([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [searchQuery, searchType, addToast]);
 
   const selectPerson = useCallback(async (person: PersonResult) => {
@@ -216,7 +217,7 @@ export default function CriminalHistoryPage() {
           type: 'incident',
           date: inc.created_at || '',
           reference_number: inc.incident_number || '',
-          description: `${(inc.incident_type || '').replace(/_/g, ' ').toUpperCase()}${inc.location_address ? ` — ${inc.location_address}` : ''}`,
+          description: `${toDisplayLabel(inc.incident_type || '').toUpperCase()}${inc.location_address ? ` — ${inc.location_address}` : ''}`,
           status: inc.status || '',
           location: inc.location_address,
         });
@@ -229,7 +230,7 @@ export default function CriminalHistoryPage() {
           type: 'call',
           date: call.created_at || '',
           reference_number: call.call_number || '',
-          description: `${(call.incident_type || 'Call').replace(/_/g, ' ').toUpperCase()}${call.location_address ? ` — ${call.location_address}` : ''}`,
+          description: `${toDisplayLabel(call.incident_type || 'Call').toUpperCase()}${call.location_address ? ` — ${call.location_address}` : ''}`,
           status: call.status || '',
           location: call.location_address,
         });
@@ -648,10 +649,10 @@ export default function CriminalHistoryPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                              {entry.type.replace(/_/g, ' ').toUpperCase()}
+                              {toDisplayLabel(entry.type).toUpperCase()}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
-                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString() : ''}</span>
+                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : ''}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-300 mt-0.5 truncate">{entry.description}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
@@ -678,7 +679,7 @@ export default function CriminalHistoryPage() {
                           <div className={`absolute -left-[15px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-base ${dotColor}`} />
                           {/* Date label */}
                           <div className="text-[9px] font-mono text-rmpg-500 mb-0.5">
-                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                           </div>
                           {/* Card */}
                           <button type="button" onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}
@@ -686,7 +687,7 @@ export default function CriminalHistoryPage() {
                             <div className="flex items-center gap-2">
                               {typeIcon(entry.type)}
                               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                                {entry.type.replace(/_/g, ' ').toUpperCase()}
+                                {toDisplayLabel(entry.type).toUpperCase()}
                               </span>
                               <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             </div>

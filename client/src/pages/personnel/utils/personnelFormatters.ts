@@ -16,7 +16,7 @@ export function getWeekMonday(date: Date): Date {
 }
 
 export function formatWeekLabel(monday: Date): string {
-  return `Week of ${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  return `Week of ${monday.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' })}`;
 }
 
 export function dateToYMD(d: Date): string {
@@ -41,6 +41,7 @@ export function calcDaysUntilExpiry(expiryDate: string): number {
 export function formatMilitary(dateStr: string): string {
   if (!dateStr) return '-';
   return parseTimestamp(dateStr).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }

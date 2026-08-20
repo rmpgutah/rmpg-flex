@@ -4,7 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/rmpg flex.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!--
+      Pinch-zoom is deliberately ALLOWED. `maximum-scale=1.0, user-scalable=no`
+      was set app-wide here, so every page on every device — not just the MDT,
+      which is how it had been recorded — refused to zoom. That fails WCAG 1.4.4
+      (Resize Text), and the app's own densest type sits at 9-11px on tables,
+      which is exactly where an operator most needs to magnify.
+
+      Removed at the operator's direction 2026-08-01. If a specific
+      touch surface ever needs gesture suppression (e.g. to stop an accidental
+      pinch while driving), scope it to that surface with CSS `touch-action`
+      rather than reinstating a global zoom lock.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0d1722" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -42,14 +54,17 @@
             }
           }
 
+          // Must resolve IDENTICALLY to applyThemePreference() in src/utils/theme.ts, or
+          // the pre-paint class and the runtime class disagree and the page
+          // visibly swaps themes after hydration. Exactly one palette class.
           html.classList.remove('theme-dark', 'theme-light', 'theme-legacy-black', 'theme-blue-silver', 'dark');
-          html.classList.add('theme-' + theme);
-          if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
           if (legacy) html.classList.add('theme-legacy-black');
-          if (blueSilver) html.classList.add('theme-blue-silver');
+          else if (blueSilver) html.classList.add('theme-blue-silver');
+          else html.classList.add('theme-' + theme);
+          if (theme === 'dark' || legacy || blueSilver) html.classList.add('dark');
 
           var lightSurface = theme === 'light' && !legacy && !blueSilver;
-          var chrome = legacy ? '#000000' : blueSilver ? '#0c1a2b' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
+          var chrome = legacy ? '#000000' : blueSilver ? '#22405f' : (theme === 'light' ? '#d6d3c8' : '#0d1722');
           html.style.colorScheme = lightSurface ? 'light' : 'dark';
           html.style.backgroundColor = chrome;
 
@@ -78,7 +93,7 @@
       #pre-splash { background: #0d1722; }
       html.theme-light #pre-splash { background: #ece9dd; }
       html.theme-legacy-black #pre-splash { background: #0a0a0a; }
-      html.theme-blue-silver #pre-splash { background: #0c1a2b; }
+      html.theme-blue-silver #pre-splash { background: #22405f; }
     </style>
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
@@ -103,7 +118,7 @@
       the CSP header and all inline <script>/<style> tags. This requires server-side
       rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://tile.openweathermap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://overpass-api.de https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://esm.sh https://cdn.esm.sh https://unpkg.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' blob: ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://tile.openweathermap.org https://api.rainviewer.com https://tilecache.rainviewer.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://overpass-api.de https://api.fbi.gov https://photon.komoot.io https://graph.mapillary.com https://static.cloudflareinsights.com https://esm.sh https://cdn.esm.sh https://storage.googleapis.com https://tfhub.dev https://www.kaggle.com https://unpkg.com https://huggingface.co https://*.huggingface.co https://5caa95c5789f4fc4ed3934b2a2c29ed4.r2.cloudflarestorage.com; frame-src 'self' blob: https://*.arcgis.com https://www.mapillary.com https://dialer.rmpgutah.us; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
   </head>
@@ -117,7 +132,7 @@
           <div style="margin-top:16px;margin-bottom:12px;width:140px;height:2px;background:#1a1a1a;border-radius:1px;overflow:hidden">
             <div style="width:48px;height:100%;background:linear-gradient(90deg,transparent,#888888,transparent);animation:sl 1.6s ease-in-out infinite"></div>
           </div>
-          <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:system-ui,sans-serif;margin:0">
+          <p style="font-size:9px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:rgba(160,160,160,0.7);font-family:Calibri,Arial,Helvetica,sans-serif;margin:0">
             Initializing
           </p>
         </div>
@@ -148,10 +163,120 @@
       // so listening here catches this class of failure uniformly. Mirrors
       // chunkRetry.ts's bounded one-reload-per-30s guard, using the SAME
       // sessionStorage key so the two paths can't loop against each other.
+      //
+      // A BARE reload() here is not enough, and shipping one made this bug
+      // unrecoverable rather than self-healing (live incident 2026-07-30).
+      // The service worker is what served the broken entry module: sw.js's
+      // hashed-asset poison guard answers a stale chunk with an EMPTY
+      // `new Response('', {status: 404})`, and its offline path with an empty
+      // 503. Reloading re-enters the same SW, which serves the same empty
+      // body — so the reload changes nothing, the once-per-30s budget is
+      // spent on it, and the splash is then stranded permanently with no
+      // console error. Measured signature: the entry bundle shows
+      // decodedBodySize 0 in performance.getEntriesByType('resource') while
+      // an older hash shows its real size (that older one is the SW cache,
+      // which is why already-open tabs keep working and only hard
+      // navigations break).
+      //
+      // So: purge the SW registration and its caches FIRST, then reload — a
+      // reload that can actually reach the network. Cookies and localStorage
+      // are untouched, so the user stays signed in (auth here is localStorage,
+      // not cookies). The purge is bounded by a timer so a hung caches/SW API
+      // can never prevent the reload it is meant to enable.
       (function () {
         var el = document.getElementById('rmpg-entry');
-        if (!el) return;
-        el.addEventListener('error', function () {
+        // ⚠️ DO NOT reduce this to getElementById('rmpg-entry') alone.
+        //
+        // Vite REWRITES the entry script tag at build time and does not carry
+        // the `id` across. Source ships the tag with id="rmpg-entry" pointing at
+        // /src/main.tsx; the build emits an otherwise-equivalent tag carrying
+        // type="module" + crossorigin + src="/assets/index-<hash>.js" and NO id.
+        // (Written prose rather than literal tags on purpose: the stampCfAsync
+        // vite plugin rewrites anything matching a script tag, comments
+        // included, and literal examples here would also pollute greps.)
+        //
+        // So in every production build getElementById returned null, this
+        // function returned early, and THE ENTIRE SAFETY NET WAS NEVER
+        // INSTALLED — silently, since a missing listener throws nothing. That
+        // is why the INITIALIZING wedge kept requiring a manual hard-refresh
+        // even though this recovery has existed since the 2026-07-13 incident.
+        // Confirmed live 2026-07-31 by evaluating document.getElementById(
+        // 'rmpg-entry') on a wedged production tab: null.
+        //
+        // Grepping dist/ for the handler's own source is NOT sufficient
+        // verification — the code shipped, but the element it depends on did
+        // not. Assert on the built <script> tag instead (see
+        // entryRecovery.test.ts).
+        if (!el) el = document.querySelector('script[type="module"][src*="/assets/"]');
+        if (!el) el = document.querySelector('script[type="module"][src]');
+
+        function purgeThenReload() {
+          var reloaded = false;
+          function go() {
+            if (reloaded) return;
+            reloaded = true;
+            window.location.reload();
+          }
+          // Hard ceiling: never let a stuck purge block recovery.
+          setTimeout(go, 3000);
+
+          var tasks = [];
+          try {
+            if (window.caches && caches.keys) {
+              tasks.push(caches.keys().then(function (keys) {
+                return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+              }));
+            }
+          } catch (e) { /* Cache API unavailable — fall through to reload */ }
+          try {
+            var sw = navigator.serviceWorker;
+            if (sw && sw.getRegistrations) {
+              tasks.push(sw.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (r) { return r.unregister(); }));
+              }));
+            }
+          } catch (e) { /* SW API unavailable — fall through to reload */ }
+
+          // Evict the entry chunk from the browser's own HTTP cache.
+          //
+          // Confirmed live 2026-07-31: during a Pages deploy's propagation
+          // window the CDN can answer a not-yet-published chunk with the SPA
+          // fallback — index.html, HTTP 200, Content-Type text/html. Those
+          // assets carry immutable cache headers, so that poisoned HTML is
+          // stored in the browser's HTTP disk cache and every later load
+          // re-reads it. Module parsing fails and the page strands here.
+          //
+          // Nothing above can fix that: caches.delete() clears the SERVICE
+          // WORKER cache and unregister() drops the SW, but neither touches the
+          // HTTP cache, and JS cannot evict it directly. A plain reload re-reads
+          // the same poisoned entry. That is why the documented remedy was a
+          // manual hard-refresh (Cmd/Ctrl+Shift+R).
+          //
+          // `fetch(src, {cache:'reload'})` is the one lever JS does have: it
+          // bypasses the HTTP cache AND writes the fresh response back into it,
+          // so the reload below reads good JS. Best-effort — a failure here must
+          // never block recovery, and it is covered by the same 3s ceiling.
+          //
+          // Diagnostic that isolates this cause from the others: fetch the entry
+          // URL twice, once plain and once with {cache:'reload'}, and compare
+          // content-type. Same URL, two answers => poisoned HTTP cache. (curl
+          // has no browser cache, so "curl works but the browser doesn't" is the
+          // signature, and it reads misleadingly like a server problem.)
+          try {
+            var entrySrc = el.getAttribute('src');
+            if (entrySrc && window.fetch) {
+              tasks.push(fetch(entrySrc, { cache: 'reload' }).catch(function () {}));
+            }
+          } catch (e) { /* fetch unavailable — fall through to reload */ }
+
+          if (!tasks.length) return go();
+          Promise.all(tasks).then(go, go);
+        }
+
+        // Shared once-per-30s gate. Returns true if recovery may run now.
+        // sessionStorage unavailable (private mode / blocked storage) => the
+        // guard cannot be enforced, so we decline rather than risk a loop.
+        function mayRecover() {
           try {
             var KEY = 'rmpg_chunk_reload';
             var WINDOW_MS = 30000;
@@ -160,10 +285,54 @@
             if (lastAt !== null && isNaN(lastAt)) lastAt = null;
             if (lastAt === null || Date.now() - lastAt > WINDOW_MS) {
               sessionStorage.setItem(KEY, String(Date.now()));
-              window.location.reload();
+              return true;
             }
-          } catch (e) { /* sessionStorage unavailable — nothing more we can do here */ }
-        });
+            return false;
+          } catch (e) {
+            return false;
+          }
+        }
+
+        if (el) {
+          el.addEventListener('error', function () {
+            if (mayRecover()) purgeThenReload();
+          });
+        }
+
+        // Boot watchdog — the backstop that does not depend on ANY error event.
+        //
+        // The listener above only helps when the browser actually fires `error`
+        // on the entry script. Two of the three known causes of a stranded
+        // INITIALIZING splash do not:
+        //
+        //   1. Rocket Loader rewrites type="module" -> type="<hash>-module".
+        //      The bundle is fetched with a clean 200 and simply NEVER
+        //      EXECUTES. There is no error, by construction, so no listener
+        //      can fire. (Zone-level fix is #3186's data-cfasync stamping;
+        //      this is the client-side net if that ever regresses.)
+        //   2. A static import of the entry graph resolving to a 0-byte body
+        //      (observed live 2026-07-31: AuthContext-<hash>.js, decodedBodySize
+        //      0, React never mounted, no console error).
+        //
+        // So: if React has not replaced #pre-splash within the timeout, treat
+        // the boot as failed and run the same purge+refetch recovery. Uses the
+        // SAME once-per-30s gate, so a genuinely slow boot recovers once and a
+        // persistently broken origin cannot loop.
+        //
+        // 15s is deliberately well past a cold boot on a slow connection —
+        // this must never fire on a page that was merely going to be late.
+        var BOOT_TIMEOUT_MS = 15000;
+        setTimeout(function () {
+          try {
+            var splash = document.getElementById('pre-splash');
+            // Splash gone => React mounted and cleaned up. Nothing to do.
+            if (!splash) return;
+            var root = document.getElementById('root');
+            var mounted = root && root.children.length > 0 && !root.contains(splash);
+            if (mounted) return;
+            if (mayRecover()) purgeThenReload();
+          } catch (e) { /* never let the watchdog itself throw */ }
+        }, BOOT_TIMEOUT_MS);
       })();
     </script>
     <!-- Service worker registration handled by useServiceWorker hook in React -->

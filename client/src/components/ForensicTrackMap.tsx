@@ -11,9 +11,10 @@ import { Loader2 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { positionAtTime, type GpsPoint } from '../utils/dashcamForensics';
 import { fetchMapboxMatchedPath } from '../utils/mapboxRouting';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 const GOLD = '#d4a017';
 
@@ -42,8 +43,10 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
   const posMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const readyRef = useRef(false);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) no-fix signature so
   // a ClearPath device's pre-fix frames never anchor the route line off-coast.
@@ -58,12 +61,14 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
         if (cancelled || !containerRef.current || mapRef.current) return;
         initMapbox(token);
         const center: [number, number] = coords.length ? [coords[0].longitude, coords[0].latitude] : [-111.891, 40.7608];
-        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, attributionControl: false });
+        const map = new mapboxgl.Map({ container: containerRef.current, style: MAPBOX_STYLE_DARK, center, zoom: 15, projection: 'mercator', attributionControl: false });
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'ForensicTrackMap');
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
         map.on('load', () => {
           if (cancelled) return;
+          onMapLoaded(map);
           const line = coords.map((p) => [p.longitude, p.latitude]);
           map.addSource('route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: line } } });
           map.addLayer({ id: 'route', type: 'line', source: 'route', paint: { 'line-color': GOLD, 'line-width': 4, 'line-opacity': 0.9 }, layout: { 'line-cap': 'round', 'line-join': 'round' } });
@@ -83,7 +88,7 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
             mk(line[line.length - 1] as [number, number], '#ef4444');
             // White playback-position dot with a gold ring — a plain (non-directional)
             // marker, so the shared dot builder fits; keep the gold ring + glow.
-            const pel = buildDotMarker({ color: '#ffffff', size: 14 });
+            const pel = buildDotMarker({ color: 'var(--text-primary)', size: 14 });
             pel.style.border = `2px solid ${GOLD}`;
             pel.style.boxShadow = `0 0 8px ${GOLD}`;
             const posMarker = new mapboxgl.Marker({ element: pel }).setLngLat(line[0] as [number, number]).addTo(map);
@@ -130,11 +135,14 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
       markersRef.current.forEach((m) => { try { m.remove(); } catch { /* idempotent */ } });
       markersRef.current = [];
       posMarkerRef.current = null;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
       readyRef.current = false;
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gps.length]);
+  }, [gps.length, rebuildNonce]);
 
   // Sync the playback marker + predicted path to the current time.
   useEffect(() => {
@@ -156,9 +164,9 @@ export default function ForensicTrackMap({ gps, tSec, predicted, height = 200 }:
     <div className="relative w-full border border-border-default bg-surface-overlay" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0" />
       {!loaded && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>
+        <div className="absolute inset-0 flex items-center justify-center text-fg-muted text-[11px] gap-1"><Loader2 className="w-3 h-3 animate-spin" /> map…</div>
       )}
-      {error && <div className="absolute inset-0 flex items-center justify-center text-rmpg-500 text-[10px] px-2 text-center">{error}</div>}
+      {error && <div className="absolute inset-0 flex items-center justify-center text-fg-muted text-[10px] px-2 text-center">{error}</div>}
     </div>
   );
 }

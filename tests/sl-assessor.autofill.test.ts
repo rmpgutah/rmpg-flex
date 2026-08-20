@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { PROMOTED_RECORD_FIELDS } from '../src/utils/sl-assessor/camaFields';
 import { applyParcelToRecord, AUTOFILL_FIELDS }
   from '../src/utils/sl-assessor/autofill';
 import type { Parcel } from '../src/utils/sl-assessor/types';
@@ -20,6 +21,8 @@ const parcel: Parcel = {
   taxable_value: null, assessed_value: null, tax_year: 2025,
   legal_description: 'LOT 5 BLK 3 ACME SUB',
   plat: null, lot: '5', block: '3',
+  recorded_document_url: null, recorded_document_type: null,
+  photo_url: null, layout_url: null,
   sales: [], raw_data_json: {},
 };
 
@@ -65,10 +68,24 @@ describe('applyParcelToRecord', () => {
   });
 
   test('AUTOFILL_FIELDS covers every column we ALTERed onto businesses/properties', () => {
+    // The 11 original shared columns (mig 0142) plus the 10 curated CAMA
+    // fields promoted in mig 0221. Asserted against the registry rather
+    // than a second hardcoded list, so adding a promoted field cannot
+    // leave this test silently stale.
     expect([...AUTOFILL_FIELDS].sort()).toEqual([
       'parcel_number', 'owner_of_record', 'owner_type', 'owner_mailing_address',
       'year_built', 'total_market_value', 'land_sqft',
       'last_sale_date', 'last_sale_price', 'legal_description', 'tax_district',
+      ...PROMOTED_RECORD_FIELDS.map((f) => f.col),
     ].sort());
+  });
+
+  test('promoted CAMA fields stay empty for a parcel with no CAMA build', () => {
+    // The other three counties never populate parcel.cama. They must not
+    // error, and must not write nulls over anything.
+    const { patch } = applyParcelToRecord({}, { ...parcel, cama: null });
+    for (const f of PROMOTED_RECORD_FIELDS) {
+      expect(patch as Record<string, unknown>).not.toHaveProperty(f.col);
+    }
   });
 });

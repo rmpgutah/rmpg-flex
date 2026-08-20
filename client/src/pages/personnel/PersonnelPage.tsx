@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive, Eye, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -714,8 +714,9 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/training');
       setTraining((Array.isArray(raw) ? raw : []).map(mapTraining));
       addToast('Training record saved', 'success');
-    } catch {
+    } catch (err) {
       addToast('Failed to save training record', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }
@@ -744,8 +745,9 @@ export default function PersonnelPage() {
       const raw = await apiFetch<any[]>('/personnel/equipment');
       setEquipment(Array.isArray(raw) ? raw : []);
       addToast('Equipment record saved', 'success');
-    } catch {
+    } catch (err) {
       addToast('Failed to save equipment record', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }
@@ -813,6 +815,7 @@ export default function PersonnelPage() {
       addToast('Body camera saved', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Failed to save body camera', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }
@@ -924,8 +927,9 @@ export default function PersonnelPage() {
       setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
       setCoverageGaps(Array.isArray(gaps) ? gaps : []);
       addToast('Deployment saved', 'success');
-    } catch {
+    } catch (err) {
       addToast('Failed to save deployment', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }
@@ -964,6 +968,7 @@ export default function PersonnelPage() {
       addToast(officerModalMode === 'edit' ? 'Officer updated' : 'Officer created', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Failed to save officer', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }
@@ -1157,6 +1162,7 @@ export default function PersonnelPage() {
       addToast('Time entry updated', 'success');
     } catch (err: any) {
       addToast(err?.message || 'Failed to update time entry', 'error');
+      throw err; // let the modal know the save failed so it preserves the draft
     } finally {
       setIsSubmitting(false);
     }

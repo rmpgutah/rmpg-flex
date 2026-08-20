@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
@@ -13,15 +13,17 @@ import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
 import { resolveDispatchAccess } from './pages/dispatch/dispatchAccess';
-import { tryReloadForChunkFailure, normalizeChunkError } from './utils/chunkRetry';
+import { isCompanyBrowserBlockedRole } from './utils/companyBrowserAccess';
+import { lazyRetry } from './utils/importWithRetry';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
+const GlobalPdfViewer = lazy(() => import('./components/GlobalPdfViewer'));
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
+import { prefetchRoute, ROLE_PREFETCH_ROUTES } from './hooks/useRoutePrefetch';
+import { useOfflineQueue } from './hooks/useOfflineQueue';
+import { importDashboard } from './routes/routeModules';
 import LoginPage from './pages/LoginPage';
 import SsoCallbackPage from './pages/SsoCallbackPage';
-import DownloadsPage from './pages/DownloadsPage';
-// Dashboard is the immediate post-login landing view, so it stays eager.
-import DashboardPage from './pages/DashboardPage';
 // Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
 // import trees). They're lazy-split to keep them OUT of the login/critical
 // bundle — but because they're the most-navigated-to pages, they're also
@@ -31,38 +33,39 @@ const importDispatch = () => import('./pages/dispatch');
 const importMap = () => import('./pages/map');
 const DispatchPage = lazyRetry(importDispatch);
 const MapPage = lazyRetry(importMap);
-// Lazy import with auto-retry on chunk load failure (stale cache after deploys)
-function lazyRetry<T extends React.ComponentType<any>>(
-  factory: () => Promise<{ default: T }>,
-): React.LazyExoticComponent<T> {
-  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-  // Retry the import in place before escalating to a reload. A reload only
-  // helps when OUR index.html is stale; during a Pages deploy-propagation
-  // window the fresh index references a chunk the CDN is still replicating
-  // (server 500s) — there a reload re-fails instantly, the second failure
-  // lands inside the 30s guard, and the ErrorBoundary card strands the user
-  // (seen live 2026-06-10, fleet chunk 500 for ~15 min after 4 back-to-back
-  // deploys). Two delayed re-imports (1.5s, 4s) ride out that window.
-  const withRetry = () => factory()
-    .catch(() => sleep(1500).then(factory))
-    .catch(() => sleep(4000).then(factory));
-  return lazy(() => withRetry().catch((err) => {
-    // A lazy chunk failed to load — almost always a stale bundle after a
-    // deploy: this long-lived tab requests an old hash the server no longer
-    // serves. Reload ONCE per 30s to pick up the fresh index, holding the
-    // Suspense fallback (spinner) while the reload navigates away — rejecting
-    // immediately would flash the ErrorBoundary's red card for a frame. The
-    // hold is BOUNDED (tryReloadForChunkFailure): if the reload never tears
-    // this page down (offline / stale SW shell / captive portal / webview that
-    // ignores reload()), it rejects after ~10s so the RouteErrorBoundary shows
-    // its recovery card — never a permanent button-less splash. A second
-    // failure inside the 30s window means the reload didn't help → reload
-    // returns null here and we rethrow for the ErrorBoundary instead of looping.
-    const held = tryReloadForChunkFailure<{ default: T }>(err);
-    if (held) return held;
-    throw normalizeChunkError(err);
-  }));
-}
+// Dashboard is the post-login landing view. It used to be a STATIC import to
+// keep that first navigation instant — but that put 167.9 KB (plus
+// NewCallModal, IncidentFormModal and DashboardMiniMap, which it statically
+// imports) into the entry chunk, so every LOGIN paid for it too. It's lazy
+// now, and warmed the instant auth succeeds (see AppRoutes below), which
+// keeps the landing instant without taxing the login path.
+//
+// The factory itself lives in routes/routeModules.ts (imported above), not
+// here — routeModules.ts is also imported (transitively, via useRoutePrefetch)
+// by THIS file, so defining it here would make it a circular import that
+// reads an uninitialized `const` at module-eval time (TDZ ReferenceError,
+// breaks `npm run dev`; production's Rollup bundling hides the same cycle by
+// flattening scopes). There must be exactly ONE factory for DashboardPage in
+// the app — do not add a second inline `() => import('./pages/DashboardPage')`
+// here, or the prefetch and the router would warm two different chunks.
+const DashboardPage = lazyRetry(importDashboard);
+// Public downloads/marketing route — 25.3 KB plus KioskOsInstallGuide's
+// 15.5 KB. It was static, so every LOGIN downloaded and parsed it.
+const DownloadsPage = lazyRetry(() => import('./pages/DownloadsPage'));
+// Dev-only PDF audit harness (/__pdf-gallery). `import.meta.env.DEV` is
+// statically replaced with `false` in a production build, so this ternary's
+// dead branch — including the dynamic import() itself — is eliminated by
+// Vite/Rollup and no chunk is emitted at all. Gating only the <Route> below
+// (and not this import) still lets Vite discover and bundle the chunk
+// unconditionally, which is what shipped fixture data to Cloudflare Pages the
+// first time. Deliberately plain `lazy`, not `lazyRetry`: the retry wrapper
+// exists for chunk-load failures on deployed builds, and this chunk never
+// reaches a deployed build.
+const PdfGalleryPage = import.meta.env.DEV
+  ? lazy(() => import('./devtools/pdfGallery/PdfGalleryPage'))
+  : null;
+// lazyRetry is imported from utils/importWithRetry — shared with Layout,
+// MobileHomePage, map/index, and any other component-level lazy split.
 
 // Lazy-loaded pages (less frequently accessed)
 const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
@@ -74,9 +77,19 @@ const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
 const VerifyIdPage = lazyRetry(() => import('./pages/wallet/VerifyIdPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
+const CalculatorPage = lazyRetry(() => import('./pages/CalculatorPage'));
+const UnitConverterPage = lazyRetry(() => import('./pages/UnitConverterPage'));
+const ClipboardManagerPage = lazyRetry(() => import('./pages/ClipboardManagerPage'));
+const FocusTimerPage = lazyRetry(() => import('./pages/FocusTimerPage'));
+const DeviceHealthPage = lazyRetry(() => import('./pages/DeviceHealthPage'));
+const PrintQueuePage = lazyRetry(() => import('./pages/PrintQueuePage'));
+const ScheduledUpdatesPage = lazyRetry(() => import('./pages/ScheduledUpdatesPage'));
+const RemoteLockPage = lazyRetry(() => import('./pages/RemoteLockPage'));
+const TesseractTrainingPage = lazyRetry(() => import('./pages/TesseractTrainingPage'));
 const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
-const FleetShell = lazyRetry(() => import('./pages/fleet/v2/FleetShell'));
+const FleetDashboardPage = lazyRetry(() => import('./pages/fleet/FleetDashboardPage'));
+const FleetReportsPage = lazyRetry(() => import('./pages/fleet/FleetReportsPage'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
@@ -87,7 +100,11 @@ const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
 const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
+const ServeReceiptPage = lazyRetry(() => import('./pages/mobile/ServeReceiptPage'));
+const VerifyNoticePage = lazyRetry(() => import('./pages/VerifyNoticePage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
+const DesktopPage = lazyRetry(() => import('./pages/DesktopPage'));
+const WebCompanyBrowserPage = lazyRetry(() => import('./pages/WebCompanyBrowserPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
 const CustomReportBuilder = lazyRetry(() => import('./pages/CustomReportBuilder'));
@@ -111,6 +128,7 @@ const DashCamerasPage = lazyRetry(() => import('./pages/DashCamerasPage'));
 const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
 const ForensicLabPage = lazyRetry(() => import('./pages/ForensicLabPage'));
+const DataCapturePage = lazyRetry(() => import('./pages/dispatch/DataCapturePage'));
 const SkipTracerPage = lazyRetry(() => import('./pages/SkipTracerPage'));
 const SkipTracerV2Page = lazyRetry(() => import('./pages/skiptracer/SkipTracerV2Page'));
 const ArrestRecordsPage = lazyRetry(() => import('./pages/ArrestRecordsPage'));
@@ -182,6 +200,7 @@ const AccreditationPage = lazyRetry(() => import('./pages/AccreditationPage'));
 const RecruitmentPage = lazyRetry(() => import('./pages/RecruitmentPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+const CompanyBrowserPage = lazyRetry(() => import('./pages/CompanyBrowserPage'));
 const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
 const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
 const FlexCamPage = lazyRetry(() => import('./pages/FlexCamPage'));
@@ -198,6 +217,7 @@ const DocsLibraryPage = lazyRetry(() => import('./pages/docs/DocsLibraryPage'));
 // route now redirects to /login?forgot=1 (the working username + security-
 // question flow lives inline on LoginPage), so the page no longer ships.
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const DeviceScannerPage = lazyRetry(() => import('./pages/DeviceScannerPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 const OidcCallbackPage = lazyRetry(() => import('./pages/OidcCallbackPage'));
 const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
@@ -208,6 +228,15 @@ const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
 // ImpoundPage existed on disk but had no route — sidebar /impound link 404'd.
 const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
+const ShiftNotesPage = lazyRetry(() => import('./pages/ShiftNotesPage'));
+const QuickPlateCheckPage = lazyRetry(() => import('./pages/QuickPlateCheckPage'));
+const UnitStatusBoardPage = lazyRetry(() => import('./pages/UnitStatusBoardPage'));
+const OfflineQueuePage = lazyRetry(() => import('./pages/OfflineQueuePage'));
+const BroadcastMessagePage = lazyRetry(() => import('./pages/BroadcastMessagePage'));
+const ScreenCapturePage = lazyRetry(() => import('./pages/ScreenCapturePage'));
+const SystemLogsPage = lazyRetry(() => import('./pages/SystemLogsPage'));
+const LiveCallMapPage = lazyRetry(() => import('./pages/LiveCallMapPage'));
+const DigitalEvidencePage = lazyRetry(() => import('./pages/DigitalEvidencePage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -233,7 +262,7 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
             className="h-full"
             style={{
               width: 48,
-              background: 'linear-gradient(90deg, transparent, #a7b1bc, transparent)',
+              background: 'linear-gradient(90deg, transparent, var(--accent-silver-400), transparent)',
               animation: 'scanLine 1.6s ease-in-out infinite',
             }}
           />
@@ -305,10 +334,10 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col items-center justify-center py-20 px-4 text-center" role="alert">
         <div className="w-12 h-12 flex items-center justify-center mb-3"
           style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)' }}>
-          <span style={{ color: '#ef4444', fontSize: 20, fontWeight: 800 }}>!</span>
+          <span style={{ color: 'var(--sev-critical)', fontSize: 20, fontWeight: 800 }}>!</span>
         </div>
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#fca5a5] mb-1.5">Access Denied</h3>
-        <p className="text-[10px] text-[#888] max-w-xs mb-4">You do not have permission to view this page.</p>
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--sev-critical-soft)] mb-1.5">Access Denied</h3>
+        <p className="text-[10px] text-fg-muted max-w-xs mb-4">You do not have permission to view this page.</p>
         <a href="/" className="btn-gold">Return to Dashboard</a>
       </div>
     );
@@ -332,6 +361,25 @@ function DispatchRoleGuard({ children }: { children: React.ReactNode }) {
   const access = resolveDispatchAccess(user?.role);
   if (access.mode === 'redirect') {
     return <Navigate to={access.to} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+/** Role-based guard for /desktop-company-browser — client_viewer/contract_manager
+ *  redirect to the dashboard. Closes the direct-URL/bookmark gap the nav-catalog
+ *  exclusion (CLIENT_VIEWER_BLOCKED/CONTRACT_MANAGER_BLOCKED in navCatalog.ts)
+ *  doesn't cover on its own — that only hides the launcher icon. See
+ *  docs/superpowers/specs/2026-07-20-company-browser-hardening-design.md. */
+function CompanyBrowserRoleGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  if (isCompanyBrowserBlockedRole(user?.role)) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -373,15 +421,15 @@ function NotFoundPage() {
         >
           <div
             className="w-2 h-2 rounded-full"
-            style={{ background: '#dc2626', boxShadow: '0 0 6px rgba(220,38,38,0.6)' }}
+            style={{ background: 'var(--sev-critical)', boxShadow: '0 0 6px color-mix(in srgb, var(--sev-critical) 60%, transparent)' }}
           />
-          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#888888]">
+          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-fg-muted">
             Route Not Found
           </span>
         </div>
 
         {/* Message */}
-        <p className="text-sm text-[#888888] mb-2 leading-relaxed">
+        <p className="text-sm text-fg-muted mb-2 leading-relaxed">
           The requested page does not exist or has been moved.
         </p>
         <p className="text-[11px] text-rmpg-500 mb-6">
@@ -394,17 +442,19 @@ function NotFoundPage() {
           className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
           style={{
             background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)',
-            border: '1px solid #d4a017',
-            color: '#d4a017',
+            border: '1px solid var(--accent-gold-300)',
+            color: 'var(--accent-gold-300)',
             borderRadius: 2,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'linear-gradient(180deg, #242424 0%, #1a1a1a 100%)';
-            e.currentTarget.style.borderColor = '#e8b52a';
+            e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
+            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
+            e.currentTarget.style.opacity = '0.85';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)';
-            e.currentTarget.style.borderColor = '#d4a017';
+            e.currentTarget.style.borderColor = 'var(--accent-gold-300)';
+            e.currentTarget.style.opacity = '1';
           }}
         >
           Return to Dashboard
@@ -428,39 +478,34 @@ function RedirectKeepQuery({ to }: { to: string }) {
   return <Navigate to={`${to}${loc.search}${loc.hash}`} replace />;
 }
 
-// Roles that actually navigate to Dispatch/Map in normal use. Prefetching
-// for every role (including client_viewer, contract_manager, human_resources
-// — none of which have Dispatch/Map in their nav) was downloading the two
-// heaviest chunks in the app (Dispatch + Map, which pull in the ~2.3MB
-// mapbox-gl/deck.gl bundle) on every authenticated session regardless of
-// need — a self-inflicted "system load" spike ~1.5s after every page load.
-const DISPATCH_MAP_ROLES = new Set(['admin', 'manager', 'supervisor', 'officer', 'dispatcher']);
-
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
 
-  // Idle-prefetch the heaviest field routes once authenticated, so the first
-  // navigation to Dispatch/Map is instant rather than showing the loading
-  // splash while the chunk downloads over cellular. Scheduled during idle time
-  // (requestIdleCallback) so it never competes with the initial paint or the
-  // landing Dashboard's data fetches. import() is deduped, so this just warms
-  // the module cache — React.lazy then resolves synchronously on navigation.
-  // Skipped for roles that never see these routes, and for Save-Data /
-  // slow-connection sessions where the bandwidth is better spent elsewhere.
+  // Warm the Dashboard chunk the moment auth flips to true. This is what makes
+  // DashboardPage's lazy() free: the landing navigation resolves from the
+  // module cache instead of showing "Loading module". NOT idle-deferred and
+  // NOT role-gated — every authenticated role lands here, and by the time this
+  // fires the login-critical work is already done.
   React.useEffect(() => {
-    if (!isAuthenticated || !user || !DISPATCH_MAP_ROLES.has(user.role)) return;
+    if (!isAuthenticated) return;
+    importDashboard().catch(() => {});
+  }, [isAuthenticated]);
+
+  // Idle-prefetch the current role's most-navigated routes so the first
+  // navigation is instant rather than showing the module splash over cellular.
+  // Scheduled during idle so it never competes with first paint or the landing
+  // Dashboard's fetches. Was a hardcoded Dispatch+Map set; it's a role table
+  // now (ROLE_PREFETCH_ROUTES) so roles that never open those two stop paying
+  // for the ~2.3 MB mapbox/deck.gl download. prefetchRoute owns the saveData /
+  // slow-connection guard and swallows failures.
+  React.useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    const routes = ROLE_PREFETCH_ROUTES[user.role] ?? [];
+    if (routes.length === 0) return;
     const w = window as any;
-    const conn = (navigator as any).connection;
-    if (conn && (conn.saveData || /^(slow-2g|2g)$/.test(conn.effectiveType || ''))) return;
     const schedule: (cb: () => void) => number =
       w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1500));
-    // Swallow prefetch failures — a transient cellular blip here is harmless;
-    // the real navigation still goes through lazyRetry (which reloads on a
-    // genuine chunk-load failure). We just don't want an unhandled rejection.
-    const id = schedule(() => {
-      importDispatch().catch(() => {});
-      importMap().catch(() => {});
-    });
+    const id = schedule(() => routes.forEach(prefetchRoute));
     return () => {
       if (w.cancelIdleCallback) w.cancelIdleCallback(id);
       else w.clearTimeout(id);
@@ -479,6 +524,13 @@ function AppRoutes() {
         <Routes>
           {/* Public routes */}
           <Route path="/downloads" element={<DownloadsPage />} />
+          {/* Dev-only PDF audit harness. Gated on import.meta.env.DEV so Vite
+              tree-shakes it out of the production bundle entirely — it must never
+              reach Cloudflare Pages. See docs/superpowers/specs/
+              2026-07-31-pdf-forms-audit-and-repair-design.md */}
+          {import.meta.env.DEV && PdfGalleryPage && (
+            <Route path="/__pdf-gallery" element={<PdfGalleryPage />} />
+          )}
           <Route
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
@@ -503,10 +555,19 @@ function AppRoutes() {
               round-trip. Lives outside the auth gate because the QR token is
               the auth — the guard is not yet logged in. */}
           <Route path="/m/cfs/:id" element={<MobilePsoCfsPage />} />
+          {/* Recipient-signed Receipt of Service + Court Document Release.
+              Opened by the person being served, scanning the QR printed on
+              the Call for Service report before shift initiation. The :token
+              IS the credential and is burned on signature — the signer is a
+              member of the public and will never have a session. */}
+          <Route path="/m/serve-receipt/:token" element={<ServeReceiptPage />} />
+          <Route path="/verify" element={<VerifyNoticePage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
+          <Route path="/desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><CompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
+          <Route path="/web-desktop-company-browser" element={<ProtectedRoute><CompanyBrowserRoleGuard><RouteErrorBoundary><WebCompanyBrowserPage /></RouteErrorBoundary></CompanyBrowserRoleGuard></ProtectedRoute>} />
 
           {/* Authenticated app shell. The pathless parent route hosts ONE
               app-wide NavTripProvider so vehicle trip detection + live movement
@@ -527,6 +588,7 @@ function AppRoutes() {
                 renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
                 page's own header has a Close button back to /map. */}
             <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
+            <Route path="/desktop" element={<RouteErrorBoundary><DesktopPage /></RouteErrorBoundary>} />
 
             {/* Protected routes with Layout */}
             <Route element={<Layout />}>
@@ -545,18 +607,12 @@ function AppRoutes() {
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
-            {/* === Fleet UI cutover (PR 7'c) ===
-                 /fleet now serves the v2 Fleet.io-style shell.
-                 /fleet-legacy keeps the old UI mounted for ≥7 days as the
-                 escape hatch — operators hit it when they need a feature
-                 the new shell doesn't have yet. The legacy mount + old
-                 FleetPage code are removed in PR 7'd after the second
-                 7-day soak. The /fleet/v2/* parallel mount is kept for
-                 one cycle as a redirect target (anyone with a bookmark
-                 hitting /fleet/v2 still lands on the new UI). */}
-            <Route path="/fleet/v2/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
-            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetShell /></RouteErrorBoundary>} />
-            <Route path="/fleet-legacy" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
+            {/* /fleet serves the v1 tab-based UI permanently — the v2
+                Fleet.io-style shell was retired 2026-07-17 (see
+                docs/superpowers/specs/2026-07-17-fleet-v1-restoration-foundation-design.md). */}
+            <Route path="/fleet/dashboard" element={<RouteErrorBoundary><FleetDashboardPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/reports" element={<RouteErrorBoundary><FleetReportsPage /></RouteErrorBoundary>} />
+            <Route path="/fleet/*" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/flexcam" element={<RouteErrorBoundary><FlexCamPage /></RouteErrorBoundary>} />
@@ -618,10 +674,20 @@ function AppRoutes() {
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
             <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/calculator" element={<ProtectedRoute><RouteErrorBoundary><CalculatorPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/unit-converter" element={<ProtectedRoute><RouteErrorBoundary><UnitConverterPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/clipboard-manager" element={<ProtectedRoute><RouteErrorBoundary><ClipboardManagerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/focus-timer" element={<ProtectedRoute><RouteErrorBoundary><FocusTimerPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/device-health" element={<ProtectedRoute><RouteErrorBoundary><DeviceHealthPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/print-queue" element={<ProtectedRoute><RouteErrorBoundary><PrintQueuePage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/scheduled-updates" element={<ProtectedRoute><RouteErrorBoundary><ScheduledUpdatesPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/remote-lock" element={<ProtectedRoute><RouteErrorBoundary><RemoteLockPage /></RouteErrorBoundary></ProtectedRoute>} />
+            <Route path="/tesseract-training" element={<AdminRoute><RouteErrorBoundary><TesseractTrainingPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
             <Route path="/forensics" element={<Navigate to="/connections" replace />} />
             <Route path="/forensic-lab" element={<RouteErrorBoundary><ForensicLabPage /></RouteErrorBoundary>} />
+            <Route path="/dispatch/capture" element={<RouteErrorBoundary><DataCapturePage /></RouteErrorBoundary>} />
             <Route path="/skip-tracer" element={<RouteErrorBoundary><SkipTracerPage /></RouteErrorBoundary>} />
             <Route path="/microbilt" element={<RouteErrorBoundary><SkipTracerV2Page /></RouteErrorBoundary>} />
             <Route path="/arrest-records" element={<RouteErrorBoundary><ArrestRecordsPage /></RouteErrorBoundary>} />
@@ -659,6 +725,7 @@ function AppRoutes() {
             <Route path="/text-editor" element={<RouteErrorBoundary><TextEditorPage /></RouteErrorBoundary>} />
             <Route path="/docs" element={<RouteErrorBoundary><DocsLibraryPage /></RouteErrorBoundary>} />
             <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
+            <Route path="/device-scanner" element={<ProtectedRoute><RouteErrorBoundary><DeviceScannerPage /></RouteErrorBoundary></ProtectedRoute>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
@@ -681,6 +748,15 @@ function AppRoutes() {
             <Route path="/nav" element={<RouteErrorBoundary><NavPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
+            <Route path="/shift-notes" element={<RouteErrorBoundary><ShiftNotesPage /></RouteErrorBoundary>} />
+            <Route path="/quick-plate" element={<RouteErrorBoundary><QuickPlateCheckPage /></RouteErrorBoundary>} />
+            <Route path="/unit-status-board" element={<RouteErrorBoundary><UnitStatusBoardPage /></RouteErrorBoundary>} />
+            <Route path="/offline-queue" element={<RouteErrorBoundary><OfflineQueuePage /></RouteErrorBoundary>} />
+            <Route path="/broadcast" element={<RouteErrorBoundary><BroadcastMessagePage /></RouteErrorBoundary>} />
+            <Route path="/screen-capture" element={<RouteErrorBoundary><ScreenCapturePage /></RouteErrorBoundary>} />
+            <Route path="/system-logs" element={<AdminRoute><RouteErrorBoundary><SystemLogsPage /></RouteErrorBoundary></AdminRoute>} />
+            <Route path="/live-call-map" element={<RouteErrorBoundary><LiveCallMapPage /></RouteErrorBoundary>} />
+            <Route path="/digital-evidence" element={<RouteErrorBoundary><DigitalEvidencePage /></RouteErrorBoundary>} />
             {/* /navigation rendered OUTSIDE Layout above — full-screen vehicle HUD */}
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
@@ -696,6 +772,10 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // Mount the offline queue drain loop for the app lifetime.
+  // Runs drainQueue on 30s interval + focus + online events.
+  useOfflineQueue();
+
   // TWO nested boundaries by design (defense in depth):
   //  • OUTER — sits above every context provider. A render/effect throw inside
   //    AuthProvider, WebSocketProvider, UserPreferencesProvider, ToastProvider,
@@ -721,6 +801,7 @@ export default function App() {
                     <MDTBridge />
                     <AndroidUpdateChecker />
                     <ButtonHealthOverlay />
+                    <Suspense fallback={null}><GlobalPdfViewer /></Suspense>
                     <AppRoutes />
                   </ErrorBoundary>
                 </ContextMenuProvider>

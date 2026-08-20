@@ -8,9 +8,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
-import { parseTimestamp } from '../../../utils/dateUtils';
+import { parseTimestamp, safeDateStr, localToday } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 import { registerArialFont } from '../../../utils/pdf/fonts/registerArial';
+import { formatEnumValue } from '../../../utils/formatters';
 
 const RMPG_GRAY = '#888888';
 
@@ -38,7 +39,7 @@ function footerStrip(doc: jsPDF, page: number, total: number) {
   const w = doc.internal.pageSize.getWidth(); const h = doc.internal.pageSize.getHeight();
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
   doc.text(`Page ${page} of ${total}`, 40, h - 25);
-  doc.text(`Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, h - 14);
+  doc.text(`Generated ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, 40, h - 14);
 }
 
 function vehicleSummaryBlock(doc: jsPDF, v: FleetVehicle, y: number): number {
@@ -61,10 +62,10 @@ function drawGridBox(doc: jsPDF, x: number, y: number, w: number, label: string,
 // 1. FLEET STATUS REPORT (Feature 75)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetStatusReport(data: {
+export function buildFleetStatusReport(data: {
   vehicles: FleetVehicle[];
   analytics: FleetAnalytics | null;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -111,17 +112,25 @@ export function generateFleetStatusReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_status_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetStatusReport(data: {
+  vehicles: FleetVehicle[];
+  analytics: FleetAnalytics | null;
+}): void {
+  const doc = buildFleetStatusReport(data);
+  doc.save(`fleet_status_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 2. FLEET MAINTENANCE HISTORY REPORT (Feature 76)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetMaintenanceReport(data: {
+export function buildFleetMaintenanceReport(data: {
   vehicle: FleetVehicle;
   records: FleetMaintenance[];
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -147,26 +156,34 @@ export function generateFleetMaintenanceReport(data: {
 
   for (const r of data.records) {
     if (y > pageH - 60) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'MAINTENANCE HISTORY REPORT (cont.)'); }
-    const vals = [r.performed_at?.slice(0, 10) ?? '', r.type ?? '', r.description?.slice(0, 40) ?? '', String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, r.vendor?.slice(0, 20) ?? '', r.next_due_date?.slice(0, 10) ?? ''];
+    const vals = [safeDateStr(r.performed_at, ''), r.type ?? '', r.description?.slice(0, 40) ?? '', String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, r.vendor?.slice(0, 20) ?? '', safeDateStr(r.next_due_date, '')];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
     y += 15; rowIdx++;
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_maintenance_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetMaintenanceReport(data: {
+  vehicle: FleetVehicle;
+  records: FleetMaintenance[];
+}): void {
+  const doc = buildFleetMaintenanceReport(data);
+  doc.save(`fleet_maintenance_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 3. FLEET COST ANALYSIS REPORT (Feature 77)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetCostReport(data: {
+export function buildFleetCostReport(data: {
   vehicle: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   fuelSummary: FleetFuelSummary | null;
   maintenanceRecords: FleetMaintenance[];
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -209,20 +226,30 @@ export function generateFleetCostReport(data: {
     y += 14;
   }
 
-  doc.save(`fleet_cost_analysis_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetCostReport(data: {
+  vehicle: FleetVehicle;
+  fuelLogs: FleetFuelLog[];
+  fuelSummary: FleetFuelSummary | null;
+  maintenanceRecords: FleetMaintenance[];
+}): void {
+  const doc = buildFleetCostReport(data);
+  doc.save(`fleet_cost_analysis_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 4. FLEET LIFECYCLE REPORT (Feature 78)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetLifecycleReport(data: {
+export function buildFleetLifecycleReport(data: {
   vehicle: FleetVehicle;
   fuelLogs: FleetFuelLog[];
   maintenanceRecords: FleetMaintenance[];
   inspections: FleetInspection[];
   assignments: FleetAssignment[];
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -268,28 +295,39 @@ export function generateFleetLifecycleReport(data: {
   let rowIdx = 0;
   for (const r of data.maintenanceRecords) {
     if (y > pageH - 60) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'VEHICLE LIFECYCLE REPORT (cont.)'); }
-    const vals = [r.performed_at?.slice(0, 10) ?? '', r.type ?? '', (r.description ?? '').slice(0, 40), String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, (r.vendor ?? '').slice(0, 20)];
+    const vals = [safeDateStr(r.performed_at, ''), r.type ?? '', (r.description ?? '').slice(0, 40), String(r.mileage_at_service ?? ''), `$${r.cost ?? 0}`, (r.vendor ?? '').slice(0, 20)];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((v, i) => { doc.text(v, cx + 3, y + 12); cx += maintColW[i]; });
     y += 15; rowIdx++;
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_lifecycle_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetLifecycleReport(data: {
+  vehicle: FleetVehicle;
+  fuelLogs: FleetFuelLog[];
+  maintenanceRecords: FleetMaintenance[];
+  inspections: FleetInspection[];
+  assignments: FleetAssignment[];
+}): void {
+  const doc = buildFleetLifecycleReport(data);
+  doc.save(`fleet_lifecycle_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 5. FLEET COMPLIANCE REPORT (Feature 79)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetComplianceReport(data: {
+export function buildFleetComplianceReport(data: {
   vehicles: FleetVehicle[];
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${new Date().toISOString().slice(0, 10)}`);
+  let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${localToday()}`);
   const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
@@ -333,17 +371,24 @@ export function generateFleetComplianceReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_compliance_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetComplianceReport(data: {
+  vehicles: FleetVehicle[];
+}): void {
+  const doc = buildFleetComplianceReport(data);
+  doc.save(`fleet_compliance_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 6. FLEET UTILIZATION REPORT (Feature 80)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetUtilizationReport(data: {
+export function buildFleetUtilizationReport(data: {
   vehicles: Array<FleetVehicle & { days_used?: number; miles_driven?: number; fuel_cost?: number; daily_avg_miles?: number }>;
   days?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -369,18 +414,26 @@ export function generateFleetUtilizationReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_utilization_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetUtilizationReport(data: {
+  vehicles: Array<FleetVehicle & { days_used?: number; miles_driven?: number; fuel_cost?: number; daily_avg_miles?: number }>;
+  days?: number;
+}): void {
+  const doc = buildFleetUtilizationReport(data);
+  doc.save(`fleet_utilization_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 7. FLEET FUEL CONSUMPTION REPORT (Feature 81)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetFuelConsumptionReport(data: {
+export function buildFleetFuelConsumptionReport(data: {
   vehicles: Array<FleetVehicle & { total_gallons?: number; co2_kg?: number; co2_lbs?: number }>;
   totalGallons?: number;
   totalCo2?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -417,17 +470,26 @@ export function generateFleetFuelConsumptionReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_fuel_consumption_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetFuelConsumptionReport(data: {
+  vehicles: Array<FleetVehicle & { total_gallons?: number; co2_kg?: number; co2_lbs?: number }>;
+  totalGallons?: number;
+  totalCo2?: number;
+}): void {
+  const doc = buildFleetFuelConsumptionReport(data);
+  doc.save(`fleet_fuel_consumption_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 8. FLEET ACCIDENT REPORT (Feature 82)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetAccidentReport(data: {
+export function buildFleetAccidentReport(data: {
   vehicle: FleetVehicle;
   accident: Record<string, unknown>;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   let y = headerStrip(doc, 'FLEET ACCIDENT REPORT', `Vehicle #${data.vehicle.vehicle_number}`);
@@ -463,17 +525,25 @@ export function generateFleetAccidentReport(data: {
     doc.text((data.accident.description as string).slice(0, 500), 40, y);
   }
 
-  doc.save(`fleet_accident_report_${data.vehicle.vehicle_number}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetAccidentReport(data: {
+  vehicle: FleetVehicle;
+  accident: Record<string, unknown>;
+}): void {
+  const doc = buildFleetAccidentReport(data);
+  doc.save(`fleet_accident_report_${data.vehicle.vehicle_number}_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 9. FLEET BUDGET REPORT (Feature 83)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetBudgetReport(data: {
+export function buildFleetBudgetReport(data: {
   fiscalYear: number;
   budgets: Array<{ category: string; allocated_amount: number; spent_amount: number }>;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -497,7 +567,7 @@ export function generateFleetBudgetReport(data: {
     const pct = b.allocated_amount > 0 ? Math.round((b.spent_amount / b.allocated_amount) * 100) : 0;
     const barW = Math.min(pct, 100) * 3.2;
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-    doc.text(b.category, 40, y);
+    doc.text(formatEnumValue(b.category), 40, y);
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
     doc.text(`$${b.spent_amount.toLocaleString()} of $${b.allocated_amount.toLocaleString()} (${pct}%)`, 160, y);
     if (pct > 90) doc.setTextColor('#ef4444'); else if (pct > 70) doc.setTextColor('#d4a017'); else doc.setTextColor('#10b981');
@@ -507,6 +577,14 @@ export function generateFleetBudgetReport(data: {
     y += 22;
   }
 
+  return doc;
+}
+
+export function generateFleetBudgetReport(data: {
+  fiscalYear: number;
+  budgets: Array<{ category: string; allocated_amount: number; spent_amount: number }>;
+}): void {
+  const doc = buildFleetBudgetReport(data);
   doc.save(`fleet_budget_report_fy${data.fiscalYear}.pdf`);
 }
 
@@ -514,9 +592,9 @@ export function generateFleetBudgetReport(data: {
 // 10. FLEET VEHICLE REPLACEMENT PLAN REPORT (Feature 84)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetReplacementReport(data: {
+export function buildFleetReplacementReport(data: {
   vehicles: Array<FleetVehicle & { replacement_year?: number; replacement_reason?: string; estimated_replacement_cost?: number; rp_priority?: string; rp_status?: string }>;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -549,16 +627,23 @@ export function generateFleetReplacementReport(data: {
     y += 15; rowIdx++;
   }
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_replacement_plan_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetReplacementReport(data: {
+  vehicles: Array<FleetVehicle & { replacement_year?: number; replacement_reason?: string; estimated_replacement_cost?: number; rp_priority?: string; rp_status?: string }>;
+}): void {
+  const doc = buildFleetReplacementReport(data);
+  doc.save(`fleet_replacement_plan_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 11. FLEET DEPRECIATION REPORT (Feature 85)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetDepreciationReport(data: {
+export function buildFleetDepreciationReport(data: {
   vehicles: Array<FleetVehicle & { depreciation?: { purchase_price?: number; salvage_value?: number; useful_life_months?: number; monthly_depreciation?: number; accumulated_depreciation?: number; current_book_value?: number } | null }>;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -595,16 +680,23 @@ export function generateFleetDepreciationReport(data: {
     y += 15; rowIdx++;
   }
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_depreciation_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetDepreciationReport(data: {
+  vehicles: Array<FleetVehicle & { depreciation?: { purchase_price?: number; salvage_value?: number; useful_life_months?: number; monthly_depreciation?: number; accumulated_depreciation?: number; current_book_value?: number } | null }>;
+}): void {
+  const doc = buildFleetDepreciationReport(data);
+  doc.save(`fleet_depreciation_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 12. FLEET KEY MANAGEMENT REPORT (Feature 86)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetKeyReport(data: {
+export function buildFleetKeyReport(data: {
   keys: Array<{ vehicle_number?: string; key_number?: string; key_type?: string; rfid_tag?: string; status?: string; current_holder?: string; last_checkout?: string; last_return?: string }>;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -643,20 +735,27 @@ export function generateFleetKeyReport(data: {
     y += 15; rowIdx++;
   }
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_key_management_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetKeyReport(data: {
+  keys: Array<{ vehicle_number?: string; key_number?: string; key_type?: string; rfid_tag?: string; status?: string; current_holder?: string; last_checkout?: string; last_return?: string }>;
+}): void {
+  const doc = buildFleetKeyReport(data);
+  doc.save(`fleet_key_management_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 13. FLEET HEALTH SCORECARD PDF (Feature 87)
 // ═══════════════════════════════════════════════════════════════
 
-export function generateFleetScorecardReport(data: {
+export function buildFleetScorecardReport(data: {
   total: number; active: number; in_maintenance: number; needing_service: number;
   expiring_insurance: number; expiring_registration: number; open_recalls: number;
   open_accidents: number; fuel_this_month: { cost: number; gallons: number } | null;
   maintenance_this_month: { cost: number; count: number } | null;
   avg_mpg: number | null; health_score: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
@@ -692,7 +791,18 @@ export function generateFleetScorecardReport(data: {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(RMPG_GRAY);
   doc.text('Score calculation: 100 - (needing_service*15 + expiring_insurance*10 + expiring_registration*10 + open_recalls*5 + open_accidents*10 + in_maintenance*5) / total', 40, y);
 
-  doc.save(`fleet_health_scorecard_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateFleetScorecardReport(data: {
+  total: number; active: number; in_maintenance: number; needing_service: number;
+  expiring_insurance: number; expiring_registration: number; open_recalls: number;
+  open_accidents: number; fuel_this_month: { cost: number; gallons: number } | null;
+  maintenance_this_month: { cost: number; count: number } | null;
+  avg_mpg: number | null; health_score: number;
+}): void {
+  const doc = buildFleetScorecardReport(data);
+  doc.save(`fleet_health_scorecard_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -714,19 +824,19 @@ interface PersonnelRow {
   active_assignments: number;
 }
 
-export function generatePersonnelProductivityReport(data: {
+export function buildPersonnelProductivityReport(data: {
   rows: PersonnelRow[];
   totalOfficers?: number;
   totalMiles?: number;
   totalHours?: number;
   days?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'PERSONNEL PRODUCTIVITY REPORT',
-    `${data.rows.length} officers  •  ${data.days ?? 30}-day window  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} officers  •  ${data.days ?? 30}-day window  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
 
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
@@ -769,7 +879,18 @@ export function generatePersonnelProductivityReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`personnel_productivity_report_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generatePersonnelProductivityReport(data: {
+  rows: PersonnelRow[];
+  totalOfficers?: number;
+  totalMiles?: number;
+  totalHours?: number;
+  days?: number;
+}): void {
+  const doc = buildPersonnelProductivityReport(data);
+  doc.save(`personnel_productivity_report_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -790,17 +911,17 @@ interface InspectionAnalysisRow {
   common_failures?: string[];
 }
 
-export function generateInspectionAnalysisReport(data: {
+export function buildInspectionAnalysisReport(data: {
   rows: InspectionAnalysisRow[];
   totalInspections?: number;
   overallPassRate?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'INSPECTION ANALYSIS REPORT',
-    `${data.rows.length} vehicles  •  ${data.totalInspections ?? 0} inspections  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  ${data.totalInspections ?? 0} inspections  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
   let page = 1;
 
@@ -878,7 +999,16 @@ export function generateInspectionAnalysisReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_inspection_analysis_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateInspectionAnalysisReport(data: {
+  rows: InspectionAnalysisRow[];
+  totalInspections?: number;
+  overallPassRate?: number;
+}): void {
+  const doc = buildInspectionAnalysisReport(data);
+  doc.save(`fleet_inspection_analysis_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -902,17 +1032,17 @@ interface CostPerMileRow {
   mpg: number | null;
 }
 
-export function generateCostPerMileReport(data: {
+export function buildCostPerMileReport(data: {
   rows: CostPerMileRow[];
   fleetAverageCpm?: number;
   totalCost?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COST-PER-MILE ANALYSIS REPORT',
-    `${data.rows.length} vehicles  •  Fleet Avg: $${(data.fleetAverageCpm ?? 0).toFixed(3)}/mi  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  Fleet Avg: $${(data.fleetAverageCpm ?? 0).toFixed(3)}/mi  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
 
@@ -959,7 +1089,16 @@ export function generateCostPerMileReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_cost_per_mile_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateCostPerMileReport(data: {
+  rows: CostPerMileRow[];
+  fleetAverageCpm?: number;
+  totalCost?: number;
+}): void {
+  const doc = buildCostPerMileReport(data);
+  doc.save(`fleet_cost_per_mile_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -981,17 +1120,17 @@ interface MaintenanceForecastRow {
   urgency: 'overdue' | 'critical' | 'warning' | 'ok';
 }
 
-export function generateMaintenanceForecastReport(data: {
+export function buildMaintenanceForecastReport(data: {
   rows: MaintenanceForecastRow[];
   overdueCount?: number;
   upcomingCount?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'MAINTENANCE FORECAST REPORT',
-    `${data.rows.length} vehicles  •  ${data.overdueCount ?? 0} overdue  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  ${data.overdueCount ?? 0} overdue  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 22));
   let page = 1;
 
@@ -1047,7 +1186,16 @@ export function generateMaintenanceForecastReport(data: {
   }
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_maintenance_forecast_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateMaintenanceForecastReport(data: {
+  rows: MaintenanceForecastRow[];
+  overdueCount?: number;
+  upcomingCount?: number;
+}): void {
+  const doc = buildMaintenanceForecastReport(data);
+  doc.save(`fleet_maintenance_forecast_${localToday()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1070,18 +1218,18 @@ interface ComplianceRow {
   compliance_score: number;
 }
 
-export function generateComplianceAuditReport(data: {
+export function buildComplianceAuditReport(data: {
   rows: ComplianceRow[];
   totalVehicles?: number;
   fullyCompliant?: number;
   issuesCount?: number;
-}): void {
+}): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'landscape' });
   registerArialFont(doc); // Arial-only output (overrides helvetica/times/courier)
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'COMPLIANCE AUDIT REPORT',
-    `${data.rows.length} vehicles  •  Generated ${new Date().toLocaleDateString()}`);
+    `${data.rows.length} vehicles  •  Generated ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}`);
   const totalPages = Math.max(1, Math.ceil(data.rows.length / 18));
   let page = 1;
 
@@ -1168,5 +1316,15 @@ export function generateComplianceAuditReport(data: {
   drawSig('FLEET MANAGER', 40 + sigColW + 40);
 
   footerStrip(doc, page, totalPages);
-  doc.save(`fleet_compliance_audit_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return doc;
+}
+
+export function generateComplianceAuditReport(data: {
+  rows: ComplianceRow[];
+  totalVehicles?: number;
+  fullyCompliant?: number;
+  issuesCount?: number;
+}): void {
+  const doc = buildComplianceAuditReport(data);
+  doc.save(`fleet_compliance_audit_${localToday()}.pdf`);
 }

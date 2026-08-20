@@ -7,7 +7,7 @@
 // source-tagged (FIELD CAMERA / DASHCAM / MANUAL), building a searchable,
 // mappable per-plate history. ClearPath dashcam reads land here automatically.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { AlertTriangle, Car, FileText, MapPin, ScanLine, Map as MapIcon } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
 import { downscaleImage } from '../utils/downscaleImage';
@@ -16,6 +16,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { sightingSource, sightingSourceKey, ALL_SOURCES, type SightingSourceKey } from '../utils/alprSource';
 import SightingsMap, { type MapSighting } from '../components/SightingsMap';
 import PlateDossier from '../components/PlateDossier';
+import CarxeLookupPanel from '../components/CarxeLookupPanel';
 import ClearPathDashcamPanel from '../components/ClearPathDashcamPanel';
 import AlprCaptureGallery from '../components/AlprCaptureGallery';
 import CaptureReviewEditor, { type EditableCapture } from '../components/CaptureReviewEditor';
@@ -571,6 +572,11 @@ export default function PlateLogPage() {
       {result && !result.hits.length && (
         <div className="border border-border-default text-[11px] text-rmpg-400 px-3 py-1">
           {result.plate}: no hits{result.vehicle ? ` — ${[result.vehicle.color, result.vehicle.year, result.vehicle.make, result.vehicle.model].filter(Boolean).join(' ')} on file` : ' (plate not on file — sighting logged)'}
+        </div>
+      )}
+      {result?.plate && (
+        <div className="px-3">
+          <CarxeLookupPanel mode="plate" plate={result.plate} />
         </div>
       )}
 

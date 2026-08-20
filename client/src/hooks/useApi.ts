@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { uploadWithProgress } from '../utils/uploadWithProgress';
+import { uploadWithProgress, putFileDirect } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
 import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
@@ -9,6 +9,20 @@ import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
 // don't wait minutes for the browser's default ~120s timeout to fire.
 // Callers can override per-request via apiFetch(url, { timeoutMs }).
 export const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
+
+// Disabled (Infinity) as of the file-encryption-at-rest merge: the
+// Worker-proxied multipart route (POST /api/uploads) now encrypts every
+// attachment via putEncrypted() before writing to R2, but a presigned
+// direct-to-R2 PUT bypasses the Worker entirely — the Worker never sees
+// those bytes, so they'd land unencrypted. Until the direct-upload path
+// is taught to participate in encryption-at-rest (or is scoped to a
+// bucket outside that requirement), every attachment goes through the
+// multipart route regardless of size, same as before this threshold
+// existed. apiUploadFileDirect() and the /api/uploads/presign* routes
+// are still live — the admin Map Data Files feature uses the same
+// underlying presign mechanism against system-essentials, which was
+// never in the encryption-at-rest scope.
+const DIRECT_UPLOAD_THRESHOLD_BYTES = Infinity;
 
 /**
  * Thrown by `fetchWithTimeout` (and `apiFetch` / `apiFetchBlob` /
@@ -79,16 +93,22 @@ const electron = typeof window !== 'undefined' ? (window as any).electron : null
 // ─── Image URL helper (adds auth token for <img src=> loads) ────
 /**
  * Wraps an image URL so it authenticates against /api/uploads endpoints.
- * - data: URLs and full http(s):// URLs are returned unchanged
- * - /api/uploads paths get ?token=<jwt> appended (server accepts via authenticateTokenOrQuery)
+ * - data: URLs and blob: URLs are returned unchanged
+ * - /api/uploads paths (relative or absolute, e.g. `${window.location.origin}/api/...`)
+ *   get ?token=<jwt> appended (server accepts via authenticateTokenOrQuery)
  * - Already-signed URLs (containing ?sig=) are returned unchanged
  */
 export function authedImageUrl(url: string | null | undefined): string {
   if (!url) return '';
   if (url.startsWith('data:') || url.startsWith('blob:')) return url;
   if (url.includes('?sig=') || url.includes('&sig=')) return url;
+  // Resolve against window.location.origin so absolute URLs (e.g. a caller building
+  // `${window.location.origin}/api/...`) are recognized the same as relative `/api/...`
+  // paths — a future caller building an absolute URL shouldn't silently lose the token.
+  // new URL() never throws when given a base, so this is safe for any string input.
+  const pathname = new URL(url, window.location.origin).pathname;
   // Only append token for API paths that require auth
-  if (url.includes('/api/uploads') || url.startsWith('/api/')) {
+  if (pathname.includes('/api/uploads') || pathname.startsWith('/api/')) {
     const token = localStorage.getItem('rmpg_token');
     if (!token) return url;
     // Strip any existing token= param to prevent duplicates
@@ -102,6 +122,63 @@ export function authedImageUrl(url: string | null | undefined): string {
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500;
+
+// ─── GET in-flight coalescing (cut cold-load duplicate reads) ────
+// A cold load fires ~75 requests and several endpoints have more than one
+// independent consumer in the same tick (/settings ×4, /user/preferences ×4,
+// /dispatch/units ×2 — field DevTools 2026-07-31). Against the 600 req/300 s
+// per-user budget in src/middleware/rateLimit.ts that duplication is what
+// turns a few hard reloads into a 429 storm.
+//
+// Keyed by URL + header fingerprint (see getCoalesceKey), and the entry lives
+// ONLY while the request is genuinely in flight — deleted the moment it
+// settles. There is deliberately no TTL
+// cache: no consumer may ever read a staler value than it would have without
+// this optimization, which is non-negotiable for live CAD reads (unit
+// positions, GPS). Contract pinned by
+// client/src/hooks/__tests__/useApiGetCoalescing.test.ts.
+const inflightGets = new Map<string, Promise<Response>>();
+
+/**
+ * Coalescing key for a request, or `null` when it must NOT share an in-flight
+ * response with a concurrent twin. Two callers that resolve to the same key
+ * must be indistinguishable from two callers each issuing their own request.
+ *
+ * Ineligible, and why:
+ *  - Anything but GET. A POST/PATCH to the same URL is a distinct action with
+ *    its own body; sharing one response would silently drop a write.
+ *  - `init.signal` present. Callers that abort on unmount pass a signal; if
+ *    such a caller *started* the shared request, its abort would reject the
+ *    promise every follower awaits, failing a still-mounted component.
+ *  - A body on a GET. Malformed, and the body is not part of the key.
+ *
+ * Headers are folded INTO the key rather than gating eligibility. apiFetch
+ * adds Content-Type / X-Requested-With / Authorization uniformly, but callers
+ * may pass extras via `options.headers`, and apiFetchBlob sends a different
+ * set entirely. Fingerprinting them means a caller with distinct headers gets
+ * its own request instead of one computed for somebody else's — and it also
+ * means a token refreshed mid-flight can never share across two tokens.
+ */
+function getCoalesceKey(method: string, url: string, init: RequestInit): string | null {
+  if (method !== 'GET') return null;
+  if (init.signal) return null;
+  if (init.body != null) return null;
+  return `${url}\n${headerFingerprint(init.headers)}`;
+}
+
+/** Stable, order-independent fingerprint of a header set. */
+function headerFingerprint(headers: HeadersInit | undefined): string {
+  if (!headers) return '';
+  const entries = headers instanceof Headers
+    ? [...headers.entries()]
+    : Array.isArray(headers)
+      ? headers.map(([k, v]) => [k, v] as [string, string])
+      : Object.entries(headers);
+  return entries
+    .map(([k, v]) => `${k.toLowerCase()}:${v}`)
+    .sort()
+    .join(' ');
+}
 
 // ─── Retry config for 500/502/503/504 (server restart recovery) ────
 const RETRY_STATUS_CODES = [500, 502, 503, 504];
@@ -166,10 +243,27 @@ async function fetchWithRetry(
     throw lastError || new Error('Server temporarily unavailable. Please try again.');
   };
 
+  // GET coalescing. Note that EVERY caller — including the one that started
+  // the request — receives a .clone(), and the stored Response itself is never
+  // read. Handing the original to the first caller and clones to the rest
+  // would break as soon as the first caller's .json() consumed the body before
+  // a later follower got around to cloning it (clone() is only legal on an
+  // unconsumed body).
+  const coalesceKey = getCoalesceKey(method.toUpperCase(), url, init);
+  if (coalesceKey) {
+    const existing = inflightGets.get(coalesceKey);
+    if (existing) return existing.then((res) => res.clone());
+
+    const shared = doFetch();
+    inflightGets.set(coalesceKey, shared);
+    shared.finally(() => inflightGets.delete(coalesceKey)).catch(() => {});
+    return shared.then((res) => res.clone());
+  }
+
   const promise = doFetch();
   if (isMutation) {
     inflightMutations.set(dedupKey, { promise, ts: Date.now() });
-    promise.finally(() => inflightMutations.delete(dedupKey));
+    promise.finally(() => inflightMutations.delete(dedupKey)).catch(() => {});
   }
   return promise;
 }
@@ -331,9 +425,58 @@ function maybeRedirectToCfWorker(url: string): string {
 // this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
 const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
 
+// Cloudflare Pages does NOT support 200-rewrites to another origin in
+// _redirects (it only honours redirect statuses). So a relative /api/uploads
+// from the Pages SPA (rmpgutah.us) resolves to the Pages domain, not the
+// Worker — which causes ERR_HTTP2_PROTOCOL_ERROR. All multipart upload POSTs
+// must go directly to the Worker in production.
+const UPLOADS_URL = import.meta.env.DEV ? '/api/uploads' : `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+
+/** Absolute URL for POST /api/uploads in production; relative in dev (Vite proxies it). */
+export function uploadsUrl(): string {
+  return UPLOADS_URL;
+}
+
+/**
+ * Absolute URL for a published download (installer / OS image).
+ *
+ * MUST be absolute to the Worker origin. A relative "/downloads/<file>" link
+ * resolves against the Pages SPA, and client/public/_redirects tries to proxy
+ * that to the Worker with a status-200 rule — which Cloudflare Pages does not
+ * support (it honours redirect statuses only; 200-rewrites to another origin
+ * are a Netlify feature). The rule is silently ignored, the request falls
+ * through to the SPA catch-all, and the browser saves index.html under the
+ * artifact's filename: an 11,630-byte "installer" that fails with no error.
+ * Reported from the field as "files download at 11.5 kb".
+ *
+ * In dev, Vite's proxy does forward /downloads to the local Worker, so a
+ * relative path is correct there.
+ */
+export function downloadUrl(filename: string): string {
+  const encoded = encodeURIComponent(filename);
+  return import.meta.env.DEV ? `/downloads/${encoded}` : `${CF_WORKER_DIRECT_BASE}/downloads/${encoded}`;
+}
+
+// ─── Fallback URL switching (Toughbook cold standby) ──────────────────────
+export const FALLBACK_URL_KEY = 'rmpg_fallback_api_url';
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+const MUTATING_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+let _consecutiveApiFailures = 0;
+
+export function resolveFallbackUrl(relativeUrl: string): string | null {
+  if (_consecutiveApiFailures < CONSECUTIVE_FAILURE_THRESHOLD) return null;
+  const fallback = localStorage.getItem(FALLBACK_URL_KEY);
+  return fallback ? `${fallback}${relativeUrl}` : null;
+}
+
+/** @internal — for unit tests only. Sets the failure counter without triggering real requests. */
+export function _setConsecutiveFailuresForTest(n: number): void {
+  _consecutiveApiFailures = n;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean }
+  options?: RequestInit & { timeoutMs?: number; directWorker?: boolean; _skipQueue?: boolean }
 ): Promise<T> {
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const url = options?.directWorker ? `${CF_WORKER_DIRECT_BASE}${relativeUrl}` : maybeRedirectToCfWorker(relativeUrl);
@@ -359,17 +502,37 @@ export async function apiFetch<T>(
   }
 
   const fetchInit: RequestInit = { ...options, headers };
-  const res = await fetchWithRetry(url, fetchInit);
+
+  let res: Response;
+  const fallbackUrl = resolveFallbackUrl(relativeUrl);
+  try {
+    res = await fetchWithRetry(fallbackUrl ?? url, fetchInit);
+    _consecutiveApiFailures = 0;
+  } catch (fetchErr) {
+    _consecutiveApiFailures += 1;
+    const m = method.toUpperCase();
+    if (MUTATING_METHODS.has(m) && !options?._skipQueue) {
+      console.warn('[API] Network error on mutation — enqueueing for offline replay:', m, relativeUrl);
+      const { enqueueOperation } = await import('./useOfflineQueue');
+      await enqueueOperation({
+        method: m,
+        path: relativeUrl,
+        body: options?.body ? (() => { try { return JSON.parse(options.body as string); } catch { return undefined; } })() : undefined,
+        headers: { ...(options?.headers as Record<string, string>) },
+      });
+    }
+    throw fetchErr;
+  }
 
   // On 401, attempt a transparent token refresh and retry once
   if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      const retryRes = await fetchWithRetry(url, { ...fetchInit, headers });
+      const retryRes = await fetchWithRetry(fallbackUrl ?? url, { ...fetchInit, headers });
       if (!retryRes.ok) {
         const errData = await retryRes.json().catch(() => ({}));
-        nackForApiFailure(method, url, retryRes.status);
+        nackForApiFailure(method, fallbackUrl ?? url, retryRes.status);
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
       chimeForApiSuccess(method, url);
@@ -438,18 +601,23 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
  * would break server-side multipart parsing). Use for image/file uploads to
  * an arbitrary endpoint (e.g. /alpr/capture).
  */
-export async function apiPostForm<T>(endpoint: string, formData: FormData): Promise<T> {
+export async function apiPostForm<T>(
+  endpoint: string,
+  formData: FormData,
+  options?: { timeoutMs?: number }
+): Promise<T> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  const timeoutMs = options?.timeoutMs;
 
-  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+  let res = await fetchWithRetry(url, { method: 'POST', headers, body: formData, timeoutMs });
   if (res.status === 401) {
     const newToken = await tryRefreshToken();
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`;
-      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData });
+      res = await fetchWithRetry(url, { method: 'POST', headers, body: formData, timeoutMs });
     }
     if (res.status === 401) throw new Error('Session expired. Please log in again.');
   }
@@ -494,7 +662,50 @@ function isRetryableUploadError(err: Error): boolean {
   return true; // no status ⇒ network/transport throw (TypeError, TimeoutError) ⇒ retry
 }
 
-export async function apiUploadFiles(
+async function presignAttachmentUpload(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+): Promise<{ file_id: string; upload_url: string; key: string } | { ok: false; code: string }> {
+  return apiFetch('/uploads/presign', {
+    method: 'POST',
+    body: JSON.stringify({
+      filename: file.name,
+      contentType: file.type || 'application/octet-stream',
+      size: file.size,
+      entity_type: entityType,
+      entity_id: entityId,
+    }),
+  });
+}
+
+async function completeAttachmentUpload(fileId: string): Promise<any> {
+  return apiFetch(`/uploads/presign/${fileId}/complete`, { method: 'POST', body: '{}' });
+}
+
+/** Upload one large file straight to R2 via a presigned PUT (see design spec). */
+export async function apiUploadFileDirect(
+  file: File,
+  entityType?: string,
+  entityId?: string | number,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<any> {
+  const presign = await presignAttachmentUpload(file, entityType, entityId);
+  // R2 direct-upload credentials aren't configured yet (server's established
+  // "unset secret → 200 { ok: false, code: 'not_configured' }" convention —
+  // never a 4xx/5xx, so apiFetch's !res.ok branch never fires). Fall back to
+  // the existing Worker-proxied multipart path instead of PUTing to an
+  // undefined upload_url, per the design spec's rollout requirement.
+  if ((presign as { ok?: false }).ok === false) {
+    const [result] = await apiUploadFilesMultipart([file], entityType, entityId);
+    return result;
+  }
+  const { file_id: fileId, upload_url: uploadUrl } = presign as { file_id: string; upload_url: string; key: string };
+  await putFileDirect(uploadUrl, file, onProgress);
+  return completeAttachmentUpload(fileId);
+}
+
+async function apiUploadFilesMultipart(
   files: File[],
   entityType?: string,
   entityId?: string | number,
@@ -517,14 +728,14 @@ export async function apiUploadFiles(
     if (entityId) formData.append('entity_id', String(entityId));
 
     try {
-      const res = await fetchWithTimeout('/api/uploads', {
+      const res = await fetchWithTimeout(UPLOADS_URL, {
         method: 'POST',
         headers,
         body: formData,
         timeoutMs: opts?.timeoutMs,
       });
       if (res.ok) {
-        chimeForApiSuccess('POST', '/api/uploads');
+        chimeForApiSuccess('POST', UPLOADS_URL);
         return res.json();
       }
       const errData = await res.json().catch(() => ({}));
@@ -541,6 +752,39 @@ export async function apiUploadFiles(
     }
   }
   throw lastErr ?? new Error('Upload failed');
+}
+
+export async function apiUploadFiles(
+  files: File[],
+  entityType?: string,
+  entityId?: string | number,
+  opts?: UploadOptions,
+): Promise<any[]> {
+  const smallIndices: number[] = [];
+  const smallFiles: File[] = [];
+  const largeIndices: number[] = [];
+
+  files.forEach((f, i) => {
+    if (f.size <= DIRECT_UPLOAD_THRESHOLD_BYTES) {
+      smallIndices.push(i);
+      smallFiles.push(f);
+    } else {
+      largeIndices.push(i);
+    }
+  });
+
+  const results: any[] = new Array(files.length);
+
+  if (smallFiles.length > 0) {
+    const smallResults = await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts);
+    smallIndices.forEach((origIdx, i) => { results[origIdx] = smallResults[i]; });
+  }
+
+  for (const origIdx of largeIndices) {
+    results[origIdx] = await apiUploadFileDirect(files[origIdx], entityType, entityId);
+  }
+
+  return results;
 }
 
 // Upload files with per-file progress tracking via XHR
@@ -561,13 +805,20 @@ export async function apiUploadFilesWithProgress(
   // Upload files one at a time so progress tracks per-file
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
+
+    if (file.size > DIRECT_UPLOAD_THRESHOLD_BYTES) {
+      const result = await apiUploadFileDirect(file, entityType, entityId, (progress) => onProgress(progress, i, files.length));
+      results.push(result);
+      continue;
+    }
+
     const formData = new FormData();
     formData.append('files', file);
     if (entityType) formData.append('entity_type', entityType);
     if (entityId) formData.append('entity_id', String(entityId));
 
     const result = await uploadWithProgress(
-      '/api/uploads',
+      UPLOADS_URL,
       formData,
       token,
       (progress) => onProgress(progress, i, files.length),
@@ -624,5 +875,83 @@ export async function apiDeleteCompanyDocument(id: number): Promise<void> {
 }
 
 export type { UploadProgress };
+
+// ─── Dual-write for FZ-55 secondary server ───────────────────────────────────
+import { useContext } from 'react';
+import { ApiBaseContext } from './useApiBase';
+
+/**
+ * Pure dual-write function — exported for testing.
+ * Fires the same mutation at both local and cloud in parallel.
+ * Returns the local result if available; cloud result as fallback.
+ * Throws when both fail.
+ */
+export async function dualWrite<T>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number },
+  localBase: string | null,
+  cloudBase: string,
+): Promise<T> {
+  const normalizedPath = path.startsWith('/api') ? path : `/api${path}`;
+
+  if (!localBase) {
+    const res = await fetchWithTimeout(`${cloudBase}${normalizedPath}`, options);
+    if (!res.ok) throw new Error(`Cloud request failed: ${res.status}`);
+    return res.json() as Promise<T>;
+  }
+
+  const [localResult, cloudResult] = await Promise.allSettled([
+    fetchWithTimeout(`${localBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Local ${r.status}`))
+    ),
+    fetchWithTimeout(`${cloudBase}${normalizedPath}`, options).then(r =>
+      r.ok ? (r.json() as Promise<T>) : Promise.reject(new Error(`Cloud ${r.status}`))
+    ),
+  ]);
+
+  if (localResult.status === 'fulfilled') {
+    // Local succeeded — if cloud failed, queue the write for later replay
+    if (cloudResult.status === 'rejected') {
+      try {
+        const reqHeaders = options.headers as Record<string, string> | undefined;
+        const enqueueBody: Record<string, string> = {
+          method: options.method ?? 'POST',
+          path: normalizedPath,
+        };
+        if (options.body != null) {
+          enqueueBody.body = typeof options.body === 'string'
+            ? options.body
+            : JSON.stringify(options.body);
+        }
+        if (reqHeaders) enqueueBody.headers = JSON.stringify(reqHeaders);
+        await fetch(`${localBase}/api/sync/enqueue`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(reqHeaders?.Authorization ? { Authorization: reqHeaders.Authorization } : {}),
+          },
+          body: JSON.stringify(enqueueBody),
+        });
+      } catch { /* non-fatal — local write already succeeded */ }
+    }
+    return localResult.value;
+  }
+  if (cloudResult.status === 'fulfilled') return cloudResult.value;
+  throw new Error('No connectivity — both local and cloud endpoints unreachable');
+}
+
+/**
+ * Hook-based dual-write wrapper for use in React components.
+ * Reads cloud/local bases from ApiBaseContext automatically.
+ */
+export function useApiMutate() {
+  const { cloudBase, localBase } = useContext(ApiBaseContext);
+  return async function apiMutate<T>(
+    path: string,
+    options: RequestInit & { timeoutMs?: number } = {},
+  ): Promise<T> {
+    return dualWrite<T>(path, options, localBase, cloudBase);
+  };
+}
 
 export default useApi;

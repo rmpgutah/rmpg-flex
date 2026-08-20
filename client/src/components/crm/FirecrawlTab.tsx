@@ -21,7 +21,8 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
-import { toDisplayLabel } from '../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { withAlpha } from '../../utils/withAlpha';
 
 // ── Safe Array Helper ─────────────────────────────────────────
 // Ensures a value that may be a JSON string, undefined, or already an array is always an array
@@ -1601,7 +1602,7 @@ function WorkflowsPanel() {
                   className="flex-1 bg-rmpg-800 border border-rmpg-600 rounded-sm px-2 py-0.5 text-[10px] text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
                   placeholder={step.type === 'search' ? 'Search query...' : 'https://...'}
                 />
-                <button
+                <button aria-label="Remove"
                   onClick={() => removeStep(idx)}
                   disabled={formSteps.length <= 1}
                   className="text-rmpg-500 hover:text-red-400 disabled:opacity-30"
@@ -3369,7 +3370,7 @@ function PdfInspectPanel() {
           {/* Header badges */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
-              {result.classification}
+              {formatEnumValue(result.classification)}
             </span>
             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-sm ${
               result.is_scanned ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400' : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
@@ -3464,7 +3465,7 @@ function GraphsPanel() {
   const [formTitle, setFormTitle] = useState('');
   const [formChartType, setFormChartType] = useState('bar');
   const [formLabels, setFormLabels] = useState('');
-  const [formDatasets, setFormDatasets] = useState<GraphDataset[]>([{ label: 'Series 1', data: '', color: '#f97316' }]);
+  const [formDatasets, setFormDatasets] = useState<GraphDataset[]>([{ label: 'Series 1', data: '', color: 'var(--sev-high)' }]);
 
   const load = useCallback(async () => {
     try {
@@ -3480,7 +3481,7 @@ function GraphsPanel() {
   useEffect(() => { load(); }, [load]);
 
   const addDataset = () => {
-    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: '#888888' }]);
+    setFormDatasets(prev => [...prev, { label: `Series ${prev.length + 1}`, data: '', color: 'var(--text-muted)' }]);
   };
 
   const removeDataset = (idx: number) => {
@@ -3510,7 +3511,7 @@ function GraphsPanel() {
       addToast('Graph created', 'success');
       setShowForm(false);
       setFormTitle(''); setFormLabels(''); setFormChartType('bar');
-      setFormDatasets([{ label: 'Series 1', data: '', color: '#f97316' }]);
+      setFormDatasets([{ label: 'Series 1', data: '', color: 'var(--sev-high)' }]);
       load();
     } catch {
       addToast('Failed to create graph', 'error');
@@ -3642,7 +3643,7 @@ function GraphsPanel() {
                       className="w-6 h-6 bg-transparent border-0 cursor-pointer rounded-sm"
                     />
                     {formDatasets.length > 1 && (
-                      <button onClick={() => removeDataset(idx)} className="text-rmpg-500 hover:text-red-400">
+                      <button aria-label="Remove" onClick={() => removeDataset(idx)} className="text-rmpg-500 hover:text-red-400">
                         <X className="w-3 h-3" />
                       </button>
                     )}
@@ -3669,7 +3670,7 @@ function GraphsPanel() {
             <div key={g.id} className="bg-surface-raised border border-rmpg-600 rounded-sm p-2.5 space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400">
-                  {g.chart_type}
+                  {formatEnumValue(g.chart_type)}
                 </span>
                 <span className="text-[10px] text-rmpg-100 font-medium min-w-0 truncate flex-1">{g.title}</span>
                 <SmallBtn onClick={() => deleteGraph(g.id)} loading={deletingIds.has(g.id)} variant="danger">
@@ -4438,7 +4439,7 @@ function GenUiPanel() {
               >
                 <LayoutDashboard className="w-3 h-3 text-orange-400 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.url}</span>
-                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{item.component_type}</span>
+                <span className="text-[9px] text-rmpg-500 uppercase font-mono shrink-0">{formatEnumValue(item.component_type)}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -4904,7 +4905,7 @@ function ExtractPanel() {
               placeholder="Description"
             />
             {fields.length > 1 && (
-              <button onClick={() => removeField(idx)} className="text-rmpg-500 hover:text-red-400">
+              <button aria-label="Remove" onClick={() => removeField(idx)} className="text-rmpg-500 hover:text-red-400">
                 <X className="w-3 h-3" />
               </button>
             )}
@@ -5716,7 +5717,7 @@ function McpPanel() {
                 className="flex-1 bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-rmpg-100 placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
                 placeholder="fc-••••••••"
               />
-              <button onClick={() => setShowApiKey(!showApiKey)} className="text-rmpg-500 hover:text-rmpg-100">
+              <button aria-label="View" onClick={() => setShowApiKey(!showApiKey)} className="text-rmpg-500 hover:text-rmpg-100">
                 <Eye className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -6747,7 +6748,7 @@ function DraftsPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="flex items-center gap-3">
             <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-orange-500/10 border border-orange-500/30 text-orange-400 uppercase">
-              {result.draft_type}
+              {formatEnumValue(result.draft_type)}
             </span>
             <span className="text-[10px] text-rmpg-400 font-mono">{result.word_count} words</span>
             <div className="flex-1" />
@@ -6788,7 +6789,7 @@ function DraftsPanel() {
                 <button onClick={() => viewDraft(d)} className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1 text-left hover:text-rmpg-100">
                   {d.topic}
                 </button>
-                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{d.draft_type}</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-rmpg-700 text-rmpg-400 uppercase">{formatEnumValue(d.draft_type)}</span>
                 <span className="text-[10px] text-rmpg-500">{d.word_count}w</span>
                 <span className="text-[10px] text-rmpg-500">{fmtDate(d.created_at)}</span>
                 <SmallBtn onClick={() => deleteDraft(d.id)} loading={deletingIds.has(d.id)} variant="danger">
@@ -6932,7 +6933,7 @@ function SlackPanel() {
                   onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
                   className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
                 />
-                {key.replace(/_/g, ' ').toUpperCase()}
+                {toDisplayLabel(key).toUpperCase()}
               </label>
             ))}
           </div>
@@ -7075,7 +7076,7 @@ function DiscordPanel() {
                   onChange={e => setConfig(prev => ({ ...prev, notify_on: { ...prev.notify_on, [key]: e.target.checked } }))}
                   className="rounded-sm border-rmpg-600 bg-surface-sunken text-orange-500 focus:ring-orange-500/50"
                 />
-                {key.replace(/_/g, ' ').toUpperCase()}
+                {toDisplayLabel(key).toUpperCase()}
               </label>
             ))}
           </div>
@@ -8462,7 +8463,7 @@ function GrokEnrichPanel() {
               >
                 <Zap className="w-3 h-3 text-orange-400 shrink-0" />
                 <span className="text-[10px] text-rmpg-300 font-mono min-w-0 truncate flex-1">{item.name || item.url}</span>
-                <span className="text-[10px] text-rmpg-400 shrink-0">{item.type}</span>
+                <span className="text-[10px] text-rmpg-400 shrink-0">{formatEnumValue(item.type)}</span>
                 <span className="text-[10px] text-rmpg-500 shrink-0">{fmtDate(item.created_at)}</span>
               </button>
             ))
@@ -8475,7 +8476,7 @@ function GrokEnrichPanel() {
         <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-rmpg-100">{result.name}</span>
-            <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded-sm text-orange-300">{result.type}</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-orange-500/10 border border-orange-500/30 rounded-sm text-orange-300">{formatEnumValue(result.type)}</span>
           </div>
           {result.description && (
             <div className="text-[10px] text-rmpg-300 leading-relaxed">{result.description}</div>
@@ -8844,7 +8845,7 @@ function N8nPanel() {
                   placeholder="Config JSON or URL..."
                 />
                 {formNodes.length > 1 && (
-                  <button onClick={() => removeNode(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                  <button aria-label="Remove" onClick={() => removeNode(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
                 )}
               </div>
             ))}
@@ -9144,8 +9145,8 @@ function CodeAnalyzePanel() {
   const viewHistoryItem = (item: CodeAnalyzeResult) => { setResult(item); setUrl(item.url); setShowHistory(false); };
 
   const langColors: Record<string, string> = {
-    TypeScript: 'bg-[#888888]', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
-    Go: 'bg-[#aaaaaa]', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
+    TypeScript: 'bg-rmpg-500', JavaScript: 'bg-yellow-400', Python: 'bg-green-400',
+    Go: 'bg-rmpg-300', Java: 'bg-red-400', Rust: 'bg-orange-400', Ruby: 'bg-rose-400',
   };
 
   return (
@@ -9411,7 +9412,7 @@ function SkillGenPanel() {
 function SdksPanel() {
   const sdks = [
     { name: 'Python', pkg: 'firecrawl-py', version: '1.5.0', stars: 79, repo: 'https://github.com/mendableai/firecrawl-py', color: 'bg-green-400' },
-    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-[#aaaaaa]' },
+    { name: 'Go', pkg: 'firecrawl-go', version: '1.2.0', stars: 25, repo: 'https://github.com/mendableai/firecrawl-go', color: 'bg-rmpg-300' },
     { name: 'Java', pkg: 'java-sdk', version: '0.9.0', stars: 16, repo: 'https://github.com/mendableai/firecrawl-java-sdk', color: 'bg-red-400' },
     { name: 'JavaScript', pkg: 'firecrawl-js', version: '1.5.0', stars: 100, repo: 'https://github.com/mendableai/firecrawl-js', color: 'bg-yellow-400' },
     { name: 'CLI', pkg: 'firecrawl-cli', version: '1.3.0', stars: 231, repo: 'https://github.com/mendableai/firecrawl-cli', color: 'bg-purple-400' },
@@ -9608,7 +9609,7 @@ function PipelinesPanel() {
                   placeholder="Config..."
                 />
                 {formSteps.length > 1 && (
-                  <button onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+                  <button aria-label="Remove" onClick={() => removeStep(idx)} className="text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
                 )}
               </div>
             ))}
@@ -9774,7 +9775,7 @@ function ThemePanel() {
             <div className="w-12 h-12 rounded-sm border border-rmpg-600" style={{ backgroundColor: accentColor }} />
             <div className="space-y-1">
               <div className="text-xs font-medium" style={{ color: accentColor }}>Accent Text</div>
-              <div className="text-[10px] px-2 py-0.5 rounded-sm border" style={{ borderColor: accentColor + '80', backgroundColor: accentColor + '1a', color: accentColor }}>
+              <div className="text-[10px] px-2 py-0.5 rounded-sm border" style={{ borderColor: withAlpha(accentColor, '80'), backgroundColor: withAlpha(accentColor, '1a'), color: accentColor }}>
                 Sample Button
               </div>
             </div>
@@ -10204,9 +10205,9 @@ function LeadGenPanel() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-3">
-        <Users size={16} className="text-[#888888]" />
+        <Users size={16} className="text-fg-muted" />
         <h3 className="text-sm font-bold text-rmpg-100 uppercase tracking-wider">Lead Generation</h3>
-        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#888888]/20 text-rmpg-400 font-bold uppercase">Firecrawl</span>
+        <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-rmpg-500/20 text-rmpg-400 font-bold uppercase">Firecrawl</span>
       </div>
 
       {configured === false && (
@@ -10232,13 +10233,13 @@ function LeadGenPanel() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
           placeholder={searchType === 'company' ? 'Company name...' : searchType === 'domain' ? 'example.com' : searchType === 'email' ? 'user@example.com' : 'Person name...'}
-          className="flex-1 px-3 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100 placeholder-[#525252] font-mono focus:outline-none focus:border-[#888888]"
+          className="flex-1 px-3 py-2 bg-surface-sunken border border-border-default rounded-sm text-[11px] text-rmpg-100 placeholder-rmpg-600 font-mono focus:outline-none focus:border-border-strong"
         />
         <button
           type="button"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          className="px-4 py-2 bg-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
+          className="px-4 py-2 bg-rmpg-500 hover:bg-rmpg-600 disabled:opacity-40 rounded-sm text-[11px] font-bold text-rmpg-100 transition-colors flex items-center gap-1.5"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
           Search
@@ -10417,8 +10418,7 @@ function SupportBotPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/support-bots');
       setBots(data || []);
-    } catch { addToast('Failed to load support bots', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load support bots', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadBots(); }, [loadBots]);
@@ -10464,7 +10464,7 @@ function SupportBotPanel() {
 
   return (
     <div className="space-y-3">
-      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-[#888888]" />
+      <PanelTitleBar title="Customer Support Bot" icon={Bot} statusLed="bg-rmpg-500" />
 
       {/* Create Form */}
       <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-3 space-y-2">
@@ -10538,8 +10538,7 @@ function TrendCronPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/trend-crons');
       setCrons(data || []);
-    } catch { addToast('Failed to load trend crons', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load trend crons', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadCrons(); }, [loadCrons]);
@@ -10640,8 +10639,7 @@ function SiteMigratorPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/migrations');
       setMigrations(data || []);
-    } catch { addToast('Failed to load migrations', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load migrations', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadMigrations(); }, [loadMigrations]);
@@ -10707,7 +10705,7 @@ function SiteMigratorPanel() {
               </div>
               <span className="text-[10px] text-rmpg-400">{m.pages_crawled}/{m.pages_total} pages</span>
               <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${m.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : m.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                {(m.status || '').replace(/_/g, ' ')}
+                {toDisplayLabel(m.status || '')}
               </span>
               <span className="text-[9px] text-rmpg-500 shrink-0">{fmtDate(m.created_at)}</span>
               <SmallBtn onClick={() => deleteMigration(m.id)} loading={deletingIds.has(m.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
@@ -10740,8 +10738,7 @@ function CodeRepoPanel() {
     try {
       const data = await apiFetch<any[]>('/firecrawl-tools/code-repos');
       setRepos(data || []);
-    } catch { addToast('Failed to load code repos', 'error'); }
-    setLoading(false);
+    } catch { addToast('Failed to load code repos', 'error'); } finally { setLoading(false); }
   }, [addToast]);
 
   useEffect(() => { loadRepos(); }, [loadRepos]);
@@ -10811,7 +10808,7 @@ function CodeRepoPanel() {
                 <span className="text-[10px] text-rmpg-400">{r.total_lines || 0} lines</span>
                 <span className="text-[10px] text-rmpg-400">{r.issues_found || 0} issues</span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-sm border ${r.status === 'completed' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : r.status === 'failed' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'}`}>
-                  {(r.status || '').replace(/_/g, ' ')}
+                  {toDisplayLabel(r.status || '')}
                 </span>
                 <SmallBtn onClick={() => deleteRepo(r.id)} loading={deletingIds.has(r.id)} variant="danger"><Trash2 className="w-3 h-3" /></SmallBtn>
               </div>
@@ -10892,7 +10889,7 @@ function WorkflowStepIndicator({
         })}
       </div>
       <span className="text-[9px] text-rmpg-500 ml-auto">Step {currentStep + 1}/{template.steps.length}</span>
-      <button onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100 p-0.5"><X className="w-3 h-3" /></button>
+      <button aria-label="Close" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100 p-0.5"><X className="w-3 h-3" /></button>
     </div>
   );
 }
@@ -11108,7 +11105,7 @@ export default function FirecrawlTab() {
             <SmallBtn variant="primary" onClick={() => quickInput.trim() && handleQuickGo(qa.tab)}>
               <Play className="w-2.5 h-2.5" /> Go
             </SmallBtn>
-            <button onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-rmpg-100">
+            <button aria-label="Close" onClick={() => { setQuickAction(null); setQuickInput(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -11140,7 +11137,7 @@ export default function FirecrawlTab() {
               className="w-full bg-rmpg-800 border border-rmpg-600 rounded-sm pl-5 pr-2 py-0.5 text-[10px] text-rmpg-100 placeholder-rmpg-500 focus:outline-none focus:border-orange-500/50"
             />
             {toolSearch && (
-              <button
+              <button aria-label="Close"
                 onClick={() => setToolSearch('')}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-100"
               >

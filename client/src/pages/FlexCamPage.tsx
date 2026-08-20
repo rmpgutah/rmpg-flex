@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Clock, Download, FileText, Lock, Play, RefreshCw, Shield, Video, Wrench,
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -32,9 +32,9 @@ interface CourtPackageResult { payloadHash: string; signedAt: string; }
 
 function fmtTs(ms: number, short = false): string {
   return new Date(ms).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric',
     ...(short ? {} : { hour: 'numeric', minute: '2-digit', hour12: true }),
-    timeZone: 'America/Denver',
   });
 }
 
@@ -44,7 +44,7 @@ function statusBadge(r: Req): { bg: string; ring: string; text: string; label: s
     case 'complete':   return { bg: 'bg-emerald-900/30', ring: 'border-emerald-700/50', text: 'text-emerald-400', label: 'READY',        Icon: CheckCircle2 };
     case 'fulfilling': return { bg: 'bg-blue-900/30',   ring: 'border-blue-700/50',   text: 'text-blue-400',    label: 'DOWNLOADING',  Icon: Clock };
     case 'partial':    return { bg: 'bg-amber-900/30',  ring: 'border-amber-700/50',  text: 'text-amber-400',   label: 'PARTIAL',      Icon: RefreshCw };
-    default:           return { bg: 'bg-surface-raised', ring: 'border-border-default', text: 'text-rmpg-400',  label: r.status.toUpperCase(), Icon: Video };
+    default:           return { bg: 'bg-surface-raised', ring: 'border-border-default', text: 'text-rmpg-400',  label: (r.status ?? '').toUpperCase() || 'UNKNOWN', Icon: Video };
   }
 }
 
@@ -296,7 +296,7 @@ export default function FlexCamPage() {
         <button onClick={() => fetchReqs()} disabled={loading}
           className="flex items-center gap-1 text-[9px] text-rmpg-400 hover:text-brand-400 transition-colors disabled:opacity-40 px-2 py-1 border border-border-default">
           <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          {lastFetch ? new Date(lastFetch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'REFRESH'}
+          {lastFetch ? new Date(lastFetch).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : 'REFRESH'} // new-date-ok
         </button>
       </div>
 
@@ -494,7 +494,7 @@ export default function FlexCamPage() {
                           {entry.reason && <span className="ml-1 text-rmpg-500 text-[9px]">({entry.reason})</span>}
                         </span>
                         <span className="text-[9px] text-rmpg-600 flex-shrink-0 font-mono">
-                          {parseTimestamp(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
+                          {parseTimestamp(entry.created_at).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}
                         </span>
                       </div>
                     ))

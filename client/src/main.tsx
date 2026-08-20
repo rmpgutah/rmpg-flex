@@ -8,7 +8,7 @@ import './utils/jsPolyfills';
 import './utils/enforceMountainTime';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 import App from './App';
 import './index.css';
 import './styles/spillman.css';
@@ -25,16 +25,37 @@ setupNativeAppShell();
 // Spillman-console key ticks on interactive clicks (document-level,
 // capture phase — works on login page and across all React routes)
 initUiClickSounds();
-// Decode the sampled console sounds up front so the first click/chime/login
-// plays the actual asset instead of the synth fallback (decode works while
-// the AudioContext is still gesture-suspended; playback resumes on gesture).
-// Beyond the UI five, warm the high-traffic dispatch library tones; the
-// rest of the library lazy-loads on first play (synth covers that play).
-preloadSoundAssets();
-preloadSoundAssets([
-  'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
-  'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',
-]);
+// Decode the sampled console sounds off the critical path. These were three
+// top-level calls, which fetched and WebAudio-decoded 22 assets (from a 1.3 MB
+// public/sounds/) before React rendered — pure contention with first paint.
+// Nothing is lost by deferring: the AudioContext is gesture-suspended anyway,
+// so no sound can play until the user interacts, and decode is fast once it
+// runs. uiClickSounds is sample-only with no oscillator fallback, so an
+// undecoded key plays SILENCE — that is why the full list is preloaded rather
+// than left to lazy-load on first play.
+{
+  const ric = window.requestIdleCallback;
+  const schedule: (cb: () => void) => unknown = ric
+    ? (cb: () => void) => ric(cb, { timeout: 3000 })
+    : (cb: () => void) => window.setTimeout(cb, 1200);
+  schedule(() => {
+    preloadSoundAssets();
+    preloadSoundAssets(['navigate', 'ui_open', 'ui_close', 'ui_error']);
+    preloadSoundAssets([
+      // Core dispatch — fired before any user interaction in a busy shift
+      'dispatch_bell', 'info', 'caution', 'warning', 'alert', 'alarm',
+      'descending', 'p1_alert', 'emergency_three',
+      // Status chirps — fired on every unit status change
+      'chirp', 'double_chirp', 'enroute_chirp', 'onscene_chirp', 'cleared_chirp',
+      // Radio / comms
+      'key_up', 'key_out', 'roger', 'data_chirp',
+      // Error / NACK
+      'error', 'bonk',
+      // Session
+      'login_ok', 'logoff',
+    ]);
+  });
+}
 // Ctrl+Alt+D fail-safe diagnostic — captures UI trap state when the
 // app freezes (clicks/typing dead). Installed at the document level
 // so it fires even if React/focus traps are stuck.
@@ -58,6 +79,7 @@ initTabScrollbars();
 // and trigger the same one-time bounded reload — operators stop having to
 // hard-refresh after every deploy.
 import { isChunkLoadError, tryReloadForChunkFailure } from './utils/chunkRetry';
+import { ApiBaseProvider } from './hooks/useApiBase';
 window.addEventListener('unhandledrejection', (event) => {
   if (!isChunkLoadError(event.reason)) return;
   // tryReloadForChunkFailure honors a 30s window: a second failure inside it
@@ -79,8 +101,10 @@ if (preSplash) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ApiBaseProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ApiBaseProvider>
   </React.StrictMode>
 );

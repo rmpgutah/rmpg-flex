@@ -56,6 +56,7 @@ import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import tiles from './routes/tiles';
+import osmOverrides from './routes/osmOverrides';
 import geo from './routes/geo';
 import admin from './routes/admin';
 import animalControl from './routes/animalControl';
@@ -64,6 +65,7 @@ import pawn from './routes/pawn';
 import tips from './routes/tips';
 import crashReports from './routes/crashReports';
 import adminDev from './routes/adminDev';
+import adminMapData from './routes/adminMapData';
 import emailRoute from './routes/email';
 import emailOauthCallback from './routes/emailOauthCallback';
 import oidc from './routes/oidc';
@@ -83,6 +85,7 @@ import intelAi from './routes/intelAi';
 import { intelReports, intelSources } from './routes/intel/development';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
+import kioskLinux from './routes/kioskLinux';
 import offline from './routes/offline';
 import qa from './routes/qa';
 import risk from './routes/risk';
@@ -113,25 +116,35 @@ import arrests from './routes/arrests';
 import assessor from './routes/assessor';
 import cases from './routes/cases';
 import accreditation from './routes/accreditation';
+import accreditations from './routes/accreditations';
 import alarms from './routes/alarms';
 import alpr from './routes/alpr';
 import analytics from './routes/analytics';
+import automationRules from './routes/automationRules';
+import carxe from './routes/carxe';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
+import traccar from './routes/traccar';
 import clients from './routes/clients';
 import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
 import crisisResponse from './routes/crisisResponse';
+import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import fleetio from './routes/fleetio';
+import driverPerformance from './routes/driverPerformance';
+import legalDataHunter from './routes/legalDataHunter';
+import webBrowser from './routes/webBrowser';
 import documentFolders from './routes/documents/folders';
 import documentsLibrary from './routes/documents/library';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
+import tesseractOcr from './routes/tesseractOcr';
+import tesseractTraining from './routes/tesseractTraining';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
@@ -147,6 +160,7 @@ import scheduling from './routes/scheduling';
 import scheduler from './routes/scheduler';
 import shiftBriefings from './routes/shiftBriefings';
 import serve from './routes/serve';
+import sync from './routes/sync';
 import serveDashboard from './routes/serveDashboard';
 import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
@@ -174,6 +188,8 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import serveManagerRoutes from './routes/serveManagerRoutes';
+import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
+import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
 import voicePersona from './routes/voicePersona';
 import mobileCfs, { cfsQr } from './routes/mobileCfs';
@@ -181,6 +197,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
 import codeEnforcement from './routes/codeEnforcement';
@@ -201,6 +218,7 @@ import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
+import dispatchDataCapture from './routes/dispatch/dataCapture';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -212,11 +230,13 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+import propertyPhotos from './routes/property/photos';
 import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
-import downloads from './routes/downloads';
+import downloads, { updates, downloadFiles } from './routes/downloads';
+import osUpdates from './routes/osUpdates';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
@@ -225,6 +245,7 @@ import offenderRegistry from './routes/offenderRegistry';
 import uploads from './routes/uploads';
 import companyDocuments from './routes/companyDocuments';
 import wallet from './routes/wallet';
+import systemRoutes from './routes/system';
 import jailRoster from './routes/jailRoster';
 // Full-trip dashcam footage (FlexCamPage). Handler existed but the mount was
 // dropped in a squash merge, 404ing the entire page. NOTE: this comment
@@ -236,6 +257,7 @@ import flexcam from './routes/flexcam';
 import coloradoDoc from './routes/coloradoDoc';
 // Server-side Mapbox proxy backing client/src/utils/mapboxServices.ts.
 import mapbox from './routes/mapbox';
+import optimizationV2 from './routes/mapboxOptimizationV2';
 // Mapbox telemetry sink — Mapbox SDK posts usage events to events.mapbox.com,
 // which some operator networks block; redirect those POSTs to a same-origin
 // 204 to kill the console spam without affecting map functionality.
@@ -245,6 +267,9 @@ import drivingEvents from './routes/drivingEvents';
 // Admin database repair — rebuild corrupt FTS tables (persons_fts, cases_fts)
 // that trigger SQLITE_CORRUPT_VTAB on every person/case write.
 import adminRepair from './routes/admin/repair';
+import crypto from './routes/crypto';
+import browserSearch from './routes/browserSearch';
+import enrichment from './routes/enrichment';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -283,9 +308,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
-    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC). Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
+    note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC): /dialer/check (identifier-first SSO probe, IP-rate-limited boolean), /dialer/login, /dialer/callback. Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
+  { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
+    note: "RMPG's internal edit layer over the OSM overlays, keyed by OSM element id. Auth REQUIRED — unlike /api/tiles (public reference data), these are internal corrections attributable to a named user." },
   { prefix: '/api/geo', router: geo, auth: 'public' },
 
   // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
@@ -293,6 +320,19 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // a personal phone scanning a QR shown on the desktop/MDT ShiftCard.
   { prefix: '/api/inspections', router: inspections, auth: 'public',
     note: 'Token-authed: resolves the open time_entry whose qr_token matches' },
+
+  // Recipient-facing Receipt of Service + Court Document Release
+  // (/m/serve-receipt/<token>). MUST be public: the signer is a member of
+  // the public — usually the defendant — and will never have a session.
+  // The single-use token from serve_receipt_tokens IS the credential and
+  // is verified inside the route, same posture as /api/inspections and
+  // /api/mobile. Safe alongside the auth-required '/api/serve' mount:
+  // index.ts applies auth to the exact prefix and `${prefix}/*` only, and
+  // '/api/serve-receipt' matches neither.
+  { prefix: '/api/serve-receipt', router: serveReceipt, auth: 'public',
+    note: 'Token-authed recipient signature capture; token burned on signature. Migration 0207.' },
+  { prefix: '/api/verify', router: serveQrScan, auth: 'public',
+    note: 'QR code scan handler — subject-facing; logs scan, notifies assigned officer, no auth required. Migration 0247.' },
 
   // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
   // own CFS). Auth-gated like the rest of the app; /local reads our DB.
@@ -362,6 +402,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Dev panel: feature flags (KV-backed GET/PUT), mock GPS injection + call seed. Admin role enforced per-route; GET /feature-flags is readable by any authed user.' },
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/admin/map-data', router: adminMapData, auth: 'required' },
   { prefix: '/api/admin/link-options', router: linkOptionsAdmin, auth: 'required' },
   { prefix: '/api/email', router: emailRoute, auth: 'required',
     note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
@@ -430,13 +471,20 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
     note: 'Admin Cloudflare platform integration — account telemetry (D1/R2/KV/Workers) + cache purge via an ADMIN-CONFIGURED least-privilege token in system_config (cf_api_token, never hardcoded).' },
+  { prefix: '/api/feature-flags', router: featureFlags, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/flexcam', router: flexcam, auth: 'required',
     note: 'Full-trip dashcam footage backing FlexCamPage/FlexCamFootagePage — the mount was described as fixed in a comment above the import but never actually landed in this array until now (2026-07-02).' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
+  { prefix: '/api/driver-performance', router: driverPerformance, auth: 'required',
+    note: 'Supervisor-only driver performance: ranked roster, officer detail, PDF export, admin recompute. Scores from driver_performance_daily snapshots. Distinct from /api/fleet/scorecard, which is vehicle-fleet health.' },
   { prefix: '/api/fleetio', router: fleetio, auth: 'required',
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
+  { prefix: '/api/carxe', router: carxe, auth: 'required',
+    note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
+  { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
+    note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
@@ -499,6 +547,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // the queue + stats + route + attempt endpoints.
   { prefix: '/api/process-server', router: serve, auth: 'required',
     note: 'Alias of /api/serve for the ServePage URL contract (legacy /api/process-server/* proxy) — same router instance' },
+  { prefix: '/api/serve-receipts', router: serveReceiptAdmin, auth: 'required',
+    note: 'Officer side of the recipient receipt: mint/reuse the printed QR token, read signed receipts, supervisor void. Public signing surface is /api/serve-receipt (singular).' },
   { prefix: '/api/serve-dashboard', router: serveDashboard, auth: 'required',
     note: 'Admin/manager/supervisor analytics & bulk-ops for the process-service queue' },
   { prefix: '/api/serve-queue', router: serveQueueEnhanced, auth: 'required',
@@ -515,6 +565,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
+  { prefix: '/api/enrichment', router: enrichment, auth: 'required',
+    note: 'Open-source skip-trace enrichment: NSOPW, SL Assessor, OpenSanctions, USPS, OpenCorporates, Numverify. Hard-lock DOB±1yr + secondary anchor. Results cached 24h in enrichment_cache.' },
   { prefix: '/api/tips', router: tips, auth: 'required',
     note: 'Detective-facing investigative tip queue (distinct from the anonymous /api/community tips table). TipsPage was a fully-built client page with zero matching route (404 sweep 2026-07-02). Migration 0167.' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
@@ -526,12 +578,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
   { prefix: '/api/accreditation', router: accreditation, auth: 'required',
     note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
+  { prefix: '/api/accreditations', router: accreditations, auth: 'required',
+    note: 'AccreditationsPage.tsx backend (officer certification tracking, distinct from /api/accreditation standards and /api/training certs) — the page 404d on every call since it shipped; never mounted before.' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/alpr', router: alpr, auth: 'required',
     note: 'ALPR plate read on Cloudflare Workers AI (free, no external key) → intel plate log' },
   { prefix: '/api/analytics', router: analytics, auth: 'required',
     note: 'Imported but never mounted (dead code since import) — AnalyticsPage 404d on every /analytics/{health,query,events,alpr/*} call.' },
+  { prefix: '/api/automation-rules', router: automationRules, auth: 'required',
+    note: 'Smart automation rules CRUD: list/create/update/delete rules + GET /firings (admin/supervisor). Officers restricted to notify_officer action with safe triggers; admins manage global rules.' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/assessor', router: assessor, auth: 'required',
@@ -565,10 +621,14 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
   { prefix: '/api/knowledge-base', router: knowledgeBase, auth: 'required',
     note: 'System-wide unified search across all record types by visible identifier/name' },
+  { prefix: '/api/kiosk-linux', router: kioskLinux, auth: 'public',
+    note: 'Kiosk Linux device registry (sub-project 4): registration + fleet tracking only, no OTA delivery. auth:"public" at the registry level because /devices/:id/checkin and /devices/:id/upload use a per-device bearer token, not a JWT — admin routes (/devices GET/POST, /devices/:id DELETE) apply authMiddleware+requireRole per-route inside the file instead. 200 {ok:false,code:"not_configured"} when KIOSK_DB/KIOSK_DEVICES are unset.' },
   { prefix: '/api/qa', router: qa, auth: 'required',
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',
     note: 'Risk management: assessments, safety inspections, insurance claims' },
+  { prefix: '/api/sync', router: sync, auth: 'required',
+    note: 'FZ-55 secondary server sync: GET /queue (pending/failed/delivered counts), GET /conflicts (paginated audit log, ?table= ?page= ?limit=), POST /replay (trigger queue replay), POST /enqueue (record missed cloud write). Admin/manager only — enforced per-route inside sync.ts.' },
   { prefix: '/api/tasks', router: tasks, auth: 'required',
     note: 'Task/work management: assignments, comments, linked-entity tasks' },
   { prefix: '/api/training', router: training, auth: 'required',
@@ -579,6 +639,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Authored documents (Phase 2): rich-body, revisions, finalize-lock, call/incident links. Distinct from /api/documents (file folders).' },
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
+  { prefix: '/api/tesseract-ocr', router: tesseractOcr, auth: 'required' },
+  { prefix: '/api/tesseract-training', router: tesseractTraining, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },
   { prefix: '/api/tts', router: tts, auth: 'required' },
 
@@ -586,6 +648,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+  { prefix: '/api/property-photos', router: propertyPhotos, auth: 'required' },
 
   // ── Field photos (mobile camera portal /field-camera) ───────
   // Stamped evidence photos: overlay burned client-side, R2-backed.
@@ -627,6 +690,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // matrix/optimization/map-matching/tilequery/static-map/token-status). The
   // /api/mapbox prefix was never mounted, so every helper 404'd. 503s gracefully
   // when MAPBOX_ACCESS_TOKEN is unset. Mounted before the bare /api routers.
+  { prefix: '/api/mapbox/optimization-v2', router: optimizationV2, auth: 'required',
+    note: 'Mapbox Optimization V2 async engine. POST /submit builds + submits a V2 problem; GET /:jobId polls + writes back to serve_routes on completion; GET / lists jobs. Supervisor+ to submit; any authed role to poll. 200 {skipped:true} when token unset.' },
   { prefix: '/api/mapbox', router: mapbox, auth: 'required',
     note: 'Server-side Mapbox proxy; 503 when MAPBOX_ACCESS_TOKEN secret is unset' },
 
@@ -637,13 +702,30 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // level — `required` would make the auth loop register
   // `app.use('/api/*', authMiddleware)`, blanket-blocking every
   // /api/* path including /api/auth/login. Auth is enforced INSIDE
-  // each router via `router.use('*', authMiddleware)`.
+  // each router, scoped to the literal sub-paths it owns (e.g.
+  // `router.use('/geocode/*', authMiddleware)`) — NOT `router.use('*',
+  // ...)`. A bare `'*'` here merges through `.route()` into a genuinely
+  // global `/api/*` pattern on the PARENT app (same blanket-block this
+  // comment warns about, just from a different call site), which
+  // 401'd every OTHER public bare-/api router registered after it
+  // (mobileCfs, downloads, stubs' diagnostics/updates) until fixed
+  // 2026-07-18 — see the in-router comments in geocode.ts/shiftPlans.ts.
   { prefix: '/api', router: geocode, auth: 'public',
     note: 'Serves /api/geocode/* and /api/integrations/mapbox/client-token. See src/routes/geocode.ts for the in-router auth setup.' },
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
   { prefix: '/api', router: downloads, auth: 'public',
-    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page. Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
+    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page (no auth of its own — genuinely open).' },
+  // OS update feed. /os/manifest must be PUBLIC: a terminal polls it before any
+  // user has signed in, and often with no user at all. See src/routes/osUpdates.ts
+  // for the in-router auth setup — /os/promote is gated there, because gating it
+  // here would blanket-block every /api/* route (incident #627).
+  { prefix: '/api', router: osUpdates, auth: 'public',
+    note: 'GET /api/os/manifest?channel=stable|staging returns a flat key=value manifest the on-device rmpg-update agent parses with BusyBox grep/cut (no JSON parser in the image). GET /api/os/channels reports what is published where. POST /api/os/promote copies staging->stable and is the deliberate gate before the fleet installs anything — it requires the exact version to be named, so publishing a build never auto-deploys it. Promote applies authMiddleware inside the router (mounted public here); before 2026-07-25 nothing populated c.get(\'user\'), so its admin/manager check rejected EVERY caller and the gate could never be opened.' },
+  { prefix: '/downloads', router: downloadFiles, auth: 'public',
+    note: 'Bare (no /api prefix) — serves the actual installer/OS files out of the DOWNLOADS R2 bucket at /downloads/<filename>, which is what every button on the public download page links to. Was NEVER mounted before 2026-07-25, so every download returned the SPA index.html (HTTP 200, 11,630 bytes of HTML) under the artifact filename; client/public/_redirects tried to proxy it with a status-200 rule, which Cloudflare Pages does not support (redirects only, no external rewrites).' },
+  { prefix: '/updates', router: updates, auth: 'public',
+    note: 'Bare (no /api prefix) — electron-updater\'s generic provider (desktop/updater.js) hits <feedUrl>/latest.yml, /latest-mac.yml, and the installer filename the manifest references, all relative to https://api.rmpgutah.us/updates/. Was never mounted anywhere before 2026-07-22, so the whole desktop auto-update feed 404\'d despite R2 uploads succeeding.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants/scrapers', router: scrapers, auth: 'required',
@@ -686,6 +768,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
+  { prefix: '/api/web-browser', router: webBrowser, auth: 'required',
+    note: 'Web Company Browser: POST /session issues a session id (blocked for client_viewer/contract_manager) before a WebBrowserSessionDO + Browser Rendering instance is created. The /api/web-browser-ws WebSocket upgrade is handled outside Hono in the top-level fetch() in src/index.ts (mirrors /api/voice-ws).' },
   // NB: do NOT re-mount stubs at /api/email here. The full email router
   // (line ~497 below) supersedes everything stubs ever served on this
   // prefix. Mounting stubs first would let the integrations-tab `/status`
@@ -697,7 +781,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/dispatch/capture', router: dispatchDataCapture, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
+  { prefix: '/api/traccar', router: traccar, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
   { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
@@ -712,6 +798,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
@@ -730,4 +817,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Officer Wallet ID — digital badge / QR-verifiable ID. Auth required on every
   // path (verify is RMPG-only); admin/manager gating is applied per-route inside.
   { prefix: '/api/wallet', router: wallet, auth: 'required' },
+
+  // FlexOS system routes: remote lock (KV-backed), active-call polling,
+  // unit status read/write. Used by the FlexOS desktop system context.
+  { prefix: '/api/system', router: systemRoutes, auth: 'required' },
+
+  // Post-quantum crypto admin — key material & sealing/signing (admin/manager
+  // gated inside the route). Was never wired into routesConfig despite its
+  // header comment claiming so; all /api/crypto/* requests were silently 404ing.
+  { prefix: '/api/crypto', router: crypto, auth: 'required' },
+
+  // Branded browser search proxy — DuckDuckGo Instant Answer proxied server-side
+  // so no third-party domain appears in headless Chrome navigations. Public: no
+  // auth header on the browser's fetch. Same 404 drop as crypto above.
+  { prefix: '/api/browser-search', router: browserSearch, auth: 'public' },
 ];

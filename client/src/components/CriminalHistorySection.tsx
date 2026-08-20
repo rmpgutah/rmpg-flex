@@ -93,7 +93,7 @@ const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
 
@@ -219,7 +219,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
             Criminal History
           </h3>
           {!expanded && records.length > 0 && (
-            <span className="text-[10px] text-rmpg-500 ml-1">({records.length})</span>
+            <span className="text-[10px] text-fg-muted ml-1">({records.length})</span>
           )}
         </button>
         <div className="flex items-center gap-2">
@@ -261,7 +261,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 <span className="text-[10px] text-brand-400 uppercase font-bold tracking-wider">
                   {editingId ? 'Edit Record' : 'Add Criminal Record'}
                 </span>
-                <button type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-rmpg-100">
+                <button aria-label="Close" type="button" onClick={() => { setShowForm(false); setEditingId(null); }} className="text-rmpg-400 hover:text-rmpg-100">
                   <X className="w-3 h-3" />
                 </button>
               </div>
@@ -430,7 +430,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
           {/* Records List */}
           {!loading && records.length === 0 && !showForm && (
-            <p className="text-[11px] text-rmpg-500 py-1">No criminal history records on file</p>
+            <p className="text-[11px] text-fg-muted py-1">No criminal history records on file</p>
           )}
 
           {!loading && records.length > 0 && (
@@ -470,7 +470,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-3 text-[10px] text-rmpg-500 flex-wrap">
+                  <div className="flex items-center gap-3 text-[10px] text-fg-muted flex-wrap">
                     {rec.statute && <span className="font-mono">{rec.statute}</span>}
                     {rec.case_number && <span>Case: {rec.case_number}</span>}
                     {rec.agency && <span>{rec.agency}</span>}
@@ -480,18 +480,18 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                     <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
                       {rec.disposition && (
                         <span>
-                          <span className="text-rmpg-500">Disp:</span>{' '}
+                          <span className="text-fg-muted">Disp:</span>{' '}
                           <span className={rec.disposition.toLowerCase().includes('guilty') || rec.disposition.toLowerCase().includes('convicted') ? 'text-red-400 font-semibold' : rec.disposition.toLowerCase().includes('dismiss') ? 'text-green-400' : ''}>
                             {toDisplayLabel(rec.disposition || '')}
                           </span>
-                          {rec.disposition_date && <span className="text-rmpg-500 ml-1">({formatDate(rec.disposition_date)})</span>}
+                          {rec.disposition_date && <span className="text-fg-muted ml-1">({formatDate(rec.disposition_date)})</span>}
                         </span>
                       )}
-                      {rec.sentence && <span><span className="text-rmpg-500">Sentence:</span> {rec.sentence}</span>}
+                      {rec.sentence && <span><span className="text-fg-muted">Sentence:</span> {rec.sentence}</span>}
                     </div>
                   )}
                   {rec.source && (
-                    <div className="text-[9px] text-rmpg-600">Source: {rec.source}</div>
+                    <div className="text-[9px] text-fg-muted">Source: {rec.source}</div>
                   )}
                 </div>
               ))}

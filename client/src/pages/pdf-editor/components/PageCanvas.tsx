@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, cloneElement } from 'react';
 import { openAndRenderPage, RmpgPdfDocument } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, MeasureCalibration, PageCrop, PageMeta, Point, StampLabel, StickyCategory, STICKY_CATEGORIES, Tool, DEFAULT_RENDER_SCALE } from '../types';
+import { formatEnumValue } from '../../../utils/formatters';
 
 interface Props {
   pdfBytes: Uint8Array | null;
@@ -288,7 +289,11 @@ export default function PageCanvas(props: Props) {
     }
     if (tool === 'stamp') {
       const w = 220; const h = 64;
-      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: 'var(--rmpg-500)' });
+      // Literal hex, matching this file's own stamp default below: annotation
+      // colors are consumed by sinks that cannot resolve var() — the PDF writer
+      // takes numeric rgb, and the properties-panel <input type="color"> only
+      // accepts #rrggbb (a CSS-var string there silently coerces to black).
+      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
       return;
     }
     if (tool === 'check' || tool === 'cross') {
@@ -606,10 +611,10 @@ export default function PageCanvas(props: Props) {
             <>
               <div className="absolute inset-0 pointer-events-none" style={{
                 background: `linear-gradient(transparent 0,transparent 0)`,
-                boxShadow: `inset 0 0 0 9999px rgba(0,0,0,0.55)`,
+                boxShadow: `inset 0 0 0 9999px rgba(0 0 0 / 0.55)`,
                 clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${pageMeta.crop.y * zoom}px, ${pageMeta.crop.x * zoom}px ${pageMeta.crop.y * zoom}px, ${pageMeta.crop.x * zoom}px ${(pageMeta.crop.y + pageMeta.crop.h) * zoom}px, ${(pageMeta.crop.x + pageMeta.crop.w) * zoom}px ${(pageMeta.crop.y + pageMeta.crop.h) * zoom}px, ${(pageMeta.crop.x + pageMeta.crop.w) * zoom}px ${pageMeta.crop.y * zoom}px, 0 ${pageMeta.crop.y * zoom}px)`,
               }} />
-              <div className="absolute pointer-events-none border border-[#d4a017]" style={{
+              <div className="absolute pointer-events-none border [border-color:var(--field-label-color)]" style={{
                 left: pageMeta.crop.x * zoom,
                 top: pageMeta.crop.y * zoom,
                 width: pageMeta.crop.w * zoom,
@@ -708,7 +713,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         style={{ ...baseStyle, background: whiteOut ? '#fff' : '#000', border: whiteOut ? '1px solid #888' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         {ann.reason && (
           <span style={{ color: whiteOut ? '#000' : '#fff', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(7, Math.min(ann.h * zoom * 0.5, 11)), letterSpacing: '0.02em', whiteSpace: 'nowrap', userSelect: 'none', padding: '0 2px' }}>
-            {ann.reason}
+            {formatEnumValue(ann.reason)}
           </span>
         )}
       </div>
@@ -811,7 +816,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     const ink = ann.color ?? cat?.ink ?? '#0a0a0a';
     inner = (
       <div onPointerDown={onPointerDown} title={cat ? `${cat.label}: ${ann.text}` : ann.text}
-        style={{ ...baseStyle, background: paper, color: ink, border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0,0,0,0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
+        style={{ ...baseStyle, background: paper, color: ink, border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0 0 0 / 0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
         {cat && (
           <span aria-hidden="true" style={{ position: 'absolute', top: 1, right: 3, fontWeight: 700, fontSize: Math.max(9, ann.h * zoom * 0.16), color: ink, opacity: 0.7 }}>{cat.glyph}</span>
         )}
@@ -843,7 +848,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     const s = Math.min(ann.w, ann.h) * zoom;
     inner = (
       <div onPointerDown={onPointerDown} title={`Checkbox: ${ann.fieldName}`}
-        style={{ ...baseStyle, width: s, height: s, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d4a017', fontSize: s * 0.7, userSelect: 'none' }}>
+        style={{ ...baseStyle, width: s, height: s, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--field-label-color)', fontSize: s * 0.7, userSelect: 'none' }}>
         {ann.defaultChecked ? '✓' : ''}
       </div>
     );
@@ -852,7 +857,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
       <div onPointerDown={onPointerDown} title={`Dropdown: ${ann.fieldName} (${(ann.options ?? []).join(', ')})`}
         style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ann.defaultValue || ann.label || ann.fieldName}</span>
-        <span aria-hidden="true" style={{ color: '#d4a017' }}>▾</span>
+        <span aria-hidden="true" style={{ color: 'var(--field-label-color)' }}>▾</span>
       </div>
     );
   } else if (ann.type === 'formRadio') {
@@ -864,7 +869,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         style={{ ...baseStyle, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-around', padding: '1px 3px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: fs, color: '#999', userSelect: 'none', overflow: 'hidden' }}>
         {opts.map((o, i) => (
           <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
-            <span style={{ color: '#d4a017' }}>{ann.defaultValue === o ? '◉' : '○'}</span>{o}
+            <span style={{ color: 'var(--field-label-color)' }}>{ann.defaultValue === o ? '◉' : '○'}</span>{o}
           </span>
         ))}
       </div>
@@ -874,7 +879,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
       <div onPointerDown={onPointerDown} title={`Date field: ${ann.fieldName}`}
         style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
         <span>{ann.defaultValue || 'MM/DD/YYYY'}</span>
-        <span aria-hidden="true" style={{ color: '#d4a017' }}>📅</span>
+        <span aria-hidden="true" style={{ color: 'var(--field-label-color)' }}>📅</span>
       </div>
     );
   }

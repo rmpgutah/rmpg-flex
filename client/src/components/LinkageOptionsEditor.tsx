@@ -76,7 +76,7 @@ export default function LinkageOptionsEditor() {
           {catRows.map((r) => (
             <tr key={r.id} className="border-t border-rmpg-700">
               <td className="py-[2px]"><input className="input-dark text-xs w-full" defaultValue={r.label} onBlur={(e) => e.target.value !== r.label && patch(r.id, { label: e.target.value })} /></td>
-              <td className="text-rmpg-500 font-mono text-[10px]">{r.value}{r.is_default ? '' : ' *'}</td>
+              <td className="text-fg-muted font-mono text-[10px]">{r.value}{r.is_default ? '' : ' *'}</td>
               <td className="text-center"><input type="number" className="input-dark text-xs w-14" defaultValue={r.sort_order} onBlur={(e) => Number(e.target.value) !== r.sort_order && patch(r.id, { sort_order: Number(e.target.value) })} /></td>
               <td className="text-center"><input type="checkbox" checked={!!r.is_active} onChange={(e) => patch(r.id, { is_active: e.target.checked ? 1 : 0 })} /></td>
               <td className="text-center"><button onClick={() => remove(r.id)} className="text-red-500 hover:text-red-300" title={r.is_default ? 'Hide' : 'Delete'} aria-label={r.is_default ? 'Hide option' : 'Delete option'}>&times;</button></td>
@@ -89,7 +89,7 @@ export default function LinkageOptionsEditor() {
         <div><label className="text-[9px] text-brand-gold-500">Value (slug)</label><input className="input-dark text-xs" value={newValue} onChange={(e) => setNewValue(e.target.value)} placeholder="co_signer" /></div>
         <button onClick={add} className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase text-brand-400 bg-brand-900/30 border border-brand-700/40"><Plus className="w-3 h-3" /> Add</button>
       </div>
-      <p className="text-[9px] text-rmpg-500">* = custom (hard-deletable). Seeded defaults are hidden (uncheck Active), not deleted.</p>
+      <p className="text-[9px] text-fg-muted">* = custom (hard-deletable). Seeded defaults are hidden (uncheck Active), not deleted.</p>
     </div>
   );
 }

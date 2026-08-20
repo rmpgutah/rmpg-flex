@@ -19,6 +19,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
+import { withAlpha } from '../../utils/withAlpha';
 interface RawCall {
   id: number;
   call_number: string;
@@ -43,11 +44,11 @@ interface RawCall {
   unit_call_signs?: string | null;
 }
 
-const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
+const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: 'var(--text-muted)' };
 
 const STATUS_COLOR: Record<string, string> = {
-  pending: '#888888', open: '#888888', dispatched: '#f59e0b', enroute: '#f59e0b',
-  onscene: '#ef4444', cleared: '#22c55e', closed: '#6b7280', cancelled: '#6b7280', archived: '#4b5563',
+  pending: 'var(--text-muted)', open: 'var(--text-muted)', dispatched: 'var(--sev-warn)', enroute: 'var(--sev-warn)',
+  onscene: 'var(--sev-critical)', cleared: 'var(--sev-ok)', closed: 'var(--text-muted)', cancelled: 'var(--text-muted)', archived: 'var(--text-muted)',
 };
 
 const WINDOWS = [
@@ -87,14 +88,14 @@ function fmtHM(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(t)) return null;
-  return new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false }); // new-date-ok
 }
 
 function fmtDateShort(iso: string | null | undefined): string {
   if (!iso) return '—';
   const t = Date.parse(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(t)) return '—';
-  return new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return new Date(t).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }); // new-date-ok
 }
 
 function fmtDurSec(s: number | null | undefined): string | null {
@@ -213,9 +214,9 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
               className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide border"
               style={{
                 borderRadius: 2,
-                color: winKey === w.key ? '#0a0a0a' : 'var(--rmpg-400)',
-                background: winKey === w.key ? '#d4a017' : 'transparent',
-                borderColor: winKey === w.key ? '#d4a017' : '#2e2e2e',
+                color: winKey === w.key ? 'black' : 'var(--text-secondary)',
+                background: winKey === w.key ? 'var(--brand-gold)' : 'transparent',
+                borderColor: winKey === w.key ? 'var(--brand-gold)' : 'var(--border-subtle)',
               }}
             >
               {w.label}
@@ -271,15 +272,15 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
             <div key={c.id} className="bg-surface-raised/40 border border-rmpg-800 px-2 py-1.5" style={{ borderRadius: 2 }}>
               {/* top line */}
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#888' }} />
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: PRIO_COLOR[c.priority] || 'var(--text-muted)' }} />
                 <span className="text-[11px] font-mono font-bold text-rmpg-100 shrink-0">{c.call_number}</span>
                 {allUnits && meaningful(c.unit_call_signs) && (
-                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: '#d4a017', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
+                  <span className="text-[8px] font-mono font-bold px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: 'var(--brand-gold)', background: 'rgba(212,160,23,0.12)' }} title="Assigned unit(s)">
                     {c.unit_call_signs}
                   </span>
                 )}
-                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{c.incident_type?.replace(/_/g, ' ')}</span>
-                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || '#888', background: `${STATUS_COLOR[c.status] || '#888'}22` }}>{formatEnumValue(c.status)}</span>
+                <span className="text-[10px] text-rmpg-300 min-w-0 truncate flex-1" title={c.incident_type}>{toDisplayLabel(c.incident_type)}</span>
+                <span className="text-[8px] font-bold uppercase px-1 py-0.5 shrink-0" style={{ borderRadius: 2, color: STATUS_COLOR[c.status] || 'var(--text-muted)', background: withAlpha(STATUS_COLOR[c.status] || 'var(--text-muted)', '22') }}>{formatEnumValue(c.status)}</span>
                 <span className="text-[8px] font-mono text-rmpg-600 shrink-0">{fmtDateShort(c.dispatched_at || c.created_at)}</span>
               </div>
 
@@ -288,8 +289,8 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                 {stages.map((s, i) => (
                   <div key={s.k} className="flex items-center flex-1 min-w-0">
                     <div className="flex flex-col items-center flex-1 min-w-0">
-                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? '#d4a017' : 'var(--rmpg-700)' }}>{s.k}</span>
-                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--rmpg-300)' : 'var(--rmpg-700)' }}>{s.t || '··'}</span>
+                      <span className="text-[7px] uppercase tracking-wider leading-none" style={{ color: s.t ? 'var(--brand-gold)' : 'var(--text-muted)' }}>{s.k}</span>
+                      <span className="text-[8px] font-mono leading-tight" style={{ color: s.t ? 'var(--text-secondary)' : 'var(--text-muted)' }}>{s.t || '··'}</span>
                     </div>
                     {i < stages.length - 1 && <div className="h-px w-2 shrink-0" style={{ background: stages[i + 1].t ? '#d4a01755' : 'var(--border-subtle)' }} />}
                   </div>
@@ -313,7 +314,7 @@ export default function CallHistoryDrawer({ unitId, unitCallSign, myLat, myLng, 
                   <span className="text-[9px] text-rmpg-400 min-w-0 truncate flex-1" title={c.location_address || ''}>{meaningful(c.location_address) ? c.location_address : 'Mapped location'}</span>
                   {c.latitude != null && c.longitude != null && (
                     <button
-                      onClick={() => onRouteToCall(c.latitude!, c.longitude!, `${c.call_number} · ${c.incident_type?.replace(/_/g, ' ')}`)}
+                      onClick={() => onRouteToCall(c.latitude!, c.longitude!, `${c.call_number} · ${toDisplayLabel(c.incident_type)}`)}
                       className="flex items-center gap-0.5 text-[8px] font-bold uppercase px-1 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-rmpg-100 shrink-0"
                       style={{ borderRadius: 2 }}
                       title="Route to this call"

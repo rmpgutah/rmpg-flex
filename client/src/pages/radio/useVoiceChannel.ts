@@ -67,6 +67,9 @@ export function useVoiceChannel(
   const wsRef = useRef<WebSocket | null>(null);
   const myIdRef = useRef<number>(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  // Pre-acquired mic stream — opened when the channel connects so PTT
+  // key-down can start encoding immediately with no getUserMedia delay.
+  const micStreamRef = useRef<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playerRef = useRef<StreamPlayer | null>(null);
   const dispatchPlayerRef = useRef<RadioHazePlayer | null>(null);
@@ -115,6 +118,13 @@ export function useVoiceChannel(
             setConnected(true); setMembers(msg.members ?? 1);
             // Decode my own id from the JWT so I don't play back my own voice.
             try { myIdRef.current = JSON.parse(atob(token.split('.')[1])).user_id ?? JSON.parse(atob(token.split('.')[1])).userId ?? 0; } catch { /* noop */ }
+            // Pre-acquire the mic so PTT key-down starts encoding instantly
+            // with no getUserMedia round-trip delay (~100-300ms saved per TX).
+            if (supported && !micStreamRef.current?.active) {
+              navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS)
+                .then((s) => { if (alive) { micStreamRef.current = s; } else { s.getTracks().forEach((t: MediaStreamTrack) => t.stop()); } })
+                .catch(() => { /* permission denied — pttDown falls back to on-demand */ });
+            }
             break;
           case 'voice_presence':
             setMembers(msg.members ?? 0);
@@ -129,6 +139,7 @@ export function useVoiceChannel(
             p.init('audio/webm;codecs=opus');
             playerRef.current = p;
             setActiveSpeaker({ userId: msg.user_id, label: msg.unit_label || msg.full_name || 'Unit' });
+            try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'rx' } })); } catch { /* SSR */ }
             break;
           }
           case 'radio_audio':
@@ -140,6 +151,7 @@ export function useVoiceChannel(
             // Let the tail finish, then free the decoder.
             if (playerDestroyTimer.current) clearTimeout(playerDestroyTimer.current);
             playerDestroyTimer.current = setTimeout(teardownPlayer, 1500);
+            try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
             break;
           case 'radio_recorded':
             onRecordedRef.current?.(msg.transmission);
@@ -158,6 +170,7 @@ export function useVoiceChannel(
             }
             const buf = typeof msg.audio === 'string' ? base64ToArrayBuffer(msg.audio) : null;
             if (buf) {
+              teardownPlayer(); // stop any live StreamPlayer before AI dispatcher speaks
               setActiveSpeaker({ userId: DISPATCH_USER_ID, label: msg.transmission?.unit_label || 'DISPATCH' });
               const p = dispatchPlayerRef.current ?? (dispatchPlayerRef.current = new RadioHazePlayer());
               p.playBytes(buf, () => setActiveSpeaker((cur) => (cur?.userId === DISPATCH_USER_ID ? null : cur)))
@@ -208,6 +221,14 @@ export function useVoiceChannel(
       dispatchPlayerRef.current = null;
       try { wsRef.current?.close(); } catch { /* noop */ }
       wsRef.current = null;
+      // Release the pre-acquired mic when leaving the channel.
+      micStreamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      micStreamRef.current = null;
+      // Release any in-progress fallback on-demand stream (used when pre-acquire
+      // failed). Without this, navigating away mid-transmission leaves the mic
+      // indicator lit and the audio device held open until GC.
+      streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+      streamRef.current = null;
       setConnected(false); setActiveSpeaker(null); setMembers(0);
     };
   }, [channelId, teardownPlayer]);
@@ -223,14 +244,25 @@ export function useVoiceChannel(
     StreamPlayer.preWarm(); // unlock playback under the same user gesture
     setTransmitting(true);
     send({ type: 'transmit_start' });
+    try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'tx' } })); } catch { /* SSR */ }
 
-    navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS).then((stream) => {
+    // Use the pre-acquired stream when available (zero getUserMedia latency).
+    // Fall back to on-demand acquisition if pre-warm failed (permission denied
+    // at connect time, or the stream was stopped by the browser).
+    const preAcquired = micStreamRef.current?.active ? micStreamRef.current : null;
+    const streamPromise = preAcquired
+      ? Promise.resolve(preAcquired)
+      : navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
+
+    streamPromise.then((stream) => {
       // If the user released before the mic opened, abort cleanly.
       if (!wsRef.current || !transmittingRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
+        if (!preAcquired) stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
         return;
       }
-      streamRef.current = stream;
+      // For the pre-acquired stream, we don't own it here — pttUp must not
+      // stop the tracks so the stream stays alive for the next transmission.
+      streamRef.current = preAcquired ? null : stream;
       const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus' : 'audio/webm';
       const rec = new MediaRecorder(stream, { mimeType: mime });
@@ -244,7 +276,7 @@ export function useVoiceChannel(
           send({ type: 'audio', chunk: btoa(bin) });
         }).catch(() => { /* drop */ });
       };
-      rec.start(250); // 250ms chunks — snappy without flooding
+      rec.start(250); // 250ms chunks
     }).catch(() => {
       // Mic denied/unavailable — abandon the transmission.
       setTransmitting(false);
@@ -252,18 +284,32 @@ export function useVoiceChannel(
     });
   }, [supported, connected, transmitting, activeSpeaker]);
 
-  // ── PTT key-up: stop the mic, close the transmission ──
+  // ── PTT key-up: stop the recorder, close the transmission ──
   const pttUp = useCallback(() => {
     if (!transmitting) return;
     setTransmitting(false);
     const rec = recorderRef.current;
-    if (rec && rec.state !== 'inactive') {
-      try { rec.stop(); } catch { /* noop */ }
-    }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
     recorderRef.current = null;
-    send({ type: 'transmit_end' });
+    // streamRef holds a one-off stream (fallback path only). The pre-acquired
+    // stream lives in micStreamRef and must stay open for the next PTT press.
+    streamRef.current?.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+    streamRef.current = null;
+    if (rec && rec.state !== 'inactive') {
+      // Send transmit_end AFTER the recorder flushes its final chunk —
+      // rec.stop() is async; the last ondataavailable fires after it returns.
+      // Without this, the DO clears activeTx and drops the final ~250ms clip.
+      rec.onstop = () => {
+        send({ type: 'transmit_end' });
+        try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+      };
+      try { rec.stop(); } catch {
+        send({ type: 'transmit_end' });
+        try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+      }
+    } else {
+      send({ type: 'transmit_end' });
+      try { window.dispatchEvent(new CustomEvent('rmpg-radio-state', { detail: { state: 'idle' } })); } catch { /* SSR */ }
+    }
   }, [transmitting]);
 
   return { connected, members, transmitting, activeSpeaker, busy, supported, pttDown, pttUp };

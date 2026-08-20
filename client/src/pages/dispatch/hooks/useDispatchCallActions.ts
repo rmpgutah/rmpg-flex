@@ -22,11 +22,11 @@
 //   isGenerating, isBulkArchiving
 
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { CallForService, CallStatus } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { mapDbCall, mapDbUnit } from '../utils/dispatchMappers';
+import { mapDbCall } from '../utils/dispatchMappers';
 import { announceLocalAction } from '../../../utils/voiceAlerts';
 
 export interface UseDispatchCallActionsArgs {
@@ -35,6 +35,7 @@ export interface UseDispatchCallActionsArgs {
   setCalls: React.Dispatch<React.SetStateAction<CallForService[]>>;
   setArchivedCalls: React.Dispatch<React.SetStateAction<CallForService[]>>;
   setUnits: React.Dispatch<React.SetStateAction<any[]>>;
+  refreshUnits: () => Promise<void>;
   setArchivedLoaded: React.Dispatch<React.SetStateAction<boolean>>;
   /** Called by handleBulkArchive to refresh the active-calls list after a bulk op. */
   refetchAll: () => Promise<void> | void;
@@ -43,7 +44,7 @@ export interface UseDispatchCallActionsArgs {
 export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   const {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
-    setUnits, setArchivedLoaded, refetchAll,
+    setUnits, refreshUnits, setArchivedLoaded, refetchAll,
   } = args;
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -54,12 +55,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   const [dispositionPromptCallId, setDispositionPromptCallId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBulkArchiving, setIsBulkArchiving] = useState(false);
-
-  // ── Internal helper: refresh units (mirrors useDispatchUnitActions) ──
-  const refreshUnits = useCallback(async () => {
-    const unitsRes = await apiFetch<any[]>('/dispatch/units');
-    setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-  }, [setUnits]);
 
   // ── Archive / unarchive (declared early so handleStatusChange can call it) ──
   const handleArchive = useCallback(async (callId: string) => {
@@ -178,10 +173,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       }
     } catch (err) {
       console.error('Failed to hold call:', err);
-      // The server currently 409s every hold request with a specific reason
-      // (on_hold isn't in the live status enum yet, pending migration 0040) —
-      // surface that instead of a generic "failed" toast that implies a retry
-      // might succeed.
       addToast(err instanceof Error ? err.message : 'Failed to hold call', 'error');
     }
   }, [setCalls, setSelectedCall, addToast]);

@@ -42,7 +42,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Segoe UI', 'Tahoma', 'Geneva', 'Verdana', 'sans-serif'],
+        sans: ['Calibri', 'Arial', 'Helvetica', 'sans-serif'],
         mono: ['Consolas', 'Courier New', 'monospace'],
       },
       fontSize: {
@@ -63,6 +63,11 @@ export default {
           sunken:  'var(--surface-sunken)',   // #0d1520
           overlay: 'var(--surface-overlay)',  // #0a1018
           deep:    'var(--surface-deep)',     // #060c14
+          // Hover/active surface. Defined in all four theme blocks of
+          // theme-palettes.css but was never bound here, so the 14 existing
+          // `bg-surface-hover` usages across the desktop shell and dashcam
+          // surfaces emitted no CSS and their hover feedback silently did nothing.
+          hover:   'var(--surface-hover)',
         },
 
         // ── RMPG Brand ─────────────────────────────────────
@@ -92,6 +97,33 @@ export default {
           500: 'rgb(var(--brand-gold-500-rgb) / <alpha-value>)',
           600: 'rgb(var(--brand-gold-600-rgb) / <alpha-value>)',
           700: 'rgb(var(--brand-gold-700-rgb) / <alpha-value>)',
+        },
+
+        'accent-gold': {
+          300: 'rgb(var(--accent-gold-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-gold-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-gold-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-gold-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-gold-700-rgb) / <alpha-value>)',
+        },
+        'accent-silver': {
+          300: 'rgb(var(--accent-silver-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--accent-silver-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--accent-silver-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--accent-silver-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--accent-silver-700-rgb) / <alpha-value>)',
+        },
+
+        // ── Foreground roles ───────────────────────────────
+        // The rmpg ramp encodes surface ELEVATION and inverts between themes
+        // (blue-silver --rmpg-300 is `157 175 194`, day is `70 70 70`), so it
+        // is not a text scale. These are: they do not invert, and every step
+        // clears WCAG AA 4.5:1 on base/raised/sunken in all four blocks.
+        fg: {
+          DEFAULT: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          primary: 'rgb(var(--text-primary-rgb) / <alpha-value>)',
+          secondary: 'rgb(var(--text-secondary-rgb) / <alpha-value>)',
+          muted: 'rgb(var(--text-muted-rgb) / <alpha-value>)',
         },
 
         // Neutral graphite greys — no blue cast

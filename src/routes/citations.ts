@@ -12,8 +12,11 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { geocodeAddress } from './geocode';
+import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const citations = new Hono<Env>();
 
 const VALID_TYPES = new Set(['traffic', 'criminal', 'parking', 'warning']);
@@ -103,6 +106,7 @@ citations.get('/stats', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation stats', code: 'STATS_ERROR' }, 500);
   }
 });
@@ -113,16 +117,16 @@ citations.get('/search', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
     if (q.length < 2) return c.json({ data: [] });
     const db = getDb(c.env);
-    const like = `%${q}%`;
+    const m = containsAnyClause(['citation_number', 'person_name', 'vehicle_plate']);
     const rows = await query<Record<string, unknown>>(
       db,
-      `SELECT * FROM citations
-       WHERE citation_number LIKE ? OR person_name LIKE ? OR vehicle_plate LIKE ?
+      `SELECT * FROM citations WHERE ${m.sql}
        ORDER BY violation_date DESC LIMIT 100`,
-      like, like, like,
+      ...m.binds(q),
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /search failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to search citations', code: 'SEARCH_ERROR' }, 500);
   }
 });
@@ -140,6 +144,7 @@ citations.get('/person/:personId', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /person/:personId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citations by person', code: 'PERSON_QUERY_ERROR' }, 500);
   }
 });
@@ -181,6 +186,7 @@ citations.get('/payment-summary', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /payment-summary failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }, 500);
   }
 });
@@ -201,9 +207,10 @@ citations.get('/', async (c) => {
     if (q('date_to')) { conditions.push('violation_date <= ?'); params.push(q('date_to')); }
     const search = q('search');
     if (search) {
-      conditions.push('(citation_number LIKE ? OR person_name LIKE ? OR vehicle_plate LIKE ? OR location LIKE ?)');
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['citation_number', 'person_name', 'vehicle_plate', 'location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -247,24 +254,70 @@ citations.get('/calculate-fine', async (c) => {
     const offenseLevel = c.req.query('offense_level');
     const type = c.req.query('type') || 'traffic';
     let baseFine = 0;
+    // `source` makes the basis of the number explicit. These are the app's own
+    // schedule buckets, NOT Utah statutory maximums — a real citation amount
+    // comes from the court's fine schedule, so the caller must be able to tell
+    // an estimate from an authority.
+    let source: 'statute_fine' | 'offense_level' | 'default' = 'default';
+    let levelUsed: string | null = (offenseLevel as string) || null;
+
     if (statuteId) {
-      const statute = await queryFirst<{ default_fine: number | null; offense_level: string }>(
-        db, 'SELECT default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
+      const statute = await queryFirst<{ default_fine: number | null; offense_level: string | null }>(
+        // utah_statutes stores the scheduled fine as `citation_fine` — which is
+        // populated on ZERO of 4,315 live rows, so this branch never fires
+        // today. Kept because it is the correct shape if that data ever lands.
+        db, 'SELECT citation_fine AS default_fine, offense_level FROM utah_statutes WHERE id = ?', statuteId,
       ).catch(() => null);
-      if (statute?.default_fine) baseFine = statute.default_fine;
+      if (statute?.default_fine) {
+        baseFine = statute.default_fine;
+        source = 'statute_fine';
+      }
+      // The statute's own offense_level was SELECTed and then never read, so a
+      // caller passing statute_id alone always fell through to the flat
+      // default even though 911 live statutes carry a level.
+      if (!levelUsed && statute?.offense_level) levelUsed = statute.offense_level;
     }
+
     if (!baseFine) {
       const fineSchedule: Record<string, number> = {
         felony: 1000, misdemeanor_a: 500, misdemeanor_b: 350,
         misdemeanor_c: 250, misdemeanor: 350, infraction: 150, violation: 100,
       };
-      baseFine = fineSchedule[offenseLevel as string] || 100;
+      // Live utah_statutes.offense_level uses Utah's statutory vocabulary
+      // ('class_b_misdemeanor', 'third_degree_felony'), which shares only ONE
+      // key with the schedule above ('infraction'). So 738 of the 911 levelled
+      // statutes matched nothing and silently returned the flat 100. Mapping is
+      // onto the EXISTING buckets — no new dollar figures are introduced here.
+      const LEVEL_ALIASES: Record<string, string> = {
+        capital_felony: 'felony',
+        first_degree_felony: 'felony',
+        second_degree_felony: 'felony',
+        third_degree_felony: 'felony',
+        class_a_misdemeanor: 'misdemeanor_a',
+        class_b_misdemeanor: 'misdemeanor_b',
+        class_c_misdemeanor: 'misdemeanor_c',
+      };
+      const key = levelUsed ? (LEVEL_ALIASES[levelUsed] ?? levelUsed) : '';
+      if (key && fineSchedule[key] !== undefined) {
+        baseFine = fineSchedule[key];
+        source = 'offense_level';
+      } else {
+        baseFine = 100;
+        source = 'default';
+      }
     }
+
     const typeMultipliers: Record<string, number> = { traffic: 1.0, criminal: 1.5, parking: 0.5, warning: 0 };
-    const multiplier = typeMultipliers[type] || 1.0;
+    // `|| 1.0` was a falsy-zero bug: the warning multiplier IS 0, so a warning
+    // citation fell through to 1.0 and quoted the FULL fine. `??` only replaces
+    // an unknown type.
+    const multiplier = typeMultipliers[type] ?? 1.0;
     const calculatedFine = Math.round(baseFine * multiplier * 100) / 100;
-    return c.json({ data: { base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type } });
-  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic' } }); }
+    return c.json({ data: {
+      base_fine: baseFine, multiplier, calculated_fine: calculatedFine, type,
+      source, offense_level_used: levelUsed,
+    } });
+  } catch { return c.json({ data: { base_fine: 100, multiplier: 1.0, calculated_fine: 100, type: 'traffic', source: 'default', offense_level_used: null } }); }
 });
 
 // ── Vehicle plate lookup (for auto-filling vehicle details) ──
@@ -301,6 +354,7 @@ citations.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Citation not found', code: 'NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get citation', code: 'GET_ERROR' }, 500);
   }
 });
@@ -470,6 +524,7 @@ citations.put('/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citations WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to update citation', code: 'UPDATE_ERROR' }, 500);
   }
 });
@@ -509,7 +564,7 @@ async function ensureCitationFilingTables(db: ReturnType<typeof getDb>): Promise
       filed_at TEXT,
       filed_by INTEGER,
       generated_at TEXT,
-      updated_at TEXT DEFAULT (datetime('now','localtime'))
+      updated_at TEXT DEFAULT (datetime('now'))
     )
   `);
 }
@@ -554,7 +609,7 @@ citations.post('/:id/copies', async (c) => {
       }
       const key = `citations/${id}/${kind}.pdf`;
       try {
-        await c.env.UPLOADS.put(key, bytes, {
+        await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, bytes, {
           httpMetadata: { contentType: 'application/pdf' },
         });
         uploaded[kind] = key;
@@ -576,10 +631,10 @@ citations.post('/:id/copies', async (c) => {
     await execute(
       db,
       `INSERT OR IGNORE INTO citation_filing (citation_id, status, generated_at)
-       VALUES (?, 'pending', datetime('now','localtime'))`,
+       VALUES (?, 'pending', datetime('now'))`,
       id,
     );
-    const sets: string[] = ['generated_at = COALESCE(generated_at, datetime("now","localtime"))', 'updated_at = datetime("now","localtime")'];
+    const sets: string[] = ['generated_at = COALESCE(generated_at, datetime("now"))', 'updated_at = datetime("now")'];
     const vals: unknown[] = [];
     if (uploaded.court)     { sets.push('court_copy_url = ?');     vals.push(uploaded.court); }
     if (uploaded.agency)    { sets.push('agency_copy_url = ?');    vals.push(uploaded.agency); }
@@ -631,6 +686,7 @@ citations.get('/:id/filing', async (c) => {
     if (!row) return c.json({ data: null });
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id/filing failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get filing record', code: 'FILING_GET_ERROR' }, 500);
   }
 });
@@ -642,6 +698,7 @@ citations.get('/:id/copies/:kind', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
+    const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const kind = c.req.param('kind') as CitationCopyKind;
     if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
@@ -649,17 +706,36 @@ citations.get('/:id/copies/:kind', async (c) => {
       return c.json({ error: 'Invalid copy kind', code: 'INVALID_KIND' }, 400);
     }
     const key = `citations/${id}/${kind}.pdf`;
-    const obj = await c.env.UPLOADS.get(key);
-    if (!obj) return c.json({ error: 'Copy not found', code: 'NOT_FOUND' }, 404);
-    return new Response(obj.body, {
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    let body: BodyInit;
+    let contentType = 'application/pdf';
+    if (decrypted) {
+      body = decrypted.bytes;
+      contentType = decrypted.httpMetadata?.contentType || contentType;
+    } else {
+      // getDecrypted() returns null both for "object never existed" and for
+      // "object exists but has no file_encryption_keys row" — the latter is
+      // exactly what a citation PDF copy uploaded before this feature
+      // shipped looks like. Fall back to a raw R2 read so those pre-existing
+      // copies stay retrievable instead of permanently 404ing. A genuine
+      // decrypt failure (bad KEK, tampered ciphertext) throws out of
+      // getDecrypted() rather than returning null, so it's caught by this
+      // handler's own try/catch below and never reaches this fallback.
+      const legacy = await c.env.UPLOADS.get(key);
+      if (!legacy) return c.json({ error: 'Copy not found', code: 'NOT_FOUND' }, 404);
+      body = legacy.body;
+      contentType = legacy.httpMetadata?.contentType || contentType;
+    }
+    return new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': 'application/pdf',
+        'Content-Type': contentType,
         'Cache-Control': 'private, max-age=60',
         'Content-Disposition': `inline; filename="citation-${id}-${kind}.pdf"`,
       },
     });
   } catch (err) {
+    log.error('GET /:id/copies/:kind failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to fetch copy', code: 'COPY_FETCH_ERROR' }, 500);
   }
 });
@@ -681,6 +757,7 @@ citations.delete('/:id', async (c) => {
     await execute(db, 'DELETE FROM citations WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to delete citation', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -722,6 +799,7 @@ citations.get('/:id/payments', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /:id/payments failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get payments', code: 'PAYMENTS_GET_ERROR' }, 500);
   }
 });
@@ -769,6 +847,7 @@ citations.post('/:id/payments', async (c) => {
     const payment = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citation_payments WHERE id = ?', paymentId);
     return c.json({ data: payment }, 201);
   } catch (err) {
+    log.error('POST /:id/payments failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to record payment', code: 'PAYMENTS_POST_ERROR' }, 500);
   }
 });
@@ -789,6 +868,7 @@ citations.get('/:id/violations', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /:id/violations failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to get violations', code: 'VIOLATIONS_GET_ERROR' }, 500);
   }
 });
@@ -835,6 +915,7 @@ citations.post('/:id/violations', async (c) => {
     );
     return c.json({ data: violation }, 201);
   } catch (err) {
+    log.error('POST /:id/violations failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to add violation', code: 'VIOLATION_POST_ERROR' }, 500);
   }
 });
@@ -874,6 +955,7 @@ citations.put('/:id/violations/:violationId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM citation_violations WHERE id = ?', violationId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id/violations/:violationId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to update violation', code: 'VIOLATION_PUT_ERROR' }, 500);
   }
 });
@@ -892,6 +974,7 @@ citations.delete('/:id/violations/:violationId', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Violation not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/violations/:violationId failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to delete violation', code: 'VIOLATION_DELETE_ERROR' }, 500);
   }
 });
@@ -957,6 +1040,7 @@ citations.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/citations.ts' }, err);
     return c.json({ error: 'Failed to export citations', code: 'EXPORT_ERROR' }, 500);
   }
 });
@@ -973,15 +1057,23 @@ citations.get('/statutes/lookup', async (c) => {
     let whereExtra = '';
     if (offenseLevel) { whereExtra = ' AND s.offense_level = ?'; params.push(offenseLevel); }
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT s.id, s.citation_code, s.title, s.offense_level, s.default_fine, s.description
-       FROM utah_statutes s WHERE (s.citation_code LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
-       ORDER BY s.citation_code LIMIT 20`, ...params);
+      // Live utah_statutes: `citation` (not citation_code), `citation_fine`
+      // (not default_fine). Aliased so the response shape is unchanged.
+      `SELECT s.id, s.citation AS citation_code, s.title, s.offense_level,
+              s.citation_fine AS default_fine, s.description
+       FROM utah_statutes s WHERE (s.citation LIKE ? OR s.title LIKE ? OR s.description LIKE ?)${whereExtra}
+       ORDER BY s.citation LIMIT 20`, ...params);
     return c.json({ data: rows });
   } catch { return c.json({ data: [] }); }
 });
 
 // ── Batch citation creation (traffic enforcement) ────────────
 citations.post('/batch', async (c) => {
+  // Bulk citation creation was the one citations mutation with no role gate —
+  // every other write requires an issuing role. Match them so the external
+  // contract_manager role can't bulk-insert enforcement records.
+  const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -991,7 +1083,7 @@ citations.post('/batch', async (c) => {
     for (const cit of body.citations) {
       if (!cit.type || !cit.person_name || !cit.violation_description) continue;
       const cols = ['type', 'person_name', 'violation_description', 'status', 'issuing_officer_id', 'created_at', 'updated_at'];
-      const vals = ['?', '?', '?', "'issued'", '?', "datetime('now','localtime')", "datetime('now','localtime')"];
+      const vals = ['?', '?', '?', "'issued'", '?', "datetime('now')", "datetime('now')"];
       const params: unknown[] = [cit.type, cit.person_name, cit.violation_description, userId ?? null];
       if (cit.person_dob) { cols.push('person_dob'); vals.push('?'); params.push(cit.person_dob); }
       if (cit.statute_id) { cols.push('statute_id'); vals.push('?'); params.push(cit.statute_id); }
@@ -1004,7 +1096,8 @@ citations.post('/batch', async (c) => {
       created.push(Number(r.meta.last_row_id));
     }
     return c.json({ success: true, created: created.length, ids: created });
-  } catch { return c.json({ error: 'Batch creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /batch failed', { src: 'src/routes/citations.ts' }, err); return c.json({ error: 'Batch creation failed' }, 500); }
 });
 
 export default citations;

@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2, Filter, MapPin,
   FileText, ChevronLeft, ChevronRight, Plus, Grid, List, Film, HardDrive,
@@ -34,6 +34,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
 import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 const PAGE_SIZE = 25;
 
@@ -79,6 +80,7 @@ function channelBg(ch?: string): string {
 function formatDate(d?: string): string {
   if (!d) return '-';
   return parseTimestamp(d).toLocaleDateString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -255,16 +257,18 @@ export default function DashCamerasPage() {
     const path = opts?.force
       ? `/fleet/dashcam-videos/${vidId}?force=true`
       : `/fleet/dashcam-videos/${vidId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     if (selectedVideo?.id === vidId) setSelectedVideo(null);
     setVideoToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await fetchVideos(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
@@ -397,7 +401,7 @@ export default function DashCamerasPage() {
                   <span className={`absolute top-1 right-1 px-1.5 py-0.5 text-[8px] font-bold ${
                     EVENT_TYPE_COLORS[v.cpg_event_type] || EVENT_TYPE_COLORS.default
                   }`}>
-                    {v.cpg_event_type}
+                    {formatEnumValue(v.cpg_event_type)}
                   </span>
                 )}
 
@@ -429,7 +433,7 @@ export default function DashCamerasPage() {
                   <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold border capitalize ${
                     CLASSIFICATION_COLORS[v.classification] || CLASSIFICATION_COLORS.routine
                   }`}>
-                    {v.classification}
+                    {formatEnumValue(v.classification)}
                   </span>
                   {v.case_number && (
                     <span className="text-[8px] font-mono text-rmpg-500">Case: {v.case_number}</span>
@@ -516,7 +520,7 @@ export default function DashCamerasPage() {
                   <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold border capitalize ${
                     CLASSIFICATION_COLORS[v.classification] || CLASSIFICATION_COLORS.routine
                   }`}>
-                    {v.classification}
+                    {formatEnumValue(v.classification)}
                   </span>
                 </td>
               </tr>
@@ -603,7 +607,7 @@ export default function DashCamerasPage() {
                 <span className={`inline-flex px-1 py-0.5 text-[8px] font-bold ${
                   EVENT_TYPE_COLORS[selectedVideo.cpg_event_type] || EVENT_TYPE_COLORS.default
                 }`}>
-                  {selectedVideo.cpg_event_type}
+                  {formatEnumValue(selectedVideo.cpg_event_type)}
                 </span>
               ) : <span className="text-rmpg-400 font-mono">Manual</span>}
             </div>
@@ -612,7 +616,7 @@ export default function DashCamerasPage() {
               <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold border capitalize ${
                 CLASSIFICATION_COLORS[selectedVideo.classification] || CLASSIFICATION_COLORS.routine
               }`}>
-                {selectedVideo.classification}
+                {formatEnumValue(selectedVideo.classification)}
               </span>
             </div>
             <div>
@@ -996,7 +1000,7 @@ export default function DashCamerasPage() {
               className="select-dark text-[10px] py-1 w-auto max-w-[150px]">
               <option value="all">All Events</option>
               {eventTypes.map(et => (
-                <option key={et} value={et}>{et.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={et} value={et}>{toDisplayLabel(et).toUpperCase()}</option>
               ))}
             </select>
             <div className="h-4 w-px bg-rmpg-700" />
@@ -1051,12 +1055,12 @@ export default function DashCamerasPage() {
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
           </span>
           <div className="flex items-center gap-1">
-            <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
+            <button aria-label="Previous" type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
             <span className="text-[10px] text-rmpg-400 font-mono px-2">{page + 1} / {totalPages}</span>
-            <button type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
+            <button aria-label="Next" type="button" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}
               className="toolbar-btn p-1 disabled:opacity-30">
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -1107,7 +1111,7 @@ export default function DashCamerasPage() {
         recordType="dashcam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -1117,7 +1121,7 @@ export default function DashCamerasPage() {
               {videoToDelete.officer_name && <div>Officer: {videoToDelete.officer_name}</div>}
               {videoToDelete.vehicle_number && <div>Vehicle #{videoToDelete.vehicle_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</div>
               )}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}

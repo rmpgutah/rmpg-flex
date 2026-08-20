@@ -398,3 +398,68 @@ export class RadioHazePlayer {
     this.flux = null;
   }
 }
+
+// ─── Station-PA voice chain (automated ALERT voice) ──────────
+// The alert voice is the SAME harmonia TTS request as dispatch, run through
+// this chain INSTEAD of the P25 haze. Two separations at once: different
+// timbre AND radio-vs-not-radio, so an operator can tell a computer alert
+// from a dispatcher transmission instantly.
+//
+// Models a boxy horn / ceiling PA speaker:
+//   420Hz highpass       — no bass from a horn driver
+//   +6.5dB @1.6kHz Q1.3  — announcement presence
+//   3100Hz lowpass       — rolled-off top
+//   tanh soft drive      — mild amplifier saturation
+//   -4dB @900Hz Q2.0     — notch the boxy horn honk
+//   0.85 trim            — soft clipping raises perceived loudness; without
+//                          this the alert voice jumps out over dispatch
+//
+// ⚠️ NEVER chain this after buildRadioVoiceChain. The PA treatment REPLACES
+// the radio haze; stacking them defeats the separation and sounds like a
+// radio inside a tunnel. paVoiceChain.test.ts asserts the topology.
+export function buildPaVoiceChain(ctx: AudioContext): RadioChainNodes {
+  const highpass = ctx.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = 420;
+  highpass.Q.value = 0.707;
+
+  const presence = ctx.createBiquadFilter();
+  presence.type = 'peaking';
+  presence.frequency.value = 1600;
+  presence.Q.value = 1.3;
+  presence.gain.value = 6.5;
+
+  const lowpass = ctx.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = 3100;
+  lowpass.Q.value = 0.707;
+
+  // Soft clip: tanh(x * drive) / drive, sampled into a WaveShaper curve.
+  const drive = 2.4;
+  const n = 1024;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(x * drive) / drive;
+  }
+  const shaper = ctx.createWaveShaper();
+  shaper.curve = curve;
+  shaper.oversample = '2x';
+
+  const honkNotch = ctx.createBiquadFilter();
+  honkNotch.type = 'peaking';
+  honkNotch.frequency.value = 900;
+  honkNotch.Q.value = 2.0;
+  honkNotch.gain.value = -4;
+
+  const trim = ctx.createGain();
+  trim.gain.value = 0.85;
+
+  highpass.connect(presence);
+  presence.connect(lowpass);
+  lowpass.connect(shaper);
+  shaper.connect(honkNotch);
+  honkNotch.connect(trim);
+
+  return { input: highpass, output: trim };
+}

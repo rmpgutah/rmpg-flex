@@ -66,7 +66,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     clearDraft,
     snapshot,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_hr_grievance_modal_form',
+    storageKey: `rmpg_hr_grievance_modal_form_${grievance?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: true,
   });
@@ -74,7 +74,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiFetch<UserOption[]>('/hr/employees').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
+    apiFetch<UserOption[]>('/personnel').then(d => setUsers(asArray(d))).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
     if (grievance) {
       setForm({
         against_user_id: grievance.against_user_id || '',
@@ -160,7 +160,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
         {/* Body */}
         <div className="p-4 space-y-3">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

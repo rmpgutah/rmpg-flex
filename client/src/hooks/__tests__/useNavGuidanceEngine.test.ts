@@ -35,12 +35,19 @@ function directionsResponse() {
   };
 }
 
+/** A real Response, not a `{ ok, json }` stand-in. apiFetch's request paths use
+ *  the Response API beyond .ok/.json() — .clone() for in-flight dedupe — so a
+ *  plain-object double silently diverges from production fetch. */
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => directionsResponse(),
-  }) as any;
+  global.fetch = vi.fn(async () => jsonResponse(directionsResponse())) as any;
 });
 
 describe('useNavGuidanceEngine', () => {
@@ -139,10 +146,7 @@ describe('useNavGuidanceEngine', () => {
       };
     }
 
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => directionsResponseWithLanes(),
-    }) as any;
+    global.fetch = vi.fn(async () => jsonResponse(directionsResponseWithLanes())) as any;
 
     const { result } = renderHook(() => useNavGuidanceEngine());
     await act(async () => {

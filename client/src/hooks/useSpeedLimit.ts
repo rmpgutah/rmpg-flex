@@ -1,37 +1,46 @@
 // ============================================================
 // useSpeedLimit — posted-speed-limit lookup for the active road
+// ============================================================
+// Given a live {lat,lng}, throttles lookups so a query fires at most once per
+// ~80 m of travel, hits GET /dispatch/geography/road-speed (which reads RMPG's
+// own osm-traffic PMTiles archive from R2), and exposes the posted limit in mph.
 //
-// Given a live {lat,lng}, throttles lookups so a query fires at most once
-// per ~80m of travel (internal ref + haversine distance check), hits an
-// existing server tilequery/road endpoint, parses an OSM-style `maxspeed`
-// field, and caches the last good value.
+// HISTORY: this replaces TWO hooks. A duplicate at
+// client/src/pages/navigation/hud/useSpeedLimit.ts queried overpass-api.de
+// directly from the browser on every 120 m of travel — a volunteer-run public
+// service whose fair-use policy excludes production traffic, reached over an
+// uncached cross-origin request from a moving vehicle. It is deleted; this hook
+// keeps its positional signature and its `buffer` so NavigationPage's call site
+// is unchanged apart from the import path.
 //
-// DEGRADES CLEANLY: if no maxspeed field is present (or the request fails),
-// it returns the last known value or null — it NEVER throws, blocks, or
-// resets a good reading on a single miss.
-//
-// Self-contained: the fetch + parse + throttle all live here. It uses the
-// shared apiFetch only to inherit auth + base-URL handling; if that import
-// or the endpoint is unavailable at runtime the catch path yields null.
+// DEGRADES CLEANLY: never throws, never blocks the drive lane.
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from './useApi';
+import { parseMaxspeedMph } from '../utils/speedLimit';
 
 const MOVE_THRESHOLD_M = 80;
-/** Don't re-query faster than this even if we've moved 80m (tunnels, GPS jitter). */
+/** Don't re-query faster than this even after 80 m (tunnels, GPS jitter). */
 const MIN_QUERY_INTERVAL_MS = 4_000;
+/** Safe-ceiling buffer (mph) added on top of the posted limit for the redline. */
+const REDLINE_BUFFER_MPH = 7;
 
-export interface UseSpeedLimitArgs {
-  lat: number | null | undefined;
-  lng: number | null | undefined;
+export interface UseSpeedLimitOptions {
   /** Master enable (e.g. Drive Mode active). Default true. */
   enabled?: boolean;
 }
 
 export interface UseSpeedLimitResult {
-  /** Posted limit in mph, or null when unknown / no data field exists. */
+  /** Posted limit in mph, or null when unknown / none posted. */
   limitMph: number | null;
+  /** Buffer added on top of the posted limit before the HUD redlines. */
+  buffer: number;
+}
+
+interface RoadSpeedResponse {
+  limitMph?: number | null;
+  roadName?: string | null;
 }
 
 function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -45,50 +54,34 @@ function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number)
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 
-/**
- * Parse an OSM-style maxspeed value into mph.
- * Accepts: 35 | "35" | "35 mph" | "50 km/h" | "50 kmh". Returns null otherwise.
- */
-export function parseMaxspeedMph(raw: unknown): number | null {
-  if (raw == null) return null;
-  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw);
-  if (typeof raw !== 'string') return null;
-  const s = raw.trim().toLowerCase();
-  const m = s.match(/(\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const val = parseFloat(m[1]);
-  if (!Number.isFinite(val)) return null;
-  if (s.includes('km') || s.includes('kph')) return Math.round(val * 0.621371);
-  return Math.round(val);
-}
-
-/** Dig a maxspeed-ish value out of an unknown response shape. */
-function extractMaxspeed(data: unknown): number | null {
-  if (data == null || typeof data !== 'object') return null;
-  const obj = data as Record<string, any>;
-  // Common shapes: { maxspeed }, { limitMph }, { features:[{properties:{maxspeed}}] }
-  const direct =
-    obj.maxspeed ?? obj.max_speed ?? obj.speed_limit ?? obj.limitMph ?? obj.posted;
-  const fromDirect = parseMaxspeedMph(direct);
-  if (fromDirect != null) return fromDirect;
-  const feats = Array.isArray(obj.features) ? obj.features : null;
-  if (feats) {
-    for (const f of feats) {
-      const props = f?.properties ?? f;
-      const v = parseMaxspeedMph(props?.maxspeed ?? props?.max_speed ?? props?.speed_limit);
-      if (v != null) return v;
-    }
-  }
-  return null;
-}
-
-export function useSpeedLimit(args: UseSpeedLimitArgs): UseSpeedLimitResult {
-  const { lat, lng, enabled = true } = args;
+export function useSpeedLimit(
+  lat: number | null,
+  lng: number | null,
+  opts: UseSpeedLimitOptions = {},
+): UseSpeedLimitResult {
+  const { enabled = true } = opts;
   const [limitMph, setLimitMph] = useState<number | null>(null);
 
   const lastQueryPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastQueryTsRef = useRef(0);
   const inFlightRef = useRef(false);
+
+  // The cancel token is scoped to the COMPONENT LIFETIME, not to a single
+  // effect run. GPS ticks arrive at ~1Hz — far faster than the ~9 sequential
+  // R2 range reads the server does per lookup can complete — so an
+  // effect-scoped `let cancelled` (reset by every [lat,lng,enabled] re-run)
+  // discarded almost every in-flight result: the position that started the
+  // query had already been stamped into lastQueryPosRef/lastQueryTsRef, so
+  // the throttle then blocked any retry until the vehicle moved another 80m.
+  // Abandon a request ONLY on unmount or when `enabled` goes false — never on
+  // an ordinary position change.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -97,8 +90,8 @@ export function useSpeedLimit(args: UseSpeedLimitArgs): UseSpeedLimitResult {
 
     const now = Date.now();
     const prev = lastQueryPosRef.current;
-    const movedEnough =
-      !prev || haversineMeters(prev.lat, prev.lng, lat, lng) >= MOVE_THRESHOLD_M;
+    const distanceM = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : Infinity;
+    const movedEnough = distanceM >= MOVE_THRESHOLD_M;
     const cooledDown = now - lastQueryTsRef.current >= MIN_QUERY_INTERVAL_MS;
 
     if (!movedEnough || !cooledDown || inFlightRef.current) return;
@@ -106,33 +99,46 @@ export function useSpeedLimit(args: UseSpeedLimitArgs): UseSpeedLimitResult {
     lastQueryPosRef.current = { lat, lng };
     lastQueryTsRef.current = now;
     inFlightRef.current = true;
-    let cancelled = false;
 
     (async () => {
       try {
-        const data = await apiFetch<unknown>(
+        const data = await apiFetch<RoadSpeedResponse>(
           `/dispatch/geography/road-speed?lat=${lat}&lng=${lng}`,
           { timeoutMs: 6000 } as any,
         );
-        if (cancelled) return;
-        const parsed = extractMaxspeed(data);
-        // Only overwrite when we actually got a value; a null miss keeps the
-        // last known limit so the readout doesn't flicker between roads.
-        if (parsed != null) setLimitMph(parsed);
+        // Only abandon the result on unmount or a since-disabled Drive Mode —
+        // NOT because a newer GPS tick arrived and re-ran this effect.
+        if (!mountedRef.current || !enabledRef.current) return;
+        // Set unconditionally on a SUCCESSFUL query, including null: driving
+        // from a posted road onto an unposted one must clear the badge, or the
+        // HUD redlines against a limit that no longer applies.
+        setLimitMph(parseMaxspeedMph(data?.limitMph));
       } catch {
-        // Endpoint missing / offline / 4xx → degrade silently to last value.
+        // Network error / offline / abort — keep the last known value.
       } finally {
-        if (!cancelled) inFlightRef.current = false;
+        inFlightRef.current = false;
       }
     })();
-
-    return () => {
-      cancelled = true;
-      inFlightRef.current = false;
-    };
   }, [lat, lng, enabled]);
 
-  return { limitMph };
+  return { limitMph, buffer: REDLINE_BUFFER_MPH };
+}
+
+export const OVER_SPEED_COOLDOWN_MS = 60000;
+
+/** Whether an over-speed alert should fire now, given the last time one fired.
+ *  Pure so it's cheaply testable without mocking timers/hooks. */
+export function shouldFireOverSpeedAlert(
+  speedMph: number,
+  limitMph: number | null,
+  thresholdMph: number,
+  lastFiredAt: number | null,
+  nowMs: number,
+): boolean {
+  if (limitMph == null) return false;
+  if (speedMph < limitMph + thresholdMph) return false;
+  if (lastFiredAt != null && nowMs - lastFiredAt < OVER_SPEED_COOLDOWN_MS) return false;
+  return true;
 }
 
 export default useSpeedLimit;

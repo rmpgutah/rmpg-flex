@@ -5,8 +5,9 @@
 // ============================================================
 
 import { useState, useEffect } from 'react';
-import { X, Save, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Save, Loader2, AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const NOTE_TYPES = [
@@ -47,56 +48,99 @@ interface Props {
   onSaved: () => void;
 }
 
+interface LocationNoteForm {
+  entityType: string;
+  entityName: string;
+  address: string;
+  noteText: string;
+  noteType: string;
+  daysAvailable: number[];
+  anyDay: boolean;
+  hoursStart: string;
+  hoursEnd: string;
+  cutoffTime: string;
+}
+
+function emptyForm(prefill?: Props['prefill']): LocationNoteForm {
+  return {
+    entityType: prefill?.entity_type ?? 'business',
+    entityName: prefill?.entity_name ?? '',
+    address: prefill?.address ?? '',
+    noteText: '',
+    noteType: 'hours',
+    daysAvailable: [1, 2, 3, 4, 5], // Mon–Fri default
+    anyDay: true,
+    hoursStart: '',
+    hoursEnd: '',
+    cutoffTime: '',
+  };
+}
+
 export default function LocationNoteModal({ noteId, prefill, onClose, onSaved }: Props) {
   const isEdit = !!noteId;
+  const EMPTY_FORM = emptyForm(prefill);
 
-  const [entityType, setEntityType] = useState<string>(prefill?.entity_type ?? 'business');
-  const [entityName, setEntityName] = useState(prefill?.entity_name ?? '');
-  const [address, setAddress] = useState(prefill?.address ?? '');
-  const [noteText, setNoteText] = useState('');
-  const [noteType, setNoteType] = useState('hours');
-  const [daysAvailable, setDaysAvailable] = useState<number[]>([1, 2, 3, 4, 5]); // Mon–Fri default
-  const [anyDay, setAnyDay] = useState(true);
-  const [hoursStart, setHoursStart] = useState('');
-  const [hoursEnd, setHoursEnd] = useState('');
-  const [cutoffTime, setCutoffTime] = useState('');
+  const {
+    form, setForm, wasRestored, clearDraft, signalSaved, snapshot,
+  } = useFormDraft<LocationNoteForm>({
+    storageKey: `rmpg_location_note_form_${noteId ?? 'new'}`,
+    defaultValue: EMPTY_FORM,
+    isActive: true,
+  });
+  const {
+    entityType, entityName, address, noteText, noteType,
+    daysAvailable, anyDay, hoursStart, hoursEnd, cutoffTime,
+  } = form;
+  const setEntityType = (v: string) => setForm({ ...form, entityType: v });
+  const setEntityName = (v: string) => setForm({ ...form, entityName: v });
+  const setAddress = (v: string) => setForm({ ...form, address: v });
+  const setNoteText = (v: string) => setForm({ ...form, noteText: v });
+  const setNoteType = (v: string) => setForm({ ...form, noteType: v });
+  const setDaysAvailable = (v: number[]) => setForm({ ...form, daysAvailable: v });
+  const setAnyDay = (v: boolean) => setForm({ ...form, anyDay: v });
+  const setHoursStart = (v: string) => setForm({ ...form, hoursStart: v });
+  const setHoursEnd = (v: string) => setForm({ ...form, hoursEnd: v });
+  const setCutoffTime = (v: string) => setForm({ ...form, cutoffTime: v });
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Load existing note when editing
+  // Load existing note when editing (skipped if a local draft was restored)
   useEffect(() => {
-    if (!noteId) return;
+    if (!noteId || wasRestored) { setTimeout(() => snapshot(), 0); return; }
     setLoading(true);
     apiFetch<LocationNote[]>('/serve-intake/location-notes')
       .then((notes) => {
         const note = notes.find((n) => n.id === noteId);
         if (note) {
-          setEntityType(note.entity_type);
-          setEntityName(note.entity_name ?? '');
-          setAddress(note.address_norm ?? '');
-          setNoteText(note.note_text);
-          setNoteType(note.note_type);
-          if (note.days_available && note.days_available.length > 0) {
-            setAnyDay(false);
-            setDaysAvailable(note.days_available);
-          } else {
-            setAnyDay(true);
-            setDaysAvailable([0, 1, 2, 3, 4, 5, 6]);
-          }
-          setHoursStart(note.hours_start ?? '');
-          setHoursEnd(note.hours_end ?? '');
-          setCutoffTime(note.cutoff_time ?? '');
+          setForm({
+            entityType: note.entity_type,
+            entityName: note.entity_name ?? '',
+            address: note.address_norm ?? '',
+            noteText: note.note_text,
+            noteType: note.note_type,
+            anyDay: !(note.days_available && note.days_available.length > 0),
+            daysAvailable: note.days_available && note.days_available.length > 0
+              ? note.days_available
+              : [0, 1, 2, 3, 4, 5, 6],
+            hoursStart: note.hours_start ?? '',
+            hoursEnd: note.hours_end ?? '',
+            cutoffTime: note.cutoff_time ?? '',
+          });
         }
       })
       .catch(() => setError('Failed to load notation'))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setTimeout(() => snapshot(), 0);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId]);
 
   function toggleDay(d: number) {
-    setDaysAvailable((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort((a, b) => a - b),
+    setDaysAvailable(
+      daysAvailable.includes(d) ? daysAvailable.filter((x) => x !== d) : [...daysAvailable, d].sort((a, b) => a - b),
     );
   }
 
@@ -121,6 +165,7 @@ export default function LocationNoteModal({ noteId, prefill, onClose, onSaved }:
       } else {
         await apiFetch('/serve-intake/location-notes', { method: 'POST', body: JSON.stringify(payload) });
       }
+      signalSaved();
       onSaved();
     } catch {
       setError('Failed to save notation');
@@ -129,15 +174,20 @@ export default function LocationNoteModal({ noteId, prefill, onClose, onSaved }:
     }
   }
 
+  function guardedClose() {
+    clearDraft();
+    onClose();
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-surface-base border border-border-subtle rounded w-full max-w-lg shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 overflow-y-auto p-4">
+      <div className="bg-surface-base border border-border-subtle rounded w-full max-w-lg shadow-2xl my-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
           <h3 className="text-[13px] font-semibold text-brand-200 tracking-wide">
             {isEdit ? 'EDIT SERVICE NOTATION' : 'NEW SERVICE NOTATION'}
           </h3>
-          <button onClick={onClose} className="text-brand-500 hover:text-brand-200">
+          <button onClick={guardedClose} className="text-brand-500 hover:text-brand-200">
             <X size={14} />
           </button>
         </div>
@@ -148,6 +198,16 @@ export default function LocationNoteModal({ noteId, prefill, onClose, onSaved }:
           </div>
         ) : (
           <div className="p-4 space-y-4">
+            {wasRestored && (
+              <div className="flex items-center justify-between px-3 py-2 rounded border border-amber-500/30 bg-amber-950/20">
+                <div className="flex items-center gap-2 text-[11px] text-amber-400 font-medium">
+                  <Clock size={12} /> Restored unsaved notation
+                </div>
+                <button onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                  Discard
+                </button>
+              </div>
+            )}
             {/* Match criteria */}
             <div>
               <label className="block text-[10px] text-brand-400 font-semibold uppercase tracking-wide mb-2">
@@ -303,7 +363,7 @@ export default function LocationNoteModal({ noteId, prefill, onClose, onSaved }:
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-1">
               <button
-                onClick={onClose}
+                onClick={guardedClose}
                 className="px-3 py-1.5 text-[11px] border border-border-subtle rounded text-brand-400 hover:text-brand-200 hover:border-border-muted"
               >
                 Cancel

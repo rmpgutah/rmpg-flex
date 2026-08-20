@@ -13,14 +13,14 @@ import { useDispatchTranscript, clearTranscript } from '../hooks/useDispatchTran
 import type { AlertSeverity } from '../utils/alertSeverity';
 
 const SEV_COLOR: Record<AlertSeverity, string> = {
-  major:    '#ff3b30', // red
-  moderate: '#ff9500', // amber
-  minor:    '#34c759', // green
+  major:    'var(--sev-critical)', // red
+  moderate: 'var(--sev-high)', // amber
+  minor:    'var(--sev-ok)', // green
 };
 
 function fmtTime(ms: number): string {
   const d = new Date(ms);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 export default function DispatcherTranscript() {
@@ -79,7 +79,7 @@ export default function DispatcherTranscript() {
             border: '1px solid var(--border-subtle)',
             borderRadius: 2,
             zIndex: 50,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+            boxShadow: '0 4px 16px rgba(0 0 0 / 0.6)',
           }}
         >
           <div
@@ -89,17 +89,17 @@ export default function DispatcherTranscript() {
               alignItems: 'center',
               padding: '6px 8px',
               borderBottom: '1px solid var(--border-subtle)',
-              background: 'linear-gradient(180deg, #1a1a1a, #242424)',
+              background: 'linear-gradient(180deg, var(--surface-overlay), var(--surface-deep))',
             }}
           >
-            <span style={{ color: '#d4a017', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
+            <span style={{ color: 'var(--panel-header-color)', fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>
               DISPATCHER TRANSCRIPT
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 type="button"
                 onClick={() => clearTranscript()}
-                style={{ color: '#888888', fontSize: 10, background: 'none', border: 'none', cursor: 'pointer' }}
+                style={{ color: 'var(--text-secondary)', fontSize: 10, background: 'none', border: 'none', cursor: 'pointer' }}
                 title="Clear transcript"
               >
                 CLEAR
@@ -107,7 +107,7 @@ export default function DispatcherTranscript() {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                style={{ color: '#888888', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
+                style={{ color: 'var(--text-secondary)', fontSize: 14, background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}
                 title="Close"
               >
                 ×
@@ -115,7 +115,7 @@ export default function DispatcherTranscript() {
             </div>
           </div>
           {entries.length === 0 ? (
-            <div style={{ padding: 12, color: 'var(--rmpg-500)', fontSize: 11 }}>No announcements yet.</div>
+            <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 11 }}>No announcements yet.</div>
           ) : (
             <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
               {entries.map((e) => (
@@ -131,8 +131,8 @@ export default function DispatcherTranscript() {
                   }}
                 >
                   <span style={{ color: SEV_COLOR[e.severity], textShadow: `0 0 4px ${SEV_COLOR[e.severity]}` }}>●</span>
-                  <span style={{ color: '#888888', minWidth: 56 }}>{fmtTime(e.ts)}</span>
-                  <span style={{ color: 'var(--rmpg-300)', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
+                  <span style={{ color: 'var(--text-secondary)', minWidth: 56 }}>{fmtTime(e.ts)}</span>
+                  <span style={{ color: 'var(--text-secondary)', flex: 1, wordBreak: 'break-word' }}>{e.text}</span>
                 </li>
               ))}
             </ul>

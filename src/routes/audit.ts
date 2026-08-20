@@ -14,6 +14,9 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
+import { containsAnyClause } from '../utils/searchText';
+import { log } from '../utils/logger';
 const audit = new Hono<Env>();
 
 // ── Role gate ──────────────────────────────────────────────
@@ -72,7 +75,7 @@ audit.get('/logs', async (c) => {
     if (userId) { conditions.push('al.user_id = ?'); params.push(userId); }
     if (startDate) { conditions.push('al.created_at >= ?'); params.push(startDate); }
     if (endDate) { conditions.push('al.created_at <= ?'); params.push(endDate); }
-    if (search) { conditions.push('al.details LIKE ?'); params.push(`%${search}%`); }
+    if (search) { const _m = containsAnyClause(['al.details']); conditions.push(_m.sql); params.push(..._m.binds(search)); }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRow = await queryFirst<{ total: number }>(
@@ -106,7 +109,7 @@ audit.get('/stats', async (c) => {
     const db = getDb(c.env);
     const totalRow = await queryFirst<{ total: number }>(db, 'SELECT COUNT(*) as total FROM audit_log');
     const todayRow = await queryFirst<{ total: number }>(
-      db, `SELECT COUNT(*) as total FROM audit_log WHERE date(created_at) = date('now')`,
+      db, `SELECT COUNT(*) as total FROM audit_log WHERE ${denverDateExpr('created_at')} = ${denverNowDateExpr()}`,
     );
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const topActions = await query<Record<string, unknown>>(
@@ -132,6 +135,7 @@ audit.get('/stats', async (c) => {
       topUsers,
     });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to fetch audit stats', code: 'FAILED_TO_FETCH_AUDIT' }, 500);
   }
 });
@@ -183,7 +187,7 @@ audit.get('/export', async (c) => {
     if (userId) { conditions.push('al.user_id = ?'); params.push(userId); }
     if (startDate) { conditions.push('al.created_at >= ?'); params.push(startDate); }
     if (endDate) { conditions.push('al.created_at <= ?'); params.push(endDate); }
-    if (search) { conditions.push('al.details LIKE ?'); params.push(`%${search}%`); }
+    if (search) { const _m = containsAnyClause(['al.details']); conditions.push(_m.sql); params.push(..._m.binds(search)); }
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await query<Record<string, unknown>>(
@@ -216,6 +220,7 @@ audit.get('/export', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to export audit log', code: 'EXPORT_AUDIT_LOG_ERROR' }, 500);
   }
 });
@@ -258,6 +263,7 @@ audit.post('/retention/enforce', async (c) => {
       before: countBefore,
     });
   } catch (err) {
+    log.error('POST /retention/enforce failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to enforce retention', code: 'RETENTION_ENFORCE_ERROR' }, 500);
   }
 });
@@ -284,6 +290,7 @@ audit.get('/retention/policy', async (c) => {
       oldestEntry: oldestRow?.oldest ?? null,
     });
   } catch (err) {
+    log.error('GET /retention/policy failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to get retention policy', code: 'GET_RETENTION_POLICY_ERROR' }, 500);
   }
 });
@@ -327,6 +334,7 @@ audit.put('/retention/policy', async (c) => {
 
     return c.json({ retention_days, auto_enforce, message: 'Policy updated' });
   } catch (err) {
+    log.error('PUT /retention/policy failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to update retention policy', code: 'UPDATE_RETENTION_POLICY_ERROR' }, 500);
   }
 });
@@ -347,6 +355,7 @@ audit.get('/action-types', async (c) => {
     );
     return c.json({ actionTypes, entityTypes });
   } catch (err) {
+    log.error('GET /action-types failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to get action types', code: 'ACTION_TYPES_ERROR' }, 500);
   }
 });
@@ -410,6 +419,7 @@ audit.get('/summary', async (c) => {
       dailyTrend, byHour, topUsers, topActions, securityActions,
     });
   } catch (err) {
+    log.error('GET /summary failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to get audit summary', code: 'AUDIT_SUMMARY_ERROR' }, 500);
   }
 });
@@ -432,6 +442,7 @@ audit.get('/entity/:entityType/:entityId', async (c) => {
     );
     return c.json({ data: logs, entity_type: entityType, entity_id: entityId });
   } catch (err) {
+    log.error('GET /entity/:entityType/:entityId failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to get entity audit log', code: 'ENTITY_AUDIT_ERROR' }, 500);
   }
 });
@@ -498,6 +509,7 @@ audit.post('/compress', async (c) => {
       cutoff_date: cutoff.split('T')[0],
     });
   } catch (err) {
+    log.error('POST /compress failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to compress audit log', code: 'AUDIT_COMPRESS_ERROR' }, 500);
   }
 });
@@ -531,6 +543,7 @@ audit.get('/index-stats', async (c) => {
       estimated_size_mb: Math.round((totalEntries * (avgEntrySize?.avg_bytes || 100)) / 1024 / 1024 * 100) / 100,
     });
   } catch (err) {
+    log.error('GET /index-stats failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to get index stats', code: 'AUDIT_INDEX_STATS_ERROR' }, 500);
   }
 });
@@ -631,6 +644,7 @@ audit.get('/compliance-report', async (c) => {
       active_users: activeUsers,
     });
   } catch (err) {
+    log.error('GET /compliance-report failed', { src: 'src/routes/audit.ts' }, err);
     return c.json({ error: 'Failed to generate compliance report', code: 'COMPLIANCE_REPORT_ERROR' }, 500);
   }
 });

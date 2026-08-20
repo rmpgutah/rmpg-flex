@@ -1,5 +1,24 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useUnsavedChanges } from './useUnsavedChanges';
+import { apiFetch } from './useApi';
+
+// D1-backed mirror of the draft, keyed by storageKey — so a draft survives
+// a localStorage clear, private-window session, or switching devices, not
+// just the current browser. Every write is fire-and-forget (localStorage
+// stays the fast/synchronous source of truth); D1 is best-effort recovery.
+function draftPath(storageKey: string): string {
+  return `/form-drafts/${encodeURIComponent(storageKey)}`;
+}
+function syncDraftToD1(storageKey: string, data: unknown): void {
+  apiFetch(draftPath(storageKey), { method: 'PUT', body: JSON.stringify({ data }) }).catch(() => {
+    // Offline/network failure — localStorage still has it; next save retries.
+  });
+}
+function deleteDraftFromD1(storageKey: string): void {
+  apiFetch(draftPath(storageKey), { method: 'DELETE' }).catch(() => {
+    // Best-effort — an orphaned D1 row is harmless, overwritten by the next save.
+  });
+}
 
 interface UseFormDraftOptions<T> {
   /** localStorage key (prefix with 'rmpg_' for consistency) */
@@ -123,6 +142,16 @@ export function useFormDraft<T>({
           onRestore(draft as T);
         } catch { /* ignore */ }
       }
+    } else if (!wasRestored) {
+      // No local draft (cleared storage, private window, new device) —
+      // fall back to the D1-mirrored copy so in-progress edits aren't lost.
+      apiFetch<{ data: T | null }>(draftPath(storageKey)).then((res) => {
+        if (res.data == null) return;
+        clearedRef.current = false;
+        setFormRaw(res.data);
+        setWasRestored(true);
+        if (onRestore) onRestore(res.data);
+      }).catch(() => { /* offline or no D1 draft — stay on defaultValue */ });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,6 +161,7 @@ export function useFormDraft<T>({
       const payload = { ...formRef.current, _savedAt: Date.now() };
       localStorage.setItem(storageKey, JSON.stringify(payload));
     } catch { /* quota exceeded — ignore */ }
+    syncDraftToD1(storageKey, formRef.current);
   }, [storageKey]);
 
   const setForm = useCallback(
@@ -146,6 +176,7 @@ export function useFormDraft<T>({
             const payload = { ...next, _savedAt: Date.now() };
             localStorage.setItem(storageKey, JSON.stringify(payload));
           } catch { /* ignore */ }
+          syncDraftToD1(storageKey, next);
         }, debounceMs);
         return next;
       });
@@ -163,6 +194,7 @@ export function useFormDraft<T>({
   const clearDraft = useCallback(() => {
     clearedRef.current = true; // prevent unmount from re-saving after a successful save
     localStorage.removeItem(storageKey);
+    deleteDraftFromD1(storageKey);
     setFormRaw(defaultValue);
     initialRef.current = '';
     if (onClear) onClear();
@@ -174,6 +206,7 @@ export function useFormDraft<T>({
   const signalSaved = useCallback(() => {
     clearedRef.current = true;
     localStorage.removeItem(storageKey);
+    deleteDraftFromD1(storageKey);
   }, [storageKey]);
 
   // Dirty calculation
@@ -195,6 +228,7 @@ export function useFormDraft<T>({
         const payload = { ...formRef.current, _savedAt: Date.now() };
         localStorage.setItem(storageKey, JSON.stringify(payload));
       } catch { /* ignore */ }
+      syncDraftToD1(storageKey, formRef.current);
     };
   }, [storageKey]);
 

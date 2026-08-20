@@ -3,6 +3,8 @@ import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
 import { playStartupSound } from '../utils/startupSound';
 import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
+import { importWithRetry } from '../utils/importWithRetry';
+import { warmOfflineCache } from '../utils/offlineCacheWarm';
 
 export type LoginStep =
   | 'username'
@@ -208,6 +210,20 @@ function safeSetItem(key: string, value: string): void {
   try { localStorage.setItem(key, value); } catch { /* quota exceeded or private browsing */ }
 }
 
+// Pushes a freshly issued session (login, 2FA completion, password-change
+// completion) into the Electron main process's local_config cache, via the
+// `storeAuthSession` bridge preload.js exposes. Browser tab sessions have no
+// `electron` (see the module-level `electron` const above) so this is a
+// silent no-op there — it only matters for the desktop shell's offline mode
+// and PIN sessions, which derive current_user_id/current_user_role from
+// this token (see main.js's 'auth:store-session' handler). Fire-and-forget:
+// a failure here must never block or fail the login flow itself.
+function syncElectronSession(newToken: string, refreshToken?: string | null): void {
+  try {
+    electron?.storeAuthSession?.(newToken, refreshToken ?? null)?.catch?.(() => { /* offline cache sync is best-effort */ });
+  } catch { /* not in Electron, or bridge unavailable */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Optimistic boot: render from the cached user when the stored token is still
   // locally valid, so a returning field device is interactive immediately rather
@@ -230,8 +246,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // render optimistically (see initialOptimisticUser). Centralized here so all
   // login/refresh paths are covered; cleared on logout (setUser(null)).
   useEffect(() => {
-    if (user) writeCachedUser(user);
-    else { try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ } }
+    if (user) {
+      writeCachedUser(user);
+      // Pre-populate the SW API cache so all pages have stale data available
+      // if the device goes offline before the officer visits each page.
+      // Fire-and-forget — never blocks login, never retries on failure.
+      warmOfflineCache();
+    } else {
+      try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ }
+    }
+  }, [user]);
+
+  // Re-warm the SW API cache when the device reconnects so stale data
+  // refreshes automatically after an offline period.
+  useEffect(() => {
+    if (!user) return;
+    const handleOnline = () => warmOfflineCache();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [user]);
+
+  // Best-effort device GPS attach, once per session — fires only through
+  // the browser's OWN navigator.geolocation permission prompt (this code
+  // cannot see coordinates the browser doesn't hand it, and never re-prompts
+  // if the officer declines). Fire-and-forget: never blocks login, never
+  // retries, and any failure (denied, unsupported, no fix, network error)
+  // is silently swallowed — this is enrichment for the Security Dashboard,
+  // not something login correctness can depend on. Keyed on `user` so it
+  // covers every login path (password, 2FA, backup code, SSO) from one
+  // place rather than duplicating the call at each success site.
+  const deviceLocationSentRef = useRef(false);
+  useEffect(() => {
+    if (!user) { deviceLocationSentRef.current = false; return; }
+    if (deviceLocationSentRef.current) return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    deviceLocationSentRef.current = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const currentToken = localStorage.getItem(TOKEN_KEY);
+        if (!currentToken) return;
+        fetchWithTimeout('/api/auth/session/device-location', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${currentToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracyMeters: pos.coords.accuracy,
+          }),
+        }).catch(() => { /* best-effort */ });
+      },
+      () => { /* permission denied / unavailable — no-op */ },
+      { timeout: 5000, maximumAge: 60_000 },
+    );
   }, [user]);
 
   const clearError = useCallback(() => setError(null), []);
@@ -524,6 +590,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
 
         setUser(data.user);
         setToken(data.token);
@@ -579,7 +646,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { options, challengeId } = await optionsRes.json();
 
       // 2. Prompt the user's security key (browser native WebAuthn dialog)
-      const { startAuthentication } = await import('@simplewebauthn/browser');
+      const { startAuthentication } = await importWithRetry(() => import('@simplewebauthn/browser'));
       const authResponse = await startAuthentication({ optionsJSON: options });
 
       // 3. Verify with server
@@ -602,6 +669,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
 
         setUser(data.user);
         setToken(data.token);
@@ -685,6 +753,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.sessionId) {
           safeSetItem(SESSION_ID_KEY, data.sessionId);
         }
+        syncElectronSession(data.token, data.refreshToken);
 
         // Store last login info for display on login page
         if (data.lastLoginAt) {
@@ -791,6 +860,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
         setUser(data.user);
         setToken(data.token);
         setPending2FA(false);
@@ -892,6 +962,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         safeSetItem(TOKEN_KEY, data.token);
         if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+        syncElectronSession(data.token, data.refreshToken);
         // Update React state so the app recognizes the authenticated session
         setToken(data.token);
         if (data.user) setUser(data.user);
@@ -934,6 +1005,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       safeSetItem(TOKEN_KEY, data.token);
       if (data.refreshToken) safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
       if (data.sessionId) safeSetItem(SESSION_ID_KEY, data.sessionId);
+      syncElectronSession(data.token, data.refreshToken);
       setUser(data.user);
       setToken(data.token);
       setIsLoading(false);
@@ -1103,6 +1175,10 @@ export function useAuth(): AuthContextType {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+export function useOptionalAuth(): AuthContextType | null {
+  return useContext(AuthContext) ?? null;
 }
 
 export default AuthContext;

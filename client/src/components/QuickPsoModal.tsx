@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
-import { X, Shield, Loader2, ArrowRight } from 'lucide-react';
+import { X, Shield, Loader2, ArrowRight, History } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { PRIORITY_OPTIONS, PSO_SERVICE_TYPES, PROCESS_SERVICE_DOC_TYPES } from './NewCallModal';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
+import { useFormDraft } from '../hooks/useFormDraft';
 
 import RichTextArea from './RichTextArea';
 import { formatPhoneInput } from '../utils/formatters';
@@ -38,7 +39,11 @@ const DEFAULT_PSO_DATA = {
 };
 
 export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFullForm, clients = [] }: QuickPsoModalProps) {
-  const [formData, setFormData] = useState({ ...DEFAULT_PSO_DATA });
+  const { form: formData, setForm: setFormData, wasRestored, clearDraft, signalSaved } = useFormDraft({
+    storageKey: 'rmpg_quick_pso_draft',
+    defaultValue: DEFAULT_PSO_DATA,
+    isActive: isOpen,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationUnit, setLocationUnit] = useState('');
   const titleId = useId();
@@ -46,11 +51,12 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
   const firstInputRef = useRef<HTMLSelectElement>(null);
   const { identify: identifyDistrict } = useDistrictIdentify();
 
-  // Reset form when modal opens
+  // Focus first input each time the modal opens. Form contents are NOT reset
+  // here — useFormDraft owns persistence, so an in-progress PSO request
+  // survives a Cancel/re-open (or a lost connection / device switch, via its
+  // D1 mirror) instead of being silently discarded.
   useEffect(() => {
     if (isOpen) {
-      setFormData({ ...DEFAULT_PSO_DATA });
-      // Focus first input after render
       setTimeout(() => firstInputRef.current?.focus(), 100);
     }
   }, [isOpen]);
@@ -104,15 +110,21 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
         assigned_units: [],
         notes: [],
       } as any);
-      setFormData({ ...DEFAULT_PSO_DATA });
+      // Only clear the draft AFTER the save is confirmed successful — never
+      // in the catch block, so a failed submit keeps the draft for retry.
+      clearDraft();
     } catch {
-      // Error handled by parent — keep form data for retry
+      // Error handled by parent — keep form data (and its draft) for retry
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleExpand = () => {
+    // Handing off to the full NewCallModal, which owns its own draft — mark
+    // this draft saved (not cleared/reset) so the in-progress data isn't
+    // lost if the user backs out of the full form without submitting.
+    signalSaved();
     onExpandToFullForm({ ...formData });
   };
 
@@ -141,6 +153,17 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Draft restored banner */}
+        {wasRestored && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-amber-900/30 border-b border-amber-700/30">
+            <History className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Restored pending draft</span>
+            <button type="button" onClick={() => clearDraft()} className="ml-auto text-[9px] text-rmpg-400 hover:text-rmpg-100 transition-colors uppercase tracking-wider font-bold">
+              Discard
+            </button>
+          </div>
+        )}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
@@ -171,7 +194,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                     update('client_id', '');
                   }
                 }}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               >
                 <option value="">-- Select Client --</option>
                 {(() => {
@@ -208,7 +231,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               className="select-dark"
               value={formData.pso_service_type}
               onChange={(e) => update('pso_service_type', e.target.value)}
-              style={{ borderColor: '#6b21a8' }}
+              style={{ borderColor: 'var(--sev-special)' }}
             >
               {PSO_SERVICE_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -283,7 +306,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 placeholder="Client contact"
                 value={formData.pso_requestor_name}
                 onChange={(e) => update('pso_requestor_name', e.target.value)}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               />
             </div>
             <div>
@@ -294,7 +317,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 placeholder="(801) 555-0100"
                 value={formData.pso_requestor_phone}
                 onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))}
-                style={{ borderColor: '#6b21a8' }}
+                style={{ borderColor: 'var(--sev-special)' }}
               />
             </div>
           </div>
@@ -308,7 +331,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               placeholder="PSO contract #"
               value={formData.contract_id}
               onChange={(e) => update('contract_id', e.target.value)}
-              style={{ borderColor: '#6b21a8' }}
+              style={{ borderColor: 'var(--sev-special)' }}
             />
           </div>
 
@@ -389,11 +412,11 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 disabled={isSubmitting || !formData.location}
                 className="toolbar-btn"
                 style={{
-                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-                  borderColor: '#7c3aed',
+                  background: isSubmitting ? 'var(--rmpg-700)' : 'linear-gradient(180deg, var(--sev-special) 0%, var(--sev-special) 100%)',
+                  borderColor: 'var(--sev-special)',
                   borderBottomColor: 'var(--surface-overlay)',
                   borderRightColor: 'var(--surface-overlay)',
-                  color: '#ffffff',
+                  color: 'white',
                   opacity: !formData.location ? 0.5 : 1,
                 }}
               >

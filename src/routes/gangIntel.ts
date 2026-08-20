@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 
+import { log } from '../utils/logger';
 // Mirror CHECK constraints on gang_intel_members (and gang_intel_gangs.threat_level)
 // from migrations/0048_specialized_modules.sql. Keep in sync if the migration moves.
 const MEMBER_STATUSES = new Set(['active', 'inactive', 'incarcerated', 'deceased']);
@@ -28,12 +30,21 @@ function enumError(field: 'status' | 'threat_level') {
 
 const gangIntel = new Hono<Env>();
 
+// Gang intelligence is CJIS-restricted. The sibling intel.ts router gates every
+// endpoint with this same `operational` set (admin/manager/supervisor/officer/
+// dispatcher) precisely to exclude the external-facing contract_manager and
+// client_viewer roles; this router omitted it, so those roles could read (and
+// contract_manager could edit) documented gang-member threat records. Restore
+// the gate router-wide — reads AND writes.
+gangIntel.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
+
 gangIntel.get('/', async (c) => {
   try {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_intel_members ORDER BY created_at DESC LIMIT 200');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.post('/', async (c) => {
@@ -60,7 +71,7 @@ gangIntel.put('/:id', async (c) => {
   const v = checkEnums(body);
   if (!v.ok) return c.json(enumError(v.field), 400);
   await execute(db,
-    'UPDATE gang_intel_members SET name=?, moniker=?, gang_name=?, status=?, threat_level=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE gang_intel_members SET name=?, moniker=?, gang_name=?, status=?, threat_level=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null, id
   );
   return c.json({ success: true });
@@ -75,7 +86,8 @@ gangIntel.delete('/:id', async (c) => {
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_members WHERE id=?', id);
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/gangs', async (c) => {
@@ -83,7 +95,8 @@ gangIntel.get('/gangs', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_intel_gangs ORDER BY name');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /gangs failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.post('/gangs', async (c) => {
@@ -112,7 +125,7 @@ gangIntel.put('/gangs/:id', async (c) => {
     return c.json(enumError('threat_level'), 400);
   }
   await execute(db,
-    'UPDATE gang_intel_gangs SET name=?, colors=?, member_count=?, threat_level=?, territory=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+    'UPDATE gang_intel_gangs SET name=?, colors=?, member_count=?, threat_level=?, territory=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
     (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null, id
   );
   return c.json({ success: true });
@@ -127,7 +140,8 @@ gangIntel.delete('/gangs/:id', async (c) => {
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_gangs WHERE id=?', id);
   return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /gangs/:id failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/graffiti', async (c) => {
@@ -135,7 +149,8 @@ gangIntel.get('/graffiti', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM gang_graffiti_records ORDER BY created_at DESC LIMIT 200');
   return c.json(rows || []);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /graffiti failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 gangIntel.get('/stats', async (c) => {
@@ -145,7 +160,8 @@ gangIntel.get('/stats', async (c) => {
   const active = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM gang_intel_members WHERE status = 'active'");
   const gangs = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM gang_intel_gangs');
   return c.json({ totalMembers: total?.cnt || 0, activeMembers: active?.cnt || 0, totalGangs: gangs?.cnt || 0 });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/gangIntel.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 export default gangIntel;

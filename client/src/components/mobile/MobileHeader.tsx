@@ -69,7 +69,7 @@ export default function MobileHeader({
         <button type="button"
           onClick={onMenuOpen}
           className="flex items-center justify-center"
-          style={{ width: 44, height: 44, color: 'var(--rmpg-400)' }}
+          style={{ width: 44, height: 44, color: 'var(--text-secondary)' }}
           aria-label="Open navigation"
         >
           <Menu style={{ width: 20, height: 20 }} />
@@ -110,8 +110,8 @@ export default function MobileHeader({
             <div
               className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[10px] font-bold"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
-                color: '#fff',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--text-muted))',
+                color: 'white',
                 border: '2px solid var(--border-strong)',
               }}
             >

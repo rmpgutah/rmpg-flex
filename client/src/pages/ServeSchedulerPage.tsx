@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Navigation, Pencil, RefreshCcw } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
@@ -28,6 +28,12 @@ import EditSlotModal from '../components/serve/EditSlotModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import type { RangeMode } from '../utils/schedulerLanes';
 import type { ScheduleSlot } from '../utils/schedulerView';
+import {
+  describeConflicts,
+  describeServeScheduleError,
+  extractOverlapConflicts,
+  type ScheduleConflict,
+} from '../utils/serveScheduleErrors';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
@@ -39,7 +45,13 @@ interface ScheduleResp {
 /** Pending action waiting for ConfirmDialog confirmation */
 type PendingAction =
   | { type: 'dismiss'; slot: ScheduleSlot }
-  | { type: 'unassign'; slot: ScheduleSlot };
+  | { type: 'unassign'; slot: ScheduleSlot }
+  | {
+      type: 'overlap';
+      slot: ScheduleSlot;
+      target: { date: string; officer_id: number | null };
+      conflicts: ScheduleConflict[];
+    };
 
 function todayDenver(): string {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Denver' })
@@ -142,6 +154,24 @@ export default function ServeSchedulerPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [showRebalance, canManage]);
 
+  // The PATCH endpoint reads `scheduled_date`, not `date` — sending the raw
+  // `target` object silently no-ops the date move (server falls back to the
+  // slot's current date) while still returning 200, so the chip appears to move
+  // until the next refetch snaps it back. Map the field name explicitly.
+  //
+  // `force` skips the server's overlap check. The route has supported ?force=1
+  // since the endpoint was written, but no client ever sent it — so an overlap
+  // 409 was a dead end with no way to say "yes, double-book them".
+  const patchSlotMove = useCallback(async (
+    slot: ScheduleSlot, target: { date: string; officer_id: number | null }, force: boolean,
+  ) => {
+    await apiFetch(`/serve-intake/schedule/${slot.id}${force ? '?force=1' : ''}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduled_date: target.date, officer_id: target.officer_id }),
+    });
+  }, []);
+
   const handleSlotDrop = useCallback(async (
     slot: ScheduleSlot, target: { date: string; officer_id: number | null },
   ) => {
@@ -152,23 +182,42 @@ export default function ServeSchedulerPage() {
         : s,
     ));
     try {
-      // The PATCH endpoint reads `scheduled_date`, not `date` — sending the
-      // raw `target` object silently no-ops the date move (server falls back
-      // to the slot's current date) while still returning 200, so the chip
-      // appears to move until the next refetch snaps it back to where it
-      // started. Map the field name explicitly.
-      await apiFetch(`/serve-intake/schedule/${slot.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scheduled_date: target.date, officer_id: target.officer_id }),
-      });
+      await patchSlotMove(slot, target, false);
     } catch (e) {
+      const conflicts = extractOverlapConflicts(e);
+      if (conflicts) {
+        // Deliberately NOT refetching here: the optimistic chip stays in the
+        // lane the operator dropped it in while they read the dialog, so the
+        // question "double-book?" has a visible subject. Cancel reverts it.
+        setPendingAction({ type: 'overlap', slot, target, conflicts });
+        return;
+      }
       refetch();
       // Toast instead of native alert — the swim-lane is drag-driven so a
       // modal would steal focus from the next drop the operator queued up.
-      addToast(`Could not reassign attempt: ${e instanceof Error ? e.message : 'unknown error'}`, 'error');
+      addToast(`Could not reassign attempt: ${describeServeScheduleError(e).message}`, 'error');
     }
-  }, [refetch, addToast]);
+  }, [patchSlotMove, refetch, addToast]);
+
+  // ── ConfirmDialog: force an overlapping move (PATCH ?force=1) ──────────────
+  // Audited server-side as `serve_schedule.force_overlap` rather than the
+  // ordinary `serve_schedule.move`, so a deliberate double-book stays
+  // distinguishable from a routine reschedule in the audit trail.
+  const handleConfirmForceMove = useCallback(async (
+    slot: ScheduleSlot, target: { date: string; officer_id: number | null },
+  ) => {
+    setConfirmLoading(true);
+    try {
+      await patchSlotMove(slot, target, true);
+      addToast('Attempt moved — that officer is now double-booked for the window', 'warning');
+    } catch (e) {
+      addToast(`Could not move attempt: ${describeServeScheduleError(e).message}`, 'error');
+    } finally {
+      setConfirmLoading(false);
+      setPendingAction(null);
+      refetch();
+    }
+  }, [patchSlotMove, refetch, addToast]);
 
   const handleQueueDrop = useCallback(async (
     queueId: number, target: { date: string; officer_id: number | null },
@@ -226,7 +275,17 @@ export default function ServeSchedulerPage() {
     if (!pendingAction) return;
     if (pendingAction.type === 'dismiss') return void handleConfirmDismiss(pendingAction.slot);
     if (pendingAction.type === 'unassign') return void handleConfirmUnassign(pendingAction.slot);
-  }, [pendingAction, handleConfirmDismiss, handleConfirmUnassign]);
+    if (pendingAction.type === 'overlap') {
+      return void handleConfirmForceMove(pendingAction.slot, pendingAction.target);
+    }
+  }, [pendingAction, handleConfirmDismiss, handleConfirmUnassign, handleConfirmForceMove]);
+
+  // Cancelling an overlap prompt must undo the optimistic move that is still
+  // on screen; the other two actions never touched local state.
+  const handleCancelPending = useCallback(() => {
+    if (pendingAction?.type === 'overlap') refetch();
+    setPendingAction(null);
+  }, [pendingAction, refetch]);
 
   // ── EditSlotModal: full manual edit (date, window, officer, label, notify) ─
   const handleSlotSave = useCallback(async (edited: ScheduleSlot) => {
@@ -386,13 +445,25 @@ export default function ServeSchedulerPage() {
 
       <ConfirmDialog
         isOpen={pendingAction !== null}
-        onClose={() => setPendingAction(null)}
+        onClose={handleCancelPending}
         onConfirm={handleConfirm}
-        title={pendingAction?.type === 'dismiss' ? 'Dismiss slot?' : 'Unassign officer?'}
-        message={pendingAction?.type === 'dismiss'
-          ? 'This removes the scheduled attempt window. It can be re-generated via backfill if needed.'
-          : 'The slot stays scheduled but no officer will be assigned.'}
-        confirmLabel={pendingAction?.type === 'dismiss' ? 'Dismiss' : 'Unassign'}
+        title={
+          pendingAction?.type === 'dismiss' ? 'Dismiss slot?'
+          : pendingAction?.type === 'overlap' ? 'Double-book this officer?'
+          : 'Unassign officer?'
+        }
+        message={
+          pendingAction?.type === 'dismiss'
+            ? 'This removes the scheduled attempt window. It can be re-generated via backfill if needed.'
+          : pendingAction?.type === 'overlap'
+            ? `${describeConflicts(pendingAction.conflicts)} Moving it here schedules both at once — the move is logged as a forced overlap.`
+            : 'The slot stays scheduled but no officer will be assigned.'
+        }
+        confirmLabel={
+          pendingAction?.type === 'dismiss' ? 'Dismiss'
+          : pendingAction?.type === 'overlap' ? 'Move anyway'
+          : 'Unassign'
+        }
         confirmVariant={pendingAction?.type === 'dismiss' ? 'danger' : 'warning'}
         isLoading={confirmLoading}
       />

@@ -9,7 +9,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const animalControl = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -43,8 +45,10 @@ animalControl.get('/', async (c) => {
     const offset = (page - 1) * perPage;
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (search) {
-      conditions.push('(case_number LIKE ? OR animal_name LIKE ? OR owner_last_name LIKE ? OR location LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['case_number', 'animal_name', 'owner_last_name', 'location']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     if (case_type) { conditions.push('case_type = ?'); params.push(case_type); }
     if (status) { conditions.push('status = ?'); params.push(status); }
@@ -55,6 +59,7 @@ animalControl.get('/', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to list cases' }, 500);
   }
 });
@@ -80,6 +85,7 @@ animalControl.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM animal_control_cases WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to create case' }, 500);
   }
 });
@@ -100,12 +106,13 @@ animalControl.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE animal_control_cases SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM animal_control_cases WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to update case' }, 500);
   }
 });
@@ -121,6 +128,7 @@ animalControl.delete('/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/animalControl.ts' }, err);
     return c.json({ error: 'Failed to delete case' }, 500);
   }
 });

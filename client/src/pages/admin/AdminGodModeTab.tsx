@@ -30,16 +30,7 @@ interface DbStats {
 }
 
 interface SystemOverview {
-  server: {
-    uptime: string;
-    node_version: string;
-    platform: string;
-    hostname: string;
-    total_memory_gb: number;
-    free_memory_gb: number;
-    load_average: number[];
-    cpus: number;
-  };
+  status?: string;
   active_users_24h: number;
   record_counts: Record<string, number>;
 }
@@ -153,6 +144,10 @@ export default function AdminGodModeTab() {
   const handleIntegrity = async () => {
     try {
       const result = await apiFetch<any>('/admin/database/integrity-check', { method: 'POST' });
+      if (result.code === 'not_supported') {
+        showResult('success', result.message || 'D1 does not support a user-facing integrity check.');
+        return;
+      }
       const issues = Array.isArray(result.result) ? result.result.join(', ') : String(result.result ?? 'unknown');
       showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${issues}`);
     } catch (err: any) { showResult('error', err.message); }
@@ -293,10 +288,10 @@ export default function AdminGodModeTab() {
   const handleMergePersons = async () => {
     if (!mergeKeepId || !mergeMergeId) return;
     try {
-      const r = await apiFetch<any>('/admin/records/persons/merge', {
+      const r = await apiFetch<any>('/records/persons/merge', {
         method: 'POST', body: JSON.stringify({ keep_id: parseInt(mergeKeepId), merge_id: parseInt(mergeMergeId) }),
       });
-      showResult('success', `Merged Person #${r.merged} into #${r.kept} — ${r.records_reassigned} records reassigned`);
+      showResult('success', `Merged Person #${mergeMergeId} into #${r.keep_id} — related records reassigned`);
       setMergeKeepId(''); setMergeMergeId('');
     } catch (err: any) { showResult('error', err.message); }
   };
@@ -370,22 +365,20 @@ export default function AdminGodModeTab() {
         </div>
       )}
 
-      {/* System Overview */}
-      {systemOverview?.server && (
+      {/* System Overview — Workers has no process/node runtime to report,
+          so this shows D1-derived activity instead of the old fake
+          uptime/CPU/memory numbers a Cloudflare Worker can't produce. */}
+      {systemOverview && (
         <div className="bg-surface-raised border border-border-subtle rounded-sm p-3">
           <h3 className="text-xs font-bold text-rmpg-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            <StatBox label="Uptime" value={systemOverview.server.uptime ?? '—'} />
-            <StatBox label="Node" value={systemOverview.server.node_version ?? '?'} />
-            <StatBox label="CPUs" value={String(systemOverview.server.cpus ?? '?')} />
-            <StatBox label="Memory" value={`${systemOverview.server.free_memory_gb ?? 0}/${systemOverview.server.total_memory_gb ?? 0} GB`} />
-            <StatBox label="Load" value={systemOverview.server.load_average?.join(' / ') ?? '—'} />
+            <StatBox label="Status" value={(systemOverview as any).status ?? '—'} />
             <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h ?? 0)} />
           </div>
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
             {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0).map(([table, count]) => (
               <div key={table} className="bg-surface-sunken px-2 py-1 rounded-sm">
-                <div className="text-[9px] text-rmpg-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
+                <div className="text-[9px] text-rmpg-500 uppercase truncate">{toDisplayLabel(table)}</div>
                 <div className="text-[11px] font-mono text-rmpg-100">{formatNumber(count)}</div>
               </div>
             ))}
@@ -622,7 +615,7 @@ export default function AdminGodModeTab() {
               <option value="">Target unit...</option>
               {units.map((u: any) => (
                 <option key={u.id} value={u.id}>
-                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${String(u.status).replace(/_/g, ' ')})` : ''}
+                  {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ' — unstaffed'}{u.status ? ` (${toDisplayLabel(String(u.status))})` : ''}
                 </option>
               ))}
             </select>

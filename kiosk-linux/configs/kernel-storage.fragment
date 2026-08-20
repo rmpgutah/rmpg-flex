@@ -1,0 +1,10 @@
+# kiosk-linux/configs/kernel-storage.fragment
+# Sub-project 5 (A/B boot partition): virtio-blk so the kernel sees the
+# QEMU disk image as /dev/vda, and EXT2/EXT4 so S01kiosk-boot-slot-check can
+# mount its single EXT2 partition (/dev/vda1) to read/write boot_attempts
+# and extlinux.conf. Both built-in (=y, not =m) since this boots from a pure
+# initramfs with no module-loading step before S01 needs the mount to work.
+CONFIG_VIRTIO_BLK=y
+CONFIG_BLK_DEV=y
+CONFIG_EXT4_FS=y
+CONFIG_EXT2_FS=y

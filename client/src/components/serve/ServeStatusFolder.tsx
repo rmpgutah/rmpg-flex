@@ -220,7 +220,7 @@ export default function ServeStatusFolder({
           : <ChevronRight size={11} className="text-rmpg-400 flex-shrink-0" aria-hidden />}
 
         {/* Optional leading icon */}
-        <LeadIcon size={11} className="text-rmpg-500 flex-shrink-0" aria-hidden />
+        <LeadIcon size={11} className="text-fg-muted flex-shrink-0" aria-hidden />
 
         {/* Status dot */}
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} aria-hidden />
@@ -246,7 +246,7 @@ export default function ServeStatusFolder({
             className={[
               'ml-1 text-[9px] font-semibold uppercase tracking-wide',
               'px-1.5 py-0.5 rounded-[2px]',
-              'bg-surface-sunken text-rmpg-500 hover:text-rmpg-200 hover:bg-surface-raised',
+              'bg-surface-sunken text-fg-muted hover:text-rmpg-200 hover:bg-surface-raised',
               'transition-colors duration-100 focus:outline-none focus:ring-1 focus:ring-rmpg-500/40',
             ].join(' ')}
             aria-label={`${bulkLabel} for ${label}`}
@@ -275,7 +275,7 @@ export default function ServeStatusFolder({
       >
         {isEmpty || count === 0 ? (
           /* Empty placeholder */
-          <div className="px-4 py-3 text-[11px] text-rmpg-500 italic select-none">
+          <div className="px-4 py-3 text-[11px] text-fg-muted italic select-none">
             {emptyText}
           </div>
         ) : (

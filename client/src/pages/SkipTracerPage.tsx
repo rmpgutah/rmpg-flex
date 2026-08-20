@@ -14,7 +14,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,
@@ -32,6 +32,8 @@ import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { safeDateStr } from '../utils/dateUtils';
 import { openSkipTracerReportPdf } from '../utils/skipTracerReportPdf';
+import { withAlpha } from '../utils/withAlpha';
+import { toDisplayLabel } from '../utils/formatters';
 
 // Search modes
 type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
@@ -42,7 +44,7 @@ type SearchMode = 'name' | 'address' | 'nameaddress' | 'phone' | 'email';
 // email → sev-info (blue). The icon background derives from the theme
 // so the chip stays legible in both skins.
 const SEARCH_MODES: { id: SearchMode; label: string; icon: React.ElementType; color: string; description: string }[] = [
-  { id: 'name', label: 'By Name', icon: User, color: 'var(--rmpg-400)', description: 'Search by full name (first and last)' },
+  { id: 'name', label: 'By Name', icon: User, color: 'var(--text-secondary)', description: 'Search by full name (first and last)' },
   { id: 'address', label: 'By Address', icon: MapPin, color: 'var(--sev-ok)', description: 'Search by street address' },
   { id: 'nameaddress', label: 'Name + Address', icon: Search, color: 'var(--sev-special)', description: 'Search by name and address combined' },
   { id: 'phone', label: 'By Phone', icon: Phone, color: 'var(--sev-warn)', description: 'Reverse phone lookup' },
@@ -877,7 +879,7 @@ function renderAllFields(obj: any, renderFieldRow: (label: string, value: any, c
       if (value === null || value === undefined || value === '') return null;
       if (typeof value === 'object' && !Array.isArray(value)) return null; // skip nested objects
       if (Array.isArray(value) && value.length === 0) return null;
-      const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim().toUpperCase();
+      const label = toDisplayLabel(key).replace(/([A-Z])/g, ' $1').trim().toUpperCase();
       const displayValue = Array.isArray(value) ? value.join(', ') : value;
       return <React.Fragment key={key}>{renderFieldRow(label, displayValue, key)}</React.Fragment>;
     });
@@ -910,7 +912,7 @@ function renderArraySection(
         {title} ({items.length})
       </div>
       {items.map((item: any, idx: number) => (
-        <div key={idx} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: color + '40' }}>
+        <div key={idx} className="pl-3 border-l-2 py-1 space-y-0.5" style={{ borderColor: withAlpha(color, '40') }}>
           {typeof item === 'string' ? (
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-rmpg-200 font-mono">{item}</span>
@@ -924,7 +926,7 @@ function renderArraySection(
           ) : typeof item === 'object' ? (
             Object.entries(item).map(([k, v]) => {
               if (!v) return null;
-              return <React.Fragment key={k}>{renderFieldRow(k.replace(/_/g, ' ').toUpperCase(), v)}</React.Fragment>;
+              return <React.Fragment key={k}>{renderFieldRow(toDisplayLabel(k).toUpperCase(), v)}</React.Fragment>;
             })
           ) : (
             <span className="text-[11px] text-rmpg-200 font-mono">{String(item)}</span>

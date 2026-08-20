@@ -13,6 +13,7 @@ import { useEffect, useCallback, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { devLog } from '../utils/devLog';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -65,56 +66,62 @@ export function useMapHeatmap(map: mapboxgl.Map | null, mapLoaded: boolean): Use
       return;
     }
 
-    if (!hasSource(map, HEAT_SOURCE)) {
-      map.addSource(HEAT_SOURCE, { type: 'geojson', data: heatGeoJSON(points) });
+    // whenStyleReady guards against "Style is not done loading" -- a basemap
+    // switch (changeStyle) doesn't reset mapLoaded, so this effect can
+    // re-fire (enabled/points/intensity/radius changed) while the new style
+    // is still mid-load.
+    whenStyleReady(map, () => {
+      if (!hasSource(map, HEAT_SOURCE)) {
+        map.addSource(HEAT_SOURCE, { type: 'geojson', data: heatGeoJSON(points) });
 
-      map.addLayer({
-        id: HEAT_LAYER,
-        type: 'heatmap',
-        source: HEAT_SOURCE,
-        maxzoom: 17,
-        paint: {
-          // Weight from property
-          'heatmap-weight': ['get', 'weight'],
+        map.addLayer({
+          id: HEAT_LAYER,
+          type: 'heatmap',
+          source: HEAT_SOURCE,
+          maxzoom: 17,
+          paint: {
+            // Weight from property
+            'heatmap-weight': ['get', 'weight'],
 
-          // Intensity ramps with zoom
-          'heatmap-intensity': [
-            'interpolate', ['linear'], ['zoom'],
-            0, intensity * 0.5,
-            14, intensity,
-          ],
+            // Intensity ramps with zoom
+            'heatmap-intensity': [
+              'interpolate', ['linear'], ['zoom'],
+              0, intensity * 0.5,
+              14, intensity,
+            ],
 
-          // Color ramp: transparent → blue → green → yellow → red
-          'heatmap-color': [
-            'interpolate', ['linear'], ['heatmap-density'],
-            0, 'rgba(0,0,0,0)',
-            0.1, 'rgba(33,102,172,0.4)',
-            0.3, 'rgba(103,169,207,0.6)',
-            0.5, 'rgba(209,229,143,0.7)',
-            0.7, 'rgba(253,219,119,0.8)',
-            0.9, 'rgba(239,138,98,0.9)',
-            1, 'rgba(178,24,43,1)',
-          ],
+            // Color ramp: transparent → blue → green → yellow → red
+            'heatmap-color': [
+              'interpolate', ['linear'], ['heatmap-density'],
+              0, 'rgba(0 0 0 / 0)',
+              0.1, 'rgba(33,102,172,0.4)',
+              0.3, 'rgba(103,169,207,0.6)',
+              0.5, 'rgba(209,229,143,0.7)',
+              0.7, 'rgba(253,219,119,0.8)',
+              0.9, 'rgba(239,138,98,0.9)',
+              1, 'rgba(178,24,43,1)',
+            ],
 
-          // Radius ramps with zoom
-          'heatmap-radius': [
-            'interpolate', ['linear'], ['zoom'],
-            0, radius * 0.5,
-            14, radius,
-            18, radius * 2,
-          ],
+            // Radius ramps with zoom
+            'heatmap-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              0, radius * 0.5,
+              14, radius,
+              18, radius * 2,
+            ],
 
-          // Fade out at high zoom so individual markers are visible
-          'heatmap-opacity': [
-            'interpolate', ['linear'], ['zoom'],
-            14, 0.8,
-            18, 0.3,
-          ],
-        },
-      });
+            // Fade out at high zoom so individual markers are visible
+            'heatmap-opacity': [
+              'interpolate', ['linear'], ['zoom'],
+              14, 0.8,
+              18, 0.3,
+            ],
+          },
+        });
 
-      devLog('[Heatmap] Layer added with', points.length, 'points');
-    }
+        devLog('[Heatmap] Layer added with', points.length, 'points');
+      }
+    });
 
     return () => {
       safeRemoveLayer(map, HEAT_LAYER);

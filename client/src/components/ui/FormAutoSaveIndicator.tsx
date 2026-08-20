@@ -14,7 +14,7 @@ interface FormAutoSaveIndicatorProps {
 
 export default function FormAutoSaveIndicator({ status, lastSaved, className = '' }: FormAutoSaveIndicatorProps) {
   const statusConfig = {
-    idle: { icon: Cloud, text: 'Auto-save enabled', color: 'text-rmpg-500' },
+    idle: { icon: Cloud, text: 'Auto-save enabled', color: 'text-fg-muted' },
     saving: { icon: Loader2, text: 'Saving...', color: 'text-brand-400' },
     saved: { icon: Check, text: 'Saved', color: 'text-green-400' },
     error: { icon: AlertCircle, text: 'Save failed', color: 'text-red-400' },
@@ -30,8 +30,8 @@ export default function FormAutoSaveIndicator({ status, lastSaved, className = '
         {config.text}
       </span>
       {status === 'saved' && lastSaved && (
-        <span className="text-[9px] text-rmpg-600 font-mono ml-1">
-          {lastSaved.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        <span className="text-[9px] text-fg-muted font-mono ml-1">
+          {lastSaved.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}
         </span>
       )}
     </div>

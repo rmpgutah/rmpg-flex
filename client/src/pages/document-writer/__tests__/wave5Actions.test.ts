@@ -21,7 +21,8 @@ afterEach(() => { editor?.destroy(); editor = null; });
 function mk(): Editor {
   return new Editor({
     extensions: [
-      StarterKit, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      StarterKit.configure({}) as any, Table.configure({ resizable: true }), TableRow, TableCell, TableHeader,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       TextStyle, Color, Highlight.configure({ multicolor: true }),
     ],

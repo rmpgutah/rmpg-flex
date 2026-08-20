@@ -20,8 +20,9 @@ import type {
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
 import { parseTimestamp } from '../../../utils/dateUtils';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
 import { toNum, fmtFixed } from '../utils/fleetFormatters';
+import OpenWorkOrdersPanel from './OpenWorkOrdersPanel';
 
 function isRealDate(d: unknown): d is string {
   if (typeof d !== 'string') return false;
@@ -33,6 +34,8 @@ function isRealDate(d: unknown): d is string {
 type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 interface Props {
+  vehicleId: string;
+  onViewAllWorkOrders: () => void;
   loans: FleetLoan[];
   insurance: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
@@ -94,6 +97,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
 }
 
 export default function FleetCostsTab({
+  vehicleId, onViewAllWorkOrders,
   loans, insurance, accessories, utilities, other, summary,
   subTab, onSubTabChange, onAdd, onEdit, onDelete, onSaveBudgets,
 }: Props) {
@@ -125,7 +129,7 @@ export default function FleetCostsTab({
             <div className="px-2 pb-2 space-y-1">
               {alerts.map((a, i) => (
                 <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
-                  <span className="w-32 text-amber-400">{a.kind}</span>
+                  <span className="w-32 text-amber-400">{formatEnumValue(a.kind)}</span>
                   <span className="min-w-0 flex-1 truncate">{a.label}</span>
                   <span className="text-rmpg-400">{a.date}</span>
                   <span className="text-amber-500 w-16 text-right">{a.days}d</span>
@@ -135,6 +139,8 @@ export default function FleetCostsTab({
           )}
         </div>
       )}
+
+      <OpenWorkOrdersPanel vehicleId={vehicleId} onViewAll={onViewAllWorkOrders} />
 
       {/* ── Budget vs. Actual — inline-editable rows ────────── */}
       {onSaveBudgets && summary && (
@@ -336,8 +342,8 @@ function InlineBudgetEditor({ summary, onSaveBudgets }: {
         <div className="p-4 space-y-2">
           {BUDGET_CATEGORIES.map((c) => (
             <div key={c.key} className="flex items-center gap-2">
-              <label htmlFor="ff-fleetcoststab-0" className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
-              <input id="ff-fleetcoststab-0" type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
+              <label htmlFor={`ff-fleetcoststab-budget-${c.key}`} className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
+              <input id={`ff-fleetcoststab-budget-${c.key}`} type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
                 value={vals[c.key]} onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })} placeholder="0.00" />
             </div>
           ))}
@@ -499,7 +505,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
   return (
     <div className="space-y-2">
       <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy"
-        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum((p as any).premium_amount ?? (p as any).premium), 0))} prem.`} />
+        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum(p.premium_amount ?? (p as any).premium), 0))} prem.`} />
       <div className="space-y-1.5">
         {records.map((p) => {
           const expSoon = soon(p.expires_at);

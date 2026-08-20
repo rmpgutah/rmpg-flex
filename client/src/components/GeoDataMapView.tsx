@@ -12,6 +12,7 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { hasSource, safeRemoveLayer, safeRemoveSource, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 interface GeoFeature {
   type: 'Feature';
@@ -49,10 +50,12 @@ export default function GeoDataMapView({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
-  // Init once.
+  // Init once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -66,22 +69,27 @@ export default function GeoDataMapView({
           style: MAPBOX_STYLE_DARK,
           center: DEFAULT_CENTER,
           zoom: 6.2,
+          projection: 'mercator',
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
-        map.on('load', () => { if (!cancelled) setLoaded(true); });
+        map.on('load', () => { if (!cancelled) { onMapLoaded(map); setLoaded(true); } });
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'GeoDataMapView');
       } catch (err) {
         if (!cancelled) setError((err as Error)?.message || getMapboxTokenErrorMessage());
       }
     })();
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   // Render the active layer's features whenever the data, color, or
   // selection changes. Feature index is baked into properties (Mapbox
@@ -200,7 +208,7 @@ export default function GeoDataMapView({
 
   if (error) {
     return (
-      <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-[#888888]">
+      <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-fg-muted">
         {error}
       </div>
     );
@@ -211,7 +219,7 @@ export default function GeoDataMapView({
       <div ref={containerRef} role="application" aria-label="Geo data layer map" style={{ width: '100%', height: '100%' }} />
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
-          <RefreshCw className="w-3.5 h-3.5 text-rmpg-600 animate-spin" />
+          <RefreshCw className="w-3.5 h-3.5 text-fg-muted animate-spin" />
         </div>
       )}
     </div>

@@ -60,9 +60,14 @@ type ToneType = SoundId;
 let audioCtx: AudioContext | null = null;
 
 /** Lazy-init a shared AudioContext (browser requires user gesture). */
-function getAudioContext(): AudioContext {
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined' || typeof AudioContext === 'undefined') return null;
   if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new AudioContext();
+    try {
+      audioCtx = new AudioContext();
+    } catch {
+      return null;
+    }
   }
   // Resume if suspended (Chrome autoplay policy)
   if (audioCtx.state === 'suspended') {
@@ -155,17 +160,17 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Error: Descending minor third (negative acknowledgment) ─
-  // 480 Hz → 380 Hz sawtooth buzz, each 100ms — the Spillman Flex
-  // console NACK tone heard on command failures and API errors.
-  // Sawtooth wave gives it a harsher, more immediate "rejected"
-  // character than the sine-based chimes.
+  // ── Error: Motorola NACK "buh-buh" (negative acknowledgment) ──
+  // A4 → F4 (440 → 349 Hz) square-wave buzz, each 120ms — the
+  // Motorola console command-rejected tone ("bonk"). Square wave
+  // matches the slightly buzzy, reed-like character of the real
+  // console speaker. Matches error.wav rendered by generate-ui-sounds.js.
   error: {
-    type: 'sawtooth',
+    type: 'square',
     gain: 0.10,
     steps: [
-      { freq: 480, start: 0,    dur: 0.10 },
-      { freq: 380, start: 0.12, dur: 0.10 },
+      { freq: 440, start: 0,    dur: 0.12 },
+      { freq: 349, start: 0.15, dur: 0.12 },
     ],
   },
 
@@ -205,29 +210,31 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Chirp: Brief MDT acknowledgment chirp ──────────────────
-  // Single quick rising pip — used for unit en route confirmation.
-  // 800 Hz → 1200 Hz sweep in 60ms. Minimal and non-intrusive.
+  // ── Chirp: Unit en-route status chirp ──────────────────────
+  // 800 → 1200 Hz ascending two-step, 60ms per step — the Spillman
+  // status-update pip for a unit moving to en-route. Lengthened from
+  // the original 30ms so the tone is audible on MDT speakers.
+  // Matches chirp.wav rendered by generate-ui-sounds.js.
   chirp: {
     type: 'sine',
     gain: 0.20,
     steps: [
-      { freq: 800,  start: 0,    dur: 0.03 },
-      { freq: 1200, start: 0.03, dur: 0.03 },
+      { freq: 800,  start: 0,    dur: 0.06 },
+      { freq: 1200, start: 0.06, dur: 0.06 },
     ],
   },
 
-  // ── Double Chirp: Unit on scene confirmation ───────────────
-  // Two quick rising pips with 80ms gap — confirms arrival.
-  // Slightly louder than single chirp for emphasis.
+  // ── Double Chirp: Unit on-scene confirmation ────────────────
+  // Two 800→1200 Hz rising pips, 60ms each, 60ms inter-pip gap.
+  // Matches double_chirp.wav rendered by generate-ui-sounds.js.
   double_chirp: {
     type: 'sine',
     gain: 0.22,
     steps: [
-      { freq: 800,  start: 0,    dur: 0.03 },
-      { freq: 1200, start: 0.03, dur: 0.03 },
-      { freq: 800,  start: 0.14, dur: 0.03 },
-      { freq: 1200, start: 0.17, dur: 0.03 },
+      { freq: 800,  start: 0,    dur: 0.06 },
+      { freq: 1200, start: 0.06, dur: 0.06 },
+      { freq: 800,  start: 0.18, dur: 0.06 },
+      { freq: 1200, start: 0.24, dur: 0.06 },
     ],
   },
 
@@ -553,31 +560,29 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Key Up: Motorola APX 7500 Talk Permit Tone (TPT) ────────
-  // The "go ahead" tone heard the instant a P25 trunked channel is
-  // granted after pressing PTT. Authentic Motorola TPT centers on
-  // ~913 Hz. We add a fast 760→913 Hz glide onset (≈45ms) — the
-  // characteristic vocoder "snap" — then hold 913 Hz for ~110ms.
-  // Play this BEFORE the officer/dispatcher starts talking.
+  // ── Key Up: Motorola APX Talk Permit Tone (TPT) ────────────
+  // Real APX trunking TPT: three 910 Hz chirps, tri-format cadence
+  // (30ms on / 20ms off / 30ms on / 20ms off / 50ms on).
+  // WAV asset is a real hardware recording (Moto_Tri_TPT.mp3 via W2SJW).
+  // This synth fallback approximates the shape when WAV is unavailable.
   key_up: {
     type: 'sine',
     gain: 0.22,
     steps: [
-      { freq: 760, glideTo: 913, start: 0,    dur: 0.045 },
-      { freq: 913,               start: 0.045, dur: 0.11 },
+      { freq: 910, start: 0,    dur: 0.030 },
+      { freq: 910, start: 0.05, dur: 0.030 },
+      { freq: 910, start: 0.10, dur: 0.050 },
     ],
   },
 
-  // ── Key Out: De-key courtesy / roger beep ───────────────────
-  // The short descending "bee-boop" at the END of a transmission —
-  // 900 Hz → 650 Hz, two quick pips. Signals "transmission complete,
-  // channel released." Play this AFTER speech finishes.
+  // ── Key Out: De-key — APX P25 systems typically no audible beep ─
+  // On P25 digital trunking, the channel release is silent in most
+  // APX configurations. Short 910 Hz pip (30ms) as a subtle UI cue.
   key_out: {
     type: 'sine',
-    gain: 0.20,
+    gain: 0.12,
     steps: [
-      { freq: 900, start: 0,    dur: 0.06 },
-      { freq: 650, start: 0.07, dur: 0.07 },
+      { freq: 910, start: 0, dur: 0.030 },
     ],
   },
 
@@ -592,14 +597,15 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Radio Deny: busy / denied "bonk" ────────────────────────
-  // Low 310 Hz sawtooth buzz (~250ms) — the unmistakable Motorola
-  // "bonk" heard when no channel is available or PTT is rejected.
+  // ── Radio Deny: Motorola APX/XTS TX Denied Tone ─────────────
+  // Real APX TX Denied: single continuous ~900 Hz tone, ~500ms.
+  // WAV asset is a real hardware recording (APX_Denied.mp3 via W2SJW).
+  // This synth fallback approximates the single-tone shape.
   radio_deny: {
-    type: 'sawtooth',
-    gain: 0.16,
+    type: 'sine',
+    gain: 0.20,
     steps: [
-      { freq: 310, start: 0, dur: 0.25 },
+      { freq: 900, start: 0, dur: 0.50 },
     ],
   },
 
@@ -615,13 +621,15 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     ],
   },
 
-  // ── Talk Permit (Low) — low-pitch go-ahead variant ──────────
+  // ── Talk Permit (Low) — MotoTRBO / DMR conventional TPT ─────
+  // MotoTRBO Normal Talk Permit Tone (DMR conventional, non-trunked).
+  // WAV asset is a real recording (TRBO_Normal_TPT.mp3 via W2SJW).
+  // Synth fallback: single 900 Hz pip ~230ms (shorter than APX trunk TPT).
   talk_permit_low: {
     type: 'sine',
-    gain: 0.22,
+    gain: 0.18,
     steps: [
-      { freq: 560, glideTo: 660, start: 0,    dur: 0.045 },
-      { freq: 660,               start: 0.045, dur: 0.12 },
+      { freq: 900, start: 0, dur: 0.23 },
     ],
   },
 
@@ -679,17 +687,17 @@ const PROFILES: Record<ToneType, ToneProfile> = {
   },
 
   // ── Dispatch Bell — Spillman Flex Premier CAD two-tone chime ─
-  // 1060 → 880 Hz descending triangle chime, the signature Motorola/
-  // Spillman Premier CAD announcer "ding-bong" that precedes every
-  // terminal readback. Triangle wave for the slightly metallic
-  // plastic-speaker timbre. Second tone held longer for a deliberate,
-  // pronounced "bong" cadence.
+  // E6 → B5 (1318 → 988 Hz) descending sine chime — the signature
+  // Spillman/Motorola Premier CAD "ding-bong" that precedes every
+  // new-call readback. First tone 160ms, second 220ms for the
+  // deliberate "bong" landing. Matches dispatch_bell.wav rendered
+  // by generate-ui-sounds.js (corrected from legacy 1060/880 Hz).
   dispatch_bell: {
-    type: 'triangle',
+    type: 'sine',
     gain: 0.22,
     steps: [
-      { freq: 1060, start: 0,    dur: 0.14 },
-      { freq: 880,  start: 0.17, dur: 0.20 },
+      { freq: 1318, start: 0,    dur: 0.16 },
+      { freq: 988,  start: 0.14, dur: 0.22 },
     ],
   },
 
@@ -771,6 +779,7 @@ export function playSound(sound: SoundId): { stop: () => void } | null {
 
   try {
     const ctx = getAudioContext();
+    if (!ctx) return null;
     const profile = PROFILES[sound];
     const now = ctx.currentTime;
 

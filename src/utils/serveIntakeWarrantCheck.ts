@@ -44,13 +44,13 @@ export async function serveIntakeWarrantCheck(
     ).catch(() => null);
     if (already?.intake_screened_at) return { ...result, skipped: true };
 
-    // Warrant check: prefer person_id FK; fall back to name JOIN.
+    // Warrant check: prefer subject_person_id FK; fall back to name JOIN.
     let warrants: { id: number; warrant_number: string | null; charge: string | null }[] = [];
     if (personId) {
       warrants = await query<{ id: number; warrant_number: string | null; charge: string | null }>(
         db,
-        `SELECT id, warrant_number, charge FROM warrants
-          WHERE person_id = ? AND status NOT IN ('served','recalled','expired','cancelled')
+        `SELECT id, warrant_number, charge_description AS charge FROM warrants
+          WHERE subject_person_id = ? AND status NOT IN ('served','recalled','expired','cancelled')
           LIMIT 5`,
         personId,
       ).catch(() => []);
@@ -59,10 +59,12 @@ export async function serveIntakeWarrantCheck(
       // Name JOIN through persons: both last_name match and best-effort full match.
       warrants = await query<{ id: number; warrant_number: string | null; charge: string | null }>(
         db,
-        `SELECT w.id, w.warrant_number, w.charge
+        `SELECT w.id, w.warrant_number, w.charge_description AS charge
            FROM warrants w
-           JOIN persons p ON p.id = w.person_id
-          WHERE (LOWER(p.last_name) LIKE LOWER(?) OR LOWER(p.full_name) LIKE LOWER(?))
+           JOIN persons p ON p.id = w.subject_person_id
+          -- persons has no full_name column; compose it from the name parts.
+          WHERE (LOWER(p.last_name) LIKE LOWER(?)
+                 OR LOWER(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) LIKE LOWER(?))
             AND w.status NOT IN ('served','recalled','expired','cancelled')
           LIMIT 5`,
         `%${recipientName.split(' ').pop()?.replace(/%/g, '') ?? ''}%`,
@@ -87,7 +89,7 @@ export async function serveIntakeWarrantCheck(
 
     // Mark screened regardless of hits so we don't re-run on every status change.
     await execute(db,
-      "UPDATE serve_queue SET intake_screened_at = datetime('now','localtime') WHERE id = ?",
+      "UPDATE serve_queue SET intake_screened_at = datetime('now') WHERE id = ?",
       serveQueueId,
     ).catch(() => {});
 
@@ -110,7 +112,7 @@ export async function serveIntakeWarrantCheck(
     for (const sup of supervisors) {
       await execute(db,
         `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-         VALUES ('serve_intake_hit', 'high', 'Serve intake — record hit', ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+         VALUES ('serve_intake_hit', 'high', 'Serve intake — record hit', ?, 'serve_job', ?, ?, 0, datetime('now'))`,
         `${recipientName} has ${hitSummary}${chargeNote} — Job #${serveQueueId}`,
         serveQueueId, sup.id,
       );

@@ -1,0 +1,146 @@
+// ============================================================
+// RMPG Flex — System & Diagnostics
+// System info, log access, diagnostics bundle export, crash
+// dumps, app restart, disk space, network interfaces, battery
+// status, idle time. Every OS/Electron-touching function takes
+// its dependency as a parameter for zero-runtime-dependency
+// unit testing, mirroring desktop/security/*.js's pattern.
+// ============================================================
+
+'use strict';
+
+/** Free and total disk bytes at targetPath, via fs.statfsSync. */
+function getDiskBytes(targetPath, fsModule) {
+  const stats = fsModule.statfsSync(targetPath);
+  return { freeBytes: stats.bavail * stats.bsize, totalBytes: stats.blocks * stats.bsize };
+}
+
+/** Free disk space in bytes at targetPath, via fs.statfsSync. */
+function getDiskFreeBytes(targetPath, fsModule) {
+  return getDiskBytes(targetPath, fsModule).freeBytes;
+}
+
+/** Assembles the sys:info shape from Node's os module plus a precomputed diskFree value. */
+function formatSystemInfo(osModule, freeBytes) {
+  const cpus = osModule.cpus();
+  const totalMem = osModule.totalmem();
+  const freeMem = osModule.freemem();
+  const diskFreeBytes = typeof freeBytes === 'number' && freeBytes >= 0 ? freeBytes : null;
+  const MB = 1024 * 1024;
+  const GB = MB * 1024;
+  return {
+    hostname: osModule.hostname(),
+    platform: osModule.platform(),
+    arch: osModule.arch(),
+    os_version: osModule.release(),
+    cpu_count: cpus.length,
+    cpu_model: cpus.length > 0 ? cpus[0].model : 'Unknown',
+    uptime_seconds: osModule.uptime(),
+    total_memory_mb: Math.round(totalMem / MB),
+    free_memory_mb: Math.round(freeMem / MB),
+    disk_free_gb: diskFreeBytes !== null ? Math.round((diskFreeBytes / GB) * 10) / 10 : null,
+    disk_free_bytes: diskFreeBytes,
+  };
+}
+
+/** Appends one timestamped line to the log file. Never throws on the format — a real fs error still propagates. */
+function appendToLogFile(message, logFilePath, fsModule) {
+  fsModule.appendFileSync(logFilePath, `[${new Date().toISOString()}] ${message}\n`);
+}
+
+/** Returns the last `lines` lines of logFilePath, or '' if it doesn't exist yet. */
+function tailLogFile(logFilePath, lines, fsModule) {
+  if (!fsModule.existsSync(logFilePath)) return '';
+  const content = fsModule.readFileSync(logFilePath, 'utf8');
+  const allLines = content.split('\n').filter((_, i, arr) => !(i === arr.length - 1 && arr[arr.length - 1] === ''));
+  return allLines.slice(-lines).join('\n');
+}
+
+/** Directory containing the log file — pure path math, no fs access. */
+function getLogsDirectory(logFilePath, pathModule) {
+  return pathModule.dirname(logFilePath);
+}
+
+/** Plain-text diagnostics bundle body — redaction/encryption happens after this, at the call site. */
+function buildDiagnosticsBundleText(systemInfoObj, logTail) {
+  return [
+    '=== System Info ===',
+    JSON.stringify(systemInfoObj, null, 2),
+    '',
+    '=== Recent Logs ===',
+    logTail,
+  ].join('\n');
+}
+
+/** Lists crash dump files in Electron's standard crashDumps directory. */
+function listCrashReports(crashDumpsDir, fsModule) {
+  if (!fsModule.existsSync(crashDumpsDir)) return [];
+  return fsModule.readdirSync(crashDumpsDir).map((name) => {
+    const fullPath = `${crashDumpsDir}/${name}`;
+    const stats = fsModule.statSync(fullPath);
+    return { date: stats.mtime.toISOString(), path: fullPath };
+  });
+}
+
+const DEFAULT_DISK_WARN_THRESHOLD_BYTES = 500 * 1024 * 1024; // 500MB
+
+/** Flags low disk space before a local DB write that could fail on a full disk. */
+function evaluateDiskSpace(freeBytes, totalBytes = null, warnThresholdBytes = DEFAULT_DISK_WARN_THRESHOLD_BYTES) {
+  return { freeBytes, totalBytes, warn: freeBytes < warnThresholdBytes };
+}
+
+/** Flattens os.networkInterfaces() into {name, address, type}[], dropping internal/loopback entries. */
+function formatNetworkInterfaces(rawInterfaces) {
+  const result = [];
+  for (const [name, addresses] of Object.entries(rawInterfaces)) {
+    for (const addr of addresses) {
+      if (addr.internal) continue;
+      result.push({ name, address: addr.address, type: addr.family });
+    }
+  }
+  return result;
+}
+
+const PMSET_BATTERY_LINE = /(\d+)%;\s*(charging|discharging|charged);/;
+
+/** Parses macOS `pmset -g batt` output. Returns null if no battery line is present (desktop Mac). */
+function parsePmsetBatteryOutput(rawOutput) {
+  const match = PMSET_BATTERY_LINE.exec(rawOutput);
+  if (!match) return null;
+  return { percent: Number(match[1]), charging: match[2] === 'charging' };
+}
+
+// Sample CPU usage over a 100ms window via two os.cpus() snapshots.
+// Returns a 0-100 integer (whole-system average across all cores).
+function getCpuUsagePercent(osModule) {
+  return new Promise((resolve) => {
+    const start = osModule.cpus();
+    setTimeout(() => {
+      const end = osModule.cpus();
+      let idle = 0, total = 0;
+      for (let i = 0; i < start.length; i++) {
+        for (const type of Object.keys(end[i].times)) {
+          const delta = end[i].times[type] - start[i].times[type];
+          total += delta;
+          if (type === 'idle') idle += delta;
+        }
+      }
+      resolve(total > 0 ? Math.round(100 * (1 - idle / total)) : 0);
+    }, 100);
+  });
+}
+
+module.exports = {
+  getDiskBytes,
+  getDiskFreeBytes,
+  formatSystemInfo,
+  getCpuUsagePercent,
+  appendToLogFile,
+  tailLogFile,
+  getLogsDirectory,
+  buildDiagnosticsBundleText,
+  listCrashReports,
+  evaluateDiskSpace,
+  formatNetworkInterfaces,
+  parsePmsetBatteryOutput,
+};

@@ -301,7 +301,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
                   </div>
                   <div className="text-[10px] text-rmpg-300 mt-0.5 truncate">{ev.description}</div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
-                    <span className="uppercase">{(ev.evidence_type || 'physical').replace(/_/g, ' ')}</span>
+                    <span className="uppercase">{toDisplayLabel(ev.evidence_type || 'physical')}</span>
                     {ev.category && <span>{toDisplayLabel(ev.category)}</span>}
                     {ev.incident_number && (
                       <span className="flex items-center gap-0.5">
@@ -569,7 +569,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
           icon={Package}
           subtitle={
             <span className="flex items-center gap-2 flex-wrap">
-              <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>
+              <span className="uppercase font-semibold text-purple-300">{toDisplayLabel(selectedEvidence.evidence_type || 'physical')}</span>
               {selectedEvidence.category && <span>· {selectedEvidence.category}</span>}
               {selectedEvidence.incident_number && (
                 <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-rmpg-100">{selectedEvidence.incident_number}</span></span>
@@ -675,7 +675,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                       <div className={`absolute left-1.5 top-1 w-3 h-3 rounded-full border-2 border-surface-base ${actionColors[entry.action] || 'bg-rmpg-500'}`} />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-rmpg-100 uppercase">{entry.action.replace(/_/g, ' ')}</span>
+                          <span className="text-[10px] font-bold text-rmpg-100 uppercase">{toDisplayLabel(entry.action)}</span>
                           <span className="text-[9px] text-rmpg-500">{safeDateTimeStr(entry.timestamp, '')}</span>
                         </div>
                         <div className="text-xs text-rmpg-300 mt-0.5">
@@ -683,7 +683,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                           {entry.from_person && entry.to_person && <ArrowRight className="w-3 h-3 inline mx-1 text-rmpg-500" />}
                           {entry.to_person && <span className="text-rmpg-200">To: {entry.to_person}</span>}
                         </div>
-                        {entry.reason && <p className="text-[10px] text-rmpg-400 mt-0.5">{entry.reason}</p>}
+                        {entry.reason && <p className="text-[10px] text-rmpg-400 mt-0.5">{formatEnumValue(entry.reason)}</p>}
                       </div>
                     </div>
                   );
@@ -758,7 +758,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   container.appendChild(p);
                   const date = doc.createElement('p');
                   date.style.cssText = 'font-size:10px;color:#666;';
-                  date.textContent = new Date().toLocaleDateString();
+                  date.textContent = new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' });
                   container.appendChild(date);
                   doc.body.appendChild(container);
                   doc.close();

@@ -11,6 +11,8 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const billing = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -61,6 +63,7 @@ billing.get('/contracts', async (c) => {
       `SELECT c.*, cl.name AS client_name FROM client_contracts c LEFT JOIN clients cl ON c.client_id = cl.id ${where} ORDER BY c.created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /contracts failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list contracts' }, 500);
   }
 });
@@ -101,6 +104,7 @@ billing.post('/contracts', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /contracts failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to create contract' }, 500);
   }
 });
@@ -120,7 +124,7 @@ billing.get('/invoices', async (c) => {
     if (q('status')) { conditions.push('i.status = ?'); params.push(q('status')); }
     if (q('date_from')) { conditions.push('i.issue_date >= ?'); params.push(q('date_from')); }
     if (q('date_to')) { conditions.push('i.issue_date <= ?'); params.push(q('date_to')); }
-    if (q('q')) { conditions.push('(i.invoice_number LIKE ? OR i.notes LIKE ?)'); params.push(`%${q('q')}%`, `%${q('q')}%`); }
+    if (q('q')) { const m = containsAnyClause(['i.invoice_number', 'i.notes']); conditions.push(m.sql); params.push(...m.binds(q('q')!)); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
     const perPage = Math.min(200, Math.max(1, parseInt(q('limit') || '50', 10) || 50));
@@ -131,6 +135,7 @@ billing.get('/invoices', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /invoices failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list invoices' }, 500);
   }
 });
@@ -162,6 +167,7 @@ billing.get('/invoices/:id', async (c) => {
        WHERE p.invoice_id = ? ORDER BY p.payment_date DESC`, id);
     return c.json({ data: { ...invoice, line_items: lineItems, payments } });
   } catch (err) {
+    log.error('GET /invoices/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to fetch invoice' }, 500);
   }
 });
@@ -184,6 +190,7 @@ billing.post('/invoices', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', newId);
     return c.json({ data: created, invoice_number: invoiceNumber }, 201);
   } catch (err) {
+    log.error('POST /invoices failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to create invoice' }, 500);
   }
 });
@@ -249,7 +256,7 @@ billing.put('/invoices/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE invoices SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', id);
     try {
@@ -265,6 +272,7 @@ billing.put('/invoices/:id', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /invoices/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to update invoice' }, 500);
   }
 });
@@ -282,6 +290,7 @@ billing.delete('/invoices/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Invoice not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /invoices/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to delete invoice', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -297,6 +306,7 @@ billing.get('/invoices/:id/items', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order, id', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /invoices/:id/items failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list line items' }, 500);
   }
 });
@@ -320,6 +330,7 @@ billing.post('/invoices/:id/items', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated }, 201);
   } catch (err) {
+    log.error('POST /invoices/:id/items failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to add line item' }, 500);
   }
 });
@@ -336,6 +347,7 @@ billing.delete('/invoices/:id/items/:itemId', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('DELETE /invoices/:id/items/:itemId failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to delete line item' }, 500);
   }
 });
@@ -382,6 +394,7 @@ billing.post('/invoices/:id/generate', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM invoices WHERE id = ?', invoiceId);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('POST /invoices/:id/generate failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to regenerate line items' }, 500);
   }
 });
@@ -408,6 +421,7 @@ billing.get('/payments', async (c) => {
        WHERE ${where} ORDER BY p.payment_date DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /payments failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list payments' }, 500);
   }
 });
@@ -457,6 +471,7 @@ billing.post('/payments', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /payments failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to record payment' }, 500);
   }
 });
@@ -493,6 +508,7 @@ billing.delete('/payments/:id', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /payments/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to delete payment' }, 500);
   }
 });
@@ -513,6 +529,7 @@ billing.get('/expenses', async (c) => {
       `SELECT er.*, u.full_name as submitter_name FROM expense_reports er LEFT JOIN users u ON er.submitter_id = u.id ${where} ORDER BY er.created_at DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /expenses failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to list expenses' }, 500);
   }
 });
@@ -555,6 +572,7 @@ billing.post('/expenses', async (c) => {
     } catch { /* best-effort */ }
     return c.json({ data: created, report_number: reportNumber }, 201);
   } catch (err) {
+    log.error('POST /expenses failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to submit expense' }, 500);
   }
 });
@@ -649,6 +667,7 @@ billing.put('/expenses/:id', async (c) => {
 
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /expenses/:id failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to update expense' }, 500);
   }
 });
@@ -665,6 +684,7 @@ billing.get('/stats', async (c) => {
     const expensesPending = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM expense_reports WHERE status = 'submitted'"))?.count ?? 0;
     return c.json({ active_contracts: contractsActive, outstanding_invoices: invoicesOutstanding, total_outstanding_amount: totalOutstanding, pending_expenses: expensesPending });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/billing.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -17,20 +17,20 @@ interface WarningTagsProps {
 const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string; glow: string }> = {
   critical: {
     bg: 'rgba(220, 38, 38, 0.25)',
-    border: '#dc2626',
-    text: '#fca5a5',
+    border: 'var(--sev-critical)',
+    text: 'var(--sev-critical-soft)',
     glow: '0 0 6px rgba(220, 38, 38, 0.4)',
   },
   high: {
     bg: 'rgba(245, 158, 11, 0.2)',
-    border: '#f59e0b',
-    text: '#fcd34d',
+    border: 'var(--sev-warn)',
+    text: 'var(--stat-accent-amber-bright)',
     glow: '0 0 4px rgba(245, 158, 11, 0.3)',
   },
   medium: {
     bg: 'rgba(136, 136, 136, 0.15)',
-    border: '#888888',
-    text: 'var(--rmpg-300)',
+    border: 'var(--text-secondary)',
+    text: 'var(--text-secondary)',
     glow: 'none',
   },
 };

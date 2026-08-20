@@ -3,7 +3,7 @@ import type { Env } from '../types';
 import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, queryFirst, query, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute, ensureAccountLockoutColumns } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
@@ -17,6 +17,11 @@ import type {
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
+import { getSecurityPolicy, validatePassword, DEFAULT_SECURITY_POLICY, type SecurityPolicy } from '../utils/securityPolicy';
+import { parseUserAgentDetails } from '../utils/userAgent';
+import { getRequestGeo } from '../utils/requestGeo';
+import { clientIp } from '../utils/requestIp';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -51,6 +56,52 @@ async function sha256Hex(input: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// ── Trusted devices ("remember this device for 30 days") ─────
+// The client (AuthContext.verify2FA/verifyWebAuthn + LoginPage's "Trust this
+// device" checkbox) has always sent deviceFingerprint/trustDevice on 2FA
+// verification and deviceFingerprint on every /login — but nothing ever read
+// them, so checking the box was a complete no-op: `trusted_devices` (schema
+// present, zero writers) never got a row, and /login never checked it, so
+// 2FA fired every single time regardless. Wired up here in three places:
+// trustDeviceIfRequested() (called after a 2FA/WebAuthn verify when the user
+// opted in) and the lookup in /login below (skips the 2FA branch entirely
+// when the presented fingerprint matches an unexpired trusted row).
+const TRUST_DEVICE_DURATION = '+30 days';
+
+function deviceNameFromUserAgent(ua: string): string {
+  if (/ipad/i.test(ua)) return 'iPad';
+  if (/iphone/i.test(ua)) return 'iPhone';
+  if (/android/i.test(ua)) return 'Android device';
+  if (/macintosh|mac os x/i.test(ua)) return 'Mac';
+  if (/windows/i.test(ua)) return 'Windows PC';
+  if (/linux/i.test(ua)) return 'Linux device';
+  return 'Unknown device';
+}
+
+async function trustDeviceIfRequested(
+  c: any, db: any, userId: number, deviceFingerprint: unknown, trustDevice: unknown,
+): Promise<void> {
+  if (!trustDevice || typeof deviceFingerprint !== 'string' || !deviceFingerprint) return;
+  try {
+    const ip = clientIp(c);
+    const ua = c.req.header('user-agent') || '';
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ?', userId, deviceFingerprint);
+    if (existing) {
+      await execute(db,
+        `UPDATE trusted_devices SET trusted_until = datetime('now', ?), last_used_at = datetime('now'), ip_address = ? WHERE id = ?`,
+        TRUST_DEVICE_DURATION, ip, existing.id);
+    } else {
+      await execute(db,
+        `INSERT INTO trusted_devices (user_id, device_fingerprint, device_name, ip_address, trusted_until, last_used_at)
+         VALUES (?, ?, ?, ?, datetime('now', ?), datetime('now'))`,
+        userId, deviceFingerprint, deviceNameFromUserAgent(ua), ip, TRUST_DEVICE_DURATION);
+    }
+  } catch (err) {
+    console.error('trustDeviceIfRequested failed:', err); // non-fatal — login already succeeded
+  }
+}
+
 // Claims carry BOTH userId (camelCase — legacy middleware REQUIRES it, see
 // legacy middleware/auth.ts:51 `if (!decoded.userId ...)`) and user_id (snake —
 // this Worker's middleware reads `user_id ?? userId`), so a token verifies on
@@ -83,16 +134,63 @@ function signRefreshToken(secret: string, claims: Record<string, unknown>): Prom
 
 // Insert a session row using the live (legacy-owned) schema and return the new
 // session_id. is_active / created_at / last_used_at come from column defaults.
-async function createSession(c: any, db: any, userId: number, refreshToken: string): Promise<string> {
+// Device (parsed from User-Agent) and network geo (from Cloudflare's free
+// per-request `cf` object — see requestGeo.ts) are captured at session
+// creation because that's the only point either is available; ip_address and
+// user_agent alone left the admin Active Sessions view unable to show
+// anything beyond a bare IP string.
+// Sec-CH-UA-Platform arrives quoted, e.g. `"Windows"` — strip the quotes.
+// This is a LOW-entropy Client Hint most Chromium browsers send unprompted;
+// it confirms the OS family but (per Chromium's own spec) never carries a
+// hardware vendor/model — see the 0232 migration comment for why "Panasonic
+// Toughbook FZ-55" isn't obtainable this way.
+function unquoteChHeader(v: string | undefined | null): string | null {
+  if (!v) return null;
+  return v.replace(/^"|"$/g, '') || null;
+}
+
+async function createSession(c: any, db: any, userId: number, refreshToken: string, securityPolicy?: SecurityPolicy): Promise<string> {
   const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
   const refreshHash = await sha256Hex(refreshToken);
+  const ua = c.req.header('user-agent') || '';
+  const { browser, os, deviceType } = parseUserAgentDetails(ua);
+  const geo = getRequestGeo(c);
+  const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
+  const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
   await execute(
     db,
-    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'))`,
+    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at,
+                           device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+                           http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     sessionId, userId, refreshHash,
-    c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+    clientIp(c), ua,
+    deviceType, browser, os,
+    geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
+    geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
   );
+
+  // Enforce Security Policy → "Max Active Sessions". 0 means unenforced
+  // (today's behavior — no cap has ever existed). Best-effort: never fail
+  // the login itself if this cleanup step errors.
+  try {
+    const policy = securityPolicy ?? await getSecurityPolicy(db);
+    if (policy.maxActiveSessions > 0) {
+      await execute(
+        db,
+        `UPDATE sessions SET is_active = 0
+         WHERE user_id = ? AND is_active = 1
+           AND session_id NOT IN (
+             SELECT session_id FROM sessions
+             WHERE user_id = ? AND is_active = 1
+             ORDER BY created_at DESC, rowid DESC
+             LIMIT ?
+           )`,
+        userId, userId, policy.maxActiveSessions,
+      );
+    }
+  } catch { /* session-cap cleanup is best-effort — never block login */ }
+
   return sessionId;
 }
 
@@ -124,6 +222,7 @@ function userPayload(user: any) {
 // so it joins to users.username exactly the way the dashboard queries expect;
 // failed attempts for unknown usernames are kept on purpose as probe intel.
 async function recordLoginAttempt(
+  c: any,
   db: any,
   username: unknown,
   ip: string,
@@ -131,14 +230,37 @@ async function recordLoginAttempt(
   failureReason: string | null,
 ): Promise<void> {
   try {
+    const ua = c.req.header('user-agent') || '';
+    const { browser, os, deviceType } = parseUserAgentDetails(ua);
+    const geo = getRequestGeo(c);
+    const platform = unquoteChHeader(c.req.header('sec-ch-ua-platform'));
+    const platformVersion = unquoteChHeader(c.req.header('sec-ch-ua-platform-version'));
+    // TEMP DIAGNOSTIC (2026-08-09) — remove once the capture pipeline is
+    // confirmed working live. Investigating why a real production login
+    // produced ip_address='unknown' and every new geo/device column null.
+    try {
+      const cfRaw = (c.req.raw as unknown as { cf?: unknown }).cf;
+      log.warn('[login] geo/device capture diagnostic', {
+        ua, hasCf: cfRaw != null, cfKeys: cfRaw ? Object.keys(cfRaw as object) : [],
+        cfConnectingIp: c.req.header('cf-connecting-ip') || null,
+        xForwardedFor: c.req.header('x-forwarded-for') || null,
+        allHeaderKeys: [...(c.req.raw as Request).headers.keys()],
+      });
+    } catch (diagErr) { log.error('[login] geo/device capture diagnostic FAILED', {}, diagErr as Error); }
     await execute(
       db,
-      `INSERT INTO login_attempts (username, ip_address, success, failure_reason)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO login_attempts (username, ip_address, success, failure_reason,
+                                    user_agent, device_type, browser, os,
+                                    country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+                                    http_protocol, tls_version, tls_cipher, likely_vpn_or_hosting, device_platform, device_platform_version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       String(username ?? '').slice(0, 255),
       ip || null,
       success ? 1 : 0,
       success ? null : failureReason,
+      ua, deviceType, browser, os,
+      geo.country, geo.region, geo.city, geo.postalCode, geo.timezone, geo.latitude, geo.longitude, geo.asn, geo.isp,
+      geo.httpProtocol, geo.tlsVersion, geo.tlsCipher, geo.likelyVpnOrHosting ? 1 : 0, platform, platformVersion,
     );
   } catch { /* non-critical — never fail a login on an audit-write error */ }
 }
@@ -150,46 +272,102 @@ auth.post('/login', async (c) => {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
     }
 
-    // Brute-force throttle: generous per-IP window (shared NAT at HQ means
-    // many legit users behind one IP) + a tighter per-username window so a
-    // distributed credential-stuffing run still hits a wall. Counts every
-    // attempt, success included — fine at these limits; KV fails open.
-    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    // Brute-force throttle: per-username only. A per-IP bucket was tried but
+    // removed — all HQ officers share one corporate NAT IP, so the IP bucket
+    // is a shared resource that drains on shift-change concurrent logins and
+    // blocks everyone behind that IP simultaneously. The per-username window
+    // (30 attempts / 5 min) is the correct anti-credential-stuffing lever:
+    // it lets a user retry freely while still walling off a distributed run
+    // targeting a specific account. KV fails open so a KV outage never
+    // locks officers out.
+    //
+    // Limit history:
+    //   ip:30/300s + user:10/300s (original) → 429s on shift-change NAT exhaustion
+    //   ip:100/300s + user:30/300s (2026-08-15) → still blocks shared NAT
+    //   ip bucket removed + user:30/300s (2026-08-15) → correct scope
+    const ip = clientIp(c);
     const uname = String(username).toLowerCase().slice(0, 64);
-    const [ipOk, userOk] = await Promise.all([
-      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 30, 300),
-      rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
-    ]);
-    if (!ipOk || !userOk) {
-      await recordLoginAttempt(getDb(c.env), username, ip, false, 'rate_limited');
+    const userOk = await rateLimitAllow(c.env.KV, `login:user:${uname}`, 30, 300);
+    if (!userOk) {
+      await recordLoginAttempt(c, getDb(c.env), username, ip, false, 'rate_limited');
       return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
 
     const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
     const user = await queryFirst<any>(
       db,
-      `SELECT ${USER_SELECT}, password_hash FROM users WHERE username = ?`,
+      `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
+              (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
+              CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
+       FROM users WHERE username = ?`,
       username
     );
 
     if (!user) {
-      await recordLoginAttempt(db, username, ip, false, 'user_not_found');
+      await recordLoginAttempt(c, db, username, ip, false, 'user_not_found');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
+
+    if (user.is_locked) {
+      await recordLoginAttempt(c, db, username, ip, false, 'account_locked');
+      const minutes = Math.max(1, Math.ceil((user.lock_retry_seconds ?? 0) / 60));
+      return c.json({
+        error: `Account locked due to repeated failed attempts. Try again in ${minutes} minutes.`,
+        code: 'ACCOUNT_LOCKED',
+        retry_after_seconds: user.lock_retry_seconds ?? 0,
+      }, 403);
+    }
+
     if (user.status !== 'active') {
-      await recordLoginAttempt(db, username, ip, false, 'account_inactive');
+      await recordLoginAttempt(c, db, username, ip, false, 'account_inactive');
       return c.json({ error: 'Account is inactive', code: 'ACCOUNT_INACTIVE' }, 403);
     }
 
     if (!user.password_hash || !user.password_hash.startsWith('$2')) {
       console.error(`[auth] User "${username}" has an invalid password_hash (not a bcrypt hash). Use /api/auth/recover-all to reset.`);
-      await recordLoginAttempt(db, username, ip, false, 'invalid_hash');
+      await recordLoginAttempt(c, db, username, ip, false, 'invalid_hash');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
     if (!compareSync(password, user.password_hash)) {
-      await recordLoginAttempt(db, username, ip, false, 'invalid_password');
+      // Atomic increment (avoids a lost-update race under concurrent
+      // wrong-password requests for the same account). Reached here only
+      // when is_locked was already false, so any locked_until still on the
+      // row is a stale/expired lock — reset the counter to a fresh window
+      // rather than immediately re-locking on the very next typo.
+      const updated = await queryFirst<{ failed_login_count: number; locked_until: string | null }>(
+        db,
+        `UPDATE users SET
+           failed_login_count = (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1,
+           locked_until = CASE
+             WHEN (CASE WHEN locked_until IS NOT NULL AND locked_until <= datetime('now') THEN 0 ELSE failed_login_count END) + 1 >= ${securityPolicy.maxLoginAttempts}
+               THEN datetime('now', '+${securityPolicy.lockoutDurationMinutes} minutes')
+             ELSE NULL
+           END
+         WHERE id = ?
+         RETURNING failed_login_count, locked_until`,
+        user.id,
+      ).catch(() => null);
+
+      if (updated?.locked_until) {
+        await recordLoginAttempt(c, db, username, ip, false, 'account_locked');
+        return c.json({
+          error: `Account locked due to repeated failed attempts. Try again in ${securityPolicy.lockoutDurationMinutes} minutes.`,
+          code: 'ACCOUNT_LOCKED',
+          retry_after_seconds: securityPolicy.lockoutDurationMinutes * 60,
+        }, 403);
+      }
+      await recordLoginAttempt(c, db, username, ip, false, 'invalid_password');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
+    // Correct password — reset the failure counter regardless of what happens
+    // next (2FA gate, trusted-device check, etc). Password-guessing is what
+    // lockout defends against; a wrong 2FA code afterward is unrelated.
+    if (user.failed_login_count || user.locked_until) {
+      await execute(db, `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE id = ?`, user.id).catch(() => undefined);
     }
 
     const secret = c.env.JWT_SECRET;
@@ -203,7 +381,26 @@ auth.post('/login', async (c) => {
     // tokens after the second factor checks out.
     const exempt = await queryFirst<{ totp_exempt: number | null }>(
       db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
-    if (user.totp_enabled && !exempt?.totp_exempt) {
+
+    // A previously-trusted device (see trustDeviceIfRequested) skips the 2FA
+    // gate entirely for its 30-day window — refresh last_used_at so an
+    // actively-used device doesn't expire out from under someone.
+    let deviceTrusted = false;
+    if (typeof deviceFingerprint === 'string' && deviceFingerprint) {
+      try {
+        const trusted = await queryFirst<{ id: number }>(
+          db,
+          `SELECT id FROM trusted_devices WHERE user_id = ? AND device_fingerprint = ? AND trusted_until > datetime('now')`,
+          user.id, deviceFingerprint,
+        );
+        if (trusted) {
+          deviceTrusted = true;
+          await execute(db, `UPDATE trusted_devices SET last_used_at = datetime('now') WHERE id = ?`, trusted.id).catch(() => undefined);
+        }
+      } catch { /* table absent on an unmigrated local DB — treat as not trusted */ }
+    }
+
+    if (user.totp_enabled && !exempt?.totp_exempt && !deviceTrusted) {
       const now = Math.floor(Date.now() / 1000);
       const tempToken = await sign(
         { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
@@ -227,7 +424,7 @@ auth.post('/login', async (c) => {
 
     const claims = tokenClaims(user);
     const refreshToken = await signRefreshToken(secret, claims);
-    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const sessionId = await createSession(c, db, user.id, refreshToken, securityPolicy);
     const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     // Best-effort login counters — never let a counter error fail the login.
@@ -239,7 +436,7 @@ auth.post('/login', async (c) => {
       );
     } catch { /* non-critical */ }
 
-    await recordLoginAttempt(db, user.username, ip, true, null);
+    await recordLoginAttempt(c, db, user.username, ip, true, null);
 
     return c.json({
       token: accessToken,
@@ -302,8 +499,8 @@ export async function mintLoginTokens(c: any, db: any, user: any) {
       user.id,
     );
   } catch { /* non-fatal */ }
-  const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
-  await recordLoginAttempt(db, user.username, ip, true, null);
+  const ip = clientIp(c);
+  await recordLoginAttempt(c, db, user.username, ip, true, null);
   return {
     token: accessToken,
     refreshToken,
@@ -326,7 +523,9 @@ auth.post('/login/verify-2fa', async (c) => {
     const resolved = await resolve2faPending(c, db);
     if ('error' in resolved) return resolved.error;
     const { user } = resolved;
-    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+    const { code, deviceFingerprint, trustDevice } = await c.req.json<{
+      code?: string; deviceFingerprint?: string; trustDevice?: boolean;
+    }>().catch(() => ({} as any));
 
     if (!user.totp_secret_enc) {
       return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
@@ -340,6 +539,7 @@ auth.post('/login/verify-2fa', async (c) => {
     if (!(await verifyTotpCode(secretB32, code || ''))) {
       return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
     }
+    await trustDeviceIfRequested(c, db, user.id, deviceFingerprint, trustDevice);
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
     console.error('verify-2fa failed:', err);
@@ -426,7 +626,7 @@ auth.post('/refresh', async (c) => {
 
     await execute(
       db,
-      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now', 'localtime') WHERE id = ?`,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now') WHERE id = ?`,
       newRefreshHash, session.id,
     );
 
@@ -464,6 +664,41 @@ auth.post('/logout', authMiddleware, async (c) => {
   return c.json({ message: 'Logged out' });
 });
 
+// POST /auth/session/device-location — best-effort device GPS attach.
+// Distinct from the IP-derived latitude/longitude captured at login
+// (Cloudflare's edge estimate of where the connecting IP is): this is the
+// browser's own navigator.geolocation reading, which the client only ever
+// sends after the browser's OWN permission prompt — this endpoint cannot
+// be used to silently geolocate anyone, since the browser gates it. Client
+// call is fire-and-forget post-login (see AuthContext) and never blocks or
+// retries login itself. Scoped to the CALLING session only, resolved from
+// the access token's own sessionId claim — a user can't stamp coordinates
+// onto a different session by guessing its id.
+auth.post('/session/device-location', authMiddleware, async (c) => {
+  const sessionId = c.get('sessionId');
+  if (!sessionId) return c.json({ error: 'No session bound to this token' }, 400);
+  try {
+    const body = await c.req.json<{ latitude?: number; longitude?: number; accuracyMeters?: number }>();
+    const lat = typeof body.latitude === 'number' ? body.latitude : null;
+    const lng = typeof body.longitude === 'number' ? body.longitude : null;
+    if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return c.json({ error: 'latitude and longitude are required' }, 400);
+    }
+    const db = getDb(c.env);
+    await execute(db,
+      `UPDATE sessions SET device_latitude = ?, device_longitude = ?, device_geo_accuracy_m = ?,
+              device_geo_captured_at = datetime('now')
+       WHERE session_id = ? AND user_id = ?`,
+      String(lat), String(lng),
+      typeof body.accuracyMeters === 'number' ? String(body.accuracyMeters) : null,
+      sessionId, c.get('userId'));
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[auth] POST session/device-location failed:', err);
+    return c.json({ error: 'Failed to record device location' }, 500);
+  }
+});
+
 auth.get('/me', authMiddleware, async (c) => {
   const db = getDb(c.env);
   const user = await queryFirst<any>(
@@ -475,25 +710,14 @@ auth.get('/me', authMiddleware, async (c) => {
   return c.json({ user: userPayload(user) });
 });
 
-// Enforce the advertised password policy (GET /password-policy) — previously
-// only length was checked, so "12345678" satisfied a policy that requires
-// upper/lower/digit/special. Returns an error string, or null when valid.
-function validateNewPassword(pwd: string): string | null {
-  if (typeof pwd !== 'string' || pwd.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Z]/.test(pwd)) return 'Password must contain an uppercase letter';
-  if (!/[a-z]/.test(pwd)) return 'Password must contain a lowercase letter';
-  if (!/[0-9]/.test(pwd)) return 'Password must contain a number';
-  if (!/[^A-Za-z0-9]/.test(pwd)) return 'Password must contain a special character';
-  return null;
-}
-
 auth.put('/password', authMiddleware, async (c) => {
   try {
     const { current_password, new_password } = await c.req.json();
     if (!current_password || !new_password) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(new_password);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(new_password, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -511,6 +735,7 @@ auth.put('/password', authMiddleware, async (c) => {
     );
     return c.json({ message: 'Password updated' });
   } catch (err) {
+    log.error('PUT /password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
@@ -529,7 +754,8 @@ auth.post('/change-password', authMiddleware, async (c) => {
     if (!current || !next) {
       return c.json({ error: 'Current and new password required' }, 400);
     }
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -550,6 +776,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
     );
     return c.json({ message: 'Password updated' });
   } catch (err) {
+    log.error('POST /change-password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
@@ -563,7 +790,8 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
   try {
     const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
     const next = body.newPassword ?? body.new_password ?? '';
-    const policyErr = validateNewPassword(next);
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(next, securityPolicy);
     if (policyErr) return c.json({ error: policyErr }, 400);
 
     const userId = c.get('userId');
@@ -600,19 +828,246 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
       user: userPayload(user),
     });
   } catch (err) {
+    log.error('POST /login/change-password failed', { src: 'src/routes/auth.ts' }, err);
     return c.json({ error: 'Password change failed' }, 500);
   }
 });
 
-auth.get('/password-policy', (c) => {
+// ── Forgot password (security-question recovery) ─────────────
+// Three-step anonymous flow the LoginPage "Forgot password?" panel already
+// speaks: username → 3 security-question answers → new password. Backed by
+// `user_security_questions` (one row per user, answers bcrypt-hashed same as
+// user passwords). None of these three endpoints existed before — every
+// account's "Forgot password?" click dead-ended on a fetch to a route that
+// 404'd, silently swallowed by the client's catch block as "Unable to
+// connect." Users must first set up their questions from the Security tab
+// (PUT /auth/security-questions below) — there is no other seed path.
+const FORGOT_PW_TOKEN_TTL_SECONDS = 10 * 60; // 10m — long enough to answer 3 questions, short enough to limit exposure
+
+// POST /auth/forgot-password — { username } → { hasQuestions, questions? }
+// Never reveals whether the username exists: unknown user and
+// user-without-questions both fall through to the same
+// `hasQuestions: false` response the client already renders as a generic
+// "contact your administrator" message.
+auth.post('/forgot-password', async (c) => {
+  try {
+    const { username } = await c.req.json<{ username?: string }>().catch(() => ({} as any));
+    if (!username) return c.json({ hasQuestions: false });
+
+    const ip = clientIp(c);
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `forgot-pw:ip:${ip}`, 20, 300),
+      rateLimitAllow(c.env.KV, `forgot-pw:user:${uname}`, 10, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      return c.json({ error: 'Too many attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string }>(
+      db, `SELECT id, status FROM users WHERE username = ?`, username);
+    if (!user || user.status !== 'active') return c.json({ hasQuestions: false });
+
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, `SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?`, user.id);
+    if (!sq) return c.json({ hasQuestions: false });
+
+    return c.json({ hasQuestions: true, questions: [sq.question_1, sq.question_2, sq.question_3] });
+  } catch (err) {
+    console.error('forgot-password failed:', err);
+    return c.json({ hasQuestions: false });
+  }
+});
+
+// POST /auth/forgot-password/verify — { username, answers: string[3] } →
+// { success, tempToken } on a match of all three (case-insensitive, the
+// client already lowercases before sending — trimmed here to match how
+// answers are hashed at setup time).
+auth.post('/forgot-password/verify', async (c) => {
+  try {
+    const { username, answers } = await c.req.json<{ username?: string; answers?: string[] }>().catch(() => ({} as any));
+    if (!username || !Array.isArray(answers) || answers.length !== 3) {
+      return c.json({ error: 'Username and all three answers are required' }, 400);
+    }
+
+    const ip = clientIp(c);
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `forgot-pw-verify:ip:${ip}`, 15, 300),
+      rateLimitAllow(c.env.KV, `forgot-pw-verify:user:${uname}`, 8, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      return c.json({ error: 'Too many attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE username = ?`, username);
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'One or more answers are incorrect.' }, 401);
+    }
+
+    const sq = await queryFirst<{ answer_1_hash: string; answer_2_hash: string; answer_3_hash: string }>(
+      db, `SELECT answer_1_hash, answer_2_hash, answer_3_hash FROM user_security_questions WHERE user_id = ?`, user.id);
+    if (!sq) return c.json({ error: 'One or more answers are incorrect.' }, 401);
+
+    const hashes = [sq.answer_1_hash, sq.answer_2_hash, sq.answer_3_hash];
+    const allMatch = hashes.every((h, i) => compareSync(String(answers[i] ?? '').trim().toLowerCase(), h));
+    if (!allMatch) return c.json({ error: 'One or more answers are incorrect.' }, 401);
+
+    // Bind the token to the password_hash it was issued against — a JWT
+    // can't be revoked server-side, so /reset re-checks this hash matches
+    // what's currently on the row. A successful reset changes password_hash,
+    // which makes every other outstanding token for this user (including a
+    // captured/replayed copy of this one) fail that check. Without this, the
+    // 10-minute token was reusable to reset the password over and over.
+    const pwh = await sha256Hex(user.password_hash);
+    const now = Math.floor(Date.now() / 1000);
+    const tempToken = await sign(
+      { sub: String(user.id), userId: user.id, type: 'pwd_reset', pwh, iat: now, exp: now + FORGOT_PW_TOKEN_TTL_SECONDS },
+      c.env.JWT_SECRET,
+    );
+    return c.json({ success: true, tempToken });
+  } catch (err) {
+    console.error('forgot-password/verify failed:', err);
+    return c.json({ error: 'Verification failed' }, 500);
+  }
+});
+
+// POST /auth/forgot-password/reset — { tempToken, newPassword } → { success }.
+// Also retires every active session for the account, matching the intent of
+// a "someone other than the logged-in user may have just proven identity a
+// different way" reset, and forces `must_change_password = 0` since the
+// value just set IS the freshly-chosen password.
+auth.post('/forgot-password/reset', async (c) => {
+  try {
+    const { tempToken, newPassword } = await c.req.json<{ tempToken?: string; newPassword?: string }>().catch(() => ({} as any));
+    if (!tempToken || !newPassword) {
+      return c.json({ error: 'Reset token and new password are required' }, 400);
+    }
+    const securityPolicy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
+    const policyErr = validatePassword(newPassword, securityPolicy);
+    if (policyErr) return c.json({ error: policyErr }, 400);
+
+    let payload: any;
+    try {
+      payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
+    } catch {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+    if (payload?.type !== 'pwd_reset' || payload?.userId == null) {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+
+    const db = getDb(c.env);
+    const user = await queryFirst<{ id: number; status: string; password_hash: string }>(
+      db, `SELECT id, status, password_hash FROM users WHERE id = ?`, payload.userId);
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'User not found or inactive' }, 401);
+    }
+    // Single-use enforcement: the token was minted against the password_hash
+    // at /verify time. If it's changed since (this token already used, or
+    // the password was changed some other way), reject the replay.
+    if (payload.pwh !== (await sha256Hex(user.password_hash))) {
+      return c.json({ error: 'Reset session expired. Please start over.', code: 'RESET_EXPIRED' }, 401);
+    }
+
+    const newHash = hashSync(newPassword, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
+                          password_changed_at = datetime('now'),
+                          updated_at = datetime('now')
+       WHERE id = ?`,
+      newHash, user.id,
+    );
+    await execute(db, `UPDATE sessions SET is_active = 0 WHERE user_id = ?`, user.id);
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('forgot-password/reset failed:', err);
+    return c.json({ error: 'Failed to reset password' }, 500);
+  }
+});
+
+// ── Security questions setup (authenticated) ──────────────────
+// The forgot-password flow above has no seed path of its own — a user must
+// configure their three questions/answers here (from a logged-in session)
+// before "Forgot password?" can ever succeed for that account.
+
+auth.get('/security-questions', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, `SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?`, c.get('userId'));
+    return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
+  } catch (err) {
+    console.error('GET security-questions failed:', err);
+    return c.json({ error: 'Failed to load security questions' }, 500);
+  }
+});
+
+auth.put('/security-questions', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      currentPassword?: string;
+      questions?: string[]; answers?: string[];
+    }>().catch(() => ({} as any));
+    const { currentPassword, questions, answers } = body;
+
+    if (!currentPassword) return c.json({ error: 'Current password is required' }, 400);
+    if (!Array.isArray(questions) || questions.length !== 3 || questions.some((q) => !q?.trim())) {
+      return c.json({ error: 'All three questions are required' }, 400);
+    }
+    if (!Array.isArray(answers) || answers.length !== 3 || answers.some((a) => !a?.trim())) {
+      return c.json({ error: 'All three answers are required' }, 400);
+    }
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    // Re-authenticate — this endpoint quietly enables a full account
+    // takeover path (forgot-password/reset), so it gets the same
+    // password-reconfirmation gate as changing the password itself.
+    const user = await queryFirst<any>(db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!user || !compareSync(currentPassword, user.password_hash)) {
+      return c.json({ error: 'Current password is incorrect' }, 401);
+    }
+
+    const answerHashes = answers.map((a) => hashSync(a.trim().toLowerCase(), 12));
+    await execute(
+      db,
+      `INSERT INTO user_security_questions
+         (user_id, question_1, answer_1_hash, question_2, answer_2_hash, question_3, answer_3_hash, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET
+         question_1 = excluded.question_1, answer_1_hash = excluded.answer_1_hash,
+         question_2 = excluded.question_2, answer_2_hash = excluded.answer_2_hash,
+         question_3 = excluded.question_3, answer_3_hash = excluded.answer_3_hash,
+         updated_at = datetime('now')`,
+      userId,
+      questions[0].trim(), answerHashes[0],
+      questions[1].trim(), answerHashes[1],
+      questions[2].trim(), answerHashes[2],
+    );
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT security-questions failed:', err);
+    return c.json({ error: 'Failed to save security questions' }, 500);
+  }
+});
+
+auth.get('/password-policy', async (c) => {
+  const policy = await getSecurityPolicy(getDb(c.env)).catch(() => DEFAULT_SECURITY_POLICY);
   return c.json({
-    minLength: 8,
-    requireUppercase: true,
-    requireLowercase: true,
-    requireNumber: true,
-    requireSpecial: true,
-    expiryDays: 90,
-    preventReuse: 5,
+    minLength: policy.minPasswordLength,
+    requireUppercase: policy.requireUppercase,
+    requireLowercase: policy.requireLowercase,
+    requireNumber: policy.requireNumbers,
+    requireSpecial: policy.requireSpecialChars,
+    expiryDays: policy.passwordExpiryDays,
+    preventReuse: 5, // not yet configurable — no UI field exists for this
   });
 });
 
@@ -758,6 +1213,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
     return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
   } catch (err: any) {
+    log.error('PUT /profile failed', { src: 'src/routes/auth.ts' }, err);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE')) {
       return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
@@ -810,6 +1266,37 @@ auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
     db,
     'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?',
     sessionId,
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
+// GET /auth/security/trusted-devices — devices that skip 2FA for 30 days
+// (see trustDeviceIfRequested near the top of this file). Backs
+// TrustedDevicesList.tsx, which has called this since it shipped — the
+// route never existed, so the panel always rendered "No trusted devices"
+// regardless of how many times someone checked "Trust this device."
+auth.get('/security/trusted-devices', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT id, device_name, ip_address, trusted_until, last_used_at, created_at
+       FROM trusted_devices
+      WHERE user_id = ? AND trusted_until > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/security/trusted-devices/:id — revoke trust; scoped to
+// user_id so a user can only revoke their own devices.
+auth.delete('/security/trusted-devices/:id', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  await execute(
+    db,
+    'DELETE FROM trusted_devices WHERE id = ? AND user_id = ?',
+    c.req.param('id'),
     c.get('userId'),
   );
   return c.json({ success: true });
@@ -915,26 +1402,106 @@ auth.get('/security/status', async (c) => {
   }
 });
 
-// GET /api/auth/security/recent-threats — recent failed logins.
+// GET /api/auth/security/recent-threats — failed logins PLUS two
+// geo-derived threat types that only became possible once migration 0231
+// gave login_attempts real country/city/isp columns:
+//   • impossible_travel: the same username logged in successfully from two
+//     different countries within a window too short to physically travel
+//     between them (a strong compromised-credential signal — the classic
+//     "your account was accessed from a new location" alert every major SSO
+//     provider ships).
+//   • new_country_login: a successful login from a country that user's
+//     prior 90 days of successful logins never came from. Noisier than
+//     impossible travel (a real trip triggers it) but still worth surfacing
+//     — it's an admin dashboard, not an auto-block.
 auth.get('/security/recent-threats', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50");
-    return c.json({ data: rows || [] });
-  } catch {
+    const failedLogins = await query<Record<string, unknown>>(db,
+      `SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason,
+              created_at AS timestamp, device_type, browser, os, country, region, city, isp, likely_vpn_or_hosting
+         FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50`);
+
+    // Self-join successes to their immediately-prior success for the same
+    // username, only where both sides have a country and the countries
+    // differ, within a 4-hour window (generous — a same-day domestic flight
+    // between distant cities is plausible; a country change inside 4 hours
+    // is not for anyone actually present at both logins).
+    const impossibleTravel = await query<Record<string, unknown>>(db,
+      `SELECT cur.id, 'impossible_travel' AS type, cur.username,
+              cur.ip_address AS ip, cur.created_at AS timestamp,
+              cur.device_type, cur.browser, cur.os,
+              cur.country, cur.city, cur.isp, cur.likely_vpn_or_hosting,
+              prev.country AS prev_country, prev.city AS prev_city, prev.created_at AS prev_timestamp,
+              CAST((julianday(cur.created_at) - julianday(prev.created_at)) * 1440 AS INTEGER) AS minutes_between
+         FROM login_attempts cur
+         JOIN login_attempts prev ON prev.username = cur.username
+           AND prev.id = (
+             SELECT id FROM login_attempts p2
+              WHERE p2.username = cur.username AND COALESCE(p2.success,0) = 1 AND p2.id < cur.id
+              ORDER BY p2.id DESC LIMIT 1
+           )
+        WHERE COALESCE(cur.success,0) = 1
+          AND cur.country IS NOT NULL AND prev.country IS NOT NULL
+          AND cur.country != prev.country
+          AND cur.created_at >= datetime('now', '-7 days')
+          AND (julianday(cur.created_at) - julianday(prev.created_at)) * 1440 < 240
+        ORDER BY cur.created_at DESC LIMIT 25`);
+
+    // New-country logins: successful login from a country not seen in that
+    // user's successful logins over the preceding 90 days (excluding itself).
+    const newCountryLogins = await query<Record<string, unknown>>(db,
+      `SELECT cur.id, 'new_country_login' AS type, cur.username,
+              cur.ip_address AS ip, cur.created_at AS timestamp,
+              cur.device_type, cur.browser, cur.os, cur.country, cur.city, cur.isp, cur.likely_vpn_or_hosting
+         FROM login_attempts cur
+        WHERE COALESCE(cur.success,0) = 1
+          AND cur.country IS NOT NULL
+          AND cur.created_at >= datetime('now', '-7 days')
+          AND NOT EXISTS (
+            SELECT 1 FROM login_attempts prior
+             WHERE prior.username = cur.username AND COALESCE(prior.success,0) = 1
+               AND prior.country = cur.country AND prior.id < cur.id
+               AND prior.created_at >= datetime(cur.created_at, '-90 days')
+          )
+          -- Exclude a user's very first-ever successful login — everyone's
+          -- first login is definitionally a "new" country and would
+          -- otherwise flag 100% of new accounts.
+          AND EXISTS (
+            SELECT 1 FROM login_attempts prior2
+             WHERE prior2.username = cur.username AND COALESCE(prior2.success,0) = 1 AND prior2.id < cur.id
+          )
+        ORDER BY cur.created_at DESC LIMIT 25`);
+
+    const data = [...(failedLogins || []), ...(impossibleTravel || []), ...(newCountryLogins || [])]
+      .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+    return c.json({ data });
+  } catch (err) {
+    console.error('[auth] GET security/recent-threats failed:', err);
     return c.json({ data: [] });
   }
 });
 
-// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h).
+// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h),
+// now with the geo/device fingerprint of the most recent failed attempt from
+// that IP so an admin can tell "5 failed logins from a residential ISP in
+// the same city as the user" (probably a lockout, not an attack) apart from
+// "5 failed logins from a datacenter ASN on another continent."
 auth.get('/security/blocked-ips', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT ip_address, COUNT(*) AS failed_attempts, MAX(created_at) AS last_attempt FROM login_attempts WHERE COALESCE(success,0) = 0 AND ip_address IS NOT NULL AND created_at >= datetime('now','-1 day') GROUP BY ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100");
+      `SELECT la.ip_address, COUNT(*) AS failed_attempts, MAX(la.created_at) AS last_attempt,
+              (SELECT country FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS country,
+              (SELECT city FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS city,
+              (SELECT isp FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 ORDER BY id DESC LIMIT 1) AS isp,
+              (SELECT GROUP_CONCAT(DISTINCT username) FROM login_attempts WHERE ip_address = la.ip_address AND COALESCE(success,0)=0 AND created_at >= datetime('now','-1 day')) AS usernames_tried
+         FROM login_attempts la
+        WHERE COALESCE(la.success,0) = 0 AND la.ip_address IS NOT NULL AND la.created_at >= datetime('now','-1 day')
+        GROUP BY la.ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100`);
     return c.json({ data: rows || [] });
-  } catch {
+  } catch (err) {
+    console.error('[auth] GET security/blocked-ips failed:', err);
     return c.json({ data: [] });
   }
 });
@@ -943,10 +1510,13 @@ auth.get('/security/blocked-ips', async (c) => {
 // live login_attempts table (this path was proxy-stubbed empty for months).
 // UNION SHAPE for two consumers:
 //   • LoginHistoryTable (ProfilePage) reads entries + total — the CALLER's own
-//     attempts, paginated. live table has no user_agent/device_fingerprint
-//     columns, so those return '' (the device parser tolerates empty).
+//     attempts, paginated.
 //   • SecurityDashboardPage reads data — org-wide recent attempts for
 //     admin/manager/supervisor, else the caller's own.
+// device_type/browser/os/country/region/city/isp are real columns as of
+// migration 0231 (recordLoginAttempt populates them via requestGeo.ts +
+// userAgent.ts) — this used to hardcode `'' AS user_agent` because neither
+// the column nor the capture existed yet.
 auth.get('/security/login-history', async (c) => {
   const empty = { entries: [], total: 0, data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } };
   try {
@@ -957,8 +1527,14 @@ auth.get('/security/login-history', async (c) => {
     const me = await queryFirst<{ username: string; role: string }>(db, 'SELECT username, role FROM users WHERE id = ?', userId);
     if (!me) return c.json(empty);
 
+    const DETAIL_COLUMNS = [
+      'user_agent', 'device_type', 'browser', 'os',
+      'country', 'region', 'city', 'postal_code', 'timezone', 'asn', 'isp',
+      'http_protocol', 'tls_version', 'likely_vpn_or_hosting', 'device_platform', 'device_platform_version',
+    ];
+
     const mine = await query<Record<string, unknown>>(db,
-      `SELECT id, ip_address, '' AS user_agent, '' AS device_fingerprint,
+      `SELECT id, ip_address, ${DETAIL_COLUMNS.join(', ')}, '' AS device_fingerprint,
               COALESCE(success,0) AS success, failure_reason, created_at
        FROM login_attempts WHERE username = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
       me.username, limit, offset);
@@ -967,7 +1543,7 @@ auth.get('/security/login-history', async (c) => {
 
     const orgWide = ['admin', 'manager', 'supervisor'].includes(me.role);
     const data = await query<Record<string, unknown>>(db,
-      `SELECT la.id, u.id AS user_id, la.ip_address, '' AS user_agent,
+      `SELECT la.id, u.id AS user_id, la.ip_address, ${DETAIL_COLUMNS.map(col => `la.${col}`).join(', ')},
               COALESCE(la.success,0) AS success, la.failure_reason AS reason,
               la.created_at, COALESCE(u.full_name, la.username) AS full_name
        FROM login_attempts la LEFT JOIN users u ON u.username = la.username
@@ -1006,7 +1582,10 @@ auth.get('/security/event-timeline', async (c) => {
     const db = getDb(c.env);
     const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts ORDER BY created_at DESC LIMIT ?", limit);
+      `SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event,
+              username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp,
+              device_type, browser, os, country, region, city, isp, likely_vpn_or_hosting
+         FROM login_attempts ORDER BY created_at DESC LIMIT ?`, limit);
     return c.json({ data: rows || [] });
   } catch {
     return c.json({ data: [] });
@@ -1085,7 +1664,8 @@ auth.put('/signature', authMiddleware, async (c) => {
       `UPDATE users SET digital_signature = ?, updated_at = datetime('now') WHERE id = ?`,
       signature || null, c.get('userId'));
     return c.json({ success: true });
-  } catch { return c.json({ error: 'Failed to save signature' }, 500); }
+  } catch (err) {
+    log.error('PUT /signature failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to save signature' }, 500); }
 });
 
 // ── 2FA / TOTP stubs (not yet ported from legacy) ─────────
@@ -1361,7 +1941,7 @@ auth.post('/webauthn/register-verify', authMiddleware, async (c) => {
     const result = await execute(db, `
       INSERT INTO webauthn_credentials
         (user_id, credential_id, public_key, counter, device_type, backed_up, transports, name, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `,
       userId,
       credential.id, // Base64URLString already
@@ -1467,6 +2047,7 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
 
     const body = await c.req.json<{
       challengeId?: string; response?: AuthenticationResponseJSON;
+      deviceFingerprint?: string; trustDevice?: boolean;
     }>().catch(() => ({} as any));
     if (!body?.challengeId || !body.response) {
       return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
@@ -1508,8 +2089,9 @@ auth.post('/webauthn/authenticate-verify', async (c) => {
       return c.json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' }, 401);
     }
     await execute(db,
-      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
+      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now') WHERE id = ?`,
       verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
+    await trustDeviceIfRequested(c, db, user.id, body.deviceFingerprint, body.trustDevice);
 
     return c.json(await issueLoginTokens(c, db, user));
   } catch (err) {
@@ -1529,7 +2111,46 @@ auth.post('/security/unblock-ip', authMiddleware, async (c) => {
     const r = await execute(db,
       `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
     return c.json({ success: true, cleared: r.meta.changes ?? 0 });
-  } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+  } catch (err) {
+    log.error('POST /security/unblock-ip failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to unblock IP' }, 500); }
+});
+
+// GET /api/auth/security/locked-accounts — accounts currently locked out.
+auth.get('/security/locked-accounts', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT id, username, full_name, failed_login_count, locked_until
+       FROM users WHERE locked_until IS NOT NULL AND locked_until > datetime('now')
+       ORDER BY locked_until DESC LIMIT 100`);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// ── Security: unlock account ────────────────────────────────
+// Break-glass note: if every admin/manager account is locked simultaneously
+// (e.g. an attacker deliberately trips 5 wrong passwords against each one),
+// this endpoint itself becomes unreachable until the 15-minute auto-expiry
+// lifts (self-healing). The out-of-band fallback is POST /auth/recover-all
+// (RECOVERY_KEY-gated, see that handler's comment) or a direct D1 write.
+auth.post('/security/unlock-account', authMiddleware, async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const { username } = await c.req.json<{ username: string }>();
+    if (!username) return c.json({ error: 'username required' }, 400);
+    const db = getDb(c.env);
+    await ensureAccountLockoutColumns(db);
+    const r = await execute(db,
+      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE username = ?`, username);
+    return c.json({ success: true, cleared: r.meta.changes ?? 0 });
+  } catch (err) {
+    log.error('POST /security/unlock-account failed', { src: 'src/routes/auth.ts' }, err); return c.json({ error: 'Failed to unlock account' }, 500); }
 });
 
 // ── Account recovery (no JWT required — secured by RECOVERY_KEY env secret) ──
@@ -1580,6 +2201,30 @@ auth.post('/recover-all', async (c) => {
   } catch (err) {
     console.error('POST /auth/recover-all failed:', err);
     return dbErrorResponse(c, err, 'Failed to recover accounts');
+  }
+});
+
+// ── GET /auth/users/list — public user picker for the FlexOS login screen ──
+// Returns display-safe fields only (no password hashes, no secrets).
+// Auth is intentionally NOT required — the login screen calls this before
+// a session exists. Only active accounts are returned; suspended/inactive
+// accounts are excluded so they don't appear on the picker.
+auth.get('/users/list', async (c) => {
+  try {
+    const db = c.env.DB;
+    const rows = await db
+      .prepare(
+        `SELECT id, username, first_name, last_name, badge_number, role
+         FROM users
+         WHERE status = 'active'
+         ORDER BY last_name ASC, first_name ASC
+         LIMIT 50`
+      )
+      .all<{ id: number; username: string; first_name: string; last_name: string; badge_number: string | null; role: string }>();
+    return c.json({ users: rows.results ?? [] });
+  } catch (err) {
+    console.error('GET /auth/users/list failed:', err);
+    return c.json({ users: [] }, 500);
   }
 });
 

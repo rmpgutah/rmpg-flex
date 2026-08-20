@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import {
   LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
+import { isFeatureEnabled, useFeatureFlags } from '../../utils/featureFlags';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ export default function MobileDrawer({
 }: MobileDrawerProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  useFeatureFlags();
   const drawerRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchCurrentX = useRef(0);
@@ -306,8 +308,8 @@ export default function MobileDrawer({
             <div
               className="w-12 h-12 flex items-center justify-center text-sm font-bold flex-shrink-0"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
-                color: '#fff',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--text-muted))',
+                color: 'white',
                 border: '2px solid var(--border-strong)',
               }}
             >
@@ -350,6 +352,7 @@ export default function MobileDrawer({
             const visibleItems = group.items.filter((item) => {
               if (item.adminOnly && !isAdmin) return false;
               if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(item.path)) return false;
+              if (!isFeatureEnabled(item.path)) return false;
               return true;
             });
             if (visibleItems.length === 0) return null;
@@ -382,7 +385,7 @@ export default function MobileDrawer({
                         background: isActive
                           ? 'rgba(212, 160, 23, 0.1)'
                           : 'transparent',
-                        color: isActive ? '#fff' : '#bbbbbb',
+                        color: isActive ? 'white' : 'var(--text-muted)',
                         borderLeft: isActive
                           ? '3px solid var(--brand-gold)'
                           : '3px solid transparent',
@@ -419,12 +422,12 @@ export default function MobileDrawer({
                 style={{
                   width: 16,
                   height: 16,
-                  color: gpsTracking ? '#22c55e' : '#505050',
+                  color: gpsTracking ? 'var(--sev-ok)' : 'var(--text-muted)',
                 }}
               />
               <span
                 className="text-xs font-mono font-bold"
-                style={{ color: gpsTracking ? '#22c55e' : '#505050' }}
+                style={{ color: gpsTracking ? 'var(--sev-ok)' : 'var(--text-muted)' }}
               >
                 GPS {gpsTracking ? 'ON' : 'OFF'}
               </span>
@@ -445,7 +448,7 @@ export default function MobileDrawer({
               />
               <span
                 className="text-xs font-mono font-bold"
-                style={{ color: isConnected ? '#22c55e' : '#ef4444' }}
+                style={{ color: isConnected ? 'var(--sev-ok)' : 'var(--sev-critical)' }}
               >
                 {isConnected ? 'ONLINE' : 'OFFLINE'}
               </span>
@@ -458,7 +461,7 @@ export default function MobileDrawer({
             <div className="flex items-center gap-1.5">
               <Users
                 style={{ width: 14, height: 14 }}
-                className="text-rmpg-500"
+                className="text-fg-muted"
               />
               <span className="text-xs font-mono font-bold text-rmpg-300">
                 {onlineCount}
@@ -477,7 +480,7 @@ export default function MobileDrawer({
               minHeight: 48,
               background: 'rgba(220, 38, 38, 0.1)',
               border: '1px solid rgba(220, 38, 38, 0.3)',
-              color: '#ef4444',
+              color: 'var(--sev-critical)',
             }}
           >
             <LogOut style={{ width: 18, height: 18 }} />

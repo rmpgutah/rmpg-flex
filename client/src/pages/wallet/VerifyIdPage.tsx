@@ -88,13 +88,13 @@ export default function VerifyIdPage() {
   }
 
   const display = result ? verifyResultDisplay(result) : null;
-  const toneBg = display?.tone === 'valid' ? 'bg-[#16351a] text-[#5bd17a] border-[#1f5a2c]'
-    : display?.tone === 'expired' ? 'bg-[#3a2e14] text-[#d4a017] border-[#5a4a1f]'
-    : 'bg-[#3a1414] text-[#e06464] border-[#5a1f1f]';
+  const toneBg = display?.tone === 'valid' ? 'bg-[rgb(var(--sev-ok-rgb)/0.12)] text-[color:var(--sev-ok)] border-[color:var(--sev-ok)]'
+    : display?.tone === 'expired' ? 'bg-[rgb(var(--sev-warn-rgb)/0.12)] text-[color:var(--field-label-color)] border-[color:var(--sev-warn)]'
+    : 'bg-[rgb(var(--sev-critical-rgb)/0.12)] text-[color:var(--sev-critical)] border-[color:var(--sev-critical)]';
 
   return (
     <div className="p-4 max-w-sm mx-auto space-y-4">
-      <div className="text-[#d4a017] font-semibold tracking-wide text-sm">VERIFY OFFICER ID</div>
+      <div className="text-[color:var(--panel-header-color)] font-semibold tracking-wide text-sm">VERIFY OFFICER ID</div>
 
       {/* Result */}
       {display && (
@@ -130,11 +130,11 @@ export default function VerifyIdPage() {
             <video ref={videoRef} playsInline muted className={scanning ? 'w-full h-full object-cover' : 'hidden'} />
             {!scanning && <span className="text-rmpg-500 text-xs">Camera off</span>}
           </div>
-          {camError && <div className="text-[11px] text-[#e06464]">{camError}</div>}
+          {camError && <div className="text-[11px] text-[color:var(--sev-critical)]">{camError}</div>}
           {!scanning ? (
             <button
               onClick={startCamera}
-              className="w-full rounded-[2px] bg-[#d4a017] text-black font-semibold text-sm py-2"
+              className="w-full rounded-[2px] bg-brand-600 text-rmpg-100 font-semibold text-sm py-2"
             >
               Start camera scan
             </button>

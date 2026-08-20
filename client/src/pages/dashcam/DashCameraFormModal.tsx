@@ -3,10 +3,10 @@
 // Create / edit dash cameras linked to fleet vehicles.
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Camera } from 'lucide-react';
 import FormModal from '../../components/FormModal';
-import { useFormDirty } from '../../hooks/useFormDirty';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import type { DashCameraStatus } from '../../types';
 
 export interface DashCameraFormData {
@@ -66,8 +66,11 @@ const EMPTY: DashCameraFormData = {
 export default function DashCameraFormModal({
   isOpen, onClose, onSubmit, isSubmitting, vehicles, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<DashCameraFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const { form, setForm, isDirty, wasRestored, clearDraft, snapshot } = useFormDraft<DashCameraFormData>({
+    storageKey: `rmpg_dashcam_form_${initialData?.id ?? 'new'}`,
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -77,19 +80,20 @@ export default function DashCameraFormModal({
         channel_count: String(initialData.channel_count || '2'),
       };
       setForm(initial);
-      snapshot(initial);
+      setTimeout(() => snapshot(), 0);
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      setTimeout(() => snapshot(), 0);
     }
   }, [isOpen, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit(form);
+    clearDraft();
   };
 
-  const handleClose = () => { setForm(EMPTY); onClose(); };
+  const handleClose = () => { clearDraft(); onClose(); };
   const set = (key: keyof DashCameraFormData, val: string) => setForm(p => ({ ...p, [key]: val }));
 
   return (
@@ -102,6 +106,8 @@ export default function DashCameraFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Install Camera'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">

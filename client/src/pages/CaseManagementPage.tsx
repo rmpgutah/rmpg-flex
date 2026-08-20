@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import ConfirmDialog from '../components/ConfirmDialog';
 import RichTextArea from '../components/RichTextArea';
@@ -39,6 +39,7 @@ import { CaseReadinessCard, fetchCaseCompleteness } from '../components/CaseRead
 import { downloadPdfV2 } from '../utils/pdf/v2';
 import { caseReportSchema, type CaseReportData } from '../utils/pdf/v2/forms/caseReport';
 import { getSavedViews, persistViews, upsertView, type SavedView } from '../utils/caseSavedViews';
+import { withAlpha } from '../utils/withAlpha';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-surface-sunken text-rmpg-400 border-border-default' },
@@ -339,7 +340,7 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
   // Timeline / chart colors routed through semantic --sev-* tokens so the
   // dots re-color cleanly across night / day / legacy. The `case` entry maps
   // to --sev-special (purple) which is a shade-shift from the previous
-  // #8b5cf6 (tailwind violet-500) but stays semantically distinct.
+  // var(--sev-special) (tailwind violet-500) but stays semantically distinct.
   const typeColors: Record<string, string> = {
     incident: 'var(--spm-text-muted)',
     case: 'var(--sev-special)',
@@ -364,13 +365,13 @@ function LinkedIncidentsGraph({ caseId, caseFull }: { caseId: string | number; c
           <Target className="w-3 h-3" /> THIS CASE
         </div>
         {links.map((link: any, idx: number) => {
-          const color = typeColors[link.rel_type] || 'var(--rmpg-500)';
+          const color = typeColors[link.rel_type] || 'var(--text-muted)';
           return (
             <div key={idx} className="flex items-center gap-1">
               <ArrowRight className="w-3 h-3 text-rmpg-600" />
               <div
                 className="flex items-center gap-1 px-2 py-1 text-[10px] font-bold border"
-                style={{ background: `${color}15`, borderColor: `${color}50`, color }}
+                style={{ background: withAlpha(color, '15'), borderColor: withAlpha(color, '50'), color }}
               >
                 <span className="text-[8px] font-mono opacity-70">{typeIcons[link.rel_type]}</span>
                 {link.incident_number || link.case_number || link.warrant_number || `${link.first_name || ''} ${link.last_name || ''}`.trim() || `#${link.id}`}
@@ -1014,7 +1015,15 @@ export default function CaseManagementPage() {
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">ACTIVE</div>
-              <div className="text-sm font-bold text-green-400 tabular-nums">{(stats.by_status?.open || 0) + (stats.by_status?.active || 0) + (stats.by_status?.assigned || 0)}</div>
+              {/* stats.open is the server's canonical open count
+                  (`status NOT LIKE 'closed%' AND archived_at IS NULL`, cases.ts:131).
+                  This tile used to hand-sum by_status.{open,active,assigned},
+                  which silently dropped the other two non-closed statuses --
+                  `under_review` and `suspended`. Live D1 had 2 cases sitting in
+                  under_review while this rendered ACTIVE 0, reading as "no open
+                  case work". Enumerating members breaks every time a status is
+                  added; negating the closed set does not. */}
+              <div className="text-sm font-bold text-green-400 tabular-nums">{stats.open || 0}</div>
             </div>
             <div className="text-center px-2">
               <div className="text-[10px] font-mono text-rmpg-500">SOLVABILITY</div>
@@ -1133,7 +1142,7 @@ export default function CaseManagementPage() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <SlaBadge caseRow={c} />
                     <span className={`text-[9px] px-1.5 py-0.5 border ${getStatusColor(c.status)}`}>
-                      {c.status.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(c.status).toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -1201,7 +1210,7 @@ export default function CaseManagementPage() {
                   {/* Status + Priority badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] px-2 py-1 border font-bold ${getStatusColor(selected.status)}`}>
-                      {selected.status.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(selected.status).toUpperCase()}
                     </span>
                     <span className={`text-[10px] px-2 py-1 border bg-rmpg-700/30 border-rmpg-600/50 font-bold ${getPriorityColor(selected.priority)}`}>
                       {formatEnumValue(selected.priority)}
@@ -1274,7 +1283,7 @@ export default function CaseManagementPage() {
                       {(selected as any).approval_status && (
                         <div className="flex items-center gap-2 mb-2">
                           <span className={`text-[10px] px-2 py-0.5 border font-bold ${APPROVAL_STATUS_COLORS[(selected as any).approval_status] || ''}`}>
-                            {((selected as any).approval_status || '').replace(/_/g, ' ').toUpperCase()}
+                            {toDisplayLabel((selected as any).approval_status || '').toUpperCase()}
                           </span>
                           {(selected as any).return_reason && (
                             <span className="text-[10px] text-red-400 italic">Reason: {(selected as any).return_reason}</span>
@@ -1332,9 +1341,9 @@ export default function CaseManagementPage() {
                       ['Case Number', selected.case_number],
                       ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
-                      ['Opened', selected.opened_date ? parseTimestamp(selected.opened_date).toLocaleDateString() : '—'],
-                      ['Due Date', selected.due_date ? parseTimestamp(selected.due_date).toLocaleDateString() : '—'],
-                      ['Closed', selected.closed_date ? parseTimestamp(selected.closed_date).toLocaleDateString() : '—'],
+                      ['Opened', selected.opened_date ? parseTimestamp(selected.opened_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
+                      ['Due Date', selected.due_date ? parseTimestamp(selected.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
+                      ['Closed', selected.closed_date ? parseTimestamp(selected.closed_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'],
                     ].map(([label, value]) => (
                       <div key={label as string}>
                         <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -1368,7 +1377,7 @@ export default function CaseManagementPage() {
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="calls"
                   caseId={selected.id}
@@ -1386,7 +1395,7 @@ export default function CaseManagementPage() {
                     { key: 'incident_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="incidents"
                   caseId={selected.id}
@@ -1401,7 +1410,7 @@ export default function CaseManagementPage() {
                   items={caseFull?.persons || []}
                   columns={[
                     { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-rmpg-100">{row.last_name}, {row.first_name}</span> },
-                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                     { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
                     { key: 'phone', label: 'Phone' },
                   ]}
@@ -1476,7 +1485,7 @@ export default function CaseManagementPage() {
                     { key: 'warrant_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'subject_name', label: 'Subject' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="warrants"
                   caseId={selected.id}
@@ -1494,7 +1503,7 @@ export default function CaseManagementPage() {
                     { key: 'violation', label: 'Violation' },
                     { key: 'status', label: 'Status' },
                     { key: 'violator_name', label: 'Violator' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—' },
                   ]}
                   entityType="citations"
                   caseId={selected.id}
@@ -1750,8 +1759,8 @@ export default function CaseManagementPage() {
 
       {/* ── New Case Modal ── */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Case" icon={Plus}>
               <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>

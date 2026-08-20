@@ -27,6 +27,8 @@ import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { decodeMaxspeedAnnotation } from '../utils/speedLimit';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -59,6 +61,28 @@ export interface RouteStepLane {
   indications: string[];
 }
 
+/** How many leading segments to scan for a posted limit before giving up. */
+const MAXSPEED_LOOKAHEAD_SEGMENTS = 8;
+
+/**
+ * The posted limit for the segment the unit is on right now.
+ *
+ * `annotation.maxspeed` is per-segment along the route, and useMapRouting
+ * recomputes from the unit's LIVE origin, so index 0 is the segment under the
+ * vehicle. A short unmapped stub at the origin is common, so scan a few
+ * segments ahead — but only a few, since segments far down the route describe
+ * a different road.
+ */
+export function pickCurrentSegmentLimit(annotation: unknown[]): number | null {
+  if (!Array.isArray(annotation) || annotation.length === 0) return null;
+  const limit = Math.min(annotation.length, MAXSPEED_LOOKAHEAD_SEGMENTS);
+  for (let i = 0; i < limit; i++) {
+    const mph = decodeMaxspeedAnnotation(annotation[i]);
+    if (mph != null) return mph;
+  }
+  return null;
+}
+
 export interface RouteInfo {
   unitCallSign: string;
   callNumber: string;
@@ -72,6 +96,10 @@ export interface RouteInfo {
   trafficAware: boolean;
   /** Worst congestion class anywhere on the route, for a headline badge. */
   worstCongestion: CongestionLevel;
+  /** Posted speed limit (mph) for the segment being driven now, or null.
+   *  Sourced from Mapbox's `annotation.maxspeed`, which rides along in the
+   *  same Directions request that produces the ETA and the turn-by-turn steps. */
+  postedLimitMph: number | null;
 }
 
 /** Live progress of the routed unit toward the call. */
@@ -291,11 +319,6 @@ function parseDuration(seconds: number): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-function parseDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(1)} km`;
-}
-
 const SOURCE_ID = 'route-source';
 const LAYER_ID = 'route-line';
 
@@ -397,7 +420,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // sibling engine that made this same change first.
         const data = await apiFetch<{ routes?: any[] }>(
           `/mapbox/directions?coordinates=${encodeURIComponent(coordStr)}` +
-          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion`,
+          // maxspeed rides along with congestion — same request, and overview=full
+          // (already set) is Mapbox's precondition for any annotation.
+          `&profile=driving-traffic&geometries=geojson&overview=full&steps=true&annotations=congestion,maxspeed`,
         );
         const route = data.routes?.[0];
         if (!route) throw new Error('No route found');
@@ -450,7 +475,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
             type: 'line',
             source: ROUTE_SOURCE_ID,
             layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0 0 0 / 0)'] },
           });
           map.addLayer({
             id: ROUTE_LAYER_ID,
@@ -524,6 +549,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           steps,
           trafficAware: true,
           worstCongestion: worst,
+          postedLimitMph: pickCurrentSegmentLimit(
+            (route?.legs?.[0]?.annotation?.maxspeed ?? []) as unknown[],
+          ),
         };
 
         lastOriginRef.current = originLatLng;
@@ -611,7 +639,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         try {
           map.setPaintProperty(TRAVELED_LAYER_ID, 'line-gradient', [
             'step', ['line-progress'],
-            'rgba(58,58,58,0.55)', Math.max(fraction, 0.0001), 'rgba(0,0,0,0)',
+            'rgba(58,58,58,0.55)', Math.max(fraction, 0.0001), 'rgba(0 0 0 / 0)',
           ]);
         } catch { /* style not ready */ }
       }
@@ -771,7 +799,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       'width:24px;height:24px;border-radius:2px;display:flex;align-items:center;justify-content:center;' +
       'background:linear-gradient(180deg,#1a1a1a,#070707);border:1.5px solid #d4a017;' +
       "color:#d4a017;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:900;line-height:1;" +
-      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0,0,0,0.6);' +
+      'box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px #d4a01766, 0 1px 4px rgba(0 0 0 / 0.6);' +
       'cursor:default;';
     el.textContent = String(order);
     return el;
@@ -801,7 +829,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // Loaded dynamically, not statically imported at module scope (see
         // the header comment) — `map` above is already a live mapboxgl.Map
         // instance, so this resolves from the already-warm module cache.
-        const { mapboxgl } = await import('../utils/mapboxLoader');
+        const { mapboxgl } = await importWithRetry(() => import('../utils/mapboxLoader'));
 
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];

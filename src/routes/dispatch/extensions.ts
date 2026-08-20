@@ -17,6 +17,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import { clampIntParam } from '../../utils/paginationParams';
 import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
@@ -24,6 +25,7 @@ import { log } from '../../utils/logger';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
 import { findServeJobForCall } from '../../utils/psoServeCrosslink';
+import { toDisplayLabel } from '../../utils/displayLabel';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -60,7 +62,7 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
       return c.json({ callId: id, callNumber: call.call_number, recommended: [], reason: 'NO_CALL_GPS' });
     }
 
-    const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+    const limit = clampIntParam(c.req.query('limit'), 5, 1, 25);
 
     // Pull available units with GPS. Lean schema stores lat/lng directly on
     // units (no separate gps_locations table on lean D1 — confirmed via
@@ -137,6 +139,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
     const body = await c.req.json().catch(() => ({} as any));
@@ -149,7 +152,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const canForce = ['admin', 'manager', 'supervisor', 'dispatcher'].includes(user.role);
-    if (!canForce && unit.officer_id !== user.id) {
+    if (!canForce && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
@@ -164,7 +167,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 // PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
 // Neither legacy nor the rewrite implemented this before, so the CAD
 // command 404'd. units.mileage is REAL; we accept a non-negative number.
-audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+audioMode.put('/:id/mileage', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = parseInt(c.req.param('id') || '', 10);
@@ -438,7 +441,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           AND w.subject_person_id IN (
             SELECT ip.person_id FROM incident_persons ip
             JOIN incidents i ON ip.incident_id = i.id
-            WHERE i.call_id = ?
+            WHERE i.call_id = ? AND ip.role IN ('suspect','arrestee','involved','defendant')
           )
         LIMIT 50`, id);
       for (const w of warrants) {
@@ -483,6 +486,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const user = c.get('user') as any;
+    const userId = c.get('userId') as number;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
 
@@ -497,8 +501,13 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     // Officers can only change their own unit; supervisors+ can change any
     const supervisorRoles = ['admin', 'manager', 'supervisor', 'dispatcher'];
-    if (!supervisorRoles.includes(user.role) && unit.officer_id !== user.id) {
+    if (!supervisorRoles.includes(user.role) && unit.officer_id !== userId) {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
+    }
+    // off_duty / out_of_service transitions must use POST /dispatch/duty/end which
+    // also clocks out the shift entry and tears down the WelfareWatchDO.
+    if (['off_duty', 'out_of_service'].includes(status) && !supervisorRoles.includes(user.role)) {
+      return c.json({ error: 'Use /dispatch/duty/end to end your shift', code: 'USE_DUTY_END' }, 403);
     }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
@@ -572,7 +581,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
 
     const keywords = (text: string) =>
-      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3 && w.length <= 47).slice(0, 5);
 
     const matchClauses: string[] = [];
     const params: unknown[] = [];
@@ -587,7 +596,7 @@ bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
     }
     if (address && address.length >= 3) {
       matchClauses.push('UPPER(description) LIKE ?');
-      params.push(`%${address.toUpperCase()}%`);
+      params.push(`%${address.toUpperCase().slice(0, 46)}%`);
     }
     if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
 
@@ -643,11 +652,12 @@ bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
     return c.json(row);
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/dispatch/extensions.ts' }, err);
     return c.json({ error: 'Failed to fetch BOLO', code: 'BOLO_GET_ERR' }, 500);
   }
 });
 
-bolos.post('/expire-check', requireRole(...READ_ROLES), async (c) => {
+bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const expired = await query<{ id: number }>(db, `
@@ -673,7 +683,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
     if (!type || !title) return c.json({ error: 'type and title are required', code: 'BOLO_MISSING_FIELDS' }, 400);
     if (!VALID_BOLO_TYPES.includes(type)) return c.json({ error: `type must be one of ${VALID_BOLO_TYPES.join(', ')}`, code: 'BOLO_INVALID_TYPE' }, 400);
 
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const [{ max }] = await query<{ max: string | null }>(db, "SELECT MAX(bolo_number) AS max FROM bolos WHERE bolo_number LIKE ?", `${year}-BOLO-%`);
     const seq = max ? String(parseInt(max.split('-BOLO-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
     const bolo_number = `${year}-BOLO-${seq}`;
@@ -739,6 +749,7 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     await execute(db, 'DELETE FROM bolos WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dispatch/extensions.ts' }, err);
     return c.json({ error: 'Failed to delete BOLO', code: 'BOLO_DELETE_ERR' }, 500);
   }
 });
@@ -764,7 +775,7 @@ bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
     const before = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id);
     if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
-    await execute(db, "UPDATE bolos SET archived_at = datetime('now','localtime') WHERE id = ?", id);
+    await execute(db, "UPDATE bolos SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
   } catch (err) {
     log.error('POST /bolos/:id/archive failed', {}, err);
@@ -795,11 +806,11 @@ bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
     const body = await c.req.json().catch(() => ({} as any));
     const daysExpired = Number.isFinite(body.days_expired) ? Number(body.days_expired) : 7;
     const result = await execute(db, `
-      UPDATE bolos SET archived_at = datetime('now','localtime')
+      UPDATE bolos SET archived_at = datetime('now')
       WHERE archived_at IS NULL
         AND status IN ('expired', 'cancelled')
         AND expires_at IS NOT NULL
-        AND expires_at < datetime('now','localtime', ?)`,
+        AND expires_at < datetime('now', ?)`,
       `-${daysExpired} days`);
     return c.json({ archived: result.meta.changes ?? 0 });
   } catch (err) {
@@ -815,7 +826,7 @@ bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const welfareActive = new Hono<Env>();
 
-welfareActive.get('/active', requireRole(...WRITE_ROLES), async (c) => {
+welfareActive.get('/active', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     // Pull all officers currently on a P1/P2 onscene call — those are the
@@ -935,7 +946,7 @@ async function fetchCallRow(db: D1Database, id: number) {
 // =====================================================================
 export const closestUnit = new Hono<Env>();
 
-closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
+closestUnit.get('/:id/closest-unit', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1012,7 +1023,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     // this, auto-assign would happily commit a unit to a call that's cleared/
     // closed/cancelled/archived, corrupting both the unit's status and the call's
     // audit trail (the call would silently flip back toward 'dispatched').
-    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged']);
+    const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (call.status && TERMINAL_STATUSES.has(call.status)) {
       return c.json({ error: `Call is already ${call.status} — cannot auto-assign`, code: 'CALL_ALREADY_TERMINAL' }, 409);
     }
@@ -1086,7 +1097,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 // =====================================================================
 export const callTimeline = new Hono<Env>();
 
-callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
+callTimeline.post('/:id/timeline', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1099,7 +1110,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
     const body = await c.req.json<{ action?: string; details?: string; created_at?: string }>();
-    const action = body.action ?? 'note_added';
+    const action = 'note_added';
     const details = body.details;
 
     if (!details || typeof details !== 'string' || details.length === 0) {
@@ -1148,7 +1159,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
 // Ported from legacy callLifecycle.ts:479. Only `details` is editable —
 // created_at is an immutable audit-log timestamp. The entry is matched by
 // (id, entity_type='call', entity_id) so one call can't edit another's rows.
-callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.put('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1180,7 +1191,7 @@ callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c)
 // DELETE /api/dispatch/calls/:id/timeline/:entryId — delete a timeline entry.
 // Ported from legacy callLifecycle.ts:526. Client (handleDeleteTimeline) only
 // checks for a non-error response, so { success: true } is the contract.
-callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+callTimeline.delete('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -1290,10 +1301,10 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
           if (q && (q.status === 'served' || q.status === 'failed')) {
             const openStatus = q.status === 'served' ? 'attempted' : 'pending';
             await execute(db,
-              `UPDATE serve_queue SET status = ?, updated_at = datetime('now','localtime'), closed_at = NULL WHERE id = ?`,
+              `UPDATE serve_queue SET status = ?, updated_at = datetime('now'), closed_at = NULL WHERE id = ?`,
               openStatus, q.id);
             await execute(db,
-              `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
+              `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
                VALUES (?, 'reopen', 'serve_queue', ?, ?)`,
               userId ?? null, q.id,
               `CFS ${call.call_number} reverted from ${call.status} — serve job reopened as ${openStatus}`);
@@ -1321,7 +1332,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
 
 // POST /:id/le-notification — record that an outside law-enforcement agency was
 // notified. Client sends { agency }; case_number/notes are optional extras.
-callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) => {
+callActions.post('/:id/le-notification', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1379,16 +1390,18 @@ callActions.post('/:id/referrals', requireRole(...WRITE_ROLES), async (c) => {
     if (!body.agency_name || !body.referral_reason) return c.json({ error: 'agency_name and referral_reason required' }, 400);
     const r = await execute(db,
       `INSERT INTO external_referrals (call_id, agency_name, agency_case_number, referral_reason, status, follow_up_date, created_by, created_at, updated_at)
-       VALUES (?,?,?,?,'pending',?,?,datetime('now','localtime'),datetime('now','localtime'))`,
+       VALUES (?,?,?,?,'pending',?,?,datetime('now'),datetime('now'))`,
       id, body.agency_name, body.agency_case_number || null, body.referral_reason, body.follow_up_date || null, userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Referral creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /:id/referrals failed', { src: 'src/routes/dispatch/extensions.ts' }, err); return c.json({ error: 'Referral creation failed' }, 500); }
 });
 // GET /:id/referrals — list referrals for a call
 callActions.get('/:id/referrals', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
     const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM external_referrals WHERE call_id = ? ORDER BY created_at DESC', id).catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
@@ -1418,7 +1431,7 @@ callActions.get('/bolos/metrics', requireRole(...READ_ROLES), async (c) => {
 callActions.get('/geofences', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE active = 1 ORDER BY name').catch(() => []);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM geofences WHERE is_active = 1 ORDER BY name').catch(() => []);
     return c.json(rows);
   } catch { return c.json([]); }
 });
@@ -1429,11 +1442,15 @@ callActions.post('/geofences', requireRole('admin', 'manager', 'supervisor'), as
     if (!body.name || !body.geojson) return c.json({ error: 'name and geojson required' }, 400);
     const userId = c.get('userId') as number | undefined;
     const r = await execute(db,
+      // 6 columns needs 6 values — a stray 'info' literal made 7, so this
+      // INSERT threw on arity even once 0214 added the columns. alert_type
+      // already defaults to 'info' via the bound parameter below.
       `INSERT INTO geofences (name, geojson, alert_type, created_by, created_at, updated_at)
-       VALUES (?,?,?,'info',?,datetime('now','localtime'),datetime('now','localtime'))`,
+       VALUES (?,?,?,?,datetime('now'),datetime('now'))`,
       body.name, JSON.stringify(body.geojson), body.alert_type || 'info', userId ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ error: 'Geofence creation failed' }, 500); }
+  } catch (err) {
+    log.error('POST /geofences failed', { src: 'src/routes/dispatch/extensions.ts' }, err); return c.json({ error: 'Geofence creation failed' }, 500); }
 });
 
 // POST /:id/transfer — move a call from one unit to another
@@ -1522,6 +1539,40 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
   } catch (err) {
     console.error('[dispatch] broadcast-note error', err);
     return c.json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' }, 500);
+  }
+});
+
+// POST /:id/notes — append a note to the JSON notes array. Re-reads the current
+// notes immediately before writing so two dispatchers editing the same call
+// within each other's think-time don't clobber each other (client does
+// server-side append instead of PUTting the whole notes blob for this reason).
+callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { username?: string } | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const body = await c.req.json<{ text?: string; author?: string }>().catch(() => ({} as { text?: string; author?: string }));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length < 2 || text.length > 2000) {
+      return c.json({ error: 'text is required (2-2000 chars)', code: 'TEXT_INVALID' }, 400);
+    }
+
+    const call = await queryFirst<{ id: number; notes: string | null }>(db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const now = utcNow();
+    const notes = safeJson<any[]>(call.notes, []);
+    notes.push({ id: `n-${Date.now()}`, author: body.author || user?.username || 'Dispatch', text, timestamp: now });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] add note error', err);
+    return c.json({ error: 'Failed to add note', code: 'ADD_NOTE_ERROR' }, 500);
   }
 });
 
@@ -1635,7 +1686,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     }
 
     // Incident number: YY-RMP-NNNNN (matches src/routes/incidents.ts convention).
-    const year = new Date().getFullYear().toString().slice(-2);
+    const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const [{ max }] = await query<{ max: string | null }>(db,
       'SELECT MAX(incident_number) AS max FROM incidents WHERE incident_number LIKE ?', `${year}-RMP-%`);
     const seq = max ? String(parseInt(max.split('-RMP-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
@@ -1653,7 +1704,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 
     const np: string[] = [];
     np.push(`Incident generated from dispatch call ${call.call_number}.`);
-    np.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+    np.push(`\nCall Type: ${toDisplayLabel(call.incident_type || '').toUpperCase()}`);
     np.push(`Priority: ${call.priority}`);
     np.push(`Location: ${call.location_address || 'Unknown'}`);
     if (call.caller_name) np.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
@@ -1703,7 +1754,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     // Copy field photos linked to the call
     await execute(db,
       `INSERT INTO incident_photos (incident_id, photo_id, call_id)
-       SELECT ?, file_id, call_id FROM field_photos WHERE call_id = ?`,
+       SELECT ?, id, call_id FROM field_photos WHERE call_id = ?`,
       incidentId, id,
     ).catch(() => {});
 
@@ -1727,19 +1778,19 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
 }
 
 // Post-clear: requires the call to be cleared/closed first.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, true));
 
 // CAD "PI" command: promote a live call to an incident report immediately,
 // without first clearing it. Same dedup + audit behavior.
-callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
   (c) => generateIncidentFromCall(c, false));
 
 // GET /:id/serve-link — read back the serve_queue row created by
 // send-to-serve below (legacy parity; DispatchPage polls this on call
 // selection). Returns null with 200 when no serve job is linked — a 404
 // here is just console noise since most calls have no serve job.
-callActions.get('/:id/serve-link', async (c) => {
+callActions.get('/:id/serve-link', requireRole(...READ_ROLES), async (c) => {
   const id = parseInt(c.req.param('id') || '', 10);
   if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id' }, 400);
   const row = await findServeJobForCall(getDb(c.env), id);
@@ -1767,14 +1818,26 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const existing = await findServeJobForCall(db, id);
     if (existing) return c.json(existing, 200);
 
+    // Read ext table for PSO/process-service overflow fields
+    const ext = await queryFirst<Record<string, any>>(db,
+      'SELECT * FROM calls_for_service_ext WHERE id = ?', id).catch(() => null);
+    const merged: Record<string, any> = { ...call, ...(ext || {}) };
+
+    const recipientName = merged.process_served_to || merged.pso_requestor_name || null;
+    const documentType = merged.process_service_type || merged.pso_service_type || null;
+    const caseNumber = merged.process_case_number || null;
+    const clientName = merged.client_name || merged.pso_requestor_name || null;
+    const deadline = merged.process_deadline || merged.pso_deadline || null;
+
     const result = await execute(db,
       `INSERT INTO serve_queue (
-         call_id, officer_id, created_by, recipient_address, recipient_lat, recipient_lng,
-         property_id, priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+         call_id, officer_id, created_by, recipient_name, recipient_address, recipient_lat, recipient_lng,
+         property_id, document_type, case_number, client_name, client_id, deadline,
+         priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       id, userId, userId,
-      call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
-      call.property_id ?? null,
+      recipientName, call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
+      call.property_id ?? null, documentType, caseNumber, clientName, call.client_id ?? null, deadline,
       `Created from dispatch call ${call.call_number}`);
 
     try {
@@ -1836,8 +1899,9 @@ callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'superv
 
     const caseNumber = `CASE-${incident.incident_number}`;
     const result = await execute(db,
-      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, officer_id, created_at, updated_at)
-       VALUES (?, ?, ?, 'open', ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+      // cases has no officer_id — lead_investigator_id is the officer FK.
+      `INSERT INTO cases (case_number, incident_id, case_type, status, priority, lead_investigator_id, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, datetime('now'), datetime('now'))`,
       caseNumber, incident.id, (incident.incident_type as string) || 'general',
       (incident.priority as string) || 'P3', incident.officer_id ?? userId ?? null);
     const caseId = Number(result.meta.last_row_id);

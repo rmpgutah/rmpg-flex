@@ -59,9 +59,13 @@ describe('lookupParcelsWithFallback', () => {
       async () => new Response('upstream boom', { status: 502 }),
     );
     const kv = makeKv();
-    // Seed the durable / stale entry with two parcels from a prior run.
+    // Seed the durable / stale entry with a parcel from a prior run.
+    // NOTE the 14-digit parcel number: getCachedValidated() treats a
+    // 12-digit BLOCK id as poison and deletes the entry, because that is the
+    // value the county answers with HTTP 200 + its search form. A 12-digit
+    // fixture here would be testing that we serve unusable cached data.
     const stale = [
-      { parcel_number: '16-04-301-005', owner_of_record: 'SMITH JOHN', situs_address: '2200 S 500 E', land_sqft: 8000, total_market_value: 450000, detail_url: '?parcel=16-04-301-005' },
+      { parcel_number: '16-04-301-005-0000', owner_of_record: 'SMITH JOHN', situs_address: '2200 S 500 E', land_sqft: 8000, total_market_value: 450000, detail_url: '?parcel=16-04-301-005-0000' },
     ];
     kv._store.set('assessor:parcels:durable:2200 s 500 e', JSON.stringify(stale));
     const { lookupParcelsWithFallback } = await import('../src/utils/sl-assessor/lookup');
@@ -126,5 +130,39 @@ describe('lookupParcelsWithFallback', () => {
       expect.stringMatching(/^assessor:parcels:[^:]+$/),
       expect.stringMatching(/^assessor:parcels:durable:/),
     ]));
+  });
+});
+
+describe('no_match vs upstream_error — the message an officer reads', () => {
+  // "No matching parcels" is an ANSWER. "Could not reach the Assessor" is a
+  // FAULT REPORT. They were indistinguishable: lastErr was assigned on the
+  // SUCCESS path when a search returned zero rows, so it was always truthy
+  // by the time `code: lastErr ? 'upstream_error' : 'no_match'` read it —
+  // making 'no_match' unreachable dead code and reporting every empty
+  // result as an unreachable assessor.
+
+  test('a clean search with zero results is no_match, NOT upstream_error', async () => {
+    // Assessor reachable, responds normally, simply has no such parcel.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => new Response('<html><body>no parcels here</body></html>', { status: 200 }),
+    );
+    const kv = makeKv();
+    const { lookupParcelsWithFallback } = await import('../src/utils/sl-assessor/lookup');
+    const out = await lookupParcelsWithFallback(
+      { KV: kv as unknown as KVNamespace }, '1 Nowhere St',
+    );
+    expect(out.code).toBe('no_match');
+    expect(out.parcels).toEqual([]);
+  });
+
+  test('a genuine upstream failure still reports upstream_error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => { throw new Error('network down'); });
+    const kv = makeKv();
+    const { lookupParcelsWithFallback } = await import('../src/utils/sl-assessor/lookup');
+    const out = await lookupParcelsWithFallback(
+      { KV: kv as unknown as KVNamespace }, '2200 S 500 E',
+    );
+    expect(out.code).toBe('upstream_error');
+    expect(out.diagnostic).toBeTruthy();
   });
 });

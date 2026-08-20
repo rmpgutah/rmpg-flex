@@ -39,8 +39,8 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
   avatar_url TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 , totp_enabled INTEGER DEFAULT 0, totp_secret_enc TEXT, totp_backup_codes TEXT, must_change_password INTEGER DEFAULT 0, digital_signature TEXT, first_name TEXT, last_name TEXT, assigned_unit_id INTEGER, login_count INTEGER DEFAULT 0, last_login_at TEXT, password_history TEXT, totp_exempt INTEGER DEFAULT 0, voice_persona TEXT, voice_rate REAL, voice_pitch REAL, voice_terseness TEXT, voice_brain_enabled INTEGER DEFAULT 0, email_signature TEXT, middle_name TEXT, date_of_birth TEXT, ssn_last4 TEXT, address TEXT, city TEXT, state TEXT, zip TEXT, emergency_contact_name TEXT, emergency_contact_phone TEXT, emergency_contact_relationship TEXT, hire_date TEXT, termination_date TEXT, rank TEXT, department TEXT, shift_preference TEXT, dl_number TEXT, dl_state TEXT, dl_expiry TEXT, blood_type TEXT, allergies TEXT, uniform_size TEXT, employee_id TEXT, certifications TEXT, notes TEXT, profile_image TEXT, last_password_change TEXT, totp_pending_secret TEXT, password_changed_at TEXT, photo TEXT, active_case_count INTEGER, territory_zips TEXT DEFAULT '[]', availability TEXT DEFAULT '{}', performance TEXT DEFAULT '{}', notification_prefs TEXT DEFAULT '{}', theme_preference TEXT DEFAULT 'dark', font_size_preference TEXT DEFAULT 'medium', favorites TEXT DEFAULT '[]', recently_viewed TEXT DEFAULT '[]', fitness_scores TEXT DEFAULT '[]', commendations TEXT DEFAULT '[]', status_history TEXT DEFAULT '[]', assignment_history TEXT DEFAULT '[]', archived_at TEXT);
 CREATE TABLE IF NOT EXISTS user_preferences (
   user_id INTEGER PRIMARY KEY,
@@ -67,8 +67,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   dispatch_show_cleared INTEGER DEFAULT 0,
   theme_preference TEXT DEFAULT 'dark',
   font_size_preference TEXT DEFAULT 'medium',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS clients (
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS clients (
   sla_response_minutes INTEGER DEFAULT 15,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 , billing_email TEXT, billing_address TEXT, contract_type TEXT, contract_value REAL, payment_terms TEXT, auto_renew INTEGER, updated_at TEXT, client_code TEXT, industry TEXT, website TEXT, tax_id TEXT, payment_method TEXT, billing_cycle TEXT, billing_day INTEGER, discount_percent REAL, late_fee_percent REAL, total_invoiced REAL, total_paid REAL, outstanding_balance REAL, incident_count INTEGER, last_incident_date TEXT, account_manager TEXT, priority_client INTEGER, client_since TEXT, rate_per_hour REAL, rate_per_incident REAL, rate_per_cfs REAL, email_verified INTEGER, verification_token TEXT, avatar TEXT, last_active_at TEXT);
 CREATE TABLE IF NOT EXISTS properties (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS properties (
   emergency_contact TEXT,
   post_orders TEXT,
   hazard_notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), city TEXT, state TEXT, zip TEXT, access_instructions TEXT, is_active INTEGER NOT NULL, updated_at TEXT, notes TEXT, business_type TEXT, structure_type TEXT, occupancy_status TEXT, year_built TEXT, square_footage TEXT, number_of_stories TEXT, security_features TEXT, key_holder_name TEXT, key_holder_phone TEXT, key_holder_relationship TEXT, owner_name TEXT, owner_phone TEXT, last_inspection_date TEXT, archived_at TEXT, alarm_account TEXT, alarm_company TEXT, alarm_system TEXT, camera_system TEXT, closing_hours TEXT, contact_email TEXT, inspection_status TEXT, known_hazards TEXT, opening_hours TEXT, parking_info TEXT, patrol_frequency TEXT, roof_access TEXT, secondary_contact_name TEXT, secondary_contact_phone TEXT, utility_shutoffs TEXT, phone TEXT, email TEXT, dba_name TEXT, ein TEXT, license_number TEXT, website TEXT, contact_name TEXT, contact_phone TEXT, industry TEXT, employee_count TEXT, annual_revenue TEXT, status TEXT DEFAULT 'active',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), city TEXT, state TEXT, zip TEXT, access_instructions TEXT, is_active INTEGER NOT NULL, updated_at TEXT, notes TEXT, business_type TEXT, structure_type TEXT, occupancy_status TEXT, year_built TEXT, square_footage TEXT, number_of_stories TEXT, security_features TEXT, key_holder_name TEXT, key_holder_phone TEXT, key_holder_relationship TEXT, owner_name TEXT, owner_phone TEXT, last_inspection_date TEXT, archived_at TEXT, alarm_account TEXT, alarm_company TEXT, alarm_system TEXT, camera_system TEXT, closing_hours TEXT, contact_email TEXT, inspection_status TEXT, known_hazards TEXT, opening_hours TEXT, parking_info TEXT, patrol_frequency TEXT, roof_access TEXT, secondary_contact_name TEXT, secondary_contact_phone TEXT, utility_shutoffs TEXT, phone TEXT, email TEXT, dba_name TEXT, ein TEXT, license_number TEXT, website TEXT, contact_name TEXT, contact_phone TEXT, industry TEXT, employee_count TEXT, annual_revenue TEXT, status TEXT DEFAULT 'active',
   FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 CREATE TABLE IF NOT EXISTS gps_breadcrumbs (
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS gps_breadcrumbs (
   current_call_id INTEGER,
   current_call_number TEXT,
   current_call_type TEXT,
-  recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), gps_source TEXT, call_number TEXT, call_type TEXT, road_name TEXT, nearest_intersection TEXT,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now')), gps_source TEXT, call_number TEXT, call_type TEXT, road_name TEXT, nearest_intersection TEXT,
   FOREIGN KEY (unit_id) REFERENCES units(id),
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
@@ -131,9 +131,9 @@ CREATE TABLE IF NOT EXISTS units (
   vehicle_id TEXT,
   capabilities TEXT DEFAULT '[]',
   current_call_id INTEGER,
-  last_status_change TEXT DEFAULT (datetime('now','localtime')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime')), gps_source TEXT DEFAULT 'manual', gps_updated_at TEXT, assigned_beat TEXT, mileage REAL, audio_mode TEXT DEFAULT 'audible', gps_heading REAL, gps_speed REAL, emergency_active INTEGER DEFAULT 0, emergency_call_id INTEGER, emergency_since TEXT,
+  last_status_change TEXT DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')), gps_source TEXT DEFAULT 'manual', gps_updated_at TEXT, assigned_beat TEXT, mileage REAL, audio_mode TEXT DEFAULT 'audible', gps_heading REAL, gps_speed REAL, emergency_active INTEGER DEFAULT 0, emergency_call_id INTEGER, emergency_since TEXT,
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
 );
@@ -152,8 +152,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   officer_id INTEGER NOT NULL,
   supervisor_id INTEGER,
   approved_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), occurred_date TEXT, occurred_time TEXT, end_date TEXT, end_time TEXT, weather_conditions TEXT, lighting_conditions TEXT, injuries INTEGER DEFAULT 0, injury_description TEXT, damage_estimate REAL, damage_description TEXT, weapons_involved TEXT, alcohol_involved INTEGER DEFAULT 0, drugs_involved INTEGER DEFAULT 0, domestic_violence INTEGER DEFAULT 0, review_notes TEXT, disposition TEXT, zone_beat TEXT, sector_id TEXT, zone_id TEXT, beat_id TEXT, responding_le_agency TEXT, le_case_number TEXT, road_conditions TEXT, traffic_control TEXT, vehicle_1_info TEXT, vehicle_2_info TEXT, diagram_notes TEXT, patient_status TEXT, ems_transport TEXT, patient_vitals TEXT, treatment_rendered TEXT, trespass_warning_issued INTEGER DEFAULT 0, trespass_effective_date TEXT, trespass_expiry_date TEXT, property_boundaries TEXT, force_type TEXT, force_justification TEXT, subject_injuries TEXT, officer_injuries TEXT, de_escalation_attempts TEXT, mental_health_crisis INTEGER DEFAULT 0, juvenile_involved INTEGER DEFAULT 0, gang_related INTEGER DEFAULT 0, dui_related INTEGER DEFAULT 0, hit_and_run INTEGER DEFAULT 0, stolen_vehicle INTEGER DEFAULT 0, assault_weapon INTEGER DEFAULT 0, mass_casualty INTEGER DEFAULT 0, officer_involved_shooting INTEGER DEFAULT 0, pursuit INTEGER DEFAULT 0, use_of_force_reported INTEGER DEFAULT 0, k9_deployment INTEGER DEFAULT 0, srt_activation INTEGER DEFAULT 0, bomb_threat INTEGER DEFAULT 0, terrorism INTEGER DEFAULT 0, cybercrime INTEGER DEFAULT 0, assigned_unit_ids TEXT, response_time_sec INTEGER, client_id INTEGER, archived_at TEXT, section_id TEXT, statute_id INTEGER, statute_citation TEXT, citation_fine REAL, contract_id TEXT, assigned_detective_id INTEGER, weather_temperature REAL, weather_recorded_at TEXT, area_code TEXT, area_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')), occurred_date TEXT, occurred_time TEXT, end_date TEXT, end_time TEXT, weather_conditions TEXT, lighting_conditions TEXT, injuries INTEGER DEFAULT 0, injury_description TEXT, damage_estimate REAL, damage_description TEXT, weapons_involved TEXT, alcohol_involved INTEGER DEFAULT 0, drugs_involved INTEGER DEFAULT 0, domestic_violence INTEGER DEFAULT 0, review_notes TEXT, disposition TEXT, zone_beat TEXT, sector_id TEXT, zone_id TEXT, beat_id TEXT, responding_le_agency TEXT, le_case_number TEXT, road_conditions TEXT, traffic_control TEXT, vehicle_1_info TEXT, vehicle_2_info TEXT, diagram_notes TEXT, patient_status TEXT, ems_transport TEXT, patient_vitals TEXT, treatment_rendered TEXT, trespass_warning_issued INTEGER DEFAULT 0, trespass_effective_date TEXT, trespass_expiry_date TEXT, property_boundaries TEXT, force_type TEXT, force_justification TEXT, subject_injuries TEXT, officer_injuries TEXT, de_escalation_attempts TEXT, mental_health_crisis INTEGER DEFAULT 0, juvenile_involved INTEGER DEFAULT 0, gang_related INTEGER DEFAULT 0, dui_related INTEGER DEFAULT 0, hit_and_run INTEGER DEFAULT 0, stolen_vehicle INTEGER DEFAULT 0, assault_weapon INTEGER DEFAULT 0, mass_casualty INTEGER DEFAULT 0, officer_involved_shooting INTEGER DEFAULT 0, pursuit INTEGER DEFAULT 0, use_of_force_reported INTEGER DEFAULT 0, k9_deployment INTEGER DEFAULT 0, srt_activation INTEGER DEFAULT 0, bomb_threat INTEGER DEFAULT 0, terrorism INTEGER DEFAULT 0, cybercrime INTEGER DEFAULT 0, assigned_unit_ids TEXT, response_time_sec INTEGER, client_id INTEGER, archived_at TEXT, section_id TEXT, statute_id INTEGER, statute_citation TEXT, citation_fine REAL, contract_id TEXT, assigned_detective_id INTEGER, weather_temperature REAL, weather_recorded_at TEXT, area_code TEXT, area_name TEXT,
   FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
   FOREIGN KEY (property_id) REFERENCES properties(id),
   FOREIGN KEY (officer_id) REFERENCES users(id),
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS persons (
   photo_url TEXT,
   flags TEXT DEFAULT '[]',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 , middle_name TEXT, alias_nickname TEXT, ssn_last4 TEXT, dl_number TEXT, dl_state TEXT, dl_expiry TEXT, dl_class TEXT, employer TEXT, occupation TEXT, emergency_contact_name TEXT, emergency_contact_phone TEXT, city TEXT, state TEXT, zip TEXT, build TEXT, complexion TEXT, clothing_description TEXT, gang_affiliation TEXT, is_sex_offender INTEGER DEFAULT 0, is_veteran INTEGER DEFAULT 0, language TEXT, updated_at TEXT, place_of_birth TEXT, citizenship TEXT, marital_status TEXT, hair_length TEXT, hair_style TEXT, facial_hair TEXT, glasses TEXT, shoe_size TEXT, blood_type TEXT, phone_secondary TEXT, social_media TEXT, probation_parole TEXT, probation_parole_officer TEXT, known_associates TEXT, emergency_contact_relationship TEXT, caution_flags TEXT, ssn_full TEXT, id_image_url TEXT, id_type TEXT, id_number TEXT, id_state TEXT, id_expiry TEXT, height_feet INTEGER, height_inches INTEGER, watchlist_match TEXT, watchlist_checked_at TEXT, aliases TEXT, photo TEXT, ncic_number TEXT, sor_number TEXT, fbi_number TEXT, state_id_number TEXT, passport_number TEXT, passport_country TEXT, immigration_status TEXT, disability_flags TEXT, mental_health_flags TEXT, substance_abuse TEXT, medication_notes TEXT, education_level TEXT, military_branch TEXT, military_status TEXT, tribal_affiliation TEXT, identifying_marks_location TEXT, tattoo_description TEXT, scar_description TEXT, piercing_description TEXT, distinguishing_features TEXT, email_secondary TEXT, date_last_seen TEXT, location_last_seen TEXT, alias_dob TEXT, home_phone TEXT, work_phone TEXT);
 CREATE TABLE IF NOT EXISTS vehicles_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS vehicles_records (
   owner_person_id INTEGER,
   flags TEXT DEFAULT '[]',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), body_style TEXT, doors INTEGER, secondary_color TEXT, insurance_company TEXT, insurance_policy TEXT, registration_expiry TEXT, damage_description TEXT, distinguishing_features TEXT, updated_at TEXT, trim TEXT, engine_type TEXT, fuel_type TEXT, transmission TEXT, drive_type TEXT, tow_status TEXT, tow_company TEXT, tow_date TEXT, plate_type TEXT, commercial_vehicle INTEGER, hazmat INTEGER, odometer TEXT, owner_address TEXT, owner_phone TEXT, lien_holder TEXT, stolen_status TEXT, stolen_date TEXT, recovery_date TEXT, insurance_status TEXT, insurance_expiry TEXT, insurance_verified_at TEXT, insurance_verified_by INTEGER, is_stolen INTEGER, tow_lot_location TEXT, tow_release_date TEXT, tow_release_to TEXT, tow_reason TEXT, registration_state TEXT, owner_name TEXT, owner_dl_number TEXT, owner_dob TEXT, primary_driver_name TEXT, registered_owner TEXT, exterior_condition TEXT, interior_condition TEXT, title_status TEXT, window_tint TEXT, modifications TEXT, equipment_notes TEXT, vehicle_use TEXT, ncic_entry_number TEXT, estimated_value REAL, tow_location TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), body_style TEXT, doors INTEGER, secondary_color TEXT, insurance_company TEXT, insurance_policy TEXT, registration_expiry TEXT, damage_description TEXT, distinguishing_features TEXT, updated_at TEXT, trim TEXT, engine_type TEXT, fuel_type TEXT, transmission TEXT, drive_type TEXT, tow_status TEXT, tow_company TEXT, tow_date TEXT, plate_type TEXT, commercial_vehicle INTEGER, hazmat INTEGER, odometer TEXT, owner_address TEXT, owner_phone TEXT, lien_holder TEXT, stolen_status TEXT, stolen_date TEXT, recovery_date TEXT, insurance_status TEXT, insurance_expiry TEXT, insurance_verified_at TEXT, insurance_verified_by INTEGER, is_stolen INTEGER, tow_lot_location TEXT, tow_release_date TEXT, tow_release_to TEXT, tow_reason TEXT, registration_state TEXT, owner_name TEXT, owner_dl_number TEXT, owner_dob TEXT, primary_driver_name TEXT, registered_owner TEXT, exterior_condition TEXT, interior_condition TEXT, title_status TEXT, window_tint TEXT, modifications TEXT, equipment_notes TEXT, vehicle_use TEXT, ncic_entry_number TEXT, estimated_value REAL, tow_location TEXT,
   FOREIGN KEY (owner_person_id) REFERENCES persons(id)
 );
 CREATE TABLE IF NOT EXISTS bolos (
@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS bolos (
   priority TEXT DEFAULT 'P3',
   issued_by INTEGER NOT NULL,
   expires_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), auto_expire_hours INTEGER, expired_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), auto_expire_hours INTEGER, expired_at TEXT,
   FOREIGN KEY (issued_by) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS messages (
@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT NOT NULL,
   priority TEXT DEFAULT 'routine' CHECK(priority IN ('routine','urgent','emergency')),
   read_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), subject TEXT, parent_id INTEGER, thread_id TEXT, case_id INTEGER, file_url TEXT, edited_at TEXT, scheduled_at TEXT, attachment_url TEXT, attachment_name TEXT, is_template INTEGER, template_name TEXT, is_draft INTEGER, draft_updated_at TEXT, delivered_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), subject TEXT, parent_id INTEGER, thread_id TEXT, case_id INTEGER, file_url TEXT, edited_at TEXT, scheduled_at TEXT, attachment_url TEXT, attachment_name TEXT, is_template INTEGER, template_name TEXT, is_draft INTEGER, draft_updated_at TEXT, delivered_at TEXT,
   FOREIGN KEY (from_user_id) REFERENCES users(id),
   FOREIGN KEY (to_user_id) REFERENCES users(id)
 );
@@ -232,7 +232,7 @@ CREATE TABLE IF NOT EXISTS evidence (
   collected_by INTEGER,
   status TEXT NOT NULL DEFAULT 'received' CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed')),
   chain_of_custody TEXT DEFAULT '[]',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), location_found TEXT, condition TEXT, quantity INTEGER, release_authorized_by TEXT, released_to TEXT, release_date TEXT, collected_date TEXT, packaging_type TEXT, dimensions TEXT, weight TEXT, photo_taken INTEGER, lab_submitted INTEGER, lab_case_number TEXT, lab_name TEXT, disposal_method TEXT, disposal_date TEXT, disposal_authorized_by TEXT, serial_number TEXT, brand TEXT, model TEXT, estimated_value REAL, category TEXT, notes TEXT, updated_at TEXT, retention_until TEXT, disposition TEXT, storage_temperature REAL, is_biological INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), location_found TEXT, condition TEXT, quantity INTEGER, release_authorized_by TEXT, released_to TEXT, release_date TEXT, collected_date TEXT, packaging_type TEXT, dimensions TEXT, weight TEXT, photo_taken INTEGER, lab_submitted INTEGER, lab_case_number TEXT, lab_name TEXT, disposal_method TEXT, disposal_date TEXT, disposal_authorized_by TEXT, serial_number TEXT, brand TEXT, model TEXT, estimated_value REAL, category TEXT, notes TEXT, updated_at TEXT, retention_until TEXT, disposition TEXT, storage_temperature REAL, is_biological INTEGER,
   FOREIGN KEY (incident_id) REFERENCES incidents(id),
   FOREIGN KEY (collected_by) REFERENCES users(id)
 );
@@ -245,7 +245,7 @@ CREATE TABLE IF NOT EXISTS schedules (
   end_time TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','active','completed','cancelled')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (property_id) REFERENCES properties(id)
 );
@@ -261,7 +261,7 @@ CREATE TABLE IF NOT EXISTS time_entries (
   break_start TEXT,
   break_minutes REAL NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), notes TEXT, edit_reason TEXT, edited_by INTEGER, edited_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), notes TEXT, edit_reason TEXT, edited_by INTEGER, edited_at TEXT,
   FOREIGN KEY (officer_id) REFERENCES users(id),
   FOREIGN KEY (schedule_id) REFERENCES schedules(id)
 );
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
   entity_id INTEGER,
   details TEXT,
   ip_address TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS credentials (
@@ -285,7 +285,7 @@ CREATE TABLE IF NOT EXISTS credentials (
   expiry_date TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','pending_renewal')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), issuing_authority TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), issuing_authority TEXT,
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS patrol_checkpoints (
@@ -299,14 +299,14 @@ CREATE TABLE IF NOT EXISTS patrol_checkpoints (
   sequence_order INTEGER DEFAULT 0,
   scan_required_interval_minutes INTEGER NOT NULL DEFAULT 60,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), assigned_officer_id INTEGER, location_description TEXT, special_instructions TEXT, archived_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), assigned_officer_id INTEGER, location_description TEXT, special_instructions TEXT, archived_at TEXT,
   FOREIGN KEY (property_id) REFERENCES properties(id)
 );
 CREATE TABLE IF NOT EXISTS patrol_scans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   checkpoint_id INTEGER NOT NULL,
   officer_id INTEGER NOT NULL,
-  scanned_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  scanned_at TEXT NOT NULL DEFAULT (datetime('now')),
   latitude REAL,
   longitude REAL,
   notes TEXT,
@@ -323,8 +323,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_agent TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
   expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS login_attempts (
@@ -333,7 +333,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   ip_address TEXT,
   success INTEGER NOT NULL DEFAULT 0,
   failure_reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS attachments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -346,7 +346,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   entity_type TEXT,
   entity_id INTEGER,
   uploaded_by INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), folder_id INTEGER REFERENCES document_folders(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), folder_id INTEGER REFERENCES document_folders(id) ON DELETE SET NULL,
   FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS system_config (
@@ -356,8 +356,8 @@ CREATE TABLE IF NOT EXISTS system_config (
   category TEXT NOT NULL DEFAULT 'general',
   sort_order INTEGER NOT NULL DEFAULT 0,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 , config_key_backup TEXT);
 CREATE TABLE IF NOT EXISTS warrants (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -373,8 +373,8 @@ CREATE TABLE IF NOT EXISTS warrants (
   issued_date TEXT,
   expiry_date TEXT,
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), archived_at TEXT, subject_first_name TEXT, subject_last_name TEXT, warrant_type TEXT, source TEXT DEFAULT 'manual', priority TEXT DEFAULT 'P3', issuing_agency TEXT, confirmed INTEGER DEFAULT 0, confirmed_at TEXT, confirmed_by INTEGER, notes TEXT, subject_person_id INTEGER, offense_description TEXT, bond_type TEXT, extradition_limit TEXT, service_date TEXT, served_by INTEGER, return_date TEXT, notification_sent INTEGER DEFAULT 0, entered_by INTEGER, last_checked_at TEXT, check_frequency_hours INTEGER DEFAULT 24, last_check_result TEXT, scraped_source TEXT, scraped_raw TEXT, statute_id INTEGER, statute_citation TEXT, external_warrant_id TEXT, external_source_key TEXT, auto_created INTEGER, issuing_court TEXT, issuing_judge TEXT, charge_description TEXT, bail_amount REAL, offense_level TEXT, expires_at TEXT, served_at TEXT, priority_score INTEGER, person_id INTEGER, severity TEXT, description TEXT, served_location TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')), archived_at TEXT, subject_first_name TEXT, subject_last_name TEXT, warrant_type TEXT, source TEXT DEFAULT 'manual', priority TEXT DEFAULT 'P3', issuing_agency TEXT, confirmed INTEGER DEFAULT 0, confirmed_at TEXT, confirmed_by INTEGER, notes TEXT, subject_person_id INTEGER, offense_description TEXT, bond_type TEXT, extradition_limit TEXT, service_date TEXT, served_by INTEGER, return_date TEXT, notification_sent INTEGER DEFAULT 0, entered_by INTEGER, last_checked_at TEXT, check_frequency_hours INTEGER DEFAULT 24, last_check_result TEXT, scraped_source TEXT, scraped_raw TEXT, statute_id INTEGER, statute_citation TEXT, external_warrant_id TEXT, external_source_key TEXT, auto_created INTEGER, issuing_court TEXT, issuing_judge TEXT, charge_description TEXT, bail_amount REAL, offense_level TEXT, expires_at TEXT, served_at TEXT, priority_score INTEGER, person_id INTEGER, severity TEXT, description TEXT, served_location TEXT,
   FOREIGN KEY (created_by) REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS migration_version (
@@ -387,7 +387,7 @@ CREATE TABLE IF NOT EXISTS call_persons (
   call_id INTEGER NOT NULL,
   person_id INTEGER NOT NULL,
   person_type TEXT DEFAULT 'subject',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), role TEXT DEFAULT 'subject', notes TEXT, added_by INTEGER, added_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), role TEXT DEFAULT 'subject', notes TEXT, added_by INTEGER, added_at TEXT,
   FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
   FOREIGN KEY (person_id) REFERENCES persons(id)
 );
@@ -396,50 +396,50 @@ CREATE TABLE IF NOT EXISTS call_vehicles (
   call_id INTEGER NOT NULL,
   vehicle_id INTEGER NOT NULL,
   vehicle_role TEXT DEFAULT 'involved',
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), role TEXT DEFAULT 'subject', notes TEXT, added_by INTEGER, added_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')), role TEXT DEFAULT 'subject', notes TEXT, added_by INTEGER, added_at TEXT,
   FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
   FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
 );
-CREATE TABLE IF NOT EXISTS citations (id INTEGER PRIMARY KEY AUTOINCREMENT, citation_number TEXT UNIQUE NOT NULL, created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')), citation_date TEXT, location_address TEXT, latitude REAL, longitude REAL, officer_id INTEGER, person_id INTEGER, vehicle_plate TEXT, vehicle_state TEXT, vehicle_make TEXT, vehicle_model TEXT, vehicle_color TEXT, vehicle_year INTEGER, speed_limit INTEGER, speed_clocked INTEGER, speed_device TEXT, zone_beat TEXT, fine_amount REAL, court_date TEXT, court_location TEXT, status TEXT, disposition TEXT, notes TEXT, violation_code TEXT, violation_description TEXT, type TEXT, violation_date TEXT, section_id TEXT, sector_id TEXT, zone_id TEXT, beat_id TEXT, vehicle_vin TEXT, vehicle_id INTEGER, speed_recorded INTEGER, radar_type TEXT, bac_level REAL, bond_amount REAL, bond_type TEXT, is_warning INTEGER, is_equipment_violation INTEGER, weather_conditions TEXT, road_conditions TEXT, accident_related INTEGER, dui_related INTEGER, school_zone INTEGER, construction_zone INTEGER, commercial_vehicle INTEGER, hazmat INTEGER, voided_reason TEXT, voided_by INTEGER, voided_at TEXT, court_time TEXT, court_room TEXT, appearance_required INTEGER, plea TEXT, verdict TEXT, sentence TEXT, disposition_date TEXT, case_id INTEGER, person_name TEXT, person_dob TEXT, person_dl TEXT, person_address TEXT, vehicle_description TEXT, statute_id INTEGER, statute_citation TEXT, offense_level TEXT, violation_time TEXT, location TEXT, incident_id INTEGER, call_id INTEGER, issuing_officer_id INTEGER, issuing_officer_name TEXT, badge_number TEXT, court_name TEXT, court_address TEXT, violation TEXT, violator_name TEXT);
-CREATE TABLE IF NOT EXISTS court_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), continuance_count INTEGER, defendant_dob TEXT, bail_amount REAL, bond_status TEXT, surety_info TEXT, judge_notes TEXT, prosecutor_phone TEXT, prosecutor_email TEXT, event_number TEXT, event_type TEXT, status TEXT, event_date TEXT, event_time TEXT, court_name TEXT, courtroom TEXT, judge_name TEXT, court_case_number TEXT, citation_id INTEGER, incident_id INTEGER, case_id INTEGER, defendant_person_id INTEGER, defendant_name TEXT, prosecutor TEXT, defense_attorney TEXT, officers_required TEXT, notes TEXT, created_by INTEGER, updated_at TEXT, outcome TEXT, sentence TEXT, fine_amount REAL, continuance_log TEXT, officer_confirmations TEXT, documents TEXT, court_fees TEXT, witnesses TEXT, verdict_data TEXT);
-CREATE TABLE IF NOT EXISTS offender_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), alert_latitude REAL, alert_longitude REAL, alert_address TEXT, alert_enabled INTEGER, person_id INTEGER, alert_type TEXT, status TEXT, severity TEXT, description TEXT, last_compliance_check TEXT, last_compliance_result TEXT, updated_at TEXT);
-CREATE TABLE IF NOT EXISTS warrant_scraper_config (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), source_name TEXT, last_run_at TEXT, last_error TEXT, source_type TEXT, priority INTEGER, content_hash TEXT, content_hash_updated_at TEXT, etag TEXT, last_modified TEXT, last_success_at TEXT, avg_parse_count REAL, p95_latency_ms INTEGER, jitter_seed INTEGER);
-CREATE TABLE IF NOT EXISTS dispatch_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, description TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), category TEXT DEFAULT 'general', priority TEXT DEFAULT 'P3', color TEXT DEFAULT '#6b7280', requires_backup INTEGER DEFAULT 0, officer_safety INTEGER DEFAULT 0, ems_needed INTEGER DEFAULT 0, fire_needed INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, priority TEXT, title TEXT, message TEXT, entity_type TEXT, entity_id INTEGER, created_at TEXT DEFAULT (datetime('now','localtime')), user_id INTEGER, read_at TEXT, sender_id INTEGER, is_read INTEGER DEFAULT 0);
-CREATE TABLE IF NOT EXISTS case_records (id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS field_interviews (id INTEGER PRIMARY KEY AUTOINCREMENT, interview_date TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), date TEXT, gang_affiliation TEXT, section_id INTEGER, zone_id INTEGER, beat_id INTEGER, zone_beat TEXT, updated_at TEXT, fi_number TEXT, officer_id INTEGER, person_id INTEGER, vehicle_id INTEGER, location TEXT, latitude REAL, longitude REAL, contact_reason TEXT, contact_type TEXT, action_taken TEXT, narrative TEXT, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT, subject_gender TEXT, subject_race TEXT, subject_height TEXT, subject_weight TEXT, subject_hair TEXT, subject_eye TEXT, subject_clothing TEXT, subject_description TEXT, vehicle_plate TEXT, vehicle_description TEXT, associated_call_id INTEGER, associated_incident_id INTEGER, archived_at TEXT, disposition TEXT, status TEXT);
-CREATE TABLE IF NOT EXISTS trespass_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), subject_photo_url TEXT, order_number TEXT, status TEXT, person_id INTEGER, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT, subject_description TEXT, subject_name TEXT, property_id INTEGER, property_name TEXT, property_address TEXT, location TEXT, order_type TEXT, reason TEXT, conditions TEXT, duration_days INTEGER, effective_date TEXT, expiration_date TEXT, originating_call_id INTEGER, originating_incident_id INTEGER, issued_by INTEGER, issued_by_name TEXT, authorized_by TEXT, notes TEXT, section_id INTEGER, sector_id INTEGER, zone_id INTEGER, beat_id INTEGER, zone_beat TEXT, served_at TEXT, served_by INTEGER, updated_at TEXT, archived_at TEXT);
-CREATE TABLE IF NOT EXISTS use_of_force (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS serve_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), recipient_person_id INTEGER, property_id INTEGER, client_id INTEGER, case_number TEXT, defendant_name TEXT, plaintiff_name TEXT, defendant_address TEXT, defendant_city TEXT, defendant_state TEXT, defendant_zip TEXT, instructions TEXT, document_text TEXT, parsed_data TEXT, status TEXT DEFAULT 'pending', assigned_officer_id INTEGER, created_by INTEGER, updated_at TEXT, sm_job_id INTEGER, officer_id INTEGER, call_id INTEGER, serve_date TEXT, recipient_name TEXT, recipient_address TEXT, recipient_city TEXT, recipient_state TEXT, recipient_zip TEXT, recipient_lat REAL, recipient_lng REAL, document_type TEXT, court_name TEXT, jurisdiction TEXT, client_name TEXT, attorney_name TEXT, priority TEXT, time_window TEXT, deadline TEXT, max_attempts INTEGER, service_instructions TEXT, notes TEXT, attempt_count INTEGER, sort_order INTEGER, court_date TEXT);
-CREATE TABLE IF NOT EXISTS serve_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), serve_queue_id INTEGER, attempt_number INTEGER DEFAULT 1, attempt_at TEXT, officer_id INTEGER, result TEXT, latitude REAL, longitude REAL, notes TEXT, attempt_type TEXT, photo_ids TEXT, signature_data TEXT);
-CREATE TABLE IF NOT EXISTS serve_routes (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), officer_id INTEGER, route_date TEXT, optimized_order_json TEXT, waypoints_json TEXT, total_distance_miles REAL, total_time_minutes REAL, start_lat REAL, start_lng REAL, end_lat REAL, end_lng REAL, notes TEXT, updated_at TEXT);
-CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), user_id INTEGER, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT, ip_address TEXT);
-CREATE TABLE IF NOT EXISTS patrol_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS patrol_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS invoice_items (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS invoice_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS serve_skip_traces (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now','localtime')), serve_queue_id INTEGER, searched_at TEXT, search_type TEXT, search_query TEXT, results_json TEXT, addresses_found_json TEXT, searched_by INTEGER);
-CREATE TABLE IF NOT EXISTS geofences (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS dispatch_areas (id INTEGER PRIMARY KEY AUTOINCREMENT, area_code TEXT NOT NULL, name TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, area_name TEXT, commander TEXT, notes TEXT);
-CREATE TABLE IF NOT EXISTS dispatch_sectors (id INTEGER PRIMARY KEY AUTOINCREMENT, sector_code TEXT NOT NULL, area_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, county_nbr TEXT, fips_code TEXT, supervisor TEXT, radio_channel TEXT, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now','localtime')), sector_name TEXT, notes TEXT);
-CREATE TABLE IF NOT EXISTS dispatch_zones (id INTEGER PRIMARY KEY AUTOINCREMENT, zone_code TEXT NOT NULL, sector_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, ugrc_code TEXT, zone_type TEXT, primary_unit TEXT, backup_unit TEXT, radio_channel TEXT, hazard_notes TEXT, population_estimate INTEGER, sq_miles REAL, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now','localtime')), zone_name TEXT, notes TEXT);
-CREATE TABLE IF NOT EXISTS dispatch_beats (id INTEGER PRIMARY KEY AUTOINCREMENT, beat_code TEXT NOT NULL, zone_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), sort_order INTEGER DEFAULT 0, description TEXT, geometry TEXT, color TEXT, district_letter TEXT, beat_number INTEGER, beat_descriptor TEXT, dispatch_code TEXT, assigned_unit TEXT, backup_unit TEXT, hazard_notes TEXT, premise_alerts TEXT DEFAULT '[]', patrol_frequency TEXT DEFAULT 'normal', priority_modifier INTEGER DEFAULT 0, population_estimate INTEGER, sq_miles REAL, min_lat REAL, max_lat REAL, min_lng REAL, max_lng REAL, notes TEXT, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now','localtime')), beat_name TEXT);
-CREATE TABLE IF NOT EXISTS fleet_vehicles (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_name TEXT, make TEXT, model TEXT, year INTEGER, vin TEXT, plate_number TEXT, status TEXT DEFAULT 'active', vehicle_type TEXT, assigned_unit_id INTEGER, next_service_mileage INTEGER, next_service_date TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')), total_maintenance_cost REAL, total_fuel_cost REAL, total_trips INTEGER, avg_mpg REAL, vehicle_number TEXT, current_mileage INTEGER, next_service_due TEXT, color TEXT, plate_state TEXT, last_service_date TEXT, insurance_expiry TEXT, registration_expiry TEXT, equipment TEXT, notes TEXT, archived_at TEXT, msrp REAL, title_number TEXT, title_state TEXT, title_status TEXT, lienholder TEXT, acquisition_method TEXT, acquisition_date TEXT, purchase_date TEXT, purchase_price REAL, purchase_vendor TEXT, purchase_order_number TEXT, funding_source TEXT, grant_number TEXT, lease_company TEXT, lease_start_date TEXT, lease_end_date TEXT, lease_monthly_payment REAL, lease_mileage_cap INTEGER, asset_tag TEXT, cost_center TEXT, in_service_date TEXT, expected_retirement_date TEXT, expected_retirement_mileage INTEGER, replacement_cycle_months INTEGER, warranty_provider TEXT, warranty_expiry_date TEXT, warranty_miles INTEGER, emissions_due_date TEXT, usage_class TEXT, is_pursuit_rated INTEGER DEFAULT 0, is_take_home INTEGER DEFAULT 0, garage_location TEXT);
-CREATE TABLE IF NOT EXISTS fleet_maintenance (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, service_type TEXT, service_date TEXT, cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), labor_cost REAL, service_tasks TEXT, type TEXT, description TEXT, mileage_at_service TEXT, vendor TEXT, performed_by TEXT, performed_at TEXT, next_due_date TEXT, next_due_mileage INTEGER);
-CREATE TABLE IF NOT EXISTS fleet_fuel_log (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_date TEXT, gallons REAL, cost REAL, odometer INTEGER, created_at TEXT DEFAULT (datetime('now','localtime')), cost_per_gallon REAL, fuel_type TEXT, station TEXT, total_cost REAL, notes TEXT, is_full_tank INTEGER DEFAULT 1, payment_method TEXT, driver_name TEXT, location TEXT, mpg REAL);
-CREATE TABLE IF NOT EXISTS fleet_inspections (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, inspection_date TEXT, inspector TEXT, passed INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), overall_result TEXT, inspector_id INTEGER, mileage_at_inspection TEXT, inspection_type TEXT, checklist TEXT);
+CREATE TABLE IF NOT EXISTS citations (id INTEGER PRIMARY KEY AUTOINCREMENT, citation_number TEXT UNIQUE NOT NULL, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), citation_date TEXT, location_address TEXT, latitude REAL, longitude REAL, officer_id INTEGER, person_id INTEGER, vehicle_plate TEXT, vehicle_state TEXT, vehicle_make TEXT, vehicle_model TEXT, vehicle_color TEXT, vehicle_year INTEGER, speed_limit INTEGER, speed_clocked INTEGER, speed_device TEXT, zone_beat TEXT, fine_amount REAL, court_date TEXT, court_location TEXT, status TEXT, disposition TEXT, notes TEXT, violation_code TEXT, violation_description TEXT, type TEXT, violation_date TEXT, section_id TEXT, sector_id TEXT, zone_id TEXT, beat_id TEXT, vehicle_vin TEXT, vehicle_id INTEGER, speed_recorded INTEGER, radar_type TEXT, bac_level REAL, bond_amount REAL, bond_type TEXT, is_warning INTEGER, is_equipment_violation INTEGER, weather_conditions TEXT, road_conditions TEXT, accident_related INTEGER, dui_related INTEGER, school_zone INTEGER, construction_zone INTEGER, commercial_vehicle INTEGER, hazmat INTEGER, voided_reason TEXT, voided_by INTEGER, voided_at TEXT, court_time TEXT, court_room TEXT, appearance_required INTEGER, plea TEXT, verdict TEXT, sentence TEXT, disposition_date TEXT, case_id INTEGER, person_name TEXT, person_dob TEXT, person_dl TEXT, person_address TEXT, vehicle_description TEXT, statute_id INTEGER, statute_citation TEXT, offense_level TEXT, violation_time TEXT, location TEXT, incident_id INTEGER, call_id INTEGER, issuing_officer_id INTEGER, issuing_officer_name TEXT, badge_number TEXT, court_name TEXT, court_address TEXT, violation TEXT, violator_name TEXT);
+CREATE TABLE IF NOT EXISTS court_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), continuance_count INTEGER, defendant_dob TEXT, bail_amount REAL, bond_status TEXT, surety_info TEXT, judge_notes TEXT, prosecutor_phone TEXT, prosecutor_email TEXT, event_number TEXT, event_type TEXT, status TEXT, event_date TEXT, event_time TEXT, court_name TEXT, courtroom TEXT, judge_name TEXT, court_case_number TEXT, citation_id INTEGER, incident_id INTEGER, case_id INTEGER, defendant_person_id INTEGER, defendant_name TEXT, prosecutor TEXT, defense_attorney TEXT, officers_required TEXT, notes TEXT, created_by INTEGER, updated_at TEXT, outcome TEXT, sentence TEXT, fine_amount REAL, continuance_log TEXT, officer_confirmations TEXT, documents TEXT, court_fees TEXT, witnesses TEXT, verdict_data TEXT);
+CREATE TABLE IF NOT EXISTS offender_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), alert_latitude REAL, alert_longitude REAL, alert_address TEXT, alert_enabled INTEGER, person_id INTEGER, alert_type TEXT, status TEXT, severity TEXT, description TEXT, last_compliance_check TEXT, last_compliance_result TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS warrant_scraper_config (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), source_name TEXT, last_run_at TEXT, last_error TEXT, source_type TEXT, priority INTEGER, content_hash TEXT, content_hash_updated_at TEXT, etag TEXT, last_modified TEXT, last_success_at TEXT, avg_parse_count REAL, p95_latency_ms INTEGER, jitter_seed INTEGER);
+CREATE TABLE IF NOT EXISTS dispatch_codes (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, description TEXT, created_at TEXT DEFAULT (datetime('now')), category TEXT DEFAULT 'general', priority TEXT DEFAULT 'P3', color TEXT DEFAULT '#6b7280', requires_backup INTEGER DEFAULT 0, officer_safety INTEGER DEFAULT 0, ems_needed INTEGER DEFAULT 0, fire_needed INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT, priority TEXT, title TEXT, message TEXT, entity_type TEXT, entity_id INTEGER, created_at TEXT DEFAULT (datetime('now')), user_id INTEGER, read_at TEXT, sender_id INTEGER, is_read INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS case_records (id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS field_interviews (id INTEGER PRIMARY KEY AUTOINCREMENT, interview_date TEXT, created_at TEXT DEFAULT (datetime('now')), date TEXT, gang_affiliation TEXT, section_id INTEGER, zone_id INTEGER, beat_id INTEGER, zone_beat TEXT, updated_at TEXT, fi_number TEXT, officer_id INTEGER, person_id INTEGER, vehicle_id INTEGER, location TEXT, latitude REAL, longitude REAL, contact_reason TEXT, contact_type TEXT, action_taken TEXT, narrative TEXT, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT, subject_gender TEXT, subject_race TEXT, subject_height TEXT, subject_weight TEXT, subject_hair TEXT, subject_eye TEXT, subject_clothing TEXT, subject_description TEXT, vehicle_plate TEXT, vehicle_description TEXT, associated_call_id INTEGER, associated_incident_id INTEGER, archived_at TEXT, disposition TEXT, status TEXT);
+CREATE TABLE IF NOT EXISTS trespass_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), subject_photo_url TEXT, order_number TEXT, status TEXT, person_id INTEGER, subject_first_name TEXT, subject_last_name TEXT, subject_dob TEXT, subject_description TEXT, subject_name TEXT, property_id INTEGER, property_name TEXT, property_address TEXT, location TEXT, order_type TEXT, reason TEXT, conditions TEXT, duration_days INTEGER, effective_date TEXT, expiration_date TEXT, originating_call_id INTEGER, originating_incident_id INTEGER, issued_by INTEGER, issued_by_name TEXT, authorized_by TEXT, notes TEXT, section_id INTEGER, sector_id INTEGER, zone_id INTEGER, beat_id INTEGER, zone_beat TEXT, served_at TEXT, served_by INTEGER, updated_at TEXT, archived_at TEXT);
+CREATE TABLE IF NOT EXISTS use_of_force (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS serve_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), recipient_person_id INTEGER, property_id INTEGER, client_id INTEGER, case_number TEXT, defendant_name TEXT, plaintiff_name TEXT, defendant_address TEXT, defendant_city TEXT, defendant_state TEXT, defendant_zip TEXT, instructions TEXT, document_text TEXT, parsed_data TEXT, status TEXT DEFAULT 'pending', assigned_officer_id INTEGER, created_by INTEGER, updated_at TEXT, sm_job_id INTEGER, officer_id INTEGER, call_id INTEGER, serve_date TEXT, recipient_name TEXT, recipient_address TEXT, recipient_city TEXT, recipient_state TEXT, recipient_zip TEXT, recipient_lat REAL, recipient_lng REAL, document_type TEXT, court_name TEXT, jurisdiction TEXT, client_name TEXT, attorney_name TEXT, priority TEXT, time_window TEXT, deadline TEXT, max_attempts INTEGER, service_instructions TEXT, notes TEXT, attempt_count INTEGER, sort_order INTEGER, court_date TEXT);
+CREATE TABLE IF NOT EXISTS serve_attempts (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), serve_queue_id INTEGER, attempt_number INTEGER DEFAULT 1, attempt_at TEXT, officer_id INTEGER, result TEXT, latitude REAL, longitude REAL, notes TEXT, attempt_type TEXT, photo_ids TEXT, signature_data TEXT);
+CREATE TABLE IF NOT EXISTS serve_routes (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), officer_id INTEGER, route_date TEXT, optimized_order_json TEXT, waypoints_json TEXT, total_distance_miles REAL, total_time_minutes REAL, start_lat REAL, start_lng REAL, end_lat REAL, end_lng REAL, notes TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), user_id INTEGER, action TEXT, entity_type TEXT, entity_id TEXT, details TEXT, ip_address TEXT);
+CREATE TABLE IF NOT EXISTS patrol_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS patrol_incidents (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS invoice_items (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS invoice_payments (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS serve_skip_traces (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT DEFAULT (datetime('now')), serve_queue_id INTEGER, searched_at TEXT, search_type TEXT, search_query TEXT, results_json TEXT, addresses_found_json TEXT, searched_by INTEGER);
+CREATE TABLE IF NOT EXISTS geofences (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS dispatch_areas (id INTEGER PRIMARY KEY AUTOINCREMENT, area_code TEXT NOT NULL, name TEXT, created_at TEXT DEFAULT (datetime('now')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, area_name TEXT, commander TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS dispatch_sectors (id INTEGER PRIMARY KEY AUTOINCREMENT, sector_code TEXT NOT NULL, area_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, county_nbr TEXT, fips_code TEXT, supervisor TEXT, radio_channel TEXT, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now')), sector_name TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS dispatch_zones (id INTEGER PRIMARY KEY AUTOINCREMENT, zone_code TEXT NOT NULL, sector_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now')), sort_order INTEGER DEFAULT 0, description TEXT, color TEXT, ugrc_code TEXT, zone_type TEXT, primary_unit TEXT, backup_unit TEXT, radio_channel TEXT, hazard_notes TEXT, population_estimate INTEGER, sq_miles REAL, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now')), zone_name TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS dispatch_beats (id INTEGER PRIMARY KEY AUTOINCREMENT, beat_code TEXT NOT NULL, zone_id INTEGER, name TEXT, created_at TEXT DEFAULT (datetime('now')), sort_order INTEGER DEFAULT 0, description TEXT, geometry TEXT, color TEXT, district_letter TEXT, beat_number INTEGER, beat_descriptor TEXT, dispatch_code TEXT, assigned_unit TEXT, backup_unit TEXT, hazard_notes TEXT, premise_alerts TEXT DEFAULT '[]', patrol_frequency TEXT DEFAULT 'normal', priority_modifier INTEGER DEFAULT 0, population_estimate INTEGER, sq_miles REAL, min_lat REAL, max_lat REAL, min_lng REAL, max_lng REAL, notes TEXT, active INTEGER DEFAULT 1, updated_at TEXT DEFAULT (datetime('now')), beat_name TEXT);
+CREATE TABLE IF NOT EXISTS fleet_vehicles (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_name TEXT, make TEXT, model TEXT, year INTEGER, vin TEXT, plate_number TEXT, status TEXT DEFAULT 'active', vehicle_type TEXT, assigned_unit_id INTEGER, next_service_mileage INTEGER, next_service_date TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')), total_maintenance_cost REAL, total_fuel_cost REAL, total_trips INTEGER, avg_mpg REAL, vehicle_number TEXT, current_mileage INTEGER, next_service_due TEXT, color TEXT, plate_state TEXT, last_service_date TEXT, insurance_expiry TEXT, registration_expiry TEXT, equipment TEXT, notes TEXT, archived_at TEXT, msrp REAL, title_number TEXT, title_state TEXT, title_status TEXT, lienholder TEXT, acquisition_method TEXT, acquisition_date TEXT, purchase_date TEXT, purchase_price REAL, purchase_vendor TEXT, purchase_order_number TEXT, funding_source TEXT, grant_number TEXT, lease_company TEXT, lease_start_date TEXT, lease_end_date TEXT, lease_monthly_payment REAL, lease_mileage_cap INTEGER, asset_tag TEXT, cost_center TEXT, in_service_date TEXT, expected_retirement_date TEXT, expected_retirement_mileage INTEGER, replacement_cycle_months INTEGER, warranty_provider TEXT, warranty_expiry_date TEXT, warranty_miles INTEGER, emissions_due_date TEXT, usage_class TEXT, is_pursuit_rated INTEGER DEFAULT 0, is_take_home INTEGER DEFAULT 0, garage_location TEXT);
+CREATE TABLE IF NOT EXISTS fleet_maintenance (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, service_type TEXT, service_date TEXT, cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')), labor_cost REAL, service_tasks TEXT, type TEXT, description TEXT, mileage_at_service TEXT, vendor TEXT, performed_by TEXT, performed_at TEXT, next_due_date TEXT, next_due_mileage INTEGER);
+CREATE TABLE IF NOT EXISTS fleet_fuel_log (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_date TEXT, gallons REAL, cost REAL, odometer INTEGER, created_at TEXT DEFAULT (datetime('now')), cost_per_gallon REAL, fuel_type TEXT, station TEXT, total_cost REAL, notes TEXT, is_full_tank INTEGER DEFAULT 1, payment_method TEXT, driver_name TEXT, location TEXT, mpg REAL);
+CREATE TABLE IF NOT EXISTS fleet_inspections (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, inspection_date TEXT, inspector TEXT, passed INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')), overall_result TEXT, inspector_id INTEGER, mileage_at_inspection TEXT, inspection_type TEXT, checklist TEXT);
 CREATE TABLE IF NOT EXISTS incident_offenses (id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL, offense_code TEXT NOT NULL, statute_id INTEGER, description TEXT NOT NULL, offense_date TEXT, offense_level TEXT, ucr_code TEXT, nibrs_code TEXT, attempted_completed TEXT DEFAULT 'completed', counts INTEGER DEFAULT 1, weapon_force TEXT, notes TEXT, created_by INTEGER, created_at TEXT);
 CREATE TABLE IF NOT EXISTS incident_officers (id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER NOT NULL, officer_id INTEGER NOT NULL, role TEXT NOT NULL DEFAULT 'responding', arrived_at TEXT, departed_at TEXT, action_taken TEXT, notes TEXT, created_at TEXT);
 CREATE TABLE IF NOT EXISTS citation_violations (id INTEGER PRIMARY KEY AUTOINCREMENT, citation_id INTEGER NOT NULL, violation_code TEXT NOT NULL, description TEXT, fine_amount REAL, points INTEGER);
-CREATE TABLE IF NOT EXISTS arrest_records (id INTEGER PRIMARY KEY AUTOINCREMENT, jailbase_id TEXT, source_id TEXT, source_name TEXT, full_name TEXT, first_name TEXT, last_name TEXT, middle_name TEXT, date_of_birth TEXT, booking_date TEXT, charges TEXT, mugshot_url TEXT, details_url TEXT, county TEXT, status TEXT DEFAULT 'active', raw_record TEXT, fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), entry_source TEXT, entered_by INTEGER, address TEXT, gender TEXT, race TEXT, height TEXT, weight TEXT, hair_color TEXT, eye_color TEXT, agency TEXT, state TEXT, release_date TEXT, hold_reason TEXT, bail_amount REAL, notes TEXT, booking_number TEXT, booking_checklist TEXT, property_inventory TEXT, miranda_data TEXT, created_at TEXT DEFAULT (datetime('now','localtime')), updated_at TEXT DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS supplemental_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, report_number TEXT, incident_id INTEGER NOT NULL, author_id INTEGER NOT NULL, report_type TEXT NOT NULL DEFAULT 'supplemental', content TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), subject TEXT, status TEXT DEFAULT 'draft', updated_at TEXT);
-CREATE TABLE IF NOT EXISTS call_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, incident_type TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'P3', description_template TEXT, default_notes TEXT, source TEXT NOT NULL DEFAULT 'dispatch', is_active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')));
+CREATE TABLE IF NOT EXISTS arrest_records (id INTEGER PRIMARY KEY AUTOINCREMENT, jailbase_id TEXT, source_id TEXT, source_name TEXT, full_name TEXT, first_name TEXT, last_name TEXT, middle_name TEXT, date_of_birth TEXT, booking_date TEXT, charges TEXT, mugshot_url TEXT, details_url TEXT, county TEXT, status TEXT DEFAULT 'active', raw_record TEXT, fetched_at TEXT NOT NULL DEFAULT (datetime('now')), entry_source TEXT, entered_by INTEGER, address TEXT, gender TEXT, race TEXT, height TEXT, weight TEXT, hair_color TEXT, eye_color TEXT, agency TEXT, state TEXT, release_date TEXT, hold_reason TEXT, bail_amount REAL, notes TEXT, booking_number TEXT, booking_checklist TEXT, property_inventory TEXT, miranda_data TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS supplemental_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, report_number TEXT, incident_id INTEGER NOT NULL, author_id INTEGER NOT NULL, report_type TEXT NOT NULL DEFAULT 'supplemental', content TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), subject TEXT, status TEXT DEFAULT 'draft', updated_at TEXT);
+CREATE TABLE IF NOT EXISTS call_templates (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, incident_type TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'P3', description_template TEXT, default_notes TEXT, source TEXT NOT NULL DEFAULT 'dispatch', is_active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')));
 CREATE TABLE IF NOT EXISTS fleet_fuel_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL, fuel_date TEXT NOT NULL, gallons REAL NOT NULL, cost_per_gallon REAL, total_cost REAL, odometer_reading INTEGER, fuel_type TEXT NOT NULL DEFAULT 'regular', distance REAL, efficiency REAL);
-CREATE TABLE IF NOT EXISTS call_visit_history (id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER NOT NULL, property_id INTEGER, visit_date TEXT NOT NULL, officer_id INTEGER, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')));
-CREATE TABLE IF NOT EXISTS panic_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER NOT NULL, latitude REAL, longitude REAL, status TEXT NOT NULL DEFAULT 'active', acknowledged_by INTEGER, acknowledged_at TEXT, resolved_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), user_id INTEGER, call_id INTEGER, trigger_method TEXT NOT NULL DEFAULT 'ui_button', message TEXT, location_address TEXT, audio_file_id TEXT, audio_duration_seconds INTEGER, escalation_level INTEGER DEFAULT 0, resolved_by INTEGER, resolution_notes TEXT, responder_unit_ids TEXT DEFAULT '[]', updated_at TEXT);
-CREATE TABLE IF NOT EXISTS speed_violations (id INTEGER PRIMARY KEY AUTOINCREMENT, unit_id INTEGER NOT NULL, officer_id INTEGER, latitude REAL, longitude REAL, speed_mph REAL NOT NULL, speed_limit_mph REAL, road_name TEXT, recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), acknowledged INTEGER DEFAULT 0, call_sign TEXT, officer_name TEXT, badge_number TEXT, speed_mps REAL, overage_mph REAL, nearest_intersection TEXT, beat_id INTEGER, zone_id INTEGER, duration_seconds INTEGER DEFAULT 0, current_call_id INTEGER, current_call_number TEXT, acknowledged_by INTEGER, acknowledged_at TEXT, notes TEXT);
-CREATE TABLE IF NOT EXISTS cases (id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT UNIQUE NOT NULL, title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'open', priority TEXT DEFAULT 'normal', assigned_to INTEGER, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), updated_at TEXT, deadline TEXT, sla_hours INTEGER, case_type TEXT, lead_investigator_id INTEGER, summary TEXT, narrative TEXT, disposition TEXT, disposition_date TEXT, due_date TEXT, opened_date TEXT, closed_date TEXT, archived_at TEXT, assigned_at TEXT, assigned_officers TEXT, solvability_score REAL, solvability_factors TEXT, approval_status TEXT, approved_by INTEGER, approved_at TEXT, return_reason TEXT, linked_calls TEXT, linked_persons TEXT, linked_incidents TEXT, linked_evidence TEXT, linked_citations TEXT, linked_field_interviews TEXT);
-CREATE TABLE IF NOT EXISTS equipment_checkout_log (id INTEGER PRIMARY KEY AUTOINCREMENT, equipment_id INTEGER NOT NULL, officer_id INTEGER NOT NULL, checkout_date TEXT NOT NULL, return_date TEXT, condition_at_checkout TEXT, condition_at_return TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), equipment_name TEXT, action TEXT, condition_notes TEXT, checked_by INTEGER);
+CREATE TABLE IF NOT EXISTS call_visit_history (id INTEGER PRIMARY KEY AUTOINCREMENT, call_id INTEGER NOT NULL, property_id INTEGER, visit_date TEXT NOT NULL, officer_id INTEGER, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE IF NOT EXISTS panic_alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, officer_id INTEGER NOT NULL, latitude REAL, longitude REAL, status TEXT NOT NULL DEFAULT 'active', acknowledged_by INTEGER, acknowledged_at TEXT, resolved_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), user_id INTEGER, call_id INTEGER, trigger_method TEXT NOT NULL DEFAULT 'ui_button', message TEXT, location_address TEXT, audio_file_id TEXT, audio_duration_seconds INTEGER, escalation_level INTEGER DEFAULT 0, resolved_by INTEGER, resolution_notes TEXT, responder_unit_ids TEXT DEFAULT '[]', updated_at TEXT);
+CREATE TABLE IF NOT EXISTS speed_violations (id INTEGER PRIMARY KEY AUTOINCREMENT, unit_id INTEGER NOT NULL, officer_id INTEGER, latitude REAL, longitude REAL, speed_mph REAL NOT NULL, speed_limit_mph REAL, road_name TEXT, recorded_at TEXT NOT NULL DEFAULT (datetime('now')), acknowledged INTEGER DEFAULT 0, call_sign TEXT, officer_name TEXT, badge_number TEXT, speed_mps REAL, overage_mph REAL, nearest_intersection TEXT, beat_id INTEGER, zone_id INTEGER, duration_seconds INTEGER DEFAULT 0, current_call_id INTEGER, current_call_number TEXT, acknowledged_by INTEGER, acknowledged_at TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS cases (id INTEGER PRIMARY KEY AUTOINCREMENT, case_number TEXT UNIQUE NOT NULL, title TEXT NOT NULL, description TEXT, status TEXT NOT NULL DEFAULT 'open', priority TEXT DEFAULT 'normal', assigned_to INTEGER, created_by INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT, deadline TEXT, sla_hours INTEGER, case_type TEXT, lead_investigator_id INTEGER, summary TEXT, narrative TEXT, disposition TEXT, disposition_date TEXT, due_date TEXT, opened_date TEXT, closed_date TEXT, archived_at TEXT, assigned_at TEXT, assigned_officers TEXT, solvability_score REAL, solvability_factors TEXT, approval_status TEXT, approved_by INTEGER, approved_at TEXT, return_reason TEXT, linked_calls TEXT, linked_persons TEXT, linked_incidents TEXT, linked_evidence TEXT, linked_citations TEXT, linked_field_interviews TEXT);
+CREATE TABLE IF NOT EXISTS equipment_checkout_log (id INTEGER PRIMARY KEY AUTOINCREMENT, equipment_id INTEGER NOT NULL, officer_id INTEGER NOT NULL, checkout_date TEXT NOT NULL, return_date TEXT, condition_at_checkout TEXT, condition_at_return TEXT, notes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), equipment_name TEXT, action TEXT, condition_notes TEXT, checked_by INTEGER);
 CREATE TABLE IF NOT EXISTS ofac_sdn_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ent_num INTEGER UNIQUE NOT NULL,
@@ -454,7 +454,7 @@ CREATE TABLE IF NOT EXISTS ofac_sdn_entries (
       grt TEXT,
       vessel_flag TEXT,
       vessel_owner TEXT,
-      updated_at TEXT DEFAULT (datetime('now','localtime'))
+      updated_at TEXT DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS ofac_sdn_aliases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -498,7 +498,7 @@ CREATE TABLE IF NOT EXISTS ofac_sync_log (
       status TEXT NOT NULL DEFAULT 'pending',
       error_message TEXT,
       duration_ms INTEGER,
-      synced_at TEXT DEFAULT (datetime('now','localtime'))
+      synced_at TEXT DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS microbilt_searches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -511,7 +511,7 @@ CREATE TABLE IF NOT EXISTS microbilt_searches (
       searched_by INTEGER,
       linked_incident TEXT,
       ip_address TEXT,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
+      created_at TEXT DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS dl_records (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -537,8 +537,8 @@ CREATE TABLE IF NOT EXISTS dl_records (
       race TEXT,
       raw_record TEXT,
       source TEXT DEFAULT 'MICROBILT',
-      fetched_at TEXT DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      fetched_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
       UNIQUE(dl_number, dl_state)
     );
 CREATE TABLE IF NOT EXISTS dl_addresses (
@@ -558,10 +558,10 @@ CREATE TABLE IF NOT EXISTS fleet_assignments (
       unit_id INTEGER,
       unit_call_sign TEXT,
       officer_name TEXT,
-      assigned_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      assigned_at TEXT NOT NULL DEFAULT (datetime('now')),
       unassigned_at TEXT,
       notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
       FOREIGN KEY (unit_id) REFERENCES units(id)
     );
@@ -573,7 +573,7 @@ CREATE TABLE IF NOT EXISTS fleet_personnel_notes (
       note TEXT NOT NULL,
       created_by TEXT NOT NULL,
       created_by_name TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), user_id INTEGER, content TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), user_id INTEGER, content TEXT,
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
@@ -584,7 +584,7 @@ CREATE TABLE IF NOT EXISTS incident_persons (
       role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect','victim','witness','reporting_party','involved','other')),
       notes TEXT,
       added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
       FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
       FOREIGN KEY (added_by) REFERENCES users(id),
@@ -597,7 +597,7 @@ CREATE TABLE IF NOT EXISTS incident_vehicles (
       role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('suspect_vehicle','victim_vehicle','witness_vehicle','involved','evidence','other')),
       notes TEXT,
       added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
       FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
       FOREIGN KEY (added_by) REFERENCES users(id),
@@ -616,8 +616,8 @@ CREATE TABLE IF NOT EXISTS training_records (
       certificate_number TEXT,
       status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('completed','in_progress','scheduled','overdue','expired')),
       notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), training_type TEXT, expiration_date TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')), training_type TEXT, expiration_date TEXT,
       FOREIGN KEY (officer_id) REFERENCES users(id)
     );
 CREATE TABLE IF NOT EXISTS training_requirements (
@@ -629,7 +629,7 @@ CREATE TABLE IF NOT EXISTS training_requirements (
       minimum_hours REAL NOT NULL DEFAULT 1,
       is_mandatory INTEGER NOT NULL DEFAULT 1,
       description TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     , required_for_role TEXT, is_active INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS deployments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -641,8 +641,8 @@ CREATE TABLE IF NOT EXISTS deployments (
       status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','scheduled','cancelled')),
       hours_per_week REAL,
       notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (officer_id) REFERENCES users(id),
       FOREIGN KEY (property_id) REFERENCES properties(id)
     );
@@ -664,8 +664,8 @@ CREATE TABLE IF NOT EXISTS officer_equipment (
       returned_date TEXT,
       notes TEXT,
       created_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (officer_id) REFERENCES users(id)
     );
 CREATE TABLE IF NOT EXISTS body_cameras (
@@ -682,8 +682,8 @@ CREATE TABLE IF NOT EXISTS body_cameras (
       returned_at TEXT,
       notes TEXT,
       created_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (officer_id) REFERENCES users(id)
     );
 CREATE TABLE IF NOT EXISTS bodycam_videos (
@@ -701,8 +701,8 @@ CREATE TABLE IF NOT EXISTS bodycam_videos (
       retention_status TEXT DEFAULT 'active',
       notes TEXT,
       uploaded_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (camera_id) REFERENCES body_cameras(id),
       FOREIGN KEY (officer_id) REFERENCES users(id)
     );
@@ -721,8 +721,8 @@ CREATE TABLE IF NOT EXISTS dash_cameras (
       removed_at TEXT,
       notes TEXT,
       created_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 CREATE TABLE IF NOT EXISTS dashcam_videos (
@@ -742,8 +742,8 @@ CREATE TABLE IF NOT EXISTS dashcam_videos (
       gps_lon REAL,
       notes TEXT,
       uploaded_by TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), incident_id INTEGER, unit_id INTEGER, speed_mph REAL, latitude REAL, longitude REAL, address TEXT, source TEXT, burn_status TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')), incident_id INTEGER, unit_id INTEGER, speed_mph REAL, latitude REAL, longitude REAL, address TEXT, source TEXT, burn_status TEXT,
       FOREIGN KEY (camera_id) REFERENCES dash_cameras(id),
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
@@ -766,8 +766,8 @@ CREATE TABLE IF NOT EXISTS cpgps_vehicles (
       odometer REAL,
       engine_hours REAL,
       raw_json TEXT,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), unit_number TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), unit_number TEXT,
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 CREATE TABLE IF NOT EXISTS cpgps_trips (
@@ -788,8 +788,8 @@ CREATE TABLE IF NOT EXISTS cpgps_trips (
       idle_duration_seconds INTEGER,
       drive_duration_seconds INTEGER,
       raw_json TEXT,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), start_time TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), start_time TEXT,
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 CREATE TABLE IF NOT EXISTS cpgps_locations (
@@ -804,7 +804,7 @@ CREATE TABLE IF NOT EXISTS cpgps_locations (
       address TEXT,
       ignition_on INTEGER,
       raw_json TEXT,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), timestamp TEXT,
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')), timestamp TEXT,
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 CREATE TABLE IF NOT EXISTS cpgps_alerts (
@@ -818,8 +818,8 @@ CREATE TABLE IF NOT EXISTS cpgps_alerts (
       lat REAL,
       lon REAL,
       raw_json TEXT,
-      synced_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      synced_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
     );
 CREATE TABLE IF NOT EXISTS fleet_vehicle_swaps (
@@ -828,8 +828,8 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_swaps (
       from_vehicle_id INTEGER REFERENCES fleet_vehicles(id),
       to_vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
       reason TEXT,
-      swapped_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      swapped_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS warrant_watch_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -842,7 +842,7 @@ CREATE TABLE IF NOT EXISTS warrant_watch_runs (
       errors INTEGER DEFAULT 0,
       status TEXT DEFAULT 'running',
       error_message TEXT,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
+      created_at TEXT DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS warrant_watch_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -856,7 +856,7 @@ CREATE TABLE IF NOT EXISTS warrant_watch_log (
       charges TEXT,
       issue_date TEXT,
       scan_run_id TEXT,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
+      created_at TEXT DEFAULT (datetime('now'))
     , run_id INTEGER);
 CREATE TABLE IF NOT EXISTS utah_warrants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -871,7 +871,7 @@ CREATE TABLE IF NOT EXISTS utah_warrants (
       court_name TEXT,
       case_id TEXT,
       charges TEXT,
-      fetched_at TEXT DEFAULT (datetime('now','localtime'))
+      fetched_at TEXT DEFAULT (datetime('now'))
     , is_active INTEGER NOT NULL DEFAULT 1, first_seen_at TEXT, last_seen_at TEXT, person_id INTEGER, source TEXT NOT NULL DEFAULT 'utah-warrant-watch');
 CREATE TABLE IF NOT EXISTS scraped_warrants (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -890,9 +890,9 @@ CREATE TABLE IF NOT EXISTS scraped_warrants (
       status TEXT DEFAULT 'active',
       warrant_id TEXT,
       person_id INTEGER,
-      scraped_at TEXT DEFAULT (datetime('now','localtime'))
+      scraped_at TEXT DEFAULT (datetime('now'))
     , middle_name TEXT, age INTEGER, gender TEXT, race TEXT, city TEXT, state TEXT, photo_url TEXT, detail_url TEXT, first_seen_at TEXT, last_seen_at TEXT, cleared_at TEXT, dob_verified INTEGER DEFAULT 0);
-CREATE TABLE IF NOT EXISTS email_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, conditions TEXT NOT NULL, actions TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), owner_user_id INTEGER, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS email_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, conditions TEXT NOT NULL, actions TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT (datetime('now')), owner_user_id INTEGER, updated_at TEXT);
 CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       cpgps_vehicle_id TEXT,
@@ -909,7 +909,7 @@ CREATE TABLE IF NOT EXISTS cpgps_dashcam_events (
       media_synced INTEGER DEFAULT 0,
       event_at TEXT,
       raw_json TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS cpgps_officer_mappings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -917,7 +917,7 @@ CREATE TABLE IF NOT EXISTS cpgps_officer_mappings (
       cpgps_vehicle_id TEXT NOT NULL,
       call_sign TEXT,
       active INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(officer_id, cpgps_vehicle_id)
     );
 CREATE TABLE IF NOT EXISTS forensic_case_links (
@@ -926,7 +926,7 @@ CREATE TABLE IF NOT EXISTS forensic_case_links (
       linked_type TEXT NOT NULL,
       linked_id INTEGER NOT NULL,
       linked_label TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (case_id) REFERENCES forensic_cases(id)
     );
 CREATE TABLE IF NOT EXISTS forensic_hash_results (
@@ -938,7 +938,7 @@ CREATE TABLE IF NOT EXISTS forensic_hash_results (
       match_found INTEGER DEFAULT 0,
       match_set_name TEXT,
       match_category TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (case_id) REFERENCES forensic_cases(id)
     );
 CREATE TABLE IF NOT EXISTS skiptracer_dossiers (
@@ -949,8 +949,8 @@ CREATE TABLE IF NOT EXISTS skiptracer_dossiers (
       search_results TEXT,
       status TEXT DEFAULT 'active',
       created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
 CREATE TABLE IF NOT EXISTS iped_imports (
@@ -965,7 +965,7 @@ CREATE TABLE IF NOT EXISTS iped_imports (
       summary             TEXT,
       imported_by         INTEGER REFERENCES users(id),
       imported_by_name    TEXT,
-      created_at          TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      created_at          TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS forensic_hash_sets (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -977,8 +977,8 @@ CREATE TABLE IF NOT EXISTS forensic_hash_sets (
       version       TEXT,
       imported_by   INTEGER REFERENCES users(id),
       imported_by_name TEXT,
-      created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS forensic_hash_entries (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -996,7 +996,7 @@ CREATE TABLE IF NOT EXISTS integration_health_log (
       status TEXT NOT NULL CHECK(status IN ('healthy','degraded','error')),
       response_time_ms INTEGER,
       error_message TEXT,
-      checked_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      checked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS time_entry_edits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1007,7 +1007,7 @@ CREATE TABLE IF NOT EXISTS time_entry_edits (
       old_value TEXT,
       new_value TEXT,
       reason TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 CREATE TABLE IF NOT EXISTS citation_payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1018,11 +1018,11 @@ CREATE TABLE IF NOT EXISTS citation_payments (
       reference_number TEXT,
       notes TEXT,
       recorded_by INTEGER,
-      created_at TEXT DEFAULT (datetime('now','localtime')),
+      created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (citation_id) REFERENCES citations(id),
       FOREIGN KEY (recorded_by) REFERENCES users(id)
     );
-CREATE TABLE IF NOT EXISTS email_cache (id INTEGER PRIMARY KEY AUTOINCREMENT, cache_key TEXT UNIQUE NOT NULL, data TEXT, expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')), owner_user_id INTEGER);
+CREATE TABLE IF NOT EXISTS email_cache (id INTEGER PRIMARY KEY AUTOINCREMENT, cache_key TEXT UNIQUE NOT NULL, data TEXT, expires_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), owner_user_id INTEGER);
 CREATE TABLE IF NOT EXISTS warrant_service_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   warrant_id INTEGER NOT NULL,
@@ -1032,7 +1032,7 @@ CREATE TABLE IF NOT EXISTS warrant_service_attempts (
   method TEXT DEFAULT 'in_person',
   result TEXT DEFAULT 'unsuccessful',
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS shift_plans (
   id TEXT PRIMARY KEY,
@@ -1042,21 +1042,21 @@ CREATE TABLE IF NOT EXISTS shift_plans (
   assignments TEXT NOT NULL DEFAULT '[]',
   status TEXT NOT NULL DEFAULT 'draft',
   created_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS call_units (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   call_id INTEGER NOT NULL,
   unit_id INTEGER NOT NULL,
-  assigned_at TEXT DEFAULT (datetime('now','localtime')),
+  assigned_at TEXT DEFAULT (datetime('now')),
   unassigned_at TEXT
 );
 CREATE TABLE IF NOT EXISTS password_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS trusted_devices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1066,7 +1066,7 @@ CREATE TABLE IF NOT EXISTS trusted_devices (
   ip_address TEXT,
   trusted_until TEXT,
   last_used_at TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS security_notifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1076,7 +1076,7 @@ CREATE TABLE IF NOT EXISTS security_notifications (
   details TEXT,
   ip_address TEXT,
   device_info TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS user_security_questions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1087,8 +1087,8 @@ CREATE TABLE IF NOT EXISTS user_security_questions (
   answer_2_hash TEXT NOT NULL,
   question_3 TEXT NOT NULL,
   answer_3_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS serve_queue_persons (
@@ -1110,7 +1110,7 @@ CREATE TABLE IF NOT EXISTS integration_api_keys (
   last_used_at TEXT,
   request_count INTEGER NOT NULL DEFAULT 0,
   created_by INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS premise_alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1125,8 +1125,8 @@ CREATE TABLE IF NOT EXISTS premise_alerts (
   expires_at TEXT,
   created_by INTEGER,
   active INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS calls_for_service (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1146,7 +1146,7 @@ CREATE TABLE IF NOT EXISTS calls_for_service (
   source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
   assigned_unit_ids TEXT DEFAULT '[]',
   dispatcher_id INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   dispatched_at TEXT,
   enroute_at TEXT,
   onscene_at TEXT,
@@ -1492,7 +1492,7 @@ CREATE TABLE IF NOT EXISTS criminal_history (
   source TEXT,
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS client_persons (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1503,7 +1503,7 @@ CREATE TABLE IF NOT EXISTS client_persons (
   notes TEXT,
   is_primary INTEGER DEFAULT 0,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(client_id, person_id)
 );
 CREATE TABLE IF NOT EXISTS record_links (
@@ -1515,7 +1515,7 @@ CREATE TABLE IF NOT EXISTS record_links (
   relationship TEXT DEFAULT 'associated',
   notes TEXT,
   created_by INTEGER,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(source_type, source_id, target_type, target_id)
 );
 CREATE TABLE IF NOT EXISTS cpgps_sync_log (
@@ -1525,7 +1525,7 @@ CREATE TABLE IF NOT EXISTS cpgps_sync_log (
   records_fetched INTEGER,
   records_stored INTEGER,
   error_message TEXT,
-  started_at TEXT DEFAULT (datetime('now','localtime')),
+  started_at TEXT DEFAULT (datetime('now')),
   completed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sm_sync_log (
@@ -1535,7 +1535,7 @@ CREATE TABLE IF NOT EXISTS sm_sync_log (
   jobs_synced INTEGER,
   attempts_synced INTEGER,
   error_message TEXT,
-  started_at TEXT DEFAULT (datetime('now','localtime')),
+  started_at TEXT DEFAULT (datetime('now')),
   completed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sm_jobs (
@@ -1668,7 +1668,7 @@ CREATE TABLE IF NOT EXISTS radio_channels (
   is_default INTEGER NOT NULL DEFAULT 0,
   sort_order INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by INTEGER REFERENCES users(id)
 );
 CREATE TABLE IF NOT EXISTS radio_transmissions (
@@ -1676,7 +1676,7 @@ CREATE TABLE IF NOT EXISTS radio_transmissions (
   channel_id INTEGER REFERENCES radio_channels(id),
   user_id INTEGER REFERENCES users(id),
   unit_label TEXT,
-  transmitted_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  transmitted_at TEXT NOT NULL DEFAULT (datetime('now')),
   duration_seconds REAL NOT NULL DEFAULT 0,
   transcript TEXT,
   audio_url TEXT,
@@ -1694,7 +1694,7 @@ CREATE TABLE IF NOT EXISTS radio_recordings (
   bookmark_seconds REAL,
   loop_start_seconds REAL,
   loop_end_seconds REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS nibrs_offense_codes (
   code TEXT PRIMARY KEY,
@@ -1806,7 +1806,7 @@ CREATE TABLE IF NOT EXISTS case_notes (
   note_type TEXT DEFAULT 'general',
   content TEXT NOT NULL,
   is_pinned INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
   FOREIGN KEY (author_id) REFERENCES users(id)
 );
@@ -1815,7 +1815,7 @@ CREATE TABLE IF NOT EXISTS case_person_links (
   case_id INTEGER NOT NULL,
   person_id INTEGER NOT NULL,
   relationship TEXT DEFAULT 'linked',
-  created_at TEXT DEFAULT (datetime('now','localtime')),
+  created_at TEXT DEFAULT (datetime('now')),
   UNIQUE(case_id, person_id),
   FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
   FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
@@ -1828,7 +1828,7 @@ CREATE TABLE IF NOT EXISTS patrol_breaks (
   break_end TEXT,
   break_type TEXT NOT NULL DEFAULT 'break' CHECK(break_type IN ('break','meal','rest')),
   duration_minutes REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS patrol_tour_verifications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1840,8 +1840,8 @@ CREATE TABLE IF NOT EXISTS patrol_tour_verifications (
   notes TEXT,
   total_scans INTEGER NOT NULL DEFAULT 0,
   on_time_scans INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(officer_id, tour_date)
 );
 CREATE TABLE IF NOT EXISTS dispatch_run_cards (
@@ -1870,7 +1870,7 @@ CREATE TABLE IF NOT EXISTS arrest_cross_links (
   linked_id INTEGER NOT NULL,
   match_type TEXT,
   match_confidence REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id) ON DELETE CASCADE,
   UNIQUE(arrest_record_id, linked_type, linked_id)
 );
@@ -1906,8 +1906,8 @@ CREATE TABLE IF NOT EXISTS serve_intake_documents (
     'pending','extracting','extracted','failed','unmatched','archived'
   )),
   error_message TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS pso_qr_tokens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1920,7 +1920,7 @@ CREATE TABLE IF NOT EXISTS pso_qr_tokens (
   last_scanned_at TEXT,
   last_scanned_by INTEGER,
   created_by INTEGER NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS anomaly_alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1974,7 +1974,7 @@ CREATE TABLE IF NOT EXISTS inmates (
   marks_scars_tattoos TEXT,
   housing_unit  TEXT,
   housing_cell  TEXT,
-  booking_date  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  booking_date  TEXT NOT NULL DEFAULT (datetime('now')),
   arresting_agency TEXT,
   arresting_officer_id INTEGER,
   arrest_incident_id INTEGER,
@@ -1985,7 +1985,7 @@ CREATE TABLE IF NOT EXISTS inmates (
   release_reason TEXT,
   notes         TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS inmate_charges (
@@ -1999,20 +1999,20 @@ CREATE TABLE IF NOT EXISTS inmate_charges (
   bond_amount   REAL,
   disposition   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS inmate_visitors (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   inmate_id     INTEGER NOT NULL,
   visitor_name  TEXT NOT NULL,
   relationship  TEXT,
-  visit_date    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  visit_date    TEXT NOT NULL DEFAULT (datetime('now')),
   visit_type    TEXT DEFAULT 'in_person' CHECK(visit_type IN ('in_person','video','phone','attorney')),
   check_in      TEXT,
   check_out     TEXT,
   officer_id    INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS inmate_property (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2025,7 +2025,7 @@ CREATE TABLE IF NOT EXISTS inmate_property (
   status        TEXT DEFAULT 'held' CHECK(status IN ('held','returned','transferred','destroyed')),
   returned_date TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS inmate_medical (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2037,34 +2037,34 @@ CREATE TABLE IF NOT EXISTS inmate_medical (
   suicide_risk  INTEGER DEFAULT 0,
   cleared_for_booking INTEGER DEFAULT 1,
   screened_by TEXT,
-  screened_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  screened_date TEXT NOT NULL DEFAULT (datetime('now')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS inmate_disciplinary (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   inmate_id     INTEGER NOT NULL,
   violation     TEXT NOT NULL,
-  violation_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  violation_date TEXT NOT NULL DEFAULT (datetime('now')),
   reported_by   INTEGER,
   sanction      TEXT,
   hearing_date  TEXT,
   hearing_outcome TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS inmate_transports (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   inmate_id     INTEGER NOT NULL,
   destination   TEXT NOT NULL,
   reason        TEXT,
-  depart_date   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  depart_date   TEXT NOT NULL DEFAULT (datetime('now')),
   return_date   TEXT,
   transporting_officer_id INTEGER,
   vehicle_id    INTEGER,
   status        TEXT DEFAULT 'scheduled' CHECK(status IN ('scheduled','in_transit','completed','cancelled')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS ia_complaints (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2084,14 +2084,14 @@ CREATE TABLE IF NOT EXISTS ia_complaints (
   discipline    TEXT,
   closed_date   TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS ia_investigations (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   complaint_id  INTEGER NOT NULL,
   investigator_id INTEGER,
-  started_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  started_at    TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at  TEXT,
   summary       TEXT,
   findings      TEXT,
@@ -2099,7 +2099,7 @@ CREATE TABLE IF NOT EXISTS ia_investigations (
   reviewed_by   INTEGER,
   reviewed_at   TEXT,
   status        TEXT DEFAULT 'open' CHECK(status IN ('open','in_progress','completed','reviewed')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS early_intervention_flags (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2108,11 +2108,11 @@ CREATE TABLE IF NOT EXISTS early_intervention_flags (
   trigger_value REAL,
   threshold     REAL,
   description   TEXT,
-  flagged_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  flagged_at    TEXT NOT NULL DEFAULT (datetime('now')),
   resolved_at   TEXT,
   resolution    TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS asset_inventory (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2128,21 +2128,21 @@ CREATE TABLE IF NOT EXISTS asset_inventory (
   purchase_date TEXT,
   purchase_cost REAL,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS asset_checkouts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_id      INTEGER NOT NULL,
   checked_out_to INTEGER NOT NULL,
-  checkout_date TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  checkout_date TEXT NOT NULL DEFAULT (datetime('now')),
   expected_return TEXT,
   actual_return TEXT,
   condition_out TEXT,
   condition_in  TEXT,
   authorized_by INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS weapon_inventory (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2157,7 +2157,7 @@ CREATE TABLE IF NOT EXISTS weapon_inventory (
   last_qualified TEXT,
   next_qual_due TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS ammunition_inventory (
@@ -2173,7 +2173,7 @@ CREATE TABLE IF NOT EXISTS ammunition_inventory (
   expiration_date TEXT,
   storage_location TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS k9_records (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2187,7 +2187,7 @@ CREATE TABLE IF NOT EXISTS k9_records (
   vet_last_visit TEXT,
   vet_next_due  TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS community_events (
@@ -2202,7 +2202,7 @@ CREATE TABLE IF NOT EXISTS community_events (
   attendees_count INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'planned' CHECK(status IN ('planned','in_progress','completed','cancelled')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS public_tips (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2217,7 +2217,7 @@ CREATE TABLE IF NOT EXISTS public_tips (
   status        TEXT DEFAULT 'new' CHECK(status IN ('new','assigned','under_review','actioned','closed','unfounded')),
   assigned_to   INTEGER,
   resolution    TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS neighborhood_watch_groups (
@@ -2232,7 +2232,7 @@ CREATE TABLE IF NOT EXISTS neighborhood_watch_groups (
   next_meeting  TEXT,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS community_alerts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2248,7 +2248,7 @@ CREATE TABLE IF NOT EXISTS community_alerts (
   sent_at       TEXT,
   expires_at    TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS task_assignments (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2264,7 +2264,7 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   linked_entity_type TEXT,
   linked_entity_id   INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS task_comments (
@@ -2272,7 +2272,7 @@ CREATE TABLE IF NOT EXISTS task_comments (
   task_id       INTEGER NOT NULL,
   user_id       INTEGER NOT NULL,
   comment_text  TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS notification_templates (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2282,7 +2282,7 @@ CREATE TABLE IF NOT EXISTS notification_templates (
   channel       TEXT DEFAULT 'email' CHECK(channel IN ('email','sms','push','all')),
   category      TEXT DEFAULT 'general',
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS notification_batches (
@@ -2296,7 +2296,7 @@ CREATE TABLE IF NOT EXISTS notification_batches (
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','sending','sent','partial','failed')),
   sent_at       TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS notification_recipients (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2307,7 +2307,7 @@ CREATE TABLE IF NOT EXISTS notification_recipients (
   status        TEXT DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
   sent_at       TEXT,
   error_message TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS training_courses (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2321,7 +2321,7 @@ CREATE TABLE IF NOT EXISTS training_courses (
   max_seats     INTEGER,
   is_mandatory  INTEGER DEFAULT 0,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS training_enrollments (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2331,7 +2331,7 @@ CREATE TABLE IF NOT EXISTS training_enrollments (
   score         REAL,
   completed_date TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS certification_types (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2340,7 +2340,7 @@ CREATE TABLE IF NOT EXISTS certification_types (
   description   TEXT,
   renewal_period_months INTEGER,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS officer_certifications (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2352,7 +2352,7 @@ CREATE TABLE IF NOT EXISTS officer_certifications (
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','expired','revoked','pending')),
   document_url  TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS firearms_qualifications (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2366,7 +2366,7 @@ CREATE TABLE IF NOT EXISTS firearms_qualifications (
   range_officer_id INTEGER,
   ammo_used     INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS qa_reviews (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2382,7 +2382,7 @@ CREATE TABLE IF NOT EXISTS qa_reviews (
   review_date   TEXT,
   findings      TEXT,
   recommendations TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS qa_criteria (
@@ -2394,7 +2394,7 @@ CREATE TABLE IF NOT EXISTS qa_criteria (
   weight        REAL DEFAULT 1,
   is_active     INTEGER DEFAULT 1,
   sort_order    INTEGER DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS qa_scores (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2402,7 +2402,7 @@ CREATE TABLE IF NOT EXISTS qa_scores (
   criterion_id  INTEGER NOT NULL,
   score         REAL NOT NULL,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS customer_satisfaction_surveys (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2413,7 +2413,7 @@ CREATE TABLE IF NOT EXISTS customer_satisfaction_surveys (
   rating        INTEGER CHECK(rating >= 1 AND rating <= 5),
   comments      TEXT,
   would_recommend INTEGER,
-  submitted_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  submitted_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS client_contracts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2428,7 +2428,7 @@ CREATE TABLE IF NOT EXISTS client_contracts (
   status        TEXT DEFAULT 'active' CHECK(status IN ('draft','active','suspended','expired','terminated')),
   auto_renew    INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS invoices (
@@ -2446,7 +2446,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','sent','partial','paid','overdue','void','cancelled')),
   notes         TEXT,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS invoice_line_items (
@@ -2458,7 +2458,7 @@ CREATE TABLE IF NOT EXISTS invoice_line_items (
   line_total    REAL DEFAULT 0,
   tax_applied   INTEGER DEFAULT 1,
   sort_order    INTEGER DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS payments (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2470,7 +2470,7 @@ CREATE TABLE IF NOT EXISTS payments (
   reference_number TEXT,
   notes         TEXT,
   recorded_by   INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS expense_reports (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2485,7 +2485,7 @@ CREATE TABLE IF NOT EXISTS expense_reports (
   approved_by   INTEGER,
   approved_at   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS risk_assessments (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2500,7 +2500,7 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
   mitigation_plan TEXT,
   review_date   TEXT,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','mitigated','accepted','closed')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS safety_inspections (
@@ -2515,7 +2515,7 @@ CREATE TABLE IF NOT EXISTS safety_inspections (
   corrective_actions TEXT,
   next_inspection_due TEXT,
   status        TEXT DEFAULT 'pending' CHECK(status IN ('pending','completed','failed','corrected')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS insurance_claims (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2531,7 +2531,7 @@ CREATE TABLE IF NOT EXISTS insurance_claims (
   settlement_amount REAL,
   status        TEXT DEFAULT 'reported' CHECK(status IN ('reported','under_review','approved','denied','settled','closed')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS interagency_partners (
@@ -2544,7 +2544,7 @@ CREATE TABLE IF NOT EXISTS interagency_partners (
   contact_phone TEXT,
   data_share_level TEXT DEFAULT 'none' CHECK(data_share_level IN ('none','basic','partial','full')),
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','pending','suspended','inactive')),
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS data_share_agreements (
@@ -2559,7 +2559,7 @@ CREATE TABLE IF NOT EXISTS data_share_agreements (
   signed_date   TEXT,
   status        TEXT DEFAULT 'draft' CHECK(status IN ('draft','active','expired','terminated')),
   document_url  TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS data_exchange_logs (
@@ -2571,7 +2571,7 @@ CREATE TABLE IF NOT EXISTS data_exchange_logs (
   record_count  INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'success' CHECK(status IN ('success','partial','failed')),
   initiated_by  INTEGER,
-  initiated_at  TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  initiated_at  TEXT NOT NULL DEFAULT (datetime('now')),
   completed_at  TEXT,
   error_message TEXT
 );
@@ -2584,7 +2584,7 @@ CREATE TABLE IF NOT EXISTS geofence_zones (
   color         TEXT DEFAULT '#d4a017',
   is_active     INTEGER DEFAULT 1,
   created_by    INTEGER,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS crime_heatmap_data (
@@ -2594,7 +2594,7 @@ CREATE TABLE IF NOT EXISTS crime_heatmap_data (
   incident_count INTEGER DEFAULT 0,
   crime_category TEXT,
   severity_weight REAL DEFAULT 0,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS response_time_zones (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2605,7 +2605,7 @@ CREATE TABLE IF NOT EXISTS response_time_zones (
   actual_avg_minutes_30d   REAL,
   beat_id       INTEGER,
   is_active     INTEGER DEFAULT 1,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS gang_intel_members (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2615,7 +2615,7 @@ CREATE TABLE IF NOT EXISTS gang_intel_members (
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive','incarcerated','deceased')),
   threat_level  TEXT DEFAULT 'low' CHECK(threat_level IN ('low','medium','high','critical')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS gang_intel_gangs (
@@ -2626,7 +2626,7 @@ CREATE TABLE IF NOT EXISTS gang_intel_gangs (
   threat_level  TEXT DEFAULT 'low' CHECK(threat_level IN ('low','medium','high','critical')),
   territory     TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS gang_graffiti_records (
@@ -2638,7 +2638,7 @@ CREATE TABLE IF NOT EXISTS gang_graffiti_records (
   reported_date TEXT NOT NULL DEFAULT (date('now')),
   status        TEXT DEFAULT 'documented' CHECK(status IN ('documented','removed','investigating')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS narcotics_cases (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2653,19 +2653,19 @@ CREATE TABLE IF NOT EXISTS narcotics_cases (
   priority      TEXT DEFAULT 'normal' CHECK(priority IN ('low','normal','high','urgent')),
   officer_id    INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS special_ops_callouts (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  date          TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  date          TEXT NOT NULL DEFAULT (datetime('now')),
   call_type     TEXT NOT NULL,
   location      TEXT,
   resolution    TEXT,
   duration_minutes INTEGER,
   team_size     INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS special_ops_equipment (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2674,7 +2674,7 @@ CREATE TABLE IF NOT EXISTS special_ops_equipment (
   condition     TEXT DEFAULT 'ready' CHECK(condition IN ('ready','repair','retired','lost')),
   assigned_to   TEXT,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS crisis_response_incidents (
@@ -2688,7 +2688,7 @@ CREATE TABLE IF NOT EXISTS crisis_response_incidents (
   resolved_on_scene INTEGER DEFAULT 0,
   diverted      INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS victim_services_records (
@@ -2704,7 +2704,7 @@ CREATE TABLE IF NOT EXISTS victim_services_records (
   safety_plan   INTEGER DEFAULT 0,
   protective_order INTEGER DEFAULT 0,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS alarm_accounts (
@@ -2721,7 +2721,7 @@ CREATE TABLE IF NOT EXISTS alarm_accounts (
   false_alarm_count INTEGER DEFAULT 0,
   status        TEXT DEFAULT 'active' CHECK(status IN ('active','inactive','no_response')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS accreditation_standards (
@@ -2736,7 +2736,7 @@ CREATE TABLE IF NOT EXISTS accreditation_standards (
   proof_url     TEXT,
   assigned_to   INTEGER,
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS recruitment_candidates (
@@ -2748,7 +2748,7 @@ CREATE TABLE IF NOT EXISTS recruitment_candidates (
   stage         TEXT DEFAULT 'applied' CHECK(stage IN ('applied','screening','testing','oral_board','background','conditional_offer','academy','fto','hired','rejected','withdrawn')),
   applied_date  TEXT NOT NULL DEFAULT (date('now')),
   notes         TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT
 );
 CREATE TABLE IF NOT EXISTS fleet_insurance (
@@ -2762,7 +2762,7 @@ CREATE TABLE IF NOT EXISTS fleet_insurance (
   effective_date TEXT,
   expiry_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 , premium_frequency TEXT DEFAULT 'monthly', deductible REAL, liability_limit REAL, status TEXT DEFAULT 'active');
 CREATE TABLE IF NOT EXISTS fleet_registration (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2774,70 +2774,70 @@ CREATE TABLE IF NOT EXISTS fleet_registration (
   renewal_status TEXT DEFAULT 'current'
     CHECK(renewal_status IN ('current','pending','expired')),
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, officer_id INTEGER, check_date TEXT, lights TEXT, brakes TEXT, radio TEXT, mdt TEXT, dashcam TEXT, tires TEXT, fluids TEXT, exterior TEXT, interior TEXT, emergency_equip TEXT, notes TEXT, status TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_tires ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, tire_position TEXT, brand TEXT, model TEXT, size TEXT, dot_code TEXT, tread_depth REAL, pressure_psi REAL, installed_date TEXT, installed_mileage INTEGER, cost REAL, notes TEXT, removed_date TEXT, removed_mileage INTEGER, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_damage ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, damage_type TEXT, location TEXT, severity TEXT, description TEXT, reported_by TEXT, reported_date TEXT, repair_cost REAL, repair_status TEXT, repair_date TEXT, photo_urls TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_recalls ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, nhtsa_number TEXT, description TEXT, severity TEXT, issue_date TEXT, remedy_date TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_parts ( id INTEGER PRIMARY KEY AUTOINCREMENT, part_number TEXT, name TEXT, category TEXT, description TEXT, unit_cost REAL, quantity_on_hand INTEGER, reorder_point INTEGER, supplier TEXT, compatible_vehicles TEXT, location TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_warranties ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, coverage_type TEXT, provider TEXT, policy_number TEXT, coverage_details TEXT, start_date TEXT, expiry_date TEXT, expiry_mileage INTEGER, deductible REAL, contact_info TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_keys ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, key_number TEXT, key_type TEXT, rfid_tag TEXT, status TEXT, current_holder TEXT, last_checkout TEXT, last_return TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_key_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, key_id INTEGER, action TEXT, holder_name TEXT, timestamp TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_accidents ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, accident_date TEXT, location TEXT, severity TEXT, description TEXT, driver_id INTEGER, weather_conditions TEXT, road_conditions TEXT, police_report_number TEXT, insurance_claim_number TEXT, estimated_damage TEXT, injuries TEXT, fault_determination TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_service_providers ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, provider_type TEXT, phone TEXT, email TEXT, address TEXT, contact_name TEXT, tax_id INTEGER, preferred INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fuel_cards ( id INTEGER PRIMARY KEY AUTOINCREMENT, card_number TEXT, provider TEXT, assigned_vehicle_id INTEGER, pin TEXT, credit_limit REAL, status TEXT, expiration_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_budgets ( id INTEGER PRIMARY KEY AUTOINCREMENT, fiscal_year TEXT, category TEXT, allocated_amount REAL, spent_amount REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_depreciation ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, purchase_price REAL, salvage_value REAL, useful_life_months INTEGER, depreciation_method REAL, monthly_depreciation REAL, accumulated_depreciation REAL, current_book_value REAL, calculated_date TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_replacement_plan ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, replacement_year TEXT, replacement_reason TEXT, estimated_replacement_cost REAL, priority TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fuel_vendors ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, location TEXT, brand TEXT, current_price_per_gallon REAL, last_updated TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fuel_reconciliation ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, period_start TEXT, period_end TEXT, card_total TEXT, manual_total TEXT, variance TEXT, notes TEXT, reconciled_by TEXT, reconciled_at TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_alt_fuel_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_type TEXT, charge_kwh REAL, gge_equivalent REAL, cost REAL, charge_start TEXT, charge_end TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_vendor_ratings ( id INTEGER PRIMARY KEY AUTOINCREMENT, service_provider_id INTEGER, maintenance_id INTEGER, rating TEXT, review_text TEXT, rated_by REAL, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_tsbs ( id INTEGER PRIMARY KEY AUTOINCREMENT, tsb_number TEXT, title TEXT, description TEXT, manufacturer TEXT, applicable_makes TEXT, applicable_models TEXT, applicable_years INTEGER, severity TEXT, issue_date TEXT, notes TEXT, completed INTEGER DEFAULT 0, completed_date TEXT, completed_by INTEGER, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_warranty_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, warranty_id INTEGER, vehicle_id INTEGER, claim_number TEXT, claim_date TEXT, description TEXT, amount REAL, maintenance_id INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , approved INTEGER DEFAULT 0, approved_date TEXT);
-CREATE TABLE IF NOT EXISTS fleet_service_contracts ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, provider TEXT, contract_number TEXT, coverage_type TEXT, coverage_details TEXT, start_date TEXT, expiry_date TEXT, annual_cost REAL, deductible REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_maintenance_parts ( id INTEGER PRIMARY KEY AUTOINCREMENT, maintenance_id INTEGER, part_id INTEGER, quantity INTEGER, unit_cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_roadside_assistance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, incident_date TEXT, location TEXT, issue_type TEXT, provider TEXT, response_time_minutes INTEGER, resolution TEXT, cost REAL, driver_id INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_bay_schedule ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, bay_number TEXT, scheduled_start TEXT, scheduled_end TEXT, service_type TEXT, technician TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_trade_in_estimates ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, estimated_value REAL, source TEXT, valuation_date TEXT, condition_score REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_disposals ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, disposal_type TEXT, disposal_date TEXT, sale_price REAL, buyer TEXT, auction_house TEXT, lot_number TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_leases ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, lessor TEXT, lease_number TEXT, start_date TEXT, end_date TEXT, monthly_payment REAL, residual_value REAL, mileage_allowance REAL, current_mileage INTEGER, excess_mileage_rate INTEGER, buyout_option TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_condition_scores ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, exterior_score REAL, interior_score REAL, mechanical_score REAL, overall_score REAL, scored_by REAL, scored_date REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_purchase_orders ( id INTEGER PRIMARY KEY AUTOINCREMENT, po_number TEXT, vehicle_description TEXT, vendor TEXT, quantity INTEGER, unit_price REAL, total_price REAL, order_date TEXT, expected_delivery TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_delivery_checklists ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, purchase_order_id INTEGER, checklist_data TEXT, inspected_by TEXT, inspection_date TEXT, passed INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fmcsa_compliance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, checklist_date TEXT, annual_inspection_due TEXT, annual_inspection_completed INTEGER, eld_compliant INTEGER, ifta_registered INTEGER, hazmat_certified INTEGER, carrier_operating_authority TEXT, last_audit_date TEXT, next_audit_due TEXT, violations_count INTEGER, safety_rating TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_ifta_data ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, quarter TEXT, year TEXT, state TEXT, total_miles REAL, total_gallons REAL, tax_paid REAL, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_safety_recalls ( id INTEGER PRIMARY KEY AUTOINCREMENT, recall_id INTEGER, completed_by INTEGER, completed_date INTEGER, verification_method TEXT, documentation_url TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_defect_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, reported_by TEXT, defect_type TEXT, description TEXT, severity TEXT, reported_date TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , resolved INTEGER DEFAULT 0, resolved_date TEXT, resolution TEXT);
-CREATE TABLE IF NOT EXISTS fleet_safety_equipment ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, equipment_type TEXT, quantity INTEGER, last_inspected TEXT, next_inspection_due TEXT, expiration_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_load_compliance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, gvwr REAL, curb_weight REAL, max_payload REAL, last_weigh_date TEXT, weigh_station TEXT, measured_weight REAL, compliance_status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_cost_centers ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, code TEXT, department TEXT, budget_annual REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_cost_allocations ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, cost_center_id INTEGER, allocation_pct REAL, effective_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_grants ( id INTEGER PRIMARY KEY AUTOINCREMENT, grant_name TEXT, grantor TEXT, grant_number TEXT, amount REAL, award_date TEXT, expiration_date TEXT, purpose TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_grant_allocations ( id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id INTEGER, vehicle_id INTEGER, amount_allocated REAL, allocation_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_capital_assets ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, asset_class TEXT, capitalization_date TEXT, capitalized_cost REAL, useful_life_years INTEGER, depreciation_method REAL, annual_depreciation REAL, net_book_value REAL, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_asset_register ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, asset_tag TEXT, acquisition_date TEXT, acquisition_cost REAL, funding_source TEXT, custodian TEXT, physical_location TEXT, last_verified TEXT, verified_by TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_pool_reservations ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, reserved_by TEXT, reservation_start TEXT, reservation_end TEXT, purpose TEXT, destination TEXT, passengers INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , status TEXT, checked_out TEXT, checked_in TEXT);
-CREATE TABLE IF NOT EXISTS fleet_vehicle_transfers ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, from_location TEXT, to_location TEXT, from_unit_id INTEGER, to_unit_id INTEGER, transfer_date TEXT, reason TEXT, approved_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_vehicle_decals ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, decal_type TEXT, decal_number TEXT, location_on_vehicle TEXT, applied_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_upfits ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, upfit_type TEXT, description TEXT, vendor TEXT, cost REAL, install_date TEXT, warranty_expiry TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_detailing_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, scheduled_date TEXT, detail_type TEXT, vendor TEXT, cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_custom_metrics ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, metric_type TEXT, unit TEXT, description TEXT, target_value REAL, warning_threshold TEXT, critical_threshold TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_custom_metric_values ( id INTEGER PRIMARY KEY AUTOINCREMENT, metric_id INTEGER, vehicle_id INTEGER, value REAL, recorded_date TEXT, recorded_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_driver_certs ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, cert_type TEXT, cert_number TEXT, issuer TEXT, issue_date TEXT, expiry_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_driver_incidents ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, incident_type TEXT, incident_date TEXT, description TEXT, severity TEXT, action_taken TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, training_type TEXT, trained_date TEXT, trainer_id INTEGER, expiry_date TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_driver_feedback ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, rating TEXT, feedback_text TEXT, category TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations ( id INTEGER PRIMARY KEY AUTOINCREMENT, equipment_type TEXT, equipment_id INTEGER, vehicle_id INTEGER, last_calibrated REAL, next_calibration_due TEXT, calibration_standard TEXT, passed INTEGER, technician TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_vehicle_theft ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, theft_date TEXT, location TEXT, police_report_number TEXT, insurance_claim_number TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , recovered INTEGER DEFAULT 0, recovery_date TEXT, recovery_condition TEXT);
-CREATE TABLE IF NOT EXISTS fleet_vehicle_specs ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, vehicle_type TEXT, make TEXT, model TEXT, base_cost REAL, equipment_package TEXT, ordering_code TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_procurement_orders ( id INTEGER PRIMARY KEY AUTOINCREMENT, spec_id INTEGER, order_number TEXT, vendor TEXT, quantity INTEGER, unit_price REAL, total_price REAL, order_date TEXT, expected_delivery TEXT, approved_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_vendor_bids ( id INTEGER PRIMARY KEY AUTOINCREMENT, procurement_order_id INTEGER, vendor TEXT, bid_amount REAL, delivery_days INTEGER, warranty_details TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , selected INTEGER DEFAULT 0);
-CREATE TABLE IF NOT EXISTS fleet_decommissioning ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, decommission_date TEXT, reason TEXT, completed_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) , salvage_value REAL, disposal_method TEXT, equipment_stripped INTEGER DEFAULT 0, data_wiped INTEGER DEFAULT 0, environmental_cleared INTEGER DEFAULT 0);
-CREATE TABLE IF NOT EXISTS fleet_accessories ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, name TEXT, category TEXT, installed_date TEXT, removed_date TEXT, cost REAL, vendor TEXT, warranty_expiry TEXT, serial_number TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fuel_anomalies ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_log_id INTEGER, anomaly_type TEXT, detected_date TEXT, severity TEXT, details TEXT, created_at TEXT DEFAULT (datetime('now','localtime')) );
-CREATE TABLE IF NOT EXISTS fleet_fuel_efficiency ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, vehicle_number TEXT, period_start TEXT, period_end TEXT, total_gallons REAL, total_miles REAL, mpg REAL, cost_per_mile REAL, created_at TEXT DEFAULT (datetime('now','localtime')) );
+CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, officer_id INTEGER, check_date TEXT, lights TEXT, brakes TEXT, radio TEXT, mdt TEXT, dashcam TEXT, tires TEXT, fluids TEXT, exterior TEXT, interior TEXT, emergency_equip TEXT, notes TEXT, status TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_tires ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, tire_position TEXT, brand TEXT, model TEXT, size TEXT, dot_code TEXT, tread_depth REAL, pressure_psi REAL, installed_date TEXT, installed_mileage INTEGER, cost REAL, notes TEXT, removed_date TEXT, removed_mileage INTEGER, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_damage ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, damage_type TEXT, location TEXT, severity TEXT, description TEXT, reported_by TEXT, reported_date TEXT, repair_cost REAL, repair_status TEXT, repair_date TEXT, photo_urls TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_recalls ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, nhtsa_number TEXT, description TEXT, severity TEXT, issue_date TEXT, remedy_date TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_parts ( id INTEGER PRIMARY KEY AUTOINCREMENT, part_number TEXT, name TEXT, category TEXT, description TEXT, unit_cost REAL, quantity_on_hand INTEGER, reorder_point INTEGER, supplier TEXT, compatible_vehicles TEXT, location TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_warranties ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, coverage_type TEXT, provider TEXT, policy_number TEXT, coverage_details TEXT, start_date TEXT, expiry_date TEXT, expiry_mileage INTEGER, deductible REAL, contact_info TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_keys ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, key_number TEXT, key_type TEXT, rfid_tag TEXT, status TEXT, current_holder TEXT, last_checkout TEXT, last_return TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_key_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, key_id INTEGER, action TEXT, holder_name TEXT, timestamp TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_accidents ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, accident_date TEXT, location TEXT, severity TEXT, description TEXT, driver_id INTEGER, weather_conditions TEXT, road_conditions TEXT, police_report_number TEXT, insurance_claim_number TEXT, estimated_damage TEXT, injuries TEXT, fault_determination TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_service_providers ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, provider_type TEXT, phone TEXT, email TEXT, address TEXT, contact_name TEXT, tax_id INTEGER, preferred INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fuel_cards ( id INTEGER PRIMARY KEY AUTOINCREMENT, card_number TEXT, provider TEXT, assigned_vehicle_id INTEGER, pin TEXT, credit_limit REAL, status TEXT, expiration_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_budgets ( id INTEGER PRIMARY KEY AUTOINCREMENT, fiscal_year TEXT, category TEXT, allocated_amount REAL, spent_amount REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_depreciation ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, purchase_price REAL, salvage_value REAL, useful_life_months INTEGER, depreciation_method REAL, monthly_depreciation REAL, accumulated_depreciation REAL, current_book_value REAL, calculated_date TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_replacement_plan ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, replacement_year TEXT, replacement_reason TEXT, estimated_replacement_cost REAL, priority TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fuel_vendors ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, location TEXT, brand TEXT, current_price_per_gallon REAL, last_updated TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fuel_reconciliation ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, period_start TEXT, period_end TEXT, card_total TEXT, manual_total TEXT, variance TEXT, notes TEXT, reconciled_by TEXT, reconciled_at TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_alt_fuel_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_type TEXT, charge_kwh REAL, gge_equivalent REAL, cost REAL, charge_start TEXT, charge_end TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_vendor_ratings ( id INTEGER PRIMARY KEY AUTOINCREMENT, service_provider_id INTEGER, maintenance_id INTEGER, rating TEXT, review_text TEXT, rated_by REAL, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_tsbs ( id INTEGER PRIMARY KEY AUTOINCREMENT, tsb_number TEXT, title TEXT, description TEXT, manufacturer TEXT, applicable_makes TEXT, applicable_models TEXT, applicable_years INTEGER, severity TEXT, issue_date TEXT, notes TEXT, completed INTEGER DEFAULT 0, completed_date TEXT, completed_by INTEGER, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_warranty_claims ( id INTEGER PRIMARY KEY AUTOINCREMENT, warranty_id INTEGER, vehicle_id INTEGER, claim_number TEXT, claim_date TEXT, description TEXT, amount REAL, maintenance_id INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) , approved INTEGER DEFAULT 0, approved_date TEXT);
+CREATE TABLE IF NOT EXISTS fleet_service_contracts ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, provider TEXT, contract_number TEXT, coverage_type TEXT, coverage_details TEXT, start_date TEXT, expiry_date TEXT, annual_cost REAL, deductible REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_maintenance_parts ( id INTEGER PRIMARY KEY AUTOINCREMENT, maintenance_id INTEGER, part_id INTEGER, quantity INTEGER, unit_cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_roadside_assistance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, incident_date TEXT, location TEXT, issue_type TEXT, provider TEXT, response_time_minutes INTEGER, resolution TEXT, cost REAL, driver_id INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_bay_schedule ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, bay_number TEXT, scheduled_start TEXT, scheduled_end TEXT, service_type TEXT, technician TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_trade_in_estimates ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, estimated_value REAL, source TEXT, valuation_date TEXT, condition_score REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_disposals ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, disposal_type TEXT, disposal_date TEXT, sale_price REAL, buyer TEXT, auction_house TEXT, lot_number TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_leases ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, lessor TEXT, lease_number TEXT, start_date TEXT, end_date TEXT, monthly_payment REAL, residual_value REAL, mileage_allowance REAL, current_mileage INTEGER, excess_mileage_rate INTEGER, buyout_option TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_condition_scores ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, exterior_score REAL, interior_score REAL, mechanical_score REAL, overall_score REAL, scored_by REAL, scored_date REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_purchase_orders ( id INTEGER PRIMARY KEY AUTOINCREMENT, po_number TEXT, vehicle_description TEXT, vendor TEXT, quantity INTEGER, unit_price REAL, total_price REAL, order_date TEXT, expected_delivery TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_delivery_checklists ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, purchase_order_id INTEGER, checklist_data TEXT, inspected_by TEXT, inspection_date TEXT, passed INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fmcsa_compliance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, checklist_date TEXT, annual_inspection_due TEXT, annual_inspection_completed INTEGER, eld_compliant INTEGER, ifta_registered INTEGER, hazmat_certified INTEGER, carrier_operating_authority TEXT, last_audit_date TEXT, next_audit_due TEXT, violations_count INTEGER, safety_rating TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_ifta_data ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, quarter TEXT, year TEXT, state TEXT, total_miles REAL, total_gallons REAL, tax_paid REAL, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_safety_recalls ( id INTEGER PRIMARY KEY AUTOINCREMENT, recall_id INTEGER, completed_by INTEGER, completed_date INTEGER, verification_method TEXT, documentation_url TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_defect_reports ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, reported_by TEXT, defect_type TEXT, description TEXT, severity TEXT, reported_date TEXT, created_at TEXT DEFAULT (datetime('now')) , resolved INTEGER DEFAULT 0, resolved_date TEXT, resolution TEXT);
+CREATE TABLE IF NOT EXISTS fleet_safety_equipment ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, equipment_type TEXT, quantity INTEGER, last_inspected TEXT, next_inspection_due TEXT, expiration_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_load_compliance ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, gvwr REAL, curb_weight REAL, max_payload REAL, last_weigh_date TEXT, weigh_station TEXT, measured_weight REAL, compliance_status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_cost_centers ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, code TEXT, department TEXT, budget_annual REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_cost_allocations ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, cost_center_id INTEGER, allocation_pct REAL, effective_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_grants ( id INTEGER PRIMARY KEY AUTOINCREMENT, grant_name TEXT, grantor TEXT, grant_number TEXT, amount REAL, award_date TEXT, expiration_date TEXT, purpose TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_grant_allocations ( id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id INTEGER, vehicle_id INTEGER, amount_allocated REAL, allocation_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_capital_assets ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, asset_class TEXT, capitalization_date TEXT, capitalized_cost REAL, useful_life_years INTEGER, depreciation_method REAL, annual_depreciation REAL, net_book_value REAL, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_asset_register ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, asset_tag TEXT, acquisition_date TEXT, acquisition_cost REAL, funding_source TEXT, custodian TEXT, physical_location TEXT, last_verified TEXT, verified_by TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_pool_reservations ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, reserved_by TEXT, reservation_start TEXT, reservation_end TEXT, purpose TEXT, destination TEXT, passengers INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) , status TEXT, checked_out TEXT, checked_in TEXT);
+CREATE TABLE IF NOT EXISTS fleet_vehicle_transfers ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, from_location TEXT, to_location TEXT, from_unit_id INTEGER, to_unit_id INTEGER, transfer_date TEXT, reason TEXT, approved_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_vehicle_decals ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, decal_type TEXT, decal_number TEXT, location_on_vehicle TEXT, applied_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_upfits ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, upfit_type TEXT, description TEXT, vendor TEXT, cost REAL, install_date TEXT, warranty_expiry TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_detailing_log ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, scheduled_date TEXT, detail_type TEXT, vendor TEXT, cost REAL, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_custom_metrics ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, metric_type TEXT, unit TEXT, description TEXT, target_value REAL, warning_threshold TEXT, critical_threshold TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_custom_metric_values ( id INTEGER PRIMARY KEY AUTOINCREMENT, metric_id INTEGER, vehicle_id INTEGER, value REAL, recorded_date TEXT, recorded_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_driver_certs ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, cert_type TEXT, cert_number TEXT, issuer TEXT, issue_date TEXT, expiry_date TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_driver_incidents ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, incident_type TEXT, incident_date TEXT, description TEXT, severity TEXT, action_taken TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_driver_vehicle_training ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, training_type TEXT, trained_date TEXT, trainer_id INTEGER, expiry_date TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_driver_feedback ( id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, vehicle_id INTEGER, rating TEXT, feedback_text TEXT, category TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_equipment_calibrations ( id INTEGER PRIMARY KEY AUTOINCREMENT, equipment_type TEXT, equipment_id INTEGER, vehicle_id INTEGER, last_calibrated REAL, next_calibration_due TEXT, calibration_standard TEXT, passed INTEGER, technician TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_vehicle_theft ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, theft_date TEXT, location TEXT, police_report_number TEXT, insurance_claim_number TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) , recovered INTEGER DEFAULT 0, recovery_date TEXT, recovery_condition TEXT);
+CREATE TABLE IF NOT EXISTS fleet_vehicle_specs ( id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, vehicle_type TEXT, make TEXT, model TEXT, base_cost REAL, equipment_package TEXT, ordering_code TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_procurement_orders ( id INTEGER PRIMARY KEY AUTOINCREMENT, spec_id INTEGER, order_number TEXT, vendor TEXT, quantity INTEGER, unit_price REAL, total_price REAL, order_date TEXT, expected_delivery TEXT, approved_by TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_vendor_bids ( id INTEGER PRIMARY KEY AUTOINCREMENT, procurement_order_id INTEGER, vendor TEXT, bid_amount REAL, delivery_days INTEGER, warranty_details TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) , selected INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS fleet_decommissioning ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, decommission_date TEXT, reason TEXT, completed_by INTEGER, notes TEXT, created_at TEXT DEFAULT (datetime('now')) , salvage_value REAL, disposal_method TEXT, equipment_stripped INTEGER DEFAULT 0, data_wiped INTEGER DEFAULT 0, environmental_cleared INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS fleet_accessories ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, name TEXT, category TEXT, installed_date TEXT, removed_date TEXT, cost REAL, vendor TEXT, warranty_expiry TEXT, serial_number TEXT, status TEXT, notes TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fuel_anomalies ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, fuel_log_id INTEGER, anomaly_type TEXT, detected_date TEXT, severity TEXT, details TEXT, created_at TEXT DEFAULT (datetime('now')) );
+CREATE TABLE IF NOT EXISTS fleet_fuel_efficiency ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER, vehicle_number TEXT, period_start TEXT, period_end TEXT, total_gallons REAL, total_miles REAL, mpg REAL, cost_per_mile REAL, created_at TEXT DEFAULT (datetime('now')) );
 CREATE TABLE IF NOT EXISTS fleet_loans (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   vehicle_id INTEGER,
@@ -2851,7 +2851,7 @@ CREATE TABLE IF NOT EXISTS fleet_loans (
   payoff_date TEXT,
   status TEXT DEFAULT 'active',
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_utility_costs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2863,7 +2863,7 @@ CREATE TABLE IF NOT EXISTS fleet_utility_costs (
   period_start TEXT,
   period_end TEXT,
   notes TEXT,
-  created_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS system_settings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2879,8 +2879,8 @@ CREATE TABLE IF NOT EXISTS system_settings (
   max_value REAL,
   required_role TEXT DEFAULT 'admin',      -- minimum role to change this setting
   ui_order INTEGER DEFAULT 0,
-  created_at TEXT DEFAULT (datetime('now','localtime')),
-  updated_at TEXT DEFAULT (datetime('now','localtime'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_telemetry (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2894,7 +2894,7 @@ CREATE TABLE IF NOT EXISTS fleet_telemetry (
   odometer INTEGER,
   battery_voltage REAL,
   dtc_codes TEXT,
-  recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS fleet_vehicle_detail ( id INTEGER PRIMARY KEY AUTOINCREMENT, vehicle_id INTEGER NOT NULL UNIQUE, engine_displacement_liters REAL, engine_cylinders INTEGER, engine_config TEXT, horsepower INTEGER, torque_lb_ft INTEGER, aspiration TEXT, transmission_speeds INTEGER, transfer_case TEXT, fuel_economy_combined REAL, secondary_fuel_type TEXT, secondary_fuel_capacity REAL, def_capacity REAL, oil_capacity_qts REAL, coolant_capacity REAL, gross_combined_weight INTEGER, payload_capacity_lbs INTEGER, towing_capacity_lbs INTEGER, cargo_volume_cuft REAL, bed_length_in REAL, wheelbase_in REAL, overall_length_in REAL, overall_width_in REAL, overall_height_in REAL, ground_clearance_in REAL, turning_radius_ft REAL, wheel_size_in REAL, front_tire_size TEXT, rear_tire_size TEXT, battery_group_size TEXT, alternator_amps INTEGER, paint_code TEXT, interior_color TEXT, upholstery_type TEXT, key_code TEXT, telematics_provider TEXT, telematics_device_serial TEXT, telematics_sim_iccid TEXT, dashcam_provider TEXT, dashcam_device_id TEXT, fuel_card_number TEXT, toll_transponder_id TEXT, dmv_record_id TEXT, insurer_system_id TEXT, external_asset_id TEXT, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')) );
 CREATE TABLE IF NOT EXISTS fleet_other_costs (
@@ -2985,7 +2985,7 @@ CREATE TABLE IF NOT EXISTS personnel_fitness (
   situps INTEGER,
   notes TEXT,
   recorded_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS personnel_commendations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2994,7 +2994,7 @@ CREATE TABLE IF NOT EXISTS personnel_commendations (
   type TEXT,
   description TEXT,
   awarded_by INTEGER,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS departments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3002,8 +3002,8 @@ CREATE TABLE IF NOT EXISTS departments (
   parent_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
   manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   is_active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS announcements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3012,8 +3012,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   target_roles TEXT NOT NULL DEFAULT '[]', is_active INTEGER NOT NULL DEFAULT 1,
   starts_at TEXT, expires_at TEXT,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_by_name TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS notification_rules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3023,8 +3023,8 @@ CREATE TABLE IF NOT EXISTS notification_rules (
   is_active INTEGER NOT NULL DEFAULT 1,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL, created_by_name TEXT,
   last_fired_at TEXT, fire_count INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 DELETE FROM sqlite_sequence;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_system_config_key_value ON system_config(config_key, config_value);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { Camera, RotateCcw, Trash2, Plus } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { listSnapshots, saveSnapshot, deleteSnapshot, type Snapshot } from '../autosave';
@@ -53,10 +53,10 @@ export default function SnapshotsPanel({
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           placeholder="Snapshot name…"
-          className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-1 focus:outline-none focus:border-[#d4a017]/50"
+          className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-1 focus:outline-none focus:border-accent-silver-500/50"
         />
         <IconButton aria-label="Save snapshot" onClick={handleSave}
-          className="p-1 bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20">
+          className="p-1 bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20">
           <Plus className="w-3.5 h-3.5" />
         </IconButton>
       </div>
@@ -71,7 +71,7 @@ export default function SnapshotsPanel({
               <span className="text-[9px] text-rmpg-600 tabular-nums">{new Date(s.createdAt).toLocaleString()}</span>
               <div className="flex items-center gap-0.5">
                 <IconButton aria-label={`Restore ${s.name}`} title="Restore" onClick={() => handleRestore(s)}
-                  className="p-0.5 text-rmpg-400 hover:text-[#d4a017]">
+                  className="p-0.5 text-rmpg-400 hover:text-accent-silver-300">
                   <RotateCcw className="w-3 h-3" />
                 </IconButton>
                 <IconButton aria-label={`Delete ${s.name}`} title="Delete" onClick={() => handleDelete(s)}

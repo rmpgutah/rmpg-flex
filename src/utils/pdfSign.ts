@@ -6,6 +6,8 @@
 // ============================================================
 
 import type { Bindings } from '../types';
+import { ml_dsa87 } from '@noble/post-quantum/ml-dsa.js';
+import { slh_dsa_sha2_256f } from '@noble/post-quantum/slh-dsa.js';
 
 // An Ed25519 private key is a 32-byte seed inside a fixed PKCS8 DER envelope.
 // We derive a STABLE seed from a dedicated PDF_SIGNING_KEY when provisioned,
@@ -31,9 +33,61 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-// Per-isolate cache of the imported signing key, re-imported if the seed source
-// changes (keyed by a hash of the seed).
-let cachedSigningKey: { seedHash: string; key: CryptoKey } | null = null;
+function base64UrlToBytes(b64url: string): Uint8Array {
+  const pad = b64url.length % 4 === 2 ? '==' : b64url.length % 4 === 3 ? '=' : '';
+  return base64ToBytes(b64url.replace(/-/g, '+').replace(/_/g, '/') + pad);
+}
+
+// Minimal shape (not the full @cloudflare/workers-types ExecutionContext) —
+// avoids a generic-param mismatch, mirrors src/utils/logger.ts's logErrorToDb.
+interface ExecCtx {
+  waitUntil(p: Promise<unknown>): void;
+}
+
+const ALGORITHM_VERSION = 'pdf-sig-v2';
+const SIGNING_ALGORITHMS = ['Ed25519', 'ML-DSA-87', 'SLH-DSA-256f'];
+
+/** Log the first time a given signing key set is observed, to
+ *  crypto_key_events — an automatic audit trail of when the key changed.
+ *  INSERT OR IGNORE (key_id UNIQUE) makes this race-safe under concurrent
+ *  isolate cold-starts. Never throws — a missing table or D1 outage must
+ *  never block or fail an actual signing request. Mirrors
+ *  src/utils/logger.ts's logErrorToDb() exactly. */
+async function logCryptoKeyEvent(db: D1Database, keyId: string, ctx?: ExecCtx): Promise<void> {
+  const work = (async () => {
+    try {
+      await db.prepare(
+        'INSERT OR IGNORE INTO crypto_key_events (key_id, algorithm_version, algorithms) VALUES (?, ?, ?)',
+      ).bind(keyId, ALGORITHM_VERSION, JSON.stringify(SIGNING_ALGORITHMS)).run();
+    } catch {
+      // Table may not exist yet (migration not applied), or a D1 hiccup —
+      // audit logging must never block or fail an actual signing request.
+    }
+  })();
+  if (ctx) {
+    ctx.waitUntil(work);
+  } else {
+    void work;
+  }
+}
+
+// HKDF-Expand (RFC 5869) — derives arbitrary-length, domain-separated key
+// material from the same root secret used by deriveEd25519Seed, WITHOUT
+// touching that function's formula (see file header). `label` must be
+// unique per algorithm so a break in one derived seed reveals nothing
+// about the others.
+async function deriveHkdfSeed(env: Bindings, label: string, byteLength: number): Promise<Uint8Array> {
+  const material = env.PDF_SIGNING_KEY?.trim() || env.JWT_SECRET;
+  const ikm = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(material), 'HKDF', false, ['deriveBits'],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(), info: new TextEncoder().encode(label) },
+    ikm,
+    byteLength * 8,
+  );
+  return new Uint8Array(bits);
+}
 
 async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   const provisioned = env.PDF_SIGNING_KEY?.trim();
@@ -47,7 +101,23 @@ async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', material));
 }
 
-export async function getPdfSigningKey(env: Bindings): Promise<{ key: CryptoKey; keyId: string }> {
+interface CachedSigningKeys {
+  seedHash: string;
+  ed25519Key: CryptoKey;
+  ed25519PublicKey: Uint8Array;
+  mlDsaPublicKey: Uint8Array;
+  mlDsaSecretKey: Uint8Array;
+  slhDsaPublicKey: Uint8Array;
+  slhDsaSecretKey: Uint8Array;
+}
+
+let cachedKeys: CachedSigningKeys | null = null;
+
+async function getSigningKeys(env: Bindings, ctx?: ExecCtx): Promise<{
+  ed25519Key: CryptoKey; keyId: string; ed25519PublicKey: Uint8Array;
+  mlDsaPublicKey: Uint8Array; mlDsaSecretKey: Uint8Array;
+  slhDsaPublicKey: Uint8Array; slhDsaSecretKey: Uint8Array;
+}> {
   const seed = await deriveEd25519Seed(env);
   const seedHashBuf = await crypto.subtle.digest('SHA-256', seed);
   const seedHashBytes = new Uint8Array(seedHashBuf);
@@ -55,24 +125,81 @@ export async function getPdfSigningKey(env: Bindings): Promise<{ key: CryptoKey;
   // keyId = first 8 bytes of the seed hash (hex) — lets a verifier identify the
   // signing key without exposing it.
   const keyId = Array.from(seedHashBytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  if (cachedSigningKey && cachedSigningKey.seedHash === seedHash) {
-    return { key: cachedSigningKey.key, keyId };
+
+  if (cachedKeys && cachedKeys.seedHash === seedHash) {
+    return { ...cachedKeys, keyId };
   }
+
   const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + 32);
   pkcs8.set(ED25519_PKCS8_PREFIX, 0);
   pkcs8.set(seed, ED25519_PKCS8_PREFIX.length);
-  const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
-  cachedSigningKey = { seedHash, key };
-  return { key, keyId };
+  // extractable: true (was false) — needed to export the public key below.
+  // Safe: this is a server-held key derived from a secret we already
+  // control; exporting the PUBLIC half leaks nothing the derivation
+  // formula doesn't already make computable by anyone holding the secret.
+  const ed25519Key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
+  // @cloudflare/workers-types types exportKey() as Promise<ArrayBuffer | JsonWebKey> for
+  // every format string (unlike lib.dom.d.ts, it doesn't overload on the 'jwk' literal),
+  // so a cast is needed here — runtime shape is unaffected, format:'jwk' always returns JsonWebKey.
+  const jwk = (await crypto.subtle.exportKey('jwk', ed25519Key)) as JsonWebKey;
+  if (!jwk.x) throw new Error('Ed25519 JWK export missing public key (x)');
+  const ed25519PublicKey = base64UrlToBytes(jwk.x);
+
+  // ML-DSA-87 and SLH-DSA-256f keygen are the expensive part of this function
+  // (~15ms / ~18ms respectively) — deriving+caching them here alongside the
+  // Ed25519 key means keygen runs once per isolate, not once per request.
+  const mlDsaSeed = await deriveHkdfSeed(env, 'rmpg-pdf-ml-dsa87-v1', 32);
+  const { publicKey: mlDsaPublicKey, secretKey: mlDsaSecretKey } = ml_dsa87.keygen(mlDsaSeed);
+
+  const slhDsaSeed = await deriveHkdfSeed(env, 'rmpg-pdf-slh-dsa-256f-v1', 96);
+  const { publicKey: slhDsaPublicKey, secretKey: slhDsaSecretKey } = slh_dsa_sha2_256f.keygen(slhDsaSeed);
+
+  cachedKeys = { seedHash, ed25519Key, ed25519PublicKey, mlDsaPublicKey, mlDsaSecretKey, slhDsaPublicKey, slhDsaSecretKey };
+  logCryptoKeyEvent(env.DB, keyId, ctx);
+  return { ...cachedKeys, keyId };
 }
 
-/** Sign a (formKey | caseNumber | payloadHash) triple — identical message format to
- *  POST /api/pdf-tools/sign-payload, so client/src/utils/pdfIntegrity.ts verifies it. */
+export interface AlgorithmSignature {
+  /** Base64 signature. */
+  signature: string;
+  /** Base64 raw public key — required for offline verification. */
+  publicKey: string;
+}
+
+/** Triple-algorithm signature bundle: Ed25519 (classical), ML-DSA-87
+ *  (FIPS 204, CNSA 2.0 lattice-based PQC), and SLH-DSA-SHA2-256f (FIPS
+ *  205, CNSA 2.0 hash-based PQC). All three sign the identical message
+ *  so a cryptanalytic break in any one algorithm family alone doesn't
+ *  compromise document authenticity. */
+export interface PdfSignTripleResult {
+  algorithmVersion: 'pdf-sig-v2';
+  signedAt: string;
+  keyId: string;
+  ed25519: AlgorithmSignature;
+  mlDsa87: AlgorithmSignature;
+  slhDsa256f: AlgorithmSignature;
+}
+
+/** Sign a (formKey | caseNumber | payloadHash) triple with all three
+ *  algorithms. Identical message format to the pre-PQC version, so
+ *  Ed25519 signatures issued before this change remain verifiable
+ *  against the same deterministically-derived key. */
 export async function signTriple(
-  env: Bindings, formKey: string, caseNumber: string, payloadHash: string,
-): Promise<{ signature: string; signedAt: string; algorithm: 'Ed25519'; keyId: string }> {
-  const { key, keyId } = await getPdfSigningKey(env);
+  env: Bindings, formKey: string, caseNumber: string, payloadHash: string, ctx?: ExecCtx,
+): Promise<PdfSignTripleResult> {
+  const keys = await getSigningKeys(env, ctx);
   const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
-  const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
-  return { signature: bytesToBase64(new Uint8Array(sigBuf)), signedAt: new Date().toISOString(), algorithm: 'Ed25519', keyId }; // new-date-ok
+
+  const ed25519SigBuf = await crypto.subtle.sign('Ed25519', keys.ed25519Key, message);
+  const mlDsaSig = ml_dsa87.sign(message, keys.mlDsaSecretKey);
+  const slhDsaSig = slh_dsa_sha2_256f.sign(message, keys.slhDsaSecretKey);
+
+  return {
+    algorithmVersion: ALGORITHM_VERSION,
+    signedAt: new Date().toISOString(), // new-date-ok
+    keyId: keys.keyId,
+    ed25519: { signature: bytesToBase64(new Uint8Array(ed25519SigBuf)), publicKey: bytesToBase64(keys.ed25519PublicKey) },
+    mlDsa87: { signature: bytesToBase64(mlDsaSig), publicKey: bytesToBase64(keys.mlDsaPublicKey) },
+    slhDsa256f: { signature: bytesToBase64(slhDsaSig), publicKey: bytesToBase64(keys.slhDsaPublicKey) },
+  };
 }

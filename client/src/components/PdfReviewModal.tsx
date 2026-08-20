@@ -185,9 +185,9 @@ export function PdfReviewModal<T extends Record<string, any>>({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center">
-      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90vh] flex flex-col">
+      <div className="bg-surface-base border border-rmpg-700 w-[95vw] h-[90dvh] flex flex-col">
         <header className="flex justify-between items-center px-4 py-2 border-b border-border-default">
-          <h2 className="text-[#d4a017] font-bold">
+          <h2 className="[color:var(--panel-header-color)] font-bold">
             {schema.meta.title} — Form {schema.meta.formNumber}
           </h2>
           <button onClick={onClose} className="text-rmpg-400" aria-label="Close">✕</button>
@@ -247,7 +247,7 @@ function EditorSection<T extends Record<string, any>>({
 }: { section: SchemaSection<T>; data: T; onChange: (d: T) => void }) {
   return (
     <section className="mb-4">
-      <h3 className="text-[#d4a017] font-bold text-sm mb-2">{section.title}</h3>
+      <h3 className="[color:var(--panel-header-color)] font-bold text-sm mb-2">{section.title}</h3>
       {section.fields.map((f, i) => (
         <EditorField key={i} field={f} data={data} onChange={onChange} />
       ))}
@@ -386,7 +386,7 @@ function TableEditor<T extends Record<string, any>>({
           <button
             type="button"
             onClick={addRow}
-            className="text-[#d4a017] hover:underline"
+            className="[color:var(--panel-header-color)] hover:underline"
             aria-label={`Add row to ${field.label}`}
           >
             + Add row
@@ -395,7 +395,7 @@ function TableEditor<T extends Record<string, any>>({
       </div>
       <div className="overflow-x-auto"><table className="w-full border-collapse">
         <thead>
-          <tr className="text-rmpg-500 uppercase text-[10px]">
+          <tr className="text-fg-muted uppercase text-[10px]">
             {field.columns.map((c) => (
               <th key={c.key} className="text-left border-b border-border-default py-1">{c.header}</th>
             ))}
@@ -405,7 +405,7 @@ function TableEditor<T extends Record<string, any>>({
         <tbody>
           {rows.length === 0 && (
             <tr>
-              <td colSpan={field.columns.length + 1} className="text-rmpg-500 italic py-1">
+              <td colSpan={field.columns.length + 1} className="text-fg-muted italic py-1">
                 No rows
               </td>
             </tr>
@@ -447,7 +447,7 @@ function SignaturePlaceholder<T>({ field }: { field: SignatureField<T> }) {
   return (
     <div className="block mb-2 text-xs">
       <span className="block text-rmpg-400 uppercase mb-1">{field.label}</span>
-      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-rmpg-500 italic">
+      <div className="w-full bg-surface-overlay border border-dashed border-rmpg-700 p-2 text-fg-muted italic">
         Signature editor coming soon
       </div>
     </div>

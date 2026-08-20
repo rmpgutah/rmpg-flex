@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, Sparkles, Loader2, Check, Copy, RotateCcw, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
@@ -88,7 +88,7 @@ export default function RefinersPanel({ editor, onClose, flash }: Props) {
   return (
     <div className="w-64 flex-shrink-0 bg-surface-raised border border-border-default rounded-[2px] flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default bg-surface-base">
-        <Sparkles className="w-3.5 h-3.5 text-[#d4a017]" />
+        <Sparkles className="w-3.5 h-3.5 text-accent-silver-400" />
         <span className="text-[10px] font-semibold uppercase tracking-wider text-rmpg-300 flex-1">AI Refiners</span>
         <button type="button" aria-label="Close AI Refiners" onClick={onClose} className="text-rmpg-500 hover:text-rmpg-200">
           <X className="w-3.5 h-3.5" />
@@ -113,7 +113,7 @@ export default function RefinersPanel({ editor, onClose, flash }: Props) {
                   title={action.description}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-[2px] text-left hover:bg-surface-base group disabled:opacity-40 transition-colors"
                 >
-                  <ChevronRight className="w-3 h-3 text-rmpg-600 group-hover:text-[#d4a017] flex-shrink-0" />
+                  <ChevronRight className="w-3 h-3 text-rmpg-600 group-hover:text-accent-silver-300 flex-shrink-0" />
                   <div className="min-w-0">
                     <div className="text-[10px] text-rmpg-300 group-hover:text-rmpg-100 font-medium truncate">{action.label}</div>
                     <div className="text-[9px] text-rmpg-600 leading-tight truncate">{action.description}</div>
@@ -130,7 +130,7 @@ export default function RefinersPanel({ editor, onClose, flash }: Props) {
         <div className="border-t border-border-default p-2 space-y-2">
           {loading && (
             <div className="flex items-center gap-2 text-[10px] text-rmpg-400">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#d4a017]" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-accent-silver-400" />
               <span>Running <em>{lastAction}</em>…</span>
             </div>
           )}
@@ -156,7 +156,7 @@ export default function RefinersPanel({ editor, onClose, flash }: Props) {
                   type="button"
                   onClick={applyResult}
                   disabled={applied}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 disabled:opacity-50"
                 >
                   <Check className="w-3 h-3" />
                   {applied ? 'Applied' : 'Apply'}

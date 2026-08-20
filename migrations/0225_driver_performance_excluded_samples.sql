@@ -1,0 +1,16 @@
+-- Driver Performance: record emergency-response samples excluded from scoring.
+--
+-- 0224 added `breadcrumb_samples`, used as the dead-feed guard: miles driven
+-- with zero GPS samples means a broken feed, not a flawless shift.
+--
+-- But the rollup also excludes samples taken while an officer is responding to
+-- a call (current_call_id set, or unit_status dispatched/enroute/onscene),
+-- because patrol officers lawfully exceed posted limits on code-3 response and
+-- that is a statutory exemption, not a violation.
+--
+-- Without a separate counter, an officer whose ENTIRE day was lawful emergency
+-- response has every sample excluded, lands at zero, and is indistinguishable
+-- from an officer whose GPS feed was dead. Both correctly produce an unscored
+-- day — but the recorded REASON differs, and the reason is what an operator
+-- acts on. One sends someone to fix a broken MDT that works perfectly.
+ALTER TABLE driver_performance_daily ADD COLUMN excluded_call_samples INTEGER NOT NULL DEFAULT 0;

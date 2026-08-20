@@ -104,7 +104,8 @@ export async function crossLinkPsoCloseToServe(
     db, 'SELECT * FROM calls_for_service WHERE id = ?', callId,
   );
   if (!call) return { ...empty, skipReason: 'call_not_found' };
-  if (call.incident_type !== 'pso_client_request') return { ...empty, skipReason: 'not_pso' };
+  const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper_service']);
+  if (!PSO_TYPES.has(call.incident_type)) return { ...empty, skipReason: 'not_pso' };
   if (!TERMINAL_STATUSES.has(String(call.status))) return { ...empty, skipReason: 'non_terminal_status' };
 
   // Ext row carries the PSO/process-service fields that overflow past the
@@ -141,12 +142,13 @@ export async function crossLinkPsoCloseToServe(
       `INSERT INTO serve_queue (
          call_id, officer_id, created_by, recipient_name, recipient_address,
          recipient_lat, recipient_lng, document_type, case_number, client_name,
-         priority, status, notes, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now','localtime'), datetime('now','localtime'))`,
+         client_id, priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
       callId, merged.officer_id ?? options.actorUserId ?? null, options.actorUserId ?? null,
       recipientName, recipientAddress,
       merged.latitude ?? null, merged.longitude ?? null,
       documentType, caseNumber, clientName,
+      merged.client_id ?? null,
       `Auto-created from CFS ${merged.call_number || `#${callId}`} on close (${code})`,
     );
     queueCreated = true;
@@ -217,7 +219,7 @@ export async function crossLinkPsoCloseToServe(
 
   await execute(
     db,
-    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE serve_queue SET attempt_count = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
     nextNum, newStatus, queueRow.id,
   );
 

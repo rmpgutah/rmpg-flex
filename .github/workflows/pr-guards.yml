@@ -1,0 +1,71 @@
+# PR Guards — consolidates the small diff-based static checks that used to
+# be five separate workflows (array-guard-check, column-cap-check,
+# new-date-check, theme-hex-guard, tofixed-guard-check). One job, one
+# checkout, one Node setup — same checks, same pass/fail signal per script,
+# fewer total Actions runs per PR.
+#
+# ⚠️ 2026-08-09: this file's job (name: "Static guard checks") IS a required
+# branch-protection status check, contradicting an earlier version of this
+# comment claiming otherwise — that claim was stale. A `paths:` filter here
+# previously meant a worker-only PR (no client/src, migrations, or listed
+# script touched) never triggered this workflow at all, so the required
+# check stayed permanently "expected" and unbypassable — including by
+# `gh pr merge --admin` and the REST API — blocking the merge outright
+# (#3378). Every check below scans repo-wide state (ratchets) or diffs
+# against the PR base itself, not "paths touched by this push", so running
+# unconditionally is correct, not just a workaround: removing the filter
+# fixes both this bug AND makes the check name match what it actually is.
+name: PR Guards
+
+on:
+  pull_request: {}
+
+concurrency:
+  group: pr-guards-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege GITHUB_TOKEN (CWE-275). Every check here only reads the
+# repo and diffs against the PR base — no comments, no writes.
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    name: Static guard checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Several checks diff added lines/files against the PR base branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Array guard check (admin console unguarded apiFetch)
+        run: node scripts/check-array-guards.js
+
+      - name: D1 column cap check
+        run: node scripts/check-column-cap.js
+
+      - name: new Date() timezone check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-new-date.js
+
+      - name: Theme hex ratchet
+        run: node scripts/theme-hex-audit.mjs --check
+
+      - name: toFixed false-guard check
+        run: node scripts/check-tofixed-guards.js
+
+      - name: Form-draft ("filler") coverage check
+        run: node scripts/check-form-draft-coverage.js
+
+      - name: Button health ratchet
+        run: node scripts/check-button-health.mjs
+
+      - name: React hooks-after-early-return check
+        run: node scripts/check-hooks-after-early-return.js

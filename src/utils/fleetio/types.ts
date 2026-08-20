@@ -10,19 +10,39 @@
 // later PRs (esp. PR 3) replace this with stricter generated types.
 // ============================================================
 
-/** Pagination envelope. Fleet.io paginates with `?page=N&per_page=M`,
- *  exposing total counts in the response body. */
-export interface FleetioPagination {
-  current_page: number;
-  total_pages: number;
-  total_entries: number;
-  per_page: number;
-}
-
-/** A list response carrying the resource array + pagination block. */
-export interface FleetioListResponse<T> {
+/**
+ * ⚠️ Fleet.io has TWO pagination contracts, and which one you get is decided by
+ * the API version bound to the API key (chosen at key-creation time — there is
+ * no per-request version header). Grounded against
+ * https://developer.fleetio.com/docs/overview/pagination on 2026-07-26:
+ *
+ *   Cursor-based (API version 2024-01-01 and newer, incl. the current
+ *   2025-05-05): request `?per_page=<=100` and `?start_cursor=<cursor>`;
+ *   response body is
+ *     { records: [...], current_cursor, next_cursor, per_page,
+ *       estimated_remaining_count, filtered_by: [], sorted_by: [] }
+ *   `next_cursor` is null on the last page.
+ *
+ *   Legacy page-based (older keys): request `?page=N&per=<=100`; the response
+ *   body is a BARE ARRAY and the counts arrive as response HEADERS —
+ *   X-Pagination-Limit / -Current-Page / -Total-Pages / -Total-Count.
+ *
+ * Neither version emits a `{ records, pagination: { total_pages } }` body
+ * envelope. An earlier revision of this file declared exactly that shape, so
+ * `resp.pagination?.total_pages ?? 1` always resolved to 1 and every paginated
+ * pull silently stopped after the first 100 records — and on a legacy key
+ * `resp.records` was undefined, throwing outright. `FleetioListPage` below is
+ * the normalized shape both contracts are parsed into; `parseListPage` does the
+ * detection so no caller has to care which one is live.
+ */
+export interface FleetioListPage<T> {
   records: T[];
-  pagination: FleetioPagination;
+  /** Cursor API: `next_cursor` (null on the last page). Legacy: always null. */
+  next_cursor: string | null;
+  /** Legacy header pagination: total page count, when advertised. */
+  total_pages: number | null;
+  /** Cursor API: `estimated_remaining_count`, when advertised. */
+  estimated_remaining_count: number | null;
 }
 
 /** Vehicle resource — PR 1 only writes a subset, but reads any record. */
@@ -54,6 +74,12 @@ export interface FleetioVehicleCreatePayload {
   color?: string | null;
   vehicle_type_id?: number | null;
   fuel_type_id?: number | null;
+  /** Fleet.io marks this REQUIRED on create (enum km/hr/mi) — RMPG operates
+   *  US-only fleets, so this is always 'mi'. See seed.ts for why this is the
+   *  one required-on-create field that's safe to default without live
+   *  verification (the other two, vehicle_status_id/vehicle_type_id, are
+   *  Fleet.io account-specific ids RMPG has no source of truth for). */
+  primary_meter_unit?: 'mi' | 'km' | 'hr' | null;
 }
 
 /** RMPG-side fleet_vehicles row shape — only the columns seed reads. */

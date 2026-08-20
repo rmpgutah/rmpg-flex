@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 import {
   MapPin,
@@ -22,11 +22,24 @@ import {
   CheckCircle2,
   Bot,
   Flame,
+  Phone,
+  Mail,
+  Copy,
+  Check,
+  DollarSign,
+  Lock,
+  KeyRound,
+  ClipboardList,
+  Scale,
+  Building2,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
-import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { formatCodeShort } from '../../constants/processServiceCodes';
 import { getMatterCategoryByDocType } from '../../constants/documentTypes';
+import ServeReceiptActions from './ServeReceiptActions';
+import DiligencePanel from './DiligencePanel';
+import ServeJobComments from './ServeJobComments';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -51,11 +64,16 @@ interface ServeJobCardProps {
 
 const STATUS_COLORS: Record<string, { bg: string; glow: string; dot: string; label: string; badge: string }> = {
   pending:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(136,136,136,0.5)]',  dot: 'bg-rmpg-400',    label: 'PENDING',     badge: 'bg-rmpg-800/60 text-rmpg-300 border-rmpg-600/50' },
-  in_progress: { bg: 'bg-amber-500 animate-pulse', glow: 'shadow-[0_0_6px_rgba(245,158,11,0.5)]', dot: 'bg-amber-400 animate-pulse', label: 'IN PROGRESS', badge: 'bg-amber-900/50 text-amber-300 border-amber-700/50' },
+  // No animate-pulse anywhere in this card. Urgency is carried by colour,
+  // the red ring and the tier badge — all of which stay. Animating them as
+  // well meant a queue where several jobs are due at once had several cards
+  // flaring in and out simultaneously, which reads as an alarm rather than
+  // a priority and is exhausting to work a shift against.
+  in_progress: { bg: 'bg-amber-500', glow: '', dot: 'bg-amber-400', label: 'IN PROGRESS', badge: 'bg-amber-900/50 text-amber-300 border-amber-700/50' },
   served:      { bg: 'bg-green-500',             glow: 'shadow-[0_0_6px_rgba(34,197,94,0.5)]',   dot: 'bg-green-400',   label: 'SERVED',      badge: 'bg-green-900/50 text-green-300 border-green-700/50' },
   failed:      { bg: 'bg-red-500',               glow: 'shadow-[0_0_6px_rgba(239,68,68,0.5)]',   dot: 'bg-red-400',     label: 'FAILED',      badge: 'bg-red-900/50 text-red-300 border-red-700/50' },
   skipped:     { bg: 'bg-rmpg-500',              glow: 'shadow-[0_0_6px_rgba(107,114,128,0.5)]', dot: 'bg-rmpg-400',    label: 'SKIPPED',     badge: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50' },
-  archived:    { bg: 'bg-rmpg-600',              glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]',    dot: 'bg-rmpg-500',    label: 'ARCHIVED',    badge: 'bg-rmpg-900/60 text-rmpg-500 border-rmpg-700/50' },
+  archived:    { bg: 'bg-rmpg-600',              glow: 'shadow-[0_0_6px_rgba(75,85,99,0.5)]',    dot: 'bg-rmpg-500',    label: 'ARCHIVED',    badge: 'bg-rmpg-900/60 text-fg-muted border-rmpg-700/50' },
 };
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -89,6 +107,21 @@ const DOC_TYPE_ICONS: Record<string, React.ElementType> = {
   Motion: FileText, Garnishment: FileWarning, Eviction: Shield,
 };
 
+const SERVE_TYPE_STYLES: Record<string, string> = {
+  personal:    'bg-blue-900/40 text-blue-300 border-blue-700/50',
+  substituted: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
+  corporate:   'bg-purple-900/40 text-purple-300 border-purple-700/50',
+  posting:     'bg-rmpg-800/60 text-rmpg-300 border-rmpg-600/50',
+  publication: 'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
+};
+
+const PAYMENT_STATUS_STYLES: Record<string, string> = {
+  unpaid:   'bg-red-900/40 text-red-300 border-red-700/50',
+  invoiced: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
+  paid:     'bg-green-900/40 text-green-300 border-green-700/50',
+  waived:   'bg-rmpg-800/60 text-rmpg-400 border-rmpg-600/50',
+};
+
 function AttemptDots({ count, max }: { count: number; max: number }) {
   const dots = [];
   for (let i = 0; i < max; i++) {
@@ -119,19 +152,35 @@ export default React.memo(function ServeJobCard({
   isSelected = false,
   onToggleSelect,
 }: ServeJobCardProps) {
+  // Deadline urgency only applies to jobs still awaiting service — a job
+  // that's already served/failed/archived is resolved and shouldn't show a
+  // pulsing OVERDUE/CRITICAL alert just because its deadline has since passed.
+  const isOpenJob = job.status === 'pending' || job.status === 'in_progress';
+
   const isDueSoon = useMemo(() => {
-    if (!job.deadline) return false;
+    if (!isOpenJob || !job.deadline) return false;
     const deadlineMs = parseTimestamp(job.deadline).getTime();
     const now = Date.now();
     return deadlineMs - now <= 48 * 60 * 60 * 1000 && deadlineMs > now;
-  }, [job.deadline]);
+  }, [isOpenJob, job.deadline]);
 
   const isOverdue = useMemo(() => {
-    if (!job.deadline) return false;
+    if (!isOpenJob || !job.deadline) return false;
     return parseTimestamp(job.deadline).getTime() <= Date.now();
-  }, [job.deadline]);
+  }, [isOpenJob, job.deadline]);
 
-  const isCritical = job.urgency_tier === 'critical';
+  // Same rule as isDueSoon/isOverdue above: urgency describes how hard a job is
+  // still pushing for attention, so it stops applying once the job is resolved.
+  // Gating only the deadline chips left every served/archived card rendering a
+  // red CRITICAL flame and a red ring — on the live queue that was *every* card
+  // in the Served folder, which trains operators to ignore the colour that is
+  // supposed to mean "act now".
+  // Carries the tier rather than a boolean so the JSX below narrows without a
+  // non-null assertion.
+  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'normal'
+    ? job.urgency_tier
+    : null;
+  const isCritical = isOpenJob && job.urgency_tier === 'critical';
   const statusCfg = STATUS_COLORS[job.status] ?? STATUS_COLORS.pending;
 
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -144,6 +193,24 @@ export default React.memo(function ServeJobCard({
   // Selection mode is active whenever the prop is wired up (parent has at
   // least one card selected or is displaying the selection UI).
   const selectionModeActive = onToggleSelect !== undefined;
+
+  // Feature 18: Copy address to clipboard
+  const [copied, setCopied] = useState(false);
+  const handleCopyAddress = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!fullAddress) return;
+    navigator.clipboard?.writeText(fullAddress).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }, [fullAddress]);
+
+  // Feature 27: diligence required warning
+  const needsDiligence = !!job.diligence_required && job.status !== 'served';
+
+  // Return-date urgency
+  const returnDateMs = job.return_date ? parseTimestamp(job.return_date).getTime() : null;
+  const returnOverdue = returnDateMs !== null && returnDateMs <= Date.now() && job.status !== 'served';
+  const returnDueSoon = returnDateMs !== null && !returnOverdue && returnDateMs - Date.now() <= 48 * 60 * 60 * 1000;
 
   return (
     <div
@@ -164,9 +231,9 @@ export default React.memo(function ServeJobCard({
       }}
       className={`
         panel-beveled rounded-[2px] transition-all duration-150 hover:bg-surface-raised hover:shadow-md
-        ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60 animate-pulse' : ''}
+        ${isDueSoon && !isSelected ? 'ring-1 ring-red-500/60' : ''}
         ${isOverdue && !isSelected ? 'ring-1 ring-red-600/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]' : ''}
-        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgba(212,160,23,0.25)]' : ''}
+        ${isSelected ? 'ring-1 ring-brand-400 shadow-[0_0_8px_rgb(var(--accent-silver-400-rgb)/0.25)]' : ''}
         ${!isDueSoon && !isOverdue && !isSelected && isCritical ? 'ring-1 ring-red-500/60' : ''}
       `}
       style={{ background: 'var(--surface-base)', borderColor: 'var(--border-subtle)' }}
@@ -294,7 +361,7 @@ export default React.memo(function ServeJobCard({
             const hrsLeft = Math.floor(msLeft / 3600000);
             const minsLeft = Math.floor((msLeft % 3600000) / 60000);
             return (
-              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
+              <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0">
                 {hrsLeft}h {minsLeft}m LEFT
               </span>
             );
@@ -311,19 +378,79 @@ export default React.memo(function ServeJobCard({
               <Bot className="w-2.5 h-2.5" />AUTO-ASSIGNED
             </span>
           )}
-          {/* Urgency tier badge — critical uses Flame + animate-pulse */}
-          {job.urgency_tier && job.urgency_tier !== 'normal' && (
-            <span title={`Urgency: ${job.urgency_tier}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
-              job.urgency_tier === 'critical'
-                ? 'text-red-300 bg-red-900/40 border-red-600/60 animate-pulse'
+          {/* Urgency tier badge — critical uses a Flame icon. Static: see the
+              note on the status map above for why nothing here animates. */}
+          {shownUrgency && (
+            <span title={`Urgency: ${shownUrgency}`} className={`inline-flex items-center gap-0.5 text-[8px] font-bold px-1 py-0 rounded-[2px] border ${
+              shownUrgency === 'critical'
+                ? 'text-red-300 bg-red-900/40 border-red-600/60'
                 : 'text-amber-400 bg-amber-900/20 border-amber-600/50'
             }`}>
-              {job.urgency_tier === 'critical'
+              {shownUrgency === 'critical'
                 ? <Flame className="w-2.5 h-2.5" />
                 : <AlertTriangle className="w-2.5 h-2.5" />}
-              {job.urgency_tier.toUpperCase()}
+              {shownUrgency.toUpperCase()}
             </span>
           )}
+          {/* Feature 21: Serve type badge */}
+          {job.serve_type && job.serve_type !== 'personal' && (
+            <span className={`text-[8px] font-bold font-mono border rounded-[2px] px-1 py-0 ${SERVE_TYPE_STYLES[job.serve_type] ?? SERVE_TYPE_STYLES.personal}`}>
+              {job.serve_type.toUpperCase()}
+            </span>
+          )}
+          {/* Feature 22: Case type badge */}
+          {job.case_type && (
+            <span className="text-[8px] font-mono text-rmpg-300 bg-rmpg-800/50 border border-rmpg-600/40 px-1 py-0 rounded-[2px]">
+              {formatEnumValue(job.case_type)}
+            </span>
+          )}
+          {/* Feature 24: Payment status badge (only show unpaid/invoiced as warnings) */}
+          {job.payment_status && job.payment_status !== 'paid' && job.payment_status !== 'waived' && (
+            <span className={`inline-flex items-center gap-0.5 text-[8px] font-bold border rounded-[2px] px-1 py-0 ${PAYMENT_STATUS_STYLES[job.payment_status] ?? PAYMENT_STATUS_STYLES.unpaid}`}>
+              <DollarSign className="w-2 h-2" />{job.payment_status.toUpperCase()}
+            </span>
+          )}
+          {/* Feature 27: Diligence required warning */}
+          {needsDiligence && (
+            <span title="Due diligence documentation required" className="inline-flex items-center gap-0.5 text-[8px] font-bold text-amber-300 bg-amber-900/40 border border-amber-700/50 px-1 py-0 rounded-[2px]">
+              <ClipboardList className="w-2.5 h-2.5" />DILIGENCE
+            </span>
+          )}
+          {/* [16] Diligence countdown chip — days until deadline, colored by urgency tier */}
+          {job.deadline && !job.closed_at && (() => {
+            const daysLeft = Math.ceil(
+              (parseTimestamp(job.deadline).getTime() - Date.now()) / 86_400_000,
+            );
+            if (daysLeft > 7) return null;
+            const style = daysLeft <= 1
+              ? 'text-red-300 bg-red-900/50 border-red-600/60'
+              : daysLeft <= 3
+              ? 'text-amber-300 bg-amber-900/40 border-amber-700/50'
+              : 'text-fg-secondary bg-rmpg-800/50 border-rmpg-600/40';
+            return (
+              <span title={`Deadline: ${safeDateStr(job.deadline)}`}
+                className={`inline-flex items-center gap-0.5 text-[8px] font-bold border rounded-[2px] px-1 py-0 ${style}`}>
+                <Calendar className="w-2.5 h-2.5" />{daysLeft <= 0 ? 'OVERDUE' : `${daysLeft}d LEFT`}
+              </span>
+            );
+          })()}
+
+          {/* [17] Never attempted warning — job has been active more than 24h with zero attempts */}
+          {!job.closed_at && (job.attempt_count ?? 0) === 0 &&
+            (Date.now() - parseTimestamp(job.created_at ?? '').getTime()) > 86_400_000 && (
+            <span title="No service attempts yet" className="inline-flex items-center gap-0.5 text-[8px] font-bold text-orange-300 bg-orange-900/40 border border-orange-700/50 px-1 py-0 rounded-[2px]">
+              <AlertTriangle className="w-2.5 h-2.5" />NEVER ATTEMPTED
+            </span>
+          )}
+
+          {/* [18] Witness fee chip — shown when serve_fee or rush_fee indicates a fee is set */}
+          {(Number(job.serve_fee ?? 0) > 0 || Number(job.rush_fee ?? 0) > 0) && (
+            <span title={`Serve fee: $${Number(job.serve_fee ?? 0).toFixed(2)}${Number(job.rush_fee ?? 0) > 0 ? ` + $${Number(job.rush_fee).toFixed(2)} rush` : ''}`}
+              className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/30 border border-green-700/40 px-1 py-0 rounded-[2px]">
+              <DollarSign className="w-2 h-2" />FEE ${(Number(job.serve_fee ?? 0) + Number(job.rush_fee ?? 0)).toFixed(2)}
+            </span>
+          )}
+
           {/* Closed chip — green-800/green-300, shown whenever closed_at is set */}
           {job.closed_at && (
             <span title={`Closed ${safeDateStr(job.closed_at)}`} className="inline-flex items-center gap-0.5 text-[8px] font-bold text-green-300 bg-green-900/50 border border-green-700/50 px-1 py-0 rounded-[2px]">
@@ -343,9 +470,9 @@ export default React.memo(function ServeJobCard({
         <div className="px-2 pb-2 border-t border-rmpg-700/40 pt-2 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
           {/* Linked Dispatch Call */}
           {linkedCall && (
-            <div className="p-2 rounded-[2px] border mb-2" style={{ background: '#88888810', borderColor: '#88888830' }}>
+            <div className="p-2 rounded-[2px] border mb-2" style={{ background: 'rgb(var(--accent-silver-500-rgb) / 0.06)', borderColor: 'rgb(var(--accent-silver-500-rgb) / 0.19)' }}>
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Dispatch Link</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Dispatch Link</span>
                 <button type="button"
                   className="text-[10px] text-rmpg-400 hover:text-rmpg-300 underline"
                   onClick={(e) => { e.stopPropagation(); window.open(`/dispatch?call=${linkedCall.call_number}`, '_blank', 'noopener,noreferrer'); }}
@@ -371,7 +498,7 @@ export default React.memo(function ServeJobCard({
                   return (
                     <div className="mt-1 flex items-center gap-1 text-[9px]">
                       <span className="text-rmpg-400">Compliance:</span>
-                      <span className="font-mono tabular-nums" style={{ color: met === 4 ? '#4ade80' : '#fbbf24' }}>{met}/4 windows</span>
+                      <span className="font-mono tabular-nums" style={{ color: met === 4 ? 'var(--sev-ok)' : 'var(--sev-warn-soft)' }}>{met}/4 windows</span>
                     </div>
                   );
                 } catch { return null; }
@@ -379,14 +506,69 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
-          {/* Case / court / jurisdiction */}
-          <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Case Details</span>
+          {/* Feature 19-20: Contact info — phone, email, DOB */}
+          {(job.recipient_phone || job.recipient_email || job.recipient_dob) && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Contact</span>
+              <div className="mt-0.5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] text-rmpg-300">
+                {job.recipient_phone && (
+                  <div className="flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <a href={`tel:${job.recipient_phone}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline">{job.recipient_phone}</a>
+                  </div>
+                )}
+                {job.recipient_email && (
+                  <div className="flex items-center gap-1">
+                    <Mail className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <a href={`mailto:${job.recipient_email}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline truncate max-w-[120px]">{job.recipient_email}</a>
+                  </div>
+                )}
+                {job.recipient_dob && (
+                  <div className="flex items-center gap-1 col-span-2">
+                    <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span className="text-rmpg-400">DOB:</span>
+                    <span className="font-mono tabular-nums">{job.recipient_dob}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Feature 21-22: Employment info */}
+          {(job.recipient_employer || job.recipient_employer_address) && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Employment</span>
+              <div className="mt-0.5 space-y-0.5 text-[10px] text-rmpg-300">
+                {job.recipient_employer && (
+                  <div className="flex items-center gap-1">
+                    <Building2 className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span>{job.recipient_employer}</span>
+                  </div>
+                )}
+                {job.recipient_employer_address && (
+                  <div className="flex items-center gap-1 ml-4">
+                    <MapPin className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                    <span>{job.recipient_employer_address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Feature 23: Case / court / jurisdiction */}
+          <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Case Details</span>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-rmpg-300">
             {job.case_number && (
               <div className="flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Case:</span>
                 <span className="font-mono tabular-nums text-rmpg-400">{job.case_number}</span>
+              </div>
+            )}
+            {job.sm_job_id && (
+              <div className="flex items-center gap-1">
+                <span className="text-rmpg-400">Job #:</span>
+                <span className="font-mono tabular-nums text-rmpg-300">{job.sm_job_id}</span>
               </div>
             )}
             {job.court_name && (
@@ -439,20 +621,104 @@ export default React.memo(function ServeJobCard({
                 <span className="text-green-300">{safeDateStr(job.intake_screened_at)}</span>
               </div>
             )}
+            {/* Feature 23: Return date */}
+            {job.return_date && (
+              <div className="flex items-center gap-1 col-span-2">
+                <Calendar className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Return Date:</span>
+                <span className={returnOverdue ? 'text-red-400 font-bold' : returnDueSoon ? 'text-amber-400 font-semibold' : ''}>
+                  {safeDateStr(job.return_date)}
+                  {returnOverdue && ' — OVERDUE'}
+                  {returnDueSoon && !returnOverdue && ' — DUE SOON'}
+                </span>
+              </div>
+            )}
+            {/* Feature 10: Relationship (substituted service) */}
+            {job.relationship && (
+              <div className="flex items-center gap-1 col-span-2">
+                <User className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Relationship:</span>
+                <span>{job.relationship}</span>
+              </div>
+            )}
+            {/* Feature 9: Co-defendants */}
+            {job.co_defendants && (
+              <div className="flex items-start gap-1 col-span-2">
+                <Scale className="w-3 h-3 text-rmpg-400 flex-shrink-0 mt-0.5" />
+                <span className="text-rmpg-400 flex-shrink-0">Co-Defendants:</span>
+                <span className="text-rmpg-300">{job.co_defendants}</span>
+              </div>
+            )}
+            {/* Feature 11-13: Billing */}
+            {(job.serve_fee != null || job.rush_fee != null) && (
+              <div className="flex items-center gap-1 col-span-2">
+                <DollarSign className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Fee:</span>
+                <span className="font-mono tabular-nums text-green-300">
+                  ${(Number(job.serve_fee ?? 0) + Number(job.rush_fee ?? 0)).toFixed(2)}
+                  {job.rush_fee ? ` (incl. $${Number(job.rush_fee).toFixed(2)} rush)` : ''}
+                </span>
+                {job.payment_status && (
+                  <span className={`ml-1 text-[8px] font-bold border px-1 py-0 rounded-[2px] ${PAYMENT_STATUS_STYLES[job.payment_status] ?? PAYMENT_STATUS_STYLES.unpaid}`}>
+                    {job.payment_status.toUpperCase()}
+                  </span>
+                )}
+              </div>
+            )}
+            {job.mileage_actual != null && (
+              <div className="flex items-center gap-1">
+                <MapPin className="w-3 h-3 text-rmpg-400 flex-shrink-0" />
+                <span className="text-rmpg-400">Mileage:</span>
+                <span className="font-mono tabular-nums">{Number(job.mileage_actual).toFixed(1)} mi</span>
+              </div>
+            )}
           </div>
+
+          {/* Feature 25-26: Building access notes and contact restrictions */}
+          {job.building_access_notes && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+                <KeyRound className="inline w-3 h-3 mr-1" />Building Access
+              </span>
+              <p className="text-rmpg-300 mt-0.5 text-[10px] bg-surface-sunken/50 rounded-[2px] px-2 py-1 border border-rmpg-700/30">{job.building_access_notes}</p>
+            </div>
+          )}
+          {job.contact_restrictions && (
+            <div>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                <Lock className="inline w-3 h-3 mr-1" />Contact Restrictions
+              </span>
+              <p className="text-amber-200/80 mt-0.5 text-[10px] bg-amber-900/20 rounded-[2px] px-2 py-1 border border-amber-700/30">{job.contact_restrictions}</p>
+            </div>
+          )}
 
           {/* Service instructions */}
           {job.service_instructions && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Instructions</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Instructions</span>
               <p className="text-rmpg-300 mt-0.5">{job.service_instructions}</p>
             </div>
           )}
 
+          {/* Diligence record — sits directly above the raw timeline because it
+              is the READ of that timeline.
+              Shown for every job EXCEPT a served one. The original gate was
+              `isOpenJob`, which was backwards: it hid the panel on exactly the
+              non-service jobs whose Affidavit of Non-Service is built from this
+              chain, and on the live queue (0 pending, 0 in-progress) that meant
+              it never rendered at all. Only a served job makes it moot — there
+              the chain is history, not evidence still being assembled. */}
+          {job.status !== 'served' && job.attempts && job.attempts.length > 0 && (
+            <DiligencePanel attempts={job.attempts} />
+          )}
+
+          {/* [19] Comment thread panel — always visible in expanded view */}
+          <ServeJobComments jobId={job.id} />
+
           {/* Prior attempts timeline */}
           {job.attempts && job.attempts.length > 0 && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Prior Attempts</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Prior Attempts</span>
               <div className="mt-1 space-y-1">
                 {job.attempts.map((attempt) => (
                   <div
@@ -461,6 +727,19 @@ export default React.memo(function ServeJobCard({
                   >
                     <span className="text-[10px] font-mono text-rmpg-400 flex-shrink-0 w-16">
                       {safeDateStr(attempt.attempt_at)}
+                    </span>
+                    {/* Time of day is load-bearing on serve jobs, not decoration:
+                        diligence requirements are written as time windows ("1
+                        attempt between 7AM and 9AM, 1 between 9AM and 7PM, 1
+                        between 7PM and 9PM"), so an officer reviewing prior
+                        attempts cannot tell whether the windows are covered
+                        from the date alone. Mountain Time, same as every other
+                        timestamp surface. */}
+                    <span
+                      className="text-[10px] font-mono text-fg-secondary flex-shrink-0 w-11 tabular-nums"
+                      title="Attempt time (Mountain Time)"
+                    >
+                      {safeTimeStr(attempt.attempt_at, '')}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
                       {formatEnumValue(attempt.attempt_type)}
@@ -478,7 +757,7 @@ export default React.memo(function ServeJobCard({
                       return (
                         <span
                           className={`text-[10px] truncate flex-1 min-w-0 ${
-                            isFallback ? 'italic text-rmpg-500' : 'text-rmpg-400'
+                            isFallback ? 'italic text-fg-muted' : 'text-rmpg-400'
                           }`}
                           title={isFallback ? 'No operator notes — showing disposition code' : undefined}
                         >
@@ -554,7 +833,7 @@ export default React.memo(function ServeJobCard({
           {/* Notes */}
           {job.notes && (
             <div>
-              <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">Notes</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>Notes</span>
               <p className="text-rmpg-300 mt-0.5">{job.notes}</p>
             </div>
           )}
@@ -572,10 +851,34 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
+        {/* Feature 18: Copy address */}
+        {fullAddress && (
+          <button type="button"
+            onClick={handleCopyAddress}
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50"
+            title="Copy address"
+            aria-label={`Copy address for ${job.recipient_name}`}
+          >
+            {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        )}
+        {/* Feature 19: Quick call */}
+        {job.recipient_phone && (
+          <a href={`tel:${job.recipient_phone}`}
+            onClick={e => e.stopPropagation()}
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-blue-400 hover:bg-blue-900/30 transition-colors duration-150"
+            title={`Call ${job.recipient_phone}`}
+            aria-label={`Call ${job.recipient_name}`}
+          >
+            <Phone className="w-3 h-3" />
+            Call
+          </a>
+        )}
         {/* Directions link */}
         <button type="button"
           onClick={(e) => { e.stopPropagation(); window.open(`https://www.openstreetmap.org/directions?to=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-amber-900/20"
           title="Open in Maps"
           aria-label={`Open Maps to ${job.recipient_name}`}
         >
@@ -584,7 +887,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onNavigate(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
           title="Navigate"
           aria-label={`Navigate to ${job.recipient_name}`}
         >
@@ -593,7 +896,7 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onAttempt(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-green-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-green-400 hover:bg-green-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-green-900/20"
           title="Attempt Service"
           aria-label={`Attempt service for ${job.recipient_name}`}
         >
@@ -602,21 +905,34 @@ export default React.memo(function ServeJobCard({
         </button>
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onSkipTrace(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-surface-sunken/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
           title="Skip Trace"
           aria-label={`Skip trace for ${job.recipient_name}`}
         >
           <Search className="w-3 h-3" />
           Skip Trace
         </button>
+        {/* Acknowledgement of Service — QR for the subject's phone, or
+            blank paper for hand completion. Lives in the action row
+            because it is used AT the door, alongside Attempt. */}
+        <ServeReceiptActions job={job} compact />
         <button type="button"
           onClick={(e) => { e.stopPropagation(); onFlagAddress(job.id); }}
-          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-amber-900/20"
           title="Flag Bad Address"
           aria-label={`Flag bad address for ${job.recipient_name}`}
         >
           <AlertTriangle className="w-3 h-3" />
           Flag
+        </button>
+        <button type="button"
+          onClick={(e) => { e.stopPropagation(); onEdit(job.id); }}
+          className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-rmpg-400 hover:bg-surface-sunken/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[color:var(--accent-silver-400)]/50 focus:bg-surface-sunken/20"
+          title="Edit Job"
+          aria-label={`Edit job for ${job.recipient_name}`}
+        >
+          <Pencil className="w-3 h-3" />
+          Edit
         </button>
       </div>
     </div>

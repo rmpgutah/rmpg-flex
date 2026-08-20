@@ -12,6 +12,8 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { safeDateStr, localToday } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface CostTotals {
   fuel: number;
@@ -23,7 +25,7 @@ interface CostTotals {
   utilities: number;
 }
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   assignedOfficer?: string;
   assignedUnit?: string;
@@ -31,7 +33,7 @@ interface Args {
   recentMaintenance?: Array<{ type: string; performed_at: string; cost?: number }>;
 }
 
-export function generateFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assignedUnit, costTotals, recentMaintenance }: Args): void {
+export function buildFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assignedUnit, costTotals, recentMaintenance }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -72,7 +74,7 @@ export function generateFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assig
   doc.setFontSize(10);
   const infoFields: [string, string][] = [
     ['Vehicle Number', `#${vehicle.vehicle_number}`],
-    ['Status', (vehicle.status || 'unknown').replace('_', ' ').toUpperCase()],
+    ['Status', toDisplayLabel(vehicle.status || 'unknown').toUpperCase()],
     ['Year / Make / Model', [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || '-'],
     ['Color', vehicle.color || '-'],
     ['VIN', vehicle.vin || '-'],
@@ -177,8 +179,8 @@ export function generateFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assig
     y += 12;
     doc.setFont('helvetica', 'normal');
     for (const m of recentMaintenance.slice(0, 5)) {
-      doc.text(m.performed_at ? m.performed_at.slice(0, 10) : '-', marginX, y);
-      doc.text((m.type || 'service').replace('_', ' '), marginX + 100, y);
+      doc.text(m.performed_at ? safeDateStr(m.performed_at, '-') : '-', marginX, y);
+      doc.text(toDisplayLabel(m.type || 'service'), marginX + 100, y);
       doc.text(m.cost != null ? fmtCurrency(m.cost) : '-', marginX + 250, y);
       y += 11;
     }
@@ -197,6 +199,13 @@ export function generateFleetVehicleSummaryPdf({ vehicle, assignedOfficer, assig
   doc.text('Date', marginX + 300, y + 12);
   doc.setTextColor(0);
 
-  const filename = `vehicle-summary-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the vehicle summary PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetVehicleSummaryPdf(args: Args): void {
+  const doc = buildFleetVehicleSummaryPdf(args);
+  const filename = `vehicle-summary-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

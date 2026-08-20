@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 
+import { log } from '../utils/logger';
 const mapData = new Hono<Env>();
 
 // GET /api/map-data/:path+ — Stream files from R2
@@ -39,6 +40,7 @@ mapData.get('/', async (c) => {
     }));
     return c.json({ files });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/mapData.ts' }, err);
     return c.json({ error: 'Failed to list files' }, 500);
   }
 });

@@ -15,6 +15,7 @@ import { escapeHtml } from '../utils/sanitize';
 import { devLog, devWarn } from '../utils/devLog';
 import { asArray } from '../utils/asArray';
 import { safeRemoveLayer, safeRemoveSource, getSourceSafe } from '../utils/mapboxSafeLayer';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -77,12 +78,12 @@ function buildAlertPopupHtml(alerts: PremiseAlertInfo[], address: string): strin
   const alertsHtml = alerts.map(a => {
     const color = ALERT_LEVEL_COLORS[a.alert_level] || '#888';
     return `
-      <div style="margin-bottom:6px;padding:6px;background:${color}11;border-left:3px solid ${color};border-radius:2px;">
+      <div style="margin-bottom:6px;padding:6px;background:${withAlpha(color, '11')};border-left:3px solid ${color};border-radius:2px;">
         <div style="font-weight:700;color:${color};font-size:10px;text-transform:uppercase;">${escapeHtml(a.alert_level)} — ${escapeHtml(a.alert_type)}</div>
         <div style="font-weight:600;color:#e0e0e0;margin-top:2px;">${escapeHtml(a.title)}</div>
         ${a.description ? `<div style="color:#888;font-size:10px;margin-top:2px;">${escapeHtml(a.description)}</div>` : ''}
         ${a.flags ? `<div style="margin-top:3px;">${a.flags.split(',').map(f =>
-          `<span style="background:${color}22;color:${color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${escapeHtml(f.trim())}</span>`
+          `<span style="background:${withAlpha(color, '22')};color:${color};padding:1px 4px;border-radius:2px;font-size:8px;font-weight:700;margin-right:3px;">${escapeHtml(f.trim())}</span>`
         ).join('')}</div>` : ''}
       </div>`;
   }).join('');

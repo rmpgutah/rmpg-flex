@@ -12,7 +12,9 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { importWithRetry } from './importWithRetry';
 import { openPdfDocument } from './openPdfDocument';
+import { localToday } from './dateUtils';
 
 interface ShortcutGroup {
   title: string;
@@ -67,7 +69,7 @@ function header(ctx: Ctx, title: string): void {
   d.text(title, PAGE.MARGIN, 42);
   d.setFontSize(8);
   d.text('CONFIDENTIAL — AUTHORIZED USE ONLY', PAGE.W - PAGE.MARGIN, 42, { align: 'right' });
-  d.text(new Date().toISOString().slice(0, 10), PAGE.W - PAGE.MARGIN, 24, { align: 'right' });
+  d.text(localToday(), PAGE.W - PAGE.MARGIN, 24, { align: 'right' });
   ctx.y = 72;
 }
 
@@ -77,7 +79,7 @@ function footer(ctx: Ctx, totalPages: number): void {
   d.setFontSize(7);
   d.setTextColor(COLOR.MUTED);
   d.text(
-    `Page ${ctx.page} of ${totalPages}  ·  Quick Reference Card  ·  Generated ${new Date().toISOString().slice(0, 10)}`,
+    `Page ${ctx.page} of ${totalPages}  ·  Quick Reference Card  ·  Generated ${localToday()}`,
     PAGE.W / 2,
     PAGE.H - 20,
     { align: 'center' },
@@ -302,7 +304,7 @@ export function buildHelpQuickReferencePdf(input: HelpQuickReferenceInput): jsPD
 /** Build + open the PDF in a new tab (popup-blocker safe). */
 export function generateHelpQuickReferencePdf(input: HelpQuickReferenceInput): void {
   const doc = buildHelpQuickReferencePdf(input);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = localToday();
   openPdfDocument(doc, `RMPG-Flex-Quick-Reference-${stamp}.pdf`);
 }
 
@@ -318,8 +320,8 @@ export function generateHelpQuickReferencePdf(input: HelpQuickReferenceInput): v
  */
 export async function generateHelpQuickReferencePdfWithDefaults(): Promise<void> {
   const [{ SHORTCUT_GROUPS, PRIORITIES, UNIT_STATUSES, CAD_COMMANDS }, { APP_VERSION }] = await Promise.all([
-    import('./helpReferenceData'),
-    import('./version'),
+    importWithRetry(() => import('./helpReferenceData')),
+    importWithRetry(() => import('./version')),
   ]);
   generateHelpQuickReferencePdf({
     shortcutGroups: SHORTCUT_GROUPS,

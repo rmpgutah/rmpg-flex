@@ -54,6 +54,13 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 const SCAN_STATUSES = new Set(['on_time', 'late', 'missed']);
 const BREAK_TYPES = new Set(['break', 'meal', 'rest']);
 
+// How long an un-ended break is still considered the officer's CURRENT break
+// by POST /breaks/start. Past this it is treated as abandoned (someone forgot
+// to press End) and a new break is started instead. 12h comfortably covers a
+// long shift, including one that crosses midnight, while guaranteeing a stale
+// row can never permanently block the Break button. See the query below.
+const OPEN_BREAK_WINDOW_HOURS = 12;
+
 // ─────────────────────────────────────────────────────────────
 // Static / specific paths first (Hono trie still prefers literals,
 // but explicit ordering documents the contract).
@@ -192,7 +199,7 @@ pt.post('/checkpoints/:id/archive', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   await execute(
     getDb(c.env),
-    `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now') WHERE id = ?`,
     id,
   );
   return c.json({ success: true });
@@ -237,14 +244,14 @@ pt.post('/scan', async (c) => {
   );
   let status = 'on_time';
   if (last?.scanned_at) {
-    // patrol_scans.scanned_at is written via datetime('now','localtime') →
-    // America/Denver wall-clock. Workers run in UTC, so parsing as JS Date
-    // treats the stored time as UTC and skews ~6–7h, false-marking many
-    // scans as "late". Compute minutes-since in SQL where both sides are
-    // localtime — no timezone juggling needed.
+    // patrol_scans.scanned_at is written via datetime('now') → UTC. Parsing
+    // it as a JS Date in a non-UTC browser/runtime would skew the delta by
+    // hours. Compute minutes-since in SQL instead, where both sides
+    // (julianday('now') and the stored value) are UTC — no timezone
+    // juggling needed.
     const sinceRow = await queryFirst<{ mins: number }>(
       db,
-      `SELECT (julianday('now','localtime') - julianday(?)) * 1440 AS mins`,
+      `SELECT (julianday('now') - julianday(?)) * 1440 AS mins`,
       last.scanned_at,
     );
     const minutesSince = Number(sinceRow?.mins ?? 0);
@@ -357,7 +364,7 @@ pt.get('/compliance', async (c) => {
        FROM patrol_checkpoints cp
        LEFT JOIN patrol_scans s
          ON s.checkpoint_id = cp.id
-        AND s.scanned_at >= datetime('now','localtime','-' || ? || ' days')
+        AND s.scanned_at >= datetime('now','-' || ? || ' days')
        WHERE cp.is_active = 1 ${where}
        GROUP BY cp.id, cp.name, cp.property_id
        ORDER BY cp.property_id, cp.sequence_order`,
@@ -382,7 +389,7 @@ pt.get('/exceptions', async (c) => {
        LEFT JOIN patrol_checkpoints cp ON cp.id = s.checkpoint_id
        LEFT JOIN users u ON u.id = s.officer_id
        WHERE s.status IN ('late','missed')
-         AND s.scanned_at >= datetime('now','localtime','-' || ? || ' days')
+         AND s.scanned_at >= datetime('now','-' || ? || ' days')
        ORDER BY s.scanned_at DESC LIMIT 200`,
     days,
   );
@@ -447,13 +454,70 @@ pt.post('/breaks/start', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const breakType = BREAK_TYPES.has(body.break_type) ? body.break_type : 'break';
   const today = new Date().toISOString().slice(0, 10);
+  const db = getDb(c.env);
+
+  // An officer can only be on ONE break at a time, and this INSERT used to be
+  // unconditional. A double-click (or a second device) therefore created two
+  // rows with break_end IS NULL — and /breaks/end below closes only the
+  // most-recent open break, so the EARLIER duplicate could never be closed by
+  // any later action. It stayed open forever and skewed break/time tracking.
+  //
+  // Confirmed in live data before this fix: patrol_breaks ids 3/4 (2026-07-04
+  // 04:18:21 and :23) and 10/11 (2026-07-29 21:26:43 and :45) are double-click
+  // pairs two seconds apart.
+  //
+  // Returning the already-open break makes "start break" idempotent, which the
+  // client-side disabled guard alone cannot achieve across tabs or devices.
+  const open = await queryFirst<{ id: number; break_start: string; break_type: string }>(
+    db,
+    // The window is load-bearing, not a nicety. "Has an open break" was
+    // originally unbounded in time, but an officer who forgets to press End
+    // leaves a row open forever — and an unbounded guard then treats that
+    // abandoned row as the officer's CURRENT break and never lets them start
+    // a new one again. Live D1 had 7 such rows for officer 1, the oldest from
+    // 2026-06-09, so /breaks/start would have returned a two-day-old break on
+    // every click and the Break button would have looked broken.
+    //
+    // A break older than the window is abandoned, not open: ignore it and
+    // start a fresh one. Deliberately NOT scoped to shift_date — a night shift
+    // legitimately spans midnight, so a date comparison would split it.
+    `SELECT id, break_start, break_type FROM patrol_breaks
+       WHERE officer_id = ? AND break_end IS NULL
+         AND break_start >= datetime('now', ?)
+       ORDER BY id DESC LIMIT 1`,
+    user.id, `-${OPEN_BREAK_WINDOW_HOURS} hours`,
+  );
+  if (open) {
+    return c.json({
+      success: true,
+      id: open.id,
+      break_start: open.break_start,
+      break_type: open.break_type,
+      already_open: true,
+    });
+  }
+
   const r = await execute(
-    getDb(c.env),
+    db,
     `INSERT INTO patrol_breaks (officer_id, shift_date, break_start, break_type)
-     VALUES (?,?, datetime('now','localtime'), ?)`,
+     VALUES (?,?, datetime('now'), ?)`,
     user.id, body.shift_date ?? today, breakType,
   );
-  return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  // Return the canonical server clock so the client's elapsed counter does not
+  // drift off the device clock (it previously fell back to a local new Date()
+  // because this handler never sent break_start at all).
+  const created = await queryFirst<{ break_start: string }>(
+    db,
+    'SELECT break_start FROM patrol_breaks WHERE id = ?',
+    r.meta.last_row_id,
+  );
+  return c.json({
+    success: true,
+    id: r.meta.last_row_id,
+    break_start: created?.break_start,
+    break_type: breakType,
+    already_open: false,
+  }, 201);
 });
 
 // POST /breaks/end — close the most-recent open break for this officer.
@@ -473,8 +537,8 @@ pt.post('/breaks/end', async (c) => {
   await execute(
     db,
     `UPDATE patrol_breaks
-       SET break_end = datetime('now','localtime'),
-           duration_minutes = (julianday(datetime('now','localtime')) - julianday(break_start)) * 1440
+       SET break_end = datetime('now'),
+           duration_minutes = (julianday(datetime('now')) - julianday(break_start)) * 1440
      WHERE id = ?`,
     open.id,
   );
@@ -522,7 +586,7 @@ pt.post('/verify-tour', async (c) => {
     db,
     `INSERT INTO patrol_tour_verifications
        (officer_id, tour_date, verified_by, verified_at, status, notes, total_scans, on_time_scans)
-     VALUES (?,?,?, datetime('now','localtime'), ?, ?, ?, ?)
+     VALUES (?,?,?, datetime('now'), ?, ?, ?, ?)
      ON CONFLICT(officer_id, tour_date) DO UPDATE SET
        verified_by = excluded.verified_by,
        verified_at = excluded.verified_at,
@@ -530,7 +594,7 @@ pt.post('/verify-tour', async (c) => {
        notes = excluded.notes,
        total_scans = excluded.total_scans,
        on_time_scans = excluded.on_time_scans,
-       updated_at = datetime('now','localtime')`,
+       updated_at = datetime('now')`,
     body.officer_id, body.tour_date, user?.id ?? null, status, body.notes ?? null,
     totals?.total ?? 0, totals?.on_time ?? 0,
   );

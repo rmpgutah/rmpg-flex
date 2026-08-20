@@ -4,13 +4,20 @@ import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, URL } from 'url';
 import path from 'path';
 import { execFileSync } from 'child_process';
+import { stampCfAsync } from './src/utils/rocketLoaderOptout';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
+let buildSha = 'dev';
+try {
+  buildSha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf-8' }).trim();
+} catch { /* non-git env — keep 'dev' */ }
 
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    'import.meta.env.VITE_BUILD_SHA': JSON.stringify(buildSha),
   },
   plugins: [
     react(),
@@ -31,6 +38,38 @@ export default defineConfig({
           // dist/sw.js absent during watch mode or if build failed — no-op
         }
       },
+    },
+    {
+      // ── Rocket Loader opt-out ────────────────────────────────────────────
+      // Cloudflare Rocket Loader is enabled on the rmpgutah.us zone and BREAKS
+      // this app. It rewrites the entry script's type attribute:
+      //
+      //   <script type="module" src="/assets/index-<hash>.js">
+      //   -> <script type="<cf-hash>-module" src="/assets/index-<hash>.js">
+      //
+      // A mangled type is not a module type, so the browser fetches the bundle
+      // (network shows 200) but never executes it. React never mounts and the
+      // page sits on the #pre-splash "INITIALIZING" div forever. Confirmed live
+      // 2026-07-31 on a fresh profile with no service worker and no caches.
+      //
+      // Why it was invisible: sw.js's CACHE_NAME is stamped from the git SHA, so
+      // a warm service worker kept serving the app — until a deploy rotated the
+      // cache and forced every client back through the rewritten HTML.
+      //
+      // `data-cfasync="false"` is Cloudflare's documented opt-out:
+      // https://developers.cloudflare.com/speed/optimization/content/rocket-loader/ignore-javascripts/
+      // Two constraints from those docs, both satisfied here: the attribute must
+      // appear BEFORE `src`, and dependent scripts need it too — which is why
+      // this stamps EVERY script in index.html, not just the module entry. The
+      // inline pre-paint theme resolver matters as much as the entry: deferring
+      // it would reintroduce the theme FOUC that script exists to prevent.
+      //
+      // This is defense-in-depth, not a substitute for turning Rocket Loader off
+      // at the zone — but it means a future accidental re-enable cannot wedge
+      // the app again.
+      name: 'rocket-loader-optout',
+      enforce: 'post' as const,
+      transformIndexHtml: (html: string) => stampCfAsync(html),
     },
   ],
   resolve: {

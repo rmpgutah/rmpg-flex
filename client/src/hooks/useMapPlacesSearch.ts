@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxForwardGeocode, mapboxTilequery, type MapboxGeocodingResult } from '../services/mapboxApiService';
+import { withAlpha } from '../utils/withAlpha';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -31,14 +32,14 @@ export interface PlaceResult {
 }
 
 export const PLACE_CATEGORIES: PlaceCategory[] = [
-  { id: 'hospital', label: 'Hospitals', icon: '🏥', keywords: ['hospital', 'emergency room', 'medical center'], color: '#ef4444' },
-  { id: 'fire_station', label: 'Fire Stations', icon: '🚒', keywords: ['fire station', 'fire department'], color: '#f97316' },
+  { id: 'hospital', label: 'Hospitals', icon: '🏥', keywords: ['hospital', 'emergency room', 'medical center'], color: 'var(--sev-critical)' },
+  { id: 'fire_station', label: 'Fire Stations', icon: '🚒', keywords: ['fire station', 'fire department'], color: 'var(--sev-high)' },
   { id: 'police', label: 'Police Stations', icon: '🚔', keywords: ['police station', 'sheriff', 'law enforcement'], color: '#3b82f6' },
   { id: 'school', label: 'Schools', icon: '🏫', keywords: ['school', 'elementary', 'high school', 'university'], color: '#a855f7' },
-  { id: 'gas_station', label: 'Gas Stations', icon: '⛽', keywords: ['gas station', 'fuel', 'petrol'], color: '#22c55e' },
+  { id: 'gas_station', label: 'Gas Stations', icon: '⛽', keywords: ['gas station', 'fuel', 'petrol'], color: 'var(--sev-ok)' },
   { id: 'pharmacy', label: 'Pharmacies', icon: '💊', keywords: ['pharmacy', 'drugstore', 'CVS', 'Walgreens'], color: '#ec4899' },
   { id: 'shelter', label: 'Shelters', icon: '🏠', keywords: ['shelter', 'homeless shelter', 'refuge'], color: '#14b8a6' },
-  { id: 'church', label: 'Places of Worship', icon: '⛪', keywords: ['church', 'mosque', 'temple', 'synagogue'], color: '#f59e0b' },
+  { id: 'church', label: 'Places of Worship', icon: '⛪', keywords: ['church', 'mosque', 'temple', 'synagogue'], color: 'var(--sev-warn)' },
 ];
 
 // ── Hook ──────────────────────────────────────────────────
@@ -108,7 +109,7 @@ export function useMapPlacesSearch(
           background:${category.color};border:2px solid #fff;
           display:flex;align-items:center;justify-content:center;
           font-size:14px;cursor:pointer;
-          box-shadow:0 0 8px ${category.color}80;
+          box-shadow:0 0 8px ${withAlpha(category.color, '80')};
         `;
         el.textContent = category.icon;
         el.title = place.name;

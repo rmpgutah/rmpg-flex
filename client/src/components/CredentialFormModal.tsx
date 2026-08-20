@@ -77,7 +77,7 @@ export default function CredentialFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<CredentialFormData>({
-    storageKey: 'rmpg_credential_form',
+    storageKey: `rmpg_credential_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -229,7 +229,7 @@ export default function CredentialFormModal({
           maxLength={2000}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-100 px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
+        <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/2000</div>
       </div>
     </FormModal>
   );

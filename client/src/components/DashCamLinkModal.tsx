@@ -102,14 +102,14 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/60 overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={onClose}>
       <div
-        className="w-full max-w-lg mx-4 panel-beveled bg-surface-base animate-fade-in"
+        className="w-full max-w-lg mx-4 panel-beveled bg-surface-base animate-fade-in my-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Title bar */}
         <div className="panel-title-bar flex items-center gap-2">
-          <Link2 className="w-3 h-3" style={{ color: '#888888' }} />
+          <Link2 className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
           <span>LINK VIDEO TO RECORDS</span>
           <button type="button"
             onClick={onClose}
@@ -175,19 +175,19 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
 
           {/* Existing links */}
           <div>
-            <h4 className="text-[9px] font-bold text-rmpg-500 uppercase tracking-wider mb-2">
+            <h4 className="text-[9px] font-bold text-fg-secondary uppercase tracking-wider mb-2">
               Linked Records ({links.length})
             </h4>
 
             {loading ? (
               <div className="flex items-center justify-center py-4 gap-2">
-                <Loader2 className="w-3 h-3 animate-spin text-rmpg-500" />
+                <Loader2 className="w-3 h-3 animate-spin text-fg-muted" />
                 <span className="text-[10px] text-rmpg-400">Loading...</span>
               </div>
             ) : links.length === 0 ? (
               <div className="text-center py-4">
-                <Link2 className="w-5 h-5 mx-auto mb-1 text-rmpg-600" />
-                <p className="text-[10px] text-rmpg-500">No linked records</p>
+                <Link2 className="w-5 h-5 mx-auto mb-1 text-fg-muted" />
+                <p className="text-[10px] text-fg-muted">No linked records</p>
               </div>
             ) : (
               <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
@@ -206,9 +206,9 @@ export default function DashCamLinkModal({ isOpen, onClose, videoId, videoTitle,
                           <span className="text-rmpg-400"> #{link.entity_id}</span>
                         </div>
                         {link.notes && (
-                          <div className="text-[9px] text-rmpg-500 truncate">{link.notes}</div>
+                          <div className="text-[9px] text-fg-muted truncate">{link.notes}</div>
                         )}
-                        <div className="text-[8px] text-rmpg-600">
+                        <div className="text-[8px] text-fg-muted">
                           by {link.linked_by} — {safeDateStr(link.created_at)}
                         </div>
                       </div>

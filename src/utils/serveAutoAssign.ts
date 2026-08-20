@@ -67,7 +67,7 @@ export async function autoAssignServeJob(
   const newStatus = job.status === 'pending' ? 'assigned' : job.status;
   await execute(
     db,
-    "UPDATE serve_queue SET officer_id = ?, status = ?, auto_assigned = 1, updated_at = datetime('now','localtime') WHERE id = ?",
+    "UPDATE serve_queue SET officer_id = ?, status = ?, auto_assigned = 1, updated_at = datetime('now') WHERE id = ?",
     pick.id, newStatus, queueId,
   );
 

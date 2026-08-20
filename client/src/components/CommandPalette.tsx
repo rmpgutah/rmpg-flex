@@ -10,7 +10,7 @@
 // ============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Search, Terminal, Database, User, Car, CornerDownLeft } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
@@ -178,32 +178,32 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
     >
       <div
         className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-xl mx-4 animate-dropdown-appear overflow-hidden"
-        style={{ borderTop: '2px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }}
+        style={{ borderTop: '2px solid var(--field-label-color)', boxShadow: '0 16px 48px rgba(0 0 0 / 0.6), 0 4px 16px rgba(0 0 0 / 0.4)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-rmpg-700">
-          <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#d4a017' }} />
+          <Search className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--field-label-color)' }} />
           <input id="ff-commandpalette-0"
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search records, run NCIC, jump to a page…"
-            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-rmpg-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-rmpg-100 placeholder-fg-muted focus:outline-none"
             aria-label="Command palette query"
             autoComplete="off" spellCheck={false}
           />
-          {searching && <span className="text-[9px] font-mono text-rmpg-500 animate-pulse">SEARCHING…</span>}
-          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken border border-border-default text-rmpg-500 rounded-sm">ESC</kbd>
+          {searching && <span className="text-[9px] font-mono text-fg-muted animate-pulse">SEARCHING…</span>}
+          <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-surface-sunken border border-border-default text-fg-muted rounded-sm">ESC</kbd>
         </div>
 
         {/* Results */}
         <div ref={listRef} className="max-h-[420px] overflow-y-auto scrollbar-dark">
           {items.length === 0 ? (
-            <div className="p-6 text-center text-rmpg-500 text-xs">
+            <div className="p-6 text-center text-fg-muted text-xs">
               {query.trim().length === 0
-                ? <>Type to search records, run an NCIC check, or jump to a module<div className="text-rmpg-600 mt-1">{platformMeta} toggles this palette</div></>
+                ? <>Type to search records, run an NCIC check, or jump to a module<div className="text-fg-muted mt-1">{platformMeta} toggles this palette</div></>
                 : searching ? 'Searching…' : 'No matches'}
             </div>
           ) : (
@@ -215,7 +215,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
               const rows: React.ReactNode[] = [];
               if (lastSection !== section) {
                 rows.push(
-                  <div key={`hdr-${section}`} className="px-4 pt-2.5 pb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--rmpg-400)', letterSpacing: '0.12em' }}>
+                  <div key={`hdr-${section}`} className="px-4 pt-2.5 pb-1 text-[9px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-secondary)', letterSpacing: '0.12em' }}>
                     {section}
                   </div>
                 );
@@ -234,18 +234,18 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
                     className="w-full flex items-center gap-3 px-4 py-2 text-left border-l-2 transition-colors duration-100"
                     style={{
                       background: isActive ? 'rgba(212,160,23,0.12)' : 'transparent',
-                      borderLeftColor: isActive ? '#d4a017' : 'transparent',
+                      borderLeftColor: isActive ? 'var(--field-label-color)' : 'transparent',
                     }}
                   >
-                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? '#e8b820' : '#888888' }} />
+                    <Icon className="w-4 h-4 flex-shrink-0" style={{ color: isActive ? 'var(--field-label-color)' : 'var(--text-secondary)' }} />
                     <span className="flex flex-col min-w-0 flex-1">
-                      <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--rmpg-300)' }}>{it.label}</span>
-                      {it.sublabel && <span className="min-w-0 text-[10px] text-rmpg-500 truncate">{it.sublabel}</span>}
+                      <span className="min-w-0 text-sm truncate" style={{ color: isActive ? '#fff' : 'var(--text-secondary)' }}>{it.label}</span>
+                      {it.sublabel && <span className="min-w-0 text-[10px] text-fg-muted truncate">{it.sublabel}</span>}
                     </span>
                     {it.badge && (
-                      <span className="text-[9px] font-mono text-rmpg-500 ml-auto flex-shrink-0">{it.badge}</span>
+                      <span className="text-[9px] font-mono text-fg-muted ml-auto flex-shrink-0">{it.badge}</span>
                     )}
-                    {isActive && <CornerDownLeft className="w-3 h-3 flex-shrink-0" style={{ color: '#d4a017' }} aria-hidden="true" />}
+                    {isActive && <CornerDownLeft className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--field-label-color)' }} aria-hidden="true" />}
                   </button>
                 );
               });
@@ -255,7 +255,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
         </div>
 
         {/* Footer hint */}
-        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-rmpg-700 text-[9px] text-rmpg-600 font-mono">
+        <div className="flex items-center gap-4 px-4 py-1.5 border-t border-rmpg-700 text-[9px] text-fg-muted font-mono">
           <span><kbd className="text-rmpg-400">↑↓</kbd> navigate</span>
           <span><kbd className="text-rmpg-400">↵</kbd> open</span>
           <span><kbd className="text-rmpg-400">esc</kbd> close</span>

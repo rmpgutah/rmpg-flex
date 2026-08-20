@@ -376,7 +376,7 @@ export default function IncidentFormModal({
     signalSaved,
     snapshot,
   } = useFormDraft<IncidentFormData>({
-    storageKey: 'rmpg_incident_form',
+    storageKey: `rmpg_incident_form_${editingIncident?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -596,7 +596,7 @@ export default function IncidentFormModal({
                 if (suggestions.length === 0) return null;
                 return (
                   <div className="mt-1 flex flex-wrap gap-1">
-                    <span className="text-[8px] text-rmpg-500">Suggested:</span>
+                    <span className="text-[8px] text-fg-muted">Suggested:</span>
                     {suggestions.slice(0, 3).map(s => (
                       <button
                         key={s.type}
@@ -1452,7 +1452,7 @@ export default function IncidentFormModal({
                 />
               </div>
             </div>
-            <p className="text-[10px] text-rmpg-500">
+            <p className="text-[10px] text-fg-muted">
               Guided detail entries are appended to the saved narrative automatically and loaded back into these fields when you reopen the report.
             </p>
           </div>
@@ -1480,7 +1480,7 @@ export default function IncidentFormModal({
             onChange={(e) => update('narrative', e.target.value)}
             spellCheck={true}
           />
-          <p className="text-[10px] text-rmpg-500 mt-1">
+          <p className="text-[10px] text-fg-muted mt-1">
             {/* Feature 39: Word count display */}
             {compiledNarrative.length} characters | {compiledNarrative.split(/\s+/).filter(Boolean).length} words after guided details
             {compiledNarrative.split(/\s+/).filter(Boolean).length >= 100 && (
@@ -1493,7 +1493,7 @@ export default function IncidentFormModal({
               type="button"
               className="toolbar-btn text-[9px]"
               onClick={() => {
-                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString()}\nWitness Contact: `;
+                const template = `WITNESS STATEMENT\n\nI, [Witness Name], state the following:\n\nOn ${formData.occurred_date || '[Date]'} at approximately ${formData.occurred_time || '[Time]'}, at ${formData.location_address || '[Location]'}, I observed the following:\n\n[Describe what you saw, heard, or experienced in your own words]\n\nI declare under penalty of perjury that the foregoing is true and correct.\n\nSignature: ____________________\nDate: ${new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver' })}\nWitness Contact: `;
                 update('narrative', formData.narrative + (formData.narrative ? '\n\n' : '') + template);
               }}
             >

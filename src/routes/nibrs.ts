@@ -12,6 +12,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 
+import { log } from '../utils/logger';
 const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const EXPORT_ROLES = ['admin', 'manager', 'supervisor'];
 
@@ -190,7 +191,8 @@ nibrs.get('/validate/:incidentId', requireRole(...READ_ROLES), async (c) => {
     const id = parseInt(c.req.param('incidentId') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid incident id', code: 'INVALID_ID' }, 400);
     return c.json(await validateIncidentForNibrs(db, id));
-  } catch {
+  } catch (err) {
+    log.error('GET /validate/:incidentId failed', { src: 'src/routes/nibrs.ts' }, err);
     return c.json({ error: 'Failed to validate', code: 'NIBRS_VALIDATE_ERR' }, 500);
   }
 });

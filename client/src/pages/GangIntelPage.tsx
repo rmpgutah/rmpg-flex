@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -251,7 +251,7 @@ export default function GangIntelPage() {
               : 'badge-p3'
           }`}
         >
-          {r.threat_level}
+          {formatEnumValue(r.threat_level)}
         </span>
       ),
     },
@@ -342,12 +342,12 @@ export default function GangIntelPage() {
       {/* Member form modal */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.70)' }}
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
+          style={{ background: 'rgba(0 0 0 / 0.70)' }}
           onClick={() => setFormOpen(false)}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={e => e.stopPropagation()}
           >

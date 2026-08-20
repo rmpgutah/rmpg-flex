@@ -1,0 +1,8 @@
+output/
+test/boot.log
+test/boot-graphics.log
+test/boot-graphics-fail.log
+test/drm-screenshot.ppm
+test/drm-screenshot.png
+test/drm-screenshot-fail.ppm
+test/drm-screenshot-fail.png

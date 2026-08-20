@@ -1,15 +1,18 @@
 import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
-import { codedLike } from '../utils/searchText';
+import { codedLike, containsAnyClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { screenPersonForSor } from '../utils/screening/nsopwAdapter';
+import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
 import { log } from '../utils/logger';
 import { tryRepairAndRetry } from '../utils/repairFts';
+import { upsertDlRecord } from './dlRecords';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { toDisplayLabel } from '../utils/displayLabel';
 const records = new Hono<Env>();
 
 // Inline role gate — same pattern as admin.ts. Destructive / chain-of-custody
@@ -63,18 +66,30 @@ records.get('/properties', async (c) => {
   try {
     const db = getDb(c.env);
     const { search, client_id, archived } = c.req.query();
-    let sql = 'SELECT * FROM properties';
+    // LEFT JOIN clients for client_name: PropertiesTab displays it, searches it
+    // and sorts by it, but `properties` has only client_id — so before this join
+    // client_name was ALWAYS undefined and all three silently did nothing.
+    // Every bare column below must stay p.-qualified: clients also has a `name`,
+    // so an unqualified `name` is ambiguous and D1 rejects the statement.
+    let sql = 'SELECT p.*, c.name AS client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id';
     const params: unknown[] = [];
     const wheres: string[] = [];
-    if (search) { wheres.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
-    if (client_id) { wheres.push('client_id = ?'); params.push(client_id); }
-    if (archived === 'true') wheres.push('archived_at IS NOT NULL');
-    else if (archived !== 'all') wheres.push('(archived_at IS NULL)');
+    // client_name is searched on BOTH sides deliberately. Server-side (c.name
+    // here) so a client-name search reaches every property rather than only the
+    // 500 this endpoint returns; client-side (PropertiesTab.tsx:284) so the
+    // narrowing still feels instant with no round-trip. The two must stay in
+    // sync — a column searchable here but not there returns rows the local
+    // filter then hides, which reads as "search is broken".
+    if (search) { const m = containsAnyClause(['p.name', 'p.address', 'c.name']); wheres.push(m.sql); params.push(...m.binds(search)); }
+    if (client_id) { wheres.push('p.client_id = ?'); params.push(client_id); }
+    if (archived === 'true') wheres.push('p.archived_at IS NOT NULL');
+    else if (archived !== 'all') wheres.push('(p.archived_at IS NULL)');
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
-    sql += ' ORDER BY name LIMIT 500';
+    sql += ' ORDER BY p.name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 const PROPERTY_WRITABLE_COLUMNS = new Set([
@@ -154,17 +169,23 @@ records.get('/properties/export', async (c): Promise<Response> => {
     const keys = ['name', 'address', 'city', 'state', 'zip', 'property_type', 'client_id', 'is_active', 'notes'];
     const csv = [keys.join(','), ...rows.map((r) => keys.map((k) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=properties_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/properties/:id — fetch a single property.
 records.get('/properties/:id', async (c): Promise<Response> => {
   try {
     const db = getDb(c.env);
-    const row = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', c.req.param('id'));
+    // client_name via LEFT JOIN — see GET /properties for why (detail panel
+    // renders the Client block from it).
+    const row = await queryFirst(db,
+      'SELECT p.*, c.name AS client_name FROM properties p LEFT JOIN clients c ON p.client_id = c.id WHERE p.id = ?',
+      c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /properties/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // DELETE /records/properties/:id — hard delete + remove junction rows.
@@ -175,7 +196,8 @@ records.delete('/properties/:id', async (c): Promise<Response> => {
     await execute(db, "DELETE FROM record_links WHERE (source_type = 'property' AND source_id = ?) OR (target_type = 'property' AND target_id = ?)", id, id);
     await execute(db, 'DELETE FROM properties WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /properties/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties/:id/archive — soft-delete.
@@ -184,7 +206,8 @@ records.post('/properties/:id/archive', async (c): Promise<Response> => {
     const db = getDb(c.env);
     await execute(db, "UPDATE properties SET archived_at = datetime('now') WHERE id = ?", c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /properties/:id/archive failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/properties/:id/unarchive — restore.
@@ -193,7 +216,8 @@ records.post('/properties/:id/unarchive', async (c): Promise<Response> => {
     const db = getDb(c.env);
     await execute(db, 'UPDATE properties SET archived_at = NULL WHERE id = ?', c.req.param('id'));
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /properties/:id/unarchive failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // All writable columns on the persons table, sourced from the legacy
@@ -250,12 +274,25 @@ const PERSON_EXT_COLUMNS = new Set([
   'address_2', // apartment/unit number (persons at 96 cols — overflow only)
   // DL barcode fields (AAMVA PDF417 elements DCB/DCD/DBD) — mig 0155
   'dl_restrictions', 'dl_endorsements', 'dl_issue_date',
+  // Full AAMVA field coverage (mig 0211) — was parsed by the scanner but
+  // dropped on the way to D1 before this change.
+  'country', 'document_discriminator', 'is_real_id', 'is_organ_donor',
+  'under_18_until', 'under_21_until', 'aamva_version', 'issuer_id',
+  'address2', 'raw_aamva_elements',
+  // AoS ID capture — additional AAMVA fields (mig 0236)
+  'place_of_birth', 'name_prefix', 'is_veteran', 'non_resident_indicator',
+  'limited_duration_doc', 'card_revision_date', 'dl_hazmat_expiry', 'card_type',
 ]);
-const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
+// Read projection excludes raw_aamva_elements: it's a raw barcode-element
+// dump kept for potential forensic/debugging use, not something every
+// authenticated caller (including client_viewer) should see on every
+// person read. Still fully writable via PERSON_EXT_COLUMNS above.
+const PERSON_EXT_READ_COLUMNS = [...PERSON_EXT_COLUMNS].filter(c => c !== 'raw_aamva_elements');
+const PERSON_EXT_SELECT = PERSON_EXT_READ_COLUMNS.join(', ');
 
 /** Upsert the overflow fields present in `body` into persons_ext (1:1 on
  *  person_id). No-op when the body carries none of them. */
-async function writePersonExt(
+export async function writePersonExt(
   db: ReturnType<typeof getDb>, personId: number | string, body: Record<string, unknown>,
 ): Promise<void> {
   const cols: string[] = [];
@@ -279,7 +316,7 @@ async function writePersonExt(
 
 /** Merge a person's persons_ext overflow fields onto the base row so callers see
  *  one flat object. Returns the row unchanged when it has no ext row yet. */
-async function mergePersonExt(
+export async function mergePersonExt(
   db: ReturnType<typeof getDb>, person: Record<string, unknown> | null,
 ): Promise<Record<string, unknown> | null> {
   if (!person || person.id == null) return person;
@@ -359,6 +396,7 @@ records.post('/from-dl-scan', async (c) => {
       scan?: Record<string, unknown>;
       vehicle?: Record<string, unknown>;
       create_property?: boolean;
+      call_id?: number;
     }>();
     const scan = body.scan ?? {};
     const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -387,24 +425,43 @@ records.post('/from-dl-scan', async (c) => {
       const docType = str(scan.doc_type);
       const docNumber = str(scan.document_number);
       const note = docType && docType !== 'license'
-        ? `Created from ${docType.replace('_', ' ')} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
+        ? `Created from ${toDisplayLabel(docType)} scan${docNumber ? ` (doc# ${docNumber}${str(scan.issuing_country) ? `, ${str(scan.issuing_country)}` : ''})` : ''}`
         : 'Created from DL scan';
+      // Booleans arrive from AamvaResult as `boolean | null`; coerce to
+      // 0/1/null explicitly rather than binding a JS boolean (D1's bind()
+      // behavior on raw booleans is not something to rely on).
+      const boolToInt = (v: unknown): number | null => (v == null ? null : (v ? 1 : 0));
+      const isVeteran = boolToInt(scan.is_veteran);
+
       const result = await execute(db, `
         INSERT INTO persons (first_name, middle_name, last_name, dob, gender, height, weight,
           eye_color, hair_color, address, city, state, zip, dl_number, dl_state,
-          dl_expiry, dl_class, flags, notes, created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
+          dl_expiry, dl_class, is_veteran, flags, notes, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now'))`,
         first, str(scan.middle_name), last, dob, str(scan.gender), str(scan.height),
         str(scan.weight), str(scan.eye_color), str(scan.hair_color), str(scan.address),
         str(scan.city), str(scan.state), str(scan.zip), dlNumber, str(scan.dl_state),
-        str(scan.dl_expiry), str(scan.dl_class),
+        str(scan.dl_expiry), str(scan.dl_class), isVeteran,
         JSON.stringify(['dl_scan_imported']), note);
       const newPersonId = Number(result.meta.last_row_id);
-      // Write AAMVA overflow fields (restrictions/endorsements/issue_date) to persons_ext
+      // Write every AAMVA overflow field to persons_ext — full field
+      // coverage (mig 0211), not just the restrictions/endorsements/issue_date
+      // subset from mig 0155.
       await writePersonExt(db, newPersonId, {
-        dl_restrictions: str(scan.dl_restrictions),
-        dl_endorsements: str(scan.dl_endorsements),
-        dl_issue_date:   str(scan.dl_issue_date),
+        suffix:                 str(scan.suffix),
+        dl_restrictions:        str(scan.dl_restrictions),
+        dl_endorsements:        str(scan.dl_endorsements),
+        dl_issue_date:          str(scan.dl_issue_date),
+        country:                str(scan.country),
+        document_discriminator: str(scan.document_discriminator),
+        is_real_id:             boolToInt(scan.is_real_id),
+        is_organ_donor:         boolToInt(scan.is_organ_donor),
+        under_18_until:         str(scan.under_18_until),
+        under_21_until:         str(scan.under_21_until),
+        aamva_version:          typeof scan.aamva_version === 'number' ? scan.aamva_version : null,
+        issuer_id:              str(scan.issuer_id),
+        address2:               str(scan.address2),
+        raw_aamva_elements:     scan.raw_elements ?? null,
       });
       person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db,
         'SELECT * FROM persons WHERE id = ?', newPersonId));
@@ -417,6 +474,31 @@ records.post('/from-dl-scan', async (c) => {
         screenPersonForSor(c.env, personId, { triggeredBy: 'dl_scan_create' })
           .catch((err) => console.warn('[nsopw] dl_scan screen failed:', err)),
       );
+    }
+
+    // ── DL record: upsert in the same request so a scan populates both
+    // persons and dl_records — previously two disconnected write paths. ──
+    let dlRecordId: number | null = null;
+    let dlRecordCreated = false;
+    if (dlNumber) {
+      try {
+        const dlUpsert = await upsertDlRecord(db, {
+          dl_number: dlNumber, dl_state: str(scan.dl_state),
+          dl_class: str(scan.dl_class), dl_expiry: str(scan.dl_expiry),
+          dl_issue_date: str(scan.dl_issue_date),
+          dl_restrictions: str(scan.dl_restrictions), dl_endorsements: str(scan.dl_endorsements),
+          first_name: first, middle_name: str(scan.middle_name), last_name: last, suffix: str(scan.suffix),
+          date_of_birth: dob, gender: str(scan.gender), height: str(scan.height), weight: str(scan.weight),
+          eye_color: str(scan.eye_color), hair_color: str(scan.hair_color),
+          address: str(scan.address), address2: str(scan.address2), city: str(scan.city),
+          address_state: str(scan.state), postal_code: str(scan.zip),
+          source: 'DL_SCAN',
+        });
+        dlRecordId = dlUpsert.recordId;
+        dlRecordCreated = dlUpsert.created;
+      } catch (err) {
+        console.warn('[from-dl-scan] dl_records upsert failed (non-fatal):', err);
+      }
     }
 
     // ── Vehicle: optional; reuse by plate, always (re)link to the person ──
@@ -469,10 +551,117 @@ records.post('/from-dl-scan', async (c) => {
       }
     }
 
+    // ── Current call: auto-link the scanned subject to the call the
+    // officer is scanning during, mirroring the existing ALPR call_vehicles
+    // auto-link for scanned vehicles. Best-effort — a failure here must not
+    // block person/dl_records/vehicle/property creation. ──
+    let callLinked = false;
+    let caseLinkedId: number | null = null;
+    const callId = typeof body.call_id === 'number' ? body.call_id : null;
+    if (callId) {
+      try {
+        const scannerUserId = (c.get('userId') as number | null | undefined) ?? null;
+        await execute(db,
+          `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, added_at) VALUES (?, ?, 'subject', ?, datetime('now'))`,
+          callId, personId, scannerUserId);
+        callLinked = true;
+      } catch (err) {
+        console.warn('[from-dl-scan] call_persons link failed (non-fatal):', err);
+      }
+      try {
+        const caseRow = await queryFirst<{ case_id: number }>(db,
+          'SELECT case_id FROM case_calls WHERE call_id = ? LIMIT 1', callId);
+        if (caseRow) {
+          await execute(db,
+            `INSERT OR IGNORE INTO case_person_links (case_id, person_id, relationship) VALUES (?, ?, 'linked')`,
+            caseRow.case_id, personId);
+          caseLinkedId = caseRow.case_id;
+        }
+      } catch (err) {
+        console.warn('[from-dl-scan] case_person_links link failed (non-fatal):', err);
+      }
+    }
+
+    // ── Warrants: backfill any orphaned warrant (entered by name/DOB text
+    // only, never linked to a person row) that matches this subject, then
+    // surface every active warrant now linked to them — whether just
+    // backfilled or already linked before this scan. Best-effort. ──
+    let warrantHits: Array<Record<string, unknown>> = [];
+    if (dob) {
+      try {
+        const orphaned = await query<{ id: number; warrant_number: string | null }>(db,
+          `SELECT id, warrant_number FROM warrants
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          first, last, dob);
+        const result = await execute(db,
+          `UPDATE warrants SET subject_person_id = ?
+           WHERE subject_person_id IS NULL AND LOWER(status) = 'active'
+             AND LOWER(subject_first_name) = LOWER(?) AND LOWER(subject_last_name) = LOWER(?)
+             AND subject_dob = ?`,
+          personId, first, last, dob);
+        if ((result.meta.changes ?? 0) > 0 && orphaned.length > 0) {
+          const warrantNumbers = orphaned.map(w => w.warrant_number ?? String(w.id)).join(', ');
+          await recordAudit(c, {
+            action: 'dl_scan_warrant_backfill',
+            entityType: 'person',
+            entityId: personId,
+            details: `Linked warrant(s) ${warrantNumbers} to person ${first} ${last} (id ${personId}) via DL scan backfill`,
+          });
+        }
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant backfill failed (non-fatal):', err);
+      }
+      try {
+        warrantHits = await query<Record<string, unknown>>(db,
+          // Live warrants columns are type / charge_description / bail_amount.
+          // Aliased so the DL-scan response shape is unchanged.
+          `SELECT id, warrant_number, type AS warrant_type,
+                  charge_description AS offense_description,
+                  bail_amount AS bond_amount, issuing_agency
+           FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'`,
+          personId);
+      } catch (err) {
+        console.warn('[from-dl-scan] warrant hit query failed (non-fatal):', err);
+      }
+    }
+
+    // ── Prior calls / open cases: surfaced for officer awareness only —
+    // never auto-written. A scan should not assert new case involvement
+    // beyond the current call it's actually happening in (handled above). ──
+    let priorCalls: Array<Record<string, unknown>> = [];
+    let openCases: Array<Record<string, unknown>> = [];
+    try {
+      priorCalls = await query<Record<string, unknown>>(db,
+        `SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at
+         FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id
+         WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] prior calls query failed (non-fatal):', err);
+    }
+    try {
+      openCases = await query<Record<string, unknown>>(db,
+        `SELECT DISTINCT ca.id, ca.case_number, ca.title, ca.status
+         FROM cases ca JOIN case_person_links cpl ON ca.id = cpl.case_id
+         WHERE cpl.person_id = ? AND LOWER(ca.status) NOT IN ('closed', 'archived')
+         ORDER BY ca.id DESC LIMIT 10`,
+        personId);
+    } catch (err) {
+      console.warn('[from-dl-scan] open cases query failed (non-fatal):', err);
+    }
+
     return c.json({
       person, person_created: personCreated,
       vehicle, vehicle_created: vehicleCreated,
       property, property_created: propertyCreated,
+      dl_record_id: dlRecordId, dl_record_created: dlRecordCreated,
+      call_linked: callLinked,
+      case_linked_id: caseLinkedId,
+      warrant_hits: warrantHits,
+      prior_calls: priorCalls,
+      open_cases: openCases,
     }, 201);
   } catch (err) {
     console.error('POST /records/from-dl-scan failed:', err);
@@ -486,13 +675,26 @@ records.get('/persons/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
+    // Three person-search paths in this file each named a DIFFERENT column set:
+    // this one (last/first/phone), /persons/alias-search (first/last only), and
+    // the bulk /persons list (first/last/alias_nickname/phone/email/dl_number).
+    // The bulk list was the most complete, so the two dedicated SEARCH
+    // endpoints — the ones an officer actually types into — were the narrowest.
+    // Aligned here, plus the alias and secondary-phone columns none of them had.
+    const mq = containsAnyClause([
+      'last_name', 'first_name', 'middle_name',
+      'alias_nickname', 'aliases',
+      'phone', 'phone_secondary', 'home_phone', 'work_phone',
+      'email', 'dl_number',
+    ]);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT * FROM persons
-      WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
+      WHERE ${mq.sql}
       ORDER BY last_name, first_name LIMIT 50
-    `, `%${q}%`, `%${q}%`, `%${q}%`);
+    `, ...mq.binds(q));
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /persons/search failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Persons extra endpoints (must be before /:id to avoid param capture) ──
@@ -512,7 +714,8 @@ records.get('/persons/export', async (c) => {
     const keys = ['first_name','last_name','dob','gender','race','height','weight','hair_color','eye_color','address','phone','email'];
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=persons_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /persons/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/persons/check-duplicates — find potential duplicate persons.
@@ -576,16 +779,28 @@ records.post('/persons/merge', async (c) => {
   } catch (err) { return dbErrorResponse(c, err, 'Merge failed'); }
 });
 
-// GET /records/persons/alias-search — search by potential alias (name match).
+// GET /records/persons/alias-search — search by potential alias.
+//
+// This searched ONLY first_name and last_name, which made it functionally
+// identical to a plain name search: the one endpoint whose entire purpose is
+// finding people by alias could not match an alias at all. `persons` stores
+// them in alias_nickname and aliases.
+//
+// Verified live: 'NIKITA' and 'BRAYDEN' are real alias_nickname values that
+// returned 0 rows here. Same defect class as #3222/#3223 — a matcher naming
+// fewer columns than the data lives in.
 records.get('/persons/alias-search', async (c) => {
   try {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
-    const like = `%${q}%`;
+    const ma = containsAnyClause([
+      'alias_nickname', 'aliases',
+      'first_name', 'last_name', 'middle_name',
+    ]);
     const rows = await query<Record<string, unknown>>(db,
-      'SELECT id, first_name, last_name, dob, gender FROM persons WHERE first_name LIKE ? OR last_name LIKE ? ORDER BY last_name, first_name LIMIT 50',
-      like, like);
+      `SELECT id, first_name, last_name, dob, gender, alias_nickname FROM persons WHERE ${ma.sql} ORDER BY last_name, first_name LIMIT 50`,
+      ...ma.binds(q));
     return c.json(rows);
   } catch (err) { return c.json([]); }
 });
@@ -611,6 +826,8 @@ records.get('/persons/:id', async (c) => {
 // POST /persons. Returns the updated row on success.
 records.put('/persons/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
@@ -671,6 +888,8 @@ records.put('/persons/:id', async (c) => {
 // fails — we detect that and rebuild the FTS table before retrying.
 records.delete('/persons/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
@@ -694,7 +913,6 @@ records.delete('/persons/:id', async (c) => {
     // and its citations are real records that must not vanish with the person,
     // but they also must not dangle at a deleted id (ghost nodes in Connections).
     try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
-    try { await execute(db, 'UPDATE warrants SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     await tryRepairAndRetry(db,
       () => execute(db, 'DELETE FROM persons WHERE id = ?', id),
@@ -766,7 +984,7 @@ records.get('/persons/:id/system-history', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const [warrants, incidents, calls, citations] = await Promise.all([
-      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE (person_id = ? OR subject_person_id = ?) ORDER BY created_at DESC LIMIT 50`, id, id),
+      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
       query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address, ip.role FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
@@ -860,7 +1078,8 @@ records.delete('/criminal-history/:id', async (c) => {
     if (!existing) return c.json({ error: 'Record not found' }, 404);
     await execute(db, 'DELETE FROM criminal_history WHERE id = ?', id);
     return c.json({ ok: true, id: Number(id) });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('DELETE /criminal-history/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/persons/:id/incidents — incidents involving this person.
@@ -905,7 +1124,8 @@ records.post('/client-persons', async (c) => {
       .bind(body.person_id, body.client_id, body.relationship || null)
       .run();
     return c.json({ success: true, id: result.meta?.last_row_id });
-  } catch (err) { return c.json({ error: 'Failed to create link' }, 500); }
+  } catch (err) {
+    log.error('POST /client-persons failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed to create link' }, 500); }
 });
 
 // DELETE /records/client-persons/:linkId — remove a client-person link.
@@ -917,7 +1137,8 @@ records.delete('/client-persons/:linkId', async (c) => {
     if (!existing) return c.json({ error: 'Link not found' }, 404);
     await execute(db, 'DELETE FROM client_person_links WHERE id = ?', linkId);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to delete link' }, 500); }
+  } catch (err) {
+    log.error('DELETE /client-persons/:linkId failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed to delete link' }, 500); }
 });
 
 // All writable columns on vehicles_records sourced from legacy addCol() calls.
@@ -979,14 +1200,16 @@ records.get('/vehicles/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
+    const mq = containsAnyClause(['v.plate_number', 'v.vin', 'v.make', 'v.model']);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT v.*, p.first_name, p.last_name, p.first_name AS owner_first_name, p.last_name AS owner_last_name FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
-      WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+      WHERE ${mq.sql}
       ORDER BY v.plate_number LIMIT 50
-    `, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    `, ...mq.binds(q));
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /vehicles/search failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/vehicles/:id — fetch a single vehicle by ID.
@@ -1008,6 +1231,8 @@ records.get('/vehicles/:id{[0-9]+}', async (c) => {
 // PUT /records/vehicles/:id — update a vehicle.
 records.put('/vehicles/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
@@ -1117,7 +1342,8 @@ records.get('/vehicles/export', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id ORDER BY v.plate_number LIMIT 50000');
     const csv = ['plate_number,state,make,model,year,color,vin,owner_first_name,owner_last_name,notes', ...rows.map((r: any) => [r.plate_number, r.state, r.make, r.model, r.year, r.color, r.vin, r.first_name, r.last_name, r.notes].map((v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=vehicles_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /vehicles/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/vehicles/plate-lookup — quick plate check.
@@ -1137,12 +1363,25 @@ records.get('/vehicles/bolo-check', async (c) => {
     const db = getDb(c.env);
     const plate = c.req.query('plate');
     if (!plate || plate.length < 2) return c.json({ matches: [], count: 0 });
-    const like = `%${plate.toUpperCase()}%`;
+    // instr(), not LIKE — D1's 50-char LIKE cap would throw here, and the catch
+    // below turns any throw into an empty BOLO result: a false clear on
+    // officer-safety data. containsAnyClause is case-insensitive via lower().
+    const mb = containsAnyClause(['vehicle_description', 'description']);
     const rows = await query<Record<string, unknown>>(db,
-      "SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC, created_at DESC LIMIT 10",
-      like, like);
-    return c.json({ matches: rows, count: rows.length });
-  } catch (err) { return c.json({ matches: [], count: 0 }); }
+      `SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC, created_at DESC LIMIT 10`,
+      ...mb.binds(plate));
+    return c.json({ matches: rows, count: rows.length, checked: true, coverage: LOOKUP_OK });
+  } catch (err) {
+    // Was `catch { return c.json({ matches: [], count: 0 }) }` — a failed BOLO
+    // lookup was indistinguishable from "no BOLOs on this plate". Still a 200 so
+    // the caller's UI keeps rendering, but `checked: false` + coverage say plainly
+    // that this is not a clearance.
+    log.error('bolo-check lookup failed', { plate: c.req.query('plate') }, err as Error);
+    return c.json({
+      matches: [], count: 0, checked: false,
+      coverage: lookupFailedCoverage('Active BOLOs'),
+    });
+  }
 });
 
 // POST /records/vehicles/stolen-check — local stolen-vehicle check.
@@ -1177,14 +1416,24 @@ records.post('/vehicles/stolen-check', async (c) => {
     const localStolen = (rec?.stolen_status || '').trim().toLowerCase() === 'stolen';
 
     // 2. Active BOLO mentioning the plate?
+    // A failure here must NOT read as "no BOLO". Track it: the old
+    // `catch { boloMatches = [] }` let the response below state "no active
+    // BOLOs" when the query never actually ran — asserting an absence the code
+    // had not established.
     let boloMatches: Record<string, unknown>[] = [];
+    let boloCoverage = LOOKUP_OK;
     if (plate) {
       try {
-        const like = `%${plate}%`;
+        // instr(), not LIKE — D1's 50-char LIKE cap would throw here.
+        const mb = containsAnyClause(['vehicle_description', 'description']);
         boloMatches = await query<Record<string, unknown>>(db,
-          "SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC LIMIT 5",
-          like, like);
-      } catch { boloMatches = []; }
+          `SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND ${mb.sql} ORDER BY priority ASC LIMIT 5`,
+          ...mb.binds(plate));
+      } catch (boloErr) {
+        boloMatches = [];
+        boloCoverage = lookupFailedCoverage('Active BOLOs');
+        log.error('stolen-check BOLO lookup failed', { plate }, boloErr as Error);
+      }
     }
 
     const stolen = localStolen || boloMatches.length > 0;
@@ -1192,15 +1441,19 @@ records.post('/vehicles/stolen-check', async (c) => {
       ? `Vehicle flagged STOLEN in local records${rec?.ncic_entry_number ? ` (NCIC entry ${rec.ncic_entry_number})` : ''}`
       : boloMatches.length > 0
         ? `Active BOLO match: ${boloMatches.map((m) => m.bolo_number || m.title).filter(Boolean).join(', ')}`
-        : 'No stolen flag in local records or active BOLOs — NOT a live NCIC check';
+        : boloCoverage.available
+          ? 'No stolen flag in local records or active BOLOs — NOT a live NCIC check'
+          : 'No stolen flag in local records. THE BOLO CHECK FAILED — this is NOT a clearance.';
     return c.json({
       checked: true, stolen, source: 'local records + BOLO', message,
       plate, vin, state,
       record_id: rec?.id ?? null,
       ncic_entry_number: rec?.ncic_entry_number ?? null,
       bolo_matches: boloMatches,
+      bolo_coverage: boloCoverage,
     });
   } catch (err) {
+    log.error('POST /vehicles/stolen-check failed', { src: 'src/routes/records.ts' }, err);
     // Fail HONESTLY — an error must read as "couldn't check", never as CLEAR.
     return c.json({ checked: false, stolen: false, source: 'local records', message: 'Stolen check failed — treat as UNVERIFIED, not clear', detail: (err as Error)?.message }, 500);
   }
@@ -1253,7 +1506,8 @@ records.get('/businesses', async (c) => {
     const archived = c.req.query('archived') === 'true';
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM businesses WHERE ${archived ? 'archived_at IS NOT NULL' : 'archived_at IS NULL'} ORDER BY name LIMIT 500`);
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /businesses failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/businesses/:id — fetch a single business record.
@@ -1263,7 +1517,8 @@ records.get('/businesses/:id', async (c): Promise<Response> => {
     const row = await queryFirst(db, 'SELECT * FROM businesses WHERE id = ?', c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
     return c.json(row);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /businesses/:id failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // POST /records/businesses — create a business.
@@ -1285,6 +1540,8 @@ records.post('/businesses', async (c) => {
 // PUT /records/businesses/:id — update a business.
 records.put('/businesses/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'officer', 'dispatcher');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM businesses WHERE id = ?', id);
@@ -1323,6 +1580,8 @@ records.post('/businesses/:id/unarchive', async (c) => {
 // DELETE /records/businesses/:id — hard-delete + clean its junction rows.
 records.delete('/businesses/:id', async (c) => {
   try {
+    const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+    if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, 'DELETE FROM business_vehicles WHERE business_id = ?', id);
@@ -1342,14 +1601,25 @@ records.get('/evidence', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     const status = c.req.query('status');
-    let sql = 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE 1=1';
+    let where = ' WHERE 1=1';
     const params: unknown[] = [];
-    if (q) { sql += ' AND (e.evidence_number LIKE ? OR e.description LIKE ?)'; const s = `%${q}%`; params.push(s, s); }
-    if (status) { sql += ' AND e.status = ?'; params.push(status); }
-    sql += ' ORDER BY e.created_at DESC LIMIT 500';
+    if (q) { const m = containsAnyClause(['e.evidence_number', 'e.description']); where += ` AND ${m.sql}`; params.push(...m.binds(q)); }
+    if (status) { where += ' AND e.status = ?'; params.push(status); }
+    // incidents joined for incident_number: EvidenceTab displays and searches it
+    // but `evidence` stores only incident_id, so it was always undefined. The
+    // join is on the incidents PK, so it cannot multiply rows (COUNT below is
+    // still the true match count).
+    const FROM = 'FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id';
+    const sql = `SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number ${FROM}${where} ORDER BY e.created_at DESC LIMIT 500`;
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit: 500 } });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+    // pagination.total must be the MATCHING row count, not the returned page
+    // size. `total: rows.length` silently caps at the LIMIT, so once the table
+    // outgrows the page the UI reports a wrong total and cannot tell that the
+    // list was truncated.
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n ${FROM}${where}`, ...params).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit: 500, returned: rows.length } });
+  } catch (err) {
+    log.error('GET /evidence failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/stats
@@ -1358,7 +1628,8 @@ records.get('/evidence/stats', async (c) => {
     const db = getDb(c.env);
     const row = await queryFirst<Record<string, unknown>>(db, "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN status = 'in_storage' THEN 1 ELSE 0 END) as stored, SUM(CASE WHEN status IN ('submitted_to_le','disposed','released') THEN 1 ELSE 0 END) as closed FROM evidence");
     return c.json(row || { total: 0, collected: 0, stored: 0, closed: 0 });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/stats failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/locations
@@ -1367,28 +1638,31 @@ records.get('/evidence/locations', async (c) => {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, "SELECT storage_location, COUNT(*) as count FROM evidence WHERE storage_location IS NOT NULL AND storage_location != '' GROUP BY storage_location ORDER BY count DESC");
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/locations failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/aging-report
 records.get('/evidence/aging-report', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
+    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id WHERE e.status IN ('received', 'in_storage') ORDER BY e.created_at ASC LIMIT 200");
     return c.json(rows);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/aging-report failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/export
 records.get('/evidence/export', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id ORDER BY e.created_at DESC LIMIT 50000');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id ORDER BY e.created_at DESC LIMIT 50000');
     if (rows.length === 0) return c.json([]);
     const keys = Object.keys(rows[0] as object);
     const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=evidence_export.csv' });
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /evidence/export failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /records/evidence/:id
@@ -1396,7 +1670,7 @@ records.get('/evidence/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name, i.incident_number AS incident_number FROM evidence e LEFT JOIN users u ON e.collected_by = u.id LEFT JOIN incidents i ON e.incident_id = i.id WHERE e.id = ?', id);
     if (!row) return c.json({ error: 'Evidence not found' }, 404);
     return c.json(row);
   } catch (err) { return dbErrorResponse(c, err, 'Failed'); }
@@ -1424,6 +1698,7 @@ const EVIDENCE_WRITABLE_COLUMNS = new Set([
   'storage_temperature', 'location_detail',
   'retention_until', 'disposition',
   'notes', 'flags',
+  'pq_sealed_description', 'pq_seal_aad',
 ]);
 
 function coerceBooleanField(key: string, val: unknown): unknown {
@@ -1462,6 +1737,8 @@ const EVIDENCE_DRIFT_COLUMNS: Record<string, string> = {
   release_approved_at: 'TEXT',
   location_detail: 'TEXT',
   flags: 'TEXT',
+  pq_sealed_description: 'TEXT',
+  pq_seal_aad: 'TEXT',
 };
 
 // Reconcile the evidence table against the write-path column set before any
@@ -1829,7 +2106,7 @@ records.get('/evidence/:id/linked-records', async (c) => {
       try {
         return await query<Record<string, unknown>>(db,
           `SELECT c.id, c.case_number, c.case_type, c.status FROM cases c
-           INNER JOIN evidence_case_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
+           INNER JOIN case_evidence_links ecl ON ecl.case_id = c.id WHERE ecl.evidence_id = ?
            UNION
            SELECT c.id, c.case_number, c.case_type, c.status FROM cases c WHERE c.id = ?`,
           id, row.case_id ?? -1,
@@ -1842,8 +2119,10 @@ records.get('/evidence/:id/linked-records', async (c) => {
         return await query<Record<string, unknown>>(db,
           `SELECT fc.id, fc.lab_number, fc.title, fc.case_type, fc.status
            FROM forensic_cases fc
-           INNER JOIN forensic_case_evidence fce ON fce.forensic_case_id = fc.id
-           WHERE fce.evidence_id = ?`,
+           -- forensic_case_evidence does not exist; forensic_case_entity_links
+           -- is the polymorphic link table (entity_type + entity_id).
+           INNER JOIN forensic_case_entity_links fce ON fce.forensic_case_id = fc.id
+           WHERE fce.entity_type = 'evidence' AND fce.entity_id = ?`,
           id,
         );
       } catch { return []; }
@@ -1880,11 +2159,9 @@ records.post('/evidence/:id/unarchive', async (c) => {
 // Powers the NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference
 // fan-out). Ported from the legacy VPS handler with the fixes that were
 // causing live "PERSON QUERY FAILED" / "WARRANT QUERY FAILED" errors:
-//   1. warrants link the subject via subject_person_id on live (person_id is
-//      NULL on every current row). Both columns exist; query (person_id OR
-//      subject_person_id) so the link resolves regardless of which is set —
-//      keying on person_id alone silently returned ZERO warrants for a wanted
-//      subject (a false "no warrants" officer-safety failure).
+//   1. warrants link the subject via subject_person_id — migration 0200
+//      dropped the old redundant person_id column entirely, so
+//      subject_person_id is now the sole (and only valid) FK to query.
 //   2. each optional sub-query (criminal_history, warrants) is wrapped so a
 //      missing/drifted table degrades to an empty list instead of 500ing the
 //      whole request (live D1 schema drifts from /migrations/).
@@ -1897,34 +2174,75 @@ records.get('/ncic-query', async (c) => {
   if (!type || !q || q.length < 2) {
     return c.json({ error: 'type and query (min 2 chars) required', code: 'TYPE_AND_QUERY_MIN' }, 400);
   }
-  const like = `%${q}%`;
+  // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (see searchText.ts).
+  // Especially important here: most branches below are wrapped in soft(), which
+  // swallows the D1 error and returns []. A too-long query therefore reported
+  // "no records" on an NCIC terminal rather than failing — a false clear, the
+  // same hazard class as the 2026-06-10 stolen-check incident.
+  const nq = (...cols: string[]) => containsAnyClause(cols);
 
   // Run an OPTIONAL sub-query that must never fail the whole response. A
-  // missing table / drifted column resolves to [] instead of throwing.
-  const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
-    try { return await fn(); } catch { return []; }
+  // missing table / drifted column resolves to [] instead of throwing — BUT the
+  // failure is now recorded, because on an NCIC terminal a swallowed error
+  // rendered as "no records" is a false clear, not a graceful degradation.
+  const failures: string[] = [];
+  const soft = async <T>(label: string, fn: () => Promise<T[]>): Promise<T[]> => {
+    try { return await fn(); } catch (err) {
+      failures.push(label);
+      log.error('ncic-query sub-query failed', { type, label }, err as Error);
+      return [];
+    }
   };
+  /**
+   * Every success path goes through here so a partial failure can never be
+   * presented as a clean "no records" result.
+   */
+  const respond = (results: unknown) => c.json({
+    type, results, query: q,
+    checked: failures.length === 0,
+    degraded: failures.length > 0,
+    failed_sources: failures,
+    coverage: failures.length
+      ? lookupFailedCoverage(`NCIC records (${failures.join(', ')})`)
+      : LOOKUP_OK,
+  });
   // Warrant projection aliased to the field names the client formatter reads
   // (charge_description, bail_amount). offense_level isn't on the live table —
   // the formatter tolerates its absence.
-  // Real live columns: charge_description / bail_amount|bond_amount / issuing_court /
+  // Real live columns: charge_description / bail_amount / issuing_court /
   // issued_date / expires_at. Alias to the names the formatter reads (jurisdiction,
   // issued_at) so none resolve undefined; `charge`/`jurisdiction`/`issued_at` do NOT
-  // exist on the live warrants table (the old names 500'd this query).
+  // exist on the live warrants table (the old names 500'd this query). Migration
+  // 0200 dropped the now-redundant bond_amount column — bail_amount is canonical.
   const WARRANT_COLS = `id, warrant_number, type, charge_description, status,
-    COALESCE(bail_amount, bond_amount) AS bail_amount, issuing_court AS jurisdiction,
+    bail_amount, issuing_court AS jurisdiction,
     issuing_agency, issued_date AS issued_at, expires_at`;
 
   try {
     switch (type) {
       case 'person': {
+        // Aliases and middle names are searchable, not just the legal first/last.
+        //
+        // Same defect class as the QW warrant query (#3222): the matcher named
+        // fewer columns than the data actually lives in, so records that were
+        // present answered NO RECORD FOUND. A subject known to officers by a
+        // nickname was unreachable, even though `persons.alias_nickname` and
+        // `persons.aliases` hold exactly that — and records.ts already exposes
+        // a dedicated /persons/alias-search endpoint that this query never used.
+        //
+        // Live D1: 4 persons carry alias_nickname, 1 carries aliases, 43 carry
+        // a middle_name.
+        //
+        // Purely additive — this can only return MORE matches, never fewer.
+        const mp = nq('first_name', 'last_name', 'middle_name',
+          'alias_nickname', 'aliases',
+          "first_name || ' ' || last_name", "last_name || ', ' || first_name",
+          "first_name || ' ' || COALESCE(middle_name,'') || ' ' || last_name");
         const persons = await query<Record<string, any>>(db, `
           SELECT * FROM persons
-          WHERE first_name LIKE ? OR last_name LIKE ?
-            OR (first_name || ' ' || last_name) LIKE ?
-            OR (last_name || ', ' || first_name) LIKE ?
-          ORDER BY last_name, first_name LIMIT 5
-        `, like, like, like, like);
+          WHERE ${mp.sql}
+          ORDER BY last_name, first_name LIMIT 10
+        `, ...mp.binds(q));
 
         // Normalize live column-name drift to the field names the NCIC client
         // terminal formatter reads. Live `persons` stores dob/gender/dl_number
@@ -1938,51 +2256,109 @@ records.get('/ncic-query', async (c) => {
           if (p.drivers_license == null && p.dl_number != null) p.drivers_license = p.dl_number;
         }
 
-        const results = [];
-        for (const p of persons) {
-          const criminalHistory = await soft(() => query<Record<string, any>>(db,
-            `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
-            p.id));
-          const warrants = await soft(() => query<Record<string, any>>(db,
-            `SELECT ${WARRANT_COLS} FROM warrants
-             WHERE (person_id = ? OR subject_person_id = ?) AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
-            p.id, p.id));
-          results.push({ person: p, criminalHistory, warrants });
-        }
-        return c.json({ type, results, query: q });
+        // Fan the per-person sub-queries out in PARALLEL rather than awaiting
+        // each in sequence.
+        //
+        // This loop issues TWO round-trips per person, so at the previous
+        // LIMIT 5 it was 10 sequential awaits; raising the limit to 10 would
+        // have made it 20 and roughly doubled the terminal's response time.
+        // The sequential fan-out is what made the low limit necessary in the
+        // first place — a QH on a common surname silently returned 5 of N
+        // matches, which for a name lookup at a stop is the wrong trade.
+        //
+        // Promise.all keeps wall time at roughly one round-trip pair while
+        // doubling coverage. Each sub-query is already wrapped in soft(), so a
+        // single failure still degrades to [] for that person instead of
+        // rejecting the whole batch.
+        const results = await Promise.all(persons.map(async (p) => {
+          const [criminalHistory, warrants] = await Promise.all([
+            soft('criminal history', () => query<Record<string, any>>(db,
+              `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
+              p.id)),
+            soft('warrants', () => query<Record<string, any>>(db,
+              `SELECT ${WARRANT_COLS} FROM warrants
+               WHERE subject_person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
+              p.id)),
+          ]);
+          return { person: p, criminalHistory, warrants };
+        }));
+        return respond(results);
       }
       case 'warrant': {
-        const results = await soft(() => query<Record<string, any>>(db, `
+        // Match the warrant's OWN subject name, not just the joined person's.
+        //
+        // This searched only w.warrant_number and the LEFT JOINed persons row.
+        // A warrant whose subject was never linked to a persons record
+        // (subject_person_id IS NULL) has NULL for every p.* column, so it was
+        // unreachable by name — even though the warrant itself carries
+        // subject_name / subject_first_name / subject_last_name.
+        //
+        // Measured on live D1: 19 of the 21 ACTIVE warrants are unlinked, and
+        // all 19 carry a subject name. A `QW GONZALEZ` at a traffic stop
+        // returned 1 of 9 active Gonzalez warrants — and that one hit only by
+        // coincidence, because its warrant_number string
+        // ("natrona-county-wy-natrona:gonz…") happens to contain "gonz".
+        // Everything else answered NO RECORD FOUND for subjects with live
+        // arrest warrants.
+        //
+        // Purely additive: this can only ever return MORE warrants, never
+        // fewer, so no existing hit is lost.
+        const mw = nq(
+          'w.warrant_number',
+          'w.subject_name', 'w.subject_first_name', 'w.subject_last_name',
+          "COALESCE(w.subject_last_name,'') || ', ' || COALESCE(w.subject_first_name,'')",
+          'p.first_name', 'p.last_name',
+          "p.last_name || ', ' || p.first_name",
+        );
+        const results = await soft('warrants', () => query<Record<string, any>>(db, `
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
-                 p.first_name AS subject_first_name, p.last_name AS subject_last_name
+                 -- Fall back to the warrant's own subject fields when there is
+                 -- no linked person. Aliasing p.* alone SHADOWED the warrant's
+                 -- columns, so an unlinked hit came back with a NULL name and
+                 -- the terminal printed no NAM/ line at all — an officer saw a
+                 -- warrant hit with no indication of WHO it was for.
+                 COALESCE(p.first_name, w.subject_first_name) AS subject_first_name,
+                 COALESCE(p.last_name, w.subject_last_name, w.subject_name) AS subject_last_name
           FROM warrants w
-          LEFT JOIN persons p ON p.id = COALESCE(w.person_id, w.subject_person_id)
+          LEFT JOIN persons p ON p.id = w.subject_person_id
           WHERE w.status = 'active'
-            AND (w.warrant_number LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?
-                 OR (p.last_name || ', ' || p.first_name) LIKE ?)
+            AND ${mw.sql}
           ORDER BY w.created_at DESC LIMIT 10
-        `, like, like, like, like));
-        return c.json({ type, results, query: q });
+        `, ...mw.binds(q)));
+        return respond(results);
       }
       case 'vehicle': {
-        const results = await soft(() => query<Record<string, any>>(db, `
+        const mv = nq('v.plate_number', 'v.vin', 'v.make', 'v.model');
+        const results = await soft('vehicle records', () => query<Record<string, any>>(db, `
           SELECT v.*, p.first_name AS owner_first_name, p.last_name AS owner_last_name
           FROM vehicles_records v
           LEFT JOIN persons p ON v.owner_person_id = p.id
-          WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+          WHERE ${mv.sql}
           ORDER BY v.plate_number LIMIT 10
-        `, like, like, like, like));
-        return c.json({ type, results, query: q });
+        `, ...mv.binds(q)));
+        return respond(results);
       }
       case 'phone': {
-        const results = await soft(() => query<Record<string, any>>(db,
-          `SELECT * FROM persons WHERE phone LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
-        return c.json({ type, results, query: q });
+        // persons stores FOUR phone columns; this searched one.
+        //
+        // Live D1: 17 persons have a primary phone, but 4 have phone_secondary,
+        // 4 home_phone and 3 work_phone — and 2 persons have ONLY a non-primary
+        // number, making them entirely unreachable by a QT lookup. Dialling a
+        // number that is on file returned NO RECORD FOUND.
+        //
+        // Purely additive.
+        const mph = nq('phone', 'phone_secondary', 'home_phone', 'work_phone');
+        const results = await soft('persons by phone', () => query<Record<string, any>>(db,
+          `SELECT * FROM persons WHERE ${mph.sql} ORDER BY last_name, first_name LIMIT 10`,
+          ...mph.binds(q)));
+        return respond(results);
       }
       case 'address': {
-        const results = await soft(() => query<Record<string, any>>(db,
-          `SELECT * FROM persons WHERE address LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
-        return c.json({ type, results, query: q });
+        const mad = nq('address');
+        const results = await soft('persons by address', () => query<Record<string, any>>(db,
+          `SELECT * FROM persons WHERE ${mad.sql} ORDER BY last_name, first_name LIMIT 10`,
+          ...mad.binds(q)));
+        return respond(results);
       }
       default:
         return c.json({ error: 'unknown query type', code: 'UNKNOWN_TYPE' }, 400);
@@ -2006,7 +2382,9 @@ records.get('/search', async (c) => {
     const q = c.req.query('q');
     const type = (c.req.query('type') || 'person').toLowerCase();
     if (!q || q.length < 2) return c.json([]);
-    const like = `%${q}%`;
+    // instr(), not LIKE: D1 caps LIKE patterns at 50 chars, so a search term past
+    // 48 characters returned a 500 (8 recorded live failures). searchText.ts.
+    const match = (...cols: string[]) => containsAnyClause(cols);
 
     // Client (LinkRecordModal.tsx) renders `result.label || result.name ||
     // result.id`. Without a `label` field it falls back to the numeric record
@@ -2016,12 +2394,12 @@ records.get('/search', async (c) => {
     // address. We synthesize `label` on every row.
 
     if (type === 'person') {
+      const mp = match('last_name', 'first_name', 'phone', "first_name || ' ' || last_name");
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM persons
-        WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
-          OR (first_name || ' ' || last_name) LIKE ?
+        WHERE ${mp.sql}
         ORDER BY last_name, first_name LIMIT 50
-      `, like, like, like, like);
+      `, ...mp.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.last_name, r.first_name].filter(Boolean).join(', ') || `Person #${r.id}`,
@@ -2029,13 +2407,14 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'vehicle') {
+      const mv = match('v.plate_number', 'v.vin', 'v.make', 'v.model');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT v.*, p.first_name, p.last_name
         FROM vehicles_records v
         LEFT JOIN persons p ON v.owner_person_id = p.id
-        WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+        WHERE ${mv.sql}
         ORDER BY v.plate_number LIMIT 50
-      `, like, like, like, like);
+      `, ...mv.binds(q));
       return c.json(rows.map((r) => {
         const plate = (r.plate_number as string | null) || '';
         const yearMakeModel = [r.year, r.make, r.model].filter(Boolean).join(' ');
@@ -2052,11 +2431,12 @@ records.get('/search', async (c) => {
       // businesses live in the dedicated `businesses` table (migration 0125);
       // `properties` is real-estate only. LINK_ENTITY_TABLE and recordExists
       // both target `businesses`, so search must return IDs from that table.
+      const mb = match('name', 'dba_name', 'address', 'owner_name');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, name, dba_name, business_type, address, city, state, phone, owner_name FROM businesses
-        WHERE name LIKE ? OR dba_name LIKE ? OR address LIKE ? OR owner_name LIKE ?
+        WHERE ${mb.sql}
         ORDER BY name LIMIT 50
-      `, like, like, like, like);
+      `, ...mb.binds(q));
       return c.json(rows.map((r) => {
         const name = (r.name as string | null) || '';
         const dba = (r.dba_name as string | null) || '';
@@ -2067,11 +2447,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'property') {
+      const mpr = match('name', 'address');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM properties
-        WHERE name LIKE ? OR address LIKE ?
+        WHERE ${mpr.sql}
         ORDER BY name LIMIT 50
-      `, like, like);
+      `, ...mpr.binds(q));
       return c.json(rows.map((r) => {
         const name = (r.name as string | null) || '';
         const address = (r.address as string | null) || '';
@@ -2081,11 +2462,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'evidence') {
+      const me = match('evidence_number', 'description', 'lab_case_number');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ? OR lab_case_number LIKE ?
+        WHERE ${me.sql}
         ORDER BY evidence_number LIMIT 50
-      `, like, like, like);
+      `, ...me.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.evidence_number, r.description].filter(Boolean).join(' — ') || `Evidence #${r.id}`,
@@ -2094,11 +2476,12 @@ records.get('/search', async (c) => {
 
     if (type === 'incident') {
       const itLike = codedLike('incident_type', q);
+      const mi = match('incident_number', 'location_address');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, incident_number, incident_type, status, location_address, created_at FROM incidents
-        WHERE incident_number LIKE ? OR ${itLike.sql} OR location_address LIKE ?
+        WHERE ${mi.sql} OR ${itLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, ...itLike.binds, like);
+      `, ...mi.binds(q), ...itLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}`,
@@ -2107,11 +2490,12 @@ records.get('/search', async (c) => {
 
     if (type === 'case') {
       const ctLike = codedLike('case_type', q);
+      const mc = match('case_number', 'title');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, case_number, title, status, case_type, created_at FROM cases
-        WHERE case_number LIKE ? OR title LIKE ? OR ${ctLike.sql}
+        WHERE ${mc.sql} OR ${ctLike.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, ...ctLike.binds);
+      `, ...mc.binds(q), ...ctLike.binds);
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}`,
@@ -2119,11 +2503,12 @@ records.get('/search', async (c) => {
     }
 
     if (type === 'warrant') {
+      const mw = match('warrant_number', 'subject_name', 'charge_description');
       const rows = await query<Record<string, unknown>>(db, `
         SELECT id, warrant_number, subject_name, charge_description, status, created_at FROM warrants
-        WHERE warrant_number LIKE ? OR subject_name LIKE ? OR charge_description LIKE ?
+        WHERE ${mw.sql}
         ORDER BY created_at DESC LIMIT 50
-      `, like, like, like);
+      `, ...mw.binds(q));
       return c.json(rows.map((r) => ({
         ...r,
         label: [r.warrant_number, r.subject_name].filter(Boolean).join(' — ') || `Warrant #${r.id}`,
@@ -2169,9 +2554,12 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db, `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`, ...ids);
-          count = ids.length;
+          // The SELECT above is LIMIT 500, so this IN-list can carry up to 500
+          // bound parameters — five times D1's 100-parameter cap, which throws
+          // at BIND time before the statement runs. Retention enforcement would
+          // 500 and dispose nothing the moment 100+ rows aged out.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE evidence SET status='disposed' WHERE id IN (${ps})`);
         }
       } else if (recordType === 'incidents') {
         const expired = await query<{ id: number }>(db,
@@ -2179,11 +2567,9 @@ records.post('/retention/enforce', async (c) => {
            AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
         if (expired.length > 0) {
           const ids = expired.map((r: any) => r.id);
-          const ps = ids.map(() => '?').join(',');
-          await execute(db,
-            `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`,
-            ...ids);
-          count = ids.length;
+          // Same LIMIT 500 vs 100-parameter-cap mismatch as the evidence branch.
+          count = await executeInChunks(db, ids,
+            (ps) => `UPDATE incidents SET archived_at=datetime('now'),updated_at=datetime('now') WHERE id IN (${ps})`);
         }
       }
       if (count > 0) results[recordType] = count;
@@ -2207,7 +2593,8 @@ records.get('/retention/policy', async (c) => {
       schedule: RETENTION_SCHEDULE,
       report_retention_days: reportDays ? parseInt(reportDays.config_value,10)||365 : 365,
     });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /retention/policy failed', { src: 'src/routes/records.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/records/reports/approval-queue — ReportsPage Pending Approvals tab.
@@ -2274,7 +2661,8 @@ records.post('/reports/:id/return', async (c) => {
     const db = getDb(c.env);
     const report = await queryFirst<{ id: number; status: string }>(db, 'SELECT id, status FROM incidents WHERE id = ?', id);
     if (!report) return c.json({ error: 'Report not found' }, 404);
-    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, supervisor_notes = ?, updated_at = datetime('now') WHERE id = ?`)
+    // incidents stores supervisor feedback in review_notes (no supervisor_notes).
+    await db.prepare(`UPDATE incidents SET status = 'returned', supervisor_id = ?, review_notes = ?, updated_at = datetime('now') WHERE id = ?`)
       .bind(actor?.id ?? null, reason, id).run();
     return c.json({ success: true, id: Number(id), status: 'returned', reason });
   } catch (err) {
@@ -2454,7 +2842,7 @@ records.get('/links', async (c) => {
           db, 'SELECT dob FROM persons WHERE id = ?', linkedId,
         );
         const wRow = await queryFirst<{ cnt: number }>(
-          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE person_id = ? AND LOWER(status) = 'active'", linkedId,
+          db, "SELECT COUNT(*) AS cnt FROM warrants WHERE subject_person_id = ? AND LOWER(status) = 'active'", linkedId,
         );
         if (per || (wRow && wRow.cnt > 0)) {
           linked_meta = {
@@ -2462,6 +2850,23 @@ records.get('/links', async (c) => {
             active_warrants: (wRow?.cnt ?? 0) > 0 ? 1 : 0,
           };
         }
+      } else if (linkedType === 'property') {
+        // Address for the PS-203 LINKED PROPERTIES table. Without this the PDF's
+        // ADDRESS column was structurally always blank: getRecordLabel returns
+        // the property NAME only, and no linked_meta was emitted for properties,
+        // so nothing ever carried the address to the form.
+        // Street address only: the PS-203 ADDRESS column is ~90pt and does not
+        // wrap, so appending city/state/zip would clip mid-token.
+        const prop = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM properties WHERE id = ?', linkedId,
+        );
+        if (prop) linked_meta = prop as Record<string, unknown>;
+      } else if (linkedType === 'business') {
+        // Businesses share the PDF's property table, so they need the same shape.
+        const biz = await queryFirst<{ address?: string }>(
+          db, 'SELECT address FROM businesses WHERE id = ?', linkedId,
+        );
+        if (biz) linked_meta = biz as Record<string, unknown>;
       }
       return {
         ...link,
@@ -2636,15 +3041,20 @@ records.get('/persons', async (c) => {
     }
     const params: unknown[] = [];
     if (search) {
-      wheres.push(`(first_name LIKE ? OR last_name LIKE ? OR alias_nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR dl_number LIKE ?)`);
-      const like = `%${search}%`;
-      params.push(like, like, like, like, like, like);
+      const ms = containsAnyClause(['first_name', 'last_name', 'alias_nickname', 'phone', 'email', 'dl_number']);
+      wheres.push(ms.sql);
+      params.push(...ms.binds(search));
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons${whereClause} ORDER BY last_name, first_name LIMIT ?`;
+    // Snapshot the predicate bindings BEFORE the LIMIT is appended — the count
+    // query shares the WHERE clause but must not receive the limit parameter.
+    const whereParams = [...params];
     params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit } });
+    // See the evidence handler: total is the MATCHING count, not the page size.
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM persons${whereClause}`, ...whereParams).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit, returned: rows.length } });
   } catch (err) {
     console.error('GET /records/persons failed:', err);
     return c.json({ error: 'Failed to list persons' }, 500);
@@ -2667,15 +3077,18 @@ records.get('/vehicles', async (c) => {
     }
     const params: unknown[] = [];
     if (search) {
-      wheres.push(`(plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_owner LIKE ?)`);
-      const like = `%${search}%`;
-      params.push(like, like, like, like, like, like);
+      const ms = containsAnyClause(['plate_number', 'vin', 'make', 'model', 'owner_name', 'registered_owner']);
+      wheres.push(ms.sql);
+      params.push(...ms.binds(search));
     }
     const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
     const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles_records${whereClause} ORDER BY updated_at DESC LIMIT ?`;
+    // Snapshot before LIMIT is appended — see the persons handler above.
+    const whereParams = [...params];
     params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json({ data: rows, pagination: { total: rows.length, limit } });
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM vehicles_records${whereClause}`, ...whereParams).catch(() => null);
+    return c.json({ data: rows, pagination: { total: totalRow?.n ?? rows.length, limit, returned: rows.length } });
   } catch (err) {
     console.error('GET /records/vehicles failed:', err);
     return c.json({ error: 'Failed to list vehicles' }, 500);

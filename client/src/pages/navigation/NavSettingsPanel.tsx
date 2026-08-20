@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 // ── Self-contained types (lane rule: define everything we need here) ─────────
 export type NavUnits = 'imperial' | 'metric';
 export type NavClock = '12h' | '24h';
-export type NavTheme = 'day' | 'night';
+export type NavTheme = 'day' | 'night' | 'auto';
 export type NavOrientation = 'north-up' | 'heading-up';
 export type NavBrightnessMode = 'manual' | 'auto';
 
@@ -48,7 +48,11 @@ export const NAV_PREFS_CHANGED_EVENT = 'rmpg-nav-prefs-changed';
 export const DEFAULT_NAV_PREFS: NavPrefs = {
   units: 'imperial',
   clock: '12h',
-  theme: 'night',
+  // 'auto' (not a fixed day/night) so a fresh install matches the existing
+  // clock-derived default that NavigationPage.tsx already computed BEFORE
+  // this setting was wired up — an explicit 'night' default here would have
+  // forced night theme at noon for anyone who's never opened Settings.
+  theme: 'auto',
   orientation: 'heading-up',
   volume: 0.7,
   brightness: 1,
@@ -65,6 +69,7 @@ export const DEFAULT_NAV_PREFS: NavPrefs = {
 const THEME_SWATCH: Record<NavTheme, { base: string; label: string }> = {
   day: { base: '#f4f1ea', label: 'Day' },
   night: { base: '#0a0a0a', label: 'Night' },
+  auto: { base: 'linear-gradient(135deg, #f4f1ea 50%, #0a0a0a 50%)', label: 'Auto' },
 };
 
 // #103 — Adaptive brightness curve: full brightness 07:00–19:00, dimmed to 0.35
@@ -200,7 +205,7 @@ function Slider({
     <div className="space-y-1" style={disabled ? { opacity: 0.5 } : undefined}>
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: '#888' }}>{label}</span>
-        <span className="text-[10px] font-mono tabular-nums" style={{ color: '#d4a017' }}>{display}</span>
+        <span className="text-[10px] font-mono tabular-nums" style={{ color: 'var(--field-label-color)' }}>{display}</span>
       </div>
       <input
         type="range"
@@ -271,14 +276,14 @@ export default function NavSettingsPanel({
         borderTop: '1px solid var(--border-default)',
         borderTopLeftRadius: 2,
         borderTopRightRadius: 2,
-        boxShadow: '0 -8px 24px rgba(0,0,0,0.6)',
+        boxShadow: '0 -8px 24px rgba(0 0 0 / 0.6)',
         maxHeight: '80vh',
         overflowY: 'auto',
         backdropFilter: 'blur(4px)',
       }}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'var(--surface-raised)' }}>
-        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
           Navigation Settings
         </span>
         <CloseButton onClick={onClose} />
@@ -308,7 +313,7 @@ export default function NavSettingsPanel({
               <Segmented<NavTheme>
                 label=""
                 value={prefs.theme}
-                options={[{ value: 'day', label: 'Day' }, { value: 'night', label: 'Night' }]}
+                options={[{ value: 'auto', label: 'Auto' }, { value: 'day', label: 'Day' }, { value: 'night', label: 'Night' }]}
                 onChange={(v) => setPref('theme', v)}
               />
             </div>
@@ -332,7 +337,6 @@ export default function NavSettingsPanel({
           onChange={(v) => setPref('orientation', v)}
         />
 
-        <Slider label="Voice volume" value={prefs.volume} onChange={(v) => setPref('volume', v)} />
         <Segmented<NavBrightnessMode>
           label="Brightness mode"
           value={prefs.brightnessMode}

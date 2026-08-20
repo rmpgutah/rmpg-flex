@@ -20,14 +20,14 @@ let nextId = 1;
 
 function formatTime(): string {
   const d = new Date();
-  return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 const TYPE_COLORS: Record<LogEntry['type'], string> = {
-  dispatch: '#d4a017',
-  unit: '#cccccc',
-  emergency: '#dc2626',
-  system: '#f59e0b',
+  dispatch: 'var(--accent-silver-300)',   // dispatch entries — silver chrome
+  unit: 'var(--text-muted)',              // normal unit traffic — muted text
+  emergency: 'var(--sev-critical)',       // emergency — severity red
+  system: 'var(--sev-warn)',              // system notices — operational amber
 };
 
 const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionLog(_props, ref) {
@@ -132,7 +132,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
 
   return (
     <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
-      <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
+      <div className="text-[9px] font-semibold text-fg-muted uppercase tracking-[0.5px] mb-1.5">
         TX LOG
       </div>
 
@@ -141,7 +141,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
         style={{ maxHeight: 140 }}
       >
         {entries.length === 0 ? (
-          <div className="text-[9px] text-rmpg-500 italic py-1">No transmissions</div>
+          <div className="text-[9px] text-fg-muted italic py-1">No transmissions</div>
         ) : (
           entries.map((entry) => (
             <div
@@ -150,7 +150,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
               style={{ fontFamily: 'monospace' }}
               onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
-              <span className="text-[10px] text-rmpg-500 tabular-nums shrink-0 whitespace-nowrap">
+              <span className="text-[10px] text-fg-muted tabular-nums shrink-0 whitespace-nowrap">
                 {entry.time}
               </span>
               <span

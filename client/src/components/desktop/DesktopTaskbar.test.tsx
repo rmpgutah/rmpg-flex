@@ -1,0 +1,255 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
+import { useEffect } from 'react';
+import { isAppPinned, pinApp, setTaskbarPosition, setTaskbarSize, setTaskbarAutoHide } from '../../utils/taskbarPreferences';
+
+const apiFetchMock = vi.fn().mockResolvedValue({ count: 0 });
+vi.mock('../../hooks/useApi', () => ({ apiFetch: (...args: unknown[]) => apiFetchMock(...args) }));
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: () => ({ user: { id: '1', role: 'officer' } }),
+}));
+const addToastMock = vi.fn();
+vi.mock('../ToastProvider', () => ({
+  useToast: () => ({ addToast: addToastMock }),
+}));
+const navigateMock = vi.fn();
+vi.mock('react-router', async (orig) => ({ ...(await orig<any>()), useNavigate: () => navigateMock }));
+
+import { DesktopWindowManagerProvider, useDesktopWindows } from './DesktopWindowManager';
+import DesktopTaskbar from './DesktopTaskbar';
+import { Radio, Package } from 'lucide-react';
+import type { NavFunction } from '../../data/navCatalog';
+
+const icons: NavFunction[] = [{ path: '/dispatch', label: 'Dispatch Console', icon: Radio, description: 'd' }];
+const catalog: NavFunction[] = [
+  { path: '/dispatch', label: 'Dispatch Console', icon: Radio, description: 'd', windowSize: { width: 1200, height: 900 } },
+  { path: '/impound', label: 'Impound', icon: Package, description: 'imp', notWindowable: 'test fixture: explicitly excluded' },
+];
+
+function Harness() {
+  const { openWindow, windows } = useDesktopWindows();
+  return (
+    <>
+      <button onClick={() => openWindow('/dispatch', 'Dispatch')}>simulate-open</button>
+      <DesktopTaskbar icons={icons} catalog={catalog} />
+      <ul>{windows.map(w => <li key={w.id}>{w.path}</li>)}</ul>
+    </>
+  );
+}
+
+function CapHarness() {
+  const { openWindow } = useDesktopWindows();
+  useEffect(() => {
+    for (let i = 0; i < 10; i++) openWindow(`/p${i}`, `P${i}`);
+  }, [openWindow]);
+  return <DesktopTaskbar icons={icons} catalog={catalog} />;
+}
+
+describe('DesktopTaskbar', () => {
+  beforeEach(() => {
+    apiFetchMock.mockClear();
+    navigateMock.mockClear();
+    addToastMock.mockClear();
+    sessionStorage.clear();
+  });
+
+  it('shows a button for each open window and clicking it focuses/restores', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeInTheDocument();
+  });
+
+  it('typing in the launcher search filters the catalog to matching modules', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
+    expect(screen.getByText('Dispatch Console')).toBeInTheDocument();
+  });
+
+  it('selecting a windowable search result opens a floating window instead of navigating', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
+    fireEvent.click(screen.getByText('Dispatch Console'));
+    expect(screen.getByText('/dispatch')).toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('selecting a non-windowable search result navigates instead of opening a window', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Impound' } });
+    fireEvent.click(screen.getByText('Impound'));
+    expect(navigateMock).toHaveBeenCalledWith('/impound');
+  });
+
+  it('shows a toast instead of opening a window when the window cap is already hit', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><CapHarness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
+    fireEvent.click(screen.getByText('Dispatch Console'));
+    expect(addToastMock).toHaveBeenCalledWith('Close a window to open another', 'error');
+  });
+});
+
+describe('DesktopTaskbar — Show Desktop', () => {
+  beforeEach(() => { sessionStorage.clear(); });
+
+  it('clicking Show Desktop minimizes every open window; clicking again restores them', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.click(screen.getByLabelText('Show desktop'));
+    expect(screen.getByLabelText('Show windows')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Show windows'));
+    expect(screen.getByLabelText('Show desktop')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — Pin to Taskbar (launcher search)', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('right-clicking a launcher search result offers "Pin to Taskbar"', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByLabelText('Open app launcher'));
+    fireEvent.change(screen.getByPlaceholderText(/search modules/i), { target: { value: 'Dispatch' } });
+    fireEvent.contextMenu(screen.getByText('Dispatch Console'));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — window grouping', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('two windows sharing a path collapse into one grouped button with a count badge, and clicking cycles focus between them', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const groupButton = screen.getByRole('button', { name: /Dispatch.*2/ });
+    expect(groupButton).toBeInTheDocument();
+    fireEvent.click(groupButton);
+    const items = screen.getAllByText(/^\/dispatch$/);
+    expect(items).toHaveLength(2); // both windows still open — cycling only changes focus, not window count
+  });
+});
+
+describe('DesktopTaskbar — pinned apps render when not running', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('a pinned app with no open window renders a launcher-style taskbar button', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    expect(screen.getByRole('button', { name: 'Dispatch Console' })).toBeInTheDocument();
+  });
+
+  it('clicking a pinned-not-running button opens the window', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch Console' }));
+    expect(screen.getByText('/dispatch')).toBeInTheDocument();
+  });
+
+  it('once the pinned app is running, only one button shows (no duplicate placeholder)', () => {
+    pinApp('/dispatch');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Dispatch Console' }));
+    expect(screen.getAllByRole('button', { name: 'Dispatch Console' })).toHaveLength(1);
+  });
+});
+
+describe('DesktopTaskbar — window button context menu', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('right-clicking a single window button offers Pin to Taskbar and Close', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Dispatch' }));
+    expect(screen.getByText('Pin to Taskbar')).toBeInTheDocument();
+    expect(screen.getByText('Close')).toBeInTheDocument();
+    expect(screen.queryByText('Close all')).not.toBeInTheDocument();
+  });
+
+  it('clicking Close on a window button closes that window', () => {
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.click(screen.getByText('simulate-open'));
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'Dispatch' }));
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).not.toBeInTheDocument();
+  });
+
+  it('closing via the jump-list Close item repeatedly on a shrinking group never throws (stale cycle-index regression)', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w3', path: '/dispatch', title: 'Dispatch', x: 120, y: 100, width: 1050, height: 800, zIndex: 103, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+
+    // Cycle the group button twice so cycleIndexRef.current['/dispatch'] === 2
+    // (advances via % group.length against the 3-window group).
+    const groupButton = () => screen.getByRole('button', { name: /Dispatch.*\d/ });
+    fireEvent.click(groupButton());
+    fireEvent.click(groupButton());
+
+    // First Close via jump-list: group[2] is valid (3 windows), leaves 2 —
+    // still rendered grouped since group.length (2) is still >= 2, but the
+    // stale ref index (2) is now out of bounds for the new 2-window group.
+    fireEvent.contextMenu(groupButton());
+    expect(() => fireEvent.click(screen.getByText('Close'))).not.toThrow();
+
+    // Second Close via jump-list: without the clamp, group[cycleIndexRef.current[path]]
+    // (still 2) would be undefined against the now 1-window array and `.id` would throw.
+    expect(() => {
+      fireEvent.contextMenu(groupButton());
+      fireEvent.click(screen.getByText('Close'));
+    }).not.toThrow();
+
+    // Only one window should remain after both closes.
+    expect(screen.getAllByText(/^\/dispatch$/)).toHaveLength(1);
+  });
+
+  it('a grouped window button offers Close all in addition to Close', () => {
+    sessionStorage.setItem('rmpg_desktop_windows', JSON.stringify([
+      { id: 'w1', path: '/dispatch', title: 'Dispatch', x: 80, y: 60, width: 1050, height: 800, zIndex: 101, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+      { id: 'w2', path: '/dispatch', title: 'Dispatch', x: 100, y: 80, width: 1050, height: 800, zIndex: 102, minimized: false, maximized: false, alwaysOnTop: false, opacity: 1 },
+    ]));
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Dispatch.*2/ }));
+    expect(screen.getByText('Close all')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Close all'));
+    expect(screen.queryByRole('button', { name: /Dispatch/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('DesktopTaskbar — position and size', () => {
+  beforeEach(() => { sessionStorage.clear(); localStorage.clear(); });
+
+  it('renders at the top when position is set to top', () => {
+    setTaskbarPosition('top');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.top).toBe('0px');
+    expect(bar.style.bottom).toBe('');
+  });
+
+  it('renders at 56px height when size is set to large', () => {
+    setTaskbarSize('large');
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.height).toBe('56px');
+  });
+
+  it('auto-hide translates the bar off-screen until the hover strip is entered', () => {
+    vi.useFakeTimers();
+    setTaskbarAutoHide(true);
+    render(<MemoryRouter><DesktopWindowManagerProvider><Harness /></DesktopWindowManagerProvider></MemoryRouter>);
+    expect(screen.getByTestId('taskbar-hover-strip')).toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('taskbar-hover-strip'));
+    act(() => { vi.advanceTimersByTime(300); });
+    const bar = screen.getByLabelText('Open app launcher').closest('div')!.parentElement as HTMLElement;
+    expect(bar.style.transform).toBe('translateY(0px)');
+    vi.useRealTimers();
+  });
+});

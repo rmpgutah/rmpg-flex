@@ -24,7 +24,7 @@ function timeAgo(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return parseTimestamp(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString('en-US', { timeZone: 'America/Denver' });
 }
 
 function daysUntil(dateStr: string): string {
@@ -68,7 +68,7 @@ export default function TrustedDevicesList() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <RefreshCw className="w-4 h-4 animate-spin text-rmpg-500" />
+        <RefreshCw className="w-4 h-4 animate-spin text-fg-muted" />
       </div>
     );
   }
@@ -76,9 +76,9 @@ export default function TrustedDevicesList() {
   if (devices.length === 0) {
     return (
       <div className="text-center py-6">
-        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--rmpg-500)' }} />
-        <p className="text-[10px] text-rmpg-500">No trusted devices</p>
-        <p className="text-[9px] mt-1" style={{ color: 'var(--rmpg-500)' }}>
+        <Shield className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+        <p className="text-[10px] text-fg-muted">No trusted devices</p>
+        <p className="text-[9px] mt-1" style={{ color: 'var(--text-muted)' }}>
           Trust a device during login to skip 2FA for 30 days
         </p>
       </div>
@@ -94,7 +94,7 @@ export default function TrustedDevicesList() {
           style={{ background:"var(--surface-sunken)" }}
         >
           {/* Device icon */}
-          <div className="p-1.5 panel-inset" style={{ color: '#888888', background: 'rgba(136,136,136,0.1)' }}>
+          <div className="p-1.5 panel-inset text-fg-muted bg-white/[0.06]">
             {deviceIcon(device.device_name)}
           </div>
 
@@ -104,10 +104,10 @@ export default function TrustedDevicesList() {
               {device.device_name}
             </div>
             <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[9px] font-mono text-rmpg-500">
+              <span className="text-[9px] font-mono text-fg-muted">
                 {device.ip_address}
               </span>
-              <span className="text-[9px]" style={{ color: 'var(--rmpg-500)' }}>
+              <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
                 Last used {timeAgo(device.last_used_at)}
               </span>
             </div>
@@ -115,7 +115,7 @@ export default function TrustedDevicesList() {
 
           {/* Expiry */}
           <div className="text-right flex-shrink-0">
-            <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
+            <div className="text-[9px] font-mono text-fg-muted">
               {daysUntil(device.trusted_until)} left
             </div>
           </div>
@@ -124,8 +124,7 @@ export default function TrustedDevicesList() {
           <button type="button"
             onClick={() => revokeDevice(device.id)}
             disabled={revoking === device.id}
-            className="toolbar-btn flex items-center gap-1 text-[9px]"
-            style={{ color: revoking === device.id ? 'var(--rmpg-500)' : '#ef4444' }}
+            className={`toolbar-btn flex items-center gap-1 text-[9px] ${revoking === device.id ? 'text-fg-muted' : 'text-red-500'}`}
             title="Revoke trust"
           >
             <Trash2 className="w-3 h-3" />
@@ -133,7 +132,7 @@ export default function TrustedDevicesList() {
         </div>
       ))}
 
-      <div className="text-[9px] pt-1" style={{ color: 'var(--rmpg-500)' }}>
+      <div className="text-[9px] pt-1" style={{ color: 'var(--text-muted)' }}>
         {devices.length} trusted device{devices.length !== 1 ? 's' : ''} — revoking a device will require 2FA on next login from it
       </div>
     </div>

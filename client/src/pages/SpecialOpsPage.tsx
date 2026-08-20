@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
@@ -226,7 +226,7 @@ export default function SpecialOpsPage() {
       render: (r: Callout) => {
         try {
           return parseTimestamp(r.date).toLocaleDateString('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric',
+            timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
           });
         } catch {
           return r.date?.slice(0, 10) || '--';
@@ -459,11 +459,11 @@ export default function SpecialOpsPage() {
       {/* -- Create / Edit modal --------------------------------- */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={() => setFormOpen(false)}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >

@@ -118,9 +118,9 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       phase: 'INTEL RETRIEVAL — UI/DESIGN SYSTEM',
       icon: '🎨',
       detail: 'Accessing design system knowledge base...\n' +
-        'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
-        '  ├─ Surfaces: #141414 (base), #181818 (raised), #0c0c0c (sunken)\n' +
-        '  ├─ Brand: blue #888888, gold #d4a017\n' +
+        'Theme: Blue & Silver (default as of 2026-07-04) — deep navy surfaces, silver accent\n' +
+        '  ├─ Surfaces: bg-surface-base / bg-surface-raised / bg-surface-sunken / bg-surface-overlay\n' +
+        '  ├─ Brand: silver (accent-silver-*), gold restricted to field labels + panel headers only\n' +
         '  ├─ Border-radius: 2px (flat retro console)\n' +
         '  ├─ Font: system sans-serif, monospace for data\n' +
         '  └─ Layout: toolbar + dropdown menus (no sidebar)',
@@ -487,7 +487,7 @@ export default function AIDevChatPanel() {
         <div className="p-3 border-b border-rmpg-700">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-rmpg-100 text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-rmpg-700 hover:bg-rmpg-600 text-rmpg-100 text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -507,7 +507,7 @@ export default function AIDevChatPanel() {
                 <p className="text-xs text-rmpg-300 truncate">{s.first_message || 'New conversation'}</p>
                 <p className="text-[10px] text-rmpg-500">{s.message_count} messages</p>
               </div>
-              <button
+              <button aria-label="Delete"
                 onClick={(e) => deleteSession(s.session_id, e)}
                 className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-all"
               >
@@ -577,14 +577,14 @@ export default function AIDevChatPanel() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'assistant' && (
-                <div className="w-7 h-7 rounded bg-[#888888] flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded bg-rmpg-700 flex items-center justify-center flex-shrink-0">
                   <Bot className="w-4 h-4 text-rmpg-100" />
                 </div>
               )}
               <div
                 className={`max-w-[80%] ${
                   msg.role === 'user'
-                    ? 'bg-[#888888] text-rmpg-100 rounded-sm px-3 py-2'
+                    ? 'bg-rmpg-700 text-rmpg-100 rounded-sm px-3 py-2'
                     : 'bg-surface-raised text-rmpg-200 rounded-sm px-3 py-2 border border-rmpg-700'
                 }`}
               >
@@ -612,7 +612,7 @@ export default function AIDevChatPanel() {
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
                 {(isThinking || thinkingText) && (
-                  <div className={`bg-gradient-to-b from-[#181818] to-[#141414] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                  <div className={`bg-gradient-to-b from-surface-raised to-surface-base rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
                     streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
                   }`}>
                     {/* Animated header bar */}
@@ -728,7 +728,7 @@ export default function AIDevChatPanel() {
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
               className="flex-1 bg-surface-sunken border border-rmpg-700 text-rmpg-100 text-xs px-2 py-1.5 rounded focus:outline-none focus:border-rmpg-500"
             />
-            <button
+            <button aria-label="Close"
               onClick={() => {
                 setShowFileInput(false);
                 setFileContext('');

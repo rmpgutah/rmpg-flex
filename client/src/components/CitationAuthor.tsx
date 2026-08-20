@@ -531,7 +531,7 @@ export default function CitationAuthor({
 
         {/* Type selector */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Citation Type</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2">Citation Type</h3>
           <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
             {CITATION_TYPES.map(t => (
               <button
@@ -553,7 +553,7 @@ export default function CitationAuthor({
 
         {isEdit && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
+            <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2">Status</h3>
             <Combobox
               value={CITATION_STATUSES.find(s => s.value === form.status) ?? null}
               onChange={(opt) => updateField('status', opt?.value ?? 'issued')}
@@ -567,7 +567,7 @@ export default function CitationAuthor({
 
         {/* Violations — multi-violation stack */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Violations
           </h3>
           <div className="mb-3">
@@ -599,7 +599,7 @@ export default function CitationAuthor({
 
         {/* Subject */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Subject
           </h3>
           <div className="space-y-3">
@@ -709,7 +709,7 @@ export default function CitationAuthor({
         {/* Vehicle */}
         {showVehicleSection && (
           <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+            <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
               <Car size={12} /> Vehicle Information
             </h3>
             <div className="space-y-3">
@@ -741,7 +741,7 @@ export default function CitationAuthor({
 
         {/* Location & Time */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
             <Calendar size={12} /> Location & Time
           </h3>
           <div className="space-y-3">
@@ -814,7 +814,7 @@ export default function CitationAuthor({
 
         {/* Officer */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
             <User size={12} /> Issuing Officer
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -833,7 +833,7 @@ export default function CitationAuthor({
             dropdown. Picking a court auto-fills the address. Officer can
             still override either via the free-text fields below the picker. */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2 flex items-center gap-1.5">
             <Scale size={12} /> Court Information
           </h3>
           <div className="space-y-3">
@@ -905,7 +905,7 @@ export default function CitationAuthor({
 
         {/* Notes */}
         <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-[color:var(--panel-header-color)] font-bold mb-2">Notes</h3>
           <RichTextArea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}
@@ -918,8 +918,8 @@ export default function CitationAuthor({
 
       {/* Footer */}
       <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
-        <span className="text-[10px] text-rmpg-500 mr-auto">
-          Total fine: <span className="text-[#d4a017] font-bold">${totalFineOf(violations).toFixed(2)}</span>
+        <span className="text-[10px] text-fg-muted mr-auto">
+          Total fine: <span className="text-[color:var(--panel-header-color)] font-bold">${totalFineOf(violations).toFixed(2)}</span>
           {' · '}
           {violations.length} violation{violations.length === 1 ? '' : 's'}
         </span>

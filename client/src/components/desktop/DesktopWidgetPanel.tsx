@@ -1,0 +1,147 @@
+import React from 'react';
+import type { NavFunction } from '../../data/navCatalog';
+import type { DesktopWidgetState } from '../../utils/normalizeDesktopWidgets';
+import { useDraggablePosition } from '../../hooks/useDraggablePosition';
+import ContextMenu from '../ContextMenu';
+import DesktopClockWidget from './widgets/DesktopClockWidget';
+import DesktopOpsSummaryWidget from './widgets/DesktopOpsSummaryWidget';
+import DesktopNotificationsWidget from './widgets/DesktopNotificationsWidget';
+import DesktopQuickAccessWidget from './widgets/DesktopQuickAccessWidget';
+import DesktopShiftTimerWidget from './widgets/DesktopShiftTimerWidget';
+import DesktopPinnedCallTicker from './widgets/DesktopPinnedCallTicker';
+import DesktopMiniMapWidget from './widgets/DesktopMiniMapWidget';
+import DesktopWeatherWidget from './widgets/DesktopWeatherWidget';
+import DesktopRadioChannelWidget from './widgets/DesktopRadioChannelWidget';
+import DesktopRollCallWidget from './widgets/DesktopRollCallWidget';
+import DesktopIncidentTimerWidget from './widgets/DesktopIncidentTimerWidget';
+import DesktopGpsTrailWidget from './widgets/DesktopGpsTrailWidget';
+import DesktopShiftHandoffWidget from './widgets/DesktopShiftHandoffWidget';
+import DesktopPanicWidget from './widgets/DesktopPanicWidget';
+import DesktopWarrantCountWidget from './widgets/DesktopWarrantCountWidget';
+import DesktopBodyCamWidget from './widgets/DesktopBodyCamWidget';
+import DesktopMessageCountWidget from './widgets/DesktopMessageCountWidget';
+import DesktopBoloTickerWidget from './widgets/DesktopBoloTickerWidget';
+import DesktopHotZonesWidget from './widgets/DesktopHotZonesWidget';
+import DesktopDispatchQueueWidget from './widgets/DesktopDispatchQueueWidget';
+import DesktopUnitProximityWidget from './widgets/DesktopUnitProximityWidget';
+import DesktopPlateLookupWidget from './widgets/DesktopPlateLookupWidget';
+import DesktopAddressLookupWidget from './widgets/DesktopAddressLookupWidget';
+import DesktopShiftPerfWidget from './widgets/DesktopShiftPerfWidget';
+import DesktopRadioLogWidget from './widgets/DesktopRadioLogWidget';
+import DesktopActiveWarrantsWidget from './widgets/DesktopActiveWarrantsWidget';
+import DesktopOfficerSafetyWidget from './widgets/DesktopOfficerSafetyWidget';
+import DesktopCallEscalationWidget from './widgets/DesktopCallEscalationWidget';
+import DesktopEvidenceCoCWidget from './widgets/DesktopEvidenceCoCWidget';
+import DesktopMutualAidWidget from './widgets/DesktopMutualAidWidget';
+import DesktopNetworkStatusWidget from './widgets/DesktopNetworkStatusWidget';
+import DesktopVpnStatusWidget from './widgets/DesktopVpnStatusWidget';
+import DesktopIpInfoWidget from './widgets/DesktopIpInfoWidget';
+import DesktopStatusBoard from './DesktopStatusBoard';
+
+export interface DesktopWidgetPanelProps {
+  widgets: DesktopWidgetState[];
+  // Role-filtered catalog (DesktopPage's `allFunctions`) — threaded through
+  // specifically to DesktopQuickAccessWidget, the only widget that renders a
+  // module list. The other widgets take no props.
+  catalog: NavFunction[];
+  onMoveWidget: (id: string, x: number, y: number) => void;
+  onAdjustWidget: (id: string, patch: Partial<Pick<DesktopWidgetState, 'opacity' | 'blur'>>) => void;
+  onRemoveWidget?: (id: string) => void;
+}
+
+// Left as `any`: every widget but 'quick-access' takes no props at all, so a
+// shared prop type would either make `catalog` optional (which then fails to
+// satisfy DesktopQuickAccessWidgetProps's required `catalog`) or required
+// (which then fails the no-prop `<Widget />` call sites below) — either way
+// forces a real refactor of the no-prop widgets rather than a one-line change.
+const WIDGET_COMPONENTS: Record<string, React.ComponentType<any>> = {
+  'clock': DesktopClockWidget,
+  'ops-summary': DesktopOpsSummaryWidget,
+  'notifications': DesktopNotificationsWidget,
+  'quick-access': DesktopQuickAccessWidget,
+  'shift-timer': DesktopShiftTimerWidget,
+  'pinned-call-ticker': DesktopPinnedCallTicker,
+  'mini-map': DesktopMiniMapWidget,
+  'weather': DesktopWeatherWidget,
+  'radio-channel': DesktopRadioChannelWidget,
+  'roll-call': DesktopRollCallWidget,
+  'incident-timer': DesktopIncidentTimerWidget,
+  'gps-trail': DesktopGpsTrailWidget,
+  'shift-handoff': DesktopShiftHandoffWidget,
+  'panic': DesktopPanicWidget,
+  'warrant-count': DesktopWarrantCountWidget,
+  'body-cam': DesktopBodyCamWidget,
+  'message-count': DesktopMessageCountWidget,
+  'bolo-ticker': DesktopBoloTickerWidget,
+  'hot-zones': DesktopHotZonesWidget,
+  'dispatch-queue': DesktopDispatchQueueWidget,
+  'unit-proximity': DesktopUnitProximityWidget,
+  'plate-lookup': DesktopPlateLookupWidget,
+  'address-lookup': DesktopAddressLookupWidget,
+  'shift-perf': DesktopShiftPerfWidget,
+  'radio-log': DesktopRadioLogWidget,
+  'active-warrants-count': DesktopActiveWarrantsWidget,
+  'officer-safety-flags': DesktopOfficerSafetyWidget,
+  'call-escalation': DesktopCallEscalationWidget,
+  'evidence-coc': DesktopEvidenceCoCWidget,
+  'mutual-aid-status': DesktopMutualAidWidget,
+  'network-status': DesktopNetworkStatusWidget,
+  'vpn-status': DesktopVpnStatusWidget,
+  'ip-info': DesktopIpInfoWidget,
+  'status-board': DesktopStatusBoard,
+};
+
+function clampOpacity(v: number): number {
+  return Math.max(0.2, Math.min(1, Math.round(v * 10) / 10));
+}
+
+function WidgetFrame({
+  widget, catalog, onMoveWidget, onAdjustWidget, onRemoveWidget,
+}: {
+  widget: DesktopWidgetState;
+  catalog: NavFunction[];
+  onMoveWidget: (id: string, x: number, y: number) => void;
+  onAdjustWidget: (id: string, patch: Partial<Pick<DesktopWidgetState, 'opacity' | 'blur'>>) => void;
+  onRemoveWidget?: (id: string) => void;
+}) {
+  const { onPointerDown } = useDraggablePosition(widget.x, widget.y, (x, y) => onMoveWidget(widget.id, x, y));
+  const Widget = WIDGET_COMPONENTS[widget.id];
+  if (!Widget) return null;
+  return (
+    <ContextMenu
+      items={[
+        { label: 'Increase opacity', onClick: () => onAdjustWidget(widget.id, { opacity: clampOpacity(widget.opacity + 0.1) }) },
+        { label: 'Decrease opacity', onClick: () => onAdjustWidget(widget.id, { opacity: clampOpacity(widget.opacity - 0.1) }) },
+        { label: 'Toggle blur', onClick: () => onAdjustWidget(widget.id, { blur: widget.blur > 0 ? 0 : 6 }) },
+        { label: 'Reset position', onClick: () => onMoveWidget(widget.id, 40, 40) },
+        ...(onRemoveWidget ? [{ label: 'Remove widget', onClick: () => onRemoveWidget(widget.id) }] : []),
+      ]}
+    >
+      <div
+        data-widget-id={widget.id}
+        onPointerDown={onPointerDown}
+        style={{
+          position: 'absolute',
+          left: widget.x,
+          top: widget.y,
+          opacity: widget.opacity,
+          backdropFilter: widget.blur > 0 ? `blur(${widget.blur}px)` : undefined,
+          cursor: 'move',
+          pointerEvents: 'auto',
+        }}
+      >
+        {widget.id === 'quick-access' ? <Widget catalog={catalog} /> : <Widget />}
+      </div>
+    </ContextMenu>
+  );
+}
+
+export default function DesktopWidgetPanel({ widgets = [], catalog, onMoveWidget, onAdjustWidget, onRemoveWidget }: DesktopWidgetPanelProps) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 10, pointerEvents: 'none' }}>
+      {widgets.filter(w => w.on).map(w => (
+        <WidgetFrame key={w.id} widget={w} catalog={catalog} onMoveWidget={onMoveWidget} onAdjustWidget={onAdjustWidget} onRemoveWidget={onRemoveWidget} />
+      ))}
+    </div>
+  );
+}

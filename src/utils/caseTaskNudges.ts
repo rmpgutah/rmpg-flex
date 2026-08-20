@@ -4,11 +4,18 @@
 import { log } from './logger';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
+import { denverDateStringToEpochMs } from './denverTime';
 
 /** Pure: classify a task's urgency by its due date. `now` injected for tests. */
 export function classifyTaskDue(dueDate: string | null | undefined, now: Date): 'overdue' | 'due_soon' | null {
   if (!dueDate) return null;
-  const due = new Date(`${String(dueDate).slice(0, 10)}T23:59:59`);
+  // due_date is a Denver-local calendar date (case managers pick a day, not a
+  // UTC instant). `new Date(dateStr + 'T23:59:59')` (no offset) is parsed as
+  // UTC by JS, which made "end of day" actually mean ~16:59-17:59 Denver time
+  // — a task due "today" could be flagged overdue up to 7 hours before the
+  // Denver workday actually ended. denverDateStringToEpochMs is DST-aware.
+  const dueMs = denverDateStringToEpochMs(String(dueDate).slice(0, 10), '23:59:59');
+  const due = new Date(dueMs);
   if (isNaN(due.getTime())) return null;
   const diffH = (due.getTime() - now.getTime()) / 3600000;
   if (diffH < 0) return 'overdue';

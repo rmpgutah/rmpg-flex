@@ -16,6 +16,8 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
+import { formatEnumValue, toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -211,7 +213,7 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
     doc.setFont('Arial', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(TEXT_DARK);
-    doc.text(`RETENTION HOLD — ${retention.replace(/_/g, ' ').toUpperCase()}`, M + 10, y + 12);
+    doc.text(`RETENTION HOLD — ${toDisplayLabel(retention).toUpperCase()}`, M + 10, y + 12);
     y += 24;
   }
 
@@ -232,7 +234,7 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
     ['Title', video.title || '—'],
     ['Classification', (video.classification || '—').toString()],
     ['Camera', channelLabel(video.cpg_channel)],
-    ['Event Type', video.cpg_event_type || 'Manual'],
+    ['Event Type', formatEnumValue(video.cpg_event_type) || 'Manual'],
     ['Recorded', fmtDateTime(video.recorded_at)],
     ['Duration', formatDuration(video.duration_seconds)],
     ['File Size', formatFileSize(video.file_size)],
@@ -442,6 +444,6 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
 
 export function openDashcamReviewPdf(input: DashcamReviewPdfInput): void {
   const doc = generateDashcamReviewPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Dashcam Review');
 }

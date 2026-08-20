@@ -5,6 +5,7 @@
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface ActivityEntry {
   id: string;
@@ -38,6 +39,7 @@ function borderColor(action: string): string {
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
   return parseTimestamp(dateStr).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -93,7 +95,7 @@ export default function ActivityDetailTab({ activity }: Props) {
                         <span
                           className={`font-mono uppercase text-[10px] font-bold tracking-wider ${actionColor}`}
                         >
-                          {entry.action.replace(/_/g, ' ').toUpperCase()}
+                          {toDisplayLabel(entry.action).toUpperCase()}
                         </span>
                       </span>
                       <span className="font-mono text-[9px] text-rmpg-500 flex-shrink-0">

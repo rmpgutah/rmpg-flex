@@ -1,7 +1,11 @@
-import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard, Copy } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
+import FleetioConflictBadge from '../../../components/FleetioConflictBadge';
+import type { ConflictBadgeConflict } from '../../../components/FleetioConflictBadge';
+import { apiFetch } from '../../../hooks/useApi';
 
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
@@ -78,7 +82,7 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
         <polyline
           points={points.join(' ')}
           fill="none"
-          stroke="#888888"
+          stroke="var(--text-muted)"
           strokeWidth="1.5"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -87,7 +91,7 @@ function MpgSparkline({ logs }: { logs: FleetFuelLog[] }) {
         {values.map((v, i) => {
           const x = padding + (i / (values.length - 1)) * usableW;
           const y = padding + usableH - ((v - min) / range) * usableH;
-          const color = v > 20 ? '#4ade80' : v >= 15 ? '#fbbf24' : '#f87171';
+          const color = v > 20 ? 'var(--sev-ok)' : v >= 15 ? 'var(--sev-warn-soft)' : 'var(--sev-critical-soft)';
           return <circle key={i} cx={x} cy={y} r="2" fill={color} />;
         })}
       </svg>
@@ -130,12 +134,12 @@ function PriceSparkline({ logs }: { logs: FleetFuelLog[] }) {
         </div>
       </div>
       <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="overflow-visible">
-        <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgba(212,160,23,0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
-        <polyline points={points.join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        <line x1={padding} y1={avgY} x2={padding + usableW} y2={avgY} stroke="rgb(var(--accent-silver-400-rgb) / 0.3)" strokeWidth="0.5" strokeDasharray="3,3" />
+        <polyline points={points.join(' ')} fill="none" stroke="var(--accent-silver-400)" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
         {values.map((v, i) => {
           const x = padding + (i / (values.length - 1)) * usableW;
           const y = padding + usableH - ((v - min) / range) * usableH;
-          return <circle key={i} cx={x} cy={y} r="2" fill="#d4a017" />;
+          return <circle key={i} cx={x} cy={y} r="2" fill="var(--accent-silver-400)" />;
         })}
       </svg>
     </div>
@@ -162,11 +166,20 @@ function MonthlySpendBars({ logs }: { logs: FleetFuelLog[] }) {
         <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Monthly Spend (Last {months.length} Months)</span>
         <span className="text-[8px] text-rmpg-500">Total: <span className="font-mono font-bold text-green-400">${months.reduce((s, [, a]) => s + a.cost, 0).toFixed(2)}</span></span>
       </div>
+      {/* Each column is h-full so it inherits a DEFINITE height from the h-20
+          row, and the bar sits in its own flex-1 track. A percentage height
+          only resolves against a definite-height parent — the column
+          previously had none (flex children size to content under
+          items-end), so every bar computed to zero and the chart rendered
+          blank while the month labels and total still showed. jsdom has no
+          layout engine, so only a real browser can catch this. */}
       <div className="flex items-end gap-1 h-20">
         {months.map(([month, a]) => (
-          <div key={month} className="flex-1 flex flex-col items-center justify-end gap-0.5 group" title={`${month}: $${a.cost.toFixed(2)} · ${a.gallons.toFixed(1)} gal`}>
+          <div key={month} className="flex-1 h-full flex flex-col items-center justify-end gap-0.5 group" title={`${month}: $${a.cost.toFixed(2)} · ${a.gallons.toFixed(1)} gal`}>
             <span className="text-[7px] text-rmpg-500 font-mono opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">${Math.round(a.cost)}</span>
-            <div className="w-full bg-green-700/60 hover:bg-green-500 transition-colors rounded-t-sm" style={{ height: `${Math.max(2, (a.cost / maxCost) * 100)}%` }} />
+            <div className="w-full flex-1 flex items-end min-h-0">
+              <div className="w-full bg-green-700/60 hover:bg-green-500 transition-colors rounded-t-sm" style={{ height: `${Math.max(2, (a.cost / maxCost) * 100)}%` }} />
+            </div>
             <span className="text-[6px] text-rmpg-600 font-mono">{month.slice(5)}</span>
           </div>
         ))}
@@ -175,12 +188,109 @@ function MonthlySpendBars({ logs }: { logs: FleetFuelLog[] }) {
   );
 }
 
+/** Minutes within which two same-vehicle, same-gallons fills are treated as
+ *  one physical fill. Fleet.io-pulled twins land 0–5 min from their native
+ *  row (296 s was the widest observed on live D1); a genuine second fill of
+ *  byte-identical volume that soon is not a real scenario. */
+const NEAR_DUP_WINDOW_MIN = 10;
+
+/** How many of the fields an operator actually fills in are populated. Used
+ *  to decide which row in a duplicate group SURVIVES — a Fleet.io-pulled row
+ *  carries only date + gallons, so it must never win over the native row
+ *  that has the odometer, driver, station and payment method on it. */
+export function fuelLogCompleteness(log: FleetFuelLog): number {
+  const l = log as unknown as Record<string, unknown>;
+  const filled = (v: unknown) => v != null && v !== '';
+  return [
+    l.total_cost, l.odometer, l.odometer_reading, l.driver_name, l.station,
+    l.payment_method, l.location, l.notes, l.cost_per_gallon, l.fuel_type,
+  ].filter(filled).length;
+}
+
+/**
+ * Groups fuel logs representing the SAME physical fill. Two passes:
+ *
+ *  1. Exact: same vehicle_id + fuel_date + total_cost — a fuel-card import
+ *     landing on top of a manual log. All three must be non-null so missing
+ *     data never manufactures a false match.
+ *
+ *  2. Near: same vehicle_id + same gallons, timestamps within
+ *     NEAR_DUP_WINDOW_MIN. This is the Fleet.io `/pull` twin, which pass 1
+ *     structurally CANNOT see: the pulled row has total_cost = null (so it
+ *     was skipped outright) and its timestamp differs from the native row by
+ *     seconds (so the exact key never collided). 22 such rows accumulated
+ *     unnoticed on live D1 — visible in the fuel log as bare "10.991 gal"
+ *     entries with no cost, station or driver, and unreachable by "Delete
+ *     Duplicates". Gallons must match and be > 0; two null-gallon rows are
+ *     not evidence of anything.
+ *
+ * Returns only groups with 2+ members; single entries are never "duplicates."
+ */
+function findDuplicateGroups(logs: FleetFuelLog[]): Map<string, FleetFuelLog[]> {
+  const groups = new Map<string, FleetFuelLog[]>();
+  const claimed = new Set<FleetFuelLog>();
+
+  // ── Pass 1: exact vehicle + date + cost ──
+  for (const log of logs) {
+    if (log.total_cost == null || !log.fuel_date) continue;
+    const key = `${log.vehicle_id}|${log.fuel_date}|${log.total_cost.toFixed(2)}`;
+    const g = groups.get(key) ?? [];
+    g.push(log);
+    groups.set(key, g);
+  }
+  for (const [key, g] of groups) {
+    if (g.length < 2) groups.delete(key);
+    else for (const l of g) claimed.add(l);
+  }
+
+  // ── Pass 2: same vehicle + gallons, near in time ──
+  const byVehicleGallons = new Map<string, FleetFuelLog[]>();
+  for (const log of logs) {
+    if (claimed.has(log)) continue;
+    const gallons = typeof log.gallons === 'number' ? log.gallons : null;
+    if (gallons == null || !(gallons > 0) || !log.fuel_date) continue;
+    const ts = Date.parse(log.fuel_date);
+    if (Number.isNaN(ts)) continue;
+    const k = `${log.vehicle_id}|${gallons.toFixed(3)}`;
+    byVehicleGallons.set(k, [...(byVehicleGallons.get(k) ?? []), log]);
+  }
+  for (const [k, bucket] of byVehicleGallons) {
+    if (bucket.length < 2) continue;
+    // Cluster chronologically: consecutive entries within the window belong
+    // to the same physical fill.
+    const sorted = [...bucket].sort(
+      (a, b) => Date.parse(a.fuel_date as string) - Date.parse(b.fuel_date as string),
+    );
+    let cluster: FleetFuelLog[] = [sorted[0]];
+    const flush = (c: FleetFuelLog[], idx: number) => {
+      if (c.length >= 2) groups.set(`near|${k}|${idx}`, c);
+    };
+    let clusterIdx = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const gapMin = Math.abs(
+        Date.parse(sorted[i].fuel_date as string)
+        - Date.parse(sorted[i - 1].fuel_date as string),
+      ) / 60000;
+      if (gapMin <= NEAR_DUP_WINDOW_MIN) cluster.push(sorted[i]);
+      else { flush(cluster, clusterIdx++); cluster = [sorted[i]]; }
+    }
+    flush(cluster, clusterIdx);
+  }
+  return groups;
+}
+
 interface Props {
   fuelLogs: FleetFuelLog[];
   summary: FleetFuelSummary | null;
   onAddFuel: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  /** Invoked by the "Delete Duplicates" banner action with every
+   *  non-kept entry across all duplicate groups. Distinct from
+   *  `onDeleteFuel`: that one only opens a single-record confirm dialog
+   *  (sets state, doesn't call the API), so calling it in a loop just
+   *  batches down to the last item — this prop is the actual bulk delete. */
+  onBulkDeleteFuel?: (logs: FleetFuelLog[]) => void;
   /** Invoked when the user clicks the "Report" button — parent composes
    *  the per-vehicle fuel PDF using the vehicle object + logs + summary. */
   onGenerateReport?: () => void;
@@ -190,11 +300,43 @@ interface Props {
 }
 
 export default function FleetFuelTab({
-  fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel,
+  fuelLogs, summary, onAddFuel, onEditFuel, onDeleteFuel, onBulkDeleteFuel,
   onGenerateReport, onGenerateFlaggedAudit,
 }: Props) {
   // Count flagged entries so we can label the Audit button + gate visibility
   const flaggedCount = fuelLogs.filter((l: any) => !!l.flags).length;
+
+  const duplicateGroups = useMemo(() => findDuplicateGroups(fuelLogs), [fuelLogs]);
+  const duplicateIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const g of duplicateGroups.values()) for (const l of g) s.add(String(l.id));
+    return s;
+  }, [duplicateGroups]);
+  const duplicateCount = fuelLogs.filter((l) => duplicateIds.has(String(l.id))).length;
+
+  const [conflicts, setConflicts] = useState<Map<number, ConflictBadgeConflict[]>>(new Map());
+  useEffect(() => {
+    const ids = fuelLogs.map((l) => Number(l.id));
+    if (!ids.length) { setConflicts(new Map()); return; }
+    apiFetch<{ conflicts: Record<string, unknown>[] }>(`/fleetio/conflicts?table=fleet_fuel_log&ids=${ids.join(',')}`)
+      .then((r) => {
+        const map = new Map<number, ConflictBadgeConflict[]>();
+        for (const c of r?.conflicts ?? []) {
+          const rmpgId = c.rmpg_id as number;
+          if (!map.has(rmpgId)) map.set(rmpgId, []);
+          map.get(rmpgId)!.push({
+            id: c.id as number,
+            field: c.field as string,
+            local_value: c.local_value as string | null | undefined,
+            remote_value: c.remote_value as string | null | undefined,
+            resolution: c.resolution as string | null | undefined,
+          });
+        }
+        setConflicts(map);
+      })
+      .catch(() => {});
+  }, [fuelLogs]);
+
   return (
     <div className="p-4 space-y-3">
       {/* Summary Stats — Top Row */}
@@ -298,6 +440,50 @@ export default function FleetFuelTab({
         </div>
       </div>
 
+      {/* Possible-duplicate banner — same vehicle + date + total cost, e.g. a
+          fuel-card import landing on top of a manual entry for the same fill-up. */}
+      {onBulkDeleteFuel && duplicateCount > 0 && (
+        <div className="panel-beveled p-2.5 bg-amber-900/10 border border-amber-700/40 flex items-center justify-between gap-3 print:hidden">
+          <div className="flex items-center gap-2 text-[10px] text-amber-400">
+            <Copy className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>
+              <span className="font-bold">{duplicateCount} possible duplicate{duplicateCount === 1 ? '' : 's'}</span>
+              {' '}across {duplicateGroups.size} group{duplicateGroups.size === 1 ? '' : 's'} — same date + total cost, or same gallons minutes apart.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="toolbar-btn text-amber-400 flex-shrink-0"
+            onClick={() => {
+              // Keep the MOST COMPLETE entry per group, tie-breaking on the
+              // lowest id. Keeping the lowest id outright (the previous rule)
+              // is actively destructive for Fleet.io twins: the pulled row —
+              // which has no odometer, driver or cost — is sometimes the
+              // lower id, so the operator's fully-populated record was the
+              // one deleted. Completeness first makes the survivor the row
+              // holding real data regardless of insertion order.
+              //
+              // `onDeleteFuel` only opens a single-record confirm dialog (sets
+              // state, doesn't call the API) — calling it once per extra in a
+              // loop just batches down to the last item, so this collects
+              // every extra across every group into one bulk-delete call.
+              const toDelete: FleetFuelLog[] = [];
+              for (const group of duplicateGroups.values()) {
+                const [, ...extras] = [...group].sort((a, b) => {
+                  const byCompleteness = fuelLogCompleteness(b) - fuelLogCompleteness(a);
+                  return byCompleteness !== 0 ? byCompleteness : Number(a.id) - Number(b.id);
+                });
+                toDelete.push(...extras);
+              }
+              onBulkDeleteFuel(toDelete);
+            }}
+            title="Keep the most complete entry in each duplicate group and delete the rest"
+          >
+            <Trash2 className="w-3 h-3" /> Delete Duplicates
+          </button>
+        </div>
+      )}
+
       {/* Fuel Log List */}
       {fuelLogs.length === 0 ? (
         <div className="text-center py-12 panel-beveled bg-surface-base">
@@ -328,7 +514,7 @@ export default function FleetFuelTab({
                       {log.gallons != null ? log.gallons.toFixed(3) : '-'} gal
                     </span>
                     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${badge.bg} ${badge.text} ${badge.border}`}>
-                      {log.fuel_type}
+                      {formatEnumValue(log.fuel_type)}
                     </span>
                     {log.total_cost != null && (
                       <span className="text-[10px] text-green-400 font-mono">${log.total_cost.toFixed(2)}</span>
@@ -356,6 +542,14 @@ export default function FleetFuelTab({
                     {(log.is_full_tank === 0 || log.is_full_tank === false) && (
                       <span className="px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30">Partial</span>
                     )}
+                    {duplicateIds.has(String(log.id)) && (
+                      <span className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30" title="Same vehicle, date, and total cost as another entry">
+                        <Copy className="w-2.5 h-2.5" /> Dup
+                      </span>
+                    )}
+                    {conflicts.get(Number(log.id))?.map((c) => (
+                      <FleetioConflictBadge key={c.id} conflict={c} compact />
+                    ))}
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
                     <span className="flex items-center gap-0.5">

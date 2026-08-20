@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useNavigate } from 'react-router';
 import {
   Settings,
   Plus,
@@ -30,7 +31,9 @@ import { useMenuActions } from '../../utils/contextMenuActions';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
+import NotEnforcedNotice from './NotEnforcedNotice';
 import type { User, Unit, UnitStatus } from '../../types';
+import { formatEnumValue, toDisplayLabel } from '../../utils/formatters';
 
 // ============================================================
 // Types (same as in AdminPage)
@@ -179,21 +182,21 @@ type SysSection = 'incident_types' | 'dispositions' | 'priorities' | 'call_sourc
 
 const DEFAULT_PRIORITIES: PriorityConfig[] = [
   { level: 'P1', label: 'Emergency', color: '#dc2626', target: '< 3 min' },
-  { level: 'P2', label: 'Urgent', color: '#f59e0b', target: '< 5 min' },
-  { level: 'P3', label: 'Routine', color: '#888888', target: '< 10 min' },
-  { level: 'P4', label: 'Scheduled', color: 'var(--rmpg-500)', target: 'Scheduled' },
+  { level: 'P2', label: 'Urgent', color: 'var(--sev-warn)', target: '< 5 min' },
+  { level: 'P3', label: 'Routine', color: 'var(--text-muted)', target: '< 10 min' },
+  { level: 'P4', label: 'Scheduled', color: 'var(--text-muted)', target: 'Scheduled' },
 ];
 
 const DEFAULT_CALL_SOURCES = ['phone', 'radio', 'walk_in', 'alarm', 'patrol', 'online', 'dispatch', 'email', 'servemanager', 'other'];
 
 const DEFAULT_UNIT_TYPES: UnitTypeConfig[] = [
-  { type: 'patrol', label: 'Patrol', color: '#888888' },
-  { type: 'supervisor', label: 'Supervisor', color: '#f59e0b' },
+  { type: 'patrol', label: 'Patrol', color: 'var(--text-muted)' },
+  { type: 'supervisor', label: 'Supervisor', color: 'var(--sev-warn)' },
   { type: 'k9', label: 'K9', color: '#8b5cf6' },
-  { type: 'medical', label: 'Medical', color: '#ef4444' },
+  { type: 'medical', label: 'Medical', color: 'var(--sev-critical)' },
   { type: 'bike', label: 'Bike Patrol', color: '#10b981' },
-  { type: 'foot', label: 'Foot Patrol', color: '#888888' },
-  { type: 'vehicle', label: 'Vehicle', color: 'var(--rmpg-500)' },
+  { type: 'foot', label: 'Foot Patrol', color: 'var(--text-muted)' },
+  { type: 'vehicle', label: 'Vehicle', color: 'var(--text-muted)' },
 ];
 
 const DEFAULT_EVIDENCE_TYPES = [
@@ -205,7 +208,7 @@ const DEFAULT_SECURITY: SecurityConfig = {
   min_password_length: '8',
   require_uppercase: '1',
   require_numbers: '1',
-  require_special_chars: '0',
+  require_special_chars: '1', // matches the Worker's DEFAULT_SECURITY_POLICY (src/utils/securityPolicy.ts) — this section is now enforced
   max_login_attempts: '5',
   lockout_duration_minutes: '15',
   max_active_sessions: '3',
@@ -216,7 +219,7 @@ const DEFAULT_BRANDING: BrandingConfig = {
   report_header_text: 'RMPG SECURITY SERVICES',
   report_subheader_text: 'PRIVATE SECURITY',
   primary_color: '#dc2626',
-  accent_color: '#d4a017',
+  accent_color: 'var(--field-label-color)',
   header_bg_color: 'var(--surface-raised)',
 };
 
@@ -366,9 +369,6 @@ export default function AdminSystemTab({
     setActiveSectionState(section);
     try { localStorage.setItem(LS_ADMIN_SECTIONS, JSON.stringify(section)); } catch { /* ignore */ }
   }, []);
-  // Keep expandedSections API compatible for auto-search triggers
-  const expandedSections = { has: (s: SysSection) => activeSection === s } as Set<SysSection>;
-
   // Priority configuration
   const [priorities, setPriorities] = useState<PriorityConfig[]>(DEFAULT_PRIORITIES);
   const [prioritiesDirty, setPrioritiesDirty] = useState(false);
@@ -626,12 +626,23 @@ export default function AdminSystemTab({
     fetchAdminUnits();
   }, [fetchConfig, fetchCallTemplates, fetchAdminUnits]);
 
-  // Auto-search statutes when section is expanded
+  // Auto-search statutes while the Criminal Codes section is active.
+  //
+  // Depends on the PRIMITIVE `activeSection`, never on a derived object wrapping
+  // it — a fresh object literal is a new reference every render, so listing one
+  // here made the effect re-run after every render. Because fetchStatutes sets
+  // state, each run scheduled the next one: an unbounded stream of /api/statutes
+  // requests for as long as this section stayed open.
+  //
+  // The 300 ms timer doubles as the search debounce, so typing issues one
+  // request per burst rather than one per keystroke.
   useEffect(() => {
-    if (expandedSections.has('criminal_codes')) {
+    if (activeSection !== 'criminal_codes') return;
+    const timer = setTimeout(() => {
       fetchStatutes(statuteSearch, statuteCategory, statutePage);
-    }
-  }, [expandedSections, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeSection, statuteSearch, statuteCategory, statutePage, fetchStatutes]);
 
   // ============================================================
   // Save JSON config helper
@@ -746,7 +757,7 @@ export default function AdminSystemTab({
 
   // Start editing a disposition row (shared by the inline pencil + context menu).
   const startEditDisposition = (item: ConfigItem) => {
-    let parsed = { code: '', description: '', color: '#888888' };
+    let parsed = { code: '', description: '', color: 'var(--text-muted)' };
     try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
     setEditingDispId(item.id);
     setEditDispDesc(parsed.description);
@@ -757,7 +768,7 @@ export default function AdminSystemTab({
     try {
       const item = dispositionCodes.find((d) => d.id === id);
       if (!item) return;
-      let parsed = { code: '', description: '', color: '#888888' };
+      let parsed = { code: '', description: '', color: 'var(--text-muted)' };
       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
 
       await apiFetch(`/admin/config/${id}`, {
@@ -1331,6 +1342,7 @@ export default function AdminSystemTab({
   // ============================================================
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
+  const navigate = useNavigate();
 
   const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
     m.action('Edit unit', () => startEditUnit(unit), { icon: <Edit size={12} /> }),
@@ -1353,7 +1365,7 @@ export default function AdminSystemTab({
   ];
 
   const buildDispositionMenu = (item: ConfigItem): ContextMenuItem[] => {
-    let parsed = { code: '', description: '', color: '#888888' };
+    let parsed = { code: '', description: '', color: 'var(--text-muted)' };
     try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
     return [
       m.action('Edit disposition', () => startEditDisposition(item), { icon: <Edit size={12} /> }),
@@ -1376,6 +1388,8 @@ export default function AdminSystemTab({
   ];
 
   const buildStatuteMenu = (s: any): ContextMenuItem[] => [
+    m.action('Open in Law Book', () => navigate(`/law-book?statute_id=${s.id}`), { icon: <Scale size={12} /> }),
+    m.separator(),
     m.copy('Copy citation', s.citation),
     m.copy('Copy title', s.short_title),
     m.copyId(s.id, 'Copy statute ID'),
@@ -1557,7 +1571,7 @@ export default function AdminSystemTab({
                   </thead>
                   <tbody>
                     {dispositionCodes.map((item) => {
-                      let parsed = { code: '', description: '', color: '#888888' };
+                      let parsed = { code: '', description: '', color: 'var(--text-muted)' };
                       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
                       const isEditing = editingDispId === item.id;
                       return (
@@ -1651,6 +1665,7 @@ export default function AdminSystemTab({
                 {prioritiesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Priority labels, colors and response targets" />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                   {priorities.map((p, i) => (
                     <div key={p.level} className="p-3 bg-rmpg-900 border border-rmpg-600 space-y-2">
@@ -1661,7 +1676,7 @@ export default function AdminSystemTab({
                           onChange={(e) => updatePriority(i, 'color', e.target.value)}
                           className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent"
                         />
-                        <span className="text-sm font-bold text-rmpg-100 font-mono">{p.level}</span>
+                        <span className="text-sm font-bold text-rmpg-100 font-mono">{formatEnumValue(p.level)}</span>
                       </div>
                       <div>
                         <label htmlFor="ff-adminsystemtab-7" className="text-[9px] text-rmpg-400 uppercase">Label</label>
@@ -1704,6 +1719,7 @@ export default function AdminSystemTab({
                 {callSourcesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Call source options" />
                 <div className="space-y-1 mb-3">
                   {callSources.map((src, i) => (
                     <div key={src} className="flex items-center gap-2 p-2 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -1791,6 +1807,7 @@ export default function AdminSystemTab({
                 {unitTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Unit type labels and colors" />
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mb-3">
                   {unitTypes.map((ut) => (
                     <div key={ut.type} className="flex items-center gap-2 p-2.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -1806,7 +1823,7 @@ export default function AdminSystemTab({
                               onKeyDown={(e) => { if (e.key === 'Enter') saveEditUnitType(); if (e.key === 'Escape') cancelEditUnitType(); }}
                               autoFocus
                             />
-                            <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{ut.type}</div>
+                            <div className="text-[10px] text-rmpg-500 font-mono mt-0.5">{formatEnumValue(ut.type)}</div>
                           </div>
                           <div className="flex flex-col gap-0.5 flex-shrink-0">
                             <IconButton onClick={saveEditUnitType} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save unit type">
@@ -1822,7 +1839,7 @@ export default function AdminSystemTab({
                           <div className="w-4 h-4 rounded-sm flex-shrink-0" style={{ backgroundColor: ut.color }} />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs text-rmpg-100 font-medium truncate">{ut.label}</div>
-                            <div className="text-[10px] text-rmpg-500 font-mono">{ut.type}</div>
+                            <div className="text-[10px] text-rmpg-500 font-mono">{formatEnumValue(ut.type)}</div>
                           </div>
                           <div className="flex items-center gap-0.5 flex-shrink-0">
                             <button type="button" onClick={() => startEditUnitType(ut)} className="text-rmpg-400 hover:text-brand-400" title="Edit">
@@ -1941,7 +1958,7 @@ export default function AdminSystemTab({
                                       unit.status === 'busy' ? 'bg-red-900/40 text-red-400 border-red-700/50' :
                                       'bg-rmpg-700/40 text-rmpg-400 border-rmpg-600/50'
                                     }`}>
-                                      {unit.status.replace(/_/g, ' ').toUpperCase()}
+                                      {toDisplayLabel(unit.status).toUpperCase()}
                                     </span>
                                   </td>
                                   <td className="text-xs font-mono text-rmpg-300">{unit.current_call_number || <span className="text-rmpg-500">-</span>}</td>
@@ -1999,6 +2016,7 @@ export default function AdminSystemTab({
                 {zonesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Zones and beats" />
                 {zones.length > 0 ? (
                   <table className="table-dark mb-3">
                     <thead>
@@ -2070,6 +2088,7 @@ export default function AdminSystemTab({
                 {evidenceTypesDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="Evidence type options" />
                 <div className="flex flex-wrap gap-2 mb-3">
                   {evidenceTypes.map((et, i) => (
                     <div key={et} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
@@ -2145,7 +2164,7 @@ export default function AdminSystemTab({
                                   <td>
                                     <select id="ff-adminsystemtab-31" className="select-dark text-xs" value={editTemplatePriority} onChange={(e) => setEditTemplatePriority(e.target.value)}>
                                       {priorities.map((p) => (
-                                        <option key={p.level} value={p.level}>{p.level}</option>
+                                        <option key={p.level} value={p.level}>{formatEnumValue(p.level)}</option>
                                       ))}
                                     </select>
                                   </td>
@@ -2340,7 +2359,7 @@ export default function AdminSystemTab({
                     <div className="px-4 py-2 bg-rmpg-900">
                       <div className="flex justify-between text-[9px] text-rmpg-400">
                         <span>Report #: RKY26-00001-THF</span>
-                        <span>Date: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                        <span>Date: {new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                       </div>
                     </div>
                   </div>
@@ -2405,7 +2424,18 @@ export default function AdminSystemTab({
                       <tbody>
                         {statutes.map((s: any) => (
                           <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20" onContextMenu={(e) => openMenu(e, buildStatuteMenu(s))}>
-                            <td className="px-2 py-1.5 font-mono text-brand-400 font-bold whitespace-nowrap">{s.citation}</td>
+                            <td className="px-2 py-1.5 font-mono font-bold whitespace-nowrap">
+                              {/* /law-book?statute_id= is handled by LawBookPage's
+                                  deep-link reader — the statute panel was display-only
+                                  before this. */}
+                              <Link
+                                to={`/law-book?statute_id=${s.id}`}
+                                className="text-brand-400 hover:text-brand-300 hover:underline"
+                                title={`Open ${s.citation} in the Law Book`}
+                              >
+                                {s.citation}
+                              </Link>
+                            </td>
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">
                               <span className={`px-1.5 py-0.5 text-[9px] font-bold uppercase border ${
@@ -2459,6 +2489,7 @@ export default function AdminSystemTab({
                 {settingsDirty && <span className="text-amber-400 text-[9px] ml-2">(unsaved)</span>}
               </h3>
             </div>
+            <NotEnforcedNotice what="System settings" except="report footer text, which is read by PDF report generation" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>

@@ -105,11 +105,11 @@ export interface PriorityLevel {
 }
 
 export const PRIORITIES: readonly PriorityLevel[] = [
-  { level: 'P1', label: 'EMERGENCY', color: '#ef4444', desc: 'Immediate threat to life — lights & sirens' },
-  { level: 'P2', label: 'URGENT', color: '#f97316', desc: 'In-progress crime, injury, or time-sensitive' },
-  { level: 'P3', label: 'ROUTINE', color: '#d4a017', desc: 'Standard response — no immediate danger' },
-  { level: 'P4', label: 'LOW', color: '#888888', desc: 'Report only, information, or follow-up' },
-  { level: 'P5', label: 'SCHEDULED', color: 'var(--rmpg-500)', desc: 'Pre-planned activity or appointment' },
+  { level: 'P1', label: 'EMERGENCY', color: 'var(--sev-critical)', desc: 'Immediate threat to life — lights & sirens' },
+  { level: 'P2', label: 'URGENT', color: 'var(--sev-high)', desc: 'In-progress crime, injury, or time-sensitive' },
+  { level: 'P3', label: 'ROUTINE', color: 'var(--field-label-color)', desc: 'Standard response — no immediate danger' },
+  { level: 'P4', label: 'LOW', color: 'var(--text-muted)', desc: 'Report only, information, or follow-up' },
+  { level: 'P5', label: 'SCHEDULED', color: 'var(--text-muted)', desc: 'Pre-planned activity or appointment' },
 ] as const;
 
 export interface UnitStatus {
@@ -120,13 +120,13 @@ export interface UnitStatus {
 }
 
 export const UNIT_STATUSES: readonly UnitStatus[] = [
-  { code: 'AVL', label: 'Available', color: '#22c55e', desc: 'Ready to receive calls' },
-  { code: 'DSP', label: 'Dispatched', color: '#888888', desc: 'Assigned to a call, en route' },
-  { code: 'ENR', label: 'Enroute', color: '#f97316', desc: 'Traveling to call location' },
-  { code: 'ONS', label: 'On Scene', color: '#ef4444', desc: 'Arrived at call location' },
+  { code: 'AVL', label: 'Available', color: 'var(--sev-ok)', desc: 'Ready to receive calls' },
+  { code: 'DSP', label: 'Dispatched', color: 'var(--text-muted)', desc: 'Assigned to a call, en route' },
+  { code: 'ENR', label: 'Enroute', color: 'var(--sev-high)', desc: 'Traveling to call location' },
+  { code: 'ONS', label: 'On Scene', color: 'var(--sev-critical)', desc: 'Arrived at call location' },
   { code: 'BSY', label: 'Busy', color: '#eab308', desc: 'Occupied, not available for calls' },
-  { code: 'OOD', label: 'Out of District', color: '#888888', desc: 'Operating outside assigned area' },
-  { code: 'OOS', label: 'Out of Service', color: 'var(--rmpg-500)', desc: 'Not available (break, end of shift)' },
+  { code: 'OOD', label: 'Out of District', color: 'var(--text-muted)', desc: 'Operating outside assigned area' },
+  { code: 'OOS', label: 'Out of Service', color: 'var(--text-muted)', desc: 'Not available (break, end of shift)' },
 ] as const;
 
 export interface CadCommand {

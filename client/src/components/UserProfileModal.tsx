@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Shield,
   ShieldCheck,
-  ShieldOff,
   RefreshCw,
   Camera,
   Trash2,
@@ -27,7 +26,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
-import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
@@ -130,9 +128,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [pwSaving, setPwSaving] = useState(false);
   const [pwMsg, setPwMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [pwPolicy, setPwPolicy] = useState<string[]>([]);
+  const [pwPolicyLoaded, setPwPolicyLoaded] = useState(false);
 
   // Sessions
   const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
 
   // Digital Signature
   const [signature, setSignature] = useState<string | null>(null);
@@ -153,22 +153,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [prefsMsg, setPrefsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // 2FA / Security
-  const [totpStatus, setTotpStatus] = useState<{ enabled: boolean; required: boolean } | null>(null);
-  const [setupStep, setSetupStep] = useState<'idle' | 'qr' | 'verify' | 'backups' | 'disabling'>('idle');
-  const [qrDataUrl, setQrDataUrl] = useState('');
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [setupCode, setSetupCode] = useState('');
-  const [disablePassword, setDisablePassword] = useState('');
-  const [securityBusy, setSecurityBusy] = useState(false);
-  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [securityView, setSecurityView] = useState<'main' | 'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('main');
+  const [securityView, setSecurityView] = useState<'overview' | 'devices' | 'history' | 'keys' | 'setup-2fa' | 'regen-backup'>('overview');
 
   // WebAuthn / Security Keys
-  const [webauthnStatus, setWebauthnStatus] = useState<{
-    enabled: boolean;
-    credentialCount: number;
-    credentials: { id: number; device_name: string; created_at: string; device_type: string }[];
-  } | null>(null);
   const [webauthnBusy, setWebauthnBusy] = useState(false);
   const [webauthnMsg, setWebauthnMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [newKeyName, setNewKeyName] = useState('');
@@ -176,10 +163,20 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
   // Security tab state (remote)
   const [tfaStatus, setTfaStatus] = useState<{ enabled: boolean; backupCodesRemaining: number } | null>(null);
+  const [securityLoaded, setSecurityLoaded] = useState(false);
   const [regenLoading, setRegenLoading] = useState(false);
   const [regenPassword, setRegenPassword] = useState('');
   const [regenCodes, setRegenCodes] = useState<string[] | null>(null);
   const [regenError, setRegenError] = useState('');
+
+  // Security questions ("Forgot password?" recovery setup)
+  const [sqConfigured, setSqConfigured] = useState<boolean | null>(null);
+  const [sqEditing, setSqEditing] = useState(false);
+  const [sqQuestions, setSqQuestions] = useState<string[]>(['', '', '']);
+  const [sqAnswers, setSqAnswers] = useState<string[]>(['', '', '']);
+  const [sqCurrentPassword, setSqCurrentPassword] = useState('');
+  const [sqBusy, setSqBusy] = useState(false);
+  const [sqMsg, setSqMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Body scroll lock — prevent background scrolling when modal is open.
   // Position/top/width + scroll-position preservation now live inside
@@ -370,42 +367,63 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   };
 
   useEffect(() => {
-    if (isOpen && activeTab === 'password') {
+    // Quickly switching tabs (security -> password -> security, etc.) used to
+    // re-fire every one of these fetches on every visit with no cancellation,
+    // so an old in-flight response for a tab the user had already left could
+    // still land and flip that tab's state right as they switched back to
+    // it — visible as a flicker. `cancelled` lets each effect run ignore its
+    // own response once a newer run (tab switch, or unmount) has superseded
+    // it, and the *Loaded guards stop the redundant re-fetch in the first
+    // place for tabs whose data doesn't change per-visit.
+    let cancelled = false;
+
+    if (isOpen && activeTab === 'password' && !pwPolicyLoaded) {
       apiFetch<any>('/auth/password-policy')
-        .then(data => setPwPolicy(Array.isArray(data?.policy) ? data.policy : []))
+        .then(data => { if (!cancelled) { setPwPolicy(Array.isArray(data?.policy) ? data.policy : []); setPwPolicyLoaded(true); } })
         .catch((err) => { console.warn('[UserProfileModal] fetch password policy failed:', err); });
     }
-    if (isOpen && activeTab === 'sessions') {
+    if (isOpen && activeTab === 'sessions' && !sessionsLoaded) {
       apiFetch<any>('/auth/sessions')
-        .then(data => setSessions(Array.isArray(data) ? data : []))
-        .catch(() => setSessions([]));
+        .then(data => { if (!cancelled) { setSessions(Array.isArray(data) ? data : []); setSessionsLoaded(true); } })
+        .catch(() => { if (!cancelled) { setSessions([]); setSessionsLoaded(true); } });
     }
-    if (isOpen && activeTab === 'security') {
-      setSecurityMsg(null);
-      setSetupStep('idle');
-      setSetupCode('');
-      setDisablePassword('');
-      setSecurityView('main');
-      apiFetch<any>('/auth/totp/status')
-        .then(data => setTotpStatus(data))
-        .catch(() => setTotpStatus(null));
-      apiFetch<any>('/auth/webauthn/status')
-        .then(data => setWebauthnStatus(data))
-        .catch(() => setWebauthnStatus(null));
+    if (isOpen && activeTab === 'security' && !securityLoaded) {
       apiFetch<any>('/auth/2fa/status')
-        .then(data => setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }))
+        .then(data => { if (!cancelled) setTfaStatus({ enabled: data.enabled, backupCodesRemaining: data.backupCodesRemaining }); })
         .catch((err) => { console.warn('[UserProfileModal] fetch 2FA status failed:', err); });
+      apiFetch<any>('/auth/security-questions')
+        .then(data => { if (!cancelled) setSqConfigured(!!data.configured); })
+        .catch((err) => { console.warn('[UserProfileModal] fetch security questions status failed:', err); if (!cancelled) setSqConfigured(null); })
+        .finally(() => { if (!cancelled) setSecurityLoaded(true); });
       setSecurityView('overview');
       setRegenCodes(null);
       setRegenPassword('');
       setRegenError('');
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg(null);
     }
     if (isOpen && activeTab === 'preferences' && !prefsLoaded) {
       apiFetch<UserPreferences>('/user/preferences')
-        .then(data => { setPrefs(data); setPrefsLoaded(true); })
-        .catch(() => setPrefsLoaded(true));
+        .then(data => { if (!cancelled) { setPrefs(data); setPrefsLoaded(true); } })
+        .catch(() => { if (!cancelled) setPrefsLoaded(true); });
     }
-  }, [isOpen, activeTab, prefsLoaded]);
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeTab, prefsLoaded, pwPolicyLoaded, sessionsLoaded, securityLoaded]);
+
+  // Reset the per-visit *Loaded guards when the modal closes, so reopening
+  // it (e.g. for a different admin action) fetches fresh data instead of
+  // reusing a stale snapshot from the last time it was open.
+  useEffect(() => {
+    if (!isOpen) {
+      setPwPolicyLoaded(false);
+      setSessionsLoaded(false);
+      setSecurityLoaded(false);
+    }
+  }, [isOpen]);
 
   if (!isOpen || !user) return null;
 
@@ -481,71 +499,6 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     } catch { /* silent */ }
   };
 
-  // ── 2FA Handlers ─────────────────────────────────
-  const handleStartSetup = async () => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      // The Worker returns otpauthUrl (it doesn't render images); generate
-      // the QR client-side with the bundled `qrcode` package.
-      let qr = data.qrCodeDataUrl as string | null;
-      if (!qr && data.otpauthUrl) {
-        const QRCode = (await import('qrcode')).default;
-        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
-      }
-      setQrDataUrl(qr || '');
-      setBackupCodes(data.backupCodes || []);
-      setSetupStep('qr');
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to start 2FA setup' });
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleVerifySetup = async (code: string) => {
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
-        method: 'POST',
-        body: JSON.stringify({ code }),
-      });
-      // Backup codes are minted at VERIFY time (single reveal) — without
-      // capturing them here the "backups" step rendered an empty list.
-      if (Array.isArray(verifyRes?.backupCodes)) setBackupCodes(verifyRes.backupCodes);
-      setSetupStep('backups');
-      setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Invalid verification code' });
-      setSetupCode('');
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
-  const handleDisable2FA = async () => {
-    if (!disablePassword) return;
-    setSecurityBusy(true);
-    setSecurityMsg(null);
-    try {
-      await apiFetch<any>('/auth/totp/disable', {
-        method: 'POST',
-        body: JSON.stringify({ password: disablePassword }),
-      });
-      setTotpStatus(prev => prev ? { ...prev, enabled: false } : { enabled: false, required: false });
-      setSetupStep('idle');
-      setDisablePassword('');
-      setSecurityMsg({ type: 'success', text: 'Two-factor authentication has been disabled.' });
-    } catch (err: any) {
-      setSecurityMsg({ type: 'error', text: err?.message || 'Failed to disable 2FA' });
-    } finally {
-      setSecurityBusy(false);
-    }
-  };
-
   const initials = `${(user.first_name || 'U')[0]}${(user.last_name || '')[0] || ''}`.toUpperCase();
 
   const tabs = [
@@ -574,6 +527,32 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     setRegenLoading(false);
   };
 
+  const handleSaveSecurityQuestions = async () => {
+    if (!sqCurrentPassword) return;
+    if (sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())) return;
+    setSqBusy(true);
+    setSqMsg(null);
+    try {
+      await apiFetch<any>('/auth/security-questions', {
+        method: 'PUT',
+        body: JSON.stringify({
+          currentPassword: sqCurrentPassword,
+          questions: sqQuestions,
+          answers: sqAnswers,
+        }),
+      });
+      setSqConfigured(true);
+      setSqEditing(false);
+      setSqQuestions(['', '', '']);
+      setSqAnswers(['', '', '']);
+      setSqCurrentPassword('');
+      setSqMsg({ type: 'success', text: 'Security questions saved. You can now use "Forgot password?" on the login screen.' });
+    } catch (err: any) {
+      setSqMsg({ type: 'error', text: err?.message || 'Failed to save security questions' });
+    }
+    setSqBusy(false);
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={onClose} role="presentation" style={{ touchAction: 'manipulation' }}>
       {/* Overlay */}
@@ -589,7 +568,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           borderLeftColor: 'var(--border-default)',
           borderBottomColor: 'var(--surface-raised)',
           borderRightColor: 'var(--surface-raised)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+          boxShadow: '0 8px 32px rgba(var(--surface-overlay-rgb) / 0.85)',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -616,9 +595,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div
               className="w-12 h-12 flex items-center justify-center text-base font-bold"
               style={{
-                background: 'linear-gradient(135deg, #333333, #888888)',
-                color: '#fff',
-                border: '2px solid #aaaaaa',
+                background: 'linear-gradient(135deg, var(--surface-raised), var(--accent-silver-600))',
+                color: 'var(--text-primary)',
+                border: '2px solid var(--accent-silver-500)',
                 borderRadius: 2,
               }}
             >
@@ -629,11 +608,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             <div className="text-sm font-bold text-rmpg-100">
               {user.first_name} {user.last_name}
             </div>
-            <div className="text-[10px] font-mono" style={{ color: '#888888' }}>
+            <div className="text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
               {user.badge_number && <span className="mr-2">{user.badge_number}</span>}
               <span className="uppercase">{toDisplayLabel(user.role)}</span>
             </div>
-            <div className="text-[10px] text-rmpg-500">
+            <div className="text-[10px] text-fg-muted">
               {user.email}
             </div>
           </div>
@@ -649,8 +628,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 onClick={() => setActiveTab(tab.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors"
                 style={{
-                  color: activeTab === tab.id ? '#ffffff' : 'var(--rmpg-500)',
-                  borderBottom: activeTab === tab.id ? '2px solid #888888' : '2px solid transparent',
+                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                  borderBottom: activeTab === tab.id ? '2px solid var(--accent-silver-500)' : '2px solid transparent',
                   background: activeTab === tab.id ? 'rgba(136, 136, 136, 0.08)' : 'transparent',
                 }}
               >
@@ -754,9 +733,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div
                         className="w-20 h-20 flex items-center justify-center text-xl font-bold"
                         style={{
-                          background: 'linear-gradient(135deg, #333333, #888888)',
-                          color: '#fff',
-                          border: '2px solid #454545',
+                          background: 'linear-gradient(135deg, var(--surface-raised), var(--accent-silver-600))',
+                          color: 'var(--text-primary)',
+                          border: '2px solid var(--border-default)',
                           borderRadius: 2,
                         }}
                       >
@@ -770,7 +749,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       className="relative border-2 border-dashed px-4 py-3 text-center transition-colors cursor-pointer"
                       style={{
-                        borderColor: imageDragOver ? '#888888' : 'var(--border-subtle)',
+                        borderColor: imageDragOver ? 'var(--accent-silver-500)' : 'var(--border-subtle)',
                         background: imageDragOver ? 'rgba(136, 136, 136, 0.12)' : 'var(--surface-overlay)',
                         borderRadius: 2,
                       }}
@@ -793,11 +772,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         input.click();
                       }}
                     >
-                      <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--rmpg-500)' }} />
-                      <div className="text-[10px] text-rmpg-500">
+                      <Upload style={{ width: 16, height: 16, margin: '0 auto 4px', color: 'var(--text-muted)' }} />
+                      <div className="text-[10px] text-fg-muted">
                         {imageUploading ? 'Uploading...' : 'Drop image here or click to browse'}
                       </div>
-                      <div className="text-[9px] mt-0.5" style={{ color: 'var(--rmpg-500)' }}>
+                      <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
                         JPG, PNG, WebP — max 2MB
                       </div>
                     </div>
@@ -805,7 +784,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <button type="button"
                         onClick={handleRemoveProfileImage}
                         disabled={imageUploading}
-                                                className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors text-rmpg-500"
+                                                className="flex items-center gap-1 text-[10px] px-2 py-1 hover:text-red-400 transition-colors text-fg-muted"
                       >
                         <Trash2 style={{ width: 10, height: 10 }} />
                         Remove photo
@@ -859,7 +838,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted"
                   >
                     {showCurrentPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -877,7 +856,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button
                     type="button"
                     onClick={() => setShowNewPw(!showNewPw)}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500"
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted"
                   >
                     {showNewPw ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
                   </button>
@@ -894,8 +873,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--rmpg-500)', background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
-                  <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#888888' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: 'var(--text-muted)', background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)' }}>
+                  <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
                     Password Requirements
                   </div>
                   {pwPolicy.map((rule, i) => (
@@ -927,14 +906,14 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
           {activeTab === 'preferences' && (
             <>
               {!prefsLoaded ? (
-                <div className="text-xs text-center py-4 text-rmpg-500">Loading preferences...</div>
+                <div className="text-xs text-center py-4 text-fg-muted">Loading preferences...</div>
               ) : prefs ? (
                 <>
                   {/* Notification Preferences */}
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
-                      <Bell style={{ width: 11, height: 11, color: '#888888' }} />
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+                      <Bell style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                         Notification Preferences
                       </span>
                     </div>
@@ -957,7 +936,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_inapp`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px] text-rmpg-500">In-App</span>
+                              <span className="text-[9px] text-fg-muted">In-App</span>
                             </label>
                             <label className="flex items-center gap-1 cursor-pointer">
                               <input id="ff-userprofilemodal-9"
@@ -966,7 +945,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_email`]: e.target.checked ? 1 : 0 })}
                                 className="w-3 h-3"
                               />
-                              <span className="text-[9px] text-rmpg-500">Email</span>
+                              <span className="text-[9px] text-fg-muted">Email</span>
                             </label>
                           </div>
                         </div>
@@ -983,7 +962,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
                   {/* Quiet Hours */}
                   <div className="mt-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                       Quiet Hours (Suppress Notifications)
                     </span>
                     <div className="grid grid-cols-2 gap-2 mt-1.5">
@@ -1011,8 +990,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   {/* Display Preferences */}
                   <div className="mt-3 pt-3 border-t border-rmpg-700">
                     <div className="flex items-center gap-1.5 mb-2">
-                      <Monitor style={{ width: 11, height: 11, color: '#888888' }} />
-                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+                      <Monitor style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                         Display Settings
                       </span>
                     </div>
@@ -1073,7 +1052,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                             onChange={e => setPrefs({ ...prefs, font_scale: parseFloat(e.target.value) })}
                             className="w-24 h-1"
                           />
-                          <span className="text-[10px] font-mono w-8 text-right text-rmpg-500">
+                          <span className="text-[10px] font-mono w-8 text-right text-fg-muted">
                             {(prefs.font_scale * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -1114,7 +1093,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
                   {/* Dispatch Board Preferences */}
                   <div className="mt-3 pt-3 border-t border-rmpg-700">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
                       Dispatch Board
                     </span>
                     <div className="space-y-2 mt-1.5">
@@ -1160,7 +1139,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           setPrefsMsg({ type: 'error', text: 'Failed to reset preferences.' });
                         }
                       }}
-                                            className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors text-rmpg-500"
+                                            className="flex items-center gap-1 text-[10px] px-2 py-1 transition-colors text-fg-muted"
                     >
                       <RotateCcw style={{ width: 10, height: 10 }} />
                       Reset to Defaults
@@ -1192,224 +1171,18 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
                 </>
               ) : (
-                <div className="text-xs text-center py-4 text-rmpg-500">Failed to load preferences</div>
-              )}
-            </>
-          )}
-
-          {activeTab === 'security' && (
-            <>
-              {/* Security sub-view navigation */}
-              {securityView !== 'main' && (
-                <button type="button"
-                  onClick={() => setSecurityView('main')}
-                  className="text-[10px] mb-3 flex items-center gap-1"
-                  style={{ color: '#888888' }}
-                >
-                  &larr; Back to Security
-                </button>
-              )}
-
-              {securityView === 'devices' && <TrustedDevicesList />}
-              {securityView === 'history' && <LoginHistoryTable />}
-              {securityView === 'keys' && <SecurityKeyManager />}
-
-              {securityView === 'main' && (
-              <>
-              {/* Security overview card */}
-              <div className="mb-3">
-                <SecurityStatusCard />
-              </div>
-
-              {/* Status indicator */}
-              <div
-                className="flex items-center gap-3 p-3 mb-3"
-                style={{
-                  background: totpStatus?.enabled ? 'rgba(34, 197, 94, 0.08)' : 'rgba(220, 38, 38, 0.08)',
-                  border: `1px solid ${totpStatus?.enabled ? '#166534' : '#991b1b'}`,
-                }}
-              >
-                {totpStatus?.enabled ? (
-                  <ShieldCheck style={{ width: 20, height: 20, color: '#4ade80' }} />
-                ) : (
-                  <ShieldOff style={{ width: 20, height: 20, color: '#ef7a7a' }} />
-                )}
-                <div>
-                  <div className="text-xs font-bold" style={{ color: totpStatus?.enabled ? '#4ade80' : '#ef7a7a' }}>
-                    {totpStatus?.enabled ? 'Two-Factor Authentication Enabled' : 'Two-Factor Authentication Disabled'}
-                  </div>
-                  <div className="text-[9px] text-rmpg-500">
-                    {totpStatus?.enabled
-                      ? 'Your account is protected with authenticator app verification.'
-                      : totpStatus?.required
-                        ? 'Your role requires 2FA. Please enable it immediately.'
-                        : 'Add an extra layer of security to your account.'}
-                  </div>
-                </div>
-              </div>
-
-              {securityMsg && (
-                <div className={`flex items-center gap-2 px-3 py-2 text-xs mb-3 ${securityMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
-                  {securityMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
-                  {securityMsg.text}
-                </div>
-              )}
-
-              {/* ── Idle: Enable / Disable buttons ──────── */}
-              {setupStep === 'idle' && !totpStatus?.enabled && (
-                <button type="button"
-                  onClick={handleStartSetup}
-                  disabled={securityBusy}
-                  className="btn-primary w-full"
-                >
-                  <ShieldCheck style={{ width: 12, height: 12 }} />
-                  {securityBusy ? 'Setting up...' : 'Enable Two-Factor Authentication'}
-                </button>
-              )}
-
-              {setupStep === 'idle' && totpStatus?.enabled && (
-                <button type="button"
-                  onClick={() => { setSetupStep('disabling'); setSecurityMsg(null); }}
-                  className="btn-danger w-full"
-                >
-                  <ShieldOff style={{ width: 12, height: 12 }} />
-                  Disable Two-Factor Authentication
-                </button>
-              )}
-
-              {/* ── Step 1: Show QR Code ────────────────── */}
-              {setupStep === 'qr' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Step 1: Scan QR Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
-                  </p>
-                  <div className="flex justify-center py-2">
-                    {qrDataUrl && (
-                      <img
-                        src={qrDataUrl}
-                        alt="TOTP QR Code"
-                        style={{ width: 200, height: 200, imageRendering: 'pixelated' }}
-                        draggable={false}
-                      />
-                    )}
-                  </div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider mt-3" style={{ color: '#888888' }}>
-                    Step 2: Enter Verification Code
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter the 6-digit code from your authenticator app to verify setup.
-                  </p>
-                  <TotpCodeInput
-                    value={setupCode}
-                    onChange={setSetupCode}
-                    onComplete={handleVerifySetup}
-                    disabled={securityBusy}
-                    error={securityMsg?.type === 'error'}
-                  />
-                  {securityBusy && (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span className="text-[10px]" style={{ color: '#888888' }}>Verifying...</span>
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                                        className="text-[10px] uppercase tracking-wide font-bold transition-colors text-rmpg-500"
-                    onMouseEnter={e => { e.currentTarget.style.color = '#aaaaaa'; }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                  >
-                    Cancel Setup
-                  </button>
-                </div>
-              )}
-
-              {/* ── Step 3: Show Backup Codes ──────────── */}
-              {setupStep === 'backups' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Recovery Codes
-                  </div>
-                  <BackupCodesDisplay
-                    codes={backupCodes}
-                    onAcknowledge={() => { setSetupStep('idle'); setSecurityMsg(null); }}
-                  />
-                </div>
-              )}
-
-              {/* ── Disable 2FA: Re-enter password ─────── */}
-              {setupStep === 'disabling' && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#888888' }}>
-                    Confirm Disable
-                  </div>
-                  <p className="text-[10px] text-rmpg-500">
-                    Enter your password to confirm disabling two-factor authentication.
-                  </p>
-                  <input id="ff-userprofilemodal-21"
-                    type="password" autoComplete="new-password"
-                    value={disablePassword}
-                    onChange={e => setDisablePassword(e.target.value)}
-                    className="input-dark"
-                    placeholder="Current password"
-                    autoFocus
-                  />
-                  <div className="flex gap-2">
-                    <button type="button"
-                      onClick={() => { setSetupStep('idle'); setSecurityMsg(null); setDisablePassword(''); }}
-                      className="btn-secondary flex-1"
-                    >
-                      Cancel
-                    </button>
-                    <button type="button"
-                      onClick={handleDisable2FA}
-                      disabled={securityBusy || !disablePassword}
-                      className="btn-danger flex-1"
-                    >
-                      <ShieldOff style={{ width: 12, height: 12 }} />
-                      {securityBusy ? 'Disabling...' : 'Disable 2FA'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                <button type="button"
-                  onClick={() => setSecurityView('keys')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                  style={{ color: '#d97706', borderColor: '#d97706' }}
-                >
-                  Security Keys
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('devices')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Trusted Devices
-                </button>
-                <button type="button"
-                  onClick={() => setSecurityView('history')}
-                  className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
-                >
-                  Login History
-                </button>
-              </div>
-              </>
+                <div className="text-xs text-center py-4 text-fg-muted">Failed to load preferences</div>
               )}
             </>
           )}
 
           {activeTab === 'sessions' && (
             <>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: '#888888' }}>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)' }}>
                 Active Sessions
               </div>
               {sessions.length === 0 ? (
-                <div className="text-xs text-center py-4 text-rmpg-500">No active sessions</div>
+                <div className="text-xs text-center py-4 text-fg-muted">No active sessions</div>
               ) : (
                 <div className="space-y-2">
                   {sessions.map((session: any) => (
@@ -1422,11 +1195,11 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <div className="text-[11px] text-rmpg-100 font-mono">
                           {session.ip_address}
                         </div>
-                        <div className="text-[9px] text-rmpg-500">
+                        <div className="text-[9px] text-fg-muted">
                           {session.user_agent?.substring(0, 60)}...
                         </div>
-                        <div className="text-[9px] text-rmpg-500">
-                          Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
+                        <div className="text-[9px] text-fg-muted">
+                          Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : 'N/A'}
                         </div>
                       </div>
                       <button type="button"
@@ -1458,8 +1231,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="led-dot led-green" />
-                          <span style={{ color: '#22c55e' }}>2FA is enabled</span>
-                          <span className="text-[9px] ml-auto font-mono text-rmpg-500">
+                          <span style={{ color: 'var(--sev-ok)' }}>2FA is enabled</span>
+                          <span className="text-[9px] ml-auto font-mono text-fg-muted">
                             {tfaStatus.backupCodesRemaining} backup codes left
                           </span>
                         </div>
@@ -1475,7 +1248,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="space-y-2">
                         <div className="flex items-center gap-2 text-[11px]">
                           <span className="led-dot led-red" />
-                          <span style={{ color: '#ef4444' }}>2FA is not enabled</span>
+                          <span style={{ color: 'var(--sev-critical)' }}>2FA is not enabled</span>
                         </div>
                         <button type="button"
                           onClick={() => setSecurityView('setup-2fa')}
@@ -1488,8 +1261,105 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     )}
                   </div>
 
+                  {/* Security questions — "Forgot password?" recovery setup */}
+                  <div className="panel-beveled p-3" style={{ background: "var(--surface-sunken)" }}>
+                    <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3">
+                      Password Recovery Questions
+                    </h3>
+
+                    {sqMsg && (
+                      <div className={`flex items-center gap-2 px-3 py-2 text-[10px] mb-3 ${sqMsg.type === 'success' ? 'text-green-400 bg-green-900/20 border border-green-800/40' : 'text-red-400 bg-red-900/20 border border-red-800/40'}`}>
+                        {sqMsg.type === 'success' ? <Check style={{ width: 12, height: 12 }} /> : <AlertCircle style={{ width: 12, height: 12 }} />}
+                        {sqMsg.text}
+                      </div>
+                    )}
+
+                    {!sqEditing ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-[11px]">
+                          <span className={`led-dot ${sqConfigured ? 'led-green' : 'led-red'}`} />
+                          <span style={{ color: sqConfigured ? 'var(--sev-ok)' : 'var(--sev-critical)' }}>
+                            {sqConfigured ? 'Recovery questions are set up' : 'Recovery questions are not set up'}
+                          </span>
+                        </div>
+                        <p className="text-[9px] text-fg-muted">
+                          {sqConfigured
+                            ? 'Answering these lets you reset your password from the login screen without an administrator.'
+                            : 'Without these, "Forgot password?" cannot recover your account — an administrator must reset it manually.'}
+                        </p>
+                        <button type="button"
+                          onClick={() => {
+                            setSqEditing(true);
+                            setSqMsg(null);
+                            setSqQuestions(['', '', '']);
+                            setSqAnswers(['', '', '']);
+                            setSqCurrentPassword('');
+                          }}
+                          className="toolbar-btn w-full h-7 text-[10px] uppercase tracking-wider"
+                        >
+                          {sqConfigured ? 'Update Recovery Questions' : 'Set Up Recovery Questions'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="space-y-1">
+                            <label htmlFor={`ff-userprofilemodal-sq-q${i}`} className="field-label">
+                              Question {i + 1}
+                            </label>
+                            <input id={`ff-userprofilemodal-sq-q${i}`}
+                              type="text"
+                              value={sqQuestions[i]}
+                              onChange={e => setSqQuestions(prev => prev.map((q, idx) => idx === i ? e.target.value : q))}
+                              className="input-dark"
+                              placeholder="e.g. What was your first pet's name?"
+                            />
+                            <input id={`ff-userprofilemodal-sq-a${i}`}
+                              type="text" autoComplete="off"
+                              value={sqAnswers[i]}
+                              onChange={e => setSqAnswers(prev => prev.map((a, idx) => idx === i ? e.target.value : a))}
+                              className="input-dark"
+                              placeholder="Answer"
+                            />
+                          </div>
+                        ))}
+                        <div className="space-y-1 pt-1">
+                          <label htmlFor="ff-userprofilemodal-sq-pw" className="field-label">Current Password</label>
+                          <input id="ff-userprofilemodal-sq-pw"
+                            type="password" autoComplete="new-password"
+                            value={sqCurrentPassword}
+                            onChange={e => setSqCurrentPassword(e.target.value)}
+                            className="input-dark"
+                            placeholder="Confirm it's you"
+                          />
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button type="button"
+                            onClick={() => { setSqEditing(false); setSqMsg(null); }}
+                            className="btn-secondary flex-1"
+                          >
+                            Cancel
+                          </button>
+                          <button type="button"
+                            onClick={handleSaveSecurityQuestions}
+                            disabled={sqBusy || !sqCurrentPassword || sqQuestions.some(q => !q.trim()) || sqAnswers.some(a => !a.trim())}
+                            className="btn-primary flex-1"
+                          >
+                            {sqBusy ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Quick links */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="button"
+                      onClick={() => setSecurityView('keys')}
+                      className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
+                    >
+                      Security Keys
+                    </button>
                     <button type="button"
                       onClick={() => setSecurityView('devices')}
                       className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1506,12 +1376,25 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
               )}
 
+              {securityView === 'keys' && (
+                <div>
+                  <button type="button"
+                    onClick={() => setSecurityView('overview')}
+                    className="text-[10px] mb-3 flex items-center gap-1"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    ← Back to Security Overview
+                  </button>
+                  <SecurityKeyManager />
+                </div>
+              )}
+
               {securityView === 'setup-2fa' && (
                 <div>
                   <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
-                    style={{ color: '#888888' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     ← Back to Security Overview
                   </button>
@@ -1532,7 +1415,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button type="button"
                     onClick={() => { setSecurityView('overview'); setRegenCodes(null); }}
                     className="text-[10px] mb-3 flex items-center gap-1"
-                    style={{ color: '#888888' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     ← Back to Security Overview
                   </button>
@@ -1552,7 +1435,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div className="space-y-3">
                       <div
                         className="flex items-start gap-2 p-3 text-[10px]"
-                        style={{ background: 'rgba(212, 160, 23, 0.12)', border: '1px solid rgba(212, 160, 23, 0.4)', color: '#e8b820' }}
+                        style={{ background: 'rgba(var(--accent-silver-400-rgb) / 0.12)', border: '1px solid rgba(var(--accent-silver-400-rgb) / 0.4)', color: 'var(--accent-silver-400)' }}
                       >
                         <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                         <span>This will invalidate all existing backup codes. Enter your password to confirm.</span>
@@ -1570,7 +1453,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
 
                       {regenError && (
-                        <div className="flex items-center gap-2 text-[10px]" style={{ color: '#ef4444' }}>
+                        <div className="flex items-center gap-2 text-[10px]" style={{ color: 'var(--sev-critical)' }}>
                           <AlertCircle className="w-3 h-3" />
                           {regenError}
                         </div>
@@ -1593,7 +1476,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
-                    style={{ color: '#888888' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     ← Back to Security Overview
                   </button>
@@ -1606,7 +1489,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <button type="button"
                     onClick={() => setSecurityView('overview')}
                     className="text-[10px] mb-3 flex items-center gap-1"
-                    style={{ color: '#888888' }}
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     ← Back to Security Overview
                   </button>

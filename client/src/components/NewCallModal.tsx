@@ -172,9 +172,35 @@ const DEFAULT_FORM_DATA = {
   historical_onscene_at: '',
   historical_cleared_at: '',
   historical_closed_at: '',
+  // Narrative and inline subjects (no pre-existing records required)
+  narrative: '',
+  involvedPersons: [] as Array<{ name: string; dob: string; id_number: string; role: string }>,
+  involvedVehicles: [] as Array<{ plate: string; make: string; model: string; color: string; role: string }>,
 };
 
 const DRAFT_KEY = 'rmpg_new_call_draft';
+
+// D1-backed mirror of the draft, same wire contract as useFormDraft.ts
+// (/api/form-drafts/:key, PUT {data}/GET/DELETE) — this modal predates
+// useFormDraft and has its own bespoke restore-on-open flow (draft restore
+// is keyed off `isOpen` transitions, not mount, because the modal stays
+// mounted-but-hidden between opens), so it mirrors the same endpoint
+// directly rather than adopting the hook wholesale. Every write is
+// fire-and-forget; localStorage remains the fast/synchronous source of
+// truth, D1 is best-effort cross-device/cleared-storage recovery.
+function draftPath(key: string): string {
+  return `/form-drafts/${encodeURIComponent(key)}`;
+}
+function syncDraftToD1(key: string, data: unknown): void {
+  apiFetch(draftPath(key), { method: 'PUT', body: JSON.stringify({ data }) }).catch(() => {
+    // Offline/network failure — localStorage still has it; next save retries.
+  });
+}
+function deleteDraftFromD1(key: string): void {
+  apiFetch(draftPath(key), { method: 'DELETE' }).catch(() => {
+    // Best-effort — an orphaned D1 row is harmless, overwritten by the next save.
+  });
+}
 
 export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [], clients = [], initialData, defaultMode = 'quick' }: NewCallModalProps) {
   const [formData, setFormData] = useState({ ...DEFAULT_FORM_DATA });
@@ -187,6 +213,12 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, getArea } = useDistrictOptions();
   const { options } = useLinkOptions();
+
+  // Inline involved persons/vehicles (no pre-existing records needed)
+  const [showModalPersonForm, setShowModalPersonForm] = useState(false);
+  const [newModalPerson, setNewModalPerson] = useState({ name: '', dob: '', id_number: '', role: 'witness' });
+  const [showModalVehicleForm, setShowModalVehicleForm] = useState(false);
+  const [newModalVehicle, setNewModalVehicle] = useState({ plate: '', make: '', model: '', color: '', role: 'involved' });
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -238,7 +270,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       setFormData({ ...DEFAULT_FORM_DATA, ...initialData } as typeof DEFAULT_FORM_DATA);
       setHasDraft(false);
     } else if (isOpen) {
-      // Check for saved draft
+      // Check for saved draft (localStorage first — fast/synchronous)
       const draft = localStorage.getItem(DRAFT_KEY);
       if (draft) {
         try {
@@ -254,6 +286,13 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       }
       setFormData({ ...DEFAULT_FORM_DATA });
       setHasDraft(false);
+      // No local draft (cleared storage, private window, switched device) —
+      // fall back to the D1-mirrored copy so in-progress typing isn't lost.
+      apiFetch<{ data: typeof DEFAULT_FORM_DATA | null }>(draftPath(DRAFT_KEY)).then((res) => {
+        if (res.data == null) return;
+        setFormData({ ...DEFAULT_FORM_DATA, ...res.data });
+        setHasDraft(true);
+      }).catch(() => { /* offline or no D1 draft — stay on defaults */ });
     }
     if (isOpen) setMode(defaultMode);
   }, [isOpen, initialData, defaultMode]);
@@ -268,6 +307,9 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     });
     if (hasData) {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...formData, _savedAt: Date.now() }));
+      syncDraftToD1(DRAFT_KEY, formData);
+    } else {
+      deleteDraftFromD1(DRAFT_KEY);
     }
     setHasDraft(false);
     onClose();
@@ -275,6 +317,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
   const discardDraft = () => {
     localStorage.removeItem(DRAFT_KEY);
+    deleteDraftFromD1(DRAFT_KEY);
     setFormData({ ...DEFAULT_FORM_DATA });
     setHasDraft(false);
   };
@@ -388,8 +431,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         status: formData.is_historical ? (formData.historical_status || 'closed') : 'pending',
         ...historicalFields,
       } as any);
-      // Only reset form on success (parent closes the modal)
+      // Only reset form on success (parent closes the modal) — draft is only
+      // ever cleared here, AFTER onSubmit has resolved successfully, never
+      // pre-emptively or in the catch block below.
       localStorage.removeItem(DRAFT_KEY);
+      deleteDraftFromD1(DRAFT_KEY);
       setHasDraft(false);
       setFormData({ ...DEFAULT_FORM_DATA });
     } catch {
@@ -409,7 +455,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" role="presentation" />
 
       {/* 78: Modal with deeper shadow for elevation */}
-      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0 0 0 / 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-base) 100%)' }}>
           <div className="flex items-center gap-2">
@@ -423,8 +469,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               onClick={() => setMode(m => m === 'quick' ? 'full' : 'quick')}
               className="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border transition-colors flex items-center gap-1"
               style={{
-                borderColor: mode === 'quick' ? '#d4a017' : 'var(--border-default)',
-                color: mode === 'quick' ? '#d4a017' : '#888888',
+                borderColor: mode === 'quick' ? 'var(--field-label-color)' : 'var(--border-default)',
+                color: mode === 'quick' ? 'var(--field-label-color)' : 'var(--text-secondary)',
                 background: mode === 'quick' ? 'rgba(212,160,23,0.1)' : 'transparent',
               }}
             >
@@ -542,7 +588,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                         update('client_id', '');
                       }
                     }}
-                    style={{ borderColor: '#6b21a8' }}
+                    style={{ borderColor: 'var(--sev-special)' }}
                   >
                     <option value="">-- Select Client --</option>
                     {(() => {
@@ -714,7 +760,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 })()}
               </select>
               {formData.client_id && (
-                <p className="mt-0.5 text-[9px] text-rmpg-500">Caller name, phone &amp; address auto-filled from this client (edit freely).</p>
+                <p className="mt-0.5 text-[9px] text-fg-muted">Caller name, phone &amp; address auto-filled from this client (edit freely).</p>
               )}
             </div>
           )}
@@ -886,6 +932,180 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             />
           </div>
 
+          {/* ── Narrative / Incident Summary ─────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-rmpg-300 mb-1">Narrative / Incident Summary</label>
+            <textarea
+              className="textarea-dark text-xs w-full"
+              rows={3}
+              placeholder="Structured narrative or incident summary (saved separately from description)…"
+              value={formData.narrative}
+              onChange={(e) => update('narrative', e.target.value)}
+            />
+          </div>
+
+          {/* ── Inline Involved Persons ───────────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-300">
+                Involved Persons{formData.involvedPersons.length > 0 && ` (${formData.involvedPersons.length})`}
+              </span>
+              {!showModalPersonForm && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModalPersonForm(true); setNewModalPerson({ name: '', dob: '', id_number: '', role: 'witness' }); }}
+                  className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border,#334155)] text-rmpg-300 hover:text-rmpg-100"
+                >+ Add</button>
+              )}
+            </div>
+            {showModalPersonForm && (
+              <div className="mb-2 space-y-1">
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    className="input-dark text-xs col-span-2"
+                    placeholder="Full name *"
+                    value={newModalPerson.name}
+                    onChange={e => setNewModalPerson(p => ({ ...p, name: e.target.value }))}
+                  />
+                  <input
+                    type="date"
+                    className="input-dark text-xs"
+                    value={newModalPerson.dob}
+                    onChange={e => setNewModalPerson(p => ({ ...p, dob: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="ID / badge #"
+                    value={newModalPerson.id_number}
+                    onChange={e => setNewModalPerson(p => ({ ...p, id_number: e.target.value }))}
+                  />
+                  <select
+                    className="select-dark text-xs col-span-2"
+                    value={newModalPerson.role}
+                    onChange={e => setNewModalPerson(p => ({ ...p, role: e.target.value }))}
+                  >
+                    <option value="suspect">Suspect</option>
+                    <option value="victim">Victim</option>
+                    <option value="witness">Witness</option>
+                    <option value="reporting_party">Reporting Party</option>
+                  </select>
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button type="button" onClick={() => setShowModalPersonForm(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border,#334155)] text-rmpg-400">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newModalPerson.name.trim()) return;
+                      setFormData(prev => ({ ...prev, involvedPersons: [...prev.involvedPersons, { ...newModalPerson }] }));
+                      setShowModalPersonForm(false);
+                    }}
+                    className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100"
+                  >Add</button>
+                </div>
+              </div>
+            )}
+            {formData.involvedPersons.length === 0 && !showModalPersonForm && (
+              <p className="text-[9px] text-rmpg-500 italic">No persons added yet.</p>
+            )}
+            {formData.involvedPersons.map((p, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{p.role?.replace(/_/g, ' ')}</span>
+                  <span className="font-medium truncate">{p.name}</span>
+                  {p.dob && <span className="text-rmpg-400 shrink-0">DOB {p.dob}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, involvedPersons: prev.involvedPersons.filter((_, j) => j !== i) }))}
+                  className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                >×</button>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Inline Involved Vehicles ──────────────────────── */}
+          <div className="border border-[var(--spm-border,#334155)] p-2" style={{ background: 'var(--surface-raised)' }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-300">
+                Involved Vehicles{formData.involvedVehicles.length > 0 && ` (${formData.involvedVehicles.length})`}
+              </span>
+              {!showModalVehicleForm && (
+                <button
+                  type="button"
+                  onClick={() => { setShowModalVehicleForm(true); setNewModalVehicle({ plate: '', make: '', model: '', color: '', role: 'involved' }); }}
+                  className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border,#334155)] text-rmpg-300 hover:text-rmpg-100"
+                >+ Add</button>
+              )}
+            </div>
+            {showModalVehicleForm && (
+              <div className="mb-2 space-y-1">
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Plate"
+                    value={newModalVehicle.plate}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, plate: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Color"
+                    value={newModalVehicle.color}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, color: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Make"
+                    value={newModalVehicle.make}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, make: e.target.value }))}
+                  />
+                  <input
+                    className="input-dark text-xs"
+                    placeholder="Model"
+                    value={newModalVehicle.model}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, model: e.target.value }))}
+                  />
+                  <select
+                    className="select-dark text-xs col-span-2"
+                    value={newModalVehicle.role}
+                    onChange={e => setNewModalVehicle(p => ({ ...p, role: e.target.value }))}
+                  >
+                    <option value="suspect">Suspect Vehicle</option>
+                    <option value="victim">Victim Vehicle</option>
+                    <option value="involved">Involved</option>
+                  </select>
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button type="button" onClick={() => setShowModalVehicleForm(false)} className="px-2 py-0.5 text-[9px] border border-[var(--spm-border,#334155)] text-rmpg-400">Cancel</button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, involvedVehicles: [...prev.involvedVehicles, { ...newModalVehicle }] }));
+                      setShowModalVehicleForm(false);
+                    }}
+                    className="px-2 py-0.5 text-[9px] font-bold bg-rmpg-600 text-rmpg-100"
+                  >Add</button>
+                </div>
+              </div>
+            )}
+            {formData.involvedVehicles.length === 0 && !showModalVehicleForm && (
+              <p className="text-[9px] text-rmpg-500 italic">No vehicles added yet.</p>
+            )}
+            {formData.involvedVehicles.map((v, i) => (
+              <div key={i} className="flex items-center justify-between text-[10px] px-1.5 py-0.5 mb-0.5 border border-[var(--spm-border,#334155)]" style={{ background: 'var(--surface-base)' }}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[8px] font-bold uppercase px-1 py-px bg-rmpg-700 text-rmpg-200 shrink-0">{v.role?.replace(/_/g, ' ')}</span>
+                  <span className="font-medium truncate">{[v.color, v.make, v.model].filter(Boolean).join(' ') || 'Unknown'}</span>
+                  {v.plate && <span className="text-rmpg-300 font-mono shrink-0">{v.plate}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, involvedVehicles: prev.involvedVehicles.filter((_, j) => j !== i) }))}
+                  className="text-red-400 hover:text-red-300 ml-2 shrink-0 text-[11px] leading-none"
+                >×</button>
+              </div>
+            ))}
+          </div>
+
           {/* ── Full Mode: Extended Fields ────────────────────── */}
 
           {/* Property — full mode only */}
@@ -1005,7 +1225,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="relative" ref={personDropdownRef}>
-              <label htmlFor="ff-newcallmodal-28" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-28" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Subject / Name <span className="text-fg-muted normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-28" type="text" className="input-dark" placeholder="Type name to search records..." value={formData.subject_description} onChange={(e) => { update('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
               {showPersonDropdown && personSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1017,14 +1237,14 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     }}>
                       <span className="font-semibold text-rmpg-100">{p.last_name}, {p.first_name}</span>
                       {p.dob && <span className="text-rmpg-400 ml-1">DOB: {p.dob}</span>}
-                      {p.address && <span className="text-rmpg-500 ml-1 text-[10px]">— {p.address}</span>}
+                      {p.address && <span className="text-fg-muted ml-1 text-[10px]">— {p.address}</span>}
                     </button>
                   ))}
                 </div>
               )}
             </div>
             <div className="relative" ref={vehicleDropdownRef}>
-              <label htmlFor="ff-newcallmodal-29" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-rmpg-500 normal-case">(search records)</span></label>
+              <label htmlFor="ff-newcallmodal-29" className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Vehicle <span className="text-fg-muted normal-case">(search records)</span></label>
               <input id="ff-newcallmodal-29" type="text" className="input-dark" placeholder="Type plate/make/model to search..." value={formData.vehicle_description} onChange={(e) => { update('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
               {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
@@ -1276,7 +1496,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
                 {/* Status Timestamps (optional) */}
                 <div>
-                  <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-rmpg-500 normal-case">(optional)</span></label>
+                  <label className="block text-[10px] font-semibold text-rmpg-300 uppercase mb-1">Status Timestamps <span className="text-fg-muted normal-case">(optional)</span></label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                     <div>
                       <label htmlFor="ff-newcallmodal-65" className="block text-[9px] text-rmpg-400 mb-0.5">Dispatched</label>

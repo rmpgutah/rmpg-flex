@@ -1,0 +1,82 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S99kiosk-browser-marker
+#
+# Runs after S99kiosk-net-marker (lexicographic tie-break on the shared S99
+# prefix: "S99kiosk-browser-marker" < "S99kiosk-net-marker" would actually sort
+# BEFORE net-marker alphabetically ('b' < 'n') — so this script explicitly waits
+# on the KIOSK_LINUX_NET_OK marker having already been logged rather than
+# relying on init-script ordering alone, since 'b' < 'n' would otherwise run
+# this script first despite the filename suggesting otherwise. Do not rename
+# to "S99kiosk-webbrowser-marker" or similar to fix the sort order instead — an
+# explicit wait is more robust than depending on lexicographic ordering, since
+# this project has already been burned once by assuming implicit ordering was
+# sufficient.
+# (2026-07-24) The net marker now runs first by numeric prefix (S98 < S99)
+# and always writes a line — OK or FAILED — to its log file, so this wait is
+# a short belt-and-braces check rather than the primary ordering mechanism.
+# Break on ANY line: if the network genuinely failed, waiting the full poll
+# window would not fix it, and cog retries failed loads itself.
+i=0
+while [ "$i" -lt 100 ]; do
+  [ -s /tmp/kiosk-net-marker.log ] && break
+  i=$((i + 1))
+  sleep 0.1
+done
+
+WPE_BIN=$(command -v cog)
+if [ -z "$WPE_BIN" ]; then
+  echo "KIOSK_LINUX_BROWSER_FAILED (cog not found)"
+else
+  # Enabling CONFIG_FRAMEBUFFER_CONSOLE (needed so the kernel commits an
+  # initial DRM mode at boot — see kernel-drm.fragment's own comment) has a
+  # side effect: Linux's own text console (fbcon) takes ownership of the
+  # display and keeps drawing to it. fbcon does not hand off automatically
+  # just because another process opens the DRM device — it needs to be
+  # explicitly unbound from its virtual console first, the same way a real
+  # embedded kiosk image would disable the console on its display VT.
+  # Unbinding via sysfs (rather than a kernel boot-arg like fbcon=map:10)
+  # keeps this self-contained in the script that actually needs it,
+  # independent of how any future real bootloader invokes the kernel.
+  for vtcon in /sys/class/vtconsole/vtcon*; do
+    if grep -q "frame buffer device" "$vtcon/name" 2>/dev/null; then
+      echo 0 > "$vtcon/bind" 2>/dev/null
+    fi
+  done
+
+  # Cog's DRM platform module talks directly to libdrm/GBM (from sub-project
+  # 2) with no Wayland/X11 compositor in between. Backgrounded so this init
+  # script can move on; a bounded wait below confirms the process is still
+  # alive (has not immediately crashed) before declaring success — a plain
+  # process-alive check is not by itself sufficient proof the page actually
+  # rendered (see kiosk-linux/README.md for the real crash/blank-screen
+  # investigation this sub-project's build.sh patches fix), so the
+  # screenshot from the test harness remains the actual proof mechanism.
+  mkdir -p /tmp/xdg-runtime
+  chmod 0700 /tmp/xdg-runtime
+  export XDG_RUNTIME_DIR=/tmp/xdg-runtime
+
+  # (2026-07-24) The long blank-render investigation concluded: the
+  # compositor pipeline is healthy (WEBKIT_SHOW_COMPOSITING_DEBUG_VISUALS
+  # tile borders + repaint counters render correctly). The debug env vars
+  # used during that investigation are removed for release builds —
+  # WEBKIT_DEBUG channels are compiled out of Release WebKit anyway, and the
+  # debug visuals draw literal yellow tile borders over the kiosk UI.
+  cog --platform=drm "https://rmpgutah.us" >/tmp/cog.log 2>&1 &
+  COG_PID=$!
+  sleep 20
+  if kill -0 "$COG_PID" 2>/dev/null; then
+    echo "KIOSK_LINUX_BROWSER_OK"
+    echo "DEBUG cog.log so far:"
+    cat /tmp/cog.log
+    # Sub-project 5: this is the "confirmed good" signal S01kiosk-boot-
+    # slot-check's fallback logic relies on — reset the failed-attempt
+    # counter now that this boot has genuinely reached a healthy state.
+    if [ -w /mnt/kiosk-boot/boot_attempts ]; then
+      echo "0" > /mnt/kiosk-boot/boot_attempts
+      echo "KIOSK_LINUX_BOOT_ATTEMPTS_RESET"
+    fi
+  else
+    echo "KIOSK_LINUX_BROWSER_FAILED (cog exited immediately, see /tmp/cog.log)"
+    cat /tmp/cog.log
+  fi
+fi

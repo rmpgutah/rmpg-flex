@@ -160,13 +160,13 @@ export default function MobileCardList<T>({
               border: '1px solid var(--border-default)',
             }}
           >
-            <Search style={{ width: 16, height: 16, color: 'var(--rmpg-500)', flexShrink: 0 }} />
+            <Search style={{ width: 16, height: 16, color: 'var(--text-muted)', flexShrink: 0 }} />
             <input id="ff-mobilecardlist-0"
               type="text"
               value={searchValue}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder={searchPlaceholder}
-              className="flex-1 bg-transparent text-sm text-rmpg-200 placeholder:text-rmpg-500 outline-none font-mono"
+              className="flex-1 bg-transparent text-sm text-rmpg-200 placeholder:text-fg-muted outline-none font-mono"
               style={{ minHeight: 40 }}
             />
             {searchValue && (
@@ -215,7 +215,7 @@ export default function MobileCardList<T>({
               style={{
                 width: 20,
                 height: 20,
-                color: pullReady || refreshing ? '#888888' : 'var(--rmpg-500)',
+                color: pullReady || refreshing ? 'var(--text-secondary)' : 'var(--text-muted)',
                 transform: pullReady ? 'rotate(180deg)' : `rotate(${pullDistance * 3}deg)`,
                 transition: 'transform 0.2s ease',
                 animation: refreshing ? 'spin 1s linear infinite' : undefined,

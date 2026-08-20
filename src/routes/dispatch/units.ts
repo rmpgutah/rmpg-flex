@@ -4,23 +4,13 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
-import { denverOffsetHours } from '../../utils/denverTime';
+import { denverNowDateExpr } from '../../utils/denverTime';
 
 const units = new Hono<Env>();
 
-// Columns a client may set via PUT /dispatch/units/:id. The handler
-// interpolates body keys directly into the SQL SET clause, so without this
-// allowlist any key would be concatenated into the query (column-name
-// injection) and any column writable. Keys outside this set are ignored.
-// `updated_at` is intentionally omitted — the handler stamps it itself.
-const UPDATABLE_UNIT_COLUMNS = new Set([
-  'call_sign', 'officer_id', 'status', 'latitude', 'longitude',
-  'vehicle_id', 'capabilities', 'current_call_id', 'current_call_number',
-  'last_status_change', 'audio_mode',
-]);
 
 // GET /dispatch/units
-units.get('/', async (c) => {
+units.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     // next_service_date is a plain DATE (no time-of-day) representing a
@@ -28,11 +18,11 @@ units.get('/', async (c) => {
     // date('now') resolves in UTC — for roughly 6-7 hours a day (evening MT,
     // already past midnight UTC) a vehicle due "today" read as not-yet-due
     // or a vehicle due "tomorrow" read as already overdue. Shift 'now' by
-    // the current MT offset before taking its date, same pattern as
-    // reports.ts's denverDateExpr/denverNowDateExpr.
-    const offset = denverOffsetHours();
-    const denverNow = `date('now', '${offset} hours')`;
-    const denverNowPlus7 = `date('now', '${offset} hours', '+7 days')`;
+    // the current MT offset before taking its date, via the shared
+    // denverNowDateExpr helper (utils/denverTime.ts) used by the other
+    // route files with this same pattern.
+    const denverNow = denverNowDateExpr();
+    const denverNowPlus7 = denverNowDateExpr('+7 days');
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number as current_call_number, c.incident_type as current_call_type,
@@ -55,7 +45,12 @@ units.get('/', async (c) => {
         te.id as active_shift_id, te.clock_in,
         CAST((julianday('now') - julianday(te.clock_in)) * 24 AS REAL) as shift_hours_elapsed,
         (SELECT cpg.cpg_device_id FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_device_id,
-        (SELECT cpg.ignition_state FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_ignition_state
+        (SELECT cpg.ignition_state FROM cpg_device_mappings cpg WHERE cpg.unit_id = u.id AND cpg.is_active = 1 LIMIT 1) as camera_ignition_state,
+        (SELECT json_array_length(sr.optimized_order_json)
+           FROM serve_routes sr
+          WHERE sr.officer_id = usr.id
+            AND sr.route_date = ${denverNow}
+          ORDER BY sr.id DESC LIMIT 1) as ps_route_stops
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
@@ -78,7 +73,7 @@ units.get('/', async (c) => {
 // new unit, the fleet_vehicles.assigned_unit_id back-link is written in
 // the same transaction so a subsequent fleet LIST JOIN doesn't show the
 // vehicle as still belonging to its previous owner (or unassigned).
-units.post('/', async (c) => {
+units.post('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
@@ -127,6 +122,7 @@ units.post('/', async (c) => {
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', newId);
     return c.json(unit, 201);
   } catch (err: any) {
+    log.error('POST / failed', { src: 'src/routes/dispatch/units.ts' }, err);
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
     return c.json({ error: 'Failed to create unit' }, 500);
   }
@@ -155,7 +151,16 @@ const UNIT_WRITABLE_COLUMNS = new Set([
   'audio_mode', 'emergency_active', 'emergency_call_id', 'emergency_since',
   'gps_heading', 'gps_speed',
 ]);
-units.put('/:id', async (c) => {
+// General unit edit (dispatch console edit modal). Writes status, officer_id,
+// emergency_active, call_sign, GPS, etc. Gated to dispatcher+ because it was
+// otherwise an ownership-check bypass: the dedicated PUT /:id/status enforces
+// "officers may only change their OWN unit", but this general PUT accepts the
+// same `status` field with NO ownership check, so an officer could force
+// another officer's unit off_duty (which makes gps.ts drop that officer's live
+// position, erasing them from the AVL map) or toggle their emergency state.
+// Officer self-status changes go through PUT /:id/status, which keeps the
+// ownership floor.
+units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -263,6 +268,7 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to delete unit' }, 500);
   }
 });
@@ -270,14 +276,25 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
 // PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
 // Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
 // cadCommandParser) call this path rather than the general PUT /:id.
-units.put('/:id/status', async (c) => {
+// requireRole gates write access — without it any authenticated user can silently
+// set any unit off-duty (the exact attack the general PUT /:id gate was added to prevent).
+units.put('/:id/status', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    const existing = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    // Officers may only update their own unit — dispatchers and above can update any.
+    const user = c.get('user') as { role: string } | undefined;
+    if (user?.role === 'officer' && existing.officer_id !== (c.get('userId') as number | undefined)) {
+      return c.json({ error: 'Officers may only update their own unit', code: 'FORBIDDEN' }, 403);
+    }
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    const VALID_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    if (!VALID_STATUSES.includes(body.status as string)) {
+      return c.json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+    }
     const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
       ? ', current_call_id = NULL' : '';
     // Going off duty / out of service ends any on-foot episode — otherwise the
@@ -292,6 +309,7 @@ units.put('/:id/status', async (c) => {
     } catch { log.warn('Broadcast unit_status_changed failed after status update', { unitId: id }); /* non-fatal */ }
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id/status failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to update unit status' }, 500);
   }
 });
@@ -305,7 +323,7 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const db = getDb(c.env);
     const { unit_ids, status } = await c.req.json<{ unit_ids: number[]; status: string }>();
     if (!Array.isArray(unit_ids) || !unit_ids.length) return c.json({ error: 'unit_ids array required' }, 400);
-    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'unavailable', 'out_of_service'];
+    const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
 
     let updated = 0;
@@ -318,14 +336,44 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
         updated++;
         if (userId) {
           await execute(db,
-            `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
-            userId, unitId, `Batch set to ${status}`);
+            `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,
+            userId, unitId, JSON.stringify({ status, unit_id: unitId }));
         }
       }
     }
     return c.json({ updated, total: unit_ids.length });
   } catch (err) {
+    log.error('POST /batch-status failed', { src: 'src/routes/dispatch/units.ts' }, err);
     return c.json({ error: 'Failed to update unit statuses' }, 500);
+  }
+});
+
+// GET /dispatch/units/my-assignment
+// Returns the current officer's unit and default radio channel. Used by
+// DesktopSystemTray for the radio channel display in the status bar.
+units.get('/my-assignment', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const unit = await queryFirst<{ call_sign: string; status: string; vehicle_id: string | null }>(
+      db, 'SELECT call_sign, status, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+    );
+    if (!unit) return c.json({ call_sign: null, radio_channel: null, channel: null });
+
+    // Look up the default radio channel name for display.
+    const defaultChannel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE is_default = 1 LIMIT 1',
+    );
+
+    return c.json({
+      call_sign: unit.call_sign,
+      status: unit.status,
+      radio_channel: defaultChannel?.name ?? null,
+      channel: defaultChannel?.name ?? null,
+    });
+  } catch (err) {
+    log.error('GET /dispatch/units/my-assignment failed', {}, err);
+    return c.json({ call_sign: null, radio_channel: null, channel: null });
   }
 });
 

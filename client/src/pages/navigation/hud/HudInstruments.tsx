@@ -18,6 +18,7 @@ import {
 } from './hudUnits';
 import { GAUGE_R, GAUGE_CIRC, GAUGE_SWEEP, gaugeTick } from './gaugeGeometry';
 import { harshEventColor } from '../drivingScoreColor';
+import { withAlpha } from '../../../utils/withAlpha';
 
 const prefersReducedMotion = (): boolean => {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
@@ -111,13 +112,13 @@ export function HudSpeedGauge({
   const filled = track * (maxU > 0 ? v / maxU : 0);
   const baseColor = speedColor(displayVal);
   // #29 — pulse red when >5 over regardless of band.
-  const ringColor = over ? '#ef4444' : baseColor;
+  const ringColor = over ? 'var(--sev-critical)' : baseColor;
 
   const bands = speedBands(unit);
   const card = formatHeading(heading);
   const redline = limitMph != null ? gaugeTick(speedInUnit(limitMph + buffer, unit), maxU) : null;
 
-  const numColor = night ? (over ? '#ef4444' : '#f0d28a') : ringColor;
+  const numColor = night ? (over ? 'var(--sev-critical)' : '#f0d28a') : ringColor;
 
   return (
     <div className="flex flex-col items-center">
@@ -132,11 +133,11 @@ export function HudSpeedGauge({
           <circle cx="50" cy="50" r={GAUGE_R} fill="none" stroke={ringColor} strokeWidth="7" strokeDasharray={`${filled} ${GAUGE_CIRC}`} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.4s ease-out, stroke 0.4s' }} />
           {/* #65 — redline tick at posted limit + buffer */}
           {redline && (
-            <line x1={redline.x1} y1={redline.y1} x2={redline.x2} y2={redline.y2} stroke="#ef4444" strokeWidth="2" strokeLinecap="round" />
+            <line x1={redline.x1} y1={redline.y1} x2={redline.x2} y2={redline.y2} stroke="var(--sev-critical)" strokeWidth="2" strokeLinecap="round" />
           )}
           {/* #69 — flash ring on 10+ over */}
           {flash && (
-            <circle cx="50" cy="50" r={GAUGE_R} fill="none" stroke="#ef4444" strokeWidth="9" strokeDasharray={`${track} ${GAUGE_CIRC}`} strokeLinecap="round" strokeOpacity="0.85">
+            <circle cx="50" cy="50" r={GAUGE_R} fill="none" stroke="var(--sev-critical)" strokeWidth="9" strokeDasharray={`${track} ${GAUGE_CIRC}`} strokeLinecap="round" strokeOpacity="0.85">
               <animate attributeName="stroke-opacity" values="0.9;0.2;0.9" dur="0.3s" repeatCount="3" />
             </circle>
           )}
@@ -176,9 +177,9 @@ export function HudSpeedGauge({
       </div>
       {/* #48 — band legend chip beneath the gauge */}
       <div className="flex items-center gap-1 mt-0.5 text-[6px] font-mono" aria-hidden="true">
-        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: '#22c55e', borderRadius: 1 }} />{'<'}{bands.ok}</span>
-        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: '#f59e0b', borderRadius: 1 }} />{bands.ok}-{bands.warn}</span>
-        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: '#ef4444', borderRadius: 1 }} />{'>'}{bands.warn}</span>
+        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: 'var(--sev-ok)', borderRadius: 1 }} />{'<'}{bands.ok}</span>
+        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: 'var(--sev-warn)', borderRadius: 1 }} />{bands.ok}-{bands.warn}</span>
+        <span className="flex items-center gap-0.5"><i className="inline-block w-1.5 h-1.5" style={{ background: 'var(--sev-critical)', borderRadius: 1 }} />{'>'}{bands.warn}</span>
       </div>
       {heading != null && <span className="text-[7px] font-mono text-rmpg-500 mt-0.5">{card}</span>}
     </div>
@@ -210,15 +211,15 @@ export function HudCompass({
         <circle cx={c} cy={c} r={R} fill="none" stroke="#3a3a3a" strokeWidth="1.5" />
         {/* #43 — cardinal/inter-cardinal tick refinement */}
         {ticks.map((t, i) => (
-          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke={t.major ? '#d4a017' : '#444'} strokeWidth={t.major ? 1.2 : 0.8} />
+          <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke={t.major ? 'var(--brand-gold)' : '#444'} strokeWidth={t.major ? 1.2 : 0.8} />
         ))}
         {/* fixed lubber line at top */}
-        <line x1={c} y1={2} x2={c} y2={10} stroke="#d4a017" strokeWidth="1.6" />
+        <line x1={c} y1={2} x2={c} y2={10} stroke="var(--brand-gold)" strokeWidth="1.6" />
         {/* #44 — bearing-to-destination gold needle */}
         {destBearing != null && (
           <g style={{ transform: `rotate(${destBearing}deg)`, transformOrigin: `${c}px ${c}px`, transition: 'transform 0.4s ease-out' }}>
-            <line x1={c} y1={c} x2={c} y2={c - R + 4} stroke="#d4a017" strokeWidth="1.4" strokeDasharray="2 2" strokeOpacity="0.85" />
-            <circle cx={c} cy={c - R + 6} r="2" fill="#d4a017" />
+            <line x1={c} y1={c} x2={c} y2={c - R + 4} stroke="var(--brand-gold)" strokeWidth="1.4" strokeDasharray="2 2" strokeOpacity="0.85" />
+            <circle cx={c} cy={c - R + 6} r="2" fill="var(--brand-gold)" />
           </g>
         )}
       </svg>
@@ -229,7 +230,7 @@ export function HudCompass({
       <Navigation2
         className="absolute inset-0 m-auto w-8 h-8 text-brand-400"
         style={{ transform: `rotate(${heading ?? 0}deg)`, transition: 'transform 0.3s ease-out', filter: heading != null ? 'drop-shadow(0 0 4px rgba(212,160,23,0.5))' : 'none' }}
-        fill={heading != null ? '#d4a017' : 'none'}
+        fill={heading != null ? 'var(--brand-gold)' : 'none'}
       />
       {/* #34 — N-UP / H-UP orientation label */}
       <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 text-[7px] font-bold text-brand-300 bg-surface-deep px-1" style={{ borderRadius: 2 }}>
@@ -259,7 +260,7 @@ export function HudStatTile({
   const endPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = null; } };
   return (
     <div
-      className={`relative border px-2 py-1 min-w-0 overflow-hidden ${cyclable ? 'cursor-pointer' : ''} ${night ? 'border-rmpg-700' : 'border-rmpg-800'}`}
+      className={`relative border px-2 py-1.5 min-w-0 overflow-hidden ${cyclable ? 'cursor-pointer' : ''} ${night ? 'border-rmpg-700' : 'border-rmpg-800'}`}
       style={{ borderRadius: 2, background: night ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)' }}
       onMouseDown={startPress} onMouseUp={endPress} onMouseLeave={endPress}
       onTouchStart={startPress} onTouchEnd={endPress}
@@ -267,9 +268,9 @@ export function HudStatTile({
       title={cyclable ? 'Long-press to cycle metric' : undefined}
     >
       <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01733 40%, #d4a01755 60%, transparent)' }} />
-      <div className={`text-[8px] uppercase tracking-wider leading-none truncate ${night ? 'text-rmpg-500' : 'text-rmpg-600'}`}>{m.label}</div>
+      <div className={`text-[10px] uppercase tracking-wider leading-none truncate ${night ? 'text-rmpg-500' : 'text-rmpg-600'}`}>{m.label}</div>
       <div
-        className={`font-mono ${night ? 'font-extrabold' : 'font-bold'} text-[13px] leading-tight mt-0.5 truncate tabular-nums`}
+        className={`font-mono ${night ? 'font-extrabold' : 'font-bold'} text-[15px] leading-tight mt-0.5 truncate tabular-nums`}
         style={{ color: m.accent || (m.dim ? '#6b6b6b' : (night ? '#e8e8e8' : '#d4d4d4')) }}
       >
         {m.value}
@@ -285,10 +286,10 @@ export const GPS_POOR_THRESHOLD_M = 30;
 export function HudQualityPill({ accuracy }: { accuracy: number | null }) {
   const a = accuracy;
   const { color, label } = a == null
-    ? { color: 'var(--rmpg-500)', label: 'NO FIX' }
-    : a < GPS_GOOD_THRESHOLD_M ? { color: '#22c55e', label: 'GOOD' }
-      : a < GPS_POOR_THRESHOLD_M ? { color: '#f59e0b', label: 'FAIR' }
-        : { color: '#ef4444', label: 'POOR' };
+    ? { color: 'var(--text-muted)', label: 'NO FIX' }
+    : a < GPS_GOOD_THRESHOLD_M ? { color: 'var(--sev-ok)', label: 'GOOD' }
+      : a < GPS_POOR_THRESHOLD_M ? { color: 'var(--sev-warn)', label: 'FAIR' }
+        : { color: 'var(--sev-critical)', label: 'POOR' };
   return (
     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${color}`, color, borderRadius: 2 }} title="GPS fix quality">
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
@@ -332,7 +333,7 @@ export function HudNextManeuver({
       </div>
       {/* #42 — distance-to-turn micro-bar */}
       <div className="h-1 bg-rmpg-800 overflow-hidden" style={{ borderRadius: 2 }}>
-        <div className="h-full" style={{ width: `${Math.round(frac * 100)}%`, background: '#d4a017', transition: 'width 0.4s ease-out' }} />
+        <div className="h-full" style={{ width: `${Math.round(frac * 100)}%`, background: 'var(--brand-gold)', transition: 'width 0.4s ease-out' }} />
       </div>
       {lanes && lanes.length > 0 && (
         <div data-testid="lane-strip" className="flex items-center gap-1 mt-0.5">
@@ -345,9 +346,9 @@ export function HudNextManeuver({
               aria-hidden="true"
               className="w-3 h-3"
               style={{
-                color: lane.valid ? '#d4a017' : 'var(--rmpg-700)',
+                color: lane.valid ? 'var(--brand-gold)' : 'var(--text-muted)',
                 transform: laneRotation(lane.indications),
-                ...(lane.active ? { filter: 'drop-shadow(0 0 2px #d4a017)' } : {}),
+                ...(lane.active ? { filter: 'drop-shadow(0 0 2px var(--brand-gold))' } : {}),
               }}
             />
           ))}
@@ -390,7 +391,7 @@ export function HudExportCluster({
           style={{
             borderRadius: 2,
             borderColor: disabled ? '#2e2e2e' : '#3a3a3a',
-            color: disabled ? '#555' : '#d4a017',
+            color: disabled ? '#555' : 'var(--brand-gold)',
             cursor: disabled ? 'not-allowed' : 'pointer',
             background: 'rgba(20,20,20,0.6)',
           }}
@@ -459,7 +460,7 @@ export function HudMuteToggle({ muted, onToggle }: { muted: boolean; onToggle: (
       aria-label={muted ? 'Unmute HUD alert tones' : 'Mute HUD alert tones'}
       title={muted ? 'Tones muted — tap to unmute' : 'Tones on — tap to mute'}
       className="flex items-center justify-center px-1.5 py-1 border"
-      style={{ borderRadius: 2, borderColor: muted ? '#3a1f1f' : '#3a3a3a', color: muted ? '#ef4444' : '#d4a017', background: 'rgba(20,20,20,0.7)' }}
+      style={{ borderRadius: 2, borderColor: muted ? '#3a1f1f' : '#3a3a3a', color: muted ? 'var(--sev-critical)' : 'var(--brand-gold)', background: 'rgba(20,20,20,0.7)' }}
     >
       {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
     </button>
@@ -482,31 +483,31 @@ export function HudMapControls({
   return (
     <div className="flex items-center gap-1">
       <button type="button" onClick={onRecenter} aria-label="Recenter / follow me" title={followActive ? 'Following — recenter' : 'Re-enable follow-me'}
-        className={btn} style={{ borderRadius: 2, borderColor: followActive ? '#d4a017' : '#3a3a3a', color: followActive ? '#d4a017' : 'var(--rmpg-400)', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: followActive ? 'var(--brand-gold)' : '#3a3a3a', color: followActive ? 'var(--brand-gold)' : 'var(--text-secondary)', background: followActive ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Crosshair className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomIn} aria-label="Zoom in" title="Zoom in"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--text-secondary)', background: 'rgba(20,20,20,0.7)' }}>
         <Plus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onZoomOut} aria-label="Zoom out" title="Zoom out"
-        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--rmpg-400)', background: 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: '#3a3a3a', color: 'var(--text-secondary)', background: 'rgba(20,20,20,0.7)' }}>
         <Minus className="w-4 h-4" />
       </button>
       <button type="button" onClick={onTogglePitch} aria-label={pitched ? 'Switch to 2D' : 'Switch to 3D'} title={pitched ? '3D — tap for 2D' : '2D — tap for 3D'}
-        className={btn} style={{ borderRadius: 2, borderColor: pitched ? '#d4a017' : '#3a3a3a', color: pitched ? '#d4a017' : 'var(--rmpg-400)', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+        className={btn} style={{ borderRadius: 2, borderColor: pitched ? 'var(--brand-gold)' : '#3a3a3a', color: pitched ? 'var(--brand-gold)' : 'var(--text-secondary)', background: pitched ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
         <Box className="w-4 h-4" />
         <span className="text-[7px] font-bold ml-0.5">{pitched ? '3D' : '2D'}</span>
       </button>
       {onToggleDistricts && (
         <button type="button" onClick={onToggleDistricts} aria-label={showDistricts ? 'Hide district/beat overlay' : 'Show district/beat overlay'} title={showDistricts ? 'District/beat overlay on' : 'District/beat overlay off'}
-          className={btn} style={{ borderRadius: 2, borderColor: showDistricts ? '#d4a017' : '#3a3a3a', color: showDistricts ? '#d4a017' : 'var(--rmpg-400)', background: showDistricts ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+          className={btn} style={{ borderRadius: 2, borderColor: showDistricts ? 'var(--brand-gold)' : '#3a3a3a', color: showDistricts ? 'var(--brand-gold)' : 'var(--text-secondary)', background: showDistricts ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
           <Layers className="w-4 h-4" />
         </button>
       )}
       {onToggleBackupUnits && (
         <button type="button" onClick={onToggleBackupUnits} aria-label={showBackupUnits ? 'Hide nearby backup units' : 'Show nearby backup units'} title={showBackupUnits ? 'Backup unit overlay on' : 'Backup unit overlay off'}
-          className={btn} style={{ borderRadius: 2, borderColor: showBackupUnits ? '#d4a017' : '#3a3a3a', color: showBackupUnits ? '#d4a017' : 'var(--rmpg-400)', background: showBackupUnits ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
+          className={btn} style={{ borderRadius: 2, borderColor: showBackupUnits ? 'var(--brand-gold)' : '#3a3a3a', color: showBackupUnits ? 'var(--brand-gold)' : 'var(--text-secondary)', background: showBackupUnits ? 'rgba(212,160,23,0.12)' : 'rgba(20,20,20,0.7)' }}>
           <Users className="w-4 h-4" />
         </button>
       )}
@@ -525,7 +526,7 @@ export function HudSourceChip({ label, color, fixTick }: { label: string; color:
     return () => window.clearTimeout(t);
   }, [fixTick, reduced]);
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${color}66`, color, borderRadius: 2 }} title="GPS source — pulses on each new fix">
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: `1px solid ${withAlpha(color, '66')}`, color, borderRadius: 2 }} title="GPS source — pulses on each new fix">
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: color, transition: 'transform 0.3s ease-out', transform: pulse ? 'scale(1.9)' : 'scale(1)' }} />
       {label}
     </span>
@@ -535,9 +536,9 @@ export function HudSourceChip({ label, color, fixTick }: { label: string; color:
 // ── #64 — destination-reached confirmation banner ───────────────────────────────
 export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismiss: () => void }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #22c55e', borderRadius: 2, boxShadow: '0 0 16px rgba(34,197,94,0.4)' }}>
-      <Flag className="w-4 h-4 shrink-0" style={{ color: '#22c55e' }} />
-      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#22c55e' }}>Arrived — {label}</span>
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid var(--sev-ok)', borderRadius: 2, boxShadow: '0 0 16px rgba(34,197,94,0.4)' }}>
+      <Flag className="w-4 h-4 shrink-0" style={{ color: 'var(--sev-ok)' }} />
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--sev-ok)' }}>Arrived — {label}</span>
       <button type="button" onClick={onDismiss} aria-label="Dismiss arrival" title="Dismiss" className="ml-2 text-rmpg-400 hover:text-rmpg-100 text-[11px] font-bold">✕</button>
     </div>
   );
@@ -546,8 +547,8 @@ export function HudArrivedBanner({ label, onDismiss }: { label: string; onDismis
 // ── #3 — configurable over-speed alert banner ────────────────────────────────
 export function HudOverSpeedBanner({ limitMph }: { limitMph: number }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl animate-pulse" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid #ef4444', borderRadius: 2, boxShadow: '0 0 16px rgba(239,68,68,0.4)' }}>
-      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: '#ef4444' }}>Over limit — posted {limitMph} mph</span>
+    <div className="flex items-center gap-2 px-3 py-2 shadow-2xl animate-pulse" style={{ background: 'rgba(8,8,8,0.96)', border: '1px solid var(--sev-critical)', borderRadius: 2, boxShadow: '0 0 16px rgba(239,68,68,0.4)' }}>
+      <span className="text-[12px] font-bold uppercase tracking-wide" style={{ color: 'var(--sev-critical)' }}>Over limit — posted {limitMph} mph</span>
     </div>
   );
 }
@@ -586,12 +587,12 @@ export function HudDeviceHealthBadge({
   return (
     <div className="flex flex-col gap-0.5">
       {lowBattery && (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #ef4444', color: '#ef4444', borderRadius: 2 }} title="Device battery low">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid var(--sev-critical)', color: 'var(--sev-critical)', borderRadius: 2 }} title="Device battery low">
           Low battery {batteryLevel}%
         </span>
       )}
       {gpsDegraded && (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: 2 }} title="GPS fix accuracy degraded">
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase font-mono" style={{ border: '1px solid var(--sev-warn)', color: 'var(--sev-warn)', borderRadius: 2 }} title="GPS fix accuracy degraded">
           GPS degraded ±{Math.round(gpsAccuracy!)}m
         </span>
       )}

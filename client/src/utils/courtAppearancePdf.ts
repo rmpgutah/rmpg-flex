@@ -15,6 +15,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -281,7 +282,7 @@ export function generateCourtAppearancePdf(input: CourtAppearanceInput): jsPDF {
   doc.setFontSize(9);
   const bailFields: Array<[string, string]> = [
     ['Amount', moneyFmt(input.bail_amount)],
-    ['Status', (input.bond_status || '').replace(/_/g, ' ').toUpperCase() || '—'],
+    ['Status', toDisplayLabel(input.bond_status || '').toUpperCase() || '—'],
     ['Surety', input.surety_info || '—'],
   ];
   for (const [lbl, val] of bailFields) {
@@ -466,7 +467,7 @@ export function generateCourtAppearancePdf(input: CourtAppearanceInput): jsPDF {
     doc.setFont('Arial', 'normal');
     doc.setFontSize(9);
     const outcomeFields: Array<[string, string]> = [
-      ['Verdict', (input.outcome || '').replace(/_/g, ' ').toUpperCase()],
+      ['Verdict', toDisplayLabel(input.outcome || '').toUpperCase()],
       ['Sentence', input.sentence || '—'],
       ['Fine', moneyFmt(input.fine_amount)],
     ];
@@ -528,6 +529,6 @@ export function generateCourtAppearancePdf(input: CourtAppearanceInput): jsPDF {
 
 export function openCourtAppearancePdf(input: CourtAppearanceInput): void {
   const doc = generateCourtAppearancePdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Court Appearance');
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Radio, Map, Monitor, Terminal, Database, FileText,
   ClipboardList, Search, CreditCard, Package, Briefcase, AlertTriangle,
@@ -11,6 +11,7 @@ import {
   Globe, ScanSearch, Film, CalendarDays, Route, Fingerprint, FileSearch,
   Store, PawPrint, Warehouse, UserCog, MessageCircleQuestion, FlaskConical, Handshake,
 } from 'lucide-react';
+import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
 interface SidebarItem {
@@ -198,6 +199,7 @@ interface SidebarProps {
 export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  useFeatureFlags();
 
   // Persist collapsed state
   const [collapsed, setCollapsed] = useState(() => {
@@ -218,6 +220,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
   const isVisible = (item: SidebarItem) => {
     if (item.adminOnly && !isAdmin) return false;
     if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(item.path)) return false;
+    if (!isFeatureEnabled(item.path)) return false;
     return true;
   };
 
@@ -231,7 +234,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
       className="flex flex-col h-full flex-shrink-0 transition-[width] duration-200 ease-out select-none"
       style={{
         width: collapsed ? 56 : 220,
-        background: 'linear-gradient(180deg, #121212 0%, #0c0c0c 100%)',
+        background: 'linear-gradient(180deg, var(--surface-overlay) 0%, var(--surface-deep) 100%)',
         borderRight: '1px solid var(--border-default)',
       }}
     >
@@ -242,7 +245,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
             {/* Section label — visible only when expanded */}
             {!collapsed && (
               <div
-                                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-rmpg-500"
+                                className="px-4 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-fg-muted"
               >
                 {section.label}
               </div>
@@ -268,8 +271,8 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     height: 34,
                     padding: collapsed ? '0 0 0 18px' : '0 12px 0 16px',
                     background: active ? 'rgba(136, 136, 136, 0.15)' : 'transparent',
-                    color: active ? '#ffffff' : '#888888',
-                    borderLeft: active ? '3px solid #888888' : '3px solid transparent',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    borderLeft: active ? '3px solid var(--border-default)' : '3px solid transparent',
                   }}
                   aria-label={item.label}
                   title={collapsed ? item.label : undefined}
@@ -279,7 +282,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       width: 16,
                       height: 16,
                       flexShrink: 0,
-                      color: active ? '#aaaaaa' : 'var(--rmpg-500)',
+                      color: active ? 'var(--text-secondary)' : 'var(--text-muted)',
                       transition: 'color 0.1s',
                     }}
                   />
@@ -299,7 +302,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                       style={{
                         background: 'var(--surface-base)',
                         border: '1px solid var(--border-default)',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        boxShadow: '0 4px 12px rgba(0 0 0 / 0.5)',
                         top: '50%',
                         transform: 'translateY(-50%)',
                       }}
@@ -322,7 +325,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
           height: 36,
           borderTop: '1px solid var(--border-default)',
           background: 'var(--surface-overlay)',
-          color: 'var(--rmpg-500)',
+          color: 'var(--text-muted)',
         }}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

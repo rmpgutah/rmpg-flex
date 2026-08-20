@@ -20,26 +20,32 @@ jobs:
   security-scan:
     name: Security Audit & Build Canary
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Install dependencies
         run: |
           npm ci --no-audit --no-fund
-          (cd client && npm ci --no-audit --no-fund)
+          (cd client && npm ci --no-audit --no-fund --legacy-peer-deps)
 
       - name: Audit dependencies
         run: |
           npm audit --audit-level=high || echo "::warning ::Root audit found vulnerabilities"
           (cd client && npm audit --audit-level=high) || echo "::warning ::Client audit found vulnerabilities"
 
+      # Skipped on push:main — deploy.yml already builds the client for real
+      # on that same push event, so this would just duplicate it. Kept for
+      # the weekly schedule / manual dispatch, where it's the only build
+      # canary running (catches stale-dependency drift between deploys).
       - name: Build client
+        if: github.event_name != 'push'
         working-directory: client
         run: npx vite build

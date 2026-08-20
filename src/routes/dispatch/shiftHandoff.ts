@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, queryFirst, execute, query } from '../../utils/db';
 import { log } from '../../utils/logger';
+import { requireRole } from '../../middleware/auth';
+import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 
 const handoff = new Hono<Env>();
 
-handoff.get('/', async (c) => {
+handoff.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ text: string; updated_by: number | null; updated_at: string }>(
@@ -22,7 +24,7 @@ handoff.get('/', async (c) => {
   }
 });
 
-handoff.put('/', async (c) => {
+handoff.put('/', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -44,7 +46,7 @@ handoff.put('/', async (c) => {
 });
 
 // ── GET /briefing — auto-generated shift change briefing from live data ──
-handoff.get('/briefing', async (c) => {
+handoff.get('/briefing', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const results: Record<string, any> = {};
@@ -52,7 +54,7 @@ handoff.get('/briefing', async (c) => {
     // Active calls summary
     const activeCalls = await query<{ count: number; p1: number }>(
       db, `SELECT COUNT(*) AS count, SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) AS p1
-           FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+           FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`,
     );
     results.active_calls = activeCalls[0];
 

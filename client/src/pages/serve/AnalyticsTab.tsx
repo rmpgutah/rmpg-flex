@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { BarChart3, RefreshCw, Target, TrendingUp, TrendingDown, Users } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { refreshAccessToken } from '../../utils/tokenRefresh';
 import { useToast } from '../../components/ToastProvider';
 import AttemptTimelineModal from '../../components/serve/AttemptTimelineModal';
 import type { ServeJob } from '../../types';
+import { safeDateStr } from '../../utils/dateUtils';
+import ServeQueueToolsPanel from '../../components/serve/ServeQueueToolsPanel';
+import { formatEnumValue } from '../../utils/formatters';
 
 type RangeDays = 7 | 30 | 90;
 
@@ -139,6 +142,60 @@ function rateColor(rate: number): string {
   return rate >= 80 ? 'text-green-400' : rate >= 60 ? 'text-amber-400' : 'text-red-400';
 }
 
+interface ScheduleAnalytics {
+  summary: { total_attempts: number; success_rate: number };
+  by_day_of_week: Record<string, { total: number; served: number }>;
+  by_hour: Record<string, { total: number; served: number }>;
+  /** Keyed "<dow 0-6>|<band>" — the cross-tab the grid renders. */
+  by_day_band?: Record<string, { total: number; served: number }>;
+  bands?: string[];
+  timezone?: string;
+  /** More attempts existed in the window than were scanned. */
+  truncated?: boolean;
+  scanned?: number;
+}
+
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BANDS = ['morning', 'afternoon', 'evening'] as const;
+const BAND_LABEL: Record<string, string> = {
+  morning: 'Morning (–12p)',
+  afternoon: 'Afternoon (12–5p)',
+  evening: 'Evening (5p+)',
+};
+
+/**
+ * Cell shading for the timing grid.
+ *
+ * Deliberately NOT the rateColor severity ramp: a low success rate in a given
+ * slot is not a fault condition, it is just a less productive hour, and
+ * painting a third of the grid red would read as an alarm. Uses a single
+ * green intensity ramp instead, so the eye picks the best slots by weight.
+ *
+ * Cells under `MIN_SAMPLE` attempts render as "thin" rather than coloured —
+ * one lucky serve in a slot with n=1 is 100% and would otherwise outrank a
+ * genuinely reliable slot with n=12.
+ */
+const MIN_SAMPLE = 3;
+function cellStyle(cell: { total: number; served: number } | undefined): { cls: string; title: string } {
+  if (!cell || cell.total === 0) {
+    return { cls: 'bg-surface-sunken/40 text-fg-muted border-border-subtle', title: 'No attempts' };
+  }
+  const rate = Math.round((cell.served / cell.total) * 100);
+  const base = `${cell.served}/${cell.total} served (${rate}%)`;
+  if (cell.total < MIN_SAMPLE) {
+    return {
+      cls: 'bg-surface-sunken/60 text-fg-secondary border-border-default/40 border-dashed',
+      title: `${base} — too few attempts to trust`,
+    };
+  }
+  const cls =
+    rate >= 75 ? 'bg-green-500/45 text-green-100 border-green-500/60'
+    : rate >= 50 ? 'bg-green-500/28 text-green-200 border-green-600/50'
+    : rate >= 25 ? 'bg-green-500/14 text-rmpg-200 border-border-default/50'
+    : 'bg-surface-sunken/70 text-fg-secondary border-border-default/40';
+  return { cls, title: base };
+}
+
 export default function AnalyticsTab() {
   const { addToast } = useToast();
   const [range, setRange] = useState<RangeDays>(30);
@@ -217,6 +274,24 @@ export default function AnalyticsTab() {
     }
   }, [ttsRange]);
 
+  // ── Best time to serve ────────────────────────────────────────────────────
+  // 7 days × 3 time bands. The bands match serveDiligenceChain.ts exactly, so
+  // the "vary your time-of-day" guidance on a job card and the "here's when we
+  // actually succeed" grid here speak the same language rather than two.
+  const [timing, setTiming] = useState<ScheduleAnalytics | null>(null);
+  const [timingError, setTimingError] = useState<string | null>(null);
+
+  const fetchTiming = useCallback(async () => {
+    setTimingError(null);
+    try {
+      const start = new Date(Date.now() - range * 86_400_000).toISOString().slice(0, 10);
+      const data = await apiFetch<ScheduleAnalytics>(`/process-server/schedule-analytics?start_date=${start}`);
+      setTiming(data);
+    } catch (err: any) {
+      setTimingError(err?.message || 'Failed to load timing analytics');
+    }
+  }, [range]);
+
   const fetchWeeklyTrend = useCallback(async () => {
     setWeeklyTrendError(null);
     try {
@@ -273,6 +348,37 @@ export default function AnalyticsTab() {
   useEffect(() => { fetchCountyBreakdown(); }, [fetchCountyBreakdown, refreshKey]);
   useEffect(() => { fetchTimeToServe(); }, [fetchTimeToServe, refreshKey]);
   useEffect(() => { fetchWeeklyTrend(); }, [fetchWeeklyTrend, refreshKey]);
+  useEffect(() => { fetchTiming(); }, [fetchTiming, refreshKey]);
+
+  // [24] First-attempt rate stat card
+  const [firstAttemptRate, setFirstAttemptRate] = useState<{ total: number; first_attempt_served: number; rate: number } | null>(null);
+  const fetchFirstAttemptRate = useCallback(async () => {
+    try {
+      const d = await apiFetch<{ total: number; first_attempt_served: number; rate: number }>('/serve/stats/first-attempt-rate');
+      setFirstAttemptRate(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchFirstAttemptRate(); }, [fetchFirstAttemptRate, refreshKey]);
+
+  // [25] Attempt velocity sparkline
+  const [velocity, setVelocity] = useState<{ last_7_days: number; prior_7_days: number; trend: number } | null>(null);
+  const fetchVelocity = useCallback(async () => {
+    try {
+      const d = await apiFetch<{ last_7_days: number; prior_7_days: number; trend: number }>('/serve/stats/velocity');
+      setVelocity(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchVelocity(); }, [fetchVelocity, refreshKey]);
+
+  // [29] Client breakdown table
+  const [clientBreakdown, setClientBreakdown] = useState<Array<{ client: string; total: number; served: number; failed: number; active: number }>>([]);
+  const fetchClientBreakdown = useCallback(async () => {
+    try {
+      const d = await apiFetch<Array<{ client: string; total: number; served: number; failed: number; active: number }>>('/serve/client-breakdown');
+      setClientBreakdown(d);
+    } catch {}
+  }, []);
+  useEffect(() => { fetchClientBreakdown(); }, [fetchClientBreakdown, refreshKey]);
 
   const refreshAll = () => setRefreshKey((k) => k + 1);
 
@@ -356,8 +462,15 @@ export default function AnalyticsTab() {
     }
   };
 
+  // h-full + overflow-y-auto is REQUIRED, not decorative. ServePage renders every
+  // tab inside `flex-1 overflow-hidden`, which gives the tab a fixed height and
+  // clips anything taller with no scrollbar and no error — measured live at
+  // clientHeight 843 vs scrollHeight 1357, i.e. 514px of this tab simply
+  // unreachable. Route and Stats already carry their own scroller; Analytics,
+  // Performance and Assign did not, so they silently truncated. Matches the
+  // `h-full overflow-y-auto ... scrollbar-dark` convention those tabs use.
   return (
-    <div className="p-4 space-y-4">
+    <div className="h-full overflow-y-auto p-4 space-y-4 scrollbar-dark">
       {/* ── Header + shared range selector ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -432,6 +545,90 @@ export default function AnalyticsTab() {
           </div>
         </div>
       </div>
+
+      {/* ── [24][25][29] Quick-stat row: first-attempt rate + velocity + client breakdown ── */}
+      <div className="grid grid-cols-3 gap-2">
+        {/* [24] First-attempt rate */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            <Target className="w-3 h-3" />
+            First-Attempt Rate
+          </div>
+          {firstAttemptRate ? (
+            <>
+              <span className="text-2xl font-bold tabular-nums text-rmpg-100">{firstAttemptRate.rate}%</span>
+              <span className="text-[9px] text-fg-muted">
+                {firstAttemptRate.first_attempt_served}/{firstAttemptRate.total} closed jobs
+              </span>
+            </>
+          ) : (
+            <span className="text-[10px] text-fg-muted">Loading…</span>
+          )}
+        </div>
+
+        {/* [25] Attempt velocity */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            {velocity && velocity.trend >= 0
+              ? <TrendingUp className="w-3 h-3 text-green-400" />
+              : <TrendingDown className="w-3 h-3 text-red-400" />}
+            Attempt Velocity
+          </div>
+          {velocity ? (
+            <>
+              <span className="text-2xl font-bold tabular-nums text-rmpg-100">{velocity.last_7_days}</span>
+              <span className={`text-[9px] ${velocity.trend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {velocity.trend >= 0 ? '+' : ''}{velocity.trend} vs prior 7d
+              </span>
+            </>
+          ) : (
+            <span className="text-[10px] text-fg-muted">Loading…</span>
+          )}
+        </div>
+
+        {/* [29] Active client count */}
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-2 flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-fg-muted">
+            <Users className="w-3 h-3" />
+            Active Clients
+          </div>
+          <span className="text-2xl font-bold tabular-nums text-rmpg-100">
+            {clientBreakdown.filter((c) => c.active > 0).length}
+          </span>
+          <span className="text-[9px] text-fg-muted">{clientBreakdown.length} total</span>
+        </div>
+      </div>
+
+      {/* [29] Client breakdown table */}
+      {clientBreakdown.length > 0 && (
+        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+            Client / Attorney Breakdown
+          </span>
+          <table className="w-full text-[10px]">
+            <thead>
+              <tr className="text-fg-muted font-semibold text-[9px]">
+                <th className="text-left py-[3px] px-2">Client</th>
+                <th className="text-right py-[3px] px-2">Total</th>
+                <th className="text-right py-[3px] px-2">Active</th>
+                <th className="text-right py-[3px] px-2">Served</th>
+                <th className="text-right py-[3px] px-2">Failed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientBreakdown.slice(0, 15).map((row) => (
+                <tr key={row.client} className="border-t border-rmpg-700/30">
+                  <td className="py-[2px] px-2 text-rmpg-200 truncate max-w-[140px]">{row.client}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-fg-secondary">{row.total}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-brand-400">{row.active}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-green-400">{row.served}</td>
+                  <td className="py-[2px] px-2 text-right tabular-nums text-red-400">{row.failed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* ── Daily summary ── */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-2">
@@ -508,7 +705,7 @@ export default function AnalyticsTab() {
               <tbody>
                 {successByType!.types.map((t) => (
                   <tr key={t.attempt_type} className="border-b border-rmpg-800 last:border-0">
-                    <td className="px-3 py-[2px] text-rmpg-200 capitalize">{t.attempt_type}</td>
+                    <td className="px-3 py-[2px] text-rmpg-200 capitalize">{formatEnumValue(t.attempt_type)}</td>
                     <td className="px-3 py-[2px] text-right text-rmpg-400 tabular-nums">{t.total}</td>
                     <td className={`px-3 py-[2px] text-right tabular-nums font-mono font-semibold ${rateColor(t.success_rate)}`}>
                       {t.success_rate}%
@@ -590,6 +787,78 @@ export default function AnalyticsTab() {
         {!ttsError && timeToServe && (
           <div className="text-[9px] text-rmpg-500 text-center">
             Based on {timeToServe.sample_size} successful serve(s) in the last {timeToServe.period_days} days
+          </div>
+        )}
+      </div>
+
+      <ServeQueueToolsPanel />
+
+      {/* ── Best time to serve ── */}
+      <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-fg-muted uppercase font-semibold tracking-wider">
+            Best Time to Serve · {range}d
+          </span>
+          <span className="text-[9px] text-fg-muted">
+            success rate by day × time-of-day (Mountain)
+          </span>
+        </div>
+        {timingError && <div className="text-[10px] text-red-400">{timingError}</div>}
+        {!timingError && timing?.by_day_band && (
+          <div className="mt-2 overflow-x-auto">
+            <table className="text-[9px] border-separate border-spacing-[2px]">
+              <thead>
+                <tr>
+                  <th className="w-24" />
+                  {DOW_SHORT.map((d, i) => (
+                    <th
+                      key={d}
+                      className={`px-2 py-[2px] font-semibold tabular-nums ${
+                        i === 0 || i === 6 ? 'text-accent-silver-300' : 'text-fg-muted'
+                      }`}
+                      title={i === 0 || i === 6 ? 'Weekend — carries extra weight in a diligence record' : undefined}
+                    >
+                      {d}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {BANDS.map((band) => (
+                  <tr key={band}>
+                    <td className="pr-2 text-right text-fg-muted whitespace-nowrap">{BAND_LABEL[band]}</td>
+                    {DOW_SHORT.map((_, dow) => {
+                      const cell = timing.by_day_band?.[`${dow}|${band}`];
+                      const { cls, title } = cellStyle(cell);
+                      return (
+                        <td key={dow} className="p-0">
+                          <div
+                            title={`${DOW_SHORT[dow]} ${BAND_LABEL[band]} — ${title}`}
+                            className={`px-2 py-[3px] text-center border rounded-[2px] tabular-nums ${cls}`}
+                          >
+                            {cell?.total ? `${Math.round((cell.served / cell.total) * 100)}%` : '·'}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="flex items-center gap-3 mt-1.5 text-[9px] text-fg-muted">
+              <span>Darker = higher success rate</span>
+              <span className="px-1 border border-dashed border-border-default/40 rounded-[2px]">dashed</span>
+              <span>= fewer than {MIN_SAMPLE} attempts, not yet meaningful</span>
+              <span className="ml-auto tabular-nums">
+                {timing.truncated ? 'most recent ' : ''}
+                {timing.summary.total_attempts} attempts · {timing.summary.success_rate}% overall
+              </span>
+            </div>
+          </div>
+        )}
+        {!timingError && timing && !timing.by_day_band && (
+          <div className="text-[10px] text-fg-muted">
+            Timing breakdown unavailable — the API returned no day/band cross-tab.
           </div>
         )}
       </div>
@@ -834,8 +1103,8 @@ function OfficerJobsPanel({ jobs, loading, officerId, onOpenTimeline, onBulkActi
               </td>
               <td className="px-2 py-[2px] text-rmpg-300">{a.jobRecipient}</td>
               <td className="px-2 py-[2px] text-rmpg-400 tabular-nums">{a.attempt_number}</td>
-              <td className="px-2 py-[2px] text-rmpg-300">{a.result}</td>
-              <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{a.attempt_at?.slice(0, 10)}</td>
+              <td className="px-2 py-[2px] text-rmpg-300">{formatEnumValue(a.result)}</td>
+              <td className="px-2 py-[2px] text-rmpg-500 tabular-nums">{safeDateStr(a.attempt_at, "")}</td>
               <td className="px-2 py-[2px] text-right">
                 <button
                   type="button"

@@ -8,14 +8,13 @@
 // (simpler and safer than reaching into the context from outside its
 // provider tree).
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { TOKEN_KEY, REFRESH_TOKEN_KEY, SESSION_ID_KEY, CACHED_USER_KEY, fetchWithTimeout } from '../context/AuthContext';
 
 export default function SsoCallbackPage() {
-  const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
     const code = searchParams.get('code');
     if (!code) {
       setError('Missing SSO exchange code.');
@@ -50,7 +49,7 @@ export default function SsoCallbackPage() {
         setError('Unable to complete sign-in. Return to the login page and try again.');
       }
     })();
-  }, [searchParams]);
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--surface-sunken)' }}>

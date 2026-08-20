@@ -99,7 +99,7 @@ export default function ReviewFormModal({
     clearDraft,
     snapshot,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_hr_review_form',
+    storageKey: `rmpg_hr_review_form_${editReview?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: isOpen,
   });
@@ -187,7 +187,7 @@ export default function ReviewFormModal({
         {/* Scrollable content */}
         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 mx-4 mt-3 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 mx-4 mt-3 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.08)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode, Mark } from '@tiptap/pm/model';
 import { Check, Trash2, CornerDownRight } from 'lucide-react';
 
 export interface CommentReply { author: string; text: string; createdAt: string }
@@ -29,9 +30,9 @@ export default function CommentsSidebar({
 
   const jumpTo = (id: string) => {
     let found = -1;
-    editor.state.doc.descendants((node, pos) => {
+    editor.state.doc.descendants((node: ProseMirrorNode, pos: number) => {
       if (found >= 0) return false;
-      if (node.marks?.some((m) => m.type.name === 'comment' && m.attrs.commentId === id)) found = pos;
+      if (node.marks?.some((m: Mark) => m.type.name === 'comment' && m.attrs.commentId === id)) found = pos;
       return undefined;
     });
     if (found >= 0) {
@@ -48,8 +49,8 @@ export default function CommentsSidebar({
   const remove = (id: string) => {
     setComments((cs) => cs.filter((c) => c.id !== id));
     // Strip the mark for this id from the doc.
-    editor.state.doc.descendants((node, pos) => {
-      if (node.marks?.some((m) => m.type.name === 'comment' && m.attrs.commentId === id)) {
+    editor.state.doc.descendants((node: ProseMirrorNode, pos: number) => {
+      if (node.marks?.some((m: Mark) => m.type.name === 'comment' && m.attrs.commentId === id)) {
         editor.chain().setTextSelection({ from: pos, to: pos + node.nodeSize }).unsetComment().run();
       }
       return undefined;
@@ -77,7 +78,7 @@ export default function CommentsSidebar({
       {[...active, ...resolved].map((c) => (
         <div key={c.id} className={`border rounded-[2px] p-1.5 text-[11px] ${c.resolved ? 'border-border-default opacity-50' : 'border-rmpg-700'}`}>
           <div className="flex items-center justify-between mb-0.5">
-            <button type="button" onClick={() => jumpTo(c.id)} className="text-[#d4a017] font-medium hover:underline">{c.author}</button>
+            <button type="button" onClick={() => jumpTo(c.id)} className="text-accent-silver-300 font-medium hover:underline">{c.author}</button>
             <div className="flex items-center gap-1">
               <button type="button" title={c.resolved ? 'Reopen' : 'Resolve'} onClick={() => resolve(c.id)} className="text-rmpg-400 hover:text-green-400"><Check className="w-3 h-3" /></button>
               <button type="button" title="Delete" onClick={() => remove(c.id)} className="text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
@@ -87,7 +88,7 @@ export default function CommentsSidebar({
           <div className="text-rmpg-200">{c.text}</div>
           {c.replies.map((r, i) => (
             <div key={i} className="mt-1 pl-2 border-l border-border-default">
-              <div className="text-[#d4a017]/80 text-[10px]">{r.author}</div>
+              <div className="text-accent-silver-400/80 text-[10px]">{r.author}</div>
               <div className="text-rmpg-300">{r.text}</div>
             </div>
           ))}
@@ -96,7 +97,7 @@ export default function CommentsSidebar({
               <input autoFocus value={replyText} onChange={(e) => setReplyText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') addReply(c.id); }}
                 placeholder="Reply…" className="flex-1 bg-surface-base border border-border-default text-[10px] text-rmpg-100 rounded-[2px] px-1.5 py-0.5 focus:outline-none" />
-              <button type="button" onClick={() => addReply(c.id)} className="text-[10px] text-[#d4a017] px-1">Send</button>
+              <button type="button" onClick={() => addReply(c.id)} className="text-[10px] text-accent-silver-300 px-1">Send</button>
             </div>
           ) : (
             <button type="button" onClick={() => { setReplyFor(c.id); setReplyText(''); }} className="mt-1 flex items-center gap-1 text-[10px] text-rmpg-500 hover:text-rmpg-300"><CornerDownRight className="w-3 h-3" />Reply</button>

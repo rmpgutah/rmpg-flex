@@ -25,11 +25,32 @@
 //     against historical state, so "new" here means "appeared this run"
 //     not "appeared this run for the first time ever." Improves once
 //     scraped_warrants is added.
+//
+// 2026-07-17 REBUILD: the state migrated warrants.utah.gov to a new
+// API entirely — POST /api/v1/persons + GET /api/v1/persons/:id/warrants
+// now 403 at the CloudFront edge ("distribution ... supports only cachable
+// requests", i.e. GET-only). Verified live against the site's own
+// js/scripts.js: it now calls GET /warrant-api/warrantPublic/search
+// ?firstName=X&lastName=Y (values UPPERCASED) for candidates, then
+// GET /warrant-api/warrantPublic/detail/:personId for that person's
+// warrants — both requiring a `X-Proxy-App: warrants` header (a plain
+// server-side fetch with that header + a browser UA works fine; no
+// browser-fingerprint/JS-challenge involved, confirmed via curl).
+// Every person fetch had been failing 100% (50/50 errors, every run,
+// for hours) until this rewrite — this is why the Sources/Scrapers tab
+// showed permanent "NaN" active-warrant/indexed counts and a scan
+// history of nothing but errors.
 
 import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
 import { broadcastAll } from '../routes/ws';
+import { isCircuitOpen } from './warrantSources/resilience';
+// Reused rather than re-implemented: warrant_watch_runs mixes ISO-8601
+// (toISOString) and zone-less datetime('now') timestamps, which is exactly the
+// skew this helper exists to normalize. Its own docblock argues for centralizing
+// it instead of keeping parallel copies.
+import { parseD1TimestampMs } from './fleetio/sync';
 
 // Source key tying this poller to its warrant_scraper_config row + the
 // scraper_events WebSocket channel + the dispatcher-facing display name
@@ -38,13 +59,52 @@ const SOURCE_KEY = 'utah-warrant-watch';
 const DISPLAY_NAME = 'Utah Warrant Watch';
 const SOURCE_PRIORITY = 1;
 
-const API_BASE = 'https://warrants.utah.gov/api/v1';
+const API_BASE = 'https://warrants.utah.gov/warrant-api/warrantPublic';
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
+// Required by the CloudFront distribution in front of the new API — a
+// plain fetch without it 403s with {"message":"Missing X-Proxy-App header"}.
+// Value copied verbatim from the site's own js/scripts.js fetch calls.
+const PROXY_APP_HEADER = 'warrants';
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const BASE_DELAY_MS = 8_000; // matches legacy adaptive baseline
-const MAX_PERSONS_PER_RUN = 50;
+// Fallback only — the live cap is read from warrant_scraper_config.max_persons_per_run
+// (migration 0200) so it can be retuned without a redeploy. This constant is used
+// solely when that row/column is missing (fresh D1, migration not yet applied).
+const DEFAULT_MAX_PERSONS_PER_RUN = 60;
+// ── Execution-window budget ───────────────────────────────────────────────────
+// Cloudflare caps a Cron Trigger invocation at 15 MINUTES of wall time (and
+// waitUntil() at only 30s past a response). This loop sleeps BASE_DELAY_MS
+// between every person, so 150 persons needed ~20-25 min — meaning the finalize
+// UPDATE below the loop was UNREACHABLE and every run stayed 'running' forever
+// (20/20 rows in live D1 on 2026-07-30, oldest 3 days old, all with the
+// persons_checked=0 that the INSERT wrote). The health write to
+// warrant_scraper_config sits below the loop too, which is why
+// last_success_at was frozen at 2026-07-24.
+//
+// Two guards, because either alone is insufficient:
+//   - DEFAULT_MAX_PERSONS_PER_RUN (60 x ~10s = ~10 min) sizes the COMMON path,
+//     but it is only a fallback — the live cap comes from
+//     warrant_scraper_config.max_persons_per_run and can be retuned to
+//     anything, so it cannot be trusted to bound wall time.
+//   - RUN_WALL_BUDGET_MS is the HARD backstop: whatever the configured slice
+//     size and however slow the upstream gets, the loop stops in time to
+//     finalize. persons_cursor_id already resumes the next slice on the next
+//     tick, so stopping early loses no coverage — it just spreads it out.
+const RUN_WALL_BUDGET_MS = 10 * 60 * 1000;
+// A manual trigger runs inside a request isolate, where waitUntil() grants only
+// 30s past the response. Give it a much smaller budget so it does a real,
+// honestly-finalized slice instead of orphaning a row it can never close.
+export const MANUAL_RUN_WALL_BUDGET_MS = 20 * 1000;
+// Any run still 'running' past this is not slow, it is dead — its isolate was
+// evicted. Comfortably above RUN_WALL_BUDGET_MS so a healthy long run is never
+// reaped out from under itself.
+const STALE_RUN_TIMEOUT_MS = 20 * 60 * 1000;
+// Emit a run_progress WS event every N persons so the Sources/Scrapers Live
+// Feed and the Warrants-tab poll-status strip show movement mid-run instead
+// of only start/end.
+const PROGRESS_EVENT_INTERVAL = 10;
 
 interface PersonRow {
   id: number;
@@ -55,24 +115,29 @@ interface PersonRow {
 }
 
 /**
- * Upstream person candidate. Verified live 2026-05-24 against
- * POST warrants.utah.gov/api/v1/persons — the real shape includes
- * homeAddress.city and age (as a STRING, e.g. "64"), neither of which
- * the prior PersonStub declared, so both were silently discarded.
+ * Upstream person candidate. Verified live 2026-07-17 against
+ * GET warrants.utah.gov/warrant-api/warrantPublic/search?firstName=&lastName=.
+ * `age` is a NUMBER here (unlike the pre-migration API's stringified age).
+ * The search endpoint returns duplicate rows per personId (name-spelling
+ * variants, multiple addresses on file) — callers must dedup by personId.
  */
 interface PersonStub {
-  id: string;
-  name: { first: string; middle?: string; last: string };
-  homeAddress?: { city?: string };
-  age?: string; // API returns a string, NOT a number
+  personId: number;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  age?: number;
+  city?: string;
+  zipCode?: string;
 }
 
-/** Full upstream warrant shape from /persons/:id/warrants. */
+/** One warrant from GET /warrant-api/warrantPublic/detail/:personId's `warrant[]`. */
 interface UtahApiWarrant {
-  id: string;
+  warrantNumber?: string;
   issueDate?: string;
-  court?: { name?: string; caseId?: string };
-  charges?: string[];
+  courtDescription?: string;
+  courtCaseNumber?: string;
+  chargeDescription?: string[];
 }
 
 /** Row we insert into utah_warrants — joins the upstream person + warrant data. */
@@ -134,14 +199,14 @@ const AGE_MATCH_TOLERANCE = 1;
  */
 function isLikelyMatch(local: PersonRow, candidate: PersonStub): boolean {
   const localAge = ageFromDob(local.dob);
-  const upstreamAge = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
+  const upstreamAge = candidate.age;
 
-  if (localAge != null && Number.isFinite(upstreamAge)) {
+  if (localAge != null && typeof upstreamAge === 'number' && Number.isFinite(upstreamAge)) {
     if (Math.abs(localAge - upstreamAge) > AGE_MATCH_TOLERANCE) return false;
     // Age agrees. If BOTH have a middle name, require first-initial match
     // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
     const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
-    const um = candidate.name.middle?.trim()?.[0]?.toUpperCase();
+    const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
     if (lm && um && lm !== um) return false;
     return true;
   }
@@ -177,57 +242,68 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * implementation prior to migration 0035.
  */
 export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
-  const personsRes = await fetchWithTimeout(`${API_BASE}/persons`, {
-    method: 'POST',
+  const params = new URLSearchParams();
+  params.set('firstName', person.first_name.toUpperCase());
+  params.set('lastName', person.last_name.toUpperCase());
+
+  const searchRes = await fetchWithTimeout(`${API_BASE}/search?${params.toString()}`, {
+    method: 'GET',
     headers: {
+      'X-Proxy-App': PROXY_APP_HEADER,
       'content-type': 'application/json',
       accept: 'application/json',
       'user-agent': USER_AGENT,
     },
-    body: JSON.stringify({
-      name: { first: person.first_name, last: person.last_name },
-    }),
   });
 
-  if (personsRes.status === 404 || personsRes.status === 204) return [];
-  if (!personsRes.ok && personsRes.status !== 201) {
-    throw new Error(`persons search ${personsRes.status}`);
+  if (searchRes.status === 404 || searchRes.status === 204) return [];
+  if (!searchRes.ok) {
+    throw new Error(`search ${searchRes.status}`);
   }
 
-  const personsJson = (await personsRes.json()) as { persons?: PersonStub[] };
-  const allCandidates = personsJson.persons ?? [];
+  const allCandidates = (await searchRes.json()) as PersonStub[];
   if (allCandidates.length === 0) return [];
 
   // Reject namesakes BEFORE fetching their warrants — saves rate budget and
   // prevents attributing a stranger's warrant to this local person.
-  const candidates = allCandidates.filter((c) => isLikelyMatch(person, c));
-  if (candidates.length === 0) return [];
+  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
+  if (matched.length === 0) return [];
+
+  // The search endpoint returns duplicate rows per personId (name-spelling
+  // variants, multiple addresses on file) — dedup before hitting /detail so
+  // we don't re-fetch (and double-count) the same person's warrants.
+  const seenPersonIds = new Set<number>();
+  const candidates = matched.filter((c) => {
+    if (seenPersonIds.has(c.personId)) return false;
+    seenPersonIds.add(c.personId);
+    return true;
+  });
 
   const out: FetchedWarrant[] = [];
   for (const candidate of candidates) {
-    const warrantsRes = await fetchWithTimeout(
-      `${API_BASE}/persons/${encodeURIComponent(candidate.id)}/warrants`,
-      { headers: { accept: 'application/json', 'user-agent': USER_AGENT } },
+    const detailRes = await fetchWithTimeout(
+      `${API_BASE}/detail/${encodeURIComponent(candidate.personId)}`,
+      { headers: { 'X-Proxy-App': PROXY_APP_HEADER, accept: 'application/json', 'user-agent': USER_AGENT } },
     );
-    if (warrantsRes.status === 404) continue;
-    if (!warrantsRes.ok) throw new Error(`warrants/${candidate.id} ${warrantsRes.status}`);
-    const wJson = (await warrantsRes.json()) as { warrants?: UtahApiWarrant[] };
-    const ageNum = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
-    for (const w of wJson.warrants ?? []) {
+    if (detailRes.status === 404) continue;
+    if (!detailRes.ok) throw new Error(`detail/${candidate.personId} ${detailRes.status}`);
+    const detail = (await detailRes.json()) as { warrant?: UtahApiWarrant[] };
+    for (const w of detail.warrant ?? []) {
       out.push({
-        utah_person_id: candidate.id,
-        utah_warrant_id: w.id,
-        first_name: candidate.name.first,
-        middle_name: candidate.name.middle ?? null,
-        last_name: candidate.name.last,
-        // API returns age as a string ("64"); parse to int, null if absent.
-        age: Number.isFinite(ageNum) ? ageNum : null,
-        // homeAddress.city IS exposed by the upstream API (verified live).
-        city: candidate.homeAddress?.city ?? null,
+        utah_person_id: String(candidate.personId),
+        // warrantNumber is the closest upstream analog to a stable warrant
+        // id; fall back to a composite key on the rare row missing it so we
+        // never insert a null/empty primary identifier.
+        utah_warrant_id: w.warrantNumber || `${candidate.personId}:${w.courtCaseNumber ?? ''}:${w.issueDate ?? ''}`,
+        first_name: candidate.firstName,
+        middle_name: candidate.middleName ?? null,
+        last_name: candidate.lastName,
+        age: typeof candidate.age === 'number' ? candidate.age : null,
+        city: candidate.city?.trim() || null,
         issue_date: w.issueDate ?? null,
-        court_name: w.court?.name ?? null,
-        case_id: w.court?.caseId ?? null,
-        charges: JSON.stringify(w.charges ?? []),
+        court_name: w.courtDescription ?? null,
+        case_id: w.courtCaseNumber ?? null,
+        charges: JSON.stringify(w.chargeDescription ?? []),
       });
     }
   }
@@ -255,7 +331,7 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
 // uses it to decide whether to emit a 'warrant_found' notification — we only
 // want to alert on the transition into our view, not on every steady-state
 // re-confirmation every 4 hours.
-async function recordWarrant(
+export async function recordWarrant(
   db: D1Database,
   w: FetchedWarrant,
   localPersonId: number | null,
@@ -326,13 +402,13 @@ async function syncLocalWarrantRecord(
       `UPDATE warrants SET
          status='active', archived_at=NULL,
          subject_person_id=?, subject_name=?, subject_first_name=?, subject_last_name=?,
-         charge_description=?, offense=?, issuing_court=?, court=?, issued_date=?,
+         charge_description=?, issuing_court=?, issued_date=?,
          scraped_source=?, scraped_raw=?, confirmed=1, auto_created=1,
          last_checked_at=datetime('now'), last_check_result='active',
          updated_at=datetime('now')
        WHERE id=?`,
       localPersonId, subjectName, w.first_name, w.last_name,
-      chargeText, chargeText, w.court_name, w.court_name, w.issue_date,
+      chargeText, w.court_name, w.issue_date,
       SOURCE_KEY, JSON.stringify(w), existing.id,
     );
     return;
@@ -342,24 +418,104 @@ async function syncLocalWarrantRecord(
     await execute(
       db,
       `INSERT INTO warrants (
-         warrant_number, type, warrant_type, status,
+         warrant_number, type, status,
          subject_person_id, subject_name, subject_first_name, subject_last_name,
-         charge_description, offense, issuing_court, court, issued_date,
+         charge_description, issuing_court, issued_date,
          source, external_warrant_id, external_source_key, scraped_source, scraped_raw,
          auto_created, confirmed, last_checked_at, last_check_result, created_at, updated_at
-       ) VALUES (?, 'arrest', 'arrest', 'active',
-         ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       ) VALUES (?, 'arrest', 'active',
+         ?, ?, ?, ?, ?, ?, ?,
          ?, ?, ?, ?, ?,
          1, 1, datetime('now'), 'active', datetime('now'), datetime('now'))`,
       `UTW-${w.utah_warrant_id}`,
       localPersonId, subjectName, w.first_name, w.last_name,
-      chargeText, chargeText, w.court_name, w.court_name, w.issue_date,
+      chargeText, w.court_name, w.issue_date,
       SOURCE_KEY, w.utah_warrant_id, SOURCE_KEY, SOURCE_KEY, JSON.stringify(w),
     );
   } catch (err) {
     // Non-fatal: a UNIQUE collision on warrant_number (e.g. a manual record
     // already claimed UTW-<id>) shouldn't abort the whole scan.
     console.warn(`[Utah Warrants] local record sync skipped for ${w.utah_warrant_id}:`,
+      err instanceof Error ? err.message : String(err));
+  }
+
+  // A manually-entered row may describe THIS SAME warrant under the bare
+  // number, with no UTW- prefix. The lookup above cannot see it — it matches
+  // on external_warrant_id, which a hand-typed record never has — so the two
+  // rows coexist and drift apart. Record the disagreement.
+  await recordSourceConflict(db, w);
+}
+
+/**
+ * Flag a manually-entered warrant whose status disagrees with the state source.
+ *
+ * NEVER overwrites the local status. An officer-entered value is not silently
+ * replaced by a scraper; the conflict is recorded for a human to resolve.
+ *
+ * Matching is deliberately conservative — the bare number ALONE is not enough,
+ * since numbering is only unique per issuing court. A match additionally
+ * requires the same issued_date or the same court (case-insensitive: live data
+ * had "Davis County Justice Cou" against "DAVIS COUNTY JUSTICE COU").
+ *
+ * Found live 2026-08-01: warrants 3149919 and 3155534 each had a UTW- twin
+ * agreeing on issued_date AND court, while the manual rows read 'active' and
+ * the state read 'recalled' with last_check_result='cleared'. Two of the 23
+ * warrants the system reported ACTIVE had been recalled by Utah.
+ *
+ * Best-effort: a failure here must never abort the scan.
+ */
+async function recordSourceConflict(db: D1Database, w: FetchedWarrant): Promise<void> {
+  try {
+    const scraped = await queryFirst<{ id: number; status: string }>(
+      db,
+      'SELECT id, status FROM warrants WHERE external_warrant_id = ? AND external_source_key = ?',
+      w.utah_warrant_id, SOURCE_KEY,
+    );
+    if (!scraped) return;
+
+    const bare = String(w.utah_warrant_id);
+    const local = await queryFirst<{ id: number; status: string; basis: string }>(
+      db,
+      `SELECT id, status,
+              CASE WHEN issued_date = ? AND UPPER(TRIM(COALESCE(issuing_court,''))) = UPPER(TRIM(COALESCE(?,'')))
+                     THEN 'issued_date+court'
+                   WHEN issued_date = ? THEN 'issued_date'
+                   ELSE 'court' END AS basis
+         FROM warrants
+        WHERE warrant_number = ?
+          AND id != ?
+          AND (external_source_key IS NULL OR external_source_key != ?)
+          AND (issued_date = ?
+               OR UPPER(TRIM(COALESCE(issuing_court,''))) = UPPER(TRIM(COALESCE(?,''))))
+        LIMIT 1`,
+      w.issue_date, w.court_name, w.issue_date,
+      bare, scraped.id, SOURCE_KEY, w.issue_date, w.court_name,
+    );
+    if (!local || local.status === scraped.status) return;
+
+    // Upsert: the poller runs on a schedule, so re-detecting the same open
+    // conflict must refresh it rather than stack a row every cycle.
+    await execute(
+      db,
+      `INSERT INTO warrant_source_conflicts
+         (local_warrant_id, scraped_warrant_id, normalized_number,
+          local_status, scraped_status, match_basis, source_key, detected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(local_warrant_id, scraped_warrant_id) DO UPDATE SET
+         local_status = excluded.local_status,
+         scraped_status = excluded.scraped_status,
+         match_basis = excluded.match_basis,
+         detected_at = excluded.detected_at`,
+      local.id, scraped.id, bare, local.status, scraped.status, local.basis, SOURCE_KEY,
+    );
+
+    console.warn(
+      `[Utah Warrants] status conflict on ${bare}: local warrant ${local.id} is `
+      + `'${local.status}' but the state source reports '${scraped.status}' `
+      + `(matched on ${local.basis}). Flagged for review; local status unchanged.`,
+    );
+  } catch (err) {
+    console.warn('[Utah Warrants] conflict check failed:',
       err instanceof Error ? err.message : String(err));
   }
 }
@@ -513,9 +669,16 @@ export async function runUtahWarrantCheckForPerson(
  * Old export name (`runUtahWarrantSmokePoll`) kept as an alias for
  * backward compat with code that imports the prior smoke-poll name.
  */
-export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult> {
+export async function runUtahWarrantScan(
+  db: D1Database,
+  opts: { wallBudgetMs?: number } = {},
+): Promise<WatchRunResult> {
   const run_id = `utah-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const started_at = new Date().toISOString();
+  // Monotonic-ish deadline for the per-person loop. See RUN_WALL_BUDGET_MS.
+  const wallBudgetMs = opts.wallBudgetMs ?? RUN_WALL_BUDGET_MS;
+  const runStartedMs = Date.now();
+  let budgetExhausted = false;
 
   await execute(
     db,
@@ -547,6 +710,50 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
   let status: 'completed' | 'failed' = 'completed';
   let error_message: string | undefined;
 
+  const config = await queryFirst<{
+    max_persons_per_run: number | null; persons_cursor_id: number | null; consecutive_errors: number | null;
+  }>(
+    db,
+    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors FROM warrant_scraper_config WHERE source_name = ?',
+    SOURCE_KEY,
+  );
+  const maxPersonsPerRun = config?.max_persons_per_run ?? DEFAULT_MAX_PERSONS_PER_RUN;
+  const cursorId = config?.persons_cursor_id ?? 0;
+
+  // Circuit breaker: consecutive_errors was previously written for every OTHER
+  // warrant source (see runScan.ts's updateNationalSourceHealth + the generic
+  // scraped-leg health update) but never for Utah — meaning ScrapersTab's
+  // circuit-broken badge for this source was always false regardless of how
+  // long warrants.utah.gov had been down, and the cron kept hitting a dead
+  // upstream every 4 hours forever. Wire it below (post-run) and gate here:
+  // if 5+ consecutive whole-run failures, skip the actual scan (no upstream
+  // calls, no rate-budget burn) and report a failed run immediately.
+  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1))) {
+    error_message = `Circuit open after ${config?.consecutive_errors} consecutive failed runs — skipping this scan.`;
+    const completed_at = new Date().toISOString();
+    await execute(
+      db,
+      `UPDATE warrant_watch_runs
+         SET completed_at = ?, status = 'failed', error_message = ?
+       WHERE run_id = ?`,
+      completed_at, error_message, run_id,
+    );
+    try {
+      broadcastAll('scraper_events', {
+        event: 'circuit_broken',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+        consecutive_errors: config?.consecutive_errors ?? 0,
+        recovery_at: completed_at,
+        backoff_hours: 0,
+      });
+    } catch { /* non-fatal */ }
+    return {
+      run_id, status: 'failed', persons_checked: 0, new_warrants_found: 0,
+      warrants_cleared: 0, errors: 0, error_message,
+    };
+  }
+
   try {
     // Filter rules (mirror server/src/utils/utahWarrantScraper.ts:589-602
     // and looksLikeOrganization() — keep in sync):
@@ -554,11 +761,16 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     //     "Capital One, N.A., ..." with last_name "(Organization)"
     //   - >30 char names → business descriptions concatenated into one field
     // Filtered rows return HTTP 400 from warrants.utah.gov and burn rate budget.
-    const persons = await query<PersonRow>(
+    // ORDER BY id (not name) + WHERE id > cursor so successive runs sweep a
+    // fresh slice of the roster instead of always restarting at the same
+    // alphabetically-first rows — the resume-cursor pattern the doc header
+    // flagged as deferred v3 work.
+    let persons = await query<PersonRow>(
       db,
       `SELECT id, first_name, middle_name, last_name, dob
          FROM persons
-        WHERE first_name IS NOT NULL AND first_name != ''
+        WHERE id > ?
+          AND first_name IS NOT NULL AND first_name != ''
           AND last_name  IS NOT NULL AND last_name  != ''
           AND first_name NOT LIKE '%(%' AND first_name NOT LIKE '%)%'
           AND first_name NOT LIKE '%,%'
@@ -566,12 +778,55 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
           AND last_name  NOT LIKE '%,%'
           AND length(first_name) <= 30
           AND length(last_name)  <= 30
-        ORDER BY last_name, first_name
+        ORDER BY id
         LIMIT ?`,
-      MAX_PERSONS_PER_RUN,
+      cursorId,
+      maxPersonsPerRun,
     );
 
+    // End of roster reached — wrap back to the start so the next run
+    // doesn't stall forever past the last id.
+    if (persons.length === 0 && cursorId > 0) {
+      persons = await query<PersonRow>(
+        db,
+        `SELECT id, first_name, middle_name, last_name, dob
+           FROM persons
+          WHERE id > 0
+            AND first_name IS NOT NULL AND first_name != ''
+            AND last_name  IS NOT NULL AND last_name  != ''
+            AND first_name NOT LIKE '%(%' AND first_name NOT LIKE '%)%'
+            AND first_name NOT LIKE '%,%'
+            AND last_name  NOT LIKE '%(%' AND last_name  NOT LIKE '%)%'
+            AND last_name  NOT LIKE '%,%'
+            AND length(first_name) <= 30
+            AND length(last_name)  <= 30
+          ORDER BY id
+          LIMIT ?`,
+        maxPersonsPerRun,
+      );
+    }
+    // Advance the cursor to the last id processed; wrap to 0 (restart from
+    // the top) once a pass returns fewer rows than the cap — that means we
+    // hit the end of the eligible roster.
+    // NOTE: this is the cursor for a run that processes the WHOLE slice. If the
+    // wall-budget guard below breaks early we must NOT use it — advancing past
+    // people we never checked would silently skip them for a full roster pass.
+    // lastProcessedId tracks what we actually got through.
+    const nextCursorId =
+      persons.length === 0 || persons.length < maxPersonsPerRun
+        ? 0
+        : persons[persons.length - 1].id;
+    let lastProcessedId: number | null = null;
+
     for (const person of persons) {
+      // Hard wall-budget guard. Stop BEFORE starting another person (each costs
+      // a fetch plus a ~8-10s sleep) so there is always time left to finalize
+      // this run's row. Without this the isolate is evicted mid-loop and the row
+      // below never gets written — see RUN_WALL_BUDGET_MS.
+      if (Date.now() - runStartedMs >= wallBudgetMs) {
+        budgetExhausted = true;
+        break;
+      }
       // Confirmed = local DOB present, so isLikelyMatch age-gated the candidate
       // before we ever fetched it. Only confirmed hits are promoted to the
       // canonical warrants records table; DOB-less namesakes stay as leads.
@@ -595,6 +850,20 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
         );
       }
       persons_checked++;
+      lastProcessedId = person.id;
+      if (persons_checked % PROGRESS_EVENT_INTERVAL === 0 && persons_checked < persons.length) {
+        try {
+          broadcastAll('scraper_events', {
+            event: 'run_progress',
+            source_key: SOURCE_KEY,
+            display_name: DISPLAY_NAME,
+            persons_checked,
+            persons_total: persons.length,
+            new_warrants_found,
+            errors,
+          });
+        } catch { /* non-fatal */ }
+      }
       if (persons_checked < persons.length) {
         // 8s + 0-2s jitter — matches legacy adaptive pattern, stays under
         // the WAF's "scraper" heuristic.
@@ -604,7 +873,34 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
 
     // Sweep: anything whose last_seen_at predates this run is cleared —
     // archives the canonical record + emits a warrant_cleared notification.
-    warrants_cleared = await markClearedWarrants(db, started_at, run_id);
+    //
+    // MUST NOT run on a budget-truncated pass. The sweep's premise is "this run
+    // saw everyone, so anything unseen is gone"; on a partial pass that premise
+    // is false and it would clear live warrants belonging to people we simply
+    // never got to. Skipping it only defers clearing to a pass that completes.
+    if (budgetExhausted) {
+      console.warn(
+        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — skipping cleared-warrant sweep, resuming next tick`,
+      );
+    } else {
+      warrants_cleared = await markClearedWarrants(db, started_at, run_id);
+    }
+
+    // Advance the resume cursor so the next run covers a fresh slice of
+    // the roster (or wraps to the top — see nextCursorId above). On a truncated
+    // pass advance only as far as we actually got, so the next tick picks up at
+    // the first unchecked person rather than skipping the remainder.
+    const cursorToWrite = budgetExhausted ? (lastProcessedId ?? cursorId) : nextCursorId;
+    try {
+      await execute(
+        db,
+        'UPDATE warrant_scraper_config SET persons_cursor_id = ? WHERE source_name = ?',
+        cursorToWrite,
+        SOURCE_KEY,
+      );
+    } catch (err) {
+      console.warn('[Utah Warrants] cursor update failed:', err);
+    }
   } catch (err) {
     status = 'failed';
     error_message = err instanceof Error ? err.message : String(err);
@@ -623,29 +919,60 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     new_warrants_found,
     warrants_cleared,
     errors,
-    error_message ?? null,
+    // A budget-truncated pass is a SUCCESSFUL partial, not a failure — it checked
+    // real people and resumes from its cursor. Record that in error_message (the
+    // only free-text column here) so scan history can say "partial" instead of
+    // implying full roster coverage.
+    error_message
+      ?? (budgetExhausted
+        ? `partial: wall budget reached after ${persons_checked} person(s); resumes next tick`
+        : null),
     run_id,
   );
+
+  // A run counts as a whole-source health failure — for circuit-breaker
+  // purposes — either when the scan itself threw (status='failed') or when
+  // EVERY attempted person errored (a strong signal warrants.utah.gov is
+  // fully down/blocking us, vs. isolated per-person hiccups which are
+  // expected and already tolerated).
+  const runHealthFailed = status === 'failed' || (persons_checked > 0 && errors === persons_checked);
+  const wasCircuitOpen = isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1));
 
   // Persist current scraper state to warrant_scraper_config so /scrapers
   // shows the correct "current state" even without joining warrant_watch_runs.
   // CASE clauses keep last_success_at on a failed run and clear last_error
   // on a successful one, so the field reads as "is it broken NOW?".
+  // consecutive_errors mirrors the write path every OTHER warrant source
+  // already has (see updateNationalSourceHealth in runScan.ts) — Utah never
+  // had one before, so ScrapersTab's circuit-broken badge for this source
+  // was always false no matter how long the upstream had been down.
   try {
     await execute(
       db,
       `UPDATE warrant_scraper_config
           SET last_run_at = ?,
               last_success_at = CASE WHEN ? = 'completed' THEN ? ELSE last_success_at END,
-              last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END
+              last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END,
+              consecutive_errors = CASE WHEN ? THEN consecutive_errors + 1 ELSE 0 END
         WHERE source_name = ?`,
       completed_at,
       status, completed_at,
       status, error_message ?? null,
+      runHealthFailed ? 1 : 0,
       SOURCE_KEY,
     );
   } catch (err) {
     console.warn('[Utah Warrants] config update failed:', err);
+  }
+
+  if (!runHealthFailed && wasCircuitOpen) {
+    try {
+      broadcastAll('scraper_events', {
+        event: 'circuit_restored',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+      });
+    } catch { /* non-fatal */ }
   }
 
   // Broadcast run completion (Live Feed). Discriminated union on `event` per
@@ -697,6 +1024,130 @@ export async function getLatestUtahWatchRun(db: D1Database) {
     errors: number;
     error_message: string | null;
   }>(db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1');
+}
+
+/**
+ * Reap watch runs whose isolate died before they could finalize.
+ *
+ * Cloudflare caps a Cron Trigger at 15 min of wall time and a waitUntil() at 30s
+ * past the response. Any run still `'running'` well past RUN_WALL_BUDGET_MS did
+ * not finish slowly — it was evicted mid-loop and will never write its own
+ * completion row. Left alone those rows are actively harmful: the Warrants-tab
+ * poll banner reads them as a live scan (and, being injected above the tab strip,
+ * overlays and swallows every tab click), Watch List reports "LAST SCAN: Never"
+ * because it looks for a completed run, and scan history shows "In progress…
+ * 0/0/0/0" forever.
+ *
+ * Live D1 on 2026-07-30 had 20/20 rows in exactly this state, the oldest 3 days
+ * old. The first production tick of this reaper closes all of them out, which is
+ * the intended one-time backfill.
+ *
+ * `completed_at` is set to `started_at + timeout` rather than now, so the row
+ * reports roughly when it actually stopped being viable instead of when someone
+ * happened to notice.
+ *
+ * Timestamps here are mixed-format — `started_at` is written as ISO-8601 UTC
+ * (`toISOString()`) while sibling columns elsewhere use zone-less
+ * `datetime('now')` — so comparison MUST go through `parseD1TimestampMs`, or the
+ * timeout skews by the host's UTC offset (CLAUDE.md invariant).
+ *
+ * Returns the number of rows reaped.
+ */
+export async function reapStaleWatchRuns(
+  db: D1Database,
+  now: number = Date.now(),
+): Promise<number> {
+  const running = await query<{ id: number; run_id: string; started_at: string | null }>(
+    db,
+    `SELECT id, run_id, started_at FROM warrant_watch_runs WHERE status = 'running'`,
+  );
+  if (running.length === 0) return 0;
+
+  let reaped = 0;
+  for (const row of running) {
+    const startedMs = parseD1TimestampMs(row.started_at);
+    // An unparseable/absent started_at cannot be aged out safely — leave it and
+    // log, rather than reaping a row we can't reason about.
+    if (startedMs == null) {
+      console.warn(`[Utah Warrants] reaper: run ${row.run_id} has unparseable started_at, skipping`);
+      continue;
+    }
+    if (now - startedMs < STALE_RUN_TIMEOUT_MS) continue;
+
+    const completed_at = new Date(startedMs + STALE_RUN_TIMEOUT_MS).toISOString();
+    await execute(
+      db,
+      `UPDATE warrant_watch_runs
+          SET status = 'failed', completed_at = ?, error_message = ?
+        WHERE id = ? AND status = 'running'`,
+      completed_at,
+      'run did not finalize within the execution window (isolate evicted before completion)',
+      row.id,
+    );
+    reaped++;
+  }
+
+  if (reaped > 0) {
+    console.warn(`[Utah Warrants] reaper: closed out ${reaped} stale 'running' run(s)`);
+  }
+  return reaped;
+}
+
+/**
+ * Continue a roster pass that the wall budget truncated, WITHOUT waiting for the
+ * next 4-hourly cron tick.
+ *
+ * WHY. The wall-budget guard is not optional — Cloudflare caps a Cron Trigger at
+ * 15 minutes, so a run that tries to sweep the whole roster in one invocation is
+ * killed mid-loop and never finalizes (that was the original 20/20-stuck-rows
+ * bug). The limit cannot be removed. What CAN be removed is the limit's
+ * CONSEQUENCE: a truncated pass used to sit idle for up to 4 hours before
+ * resuming, so people at the far end of the roster went unchecked for most of a
+ * day. Observed live 2026-07-31: two consecutive passes stopped at 59 and 60 of
+ * 83 people.
+ *
+ * This runs on the per-minute cron and immediately continues from
+ * `persons_cursor_id` until the pass completes, so NO PERSON IS SKIPPED and no
+ * pass is abandoned — the roster is always swept end to end.
+ *
+ * It is deliberately bounded to finishing the current pass rather than looping
+ * forever. Once the cursor wraps to 0 the pass is complete (and the
+ * cleared-warrant sweep has run), and we stop until the next scheduled tick.
+ * That matters: the 8s-per-person pacing exists to stay under
+ * warrants.utah.gov's WAF scraper heuristic, and turning this into a 24/7
+ * crawler would risk RMPG being blocked outright — which would take warrant
+ * checks down completely, a far worse outcome than a slower sweep.
+ *
+ * Overlap-safe: skips entirely while any run is still 'running', so the
+ * per-minute cadence cannot start a second concurrent scan. If an isolate dies
+ * mid-run, `reapStaleWatchRuns` closes the row out and resumption self-heals on
+ * the following tick.
+ *
+ * @returns the run result if a continuation was started, else null.
+ */
+export async function resumePartialWatchRun(db: D1Database): Promise<WatchRunResult | null> {
+  // 1. Never overlap a live run.
+  const inFlight = await queryFirst<{ n: number }>(
+    db, `SELECT COUNT(*) AS n FROM warrant_watch_runs WHERE status = 'running'`);
+  if ((inFlight?.n ?? 0) > 0) return null;
+
+  // 2. Only continue when the LAST run was itself budget-truncated. A run that
+  //    completed a full pass, failed outright, or was reaped is not resumable —
+  //    resuming those would be a new pass, which is the cron's job, not ours.
+  const latest = await queryFirst<{ status: string; error_message: string | null }>(
+    db, `SELECT status, error_message FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1`);
+  if (!latest || latest.status !== 'completed') return null;
+  if (!String(latest.error_message ?? '').startsWith('partial:')) return null;
+
+  // 3. Confirm we are genuinely mid-pass. The cursor wraps to 0 when a pass
+  //    reaches the end of the eligible roster, so a zero cursor means the pass
+  //    finished and there is nothing to resume.
+  const cfg = await queryFirst<{ persons_cursor_id: number | null }>(
+    db, 'SELECT persons_cursor_id FROM warrant_scraper_config WHERE source_name = ?', SOURCE_KEY);
+  if (!cfg || !cfg.persons_cursor_id) return null;
+
+  console.log(`[Utah Warrants] resuming truncated pass from cursor ${cfg.persons_cursor_id}`);
+  return runUtahWarrantScan(db);
 }
 
 /** @deprecated alias kept for backward compat with v1 callers; use runUtahWarrantScan */

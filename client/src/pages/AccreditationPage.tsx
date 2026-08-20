@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -10,6 +10,7 @@ import { useToast } from '../components/ToastProvider';
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2, Eye, Loader2 } from 'lucide-react';
+import { toDisplayLabel } from '../utils/formatters';
 
 interface Standard {
   id: number;
@@ -247,7 +248,7 @@ export default function AccreditationPage() {
                 : 'badge-pending'
           }`}
         >
-          {r.compliance_status?.replace(/_/g, ' ')}
+          {toDisplayLabel(r.compliance_status)}
         </span>
       ),
     },
@@ -363,11 +364,11 @@ export default function AccreditationPage() {
       {/* ── New / Edit modal ─────────────────────────────────── */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={() => setFormOpen(false)}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >

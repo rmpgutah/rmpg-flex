@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ToastProvider';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { toDisplayLabel } from '../../../utils/formatters';
 interface Recall {
   id: number;
   vehicle_id: number;
@@ -43,7 +44,11 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     setLoading(true);
     try {
       const params = vehicleId ? `?vehicle_id=${vehicleId}` : '';
-      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load recalls', 'error'); }
+      // GET /fleet/recalls always returns an array server-side, but a stale
+      // cached response (service worker, edge cache) or any other unexpected
+      // 200 body would otherwise crash `recalls.filter(...)` below with
+      // "not a function" — confirmed live in production (2026-07-30).
+      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(Array.isArray(data) ? data : []); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load recalls', 'error'); }
     } finally { setLoading(false); }
   };
 
@@ -151,13 +156,13 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
+                    <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{toDisplayLabel(r.status)}</span>
                     <span className="text-[10px] text-rmpg-100 font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
-                  {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
+                  {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
                 <div className="flex gap-1">
                   <button type="button" onClick={() => startEdit(r)} className="toolbar-btn text-[9px]">Edit</button>
@@ -165,7 +170,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                   {r.status !== 'completed' && r.status !== 'not_applicable' && (
                     <>
                       {r.status === 'open' && <button type="button" onClick={() => updateStatus(r.id, 'scheduled')} className="toolbar-btn text-[9px]"><Calendar className="w-3 h-3" /> Schedule</button>}
-                      <button type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
+                      <button aria-label="Mark complete" type="button" onClick={() => updateStatus(r.id, 'completed')} className="toolbar-btn toolbar-btn-success text-[9px]"><CheckCircle className="w-3 h-3" /></button>
                     </>
                   )}
                 </div>

@@ -11,10 +11,10 @@
 // Lazy-loaded to avoid impacting main bundle size.
 // ============================================================
 
-import React, { useCallback, useState, lazy, Suspense } from 'react';
+import React, { useCallback, useState, Suspense } from 'react';
+import { lazyRetry, importWithRetry } from '../utils/importWithRetry';
 
-// Lazy-load Excalidraw to avoid 2MB+ bundle impact on initial load
-const ExcalidrawComponent = lazy(() =>
+const ExcalidrawComponent = lazyRetry(() =>
   import('@excalidraw/excalidraw').then(mod => ({ default: mod.Excalidraw }))
 );
 
@@ -135,7 +135,7 @@ export async function exportWhiteboardAsPng(
 ): Promise<Blob | null> {
   if (!excalidrawAPI) return null;
   try {
-    const { exportToBlob } = await import('@excalidraw/excalidraw');
+    const { exportToBlob } = await importWithRetry(() => import('@excalidraw/excalidraw'));
     const elements = excalidrawAPI.getSceneElements();
     const appState = excalidrawAPI.getAppState();
     return await exportToBlob({

@@ -1,0 +1,31 @@
+# kiosk-linux/docker/Dockerfile.disktools
+#
+# A/B boot partition (sub-project 5): a SEPARATE, small image from
+# Dockerfile's kiosk-linux-buildroot:latest — that image stays arch-native
+# (no --platform flag) for the actual multi-hour Buildroot/WebKit
+# cross-compile, unaffected by anything here. This image exists only to run
+# a handful of quick shell commands (partition/format/install-bootloader) in
+# kiosk-linux/scripts/assemble-disk-image.sh — it needs no build toolchain at
+# all, just disk/bootloader utilities.
+#
+# Built explicitly with `docker build --platform linux/amd64` (wired into
+# kiosk-linux/build.sh's disk-assembly step in a later task of this
+# sub-project — not yet present as of this file's own commit) because
+# Ubuntu's syslinux-common/extlinux packages
+# have no arm64 build at all — confirmed directly on an arm64 macOS host: a
+# plain (arch-native) build of an image containing these packages fails to
+# install them. Forcing the WHOLE Buildroot compile under --platform
+# linux/amd64 (and therefore QEMU emulation on an arm64 host) just to get
+# this package would be a severe regression for the actual multi-hour
+# compile — so this stays a separate, tiny image instead, and only THIS
+# image's build (not the main kiosk-linux-buildroot:latest one) forces
+# --platform linux/amd64.
+FROM ubuntu:24.04
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    parted \
+    util-linux \
+    e2fsprogs \
+    syslinux-common \
+    extlinux \
+    && rm -rf /var/lib/apt/lists/*

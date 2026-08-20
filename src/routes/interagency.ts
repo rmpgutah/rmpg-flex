@@ -10,6 +10,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+import { log } from '../utils/logger';
 const interagency = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -34,6 +35,7 @@ interagency.get('/partners', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `SELECT * FROM interagency_partners ${where} ORDER BY agency_name`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /partners failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to list partners' }, 500);
   }
 });
@@ -54,6 +56,7 @@ interagency.post('/partners', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM interagency_partners WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /partners failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to create partner' }, 500);
   }
 });
@@ -74,6 +77,7 @@ interagency.put('/partners/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM interagency_partners WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /partners/:id failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to update partner' }, 500);
   }
 });
@@ -89,6 +93,7 @@ interagency.delete('/partners/:id', async (c) => {
     if (result.meta.changes === 0) return c.json({ error: 'Partner not found', code: 'NOT_FOUND' }, 404);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /partners/:id failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to delete partner', code: 'DELETE_ERROR' }, 500);
   }
 });
@@ -107,6 +112,7 @@ interagency.get('/agreements', async (c) => {
       `SELECT da.*, p.agency_name FROM data_share_agreements da LEFT JOIN interagency_partners p ON da.partner_id = p.id WHERE ${where} ORDER BY da.created_at DESC LIMIT 200`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /agreements failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to list agreements' }, 500);
   }
 });
@@ -129,6 +135,7 @@ interagency.post('/agreements', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM data_share_agreements WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /agreements failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to create agreement' }, 500);
   }
 });
@@ -149,6 +156,7 @@ interagency.put('/agreements/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM data_share_agreements WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /agreements/:id failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to update agreement' }, 500);
   }
 });
@@ -170,6 +178,7 @@ interagency.get('/exchanges', async (c) => {
        ORDER BY el.initiated_at DESC LIMIT ? OFFSET ?`, perPage, offset);
     return c.json({ data: rows, pagination: { page, per_page: perPage } });
   } catch (err) {
+    log.error('GET /exchanges failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to list exchange logs' }, 500);
   }
 });
@@ -190,6 +199,7 @@ interagency.post('/exchanges', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM data_exchange_logs WHERE id = ?', newId);
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /exchanges failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to log exchange' }, 500);
   }
 });
@@ -204,6 +214,7 @@ interagency.get('/stats', async (c) => {
     const totalExchanges = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM data_exchange_logs'))?.count ?? 0;
     return c.json({ partners, active_agreements: activeAgreements, total_exchanges: totalExchanges });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/interagency.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -9,7 +9,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const crashReports = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -39,7 +41,7 @@ crashReports.get('/', async (c) => {
     const db = getDb(c.env);
     const { search, crash_type, severity, from, to } = c.req.query();
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
-    if (search) { conditions.push('(report_number LIKE ? OR location LIKE ? OR narrative LIKE ?)'); const s = `%${search}%`; params.push(s, s, s); }
+    if (search) { const m = containsAnyClause(['report_number', 'location', 'narrative']); conditions.push(m.sql); params.push(...m.binds(search)); }
     if (crash_type) { conditions.push('crash_type = ?'); params.push(crash_type); }
     if (severity) { conditions.push('severity = ?'); params.push(severity); }
     if (from) { conditions.push('crash_date >= ?'); params.push(from); }
@@ -59,6 +61,7 @@ crashReports.get('/', async (c) => {
       stats: { total: stats?.total ?? 0, draft: stats?.draft ?? 0, pending_review: stats?.pending_review ?? 0, filed: stats?.filed ?? 0 },
     });
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to list crash reports' }, 500);
   }
 });
@@ -87,6 +90,7 @@ crashReports.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM crash_reports WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to create crash report' }, 500);
   }
 });
@@ -106,12 +110,13 @@ crashReports.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE crash_reports SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM crash_reports WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/crashReports.ts' }, err);
     return c.json({ error: 'Failed to update crash report' }, 500);
   }
 });

@@ -75,7 +75,7 @@ export default function DocsLibraryPage() {
             {items.map((d) => (
               <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
                 <td className="py-[2px] text-rmpg-200">{d.title}</td>
-                <td className="py-[2px]"><span className={d.status === 'finalized' ? 'text-[#d4a017]' : 'text-[#888]'}>{toDisplayLabel(d.status)}</span></td>
+                <td className="py-[2px]"><span className={d.status === 'finalized' ? '[color:var(--panel-header-color)]' : 'text-[#888]'}>{toDisplayLabel(d.status)}</span></td>
                 <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>
                 <td className="py-[2px] text-rmpg-500 font-mono">{d.updated_at || d.created_at}</td>
               </tr>
@@ -86,7 +86,7 @@ export default function DocsLibraryPage() {
 
       {openId != null && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-[1000px] h-[88vh] bg-[#000] border border-border-default rounded-[2px] overflow-hidden">
+          <div className="relative w-full max-w-[1000px] h-[88dvh] bg-[#000] border border-border-default rounded-[2px] overflow-hidden">
             <DocumentEditor documentId={openId} onClose={() => { setOpenId(null); void refresh(); }} onChanged={refresh} />
           </div>
         </div>

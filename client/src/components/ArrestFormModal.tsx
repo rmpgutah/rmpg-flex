@@ -106,8 +106,8 @@ export default function ArrestFormModal({
   // context hasn't hydrated yet (login-screen pre-fill safety).
   const { user } = useAuth();
   const draftKey = user?.id
-    ? `rmpg_arrest_form_${user.id}`
-    : 'rmpg_arrest_form';
+    ? `rmpg_arrest_form_${user.id}_${editingRecord?.id ?? 'new'}`
+    : `rmpg_arrest_form_${editingRecord?.id ?? 'new'}`;
   const {
     form,
     setForm,
@@ -386,7 +386,7 @@ export default function ArrestFormModal({
         <>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">
-              Charges <span className="text-rmpg-500">(one per line)</span>
+              Charges <span className="text-fg-muted">(one per line)</span>
             </label>
             <RichTextArea
               name="charges"
@@ -397,7 +397,7 @@ export default function ArrestFormModal({
               onChange={handleChange}
               maxLength={2000}
             />
-            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.charges.length}/2000</div>
+            <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.charges.length}/2000</div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -441,7 +441,7 @@ export default function ArrestFormModal({
             onChange={handleChange}
             maxLength={5000}
           />
-          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
+          <div className="text-[9px] text-fg-muted text-right mt-0.5">{form.notes.length}/5000</div>
         </div>
       )}
     </FormModal>

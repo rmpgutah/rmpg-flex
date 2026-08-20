@@ -20,6 +20,41 @@ interface ElectronAPI {
   onUpdateStatus: (callback: (data: UpdateStatus) => void) => () => void;
   checkForUpdates: () => void;
   installUpdate: () => void;
+  // Desktop Kiosk Shell Mode (Windows-only)
+  getKioskShellState?: () => Promise<{ supported: boolean; enabled: boolean }>;
+  setKioskShell?: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
+  restartApp?: () => Promise<void>;
+  checkGpsHardwarePresent?: () => Promise<boolean>;
+  // System info
+  getSystemInfo?: () => Promise<{ hostname?: string; platform?: string; arch?: string; cpu_count?: number; cpu_model?: string; uptime_seconds?: number; total_memory_mb?: number; free_memory_mb?: number; disk_free_gb?: number | null }>;
+  checkDiskSpace?: () => Promise<{ freeBytes?: number | null; totalBytes?: number | null; warn?: boolean } | null>;
+  getCpuUsage?: () => Promise<number>;
+  getNetworkInterfaces?: () => Promise<Array<{ name?: string; address?: string; type?: string }>>;
+  getBatteryStatus?: () => Promise<{ percent?: number; charging?: boolean; timeRemaining?: number } | null>;
+  // Print queue
+  getPrintQueue?: () => Promise<Array<{ id: string; name: string; status: string; pages: number; pagesTotal: number; printer: string; submittedAt: string; size?: number }>>;
+  cancelPrintJob?: (id: string) => Promise<void>;
+  pausePrintJob?: (id: string) => Promise<void>;
+  resumePrintJob?: (id: string) => Promise<void>;
+  clearCompletedPrintJobs?: () => Promise<void>;
+  getPrinters?: () => Promise<Array<{ name: string; isDefault: boolean }>>;
+  // Body camera
+  getBodyCamStatus?: () => Promise<{ recording: boolean; duration?: number; battery?: number; storage_remaining_gb?: number; device_id?: string } | null>;
+  startBodyCamRecording?: () => Promise<void>;
+  stopBodyCamRecording?: () => Promise<void>;
+  // Sync queue
+  getOfflineWriteQueueSize?: () => Promise<number>;
+  getSyncQueueDetail?: () => Promise<Array<{ id: string; method: string; endpoint: string; body?: string; created_at: string; retry_count: number; status: string }>>;
+  retryFailedSyncItem?: (id: string) => Promise<void>;
+  clearFailedSyncItems?: () => Promise<void>;
+  // Screen capture
+  captureScreen?: () => Promise<string>;
+  saveScreenshot?: (dataUrl: string, filename: string) => Promise<void>;
+  copyToClipboard?: (text: string) => Promise<void>;
+  openFileDialog?: (opts?: { types?: string[] }) => Promise<string[]>;
+  downloadFile?: (url: string, filename: string) => Promise<void>;
+  // Logs
+  getAppLogs?: (lines?: number) => Promise<string[]>;
 }
 
 declare global {
@@ -44,6 +79,10 @@ export default function UpdateBanner() {
         devLog(`[UPDATE] Downloading v${data.version}... ${data.percent || 0}%`);
       } else if (data.status === 'ready') {
         devLog(`[UPDATE] v${data.version} ready — will install on next quit`);
+        // Notify DesktopSystemContext so the update banner becomes visible.
+        // DesktopSystemContext listens for this CustomEvent on window; without
+        // this dispatch, updateAvailable is never set and the banner never shows.
+        window.dispatchEvent(new CustomEvent('flexos:update-available', { detail: { version: data.version } }));
       } else if (data.status === 'error') {
         devWarn('[UPDATE] Check failed:', data.message);
       }

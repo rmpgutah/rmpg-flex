@@ -64,9 +64,9 @@ export async function maybeAutoSkipTrace(
         // Mark dedup so we don't keep checking on every subsequent attempt.
         await execute(db,
           `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-           VALUES (?, 'auto_skip_trace', datetime('now','localtime'))
+           VALUES (?, 'auto_skip_trace', datetime('now'))
            ON CONFLICT(serve_queue_id, condition)
-           DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+           DO UPDATE SET last_notified_at = datetime('now')`,
           queueId,
         ).catch(() => {});
         return false;
@@ -100,7 +100,7 @@ export async function maybeAutoSkipTrace(
     for (const uid of recipients) {
       await execute(db,
         `INSERT INTO notifications (type, priority, title, message, entity_type, entity_id, user_id, is_read, created_at)
-         VALUES ('serve_skip_trace_auto', 'normal', 'Auto skip-trace requested', ?, 'serve_job', ?, ?, 0, datetime('now','localtime'))`,
+         VALUES ('serve_skip_trace_auto', 'normal', 'Auto skip-trace requested', ?, 'serve_job', ?, ?, 0, datetime('now'))`,
         `Skip-trace auto-requested for ${who}${caseRef} after ${job.attempt_count} failed attempts`,
         queueId, uid,
       );
@@ -119,9 +119,9 @@ export async function maybeAutoSkipTrace(
     // Dedup mark
     await execute(db,
       `INSERT INTO serve_nudges (serve_queue_id, condition, last_notified_at)
-       VALUES (?, 'auto_skip_trace', datetime('now','localtime'))
+       VALUES (?, 'auto_skip_trace', datetime('now'))
        ON CONFLICT(serve_queue_id, condition)
-       DO UPDATE SET last_notified_at = datetime('now','localtime')`,
+       DO UPDATE SET last_notified_at = datetime('now')`,
       queueId,
     ).catch(() => {});
 

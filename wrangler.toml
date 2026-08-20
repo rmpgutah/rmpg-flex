@@ -40,6 +40,20 @@ mode = "smart"
 pattern = "api.rmpgutah.us"
 custom_domain = true
 
+# Serve /downloads/* from the app domain too, so a relative link still reaches
+# this Worker instead of falling through to the Pages SPA catch-all (which
+# returns index.html at HTTP 200 — an 11 KB "installer"). This mirrors the
+# mechanism already proven by rmpg-api-proxy for /api/*: a zone route, NOT a
+# _redirects rule, because Pages ignores status-200 rewrites to another origin.
+#
+# Deliberately a safety net, not the primary path. /api/downloads/info returns
+# absolute URLs and a guard test (client/src/__tests__/downloadLinks.guard.test.ts)
+# forbids relative links, so this only catches surfaces not yet found and links
+# written later.
+[[routes]]
+pattern = "rmpgutah.us/downloads/*"
+zone_name = "rmpgutah.us"
+
 # D1 Database — points at the LIVE production DB (the one bound to the legacy
 # rmpg-flex Worker that the rmpg-api-proxy falls back to). The `rmpg-flex-db`
 # (8893480a-…) created with this rewrite is EMPTY of production data; reading
@@ -60,6 +74,12 @@ database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
 binding = "GEO_DB"
 database_name = "rmpg-geo"
 database_id = "fbc33751-dce0-499a-bc45-93c0b7ee0da1"
+
+[[d1_databases]]
+binding = "KIOSK_DB"
+database_name = "kiosk-linux-fleet"
+database_id = "a74cd65e-5e7f-4ab1-a238-ba86c649efe4"
+migrations_dir = "kiosk-linux/migrations"
 
 # ─── Durable Objects ─────────────────────────────────────
 # WelfareWatchDO — automated officer welfare escalation timer
@@ -100,6 +120,14 @@ class_name = "PersonIntelDO"
 name = "FLEXCAM_REMUX"
 class_name = "FlexCamRemuxDO"
 
+# WebBrowserSessionDO — one instance per active web-based Company Browser
+# session (idFromName(sessionId)), holding a real headless Chrome instance
+# via Cloudflare's Browser Rendering API. Session-scoped, not global —
+# unlike VOICE_HUB/ALERT_HUB, a new id is minted per POST /api/web-browser/session.
+[[durable_objects.bindings]]
+name = "WEB_BROWSER_SESSION"
+class_name = "WebBrowserSessionDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -132,6 +160,23 @@ bucket_name = "rmpg-flex-uploads"
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
+
+[[r2_buckets]]
+binding = "KIOSK_DEVICES"
+bucket_name = "kiosk-linux-devices"
+
+# TESSERACT_TRAINING — restricted bucket for the custom fine-tuned OCR
+# effort (data-sovereignty motivated, see
+# docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+# Holds labeled real-document training pairs AND the resulting
+# .traineddata model file. NEITHER may ever be committed to git — this
+# bucket is the storage boundary for real client legal-process content
+# used in training. Access is admin/manager-gated at the route layer
+# (see src/routes/tesseractOcr.ts), matching the pattern already used
+# for PDF Tools encryption in src/routes/pdfTools.ts.
+[[r2_buckets]]
+binding = "TESSERACT_TRAINING"
+bucket_name = "rmpg-flex-tesseract-training"
 
 # ─── Analytics lakehouse (R2 Data Catalog / Pipelines) ─────
 # OPTIONAL until provisioned. The ALPR dual-write (src/routes/alpr.ts) and the
@@ -172,33 +217,101 @@ bucket_name = "rmpg-flex-downloads"
 #        Sharing the bucket means the SAME R2_ANALYTICS_WAREHOUSE + R2_SQL_TOKEN
 #        query BOTH alpr_reads and flex_events.
 #
+# ── PROVISIONED 2026-07-30 ───────────────────────────────────────────────────
+# Done already (non-interactively — `wrangler pipelines setup` is interactive
+# and cannot be driven from CI/an agent loop):
+#   ✅ R2 bucket `rmpg-flex-analytics`            (wrangler r2 bucket create)
+#   ✅ R2 Data Catalog enabled on that bucket     (wrangler r2 bucket catalog enable)
+#   ✅ Stream `rmpg_alpr_reads`   id 940a2ab71ee54ace9e534fd91e342f89
+#   ✅ Stream `rmpg_flex_events`  id 622585b17623479190bbecb141d606ce
+#      Schemas are version-controlled at scripts/analytics/*.schema.json
+#   ✅ R2_ANALYTICS_WAREHOUSE var set in [vars] below.
+#
+# REMAINING — all three need a Cloudflare API token, which must be minted in the
+# dashboard (there is no wrangler command for it):
+#
+#   1. Create an API token with `R2 Data Catalog (edit)` + `R2 (edit)` on the
+#      rmpg-flex-analytics bucket. Then create one sink per Iceberg table:
+#        npx wrangler pipelines sinks create rmpg_alpr_sink \
+#          --type r2-data-catalog --bucket rmpg-flex-analytics \
+#          --namespace default --table alpr_reads \
+#          --catalog-token <TOKEN> --roll-interval 300
+#        npx wrangler pipelines sinks create rmpg_events_sink \
+#          --type r2-data-catalog --bucket rmpg-flex-analytics \
+#          --namespace default --table flex_events \
+#          --catalog-token <TOKEN> --roll-interval 300
+#
+#   2. Create one pipeline per stream→sink pair:
+#        npx wrangler pipelines create rmpg_alpr_pipeline \
+#          --sql "INSERT INTO rmpg_alpr_sink SELECT * FROM rmpg_alpr_reads"
+#        npx wrangler pipelines create rmpg_events_pipeline \
+#          --sql "INSERT INTO rmpg_events_sink SELECT * FROM rmpg_flex_events"
+#
+#   3. Create a SECOND, read-only token (`R2 SQL (read)` + `R2 Data Catalog
+#      (read)` + `R2 (read)`) for querying, then:
+#        npx wrangler secret put R2_SQL_TOKEN
+#
+# Then UNCOMMENT the two binding blocks below and redeploy. Verify with
+# GET /api/analytics/health → query_ready:true.
+#
+# Leave them commented until the sinks + pipelines exist: emitAnalytics() would
+# otherwise write into a stream with no sink, and the rows would be discarded
+# rather than landing in Iceberg — silent data loss that looks like success.
+#
 # [[pipelines]]
 # binding = "ANALYTICS"
-# stream  = "<ALPR_STREAM_ID>"
+# stream  = "940a2ab71ee54ace9e534fd91e342f89"
 #
 # [[pipelines]]
 # binding = "EVENTS"
-# stream  = "<FLEX_EVENTS_STREAM_ID>"
+# stream  = "622585b17623479190bbecb141d606ce"
 
-# ─── PDF Tools Container (DISABLED) ───────────────────────
-# The PdfToolsContainer sidecar is intentionally OFF in prod.
-# Serve-intake OCR uses browser pdfjs (born-digital) + Workers AI
-# Vision (scanned images) instead. The [[containers]] block was
-# removed because it caused every Cloudflare Workers Builds deploy
-# to fail with "already an application with the name
-# rmpg-flex-api-pdftoolscontainer deployed that is associated with
-# a different durable object namespace". GitHub Actions deploy.yml
-# used --containers-rollout=none to work around this, but Workers
-# Builds has no equivalent flag.
+# ─── PDF Tools Container (RE-ENABLED, retest 2026-08-08 v2) ─
+# Two real, now-resolved blockers were found and fixed for this container:
+#   1. CLOUDFLARE_API_TOKEN_2 (deploy.yml's token) lacked Containers +
+#      Zone Workers Routes permission — fixed by rotating to a token with
+#      both scopes.
+#   2. A stale orphaned application (id a035aba5-866e-41e1-b22b-08d27b13c296,
+#      durable_objects.namespace_id 53dbc886c9874ee48f8905bbafa14a0d) was
+#      left over from an early attempt and blocked every deploy with
+#      "already an application ... associated with a different durable
+#      object namespace". Deleted directly via the Containers API
+#      (DELETE /accounts/{id}/containers/applications/{app_id}) after
+#      confirming its identity unambiguously from the API's JSON response
+#      (NOT the dashboard UI, which visually listed it next to an unrelated,
+#      live, actively-serving container of a similar name on a different
+#      project's Worker — a prior attempt via the dashboard accidentally
+#      deleted that unrelated container instead).
 #
 # The DO binding + migration tag MUST stay — removing the migration
 # tag breaks the prefix chain (v1-pdftools → v2-voicehub → v3-alerthub),
 # and the binding is referenced in src/types.ts + route handlers
 # (calls are guarded by try/catch so they degrade gracefully).
+[[containers]]
+class_name = "PdfToolsContainer"
+image = "./containers/pdf-tools/Dockerfile"
+max_instances = 3
+instance_type = "basic"
 
 [[durable_objects.bindings]]
 name = "PDF_TOOLS"
 class_name = "PdfToolsContainer"
+
+# ─── Custom Tesseract OCR Container ─────────────────────────
+# Self-hosted, fine-tuned OCR — data-sovereignty motivated (see
+# docs/superpowers/specs/2026-08-08-custom-tesseract-ocr-design.md).
+# NOT wired into production callAi()/extractVision() — this is a
+# measurable A/B candidate only (see scripts/serve-intake-vision-ab.ts),
+# per the design's evidence-gated non-goal.
+[[containers]]
+class_name = "TesseractOcrContainer"
+image = "./containers/tesseract-ocr/Dockerfile"
+max_instances = 3
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "TESSERACT_OCR"
+class_name = "TesseractOcrContainer"
 
 [[migrations]]
 tag = "v1-pdftools"
@@ -239,6 +352,20 @@ new_sqlite_classes = ["FlexCamRemuxDO"]
 tag = "v6-personinteldo"
 new_sqlite_classes = ["PersonIntelDO"]
 
+# WebBrowserSessionDO — APPENDED (same prefix rule as v2-voicehub above: live
+# tags must be a prefix of this list, so new DO migrations go at the END,
+# never mid-list). SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v7-webbrowsersession"
+new_sqlite_classes = ["WebBrowserSessionDO"]
+
+# TesseractOcrContainer — APPENDED (same prefix rule as v2-voicehub above:
+# live tags must be a prefix of this list, so new DO migrations go at the
+# END, never mid-list). SQLite-backed for free-plan compatibility.
+[[migrations]]
+tag = "v8-tesseractocr"
+new_sqlite_classes = ["TesseractOcrContainer"]
+
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
 # for structured field extraction from OCR text and direct vision-LLM
@@ -264,16 +391,29 @@ head_sampling_rate = 1
 
 # Environment variables
 [vars]
+# ─── Turso secondary DB — set via `wrangler secret put`, NOT wrangler.toml ──
+# TURSO_URL          libsql://rmpg-flex-secondary-rmpg-utah.turso.io
+# TURSO_AUTH_TOKEN   Turso auth token (turso.tech dashboard → database → tokens)
+# Both must also be added to .dev.vars for local development.
+# Without them the dual-write wrapper is a null no-op — local dev is unaffected.
 NODE_ENV = "production"
 PRIMARY_DOMAIN = "rmpgutah.us"
 CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
 JWT_ACCESS_EXPIRY = "15m"
 JWT_REFRESH_EXPIRY = "7d"
 SERVER_TIMEZONE = "America/Denver"
-# Analytics warehouse id from `wrangler pipelines setup` (= "<account_id>_<bucket>").
-# Uncomment + set once provisioned; /api/analytics 503s until then. The bearer
-# token is the R2_SQL_TOKEN secret (set via `wrangler secret put`).
-# R2_ANALYTICS_WAREHOUSE = "<account_id>_rmpg-flex-analytics"
+# Cloudflare account id (from the R2 S3-compatible endpoint host) — not
+# secret. Used by src/utils/r2Presign.ts to build the presigned-PUT host
+# for both R2 buckets (rmpg-flex-uploads, system-essentials).
+R2_ACCOUNT_ID = "5caa95c5789f4fc4ed3934b2a2c29ed4"
+# Analytics lakehouse warehouse id (= "<account_id>_<bucket>"). Provisioned
+# 2026-07-30: R2 bucket `rmpg-flex-analytics` created (location wnam) and R2
+# Data Catalog enabled on it.
+#   Catalog URI: https://catalog.cloudflarestorage.com/5caa95c5789f4fc4ed3934b2a2c29ed4/rmpg-flex-analytics
+# Setting this alone is INERT and safe: src/routes/analytics.ts requires BOTH
+# this var and the R2_SQL_TOKEN secret, and returns 200 {ok:false,
+# code:'not_configured'} until both are present.
+R2_ANALYTICS_WAREHOUSE = "5caa95c5789f4fc4ed3934b2a2c29ed4_rmpg-flex-analytics"
 # Fleet.io integration (PR 1+). Base URL of the Fleet.io REST API v1.
 # Override in dev/test via .dev.vars. Set FLEETIO_API_KEY, FLEETIO_ACCOUNT_TOKEN,
 # and FLEETIO_WEBHOOK_SECRET via `npx wrangler secret put <NAME>` (PR 4 adds the
@@ -323,9 +463,16 @@ NSOPW_ENABLED = "1"
 # ref_vehicle_makes / ref_vehicle_models / xref_model_year_to_specs. PR 2
 # wires the trigger with a stub handler; the real bulk-import lands in PR 2b.
 [triggers]
-crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *"]
+crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *", "0 9 * * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/
 # WelfareWatchDO.ts + the new_sqlite_classes migration above). Deleting
 # it after main creates it would defeat the whole point.)
+
+# Browser Rendering — powers the web-based Company Browser (Phase 1).
+# Requires Browser Rendering to be enabled on the Cloudflare account
+# (billed separately, per browser-minute) before this binding resolves
+# in a deployed Worker. See docs/superpowers/specs/2026-07-22-web-company-browser-phase1-design.md.
+[browser]
+binding = "BROWSER"

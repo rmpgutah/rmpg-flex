@@ -120,9 +120,9 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
       )}
 
       {loading ? (
-        <div className="text-[10px] text-rmpg-500 py-2">Loading...</div>
+        <div className="text-[10px] text-fg-muted py-2">Loading...</div>
       ) : links.length === 0 ? (
-        <div className="text-[10px] text-rmpg-500 py-2">No clients linked to this person.</div>
+        <div className="text-[10px] text-fg-muted py-2">No clients linked to this person.</div>
       ) : (
         <div className="space-y-1.5">
           {links.map((link) => (
@@ -149,7 +149,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
+                className="p-1 text-fg-muted hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -227,9 +227,9 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
       )}
 
       {loading ? (
-        <div className="text-[10px] text-rmpg-500 py-2">Loading...</div>
+        <div className="text-[10px] text-fg-muted py-2">Loading...</div>
       ) : links.length === 0 ? (
-        <div className="text-[10px] text-rmpg-500 py-2">No persons linked to this client.</div>
+        <div className="text-[10px] text-fg-muted py-2">No persons linked to this client.</div>
       ) : (
         <div className="space-y-1.5">
           {links.map((link) => (
@@ -253,7 +253,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
                       <span className="text-[9px] text-rmpg-400">{link.title}</span>
                     )}
                     {link.phone && (
-                      <span className="text-[9px] text-rmpg-500">{link.phone}</span>
+                      <span className="text-[9px] text-fg-muted">{link.phone}</span>
                     )}
                   </div>
                 </div>
@@ -261,7 +261,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
               <button
                 type="button"
                 onClick={() => handleRemove(link.id)}
-                className="p-1 text-rmpg-500 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
+                className="p-1 text-fg-muted hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-all"
                 title="Remove link"
               >
                 <Trash2 className="w-3 h-3" />
@@ -367,7 +367,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
       {/* Search field */}
       {!selectedId ? (
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-muted" />
           <input id="ff-clientpersonlinkssection-0"
             type="text"
             placeholder={`Search ${searchingFor}...`}
@@ -395,7 +395,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             </div>
           )}
           {searching && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-rmpg-500">Searching...</div>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-fg-muted">Searching...</div>
           )}
         </div>
       ) : (
@@ -404,7 +404,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             <Link2 className="w-3 h-3 text-rmpg-400" />
             <span className="font-medium">{selectedLabel}</span>
           </div>
-          <button type="button" onClick={() => { setSelectedId(null); setSelectedLabel(''); }} className="text-rmpg-500 hover:text-red-400">
+          <button aria-label="Close" type="button" onClick={() => { setSelectedId(null); setSelectedLabel(''); }} className="text-fg-muted hover:text-red-400">
             <X className="w-3 h-3" />
           </button>
         </div>

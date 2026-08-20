@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, Circle, Square, Play, Trash2, Plus } from 'lucide-react';
 import {
   MACRO_STEP_LABELS, runMacro, runMacroStep, saveMacro, loadMacro, clearSavedMacro,
@@ -69,7 +69,7 @@ export default function MacroRecorder({
           </button>
         )}
         <button type="button" onClick={replay} disabled={steps.length === 0}
-          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-30">
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 disabled:opacity-30">
           <Play className="w-3 h-3" /> Replay
         </button>
         <button type="button" onClick={clearAll} disabled={steps.length === 0}
@@ -101,8 +101,8 @@ export default function MacroRecorder({
       <div className="grid grid-cols-2 gap-1">
         {PALETTE.map((s) => (
           <button key={s} type="button" onClick={() => addStep(s)}
-            className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-left text-rmpg-200 bg-surface-base border border-border-default rounded-[2px] hover:bg-surface-raised hover:border-[#d4a017]/30">
-            {recording && <Plus className="w-2.5 h-2.5 text-[#d4a017] shrink-0" />}
+            className="flex items-center gap-1 px-1.5 py-1 text-[10px] text-left text-rmpg-200 bg-surface-base border border-border-default rounded-[2px] hover:bg-surface-raised hover:border-accent-silver-500/30">
+            {recording && <Plus className="w-2.5 h-2.5 text-accent-silver-400 shrink-0" />}
             <span className="truncate">{MACRO_STEP_LABELS[s]}</span>
           </button>
         ))}

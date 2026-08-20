@@ -53,6 +53,9 @@ function formatTimeParts(p: ZoneParts, withSeconds: boolean): string {
 
 /** Wall-clock components of an instant in the active display zone (DST-aware). */
 function zoneParts(d: Date): ZoneParts {
+  if (!d || isNaN(d.getTime())) {
+    return { year: 1970, month: 1, day: 1, hour: 0, minute: 0, second: 0 };
+  }
   const tz = displayTimeZone();
   if (!tz) {
     // Device mode — read the device's local wall-clock directly.

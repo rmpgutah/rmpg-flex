@@ -21,7 +21,7 @@ interface Props { recordType: string; recordId: number | string; title?: string;
 
 const STATUS: Record<SentDoc['status'], { label: string; cls: string }> = {
   sent:    { label: 'Sent',   cls: 'text-green-400 border-green-900' },
-  pending: { label: 'Queued', cls: 'text-[#d4a017] border-[#5a4a10]' },
+  pending: { label: 'Queued', cls: '[color:var(--panel-header-color)] border-amber-900/50' },
   failed:  { label: 'Failed', cls: 'text-red-400 border-red-900' },
 };
 
@@ -42,13 +42,13 @@ export default function EmailedDocuments({ recordType, recordId, title = 'Emaile
 
   return (
     <div className="border border-border-default bg-surface-sunken">
-      <div className="px-3 py-2 text-[#d4a017] text-xs font-semibold uppercase border-b border-border-default">
+      <div className="px-3 py-2 [color:var(--panel-header-color)] text-xs font-semibold uppercase border-b border-border-default">
         {title}{items.length ? ` (${items.length})` : ''}
       </div>
       {loading ? (
-        <div className="px-3 py-2 text-rmpg-500 text-[11px]">Loading…</div>
+        <div className="px-3 py-2 text-fg-muted text-[11px]">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="px-3 py-2 text-rmpg-500 text-[11px] italic">No documents emailed from this record yet.</div>
+        <div className="px-3 py-2 text-fg-muted text-[11px] italic">No documents emailed from this record yet.</div>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-[11px]">
           <thead>

@@ -25,6 +25,15 @@ function vehicleRow(row: any): RawDataPoint[] {
   return pts;
 }
 
+// `persons` has first_name/last_name/dob — there is no full_name or
+// date_of_birth column, so every query here threw "no such column: full_name"
+// and Phase 1 silently returned no internal records. personRow() above reads
+// row.full_name / row.date_of_birth, so alias in SQL rather than reshaping the
+// consumer. Same concat idiom already used in records.ts:891.
+const PERSON_NAME_SQL = "(first_name || ' ' || last_name)";
+const PERSON_COLS =
+  `${PERSON_NAME_SQL} AS full_name, dob AS date_of_birth, address, city, state, zip, phone, email`;
+
 export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<SourceResult> {
   const t0 = Date.now();
   const pts: RawDataPoint[] = [];
@@ -32,15 +41,15 @@ export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<Sour
 
   try {
     if (seed.name) {
-      const like = `%${seed.name.split(' ')[0]}%`;
+      const like = `%${seed.name.split(' ')[0].slice(0, 48)}%`;
       const { results } = await db.prepare(
-        'SELECT full_name,date_of_birth,address,city,state,zip,phone,email FROM persons WHERE full_name LIKE ? LIMIT 10'
+        `SELECT ${PERSON_COLS} FROM persons WHERE ${PERSON_NAME_SQL} LIKE ? LIMIT 10`
       ).bind(like).all<any>();
       for (const r of results) pts.push(...personRow(r));
     }
     if (seed.phone) {
       const { results } = await db.prepare(
-        'SELECT full_name,date_of_birth,address,city,state,zip,phone,email FROM persons WHERE phone = ? LIMIT 5'
+        `SELECT ${PERSON_COLS} FROM persons WHERE phone = ? LIMIT 5`
       ).bind(seed.phone).all<any>();
       for (const r of results) {
         if (!pts.some(p => p.field === 'phone' && p.value === r.phone)) pts.push({ category: 'phone', field: 'number', value: seed.phone, source: src });
@@ -49,7 +58,7 @@ export async function queryPhase1(db: D1Database, seed: IntelSeed): Promise<Sour
     }
     if (seed.email) {
       const { results } = await db.prepare(
-        'SELECT full_name,date_of_birth,address,city,state,zip,phone,email FROM persons WHERE email = ? LIMIT 5'
+        `SELECT ${PERSON_COLS} FROM persons WHERE email = ? LIMIT 5`
       ).bind(seed.email).all<any>();
       for (const r of results) pts.push(...personRow(r));
     }

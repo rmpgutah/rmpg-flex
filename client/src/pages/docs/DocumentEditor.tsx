@@ -7,6 +7,8 @@ import type { DocRecord, DocRevisionMeta } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/ToastProvider';
 import { parseTimestamp } from '../../utils/dateUtils';
+import { toDisplayLabel } from '../../utils/formatters';
+import { importWithRetry } from '../../utils/importWithRetry';
 
 interface Props {
   documentId: number;
@@ -95,7 +97,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
     if (!doc || busy) return;
     setBusy(true);
     try {
-      const { generateDocumentPdf } = await import('../../utils/documentPdf');
+      const { generateDocumentPdf } = await importWithRetry(() => import('../../utils/documentPdf'));
       generateDocumentPdf({ ...doc, title, body });
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'PDF export failed', 'error');
@@ -104,14 +106,14 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
 
   if (!doc) {
     return (
-      <div className="flex items-center justify-center p-8 text-[#888888]">
+      <div className="flex items-center justify-center p-8 text-fg-muted">
         <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#000000] relative">
+    <div className="flex flex-col h-full bg-surface-deep relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border-default flex-shrink-0">
         <input
@@ -121,8 +123,8 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Document title"
         />
-        <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-rmpg-950 bg-[#d4a017]' : 'text-[#d4a017] border border-[#d4a017]/40'}`}>
-          {doc.status.replace(/_/g, ' ')}
+        <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm font-bold ${doc.status === 'finalized' ? 'text-white bg-brand-600' : '[color:var(--panel-header-color)] border [border-color:var(--field-label-color)]/40'}`}>
+          {toDisplayLabel(doc.status)}
         </span>
         <span className="text-[9px] text-rmpg-500 font-mono">r{doc.revision}</span>
         <button type="button" aria-label="Revisions" title="Revisions" className="toolbar-btn p-1" onClick={openRevisions}><History className="w-3.5 h-3.5" /></button>
@@ -175,7 +177,7 @@ export default function DocumentEditor({ documentId, onClose, onChanged }: Props
         <div className="absolute inset-0 bg-black/70 flex justify-end" onClick={() => setShowRevisions(false)}>
           <div className="w-[340px] h-full bg-surface-sunken border-l border-border-default p-3 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-wider text-[#d4a017] font-semibold">Revision history</span>
+              <span className="text-[10px] uppercase tracking-wider [color:var(--panel-header-color)] font-semibold">Revision history</span>
               <button type="button" aria-label="Close revisions" className="toolbar-btn p-1" onClick={() => setShowRevisions(false)}><X className="w-3 h-3" /></button>
             </div>
             {revisions.map((r) => (

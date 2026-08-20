@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import {
   ScrollText,
   Search,
@@ -391,6 +391,7 @@ const AuditLogPage: React.FC = () => {
   const formatTimestamp = (timestamp: string): string => {
     const date = parseTimestamp(timestamp);
     return date.toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -541,8 +542,8 @@ const AuditLogPage: React.FC = () => {
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--border-subtle), var(--rmpg-400) 30%, var(--rmpg-400) 70%, var(--border-subtle))' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
-            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--rmpg-300)' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: 'var(--rmpg-500)' }}>Rocky Mountain Protective Group, LLC</p>
+            <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>Audit Log</h1>
+            <p className="text-[9px] tracking-wide" style={{ color: 'var(--text-muted)' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -607,7 +608,7 @@ const AuditLogPage: React.FC = () => {
               </div>
               <div className="text-2xl font-bold text-brand-400 font-mono">{stats.totalEntries.toLocaleString()}</div>
             </div>
-            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--green-500)' : undefined }}>
+            <div className="panel-beveled p-3" style={{ background: 'var(--surface-overlay)', borderLeft: stats.entriesToday > 0 ? '2px solid var(--sev-ok)' : undefined }}>
               <div className="flex items-center gap-2 mb-2">
                 <Calendar className="w-4 h-4 text-green-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Today</span>
@@ -706,7 +707,7 @@ const AuditLogPage: React.FC = () => {
               days fell below the 1-entry/day daily-coverage threshold and
               investigate accordingly. */}
           {complianceReport && Array.isArray(complianceReport.gaps) && complianceReport.gaps.length > 0 && (
-            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--amber-500)' }}>
+            <div className="panel-beveled p-3 mt-3" style={{ background: 'var(--surface-overlay)', borderLeft: '2px solid var(--sev-warn)' }}>
               <div className="flex items-center gap-1.5 mb-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                 <span className="text-[10px] text-amber-300 uppercase font-bold tracking-wider">Coverage Gaps (30d)</span>
@@ -758,7 +759,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Actions</option>
               {uniqueActions.map(action => (
-                <option key={action} value={action}>{action.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={action} value={action}>{toDisplayLabel(action).toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -773,7 +774,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Types</option>
               {uniqueEntityTypes.map(type => (
-                <option key={type} value={type}>{type.replace(/_/g, ' ').toUpperCase()}</option>
+                <option key={type} value={type}>{toDisplayLabel(type).toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -846,7 +847,7 @@ const AuditLogPage: React.FC = () => {
       {error && (
         <div className="mx-0 mb-3 px-3 py-2 bg-red-900/40 border border-red-700/50 text-red-300 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
             <X className="w-3 h-3" />
           </button>
         </div>

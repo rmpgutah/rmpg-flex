@@ -36,7 +36,11 @@ describe('Blue & Silver full-override theme', () => {
     expect(html.classList.contains('dark')).toBe(true);
     expect(html.classList.contains('theme-legacy-black')).toBe(false);
     expect(html.style.colorScheme).toBe('dark');
-    expect(html.style.backgroundColor.replace(/\s/g, '')).toBe('rgb(12,26,43)');
+    // #22405f — must track --surface-base in the html.theme-blue-silver block of
+    // theme-palettes.css. This previously asserted rgb(12,26,43) (#0c1a2b), a value
+    // orphaned when the 2026-07-07 navy repair moved --surface-base to #22405f; the
+    // page root then painted darker than the surfaces above it. Fixed in 242fea1289.
+    expect(html.style.backgroundColor.replace(/\s/g, '')).toBe('rgb(34,64,95)');
   });
 
   it('does not apply when explicitly opted out via "0"', () => {

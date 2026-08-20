@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useId, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   QrCode,
@@ -53,6 +53,8 @@ import MileageAuditTab from './patrol/MileageAuditTab';
 import PricingTab from './patrol/PricingTab';
 import ContractsTab from './patrol/ContractsTab';
 import BillingReviewTab from './patrol/BillingReviewTab';
+import { escapeHtml } from '../utils/sanitize';
+import { importWithRetry } from '../utils/importWithRetry';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -115,6 +117,8 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   const [mapReady, setMapReady] = React.useState(false);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [recoverNonce, setRecoverNonce] = React.useState(0);
+  const [isRecovering, setIsRecovering] = React.useState(false);
+  const [needsManualReload, setNeedsManualReload] = React.useState(false);
   const recoveryCleanupRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
@@ -131,6 +135,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         style: MAPBOX_STYLE_DARK,
         center: [-111.89, 40.76],
         zoom: 12,
+        projection: 'mercator',
         attributionControl: false,
       });
       mapInstanceRef.current = map;
@@ -142,11 +147,16 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       recoveryCleanupRef.current = installWebglContextRecovery(map, {
         label: 'PatrolMapView',
         onRebuild: () => {
+          setIsRecovering(false);
+          setNeedsManualReload(false);
           if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
           if (mapInstanceRef.current) { unregisterMapInstance(mapInstanceRef.current); try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
           setMapReady(false);
           setRecoverNonce((n) => n + 1);
         },
+        onContextLost: () => setIsRecovering(true),
+        onContextRestored: () => setIsRecovering(false),
+        onGiveUp: () => { setIsRecovering(false); setNeedsManualReload(true); },
       });
 
       map.on('load', () => {
@@ -170,7 +180,19 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     return () => {
       cancelled = true;
       if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
-      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
+      // unregisterMapInstance() only drops our bookkeeping entry — it does NOT
+      // release the map. Mapbox holds a WebGL context, a canvas, and
+      // window-level listeners until map.remove() is called, so leaving it out
+      // meant every visit to Patrol leaked a live GL context that could never
+      // be garbage collected. Browsers cap WebGL contexts (~16 in Chrome) and
+      // silently kill the OLDEST when that ceiling is hit, so the damage shows
+      // up as unrelated maps elsewhere in the app going blank.
+      if (mapInstanceRef.current) {
+        unregisterMapInstance(mapInstanceRef.current);
+        try { mapInstanceRef.current.remove(); } catch { /* already gone */ }
+        mapInstanceRef.current = null;
+      }
+      setMapReady(false);
     };
   }, [recoverNonce]);
 
@@ -191,14 +213,14 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       hasPoints = true;
 
       const el = document.createElement('div');
-      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--rmpg-500)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
+      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? 'var(--sev-ok)' : 'var(--text-muted)'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0 0 0 / 0.4);`;
       const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
         .setLngLat(lngLat)
         .addTo(map);
 
       const popup = new mapboxgl.Popup({ offset: 15 })
-        .setHTML(`<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`);
+        .setHTML(`<div style="color:#000;font-size:12px;font-weight:bold">${escapeHtml(cp.name)}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${escapeHtml(cp.scan_required_interval_minutes) || '?'} min</div>`);
       marker.setPopup(popup);
       markers.push(marker);
     });
@@ -262,6 +284,24 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
         {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
         {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
       </div>
+      {isRecovering && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-[10px] font-mono">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {needsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-2 text-center px-4">
+            <span className="text-rmpg-100 text-xs font-mono">MAP GPU CRASH</span>
+            <button onClick={() => window.location.reload()} className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-mono" style={{ borderRadius: 2 }}>
+              RELOAD PAGE
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,6 +360,10 @@ const PatrolPage: React.FC = () => {
   const [showQrModal, setShowQrModal] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState('');
+  // Rendered PNG for the checkpoint token. The modal used to show only the token
+  // as text under "Scan this code with a QR scanner app", which is unscannable —
+  // there was no QR image anywhere in the checkpoint flow.
+  const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const rowRefs = useRef<Map<number, HTMLTableRowElement | null>>(new Map());
   const deepLinkConsumedRef = useRef(false);
@@ -341,7 +385,7 @@ const PatrolPage: React.FC = () => {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_CHECKPOINT_FORM>({
-    storageKey: 'rmpg_checkpoint_form',
+    storageKey: `rmpg_checkpoint_form_${editingCheckpoint?.id ?? 'new'}`,
     defaultValue: EMPTY_CHECKPOINT_FORM,
     isActive: showCheckpointModal,
   });
@@ -354,6 +398,8 @@ const PatrolPage: React.FC = () => {
   // a binary "you're on break" state. Hydrated from server on mount along
   // with isOnBreak so a page refresh doesn't lose the timer.
   const [breakStartIso, setBreakStartIso] = useState<string | null>(null);
+  // In-flight guard for the Break / Meal buttons — see startBreak().
+  const [breakStarting, setBreakStarting] = useState(false);
   const [breakElapsedMs, setBreakElapsedMs] = useState(0);
   const [efficiency, setEfficiency] = useState<any>(null);
 
@@ -411,6 +457,12 @@ const PatrolPage: React.FC = () => {
   };
 
   const startBreak = async (breakType = 'break') => {
+    // Guard against a double-click firing two POSTs before the first returns.
+    // The server is also idempotent now (it returns any already-open break
+    // rather than inserting a second one), which is the authoritative fix —
+    // this only stops the duplicate request leaving the device at all.
+    if (breakStarting) return;
+    setBreakStarting(true);
     try {
       const data = await apiFetch<{ break_start?: string }>(
         '/patrol/breaks/start',
@@ -421,7 +473,13 @@ const PatrolPage: React.FC = () => {
       // to "now" so the elapsed counter starts ticking immediately.
       setBreakStartIso(data?.break_start ?? new Date().toISOString());
       addToast('Break started', 'success');
-    } catch (err: any) { addToast(err?.message || 'Failed to start break', 'error'); }
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to start break', 'error');
+    } finally {
+      // finally, not a trailing call: a thrown request must still re-enable
+      // the button, or it would be dead until the operator reloaded.
+      setBreakStarting(false);
+    }
   };
 
   const endBreak = async () => {
@@ -679,6 +737,36 @@ const PatrolPage: React.FC = () => {
     setShowQrModal(true);
   };
 
+  // Encode the checkpoint token into a real, scannable symbol whenever the modal
+  // opens. It encodes the RAW token (e.g. "CP-A1B2C3D4E5F6") — the same string
+  // the modal prints and "Copy QR code" copies — because the token is matched
+  // against patrol_checkpoints.qr_code on scan; there is no deep-link route that
+  // would consume a URL form, so inventing one here would encode a dead link.
+  //
+  // Dynamic import keeps the encoder out of this already-large page's initial
+  // chunk, matching how MyIdPage loads it. Standard dark-on-light polarity: this
+  // is printed and posted at a physical checkpoint, then read by whatever scanner
+  // an officer has, so it must be spec-compliant rather than theme-tinted.
+  useEffect(() => {
+    if (!showQrModal || !selectedQrCode) { setQrImageUrl(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const QRCode = (await importWithRetry(() => import('qrcode'))).default;
+        const url = await QRCode.toDataURL(selectedQrCode, {
+          errorCorrectionLevel: 'H', // printed signage tolerates smudging/wear
+          margin: 4,                 // ISO/IEC 18004 quiet zone
+          width: 512,
+          color: { dark: '#0a0a0a', light: '#ffffff' },
+        });
+        if (alive) setQrImageUrl(url);
+      } catch {
+        if (alive) setQrImageUrl(null); // token text below stays usable
+      }
+    })();
+    return () => { alive = false; };
+  }, [showQrModal, selectedQrCode]);
+
   // ── Build a checkpoint row context menu ──
   const buildCheckpointMenu = (cp: Checkpoint): ContextMenuItem[] => [
     m.action('Show QR code', () => handleShowQr(cp.qr_code), { icon: <Eye size={12} /> }),
@@ -748,7 +836,7 @@ const PatrolPage: React.FC = () => {
 
   const formatDateTime = (dateString: string) => {
     return parseTimestamp(dateString).toLocaleString('en-US', {
-      month: 'short', day: 'numeric', year: 'numeric',
+      timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
   };
@@ -1452,7 +1540,7 @@ const PatrolPage: React.FC = () => {
                         <div className="flex items-center justify-between mb-1">
                           <div className={`flex items-center gap-2 text-[11px] ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize font-bold">{scan.status.replace(/_/g, ' ')}</span>
+                            <span className="capitalize font-bold">{toDisplayLabel(scan.status)}</span>
                           </div>
                           <span className="text-[10px] text-rmpg-400 font-mono">
                             {formatDateTime(scan.scanned_at)}
@@ -1495,7 +1583,7 @@ const PatrolPage: React.FC = () => {
                         <td>
                           <div className={`flex items-center gap-2 text-xs ${getStatusColor(scan.status)}`}>
                             {getStatusIcon(scan.status)}
-                            <span className="capitalize">{scan.status.replace(/_/g, ' ')}</span>
+                            <span className="capitalize">{toDisplayLabel(scan.status)}</span>
                           </div>
                         </td>
                         <td className="text-xs text-rmpg-200 max-w-[200px] truncate">{scan.notes || '-'}</td>
@@ -1559,8 +1647,8 @@ const PatrolPage: React.FC = () => {
                     </>
                   ) : (
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => startBreak('break')} className="toolbar-btn">Break</button>
-                      <button type="button" onClick={() => startBreak('meal')} className="toolbar-btn">Meal</button>
+                      <button type="button" onClick={() => startBreak('break')} disabled={breakStarting} className="toolbar-btn disabled:opacity-50">Break</button>
+                      <button type="button" onClick={() => startBreak('meal')} disabled={breakStarting} className="toolbar-btn disabled:opacity-50">Meal</button>
                     </div>
                   )}
                 </div>
@@ -1719,8 +1807,8 @@ const PatrolPage: React.FC = () => {
 
       {/* Checkpoint Modal */}
       {showCheckpointModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
-          <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
+          <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4 my-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 id={checkpointModalTitleId} className="text-xl font-bold text-rmpg-100">
                 {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
@@ -1895,8 +1983,22 @@ const PatrolPage: React.FC = () => {
             </div>
 
             <div className="bg-surface-sunken panel-inset p-8 text-center">
-              <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" />
-              <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
+              {qrImageUrl ? (
+                <>
+                  {/* White tile supplies the light quiet zone; a QR drawn straight
+                      onto the sunken panel has no distinguishable margin. */}
+                  <div className="bg-white p-3 inline-block mb-4">
+                    <img src={qrImageUrl} alt={`QR code for checkpoint token ${selectedQrCode}`}
+                      width={200} height={200} className="block" />
+                  </div>
+                  <p className="text-xs text-rmpg-300 mb-2">Scan this code with a QR scanner app:</p>
+                </>
+              ) : (
+                <>
+                  <QrCode className="w-16 h-16 text-brand-400 mx-auto mb-4" aria-hidden="true" />
+                  <p className="text-xs text-fg-muted mb-2">Enter this checkpoint token manually:</p>
+                </>
+              )}
               <p className="text-2xl font-mono text-rmpg-100 break-all">{selectedQrCode}</p>
             </div>
 

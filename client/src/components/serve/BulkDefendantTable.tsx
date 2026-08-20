@@ -9,8 +9,9 @@
 // ============================================================
 
 import React, { useCallback, useMemo, useState } from 'react';
-import { Plus, Trash2, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet, Loader2, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useFormDraft } from '../../hooks/useFormDraft';
 
 export type BulkRowKind = 'individual' | 'business';
 
@@ -76,8 +77,16 @@ function parsePastedTable(raw: string): BulkRow[] {
   return rows;
 }
 
+const DEFAULT_ROWS: BulkRow[] = [{ ...EMPTY_ROW }];
+
 export default function BulkDefendantTable({ onSubmitted }: Props) {
-  const [rows, setRows] = useState<BulkRow[]>([{ ...EMPTY_ROW }]);
+  const {
+    form: rows, setForm: setRows, wasRestored, clearDraft, signalSaved,
+  } = useFormDraft<BulkRow[]>({
+    storageKey: 'rmpg_bulk_defendant_table',
+    defaultValue: DEFAULT_ROWS,
+    isActive: true,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BulkSubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +146,10 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
         body: JSON.stringify({ rows: payload }),
       });
       setResult(res);
+      // Only the successfully-created/merged rows are safe to drop from the
+      // draft — if some rows failed, keep them around so the operator can
+      // fix and resubmit without retyping.
+      if (res.summary.failed === 0) signalSaved();
       if (onSubmitted) onSubmitted(res);
     } catch (err: any) {
       setError(err?.message || 'Bulk intake failed');
@@ -146,10 +159,10 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
   }, [rows, onSubmitted]);
 
   const clearAll = useCallback(() => {
-    setRows([{ ...EMPTY_ROW }]);
+    clearDraft();
     setResult(null);
     setError(null);
-  }, []);
+  }, [clearDraft]);
 
   return (
     <div className="panel-beveled p-3 bg-surface-base space-y-3" onPaste={handlePaste}>
@@ -157,13 +170,20 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="w-4 h-4 text-amber-400" />
           <h3 className="text-xs font-bold text-rmpg-100 uppercase tracking-wider">Bulk Defendant Table</h3>
-          <span className="text-[10px] text-rmpg-500">{validRowCount} valid row{validRowCount === 1 ? '' : 's'}</span>
+          <span className="text-[10px] text-fg-muted">{validRowCount} valid row{validRowCount === 1 ? '' : 's'}</span>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={addRow} className="toolbar-btn text-[9px]" title="Add a blank row"><Plus className="w-3 h-3" /> Add Row</button>
           <button type="button" onClick={clearAll} className="toolbar-btn text-[9px]" title="Clear table">Clear</button>
         </div>
       </div>
+
+      {wasRestored && (
+        <div className="flex items-center justify-between px-2 py-1.5 text-[10px] border border-amber-500/30 bg-amber-950/20 text-amber-400">
+          <div className="flex items-center gap-1.5"><Clock className="w-3 h-3" /> Restored unsaved rows from your last session</div>
+          <button type="button" onClick={clearDraft} className="underline hover:text-amber-300">Discard</button>
+        </div>
+      )}
 
       <p className="text-[10px] text-rmpg-400 leading-relaxed">
         One row per defendant — each row creates one dispatch job. Tip: copy from a spreadsheet (columns:
@@ -193,7 +213,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
               const isBiz = r.kind === 'business' || !!r.businessName.trim();
               return (
                 <tr key={idx} className="border-b border-border-default">
-                  <td className="px-1.5 py-1 text-rmpg-500 align-top">{idx + 1}</td>
+                  <td className="px-1.5 py-1 text-fg-muted align-top">{idx + 1}</td>
                   {(['firstName', 'middleName', 'lastName', 'dob', 'sex', 'address', 'contractId', 'businessName'] as const).map((field) => (
                     <td key={field} className="px-0 py-0 align-top">
                       <input id="ff-bulkdefendanttable-0"
@@ -273,7 +293,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
       )}
 
       <div className="flex items-center justify-between gap-2 pt-1">
-        <p className="text-[9px] text-rmpg-500">
+        <p className="text-[9px] text-fg-muted">
           {validRowCount > 0 ? `Submitting will create ${validRowCount} dispatch CFS row${validRowCount === 1 ? '' : 's'}. PDFs can be attached individually after.` : 'Add row data to enable submit.'}
         </p>
         <button

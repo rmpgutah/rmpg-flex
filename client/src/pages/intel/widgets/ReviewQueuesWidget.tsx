@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import WidgetFrame from './WidgetFrame';
 import type { IntelOverview } from '../useIntelOverview';
 
 export default function ReviewQueuesWidget({ queues }: { queues: IntelOverview['queues'] }) {
   const badge = (n: number) => (
-    <span className="font-mono text-[9px] text-black bg-[#d4a017] rounded-[2px] px-[5px] py-[1px]">{n}</span>
+    <span className="font-mono text-[9px] text-rmpg-50 bg-rmpg-700 rounded-[2px] px-[5px] py-[1px]">{n}</span>
   );
   return (
     <WidgetFrame title="⚐ Review Queues" note={String(queues.link_suggestions + queues.resolution_pairs)}>

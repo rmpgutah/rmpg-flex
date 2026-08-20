@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
@@ -14,6 +14,9 @@ import { exportGraphToPdf } from '../utils/graphToPdf';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import RichTextArea from '../components/RichTextArea';
+import { NODE_COLORS, NODE_RADIUS } from '../utils/connectionsGraphStyle';
+import ConnectionsMapPanel from '../components/ConnectionsMapPanel';
+import { formatEnumValue } from '../utils/formatters';
 
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
@@ -45,44 +48,6 @@ interface SimEdge {
   sourceTable: string;
 }
 
-// Entity-type color palette for the d3 force graph. Categorical hues — each
-// entity type gets a distinct color so an operator can scan the graph at a
-// glance. Previously 3 collisions silently rendered different entity types
-// as the same dot:
-//   person + case        both #d4a017 → case bumped to #84cc16 lime
-//   evidence + arrest    both #ef4444 → arrest bumped to #f43f5e rose
-//   incident + business  both #f59e0b → business bumped to #0ea5e9 sky
-// This is the LEGITIMATE use of raw hex literals in this codebase: a
-// categorical palette where every entry must be distinguishable. The
-// semantic --sev-* tokens can't serve here — only 5 tokens vs 16 entity
-// types — but the 3 hues that DO match sev (brand gold, sev-warn, sev-
-// critical) stay perceptually consistent with the rest of the app.
-const NODE_COLORS: Record<string, string> = {
-  person:          '#d4a017', // brand gold (mirrors --brand-gold)
-  vehicle:         '#10b981', // emerald
-  property:        '#8b5cf6', // violet
-  business:        '#0ea5e9', // sky (was #f59e0b — collided with incident)
-  evidence:        '#ef4444', // red (mirrors --sev-critical)
-  case:            '#84cc16', // lime (was #d4a017 — collided with person)
-  incident:        '#f59e0b', // amber (mirrors --sev-warn)
-  warrant:         '#dc2626', // darker red — wider use across the app
-  citation:        '#fbbf24', // yellow (mirrors --sev-warn-soft)
-  arrest:          '#f43f5e', // rose (was #ef4444 — collided with evidence)
-  field_interview: '#64748b', // slate
-  trespass_order:  '#a855f7', // purple
-  serve_job:       '#14b8a6', // teal
-  call:            '#22d3ee', // cyan
-  report:          '#ec4899', // pink
-  intel_report:    '#e879f9', // fuchsia
-};
-
-const NODE_RADIUS: Record<string, number> = {
-  person: 28, vehicle: 18, property: 18, business: 18, evidence: 16,
-  case: 18, incident: 20, warrant: 18, citation: 16,
-  arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
-  call: 20, report: 14, intel_report: 20,
-};
-
 // Timeline-drawer colors — mirror NODE_COLORS exactly so the same entity
 // type renders the same dot color in both the graph AND the timeline.
 // Previously this map drifted: case used brand-gold (collided with the
@@ -99,6 +64,7 @@ const TIMELINE_KIND_COLOR: Record<string, string> = {
   trespass_order:  '#a855f7',
   case:            '#84cc16', // was '#d4a017' — collided with person
   evidence:        '#ef4444',
+  alpr_sighting:   '#06b6d4', // matches NODE_COLORS.alpr_sighting
 };
 
 const VIEW_W = 1000;
@@ -136,6 +102,8 @@ export default function ConnectionsPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(new Set());
   const [graphDepth, setGraphDepth] = useState(2);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [pathFrom, setPathFrom] = useState<{ type: string; id: number; label: string } | null>(null);
   const [pathNodes, setPathNodes] = useState<Set<string>>(new Set());
   const [pathEdges, setPathEdges] = useState<Set<string>>(new Set());
@@ -271,8 +239,11 @@ export default function ConnectionsPage() {
     setLoadingGraph(true);
     (async () => {
       try {
+        const params = new URLSearchParams({ type: seed.type, id: String(seed.id), depth: String(graphDepth) });
+        if (dateFrom) params.set('date_from', dateFrom);
+        if (dateTo) params.set('date_to', dateTo);
         const data = await apiFetch<{ nodes: ServerNode[]; edges: ServerEdge[] }>(
-          `/connections/graph?type=${seed.type}&id=${seed.id}&depth=${graphDepth}`
+          `/connections/graph?${params}`
         );
         if (cancelled) return;
         const isSeedNode = (n: ServerNode) => n.type === seed.type && n.entityId === seed.id;
@@ -309,7 +280,7 @@ export default function ConnectionsPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [seed, graphDepth]);
+  }, [seed, graphDepth, dateFrom, dateTo]);
 
   // Force simulation
   useEffect(() => {
@@ -568,6 +539,14 @@ export default function ConnectionsPage() {
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId) ?? null;
 
+  // Map overlay target: the currently-selected graph node if one is picked,
+  // otherwise the seed entity itself. GPS breadcrumbs / ALPR sightings are
+  // never graphed as nodes (too high-volume — see connections.ts), so this
+  // is the only place they're geo-rendered for whatever's in focus.
+  const mapNode = selectedNode
+    ? { type: selectedNode.type, id: selectedNode.entityId }
+    : (seed ? { type: seed.type, id: seed.id } : null);
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -694,7 +673,7 @@ export default function ConnectionsPage() {
                 onClick={() => pickSeed(r)}
                 className="px-3 py-2 text-sm text-rmpg-200 cursor-pointer hover:bg-surface-sunken border-b border-border-subtle last:border-b-0"
               >
-                <span className="text-brand-400 text-xs uppercase mr-2">{r.type}</span>
+                <span className="text-brand-400 text-xs uppercase mr-2">{formatEnumValue(r.type)}</span>
                 {r.label}
               </li>
             ))}
@@ -725,7 +704,7 @@ export default function ConnectionsPage() {
           className="px-3 py-2 bg-surface-raised border border-brand-400 text-sm text-rmpg-200 flex items-center gap-3"
           style={{ borderRadius: 2 }}
         >
-          <span className="text-brand-400 text-xs uppercase font-semibold">{seed.type}</span>
+          <span className="text-brand-400 text-xs uppercase font-semibold">{formatEnumValue(seed.type)}</span>
           <span className="font-semibold">{seed.label}</span>
           <span className="text-rmpg-500 text-xs ml-auto">#{seed.id}</span>
           <div className="flex items-center gap-2 border-l border-rmpg-700 pl-3">
@@ -742,6 +721,25 @@ export default function ConnectionsPage() {
               aria-label="Graph depth"
             />
             <span className="text-brand-400 font-mono w-4 text-center text-xs">{graphDepth}</span>
+          </div>
+          <div className="flex items-center gap-1 border-l border-rmpg-700 pl-3">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+              aria-label="Filter from date"
+            />
+            <span className="text-rmpg-500 text-xs">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-rmpg-100"
+              style={{ borderRadius: 2 }}
+              aria-label="Filter to date"
+            />
           </div>
           <button
             type="button"
@@ -802,7 +800,7 @@ export default function ConnectionsPage() {
                 <line
                   key={`edge-${i}`}
                   x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                  stroke={inPath ? '#22c55e' : 'var(--rmpg-600)'}
+                  stroke={inPath ? '#22c55e' : 'var(--text-muted)'}
                   strokeWidth={inPath ? 3 : 1.5}
                   strokeDasharray={inPath ? undefined : '4,3'}
                   opacity={dim ? 0.2 : 1}
@@ -1044,25 +1042,38 @@ export default function ConnectionsPage() {
         <div style={{ width: 320, background: 'var(--surface-overlay)', borderLeft: '1px solid var(--border-subtle)', overflowY: 'auto', padding: 8, flexShrink: 0, maxHeight: '100%' }}>
           <div className="text-[9px] font-semibold mb-2" style={{ color: '#e879f9' }}>TIMELINE — {nodes.length} NODES</div>
           {timelineError && <div style={{ color: 'var(--sev-critical)', fontSize: 11 }}>{timelineError}</div>}
-          {timelineLoading && <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>Loading…</div>}
+          {timelineLoading && <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>Loading…</div>}
           {!timelineLoading && !timelineError && timeline.length === 0 && (
-            <div style={{ color: 'var(--rmpg-500)', fontSize: 11 }}>No dated events in this graph.</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No dated events in this graph.</div>
           )}
           {timeline.map((ev, i) => {
             return (
               <div key={`${ev.kind}-${ev.id}-${i}`} className="py-[3px]" style={{ borderTop: '1px solid var(--border-subtle)' }}>
                 <div className="flex items-center gap-2 text-[10px]">
                   <span style={{ color: TIMELINE_KIND_COLOR[ev.kind] || '#888', fontWeight: 700 }}>{ev.kind.toUpperCase()}</span>
-                  <span style={{ color: 'var(--rmpg-500)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{ev.date ? ev.date.slice(0, 10) : '—'}</span>
                 </div>
-                <div className="text-[11px]" style={{ color: 'var(--rmpg-200)' }}>{ev.title}</div>
-                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--rmpg-500)' }}>{ev.subtitle}</div>}
+                <div className="text-[11px]" style={{ color: 'var(--text-primary)' }}>{ev.title}</div>
+                {ev.subtitle && <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{ev.subtitle}</div>}
               </div>
             );
           })}
         </div>
       )}
       </div>
+      )}
+
+      {seed && mapNode && (
+        <div>
+          <div className="text-brand-400 text-xs uppercase font-semibold mb-1">
+            Map — {selectedNode ? selectedNode.label : seed.label}
+          </div>
+          <ConnectionsMapPanel
+            key={`${mapNode.type}-${mapNode.id}`}
+            nodeType={mapNode.type}
+            nodeEntityId={mapNode.id}
+          />
+        </div>
       )}
 
       {/* Annotation edit modal */}

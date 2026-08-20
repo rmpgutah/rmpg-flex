@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import ConfirmDialog from '../components/ConfirmDialog';
 import {
@@ -874,7 +874,7 @@ export default function WebResearchPage() {
                       </span>
                       {result.linked_entity_type && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-mono uppercase bg-green-500/20 text-green-400 border border-green-500/30 rounded-sm">
-                          {(result.linked_entity_type || '').replace(/_/g, ' ').toUpperCase()} #{result.linked_entity_id}
+                          {toDisplayLabel(result.linked_entity_type || '').toUpperCase()} #{result.linked_entity_id}
                         </span>
                       )}
                     </div>

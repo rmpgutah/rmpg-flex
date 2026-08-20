@@ -3,10 +3,10 @@
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
-import { UNIT_STATUS_HEX, UNIT_STATUS_ABBREV, PRIORITY_HEX } from '../../../utils/statusColors';
+import { UNIT_STATUS_HEX, UNIT_STATUS_ABBREV, PRIORITY_HEX, priorityHex } from '../../../utils/statusColors';
 
 // Re-export from consolidated source
-export { UNIT_STATUS_HEX as UNIT_STATUS_COLORS, UNIT_STATUS_ABBREV as UNIT_STATUS_LABELS, PRIORITY_HEX as PRIORITY_COLORS };
+export { UNIT_STATUS_HEX as UNIT_STATUS_COLORS, UNIT_STATUS_ABBREV as UNIT_STATUS_LABELS, PRIORITY_HEX as PRIORITY_COLORS, priorityHex };
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -26,6 +26,7 @@ export interface MapUnit {
   gps_updated_at?: string; // timestamp of the last GPS fix — drives the stale/lost marker dimming
   gps_speed?: number | null;       // m/s from GPS tracker
   gps_heading?: number | null;     // degrees 0-360
+  gps_accuracy?: number | null;    // meters, from the mirrored last GPS fix
   battery_level?: number | null;   // 0-100 from mobile device
   dispatched_at?: string | null;   // timestamp when dispatched to current call
   onscene_at?: string | null;      // timestamp when arrived on scene
@@ -182,12 +183,12 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   WRNT: '#7c3aed',
   HZMT: '#fbbf24',
   ANML: '#a3e635',
-  CALL: 'var(--rmpg-500)',
+  CALL: 'var(--text-muted)',
 };
 
 export function getIncidentCategoryColor(type: string): string {
   const { category } = getIncidentCategory(type);
-  return INCIDENT_CATEGORY_COLORS[category] || 'var(--rmpg-500)';
+  return INCIDENT_CATEGORY_COLORS[category] || 'var(--text-muted)';
 }
 
 // ── Incident Category Glyphs (lucide-style monochrome SVG) ───────
@@ -256,7 +257,3 @@ export function getZoomLevel(zoom: number): 'overview' | 'neighborhood' | 'stree
   return 'overview';
 }
 
-/** Shared className prefix for floating toolbar buttons (Advanced Map Tools
- * toolbar + ToolbarDropdownGroup triggers/items) — one source of truth so the
- * 5 toolbar-declutter groups don't each hand-copy this string. */
-export const TOOLBAR_ITEM_CLASS = 'bg-surface-raised/95 border border-border-default p-2 backdrop-blur-sm';

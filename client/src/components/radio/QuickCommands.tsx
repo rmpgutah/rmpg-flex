@@ -20,7 +20,7 @@ interface QuickCommandsProps {
 export default function QuickCommands({ onCommand }: QuickCommandsProps) {
   return (
     <div className="border border-border-default rounded-[2px] p-2 bg-surface-base">
-      <div className="text-[9px] font-semibold text-[#888888] uppercase tracking-[0.5px] mb-1.5">
+      <div className="text-[9px] font-semibold text-fg-muted uppercase tracking-[0.5px] mb-1.5">
         QUICK COMMANDS
       </div>
 
@@ -32,15 +32,15 @@ export default function QuickCommands({ onCommand }: QuickCommandsProps) {
             className="py-1 px-1.5 rounded-[2px] text-[9px] font-bold uppercase tracking-wide transition-colors border"
             style={{
               background: 'var(--surface-overlay)',
-              color: '#888888',
+              color: 'var(--text-muted)',
               borderColor: 'var(--border-subtle)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = '#d4a017';
-              e.currentTarget.style.borderColor = '#d4a017';
+              e.currentTarget.style.color = 'var(--accent-silver-300)';
+              e.currentTarget.style.borderColor = 'var(--accent-silver-400)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = '#888888';
+              e.currentTarget.style.color = 'var(--text-muted)';
               e.currentTarget.style.borderColor = 'var(--border-subtle)';
             }}
           >

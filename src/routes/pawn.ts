@@ -9,7 +9,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { containsAnyClause } from '../utils/searchText';
 
+import { log } from '../utils/logger';
 const pawn = new Hono<Env>();
 
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
@@ -29,13 +31,16 @@ pawn.get('/', async (c) => {
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (status) { conditions.push('status = ?'); params.push(status); }
     if (search) {
-      conditions.push('(serial_number LIKE ? OR item_description LIKE ? OR seller_last_name LIKE ? OR seller_first_name LIKE ?)');
-      const s = `%${search}%`; params.push(s, s, s, s);
+      // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (searchText.ts).
+      const _m = containsAnyClause(['serial_number', 'item_description', 'seller_last_name', 'seller_first_name']);
+      conditions.push(_m.sql);
+      params.push(..._m.binds(search));
     }
     const rows = await query<Record<string, unknown>>(
       db, `SELECT * FROM pawn_transactions WHERE ${conditions.join(' AND ')} ORDER BY transaction_date DESC LIMIT 500`, ...params);
     return c.json(rows);
   } catch (err) {
+    log.error('GET / failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to list transactions' }, 500);
   }
 });
@@ -48,6 +53,7 @@ pawn.get('/search/stolen', async (c) => {
       db, `SELECT * FROM pawn_transactions WHERE flagged_stolen = 1 ORDER BY transaction_date DESC LIMIT 200`);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /search/stolen failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to search stolen matches' }, 500);
   }
 });
@@ -77,6 +83,7 @@ pawn.post('/', async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
+    log.error('POST / failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to create transaction' }, 500);
   }
 });
@@ -98,12 +105,13 @@ pawn.put('/:id', async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
     if (!sets.length) return c.json({ error: 'No fields' }, 400);
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE pawn_transactions SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', id);
     if (!updated) return c.json({ error: 'Not found' }, 404);
     return c.json(updated);
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to update transaction' }, 500);
   }
 });
@@ -116,11 +124,12 @@ pawn.post('/:id/flag', async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const result = await execute(db,
-      `UPDATE pawn_transactions SET flagged_stolen = 1, status = 'flagged', updated_at = datetime('now','localtime') WHERE id = ?`, id);
+      `UPDATE pawn_transactions SET flagged_stolen = 1, status = 'flagged', updated_at = datetime('now') WHERE id = ?`, id);
     if (result.meta.changes === 0) return c.json({ error: 'Not found' }, 404);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM pawn_transactions WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
+    log.error('POST /:id/flag failed', { src: 'src/routes/pawn.ts' }, err);
     return c.json({ error: 'Failed to flag transaction' }, 500);
   }
 });

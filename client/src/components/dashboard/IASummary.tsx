@@ -26,11 +26,11 @@ export default function IASummary({
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col items-center p-1.5 bg-surface-sunken panel-beveled">
               <span className={`text-xs font-bold font-mono tabular-nums ${openCases > 0 ? 'text-amber-400' : 'text-green-400'}`}>{openCases}</span>
-              <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Open</span>
+              <span className="text-[8px] text-fg-muted uppercase font-bold tracking-wider">Open</span>
             </div>
             <div className="flex flex-col items-center p-1.5 bg-surface-sunken panel-beveled">
               <span className={`text-xs font-bold font-mono tabular-nums ${underInvestigation > 0 ? 'text-red-400' : 'text-rmpg-200'}`}>{underInvestigation}</span>
-              <span className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">Investigation</span>
+              <span className="text-[8px] text-fg-muted uppercase font-bold tracking-wider">Investigation</span>
             </div>
           </div>
           {closedThisMonth > 0 && (

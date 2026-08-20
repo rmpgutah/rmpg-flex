@@ -1,0 +1,87 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S01kiosk-boot-slot-check
+#
+# Runs very early (S01, well before the network and desktop markers) to count
+# failed boot attempts on the persistent boot store and, once a slot has failed
+# too many times, point the bootloader at the other slot and reboot into it.
+#
+# The counter is cleared later in a successful boot (see S99kiosk-desktop),
+# so "failed" means precisely "did not reach a working desktop session".
+#
+# ── 2026-07-25: this script did not work on real hardware ─────────────────────
+#
+# It used to hardcode `mount -t ext2 /dev/vda1`. That is the QEMU virtio device
+# name. On a Panasonic Toughbook FZ-55 the store is /dev/nvme0n1p1 or
+# /dev/sda1, and on the no-USB install it is a directory on the Windows NTFS
+# volume — so the mount failed, this script logged a warning, exited 0, and the
+# failed-boot counter never incremented. A/B rollback, the entire reason the
+# slots exist, could not fire on ANY fielded unit while passing every QEMU test.
+#
+# Device discovery now lives in /usr/lib/rmpg/boot-store.sh, which probes for
+# the store by marker file rather than trusting a device name, and handles both
+# the extlinux (USB/disk) and GRUB-on-NTFS (no-USB) layouts.
+#
+# Exits 0 in every path except a deliberate reboot: a terminal that cannot find
+# its boot store must still finish booting into a usable dispatch console. The
+# missing store is reported loudly on the console instead.
+
+MAX_ATTEMPTS=3
+
+. /usr/lib/rmpg/boot-store.sh
+
+if ! rmpg_bootstore_find; then
+  # Not fatal, but it does mean this unit has no rollback protection, so say so
+  # in terms an operator reading a bring-up console can act on.
+  echo "KIOSK_LINUX_BOOT_SLOT_CHECK_FAILED (no persistent boot store found — this terminal has NO automatic rollback)"
+  exit 0
+fi
+
+COUNTER_FILE="$RMPG_BOOTSTORE_DIR/boot_attempts"
+
+if ! rmpg_bootstore_rw; then
+  # Read-only store: the counter cannot be maintained, so rollback is inert.
+  # Reported rather than silently skipped — on the no-USB path the usual cause
+  # is a dirty NTFS volume from Windows Fast Startup, which is fixable.
+  echo "KIOSK_LINUX_BOOT_SLOT_CHECK_READONLY (store found at $RMPG_BOOTSTORE_DIR but not writable — no rollback protection this boot)"
+  exit 0
+fi
+
+ATTEMPTS="$(cat "$COUNTER_FILE" 2>/dev/null)"
+case "$ATTEMPTS" in
+  ''|*[!0-9]*) ATTEMPTS=0 ;;
+esac
+ATTEMPTS=$((ATTEMPTS + 1))
+echo "$ATTEMPTS" > "$COUNTER_FILE"
+sync
+echo "KIOSK_LINUX_BOOT_ATTEMPT $ATTEMPTS (kind=$RMPG_BOOTSTORE_KIND dev=$RMPG_BOOTSTORE_DEV)"
+
+if [ "$ATTEMPTS" -gt "$MAX_ATTEMPTS" ]; then
+  CURRENT_SLOT="$(rmpg_bootstore_get_slot)"
+  OTHER_SLOT="$(rmpg_bootstore_other_slot)"
+  echo "KIOSK_LINUX_BOOT_FALLBACK (from ${CURRENT_SLOT:-unknown} to $OTHER_SLOT after $ATTEMPTS failed attempts)"
+
+  # Reset the counter BEFORE flipping the pointer. If the order were reversed
+  # and power were lost between the two writes, the terminal would boot the
+  # other slot with the counter already past the limit and immediately flip
+  # back — an infinite A/B ping-pong that never comes up. Resetting first means
+  # the worst case is one extra attempt against the same slot.
+  echo "0" > "$COUNTER_FILE"
+  sync
+
+  if rmpg_bootstore_set_slot "$OTHER_SLOT"; then
+    rmpg_bootstore_ro
+    reboot -f
+  else
+    echo "KIOSK_LINUX_BOOT_FALLBACK_FAILED (could not write the slot pointer; continuing to boot $CURRENT_SLOT)"
+    rmpg_bootstore_ro
+    exit 0
+  fi
+fi
+
+# Leave the store mounted read-only for the rest of the boot: S99kiosk-desktop
+# clears the counter through the same mount point, and rmpg-update reuses it.
+# Read-only by default matters on a vehicle terminal, where power is cut without
+# warning as a matter of routine and a mounted-writable filesystem is the thing
+# that gets corrupted.
+rmpg_bootstore_ro
+exit 0

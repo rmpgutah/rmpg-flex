@@ -127,6 +127,17 @@ flexcam.get('/footage/:id', async (c): Promise<Response> => {
 });
 
 flexcam.get('/footage/:id/chunk/:seq/stream', async (c): Promise<Response> => {
+  // Auth: `/stream` matches authMiddleware's media predicate, so a header-less
+  // GET with sig+exp reaches this handler unverified. Require a real session —
+  // the client fetches chunks via apiFetchBlob (which sends the Authorization
+  // header), so there is no bare-<video> case to accommodate here.
+  //
+  // This also stops logCustody() below from writing a chain-of-custody
+  // "viewed" row with actorUserId: null, which recorded anonymous evidence
+  // access as a legitimate view instead of refusing it.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const db = getDb(c.env);
   const row = await queryFirst<{ r2_key: string | null; content_type: string | null }>(db,
     'SELECT r2_key, content_type FROM footage_chunks WHERE request_id=? AND seq=?', c.req.param('id'), c.req.param('seq')).catch(() => null);
@@ -309,7 +320,8 @@ flexcam.post('/footage/:id/court-package', async (c): Promise<Response> => {
   const manifest = buildCourtManifest({ request: req, chunks, links, custody });
   const payloadHash = await manifestPayloadHash(manifest);
   const caseRef = links.find((l) => l.entity_type === 'incident' || l.entity_type === 'case');
-  const signed = await signTriple(c.env, `flexcam:${req.evidence_number ?? id}`, caseRef ? `${caseRef.entity_type}:${caseRef.entity_id}` : '', payloadHash);
+  const ctx = (() => { try { return c.executionCtx; } catch { return undefined; } })();
+  const signed = await signTriple(c.env, `flexcam:${req.evidence_number ?? id}`, caseRef ? `${caseRef.entity_type}:${caseRef.entity_id}` : '', payloadHash, ctx);
   await logCustody(db, { requestId: id, action: 'exported', actorUserId: c.var.user?.id ?? null, actorName: actorName(c), detail: { payloadHash } });
   return c.json({ manifest, payloadHash, ...signed });
 });
@@ -515,7 +527,8 @@ flexcam.post('/backfill', requireRole('admin'), async (c): Promise<Response> => 
 
   for (const trip of batch) {
     const mapping = await queryFirst<{ asset_id: number; cpg_device_id: string }>(db,
-      `SELECT asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
+      // The CPG asset id lives in `cpg_camera_id` (mirrors the /request handler above).
+      `SELECT cpg_camera_id AS asset_id, cpg_device_id FROM cpg_device_mappings WHERE unit_id=? AND is_active=1 LIMIT 1`,
       trip.unit_id,
     ).catch(() => null);
 

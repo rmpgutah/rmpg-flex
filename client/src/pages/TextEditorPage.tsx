@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { ArrowLeft, Save, Loader2, Download, FileText, RotateCcw, Copy, Check, Trash2 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -86,8 +86,9 @@ export default function TextEditorPage() {
       setOriginalContent(text);
     } catch (err: any) {
       addToast(err.message || 'Failed to load file', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [fileId, addToast]);
 
   useEffect(() => { fetchContent(); }, [fetchContent]);
@@ -109,8 +110,9 @@ export default function TextEditorPage() {
       addToast('Saved', 'success');
     } catch (err: any) {
       addToast(err.message || 'Save failed', 'error');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   const handleRevertConfirm = () => {

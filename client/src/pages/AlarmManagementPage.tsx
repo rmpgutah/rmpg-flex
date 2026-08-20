@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -241,7 +241,7 @@ export default function AlarmManagementPage() {
       label: 'Permit',
       render: (r: AlarmAccount) => (
         <span className={`badge ${r.permit_status === 'active' ? 'badge-available' : r.permit_status === 'expired' ? 'badge-busy' : 'badge-pending'}`}>
-          {r.permit_status}
+          {formatEnumValue(r.permit_status)}
         </span>
       ),
     },
@@ -344,11 +344,11 @@ export default function AlarmManagementPage() {
       {/* New / Edit form modal */}
       {formOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 overflow-y-auto p-4"
           onClick={() => setFormOpen(false)}
         >
           <div
-            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full"
+            className="bg-surface-raised border border-rmpg-700 p-6 max-w-lg w-full my-auto"
             style={{ borderRadius: 2 }}
             onClick={(e) => e.stopPropagation()}
           >

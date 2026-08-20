@@ -4,15 +4,79 @@
     {
       "name": "worker-dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["wrangler", "dev", "--port", "8787"],
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--port",
+        "8787"
+      ],
       "port": 8787
+    },
+    {
+      "name": "worker-dev-remote",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "wrangler",
+        "dev",
+        "--port",
+        "8797",
+        "--remote"
+      ],
+      "port": 8797
     },
     {
       "name": "client-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5183", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5183",
+        "--strictPort"
+      ],
       "cwd": "client",
       "port": 5183
+    },
+    {
+      "name": "client-dev-gallery",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5199",
+        "--strictPort"
+      ],
+      "cwd": "client",
+      "port": 5199
+    },
+    {
+      "name": "client-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vite",
+        "preview",
+        "--port",
+        "5184",
+        "--strictPort"
+      ],
+      "cwd": "client",
+      "port": 5184
+    },
+    {
+      "name": "client-static",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "serve",
+        "-s",
+        "dist",
+        "-l",
+        "5186"
+      ],
+      "cwd": "client",
+      "port": 5186
     }
   ]
 }

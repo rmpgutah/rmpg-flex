@@ -76,8 +76,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
           <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
         </div>
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
-          <CheckCircle className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: passRate >= 80 ? '#22c55e' : passRate >= 50 ? '#f59e0b' : '#ef4444' }} />
-          <div className="text-sm font-bold font-mono" style={{ color: passRate >= 80 ? '#22c55e' : passRate >= 50 ? '#f59e0b' : '#ef4444' }}>
+          <CheckCircle className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: passRate >= 80 ? 'var(--sev-ok)' : passRate >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)' }} />
+          <div className="text-sm font-bold font-mono" style={{ color: passRate >= 80 ? 'var(--sev-ok)' : passRate >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)' }}>
             {inspections.length > 0 ? `${passRate}%` : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>

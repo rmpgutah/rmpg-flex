@@ -78,7 +78,7 @@ export default function FuelBudgetModal({
     clearDraft,
     snapshot,
   } = useFormDraft<BudgetFormState>({
-    storageKey: 'rmpg_fleet_fuel_budget_form',
+    storageKey: `rmpg_fleet_fuel_budget_form_${initial?.id ?? 'new'}`,
     defaultValue: EMPTY_BUDGET_FORM,
     isActive: isOpen,
   });
@@ -152,9 +152,9 @@ export default function FuelBudgetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60"
       role="dialog" aria-modal="true" aria-labelledby={titleId}
-      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
+      onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[480px] max-w-full mx-4 max-h-[90vh] flex flex-col bg-surface-raised"
         onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL BUDGET' : 'NEW FUEL BUDGET'} icon={DollarSign} id={titleId}>
@@ -164,7 +164,7 @@ export default function FuelBudgetModal({
 
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {wasRestored && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.1)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

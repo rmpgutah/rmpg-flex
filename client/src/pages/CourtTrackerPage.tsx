@@ -9,7 +9,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import { formatPhoneInput, formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import {
@@ -879,7 +879,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
+                      <span className="text-[10px] text-rmpg-300">{toDisplayLabel(r.outcome || '').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div
@@ -1039,7 +1039,7 @@ export default function CourtTrackerPage() {
                 </span>
                 {selected.outcome && (
                   <span className="text-[10px] px-2 py-1 border rounded-sm bg-purple-900/50 text-purple-400 border-purple-700/50 font-bold">
-                    {selected.outcome.replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(selected.outcome).toUpperCase()}
                   </span>
                 )}
                 {(selected as any).continuance_count > 0 && (
@@ -1178,7 +1178,7 @@ export default function CourtTrackerPage() {
                     <div key={i} className="flex items-center gap-2 py-1 border-b border-rmpg-800 last:border-0">
                       <FileText style={{ width: 10, height: 10 }} className="text-brand-400" />
                       <span className="text-[10px] text-rmpg-100">{d.file_name}</span>
-                      <span className="text-[9px] text-rmpg-500">{d.doc_type}</span>
+                      <span className="text-[9px] text-rmpg-500">{formatEnumValue(d.doc_type)}</span>
                     </div>
                   ));
                 })()}
@@ -1316,7 +1316,7 @@ export default function CourtTrackerPage() {
                 <div className="panel-beveled p-3">
                   <div className="text-[9px] font-mono text-brand-gold-500 uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-rmpg-100 font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
+                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-rmpg-100 font-bold">{toDisplayLabel(selected.outcome)}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-rmpg-100">{selected.sentence}</span></div>}
                     {selected.fine_amount && !isNaN(Number(selected.fine_amount)) && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
                   </div>
@@ -1343,8 +1343,8 @@ export default function CourtTrackerPage() {
 
       {/* New Event Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
-          <div className="panel-surface w-full max-w-lg mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="New Court Event">
+          <div className="panel-surface w-full max-w-lg mx-4 my-auto">
             <PanelTitleBar title="New Court Event" icon={Plus}>
               <div className="flex items-center gap-2">
                 {formIsDirty && (
@@ -1425,8 +1425,8 @@ export default function CourtTrackerPage() {
 
       {/* Outcome Modal */}
       {outcomeOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record Outcome">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Record Outcome">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
               <IconButton onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1494,8 +1494,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 6: Bail/Bond Modal */}
       {bailOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
               <IconButton onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1555,8 +1555,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 7: Prosecutor Contact Modal */}
       {prosecutorOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
               <IconButton onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
@@ -1580,8 +1580,8 @@ export default function CourtTrackerPage() {
 
       {/* Feature 8b: Court Fees Modal */}
       {feeOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
-          <div className="panel-surface w-full max-w-md mx-4">
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+          <div className="panel-surface w-full max-w-md mx-4 my-auto">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
               <IconButton onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>

@@ -28,12 +28,13 @@
 // - Distinct empty states: filter-cleared "no invoices yet" vs
 //   filter-applied "no matches" with a Clear-filters button.
 // - Theme tokens replace the two hardcoded delete-modal hex
-//   values (#991b1b / #f87171) — ConfirmDialog already uses
+//   values (var(--sev-critical) / var(--sev-critical-soft)) — ConfirmDialog already uses
 //   the rmpg/red theme tokens.
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
+import { importWithRetry } from '../utils/importWithRetry';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -189,7 +190,7 @@ export default function BillingPage() {
         apiFetch<{ data: any[] }>(`/billing/invoices/${inv.id}/items`).catch(() => ({ data: [] })),
         apiFetch<{ data: any[] }>(`/billing/payments?invoice_id=${inv.id}`).catch(() => ({ data: [] })),
       ]);
-      const { generateInvoicePdf } = await import('../utils/invoicePdfGenerator');
+      const { generateInvoicePdf } = await importWithRetry(() => import('../utils/invoicePdfGenerator'));
       const pdfData = {
         invoice_number: String(inv.invoice_number || `INV-${inv.id}`),
         status: String(inv.status || 'draft'),

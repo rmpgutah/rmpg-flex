@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch, executeInChunks, queryInChunks } from '../../utils/db';
 import { emitAnalytics, flexEvent } from '../../utils/analytics';
 import { emitAlert } from '../../utils/alertHub';
 import { haversineM } from '../../utils/tripTelemetry';
@@ -10,9 +10,22 @@ import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
 import { log } from '../../utils/logger';
 import { parseZoneFeatures, pointInAnyPolygon, diffZoneMembership } from '../../utils/geofenceZones';
+import { identifyBeat } from '../../utils/geofence';
 import { broadcastAll } from '../ws';
+import { rateLimitAllow } from '../../utils/rateLimit';
+import { requireRole } from '../../middleware/auth';
+import { evaluateServerRules, loadRulesForUser } from '../../utils/automationEngine';
 
 const gps = new Hono<Env>();
+
+// Fleet-wide position/telemetry reads expose every officer's live and
+// historical location + identity — client_viewer/contract_manager (external
+// roles) must not see this, matching the READ_ROLES convention in
+// extensions.ts. Self-scoped routes (my-unit/my-vehicle) and the device
+// self-report ingest (POST /) are unaffected — they only ever return the
+// calling user's own data.
+const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
 
 // Normalize a GPS point from either client format ({ lat, lng }) or
 // server-previous format ({ latitude, longitude }). Returns normalized
@@ -65,6 +78,16 @@ gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
+
+    // GPS-specific rate limit — tighter than the generic per-user 600/300s
+    // limit (src/middleware/rateLimit.ts), which is explicitly tuned to NOT
+    // throttle normal GPS traffic. This catches a runaway client loop
+    // hammering the single highest-frequency endpoint in the app.
+    const gpsAllowed = await rateLimitAllow(c.env.KV, `gps:unit:${userId}`, 30, 30);
+    if (!gpsAllowed) {
+      return c.json({ error: 'Too many GPS updates. Slow down and try again shortly.', code: 'RATE_LIMITED' }, 429);
+    }
+
     const body = await c.req.json<Record<string, unknown>>();
 
     const rawPoints: Record<string, unknown>[] = Array.isArray(body.points) ? body.points : [body];
@@ -93,6 +116,26 @@ gps.post('/', async (c) => {
       // these unrecoverable fixes instead of re-queuing garbage forever.
       return c.json({ inserted: 0, accepted: 0, dropped: normalized.length }, 200);
     }
+
+    // ── Server-side bounds validation (defense-in-depth) ──────
+    // Mirrors the client's own filters (useGpsTracking.ts DEFAULT_MAX_ACCURACY/
+    // DEFAULT_MAX_SPEED) but a compromised or buggy client can skip those —
+    // this is the last line of defense before data lands in gps_breadcrumbs.
+    // Out-of-range fields are nulled, not dropped: the position itself is
+    // still useful even if its accuracy/heading/speed reading is garbage.
+    const MAX_ACCURACY_M = 2000;
+    const MAX_SPEED_MPS = 60; // ~134 mph, generous for a pursuit
+    for (const pt of points) {
+      if (pt.accuracy != null && (!Number.isFinite(pt.accuracy) || pt.accuracy < 0 || pt.accuracy > MAX_ACCURACY_M)) pt.accuracy = undefined;
+      if (pt.heading != null && (!Number.isFinite(pt.heading) || pt.heading < 0 || pt.heading > 360)) pt.heading = undefined;
+      if (pt.speed != null && (!Number.isFinite(pt.speed) || pt.speed < 0 || pt.speed > MAX_SPEED_MPS)) pt.speed = undefined;
+    }
+
+    // ── Speed-jump flagging ────────────────────────────────────
+    // Compares each point's implied speed from the PRIOR known position
+    // (the unit's last mirrored fix for the first point in the batch, then
+    // each preceding point within the batch) against MAX_SPEED_MPS. Flagged,
+    // not rejected — dispatchers may still want to see a suspect point.
     const lastPt = points[points.length - 1];
 
     // Unit identity: officer → units row. Take-home officers (has_take_home = 1
@@ -107,10 +150,15 @@ gps.post('/', async (c) => {
     // best-effort on-foot detection below — reading it here would let a single
     // unlanded migration 500 the entire GPS write path (breadcrumbs, unit
     // position, trips). It is read separately, guarded, inside that block.
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null; current_call_id: number | null; latitude: number | null; longitude: number | null; gps_updated_at: string | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id, latitude, longitude, gps_updated_at FROM units WHERE officer_id = ? LIMIT 1', userId);
 
-    if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
+    if (!unit && !isTakeHome) {
+      // 200 (not 400) so the client queue drains cleanly instead of re-queuing and
+      // retrying every 5 s for the entire shift — mirrors the off-duty handling below.
+      log.info('[gps] dropped fixes from officer with no assigned unit', { userId });
+      return c.json({ accepted: 0, dropped: rawPoints.length, reason: 'no_unit' }, 200);
+    }
 
     // Privacy + data-integrity guard: drop pings from a non-take-home officer
     // whose unit is off-duty. iOS keeps the GpsTracker running until the user
@@ -142,11 +190,30 @@ gps.post('/', async (c) => {
       resolvedVehicleId = fv?.id ?? null;
     }
 
+    let prevLat = unit?.latitude ?? null;
+    let prevLng = unit?.longitude ?? null;
+    let prevTimeMs = unit?.gps_updated_at
+      ? new Date(unit.gps_updated_at.replace(' ', 'T') + (unit.gps_updated_at.includes('Z') ? '' : 'Z')).getTime()
+      : null;
+    const flags: (string | null)[] = points.map((pt) => {
+      const ptTimeMs = pt.timestamp ? new Date(pt.timestamp).getTime() : Date.now();
+      let flag: string | null = null;
+      if (prevLat != null && prevLng != null && prevTimeMs != null && Number.isFinite(ptTimeMs)) {
+        const distM = haversineM(prevLat, prevLng, pt.latitude, pt.longitude);
+        const dtS = Math.max(1, (ptTimeMs - prevTimeMs) / 1000);
+        if (distM / dtS > MAX_SPEED_MPS) flag = 'speed_jump';
+      }
+      if (Number.isFinite(ptTimeMs)) {
+        prevLat = pt.latitude; prevLng = pt.longitude; prevTimeMs = ptTimeMs;
+      }
+      return flag;
+    });
+
     // Batch-insert breadcrumbs — single D1 round-trip instead of N.
-    const stmts = points.map((pt) => ({
-      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null],
+    const stmts = points.map((pt, i) => ({
+      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, activity, activity_confidence, recorded_at, flagged_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`,
+      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign, pt.activity ?? null, pt.activity_confidence ?? null, flags[i]],
     }));
     const results = await executeBatch(db, stmts);
     const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
@@ -166,10 +233,10 @@ gps.post('/', async (c) => {
     // NavigationPage map turning arrow and speed label work.
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {
       await execute(db,
-        `UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?,
+        `UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_accuracy = ?,
            gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
         lastPt.latitude, lastPt.longitude,
-        lastPt.heading ?? null, lastPt.speed ?? null,
+        lastPt.heading ?? null, lastPt.speed ?? null, lastPt.accuracy ?? null,
         unitId);
     }
 
@@ -374,6 +441,7 @@ gps.post('/', async (c) => {
     // Trip engine: feed every fix through applyTripEvent so the pure engine
     // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
     // live GPS writes are what OPEN and append them.
+    const incomingFixes: IncomingFix[] = [];
     if (unitId) {
       // prev = the PREVIOUS fix in this batch (null on the first). Threading it
       // lets the engine's distance-from-prev open check actually see movement;
@@ -395,6 +463,7 @@ gps.post('/', async (c) => {
         const parsed = pt.timestamp ? Date.parse(pt.timestamp) : NaN;
         const ts = Number.isFinite(parsed) ? parsed : Date.now();
         const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
+        incomingFixes.push(fix);
         const event: TripEvent = { kind: 'gps', fix };
         try {
           await applyTripEvent({
@@ -427,11 +496,18 @@ gps.post('/', async (c) => {
             `SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active'
              ORDER BY start_time DESC LIMIT 1`, unitId);
           if (activeTrip?.id) {
-            const placeholders = inserted.map(() => '?').join(',');
-            await execute(db,
-              `UPDATE gps_breadcrumbs SET trip_id = ?
+            // executeInChunks: `inserted` is one id per accepted GPS fix and the
+            // batch size is NOT capped anywhere upstream, so a device posting
+            // >100 fixes in one payload built a >100-parameter UPDATE that D1
+            // rejects at bind time. It fails inside the enclosing try/catch,
+            // which logs "trip engine failed" and moves on — so the breadcrumbs
+            // silently keep trip_id = NULL and the trip log is incomplete with
+            // no error surfaced. leadingBindings carries the trip id, which
+            // chunkBindings counts against the cap.
+            await executeInChunks(db, inserted,
+              (placeholders) => `UPDATE gps_breadcrumbs SET trip_id = ?
                WHERE id IN (${placeholders}) AND trip_id IS NULL`,
-              activeTrip.id, ...inserted);
+              [activeTrip.id]);
           }
         } catch { log.warn('[gps] breadcrumb trip_id backfill failed', { unitId, insertedCount: inserted.length }); /* non-fatal — replay degrades, GPS write still succeeds */ }
       }
@@ -449,6 +525,17 @@ gps.post('/', async (c) => {
         at: new Date().toISOString(),
       });
     } catch { log.warn('[gps] live fan-out (emitAlert) failed', { unitId, callSign }); /* non-fatal */ }
+
+    // Smart automations — evaluate rules against this GPS batch
+    try {
+      const rules = await loadRulesForUser(db, userId, unitId ?? null);
+      if (rules.length > 0) {
+        await evaluateServerRules(db, c.env, c.executionCtx, userId, unitId ?? null, incomingFixes, rules);
+      }
+    } catch (err) {
+      log.error('[gps] automation evaluation failed', { userId }, err);
+      // non-fatal — never block the GPS response
+    }
 
     // Echo the resolved unit back so the client's useGpsTracking can populate
     // unitId/callSign without a separate GET /dispatch/gps/my-unit (which can
@@ -473,7 +560,7 @@ gps.post('/', async (c) => {
 // GET /dispatch/gps/on-foot-segments?unit_id=&officer_id=&limit=
 // Recent on-foot segments for after-action review. ended_at IS NULL
 // means the segment is still open (officer currently on foot).
-gps.get('/on-foot-segments', async (c) => {
+gps.get('/on-foot-segments', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -488,13 +575,14 @@ gps.get('/on-foot-segments', async (c) => {
     sql += ' ORDER BY started_at DESC LIMIT ?'; params.push(limit);
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json({ data: rows, count: rows.length });
-  } catch {
+  } catch (err) {
+    log.error('GET /on-foot-segments failed', { src: 'src/routes/dispatch/gps.ts' }, err);
     return c.json({ data: [], count: 0, error: 'Failed to list foot segments' }, 500);
   }
 });
 
 // GET /dispatch/gps/current - Latest position per unit
-gps.get('/current', async (c) => {
+gps.get('/current', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
@@ -591,7 +679,7 @@ gps.get('/my-vehicle', async (c) => {
 });
 
 // GET /dispatch/gps/dwell-times — units that have been stationary for a while.
-gps.get('/dwell-times', async (c) => {
+gps.get('/dwell-times', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -608,7 +696,7 @@ gps.get('/dwell-times', async (c) => {
 });
 
 // GET /dispatch/gps/speed-zones — recent high-speed events by zone.
-gps.get('/speed-zones', async (c) => {
+gps.get('/speed-zones', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -655,7 +743,7 @@ function downsample<T>(points: T[], cap: number): T[] {
 // GET /dispatch/gps/trails?hours=N[&unit_id=] — live per-unit breadcrumb
 // trails for the map layer. Bare ARRAY (the client Array.isArray-checks the
 // response). Points come back oldest→newest (the renderer fades by index).
-gps.get('/trails', async (c) => {
+gps.get('/trails', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const hoursRaw = Number.parseInt(c.req.query('hours') ?? '8', 10);
@@ -708,7 +796,7 @@ gps.get('/trails', async (c) => {
 // replay panel. from/to are 'YYYY-MM-DD HH:MM:SS' local-style strings; the
 // breadcrumb recorded_at is UTC SQLite text, so we compare lexically — the
 // client sends a full datetime range and tolerates edge drift.
-gps.get('/history', async (c) => {
+gps.get('/history', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const unitId = c.req.query('unit_id');
@@ -745,7 +833,7 @@ gps.get('/history', async (c) => {
 // shape ({ id, call_sign }) left unit_id undefined in the picker, so the
 // replay query always fired with unit_id=undefined and found nothing.
 // Window: 30 days (the panel replays history, not just the live shift).
-gps.get('/units-with-trails', async (c) => {
+gps.get('/units-with-trails', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -764,7 +852,7 @@ gps.get('/units-with-trails', async (c) => {
 });
 
 // GET /dispatch/gps/speed-violations — recent speed violations for the map overlay.
-gps.get('/speed-violations', async (c) => {
+gps.get('/speed-violations', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
   try {
     const db = getDb(c.env);
@@ -785,14 +873,15 @@ gps.get('/speed-violations', async (c) => {
 });
 
 // POST /dispatch/gps/speed-violations/:id/acknowledge
-gps.post('/speed-violations/:id/acknowledge', async (c) => {
-  // Speed violations are derived from breadcrumbs, not a separate table.
-  // Acknowledge is a no-op until we add a speed_violation_acks table.
-  return c.json({ success: true, id: c.req.param('id') });
+gps.post('/speed-violations/:id/acknowledge', requireRole(...WRITE_ROLES), async (c) => {
+  // speed_violation_acks table not yet provisioned — return 501 rather than
+  // false success so the supervisor console doesn't mark violations as
+  // acknowledged when nothing was actually written.
+  return c.json({ error: 'Speed violation acknowledgement not yet implemented', code: 'NOT_IMPLEMENTED' }, 501);
 });
 
 // GET /dispatch/gps/pursuit-segments — recent pursuit track segments.
-gps.get('/pursuit-segments', async (c) => {
+gps.get('/pursuit-segments', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
   try {
     const db = getDb(c.env);
@@ -818,7 +907,7 @@ gps.get('/pursuit-segments', async (c) => {
 });
 
 // GET /dispatch/gps/speed-heatmap — grid-aggregated speed data for map overlay.
-gps.get('/speed-heatmap', async (c) => {
+gps.get('/speed-heatmap', requireRole(...READ_ROLES), async (c) => {
   const hours = Math.min(parseInt(c.req.query('hours') || '8', 10) || 8, 72);
   try {
     const db = getDb(c.env);
@@ -836,6 +925,131 @@ gps.get('/speed-heatmap', async (c) => {
   } catch (err) { log.error('[gps] GET /speed-heatmap failed', {}, err); return c.json([]); }
 });
 
+// GET /dispatch/gps/zone-speed-stats?hours=N — speed stats per beat.
+// Classifies breadcrumbs into beats via the same R2 geofence used by dispatch
+// (identifyBeat), then aggregates. Beat lookup is a single small-table query,
+// not per-breadcrumb — only the point-in-polygon classification runs per row.
+gps.get('/zone-speed-stats', requireRole(...READ_ROLES), async (c) => {
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+  try {
+    const db = getDb(c.env);
+    const [breadcrumbs, beatRows] = await Promise.all([
+      query<{ latitude: number; longitude: number; speed: number }>(db,
+        `SELECT latitude, longitude, speed
+           FROM gps_breadcrumbs
+          WHERE recorded_at >= datetime('now', '-' || ? || ' hours')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+            AND speed IS NOT NULL AND speed > 0.2
+          ORDER BY recorded_at DESC LIMIT 20000`, hours),
+      query<{ beat_code: string; beat_name: string | null; zone_code: string; zone_name: string | null; sector_name: string | null }>(db,
+        `SELECT db.beat_code, db.beat_name, dz.zone_code, dz.zone_name, ds.sector_name
+           FROM dispatch_beats db
+           JOIN dispatch_zones dz ON dz.id = db.zone_id
+           JOIN dispatch_sectors ds ON ds.id = dz.sector_id`),
+    ]);
+
+    const beatInfo = new Map(beatRows.map((b) => [`${b.zone_code}|${b.beat_code}`, b]));
+    const stats = new Map<string, { zone_code: string; beat_code: string; speeds: number[] }>();
+
+    for (const bc of breadcrumbs) {
+      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
+      if (!hit) continue;
+      const key = `${hit.zone_code}|${hit.beat_code}`;
+      let entry = stats.get(key);
+      if (!entry) { entry = { zone_code: hit.zone_code, beat_code: hit.beat_code, speeds: [] }; stats.set(key, entry); }
+      entry.speeds.push(bc.speed);
+    }
+
+    const result = [...stats.values()].map(({ zone_code, beat_code, speeds }) => {
+      speeds.sort((a, b) => a - b);
+      const sum = speeds.reduce((s, v) => s + v, 0);
+      const p95Idx = Math.min(Math.floor(speeds.length * 0.95), speeds.length - 1);
+      const info = beatInfo.get(`${zone_code}|${beat_code}`);
+      return {
+        beat_id: beat_code,
+        beat_name: info?.beat_name || beat_code,
+        beat_code,
+        zone_name: info?.zone_name || zone_code,
+        sector_name: info?.sector_name || '',
+        avg_speed: Math.round((sum / speeds.length) * 10) / 10,
+        max_speed: Math.round(speeds[speeds.length - 1] * 10) / 10,
+        p95_speed: Math.round(speeds[p95Idx] * 10) / 10,
+        point_count: speeds.length,
+      };
+    }).sort((a, b) => b.point_count - a.point_count);
+
+    return c.json(result);
+  } catch (err) { log.error('[gps] GET /zone-speed-stats failed', {}, err); return c.json([]); }
+});
+
+// GET /dispatch/gps/coverage-timeline?hours=N&interval=N — beat coverage
+// (unique units + avg speed) bucketed into time intervals, for the map's
+// coverage timeline panel.
+gps.get('/coverage-timeline', requireRole(...READ_ROLES), async (c) => {
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+  const intervalMin = Math.min(Math.max(parseInt(c.req.query('interval') || '30', 10) || 30, 10), 120);
+  try {
+    const db = getDb(c.env);
+    const [breadcrumbs, beatRows] = await Promise.all([
+      query<{ unit_id: number; latitude: number; longitude: number; speed: number | null; recorded_at: string }>(db,
+        `SELECT unit_id, latitude, longitude, speed, recorded_at
+           FROM gps_breadcrumbs
+          WHERE recorded_at >= datetime('now', '-' || ? || ' hours')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL AND unit_id IS NOT NULL
+          ORDER BY recorded_at ASC LIMIT 20000`, hours),
+      query<{ beat_code: string; beat_name: string | null; zone_code: string }>(db,
+        `SELECT db.beat_code, db.beat_name, dz.zone_code
+           FROM dispatch_beats db
+           JOIN dispatch_zones dz ON dz.id = db.zone_id`),
+    ]);
+    const beatNames = new Map(beatRows.map((b) => [`${b.zone_code}|${b.beat_code}`, b.beat_name || b.beat_code]));
+
+    const now = Date.now();
+    const startMs = now - hours * 3_600_000;
+    const intervalMs = intervalMin * 60_000;
+    const bucketCount = Math.ceil((now - startMs) / intervalMs);
+    const buckets: { start: number; end: number; beats: Map<string, { units: Set<number>; speeds: number[] }> }[] =
+      Array.from({ length: bucketCount }, (_, i) => ({
+        start: startMs + i * intervalMs,
+        end: startMs + (i + 1) * intervalMs,
+        beats: new Map(),
+      }));
+
+    for (const bc of breadcrumbs) {
+      const t = Date.parse(bc.recorded_at.endsWith('Z') ? bc.recorded_at : bc.recorded_at + 'Z');
+      if (!Number.isFinite(t)) continue;
+      const idx = Math.floor((t - startMs) / intervalMs);
+      if (idx < 0 || idx >= buckets.length) continue;
+
+      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
+      if (!hit) continue;
+      const key = `${hit.zone_code}|${hit.beat_code}`;
+      const bucket = buckets[idx];
+      let entry = bucket.beats.get(key);
+      if (!entry) { entry = { units: new Set(), speeds: [] }; bucket.beats.set(key, entry); }
+      entry.units.add(bc.unit_id);
+      if (bc.speed != null && bc.speed > 0.2) entry.speeds.push(bc.speed);
+    }
+
+    const distinctBeats = new Set<string>();
+    const intervals = buckets.map((b) => ({
+      start: new Date(b.start).toISOString(),
+      end: new Date(b.end).toISOString(),
+      zones: [...b.beats.entries()].map(([key, { units, speeds }]) => {
+        distinctBeats.add(key);
+        return {
+          beat_id: key,
+          beat_name: beatNames.get(key) || key.split('|')[1],
+          unit_count: units.size,
+          avg_speed: speeds.length ? Math.round((speeds.reduce((s, v) => s + v, 0) / speeds.length) * 10) / 10 : null,
+        };
+      }),
+    }));
+
+    return c.json({ intervals, total_beats: distinctBeats.size });
+  } catch (err) { log.error('[gps] GET /coverage-timeline failed', {}, err); return c.json({ intervals: [], total_beats: 0 }); }
+});
+
 // GET /dispatch/gps/call-trail/:callId — GPS breadcrumb trail for all units
 // assigned to a specific call, used by PrintRecordButton to attach a route
 // map to printed call records.
@@ -844,7 +1058,7 @@ gps.get('/speed-heatmap', async (c) => {
 //   total_distance_miles, duration_minutes, avg_speed_mph, max_speed_mph } }
 // An empty trail (no assigned units, no breadcrumbs) still returns 200 with
 // points: [] so the client can distinguish "no data" from a fetch error.
-gps.get('/call-trail/:callId', async (c) => {
+gps.get('/call-trail/:callId', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const callId = Number(c.req.param('callId'));
@@ -865,22 +1079,25 @@ gps.get('/call-trail/:callId', async (c) => {
     const emptyStats = { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 };
     if (unitIds.length === 0) return c.json({ call_id: callId, points: [], stats: emptyStats });
 
-    const placeholders = unitIds.map(() => '?').join(',');
-    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null }>(db,
-      `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
+    // Breadcrumb fetch is chunked to stay under D1's 100-bound-parameter cap.
+    // queryInChunks binds leadingBindings FIRST then the chunk IDs, so the time
+    // predicates must appear before the IN-list in the SQL to match that order.
+    const rows = await queryInChunks<TrailPointRow & { unit_id: number; call_sign: string | null }>(
+      db, unitIds,
+      (ph) => `SELECT g.unit_id, g.call_sign, ${TRAIL_POINT_SELECT}
          FROM gps_breadcrumbs g
-        WHERE g.unit_id IN (${placeholders})
-          AND g.recorded_at >= ?
+        WHERE g.recorded_at >= ?
           AND (? IS NULL OR g.recorded_at <= ?)
+          AND g.unit_id IN (${ph})
           AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
-        ORDER BY g.unit_id, g.recorded_at ASC
-        LIMIT 10000`,
-      ...unitIds, call.received_at, call.closed_at, call.closed_at);
+        ORDER BY g.unit_id, g.recorded_at ASC`,
+      [call.received_at, call.closed_at, call.closed_at]);
+    // Cap after accumulation — LIMIT inside queryInChunks would apply per-chunk, not globally
 
     // Compute haversine distance per unit track, then sum.
     let totalDistM = 0;
     const byUnit = new Map<number, TrailPointRow[]>();
-    for (const r of rows) {
+    for (const r of rows.slice(0, 10000)) {
       let pts = byUnit.get(r.unit_id);
       if (!pts) { pts = []; byUnit.set(r.unit_id, pts); }
       pts.push(r);
@@ -919,7 +1136,7 @@ gps.get('/call-trail/:callId', async (c) => {
 });
 
 // ── GET /dispatch/gps/history-map — breadcrumb trail for a unit ─
-gps.get('/history-map', async (c) => {
+gps.get('/history-map', requireRole(...READ_ROLES), async (c) => {
   const unitId = c.req.query('unit_id');
   const hours = Math.min(72, Math.max(1, parseInt(c.req.query('hours') || '8', 10) || 8));
   if (!unitId) return c.json({ error: 'unit_id required' }, 400);

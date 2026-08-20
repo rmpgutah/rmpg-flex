@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { X, SpellCheck2, Wand2, Check, BookPlus, BookMarked, Trash2 } from 'lucide-react';
 import { proofread, applyProofFix, selectProofIssue, type ProofIssue, type ProofKind } from '../proofread';
 import { filterIgnoredIssues, addToDictionary, listDictionary, removeFromDictionary } from '../dictionary';
@@ -88,7 +88,7 @@ export default function ProofreadPanel({
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={() => setShowDict((v) => !v)} aria-label="Custom dictionary"
             title="Custom dictionary — words the proofreader should ignore"
-            className={`text-[10px] hover:text-rmpg-200 ${showDict ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>
+            className={`text-[10px] hover:text-rmpg-200 ${showDict ? 'text-accent-silver-300' : 'text-rmpg-500'}`}>
             <BookMarked className="w-3.5 h-3.5" />
           </button>
           <button type="button" onClick={onClose} aria-label="Close proofread" className="text-[10px] text-rmpg-500 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
@@ -105,10 +105,10 @@ export default function ProofreadPanel({
               value={newWord} onChange={(e) => setNewWord(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(); } }}
               placeholder="Add word(s)…" aria-label="Add word to dictionary"
-              className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-0.5 focus:outline-none focus:border-[#d4a017]/50"
+              className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-0.5 focus:outline-none focus:border-accent-silver-500/50"
             />
             <button type="button" onClick={addTyped} aria-label="Add to dictionary"
-              className="px-1.5 py-0.5 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-0.5">
+              className="px-1.5 py-0.5 text-[10px] bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 flex items-center gap-0.5">
               <BookPlus className="w-3 h-3" />Add
             </button>
           </div>
@@ -134,7 +134,7 @@ export default function ProofreadPanel({
         </span>
         {issues.length > 0 && (
           <button type="button" onClick={fixAll}
-            className="px-2 py-0.5 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-1">
+            className="px-2 py-0.5 text-[10px] bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 flex items-center gap-1">
             <Wand2 className="w-3 h-3" /> Fix all
           </button>
         )}
@@ -153,7 +153,7 @@ export default function ProofreadPanel({
                     className="text-[9px] text-rmpg-500 hover:text-rmpg-200">ignore</button>
                 )}
                 <button type="button" onClick={() => fixOne(iss)} title={`Fix → "${iss.fix}"`}
-                  className="text-[9px] text-[#d4a017] hover:text-[#e8b830] flex items-center gap-0.5">
+                  className="text-[9px] text-accent-silver-300 hover:text-accent-silver-200 flex items-center gap-0.5">
                   <Check className="w-2.5 h-2.5" />fix
                 </button>
               </div>

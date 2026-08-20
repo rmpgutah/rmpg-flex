@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS officer_credentials (
   issued_date TEXT,
   expiry_date TEXT,
   notes TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (officer_id) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_officer_credentials_officer ON officer_credentials(officer_id);

@@ -25,11 +25,6 @@ const PSO_TYPES = new Set(['pso_client_request', 'process_service', 'civil_paper
  * Policy lives here so it's one place to revise when operators want
  * different behavior. Keep this pure (no fetches, no React state).
  *
- * TODO(operator): implement the fallback rules. Suggested starting point:
- *   - For PSO calls: if caller_* are blank, fall back to pso_requestor_*
- *   - For Process Service: if process_served_address is blank, fall back to location
- *   - Anywhere else where a blank field has a sensible derived value
- *
  * Do NOT autofill these — they require a real entry, not a guess:
  *   - process_served_to (the defendant's name — wrong fallback = perjury risk)
  *   - process_served_at / process_service_result (only true after the attempt)
@@ -73,6 +68,22 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
   // autofilled — those must reflect a real attempt.
   if (filled.process_service_type && !filled.process_served_address) {
     filled.process_served_address = filled.location;
+  }
+
+  // Known truncation: legacy template stored "SERVICE WAS COMPLETED ON" without
+  // appending the date. Patch it from process_served_at so the printed sentence
+  // is grammatically complete and legally accurate.
+  if (
+    filled.action_taken &&
+    filled.action_taken.trimEnd().toUpperCase().endsWith('SERVICE WAS COMPLETED ON')
+  ) {
+    const servedAt = (c as any).process_served_at ?? filled.process_served_at;
+    if (servedAt) {
+      const d = new Date(servedAt);
+      const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      filled.action_taken = filled.action_taken.trimEnd() + ` ${dateStr} AT ${timeStr}.`;
+    }
   }
 
   // PROPERTY field on the printed Call Record: the legacy generator reads

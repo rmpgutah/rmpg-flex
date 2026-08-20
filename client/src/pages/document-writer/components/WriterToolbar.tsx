@@ -1,4 +1,4 @@
-import { Editor } from '@tiptap/react';
+import { Editor } from '@tiptap/core';
 import {
   Bold, Italic, Underline as UnderlineIcon, AlignLeft, AlignCenter,
   AlignRight, AlignJustify, List, ListOrdered, Table as TableIcon, Image as ImageIcon,
@@ -135,7 +135,7 @@ function ToolBtn({ active, disabled, onClick, children, title }: {
     <button
       type="button" title={title} disabled={disabled} onClick={onClick}
       className={`p-1.5 rounded-[2px] transition-colors ${
-        active ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
+        active ? 'bg-accent-silver-500/20 text-accent-silver-300' : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
       } ${disabled ? 'opacity-30 cursor-not-allowed' : ''}`}
     >
       {children}
@@ -143,7 +143,7 @@ function ToolBtn({ active, disabled, onClick, children, title }: {
   );
 }
 function Divider() { return <div className="w-px h-5 bg-surface-raised mx-1" />; }
-const selCls = 'bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-[#d4a017]/50';
+const selCls = 'bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1 py-0.5 focus:outline-none focus:border-accent-silver-500/50';
 
 export default function WriterToolbar({
   editor, docSettings, setDocSettings, theme, onToggleTheme,
@@ -199,7 +199,7 @@ export default function WriterToolbar({
     <div className="bg-surface-base border border-border-default rounded-[2px] p-1.5">
       {/* Title row */}
       <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-border-default">
-        <FileText className="w-4 h-4 text-[#d4a017] flex-shrink-0" />
+        <FileText className="w-4 h-4 text-accent-silver-400 flex-shrink-0" />
         <input
           type="text" value={title} onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled Document"
@@ -208,7 +208,7 @@ export default function WriterToolbar({
         <button type="button" onClick={ext.onReadAloud}
           title={ext.readingAloud ? 'Stop reading aloud' : 'Read document (or selection) aloud'}
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
+            ext.readingAloud ? 'bg-accent-silver-500/20 border-accent-silver-500/40 text-accent-silver-300' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           {ext.readingAloud ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
           {ext.readingAloud ? 'Stop' : 'Read'}
@@ -221,7 +221,7 @@ export default function WriterToolbar({
         <button type="button" onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}
           title="Focus / Zen mode — hide panels and chrome for distraction-free writing"
           className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
-            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
+            ext.viewMode === 'focus' ? 'bg-accent-silver-500/20 border-accent-silver-500/40 text-accent-silver-300' : 'bg-surface-base border-border-default text-rmpg-300 hover:bg-surface-raised'
           }`}>
           <Focus className="w-3 h-3" />Focus
         </button>
@@ -246,7 +246,7 @@ export default function WriterToolbar({
           </span>
         )}
         <button type="button" onClick={onSave} disabled={saving}
-          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-50">
+          className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-accent-silver-500/10 border border-accent-silver-500/30 text-accent-silver-300 rounded-[2px] hover:bg-accent-silver-500/20 disabled:opacity-50">
           <Save className="w-3 h-3" />{saving ? 'Saving...' : 'Save'}
         </button>
         <button type="button" onClick={onExportPdf}
@@ -271,7 +271,7 @@ export default function WriterToolbar({
           type="button"
           onClick={ext.onOpenPalette}
           title="Commands — search every action (Ctrl+/)"
-          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#d4a017] border border-[#d4a017]/40 hover:border-[#d4a017] hover:bg-[#d4a017]/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-silver-300 border border-accent-silver-500/40 hover:border-accent-silver-400 hover:bg-accent-silver-500/10 transition-colors"
           style={{ borderRadius: 2 }}
         >
           <Sparkles className="w-3 h-3" /> Commands
@@ -363,7 +363,7 @@ export default function WriterToolbar({
               {['', '1', '0.8', '0.6', '0.4', '0.2'].map((v) => <option key={v} value={v}>{v || '—'}</option>)}
             </select>
           </MenuRow>
-          <MenuButton onClick={() => editor.chain().focus().setTextShadow('1px 1px 2px rgba(0,0,0,0.5)').run()}>Text shadow on</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().setTextShadow('1px 1px 2px rgba(0 0 0 / 0.5)').run()}>Text shadow on</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().setTextShadow('none').run()}>Text shadow off</MenuButton>
           <MenuButton onClick={() => setBlock({ dropCap: 'true' })}>Drop cap (first letter)</MenuButton>
           <MenuButton onClick={() => setBlock({ dropCap: null })}>Remove drop cap</MenuButton>
@@ -525,7 +525,7 @@ export default function WriterToolbar({
                     {grp.chars.map((ch) => (
                       <button key={ch} type="button" title={ch}
                         onClick={() => { insertSpecialChar(editor, ch); }}
-                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-surface-base border border-border-default rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
+                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-surface-base border border-border-default rounded-[2px] hover:bg-accent-silver-500/20 hover:text-accent-silver-300">
                         {ch}
                       </button>
                     ))}

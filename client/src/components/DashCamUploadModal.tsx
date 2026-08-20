@@ -205,20 +205,20 @@ export default function DashCamUploadModal({
                 <Car className="w-4 h-4 text-brand-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-rmpg-200 truncate">{file.name}</p>
-                  <p className="text-[9px] text-rmpg-500">
+                  <p className="text-[9px] text-fg-muted">
                     {formatSize(file.size)} &bull; {file.type}
                     {duration != null && <> &bull; {formatDurationHMS(duration)}</>}
                   </p>
                 </div>
-                <button type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
+                <button aria-label="Close" type="button" onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="toolbar-btn p-1">
                   <X className="w-3 h-3" />
                 </button>
               </div>
             ) : (
               <button type="button" onClick={() => fileRef.current?.click()} className="w-full py-6 border-2 border-dashed border-rmpg-600 rounded-sm hover:border-brand-500 transition-colors flex flex-col items-center gap-2">
-                <Upload className="w-6 h-6 text-rmpg-500" />
+                <Upload className="w-6 h-6 text-fg-muted" />
                 <span className="text-xs text-rmpg-400">Click to select video</span>
-                <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM</span>
+                <span className="text-[9px] text-fg-muted">MP4, MOV, AVI, WebM</span>
               </button>
             )}
             <input id="ff-dashcamuploadmodal-0" ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
@@ -263,7 +263,7 @@ export default function DashCamUploadModal({
           {/* Location & Speed */}
           <div className="panel-inset p-3 space-y-3">
             <p className="field-label flex items-center gap-1 text-brand-400"><MapPin className="w-3 h-3" /> Location & Speed Data</p>
-            <p className="text-[9px] text-rmpg-500 -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
+            <p className="text-[9px] text-fg-muted -mt-1">Auto-populated from ClearPathGPS if unit and recorded date are set</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label htmlFor="ff-dashcamuploadmodal-6" className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>

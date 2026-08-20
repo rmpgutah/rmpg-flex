@@ -5,7 +5,8 @@
 // screening are module-mocked so the path touches only the self-provisioning
 // alpr_captures table; the trust math + storage are exercised for real.
 import { env } from 'cloudflare:test';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { envWithKek, ensureFileEncryptionKeysTable } from './helpers/fileEncryptionTestSchema';
 
 // Vision model returns a (fabricated) 1.0 self-report — exactly the bug input.
 vi.mock('../src/utils/cloudflarePlate', () => ({
@@ -24,11 +25,20 @@ vi.mock('../src/utils/intelScreen', () => ({
 import app from './entry';
 
 describe('POST /api/alpr/capture — persists derived trust, not the model self-report', () => {
+  // The capture write now always goes through putEncrypted() (both the
+  // call-attached field-photos/ branch and the unattached alpr-captures/
+  // branch), so this pre-existing test needs a KEK + the file_encryption_keys
+  // table or the write fails closed with FileEncryptionError. See
+  // test-workers/helpers/fileEncryptionTestSchema.ts.
+  beforeAll(async () => {
+    await ensureFileEncryptionKeysTable(env.DB as unknown as import('@cloudflare/workers-types').D1Database);
+  });
+
   it('a self-reported 1.0 is stored as derived trust < 0.85 and not accepted', async () => {
     const fd = new FormData();
     fd.append('image', new Blob([new Uint8Array([255, 216, 255, 0])], { type: 'image/jpeg' }), 'capture.jpg');
 
-    const res = await app.request('/api/alpr/capture', { method: 'POST', body: fd }, env as unknown as Record<string, unknown>);
+    const res = await app.request('/api/alpr/capture', { method: 'POST', body: fd }, envWithKek(env as unknown as Record<string, unknown>));
     expect(res.status).toBe(200);
     const body = await res.json() as { plate_confidence: number | null; accepted: boolean | null };
 

@@ -267,7 +267,7 @@ export default function VoiceChannelIndicator() {
 
   const radioBusy = state === 'listening' && isRadioBusy();
   const stateLabel = STATE_LABELS[state] ?? '';
-  const stateColor = STATE_COLORS[state] ?? '#888888';
+  const stateColor = STATE_COLORS[state] ?? 'var(--text-muted)';
 
   // Drive-mode positioning: bottom-CENTER and large so the V pill is
   // thumb-accessible without taking eyes off the road. Otherwise the
@@ -296,8 +296,8 @@ export default function VoiceChannelIndicator() {
           onClick={() => { setOpen(true); activateManualListen(); }}
           className={`relative flex items-center justify-center bg-surface-raised border rounded font-mono overflow-hidden transition-colors ${
             drive.active
-              ? 'gap-2 px-5 py-3 text-base text-[#d4a017] border-[#d4a017] shadow-lg'
-              : 'gap-1.5 px-2.5 py-1.5 text-xs text-rmpg-400 border-[#373737] hover:border-[#d4a017] hover:text-[#d4a017]'
+              ? 'gap-2 px-5 py-3 text-base [color:var(--panel-header-color)] border-accent-silver-400 shadow-lg'
+              : 'gap-1.5 px-2.5 py-1.5 text-xs text-rmpg-400 border-border-default hover:border-accent-silver-400 hover:text-accent-silver-400'
           }`}
           style={drive.active ? { minWidth: 96, minHeight: 56 } : undefined}
           title={drive.active
@@ -308,12 +308,12 @@ export default function VoiceChannelIndicator() {
           <MicIcon big={drive.active} />
           <span className={drive.active ? 'text-lg font-bold tracking-widest' : ''}>V</span>
           {drive.active && (
-            <span className="text-[9px] uppercase tracking-widest text-[#d4a017]/70 ml-1">DRIVE</span>
+            <span className="text-[9px] uppercase tracking-widest text-accent-silver-400/70 ml-1">DRIVE</span>
           )}
           {holdProgress > 0 && (
             <span
               aria-hidden="true"
-              className="absolute left-0 bottom-0 h-[2px] bg-[#d4a017]"
+              className="absolute left-0 bottom-0 h-[2px] bg-accent-silver-400"
               style={{ width: `${holdProgress * 100}%`, transition: 'width 50ms linear' }}
             />
           )}
@@ -327,26 +327,26 @@ export default function VoiceChannelIndicator() {
           style={{
             width: drive.active ? 360 : 280,
             maxWidth: 'calc(100vw - 2rem)',
-            borderColor: state === 'listening' ? '#22c55e' : drive.active ? '#d4a017' : '#373737',
+            borderColor: state === 'listening' ? 'var(--sev-ok)' : drive.active ? 'var(--accent-silver-400)' : 'var(--border-default)',
           }}
         >
           {/* DRIVING chip header — manual override + speed readout */}
           {drive.active && (
             <div
               className="flex items-center justify-between px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest"
-              style={{ background: '#1a1408', borderBottom: '1px solid #2a200a', color: '#d4a017' }}
+              style={{ background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-default)', color: 'var(--accent-silver-400)' }}
             >
               <span className="flex items-center gap-1.5">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#d4a017] animate-pulse" />
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent-silver-400 animate-pulse" />
                 DRIVE MODE
-                {drive.speedMph != null && <span className="text-[#d4a017]/70 ml-1">{drive.speedMph} MPH</span>}
+                {drive.speedMph != null && <span className="text-accent-silver-400/70 ml-1">{drive.speedMph} MPH</span>}
               </span>
               <span className="flex items-center gap-2">
-                <span className="text-[9px] text-[#d4a017]/60">VOICE-LOOP ON</span>
+                <span className="text-[9px] text-accent-silver-400/60">VOICE-LOOP ON</span>
                 <button
                   type="button"
                   onClick={() => drive.forceOff()}
-                  className="text-[9px] text-[#d4a017]/70 hover:text-[#d4a017] underline"
+                  className="text-[9px] text-accent-silver-400/70 hover:text-accent-silver-400 underline"
                   title="Disengage drive mode (manual override)"
                 >
                   EXIT
@@ -363,7 +363,7 @@ export default function VoiceChannelIndicator() {
                     transcriptFinal ? 'text-green-400' : 'text-green-300/60 italic'
                   }`}
                 >
-                  <span className="text-[9px] uppercase tracking-wider text-rmpg-500 mr-1.5">YOU</span>
+                  <span className="text-[9px] uppercase tracking-wider text-fg-muted mr-1.5">YOU</span>
                   {transcript}
                   {!transcriptFinal && <span className="text-green-300/40 ml-0.5">…</span>}
                 </div>
@@ -374,7 +374,7 @@ export default function VoiceChannelIndicator() {
                     lastCommand.success ? 'text-rmpg-200' : 'text-red-300'
                   }`}
                 >
-                  <span className="text-[9px] uppercase tracking-wider text-[#d4a017] mr-1.5">DSP</span>
+                  <span className="text-[9px] uppercase tracking-wider [color:var(--panel-header-color)] mr-1.5">DSP</span>
                   {lastCommand.message}
                 </div>
               )}
@@ -406,7 +406,7 @@ export default function VoiceChannelIndicator() {
           {/* Help panel — toggles via the ? button */}
           {showHelp && (
             <div className="p-2.5 text-[10px] font-mono text-rmpg-300 leading-relaxed" style={{ background:"var(--surface-sunken)", borderBottom: '1px solid var(--border-default)' }}>
-              <div className="text-[#d4a017] uppercase tracking-wider mb-1">Help</div>
+              <div className="[color:var(--panel-header-color)] uppercase tracking-wider mb-1">Help</div>
               <ul className="space-y-0.5 text-rmpg-400">
                 <li><span className="text-rmpg-200">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
                 <li><span className="text-rmpg-200">In-panel V button</span> — hold to talk · tap for a listen window</li>
@@ -414,8 +414,8 @@ export default function VoiceChannelIndicator() {
                 <li><span className="text-rmpg-200">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
                 <li><span className="text-rmpg-200">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
                 <li><span className="text-rmpg-200">Esc</span> — close panel</li>
-                <li className="pt-1 text-rmpg-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
-                <li className="text-rmpg-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
+                <li className="pt-1 text-fg-muted">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
+                <li className="text-fg-muted">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
               </ul>
             </div>
           )}
@@ -433,9 +433,9 @@ export default function VoiceChannelIndicator() {
               style={{
                 minWidth: 56,
                 background:
-                  state === 'listening' ? '#0e2517' :
-                  state === 'processing' ? '#251f0e' :
-                  state === 'responding' ? '#2a200a' :
+                  state === 'listening' ? 'rgba(var(--sev-ok-rgb) / 0.12)' :
+                  state === 'processing' ? 'rgba(var(--sev-warn-rgb) / 0.12)' :
+                  state === 'responding' ? 'rgba(var(--sev-warn-rgb) / 0.1)' :
                   'var(--surface-raised)',
                 borderRight: '1px solid var(--border-default)',
                 color: stateColor,
@@ -464,14 +464,14 @@ export default function VoiceChannelIndicator() {
                     'Type or hold V…'
                   }
                   disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-rmpg-500"
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-rmpg-200 placeholder-fg-muted"
                   autoComplete="off"
                   spellCheck={false}
                 />
                 {textInput.trim() && (
                   <button
                     type="submit"
-                    className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#d4a017] hover:bg-surface-raised transition-colors"
+                    className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider [color:var(--panel-header-color)] hover:bg-surface-raised transition-colors"
                     title="Send (Enter)"
                   >
                     SEND
@@ -479,7 +479,7 @@ export default function VoiceChannelIndicator() {
                 )}
               </form>
             ) : (
-              <div className="flex-1 flex items-center justify-center px-3 text-[11px] font-mono text-[#d4a017]/70 uppercase tracking-widest">
+              <div className="flex-1 flex items-center justify-center px-3 text-[11px] font-mono text-accent-silver-400/70 uppercase tracking-widest">
                 {state === 'listening' ? 'LISTENING…' :
                  state === 'processing' ? 'WORKING…' :
                  state === 'responding' ? 'RESPONDING…' :
@@ -494,7 +494,7 @@ export default function VoiceChannelIndicator() {
               type="button"
               onClick={cycleConfirmMode}
               className={`px-2 text-[11px] font-mono transition-colors ${
-                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-rmpg-500 hover:text-rmpg-300'
+                confirmMode === 'speak' ? '[color:var(--panel-header-color)]' : 'text-fg-muted hover:text-rmpg-300'
               }`}
               title={confirmMode === 'speak' ? 'Voice ON — tap to mute (text only)' : 'Voice MUTED — tap to enable speech'}
               aria-label={confirmMode === 'speak' ? 'Mute dispatch voice' : 'Enable dispatch voice'}
@@ -505,7 +505,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => setShowHelp(s => !s)}
-              className="px-1.5 text-[11px] font-mono text-rmpg-500 hover:text-[#d4a017] transition-colors"
+              className="px-1.5 text-[11px] font-mono text-fg-muted hover:text-accent-silver-400 transition-colors"
               title="Toggle help"
               aria-label="Toggle help"
             >
@@ -514,7 +514,7 @@ export default function VoiceChannelIndicator() {
             <button
               type="button"
               onClick={() => { setOpen(false); setShowHelp(false); }}
-              className="px-1.5 text-xs text-rmpg-500 hover:text-rmpg-200 transition-colors"
+              className="px-1.5 text-xs text-fg-muted hover:text-rmpg-200 transition-colors"
               title="Close panel (Esc)"
               aria-label="Close voice panel"
             >
@@ -535,7 +535,7 @@ export default function VoiceChannelIndicator() {
             </span>
             {radioBusy
               ? <span className="text-purple-400">RADIO ACTIVE — PAUSED</span>
-              : <span className="text-rmpg-500">HOLD V · TAP V · TYPE</span>}
+              : <span className="text-fg-muted">HOLD V · TAP V · TYPE</span>}
           </div>
         </div>
       )}
@@ -554,11 +554,11 @@ const STATE_LABELS: Record<string, string> = {
 };
 
 const STATE_COLORS: Record<string, string> = {
-  idle: '#888888',
-  alerting: '#ef4444',
-  listening: '#22c55e',
-  processing: '#eab308',
-  responding: '#d4a017',
+  idle: 'var(--text-muted)',
+  alerting: 'var(--sev-critical)',
+  listening: 'var(--sev-ok)',
+  processing: 'var(--sev-warn)',
+  responding: 'var(--sev-warn)',
 };
 
 function MicIcon({ big = false, pulsing = false }: { big?: boolean; pulsing?: boolean }) {

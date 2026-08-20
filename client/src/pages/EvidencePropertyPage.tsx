@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,
@@ -30,7 +30,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp, mtDatetimeLocalToUtc } from '../utils/dateUtils';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -436,12 +436,12 @@ export default function EvidencePropertyPage() {
 
   const formatDate = (d?: string) => {
     if (!d) return '—';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateTime = (d?: string) => {
     if (!d) return '—';
-    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {
@@ -722,7 +722,7 @@ export default function EvidencePropertyPage() {
                     {item.evidence_number || `EV-${item.id}`}
                   </span>
                   <span className={`text-[9px] px-1.5 py-0.5 border font-semibold whitespace-nowrap ${STATUS_COLORS[item.status] || STATUS_COLORS.in_storage}`}>
-                    {(item.status || 'unknown').replace(/_/g, ' ').toUpperCase()}
+                    {toDisplayLabel(item.status || 'unknown').toUpperCase()}
                   </span>
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{item.description || 'No description'}</div>
@@ -834,14 +834,14 @@ export default function EvidencePropertyPage() {
                   {/* Status + Type badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                      {(selected.status || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(selected.status || '').toUpperCase()}
                     </span>
                     <span className="text-[10px] px-2 py-1 border bg-rmpg-700/50 text-rmpg-300 border-rmpg-700/50 font-semibold">
                       {TYPE_LABELS[selected.type] || TYPE_LABELS[selected.evidence_type] || selected.type || selected.evidence_type}
                     </span>
                     {selected.category && (
                       <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-400 border-rmpg-700/30">
-                        {selected.category}
+                        {formatEnumValue(selected.category)}
                       </span>
                     )}
                   </div>
@@ -957,7 +957,7 @@ export default function EvidencePropertyPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ').toUpperCase()}</div>
+                      <div className="text-[10px] text-rmpg-500">Item already {toDisplayLabel(selected.status).toUpperCase()}</div>
                     )}
                   </div>
                 </div>
@@ -1269,8 +1269,8 @@ export default function EvidencePropertyPage() {
 
       {/* ── Chain of Custody Action Modal ── */}
       {chainModalOpen && selected && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
-          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/70 overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setChainModalOpen(false)}>
+          <div className="bg-surface-base border border-rmpg-700 rounded-sm shadow-xl w-full max-w-md mx-4 my-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700 bg-surface-raised">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft className="w-4 h-4 text-brand-400" />
@@ -1495,7 +1495,7 @@ export default function EvidencePropertyPage() {
         onClose={() => setConfirmDispose(false)}
         onConfirm={handleDispositionConfirmed}
         title="Confirm Disposition"
-        message={`Record "${dispositionType.replace(/_/g, ' ')}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
+        message={`Record "${toDisplayLabel(dispositionType)}" disposition? This is an irreversible action and will be logged in the chain of custody.`}
         details={selected && (
           <span>{selected.evidence_number || `EV-${selected.id}`} — {selected.description}</span>
         )}

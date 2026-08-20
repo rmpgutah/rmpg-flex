@@ -1,0 +1,2 @@
+TURSO_URL=libsql://rmpg-flex-secondary-rmpg-utah.turso.io
+TURSO_AUTH_TOKEN=your-turso-auth-token-here

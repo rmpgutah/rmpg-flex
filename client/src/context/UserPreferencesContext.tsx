@@ -10,7 +10,7 @@ import { useAuth } from './AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { applyThemePreference, getStoredThemePreference, resolveCurrentTheme } from '../utils/theme';
 
-interface UserPreferences {
+export interface UserPreferences {
   font_scale: number;
   compact_mode: number;
   show_map_labels: number;

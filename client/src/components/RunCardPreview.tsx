@@ -29,10 +29,10 @@ export interface RunCard {
 }
 
 const PRIORITY_STYLES: Record<string, { bg: string; border: string; text: string; label: string }> = {
-  P1: { bg: 'rgba(239,68,68,0.10)', border: '#ef4444', text: '#ef4444', label: 'P1 EMERGENCY' },
-  P2: { bg: 'rgba(245,158,11,0.10)', border: '#f59e0b', text: '#f59e0b', label: 'P2 URGENT' },
-  P3: { bg: 'rgba(107,114,128,0.10)', border: '#888', text: '#ccc', label: 'P3 ROUTINE' },
-  P4: { bg: 'rgba(34,197,94,0.10)', border: '#22c55e', text: '#22c55e', label: 'P4 NON-URGENT' },
+  P1: { bg: 'rgb(var(--sev-critical-rgb) / 0.10)', border: 'var(--sev-critical)', text: 'var(--sev-critical)', label: 'P1 EMERGENCY' },
+  P2: { bg: 'rgb(var(--sev-warn-rgb) / 0.10)', border: 'var(--sev-warn)', text: 'var(--sev-warn)', label: 'P2 URGENT' },
+  P3: { bg: 'rgb(var(--text-muted-rgb) / 0.10)', border: 'var(--text-muted)', text: 'var(--text-secondary)', label: 'P3 ROUTINE' },
+  P4: { bg: 'rgb(var(--sev-ok-rgb) / 0.10)', border: 'var(--sev-ok)', text: 'var(--sev-ok)', label: 'P4 NON-URGENT' },
 };
 
 interface Props {
@@ -71,7 +71,7 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
 
   if (loading) {
     return (
-      <div className="text-[10px] text-rmpg-500 uppercase tracking-wider px-2 py-1">
+      <div className="text-[10px] text-fg-muted uppercase tracking-wider px-2 py-1">
         Loading run card…
       </div>
     );
@@ -94,7 +94,7 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
         </span>
         <span
           className="text-[9px] font-bold px-1.5 py-0.5 uppercase"
-          style={{ background: p.border, color: '#0a0a0a', borderRadius: 2 }}
+          style={{ background: p.border, color: 'black', borderRadius: 2 }}
         >
           {p.label}
         </span>
@@ -118,31 +118,31 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
       <div className="flex items-center gap-2 flex-wrap">
         {card.officer_safety_alert && (
           <span className="text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-1.5 py-0.5"
-            style={{ background: 'rgba(239,68,68,0.20)', color: '#ef4444', borderRadius: 2 }}>
+            style={{ background: 'rgb(var(--sev-critical-rgb) / 0.20)', color: 'var(--sev-critical)', borderRadius: 2 }}>
             <ShieldAlert className="w-3 h-3" /> OFC SAFETY
           </span>
         )}
         {card.silent_response_default && (
           <span className="text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-1.5 py-0.5"
-            style={{ background: 'rgba(107,114,128,0.25)', color: '#fbbf24', borderRadius: 2 }}>
+            style={{ background: 'rgb(var(--text-muted-rgb) / 0.25)', color: 'var(--sev-warn-soft)', borderRadius: 2 }}>
             <VolumeX className="w-3 h-3" /> SILENT RESP
           </span>
         )}
         {card.ems_requested && (
           <span className="text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-1.5 py-0.5"
-            style={{ background: 'rgba(212,160,23,0.15)', color: '#d4a017', borderRadius: 2 }}>
+            style={{ background: 'rgb(var(--accent-silver-400-rgb) / 0.15)', color: 'var(--field-label-color)', borderRadius: 2 }}>
             <Ambulance className="w-3 h-3" /> EMS
           </span>
         )}
         {card.fire_requested && (
           <span className="text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-1.5 py-0.5"
-            style={{ background: 'rgba(245,158,11,0.20)', color: '#fbbf24', borderRadius: 2 }}>
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.20)', color: 'var(--sev-warn-soft)', borderRadius: 2 }}>
             <Flame className="w-3 h-3" /> FIRE
           </span>
         )}
         {card.recommended_codes.map((c) => (
           <span key={c} className="text-[9px] font-mono px-1.5 py-0.5"
-            style={{ background: 'var(--surface-raised)', color: '#d4a017', borderRadius: 2 }}>
+            style={{ background: 'var(--surface-raised)', color: 'var(--field-label-color)', borderRadius: 2 }}>
             {c}
           </span>
         ))}

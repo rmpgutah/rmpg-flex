@@ -26,6 +26,8 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { verifySignedResource } from '../utils/signedAccess';
+import { getDecrypted } from '../utils/encryptedR2';
+import { sliceByteRange, rangeNotSatisfiableInit } from '../utils/byteRange';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -40,6 +42,7 @@ import { gatherAwareness, runLookup, runAction, VERBATIM_LOOKUPS } from '../util
 import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
 import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
+import { denverDateExpr, denverNowDateExpr } from '../utils/denverTime';
 
 const rt = new Hono<Env>();
 
@@ -49,7 +52,7 @@ function rangeClause(range: string | undefined): { sql: string; args: unknown[] 
   if (!range || range === 'all' || !ALLOWED_RANGES.has(range)) return { sql: '', args: [] };
   // SQLite datetime() math in TEXT comparison form — same shape as the
   // other route files (patrol/audit) so query plans stay consistent.
-  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now')", args: [] };
+  if (range === 'today') return { sql: ` AND ${denverDateExpr('transmitted_at')} = ${denverNowDateExpr()}`, args: [] };
   if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day')", args: [] };
   if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days')", args: [] };
   if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days')", args: [] };
@@ -96,9 +99,8 @@ rt.post('/channels', async (c) => {
     user?.id ?? null,
   );
   const id = Number(result.meta.last_row_id);
-  // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  return c.json({ success: true, id });
+  return c.json({ success: true, id, channel });
 });
 
 rt.patch('/channels/:id', async (c) => {
@@ -152,7 +154,8 @@ rt.get('/transmissions', async (c) => {
     // helper does the boolean OR/negation parsing on the page. We
     // narrow first to keep payloads small.
     where.push('(transcript LIKE ? OR unit_label LIKE ? OR tags LIKE ?)');
-    const like = `%${q.replace(/[%_]/g, '')}%`;
+    const safe = q.replace(/[%_]/g, '').slice(0, 48); // D1 LIKE cap: pattern >50 chars silently returns nothing
+    const like = `%${safe}%`;
     args.push(like, like, like);
   }
   const rc = rangeClause(range);
@@ -199,7 +202,7 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  return c.json({ success: true, id });
+  return c.json({ success: true, id, transmission });
 });
 
 rt.delete('/transmissions/:id', async (c) => {
@@ -243,26 +246,52 @@ rt.get('/transmissions/:id/audio', async (c) => {
     }
   }
 
-  const obj = r2Range
-    ? await c.env.UPLOADS.get(key, { range: r2Range })
-    : await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Recording not found' }, 404);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
 
-  const totalSize = obj.size;
+  // getDecrypted() returns null both for "object never existed" and for
+  // "object exists, no file_encryption_keys row" — the latter is exactly
+  // what every radio-audio/ object looks like today, since VoiceHubDO only
+  // started calling putEncrypted in a previous task on this branch. Fall
+  // back to a raw R2 read so historical recordings stay servable instead of
+  // permanently 404ing (same pattern as fieldPhotos.ts's `GET /file/*`).
+  let bytes: Uint8Array;
+  let contentType: string | undefined;
+  if (decrypted) {
+    bytes = decrypted.bytes;
+    contentType = decrypted.httpMetadata?.contentType;
+  } else {
+    const legacy = await c.env.UPLOADS.get(key);
+    if (!legacy) return c.json({ error: 'Recording not found' }, 404);
+    bytes = new Uint8Array(await legacy.arrayBuffer());
+    contentType = legacy.httpMetadata?.contentType;
+  }
+
+  // Only treat the Range header as present if it actually matched the
+  // supported `bytes=start-end` / `bytes=start-` form. RFC 7233: an
+  // unparseable Range header must be treated as absent — plain 200, full
+  // body, no Content-Range — not a 206 with a bogus 0-{total-1} range.
+  // Unlike the R2-backed streams, this path decrypts into memory and slices,
+  // so a bad range can't throw — but sliceByteRange() clamps, so "bytes=100-50"
+  // used to return a 206 with an empty body and a nonsensical
+  // "Content-Range: bytes 100-50/<total>". Answer 416 instead, matching the
+  // other range-serving routes.
+  if (r2Range && (rangeStart >= bytes.length || (rangeEnd >= 0 && rangeStart > rangeEnd))) {
+    const init = rangeNotSatisfiableInit(bytes.length);
+    return c.json(init.body, init.status, init.headers);
+  }
+  const sliced = sliceByteRange(bytes, r2Range ? { start: rangeStart, end: rangeEnd } : null);
   const headers: Record<string, string> = {
-    'Content-Type': obj.httpMetadata?.contentType || 'audio/webm',
+    'Content-Type': contentType || 'audio/webm',
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'private, max-age=31536000, immutable',
   };
   if (r2Range) {
-    const start = rangeStart;
-    const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
-    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
-    headers['Content-Length'] = String(end - start + 1);
-    return new Response(obj.body, { status: 206, headers });
+    headers['Content-Range'] = `bytes ${sliced.start}-${sliced.end}/${sliced.total}`;
+    headers['Content-Length'] = String(sliced.data.length);
+    return new Response(sliced.data, { status: 206, headers });
   }
-  headers['Content-Length'] = String(totalSize);
-  return new Response(obj.body, { status: 200, headers });
+  headers['Content-Length'] = String(sliced.data.length);
+  return new Response(sliced.data, { status: 200, headers });
 });
 
 // ── Recordings (per-user bookmarks) ───────────────────────────
@@ -376,7 +405,7 @@ rt.get('/stats', async (c) => {
     // SQLite throws `near "all": syntax error`. The double quotes keep
     // the result column named `all` (the client reads totals.all).
     `SELECT
-       SUM(CASE WHEN date(transmitted_at) = date('now') THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN ${denverDateExpr('transmitted_at')} = ${denverNowDateExpr()} THEN 1 ELSE 0 END) AS today,
        SUM(CASE WHEN transmitted_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS week,
        COUNT(*) AS "all" FROM radio_transmissions`,
   );
@@ -658,7 +687,7 @@ rt.get('/ai/shift-summary', async (c) => {
      WHERE (unit_call_signs LIKE ? OR COALESCE(responding_officer,'') LIKE ?)
        AND datetime(created_at) >= datetime('now', ?)
      ORDER BY datetime(created_at) DESC LIMIT 50`,
-    `%${unit}%`, `%${unit}%`, since,
+    `%${unit.slice(0, 48)}%`, `%${unit.slice(0, 48)}%`, since,
   ).catch(() => []);
 
   const txRow = await queryFirst<{ n: number }>(

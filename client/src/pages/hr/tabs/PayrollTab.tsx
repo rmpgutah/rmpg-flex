@@ -16,7 +16,8 @@ import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useToast } from '../../../components/ToastProvider';
 import ConfirmDialog from '../../../components/ConfirmDialog';
-import { toDisplayLabel } from '../../../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../../../utils/formatters';
+import { withAlpha } from '../../../utils/withAlpha';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -90,11 +91,11 @@ interface OvertimeRequest {
 type SubTab = 'periods' | 'rates' | 'entries' | 'overtime' | 'leave';
 
 const STATUS_COLORS: Record<string, string> = {
-  open: '#888888',
-  processing: '#f59e0b',
-  closed: '#22c55e',
-  draft: 'var(--rmpg-500)',
-  approved: '#22c55e',
+  open: 'var(--text-muted)',
+  processing: 'var(--sev-warn)',
+  closed: 'var(--sev-ok)',
+  draft: 'var(--text-muted)',
+  approved: 'var(--sev-ok)',
 };
 
 function formatCurrency(amount: number): string {
@@ -104,7 +105,7 @@ function formatCurrency(amount: number): string {
 function formatDate(d: string): string {
   if (!d) return '—';
   const date = parseTimestamp(d);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return date.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 // ─── Component ────────────────────────────────────────────────
@@ -146,7 +147,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   const { addToast } = useToast();
 
-  const isManager = ['admin', 'manager'].includes(userRole);
+  const isManager = ['admin', 'manager', 'supervisor', 'human_resources'].includes(userRole);
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -184,7 +185,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const fetchOfficers = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/personnel');
-      setOfficers(data.map((o: any) => ({ id: o.id, full_name: o.full_name })));
+      setOfficers((Array.isArray(data) ? data : []).map((o: any) => ({ id: o.id, full_name: o.full_name })));
     } catch { /* silent */ }
   }, []);
 
@@ -604,14 +605,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || 'var(--rmpg-500)' }} />
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: STATUS_COLORS[period.status] || 'var(--text-muted)' }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-rmpg-100 truncate">{period.name}</span>
                         <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium" style={{
-                          backgroundColor: (STATUS_COLORS[period.status] || 'var(--rmpg-500)') + '20',
-                          color: STATUS_COLORS[period.status] || 'var(--rmpg-500)'
+                          backgroundColor: withAlpha(STATUS_COLORS[period.status] || 'var(--text-muted)', '20'),
+                          color: STATUS_COLORS[period.status] || 'var(--text-muted)'
                         }}>{toDisplayLabel(period.status)}</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -739,7 +740,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     <tr key={rate.id} onContextMenu={(e) => openMenu(e, buildRateMenu(rate))} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-rmpg-100 font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
-                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
+                        <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{formatEnumValue(rate.pay_type)}</span>
                       </td>
                       <td className="px-3 py-2 text-right text-green-400 font-mono">{formatCurrency(rate.rate)}</td>
                       <td className="px-3 py-2 text-right text-rmpg-300 font-mono">{rate.overtime_rate}x</td>
@@ -769,7 +770,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               setSelectedPeriod(p || null);
             }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-rmpg-100">
               <option value="">Select pay period...</option>
-              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status?.replace(/_/g, ' ').toUpperCase()})</option>)}
+              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({toDisplayLabel(p.status).toUpperCase()})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
               <button type="button"
@@ -846,8 +847,8 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                         <td className="px-2 py-2 text-right text-green-400 font-mono font-semibold">{formatCurrency(entry.gross_pay)}</td>
                         <td className="px-2 py-2 text-center">
                           <span className="px-1.5 py-0.5 text-[9px] rounded-full font-medium" style={{
-                            backgroundColor: (STATUS_COLORS[entry.status] || 'var(--rmpg-500)') + '20',
-                            color: STATUS_COLORS[entry.status] || 'var(--rmpg-500)'
+                            backgroundColor: withAlpha(STATUS_COLORS[entry.status] || 'var(--text-muted)', '20'),
+                            color: STATUS_COLORS[entry.status] || 'var(--text-muted)'
                           }}>{toDisplayLabel(entry.status)}</span>
                         </td>
                         <td className="px-2 py-2 text-center">
@@ -1050,7 +1051,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                             {lb.pto_pending.toFixed(1)}h
                           </span>
                           <div className="w-full h-1 bg-surface-sunken rounded-full mt-0.5 overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${Math.min(100, pctUsed)}%`, background: pctUsed > 80 ? '#ef4444' : pctUsed > 50 ? '#f59e0b' : '#22c55e' }} />
+                            <div className={`h-full rounded-full ${pctUsed > 80 ? 'bg-red-500' : pctUsed > 50 ? 'bg-amber-400' : 'bg-green-500'}`} style={{ width: `${Math.min(100, pctUsed)}%` }} />
                           </div>
                         </td>
                         <td className="py-2 px-3 text-right text-rmpg-300">{lb.sick_used.toFixed(1)}h</td>

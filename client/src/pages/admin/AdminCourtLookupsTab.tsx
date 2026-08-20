@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Gavel, Plus, Pencil, Trash2, Save, X, Eye, EyeOff, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { formatEnumValue } from '../../utils/formatters';
 
 // AdminCourtLookupsTab — manages every editable dropdown in the Court Tracker.
 //
@@ -32,7 +33,7 @@ interface Props {
   setError?: (e: string | null) => void;
 }
 
-const inputCls = 'w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-[#d4a017]';
+const inputCls = 'w-full bg-surface-sunken border border-border-default text-xs text-white px-2 py-1 rounded-sm focus:outline-none focus:border-accent-silver-500';
 
 export default function AdminCourtLookupsTab({ setError: setOuterError }: Props) {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -135,7 +136,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Gavel className="w-4 h-4 text-[#d4a017]" />
+        <Gavel className="w-4 h-4 text-accent-silver-500" />
         <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Court Tracker — Lookups</h3>
         <button type="button" onClick={() => { loadCategories(); loadItems(activeCategory); }}
           className="ml-auto p-1 text-rmpg-400 hover:text-white" title="Refresh">
@@ -148,13 +149,13 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
       </p>
 
       {/* Category tabs */}
-      <div className="flex flex-wrap items-center gap-1 bg-[#0d0d0d] border border-[#222] rounded-sm p-1.5">
+      <div className="flex flex-wrap items-center gap-1 bg-surface-raised border border-border-default rounded-sm p-1.5">
         {categories.map(c => (
           <button key={c.category} type="button" onClick={() => setActiveCategory(c.category)}
             className={`px-2 py-0.5 text-[10px] rounded-sm ${
-              activeCategory === c.category ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:bg-rmpg-700/40'
+              activeCategory === c.category ? 'bg-accent-silver-500/20 text-accent-silver-500' : 'text-rmpg-300 hover:bg-rmpg-700/40'
             }`}>
-            {c.category} <span className="text-rmpg-500">({c.count})</span>
+            {formatEnumValue(c.category)} <span className="text-rmpg-500">({c.count})</span>
           </button>
         ))}
         <div className="flex-1" />
@@ -163,8 +164,8 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
             <input type="text" value={newCategoryName}
               onChange={e => setNewCategoryName(e.target.value)}
               placeholder="new_category_name"
-              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-white px-1.5 py-0.5 rounded-sm focus:outline-none focus:border-[#d4a017]" />
-            <button type="button" onClick={addCategory} className="text-[10px] text-[#d4a017] px-1">add</button>
+              className="bg-surface-sunken border border-border-default text-[10px] text-white px-1.5 py-0.5 rounded-sm focus:outline-none focus:border-accent-silver-500" />
+            <button type="button" onClick={addCategory} className="text-[10px] text-accent-silver-500 px-1">add</button>
             <button type="button" onClick={() => { setCreatingNew(false); setNewCategoryName(''); }} className="text-[10px] text-rmpg-500 px-1">×</button>
           </div>
         ) : (
@@ -176,8 +177,8 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
       </div>
 
       {/* Items */}
-      <div className="bg-[#0d0d0d] border border-[#222] rounded-sm">
-        <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#222]">
+      <div className="bg-surface-raised border border-border-default rounded-sm">
+        <div className="flex items-center justify-between px-2 py-1.5 border-b border-border-default">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-500">
             {activeCategory ? `${activeCategory} · ${items.length} entries` : 'Select a category'}
           </span>
@@ -199,7 +200,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
           </div>
         ) : (
           <table className="w-full text-[11px]">
-            <thead className="bg-[#0a0a0a] text-rmpg-500 uppercase tracking-wider text-[9px]">
+            <thead className="bg-surface-sunken text-rmpg-500 uppercase tracking-wider text-[9px]">
               <tr>
                 <th className="text-left px-2 py-1 w-12">Order</th>
                 <th className="text-left px-2 py-1 w-40">Value</th>
@@ -211,7 +212,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
             </thead>
             <tbody>
               {editing === 0 && draft && (
-                <tr className="bg-[#d4a017]/10 border-b border-[#222]">
+                <tr className="bg-accent-silver-500/10 border-b border-border-default">
                   <td className="px-2 py-1">
                     <input type="number" value={draft.display_order ?? 100}
                       onChange={e => setDraft({ ...draft, display_order: parseInt(e.target.value, 10) || 100 })}
@@ -240,13 +241,13 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
                       onChange={e => setDraft({ ...draft, is_active: e.target.checked ? 1 : 0 })} />
                   </td>
                   <td className="px-2 py-1 text-right">
-                    <button type="button" onClick={saveDraft} className="text-[#d4a017] mr-2" title="Save"><Save className="w-3.5 h-3.5 inline" /></button>
+                    <button type="button" onClick={saveDraft} className="text-accent-silver-500 mr-2" title="Save"><Save className="w-3.5 h-3.5 inline" /></button>
                     <button type="button" onClick={() => { setEditing(null); setDraft(null); }} className="text-rmpg-500" title="Cancel"><X className="w-3.5 h-3.5 inline" /></button>
                   </td>
                 </tr>
               )}
               {items.map(it => editing === it.id && draft ? (
-                <tr key={it.id} className="bg-[#d4a017]/10 border-b border-[#222]">
+                <tr key={it.id} className="bg-accent-silver-500/10 border-b border-border-default">
                   <td className="px-2 py-1">
                     <input type="number" value={draft.display_order ?? it.display_order}
                       onChange={e => setDraft({ ...draft, display_order: parseInt(e.target.value, 10) || 100 })}
@@ -272,12 +273,12 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
                       onChange={e => setDraft({ ...draft, is_active: e.target.checked ? 1 : 0 })} />
                   </td>
                   <td className="px-2 py-1 text-right">
-                    <button type="button" onClick={saveDraft} className="text-[#d4a017] mr-2" title="Save"><Save className="w-3.5 h-3.5 inline" /></button>
+                    <button type="button" onClick={saveDraft} className="text-accent-silver-500 mr-2" title="Save"><Save className="w-3.5 h-3.5 inline" /></button>
                     <button type="button" onClick={() => { setEditing(null); setDraft(null); }} className="text-rmpg-500" title="Cancel"><X className="w-3.5 h-3.5 inline" /></button>
                   </td>
                 </tr>
               ) : (
-                <tr key={it.id} className={`border-b border-[#1a1a1a] hover:bg-[#101010] ${!it.is_active ? 'opacity-50' : ''}`}>
+                <tr key={it.id} className={`border-b border-border-subtle hover:bg-surface-hover ${!it.is_active ? 'opacity-50' : ''}`}>
                   <td className="px-2 py-1 font-mono text-rmpg-400">{it.display_order}</td>
                   <td className="px-2 py-1 font-mono text-rmpg-300">{it.value}</td>
                   <td className="px-2 py-1 text-rmpg-200">{it.display_label || <span className="text-rmpg-600 italic">(uses value)</span>}</td>
@@ -291,7 +292,7 @@ export default function AdminCourtLookupsTab({ setError: setOuterError }: Props)
                   <td className="px-2 py-1 text-right">
                     <button type="button"
                       onClick={() => { setEditing(it.id); setDraft({ ...it }); }}
-                      className="text-rmpg-400 hover:text-[#d4a017] mr-2" title="Edit"><Pencil className="w-3.5 h-3.5 inline" /></button>
+                      className="text-rmpg-400 hover:text-accent-silver-400 mr-2" title="Edit"><Pencil className="w-3.5 h-3.5 inline" /></button>
                     <button type="button" onClick={() => remove(it.id)}
                       className="text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5 inline" /></button>
                   </td>

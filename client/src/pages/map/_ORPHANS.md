@@ -1,15 +1,19 @@
 # Map Module — Orphan Inventory
 
-**Last audited: 2026-06-22.**
+**Re-audited 2026-07-22.** A full existence check (`ls` against every row's file
+path) found this doc had drifted badly out of sync with the actual tree: of the
+27 panels and 14 hooks previously listed, only 3 panels and 1 hook still exist —
+the other 24 panels + 13 hooks were deleted on 2026-05-31 in commit `02546600e4`
+("chore: remove 24 dysfunctional map hooks/components with missing API
+endpoints"), three weeks *before* this doc was even created (2026-06-22), and
+every edit since then touched other rows without anyone re-checking these still
+existed. The "Wired in PR #1584" section below was also phantom — all 3 claimed
+components (`MapCompassRose`, `MapScaleBar`, `KeyboardShortcutsHelp`) are
+likewise absent from the tree with zero references anywhere in `client/src`.
+This doc has been rewritten to list only what's genuinely still true today.
 
 The following components and hooks in `client/src/pages/map/` are **fully built,
 fully tokenized, and exported — but never imported anywhere in the live app**.
-They were touched by the system-wide token-cleanup PRs in 2026-05 (Phase 2/3/5–8,
-SW v991→v1015) without any audit of whether they were actually wired.
-
-**Bundle impact:** Tree-shaking already drops them, so they don't ship to
-operators. The cost is reader confusion ("is this used?") + maintenance drift
-(token cleanups touch files no one sees).
 
 **Disposition:** Keep in tree for now — they're a parked design library. A
 future operator-driven sprint can wire any of these up rather than rebuilding
@@ -22,61 +26,17 @@ contracts after schema drift, file an issue rather than silently fixing it.
 ## Orphan panels (`components/`)
 
 These have **zero `import` statements anywhere in `client/src/`** outside their
-own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
+own file. Verified 2026-07-22 via direct `ls`/`grep` existence + reference checks.
 
-| Component | Lines | Likely intent |
-|-----------|-------|---------------|
-| `AdvancedHeatmapPanel`   | — | Power-user heatmap controls (bandwidth, intensity, etc.) |
-| `AlertSystemPanel`       | — | Aggregated alert ticker for the map's left rail |
-| `CallHistoryPanel`       | — | "Past calls at this location" popup |
-| `ClosestUnitPanel`       | — | Find closest available unit for a click target |
-| `CorridorAnalysisPanel`  | — | Patrol corridor analysis sidebar |
-| `CoverageTimeline`       | — | Beat coverage gaps over time |
-| `DispatchToolPanel`      | — | One-click dispatch from a clicked address |
-| `GeofenceManager`        | — | CRUD UI for tactical geofences |
-| `HeatmapLegend`          | — | Standalone heatmap legend (superseded by `UnifiedMapLegend`) |
-| `HeatmapPresets`         | — | Saved heatmap configurations |
-| `IncidentReportsPanel`   | — | List of incident reports as map sidebar |
-| `MapLayersPanel`         | — | Layer toggle dialog (separate from inline layer chips) |
-| `MapLegend`              | — | Older legend; superseded by `UnifiedMapLegend` |
-| `MapMobileSheet`         | — | Cohesive mobile bottom sheet (today's mobile UX is inline `!isMobile` branches) |
-| `MapOverlays`            | — | Overlay layer dialog |
-| `MapOverlaysPanel`       | — | Same idea as `MapOverlays` |
-| `MapSidebar`             | — | Reusable sidebar shell |
-| `MeasurementOverlay`     | — | Distance/area measurement toolbar |
-| `PerimeterToolsPanel`    | — | Perimeter drawing tools |
-| `RouteComparePanel`      | — | Side-by-side multi-route comparison |
-| `SafetyAlertModal`       | — | Modal for officer-down / safety alerts |
-| `SafetyDashboardPanel`   | — | Officer-safety dashboard widget |
-| `SafetyZonesPanel`       | — | Safety-zone definition UI |
-| `SpeedGraphOverlay`      | — | Per-unit speed graph over time |
-| `TacticalSummaryPanel`   | — | Tactical-situation summary card |
-| `ThreatAssessmentPanel`  | — | Threat-level scoring for a location |
-| `WeatherPanel`           | — | Full weather sidebar (vs the inline weather strip) |
-| `WeatherWidget`          | — | Compact weather widget (the dashboard has its own) |
-
-### Wired in PR #1584 (2026-06-22)
-- ✅ `MapCompassRose` — mounted bottom-right of the map
-- ✅ `MapScaleBar` — mounted bottom-right of the map (above compass)
-- ✅ `KeyboardShortcutsHelp` — opened by `?`; reads `MAP_SHORTCUT_BINDINGS`
+| Component | Likely intent | Notes |
+|-----------|----------------|-------|
+| `DispatchToolPanel` | Tabbed one-stop dispatch panel (geocode search, isochrone, nearest-unit matrix, tilequery identify) | All 4 backend routes it needs already exist and are live under *separate* existing UI (search box, "Response Zones" dock toggle, routing's closest-unit ranking, the Identify click tool). Wiring this in would either duplicate those 4 features under a second UI or require a real product decision to consolidate them into one panel — not a mechanical wiring task. |
 
 ## Orphan hooks (`hooks/`)
 
 | Hook | Likely intent |
 |------|---------------|
-| `useMapCallHistory` | History query for a clicked location |
-| `useMapClosestUnit` | Closest-unit dispatch helper |
-| `useMapCorridor` | Corridor analysis math |
-| `useMapCoverageGaps` | Patrol coverage gap detection |
-| `useMapDwellTime` | Unit dwell-time stats |
-| `useMapEnvironment` | Environment/lighting overlay |
-| `useMapHeatmapTimelapse` | Animate heatmap across time |
-| `useMapIncidentReports` | Incident-report fetcher for sidebar |
-| `useMapPerimeter` | Perimeter geometry state |
-| `useMapRepeatAddresses` | Repeat-call-location detection |
-| `useMapSafetyZones` | Safety zone CRUD/state |
-| `useMapThreatAssessment` | Threat-score calc |
-| `useMapTrackingLines` | Unit tracking polylines |
+| `useMapboxSearchBox` | Headless programmatic search (wraps Mapbox Search Box), never mounted anywhere |
 
 ## Rules going forward
 
@@ -86,3 +46,7 @@ own file. Verified 2026-06-22 via `grep -rn "import.*<name>" client/src/`.
    import resurrects the entire dead-code subtree).
 3. **Delete or wire batches.** If a sprint wires N of these, audit + delete
    the rest in the same PR so the orphan list shrinks monotonically.
+4. **Verify existence before trusting this doc.** This doc has drifted out of
+   sync with the actual tree before (see the 2026-07-22 re-audit note above) —
+   a quick `ls`/`grep` check on a row costs seconds and prevents research time
+   being spent on files that no longer exist.

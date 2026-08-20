@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -98,12 +98,12 @@ function formatCurrency(val: number): string {
 
 function formatDate(d?: string): string {
   if (!d) return '—';
-  return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return parseTimestamp(d).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string): string {
   if (!d) return '—';
-  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 
@@ -690,8 +690,8 @@ export default function CrmPage() {
 
       {/* ── Task Modal ────────────────────────────────── */}
       {showTaskModal && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowTaskModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-lg shadow-xl my-auto" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-rmpg-100">{editingTask ? 'Edit Task' : 'New Task'}</span>
               <IconButton onClick={() => setShowTaskModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close task modal"><X className="w-3.5 h-3.5" /></IconButton>
@@ -760,8 +760,8 @@ export default function CrmPage() {
 
       {/* ── Activity Log Modal ────────────────────────── */}
       {showActivityModal && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-start justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" onClick={() => setShowActivityModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-md shadow-xl my-auto" onClick={e => e.stopPropagation()}>
             <div className="panel-title-bar flex items-center justify-between">
               <span className="text-xs font-bold text-rmpg-100">Log Activity</span>
               <IconButton onClick={() => setShowActivityModal(false)} className="text-rmpg-400 hover:text-rmpg-200" aria-label="Close activity modal"><X className="w-3.5 h-3.5" /></IconButton>
@@ -913,7 +913,7 @@ export default function CrmPage() {
                     return (
                       <div key={s.pipeline_stage} className={`flex-1 ${stageColors[s.pipeline_stage] || 'bg-rmpg-700'} px-2 py-2 text-center hover:brightness-110 transition-all cursor-default`} style={{ borderRadius: '2px' }}>
                         <div className="text-sm font-bold text-rmpg-100 font-mono tabular-nums">{s.count}</div>
-                        <div className="text-[8px] text-rmpg-100/70 uppercase font-bold tracking-wider">{s.pipeline_stage}</div>
+                        <div className="text-[8px] text-rmpg-100/70 uppercase font-bold tracking-wider">{formatEnumValue(s.pipeline_stage)}</div>
                         {s.total_value > 0 && <div className="text-[8px] text-rmpg-100/50 font-mono">{formatCurrency(s.total_value)}</div>}
                       </div>
                     );
@@ -987,7 +987,7 @@ export default function CrmPage() {
                   <div className="space-y-1">
                     {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
                       <div key={s.source} className="flex items-center gap-2 text-[10px]">
-                        <span className="w-24 text-rmpg-300 truncate capitalize">{(s.source ?? '').replace(/_/g, ' ')}</span>
+                        <span className="w-24 text-rmpg-300 truncate capitalize">{toDisplayLabel(s.source ?? '')}</span>
                         <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
                           <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
                         </div>

@@ -118,7 +118,7 @@ uof.post('/', async (c) => {
          body_camera_active, witness_officers, narrative, status,
          created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted',
-         datetime('now','localtime'), datetime('now','localtime'))`,
+         datetime('now'), datetime('now'))`,
       b.incident_id ?? null, userId, b.subject_person_id ?? null,
       b.force_type, b.force_level ?? null,
       b.justification ?? null, b.subject_injuries ?? null, b.officer_injuries ?? null,
@@ -200,11 +200,14 @@ uof.get('/:id/footage', async (c) => {
     let bodycam: Record<string, unknown>[] = [];
     if (incidentId != null) {
       bodycam = await query<Record<string, unknown>>(db,
-        `SELECT id, title, classification, retention_status, recorded_at,
-                duration_seconds, file_size, officer_name, case_number, created_at
-         FROM bodycam_videos
-         WHERE incident_id = ?
-         ORDER BY recorded_at DESC`, incidentId).catch(() => []);
+        // bodycam_videos has no officer_name — resolve it off users.full_name.
+        `SELECT v.id, v.title, v.classification, v.retention_status, v.recorded_at,
+                v.duration_seconds, v.file_size, u.full_name AS officer_name,
+                v.case_number, v.created_at
+         FROM bodycam_videos v
+         LEFT JOIN users u ON u.id = v.officer_id
+         WHERE v.incident_id = ?
+         ORDER BY v.recorded_at DESC`, incidentId).catch(() => []);
     }
     return c.json({ flexcam: flexcam || [], bodycam: bodycam || [] });
   } catch (err) {
@@ -231,8 +234,8 @@ uof.put('/:id/review', async (c) => {
     if (!existing) return c.json({ error: 'Report not found', code: 'NOT_FOUND' }, 404);
     const userId = (c.get('user') as { id: number } | undefined)?.id ?? null;
     await execute(db,
-      `UPDATE use_of_force SET status = ?, reviewed_by = ?, reviewed_at = datetime('now','localtime'),
-              review_notes = COALESCE(?, review_notes), updated_at = datetime('now','localtime')
+      `UPDATE use_of_force SET status = ?, reviewed_by = ?, reviewed_at = datetime('now'),
+              review_notes = COALESCE(?, review_notes), updated_at = datetime('now')
        WHERE id = ?`, status, userId, b.notes ?? null, id);
     try {
       await recordAudit(c, { action: 'REVIEW', entityType: 'use_of_force', entityId: id, details: `Use of force report ${b.decision}`, actorId: userId });

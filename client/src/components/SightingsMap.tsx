@@ -10,9 +10,10 @@ import { RefreshCw } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildDotMarker, isValidLngLat } from '../utils/mapMarkers';
+import { buildDotMarker, isValidLngLat } from '../pages/map/utils/mapMarkers';
 import { sightingSource } from '../utils/alprSource';
 import { hasSource, safeRemoveLayer, safeRemoveSource, getSourceSafe, upsertGeoJsonSource } from '../utils/mapboxSafeLayer';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 // Above this many GPS-tagged sightings, individual DOM markers get dense
 // enough to occlude each other on a small panel (this component defaults to
@@ -52,8 +53,10 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   // pattern caused visible jitter on live ALPR feeds and pushed the WebGL
   // context cap when the sightings list grew).
   const markersRef = useRef<Map<number, mapboxgl.Marker>>(new Map());
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // isValidLngLat rejects NaN/Infinity AND the exact (0,0) ClearPath no-fix
   // signature so a pre-GPS-lock sighting never anchors a dot off the African coast.
@@ -73,11 +76,14 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
           style: MAPBOX_STYLE_DARK,
           center: located.length ? [located[0].lng!, located[0].lat!] : DEFAULT_CENTER,
           zoom: 11,
+          projection: 'mercator',
           attributionControl: false,
         });
         map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
+        map.on('load', () => { if (!cancelled) onMapLoaded(map); });
         mapRef.current = map;
         registerMapInstance(map);
+        webglRecoveryCleanupRef.current = attach(map, 'SightingsMap');
         setLoaded(true);
       } catch (err) {
         if (!cancelled) setError((err as Error)?.message || getMapboxTokenErrorMessage());
@@ -87,10 +93,13 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       cancelled = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current.clear();
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setLoaded(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rebuildNonce]);
 
   const clustered = located.length > CLUSTER_THRESHOLD;
 
@@ -126,7 +135,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       const el = buildDotMarker({
         color: src.color,
         size: 11,
-        halo: s.hit ? { color: '#ef4444', width: 2, shadowSpread: 8 } : undefined,
+        halo: s.hit ? { color: 'var(--sev-critical)', width: 2, shadowSpread: 8 } : undefined,
       });
       el.style.cursor = 'pointer';
       el.title = `${s.plate} · ${src.label}`;
@@ -268,7 +277,7 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
   }, [located.map((s) => `${s.id}:${s.lat},${s.lng}:${s.hit ? 1 : 0}`).join(','), loaded, clustered, onPick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) {
-    return <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-[#888888]">{error}</div>;
+    return <div style={{ height }} className="flex items-center justify-center bg-surface-sunken border border-border-default text-[10px] text-fg-muted">{error}</div>;
   }
 
   return (
@@ -276,11 +285,11 @@ export default function SightingsMap({ sightings, height = 240, onPick }: {
       <div ref={containerRef} role="application" aria-label="Plate sightings map" style={{ width: '100%', height: '100%' }} />
       {!loaded && (
         <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center bg-surface-sunken">
-          <RefreshCw className="w-3.5 h-3.5 text-rmpg-600 animate-spin" />
+          <RefreshCw className="w-3.5 h-3.5 text-fg-muted animate-spin" />
         </div>
       )}
       {loaded && !located.length && (
-        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-rmpg-500">
+        <div style={{ position: 'absolute', inset: 0 }} className="flex items-center justify-center pointer-events-none text-[10px] text-fg-muted">
           No GPS-tagged sightings yet
         </div>
       )}

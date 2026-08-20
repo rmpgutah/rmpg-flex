@@ -3,6 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import FormModal from '../components/FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 import OfficerPicker from '../components/OfficerPicker';
+import { toDisplayLabel } from '../utils/formatters';
 
 export interface AffairsFormData {
   complainant_name: string; complainant_contact: string;
@@ -27,7 +28,7 @@ const EMPTY_FORM: AffairsFormData = {
 
 export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitting, editingRecord, submitError }: AffairsFormModalProps) {
   const { form, setForm, isDirty, wasRestored, clearDraft, signalSaved, snapshot } = useFormDraft<AffairsFormData>({
-    storageKey: 'rmpg_affairs_form', defaultValue: EMPTY_FORM, isActive: isOpen,
+    storageKey: `rmpg_affairs_form_${editingRecord?.id ?? 'new'}`, defaultValue: EMPTY_FORM, isActive: isOpen,
   });
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Complaint Type</label>
             <select name="complaint_type" className="select-dark mt-1" value={form.complaint_type} onChange={handleChange}>
               {['excessive_force','discourtesy','dishonesty','policy_violation','criminal','other'].map(t=>
-                <option key={t} value={t}>{t.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</option>)}
+                <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
             </select></div>
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Officer</label>
             <div className="mt-1">
@@ -82,7 +83,7 @@ export default function AffairsFormModal({ isOpen, onClose, onSubmit, isSubmitti
           <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
             <select name="status" className="select-dark mt-1" value={form.status} onChange={handleChange}>
               {['received','assigned','under_investigation','sustained','not_sustained','exonerated','unfounded','closed'].map(s=>
-                <option key={s} value={s}>{s.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</option>)}
+                <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
             </select></div>
         </div>
         <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Incident Date</label>

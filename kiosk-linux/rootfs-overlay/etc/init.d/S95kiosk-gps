@@ -1,0 +1,51 @@
+#!/bin/sh
+# S95kiosk-gps — start gpsd when a GPS device is present at boot.
+#
+# Covers the optional dedicated GPS xPAK (u-blox NEO-M8N, appears as
+# /dev/ttyACM0 — USB CDC-ACM) and any USB GPS dongle (/dev/ttyUSB0).
+# RS-232 GPS via a serial xPAK (/dev/ttyS0) is NOT auto-started here because
+# every FZ-55 with SERIAL_8250 built in would try ttyS0 even when it is
+# unconnected — instead, start gpsd manually with:  gpsd /dev/ttyS0
+#
+# Runs after S98kiosk-net-marker (S95 < S98) so gpsd is up before the desktop
+# session starts and the browser app can read coordinates immediately.
+set -u
+
+LOG_TAG="kiosk-gps"
+log() { echo "[$LOG_TAG] $*"; logger -t "$LOG_TAG" "$*" 2>/dev/null; }
+
+case "$1" in
+  start)
+    GPS_DEVS=""
+    for dev in /dev/ttyACM[0-9] /dev/ttyUSB[0-9]; do
+      [ -e "$dev" ] || continue
+      # Confirm the device is actually a serial character device, not a
+      # control node or a zero-byte placeholder from a half-probed module.
+      [ -c "$dev" ] && GPS_DEVS="${GPS_DEVS} $dev"
+    done
+    if [ -z "$GPS_DEVS" ]; then
+      log "No USB GPS device found — gpsd not started (add /dev/ttyS0 manually for RS-232 GPS)"
+      exit 0
+    fi
+    log "Starting gpsd on${GPS_DEVS}"
+    # -n: keep polling the receiver even when no client is connected, so the
+    #     first query returns a real fix rather than cold-start TTFF delay.
+    # -G: listen on all interfaces (127.0.0.1:2947 default, but the browser's
+    #     service worker may connect from a different origin context).
+    # shellcheck disable=SC2086
+    gpsd -n -G $GPS_DEVS
+    log "gpsd started"
+    ;;
+  stop)
+    gpsd -k 2>/dev/null || killall gpsd 2>/dev/null || true
+    log "gpsd stopped"
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}" >&2
+    exit 1
+    ;;
+esac

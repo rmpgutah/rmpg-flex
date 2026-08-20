@@ -22,6 +22,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { CheckCircle2, XCircle, AlertTriangle, RotateCw, Clock, Upload, Download } from 'lucide-react';
 import FleetioConflictBadge from '../../components/FleetioConflictBadge';
+import { toDisplayLabel } from '../../utils/formatters';
 
 interface HealthResponse {
   links_total: number;
@@ -63,6 +64,7 @@ export default function AdminFleetioHealthTab() {
   const [seedResult, setSeedResult] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
   const [pullResult, setPullResult] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<number | null>(null);
 
   const fetchHealth = useCallback(() => {
     setErr(null);
@@ -124,6 +126,16 @@ export default function AdminFleetioHealthTab() {
       .catch((e) => {
         setPulling(false);
         setPullResult(`failed: ${e instanceof Error ? e.message : 'unknown'}`);
+      });
+  };
+
+  const retryEvent = (id: number) => {
+    setRetrying(id);
+    apiFetch<{ success: boolean }>(`/fleetio/events/${id}/retry`, { method: 'POST' })
+      .then(() => { setRetrying(null); fetchHealth(); })
+      .catch((e) => {
+        setRetrying(null);
+        alert(`Failed to retry: ${e instanceof Error ? e.message : 'unknown error'}`);
       });
   };
 
@@ -271,7 +283,7 @@ export default function AdminFleetioHealthTab() {
             <tbody>
               {health.by_resource.map((r, i) => (
                 <tr key={`${r.resource}-${r.status}-${i}`} className="border-b border-rmpg-800/40">
-                  <td className="py-1 pr-2 text-rmpg-100">{r.resource}</td>
+                  <td className="py-1 pr-2 text-rmpg-100">{toDisplayLabel(r.resource)}</td>
                   <td className="py-1 px-2"><StatusBadge status={r.status} /></td>
                   <td className="py-1 pl-2 text-right text-rmpg-100">{r.n.toLocaleString()}</td>
                 </tr>
@@ -297,19 +309,45 @@ export default function AdminFleetioHealthTab() {
                 <th className="py-1 px-2">Status</th>
                 <th className="py-1 px-2 text-right">Attempts</th>
                 <th className="py-1 pl-2">Error</th>
+                <th className="py-1 pl-2" />
               </tr>
             </thead>
             <tbody>
               {health.recent_events.map((e) => (
                 <tr key={e.id as number} className="border-b border-rmpg-800/40 align-top">
                   <td className="py-1 pr-2 font-mono text-rmpg-300">{relTime(e.created_at as string)}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.direction as string}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.resource as string}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{e.action as string}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.direction as string)}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.resource as string)}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(e.action as string)}</td>
                   <td className="py-1 px-2"><StatusBadge status={e.status as string} /></td>
                   <td className="py-1 px-2 text-right text-rmpg-300">{e.attempts as number}</td>
                   <td className="py-1 pl-2 text-red-300 max-w-[280px] truncate" title={(e.error as string) ?? ''}>
                     {(e.error as string) ?? ''}
+                  </td>
+                  <td className="py-1 pl-2 text-right whitespace-nowrap">
+                    {e.status === 'failed' && e.direction === 'outbound' && (
+                      // A PERMANENT failure is Fleet.io rejecting the data itself, so
+                      // retrying it is guaranteed to fail (the API returns 409). Offer
+                      // the real remedy instead of a button that re-arms the loop.
+                      isPermanentError(e.error as string | null) ? (
+                        <span
+                          className="text-[9px] text-amber-400"
+                          title="Fleet.io rejected this data. Correct the source record in RMPG — saving it queues a fresh event."
+                        >
+                          Fix source record
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={retrying === (e.id as number)}
+                          onClick={() => retryEvent(e.id as number)}
+                          className="text-[9px] px-1.5 py-0.5 border border-rmpg-700 rounded-sm hover:bg-rmpg-800 disabled:opacity-50"
+                          aria-label="Retry failed event"
+                        >
+                          {retrying === (e.id as number) ? 'Retrying…' : 'Retry'}
+                        </button>
+                      )
+                    )}
                   </td>
                 </tr>
               ))}
@@ -342,7 +380,7 @@ export default function AdminFleetioHealthTab() {
               {health.unresolved_conflicts.map((c) => (
                 <tr key={c.id as number} className="border-b border-rmpg-800/40 align-top">
                   <td className="py-1 pr-2 font-mono text-rmpg-300">{relTime(c.created_at as string)}</td>
-                  <td className="py-1 px-2 text-rmpg-100">{c.rmpg_table as string}</td>
+                  <td className="py-1 px-2 text-rmpg-100">{toDisplayLabel(c.rmpg_table as string)}</td>
                   <td className="py-1 px-2 text-rmpg-100">#{c.rmpg_id as number}</td>
                   <td className="py-1 px-2">
                     <FleetioConflictBadge
@@ -455,6 +493,19 @@ function StatusBadge({ status }: { status: string }) {
       {status}
     </span>
   );
+}
+
+/**
+ * Mirrors `PERMANENT_ERROR_PREFIX` in src/utils/fleetio/sync.ts — the marker the
+ * sync engine stamps onto `fleetio_events.error` when Fleet.io returned a 4xx,
+ * i.e. rejected the payload itself rather than failing transiently. Kept as a
+ * literal because the Worker and the SPA share no build; the prefix is asserted
+ * on both sides so a rename can't silently un-hide the Retry button.
+ */
+export const PERMANENT_ERROR_PREFIX = 'PERMANENT: ';
+
+export function isPermanentError(error: string | null | undefined): boolean {
+  return typeof error === 'string' && error.startsWith(PERMANENT_ERROR_PREFIX);
 }
 
 /** Coarse human delta: "Just now", "5m", "2h", "3d". Pure for tests. */

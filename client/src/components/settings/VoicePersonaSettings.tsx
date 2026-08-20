@@ -1,20 +1,25 @@
 // ============================================================
 // Voice Persona Settings — user-facing tab inside UserProfileModal.
-// Lets an officer/dispatcher pick from 4 curated Edge-TTS voices,
-// adjust rate/pitch, choose a terseness mode, and preview the result.
+// Lets an officer/dispatcher pick a dispatcher voice, adjust rate/pitch,
+// choose a terseness mode, and preview the result.
 // Backed by useVoicePersona (localStorage + /api/voice-persona).
+//
+// ⚠️ Voices come from utils/voiceCatalog — do NOT reintroduce a local list.
+// This component used to carry its own 4-entry array of Edge-TTS ids
+// ('en-US-JennyNeural', …) which differed from the SettingsPage list AND
+// was invalid for the Aura-2 server, so every pick here silently coerced to
+// the default. One catalog, one source of truth.
 // ============================================================
 
 import { Volume2 } from 'lucide-react';
 import { useVoicePersona } from '../../hooks/useVoicePersona';
 import { speak } from '../../utils/edgeTTS';
+import { VOICE_CATALOG } from '../../utils/voiceCatalog';
 
-const VOICES: Array<{ id: string; label: string }> = [
-  { id: 'en-US-JennyNeural', label: 'Female — Calm' },
-  { id: 'en-US-AriaNeural',  label: 'Female — Crisp' },
-  { id: 'en-US-GuyNeural',   label: 'Male — Baritone' },
-  { id: 'en-US-DavisNeural', label: 'Male — Tactical' },
-];
+const VOICES: Array<{ id: string; label: string }> = VOICE_CATALOG.map((v) => ({
+  id: v.id,
+  label: `${v.gender === 'female' ? 'Female' : 'Male'} — ${v.label}`,
+}));
 
 const SAMPLE_LINE =
   'Priority one domestic at 123 Main Street, Delta 2-14, 3 Adam responding.';
@@ -25,10 +30,10 @@ export default function VoicePersonaSettings() {
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-2">
-        <Volume2 style={{ width: 11, height: 11, color: '#888888' }} />
+        <Volume2 style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
         <span
           className="text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: '#888888' }}
+          style={{ color: 'var(--text-muted)' }}
         >
           Voice Persona
         </span>
@@ -40,7 +45,7 @@ export default function VoicePersonaSettings() {
       >
         {/* Voice picker */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Dispatcher voice
           </span>
           <select id="ff-voicepersonasettings-0"
@@ -50,7 +55,7 @@ export default function VoicePersonaSettings() {
             style={{
               background: 'var(--surface-overlay)',
               border: '1px solid var(--border-subtle)',
-              color: 'var(--rmpg-300)',
+              color: 'var(--text-secondary)',
               borderRadius: 2,
             }}
           >
@@ -64,7 +69,7 @@ export default function VoicePersonaSettings() {
 
         {/* Terseness radio */}
         <div>
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Terseness
           </span>
           <div className="flex gap-2 mt-1">
@@ -77,9 +82,9 @@ export default function VoicePersonaSettings() {
                   onClick={() => setPersona({ terseness: t })}
                   className="px-3 py-1 text-[11px] uppercase tracking-wider"
                   style={{
-                    background: active ? 'var(--surface-raised)' : '#0a0a0a',
-                    border: `1px solid ${active ? '#d4a017' : 'var(--border-subtle)'}`,
-                    color: active ? '#d4a017' : '#888888',
+                    background: active ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+                    border: `1px solid ${active ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
+                    color: active ? 'var(--accent-gold-300)' : 'var(--text-muted)',
                     borderRadius: 2,
                   }}
                 >
@@ -92,7 +97,7 @@ export default function VoicePersonaSettings() {
 
         {/* Rate slider */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Rate: {persona.rate.toFixed(2)}x
           </span>
           <input id="ff-voicepersonasettings-1"
@@ -108,7 +113,7 @@ export default function VoicePersonaSettings() {
 
         {/* Pitch slider */}
         <label className="block">
-          <span className="text-[11px]" style={{ color: '#888888' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
             Pitch: {persona.pitch > 0 ? '+' : ''}{persona.pitch}
           </span>
           <input id="ff-voicepersonasettings-2"
@@ -129,8 +134,8 @@ export default function VoicePersonaSettings() {
           className="px-3 py-1 text-[11px] uppercase tracking-wider"
           style={{
             background: 'var(--surface-raised)',
-            border: '1px solid #d4a017',
-            color: '#d4a017',
+            border: '1px solid var(--accent-gold-300)',
+            color: 'var(--accent-gold-300)',
             borderRadius: 2,
           }}
         >
@@ -141,10 +146,10 @@ export default function VoicePersonaSettings() {
       {/* Dispatcher Brain master switch — Phase 2 kill switch */}
       <div className="mt-4">
         <div className="flex items-center gap-1.5 mb-2">
-          <Volume2 style={{ width: 11, height: 11, color: '#888888' }} />
+          <Volume2 style={{ width: 11, height: 11, color: 'var(--text-muted)' }} />
           <span
             className="text-[10px] font-bold uppercase tracking-wider"
-            style={{ color: '#888888' }}
+            style={{ color: 'var(--text-muted)' }}
           >
             Dispatcher Brain (Beta)
           </span>
@@ -153,7 +158,7 @@ export default function VoicePersonaSettings() {
           className="flex items-center justify-between"
           style={{ background: 'var(--surface-overlay)', border: '1px solid var(--border-subtle)', padding: '10px 12px' }}
         >
-          <span className="text-[11px]" style={{ color: 'var(--rmpg-300)' }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
             Proactive coaching + event announcements
           </span>
           <button
@@ -163,16 +168,16 @@ export default function VoicePersonaSettings() {
             onClick={() => setPersona({ brainEnabled: !persona.brainEnabled })}
             className="px-3 py-1 text-[11px] uppercase tracking-wider"
             style={{
-              background: persona.brainEnabled ? 'var(--surface-raised)' : '#0a0a0a',
-              border: `1px solid ${persona.brainEnabled ? '#d4a017' : 'var(--border-subtle)'}`,
-              color: persona.brainEnabled ? '#d4a017' : '#888888',
+              background: persona.brainEnabled ? 'var(--surface-raised)' : 'var(--surface-overlay)',
+              border: `1px solid ${persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--border-subtle)'}`,
+              color: persona.brainEnabled ? 'var(--accent-gold-300)' : 'var(--text-muted)',
               borderRadius: 2,
             }}
           >
             {persona.brainEnabled ? 'Enabled' : 'Disabled'}
           </button>
         </div>
-        <p className="text-[10px] mt-1 text-rmpg-500">
+        <p className="text-[10px] mt-1 text-fg-muted">
           When off, no coaching or event-driven speech. New calls & alerts still announce as usual.
         </p>
       </div>

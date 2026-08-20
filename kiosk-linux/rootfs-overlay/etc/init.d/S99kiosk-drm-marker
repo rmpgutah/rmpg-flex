@@ -1,0 +1,114 @@
+#!/bin/sh
+# kiosk-linux/rootfs-overlay/etc/init.d/S99kiosk-drm-marker
+#
+# Runs after the base boot-marker script. Both scripts share the S99 numeric
+# prefix (BusyBox init's /etc/init.d runner sorts script execution by the full
+# filename, not just the numeric prefix, when two scripts tie on that prefix —
+# confirmed by observing this script's own marker land after
+# KIOSK_LINUX_BOOT_OK in a real captured boot log), and
+# "S99kiosk-boot-marker" < "S99kiosk-drm-marker" lexicographically ('b' < 'd'),
+# so no rename/merge of either script was needed to get deterministic ordering.
+#
+# `modetest -M virtio_gpu` with NO -s flag only PROBES/LISTS resources (encoders,
+# connectors, CRTCs, planes) — it never sets a mode or draws a pixel. An earlier
+# version of this script ran only that probe form, which prints exit code 0 (a
+# "successful" query) even though nothing was ever rendered — confirmed by a real
+# QEMU screenshot still showing plain BIOS/kernel boot text, not a test pattern.
+# The probe output below (connector id 34, preferred mode 1280x800) was captured
+# from that real run's boot log and is used to actually commit a mode and draw
+# a test pattern via `-s <connector>:<mode>`.
+CONN_MODE="34:1280x800"
+MODETEST_BIN=$(command -v modetest)
+
+# Sub-project 3+ era: when the kiosk browser (cog) is installed and running it
+# owns DRM master, and modetest's own mode-set attempt then fails with
+# "Permission denied" — observed in a real 2026-07-24 boot log, because
+# BusyBox init runs the shared-S99 scripts lexicographically and
+# "S99kiosk-browser-marker" < "S99kiosk-drm-marker" ('b' < 'd'), so cog is
+# already on the display by the time this script runs. That is not a display
+# failure: the browser actively scanning out IS the strongest possible proof
+# the DRM stack works. Only fall back to the modetest mode-set when no
+# browser is holding the display (e.g. a future config without cog).
+if pidof X Xorg cog >/dev/null 2>&1; then
+  echo "KIOSK_LINUX_DRM_OK (display owned by the active session)"
+elif [ -n "$MODETEST_BIN" ]; then
+  # modetest -s is meant to draw the pattern and then block reading stdin for a
+  # keypress, holding the frame on screen — but stdin inherited from a
+  # non-interactive init script hits EOF immediately, so modetest returns from
+  # its read call right away and exits almost instantly (confirmed in a real
+  # boot log: the kernel's "used greatest stack depth" exit-accounting message
+  # for the modetest process appears in the SAME instant as this script's own
+  # marker, not several seconds later). When modetest's DRM file descriptor
+  # closes, virtio-gpu tears the scanout back down — so a screendump taken any
+  # time later than that (this project's QEMU harness waits several seconds)
+  # sees QEMU's "Display output is not active" placeholder, not the test
+  # pattern, even though the marker (correctly) reports success.
+  #
+  # Fix: give modetest a stdin that blocks on read instead of hitting EOF — a
+  # FIFO nothing writes to. This makes modetest's read call block indefinitely
+  # (not spin, not return), holding the committed mode + rendered frame until
+  # this init script (or ultimately the whole VM) is torn down.
+  #
+  # IMPORTANT: opening a FIFO for READ-ONLY (`<fifo`) itself blocks at the
+  # shell's redirect-setup stage until a writer opens the other end — and
+  # since nothing ever writes to this FIFO, that first version of this fix
+  # blocked BEFORE modetest even started, for both valid and invalid
+  # CONN_MODE values alike (confirmed: deliberately breaking CONN_MODE still
+  # printed KIOSK_LINUX_DRM_OK, and /tmp/modetest.log didn't even exist —
+  # proof modetest was never reached at all). Opening the FIFO READ-WRITE
+  # (`<>`) instead is the standard fix: the same open() call satisfies both
+  # ends at once, so it never blocks, while a plain read() on that fd still
+  # blocks correctly (no data, no EOF) once modetest itself is running.
+  MODETEST_FIFO=/tmp/modetest.stdin
+  mkfifo "$MODETEST_FIFO" 2>/dev/null
+  exec 3<>"$MODETEST_FIFO"
+  "$MODETEST_BIN" -M virtio_gpu -s "$CONN_MODE" <&3 >/tmp/modetest.log 2>&1 &
+  MODETEST_PID=$!
+  # Process-alive is NOT a valid success signal: confirmed by testing with a
+  # deliberately invalid CONN_MODE — modetest prints a real error ("failed to
+  # find mode ... failed to create dumb buffer") but still falls through to
+  # the same blocking read() at the end of main() regardless of whether the
+  # mode-set actually committed, so `kill -0` reports "alive" identically on
+  # both success and failure. The log CONTENT is the only reliable signal:
+  # modetest writes any mode-set/buffer-creation error synchronously before
+  # reaching that blocking read.
+  #
+  # A single fixed sleep before checking the log is a race: on a slow host,
+  # the error text might not be flushed to disk yet, and the check would fall
+  # through to "still alive" and wrongly report success — reintroducing the
+  # exact false-positive class this whole script exists to avoid. Poll for up
+  # to 2 seconds instead of trusting one fixed delay.
+  DRM_RESULT=""
+  i=0
+  while [ "$i" -lt 20 ]; do
+    if [ -s /tmp/modetest.log ] && grep -qi "failed" /tmp/modetest.log; then
+      DRM_RESULT="failed"
+      break
+    fi
+    if ! kill -0 "$MODETEST_PID" 2>/dev/null; then
+      wait "$MODETEST_PID"
+      if [ $? -eq 0 ]; then DRM_RESULT="ok"; else DRM_RESULT="failed"; fi
+      break
+    fi
+    i=$((i + 1))
+    sleep 0.1
+  done
+  # Loop exhausted with modetest still alive and no error logged yet: treat as
+  # success — it has genuinely reached the blocking read (the pattern is on
+  # screen), not merely "hasn't failed yet".
+  [ -z "$DRM_RESULT" ] && DRM_RESULT="ok"
+
+  if [ "$DRM_RESULT" = "ok" ]; then
+    echo "KIOSK_LINUX_DRM_OK"
+  else
+    echo "KIOSK_LINUX_DRM_FAILED (see /tmp/modetest.log)"
+    cat /tmp/modetest.log
+  fi
+else
+  # modetest missing from the built rootfs (e.g. a future Buildroot config
+  # regression drops BR2_PACKAGE_LIBDRM_INSTALL_TESTS) must not be silent —
+  # Task 2's scripted assertion greps for KIOSK_LINUX_DRM_OK specifically, so
+  # a missing binary needs its own explicit, distinguishable failure line
+  # rather than printing nothing at all.
+  echo "KIOSK_LINUX_DRM_FAILED (modetest not found)"
+fi

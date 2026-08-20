@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Bell, BellOff, Check, CheckCheck, Clock, Settings, Trash2, AlertTriangle, X,
   Loader2, RefreshCw, ArrowUpRight, ExternalLink, Filter as FilterIcon,
@@ -12,7 +12,7 @@ import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuCont
 import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { routeForEntity } from '../utils/notificationRouting';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 import { useAuth } from '../context/AuthContext';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -478,7 +478,7 @@ export default function NotificationsPage() {
                 onClick={() => { setFilterType(cat.category); setFilterRead(''); fetchNotifications(1); }}
                 className={`w-full text-left px-2 py-1.5 text-xs transition-colors mb-0.5 ${filterType === cat.category ? 'bg-brand-blue/20 text-rmpg-100' : 'text-rmpg-300 hover:bg-surface-raised'}`}
               >
-                {cat.category} <span className="text-rmpg-500">({cat.unread}/{cat.total})</span>
+                {formatEnumValue(cat.category)} <span className="text-rmpg-500">({cat.unread}/{cat.total})</span>
               </button>
             ))}
           </div>

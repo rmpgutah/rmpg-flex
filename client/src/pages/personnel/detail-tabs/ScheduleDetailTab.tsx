@@ -5,6 +5,7 @@
 import { Calendar, Plus, Trash2, MapPin, Sun, Moon } from 'lucide-react';
 import type { Schedule } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Props {
   schedules: Schedule[];
@@ -28,6 +29,7 @@ function isNightShift(shiftStart: string): boolean {
 function formatShiftStart(shiftStart: string): string {
   if (!shiftStart) return '-';
   return parseTimestamp(shiftStart).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -40,6 +42,7 @@ function formatShiftStart(shiftStart: string): string {
 function formatShiftEnd(shiftEnd: string): string {
   if (!shiftEnd) return '-';
   return parseTimestamp(shiftEnd).toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -124,7 +127,7 @@ export default function ScheduleDetailTab({
                     {/* Status badge */}
                     <div className="flex items-center gap-2">
                       <span className={`text-[9px] px-1.5 py-0.5 font-bold uppercase ${statusClass}`}>
-                        {sched.status.replace(/_/g, ' ').toUpperCase()}
+                        {toDisplayLabel(sched.status).toUpperCase()}
                       </span>
                     </div>
 

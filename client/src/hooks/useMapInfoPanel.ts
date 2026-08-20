@@ -43,11 +43,107 @@ export interface NearbyItem {
 }
 
 export interface WeatherInfo {
-  temp: string;
-  condition: string;
-  wind: string;
-  humidity: string;
+  /** Pre-formatted display strings. Every field is optional — a missing
+   *  upstream value must render as *nothing*, never as "NaN" / "undefined". */
+  temp?: string;
+  condition?: string;
+  wind?: string;
+  humidity?: string;
+  /** "68°F (feels 71°F)" style detail line pieces. */
+  feelsLike?: string;
+  visibility?: string;
+  pressure?: string;
+  dewPoint?: string;
+  observedAt?: string;
+  hazardLevel?: 'none' | 'advisory' | 'warning';
+  hazardReasons?: string[];
   icon?: string;
+}
+
+/** Wire shape of GET /api/weather (normalized block added 2026-08-02). */
+interface WeatherApiResponse {
+  temp_f?: number | null;
+  feels_like_f?: number | null;
+  condition?: string | null;
+  humidity?: number | null;
+  dew_point_f?: number | null;
+  wind_mph?: number | null;
+  wind_gust_mph?: number | null;
+  wind_dir?: string | null;
+  pressure_in?: number | null;
+  visibility_mi?: number | null;
+  observed_at?: string | null;
+  hazard?: { level: 'none' | 'advisory' | 'warning'; reasons: string[] } | null;
+  /** Raw Open-Meteo block, still emitted for older callers. */
+  current?: { temperature_2m?: number; weather_code?: number } | null;
+}
+
+const WEATHER_ICONS: Record<string, string> = {
+  Clear: '☀️', 'Mostly Clear': '🌤', 'Partly Cloudy': '⛅', Overcast: '☁️',
+  Fog: '🌫', 'Freezing Fog': '🌫',
+};
+
+function weatherIcon(condition: string | null | undefined): string {
+  if (!condition) return '🌡';
+  if (WEATHER_ICONS[condition]) return WEATHER_ICONS[condition];
+  if (/thunder/i.test(condition)) return '⛈';
+  if (/snow/i.test(condition)) return '🌨';
+  if (/rain|drizzle|shower/i.test(condition)) return '🌧';
+  return '🌡';
+}
+
+/**
+ * Map the API payload to display strings, dropping anything the upstream
+ * provider didn't return. Returns null when there is nothing worth showing —
+ * the caller then omits the weather row entirely rather than rendering an
+ * empty separator run ("🌡 · · Wind"), which is what the raw-shape mismatch
+ * produced before this normalizer existed.
+ */
+export function toWeatherInfo(res: WeatherApiResponse | null | undefined): WeatherInfo | null {
+  if (!res) return null;
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+
+  const tempF = num(res.temp_f) ?? num(res.current?.temperature_2m);
+  const feels = num(res.feels_like_f);
+  const windMph = num(res.wind_mph);
+  const gust = num(res.wind_gust_mph);
+  const humidity = num(res.humidity);
+  const vis = num(res.visibility_mi);
+  const pressure = num(res.pressure_in);
+  const dew = num(res.dew_point_f);
+  const condition = res.condition && res.condition !== 'Unknown' ? res.condition : undefined;
+
+  // Wind reads "8 mph NW" / "8 mph" / "8 mph NW G22" — the direction and gust
+  // tokens are appended only when present.
+  let wind: string | undefined;
+  if (windMph != null) {
+    wind = `${Math.round(windMph)} mph`;
+    if (res.wind_dir) wind += ` ${res.wind_dir}`;
+    if (gust != null && windMph != null && gust >= windMph + 5) wind += ` G${Math.round(gust)}`;
+  }
+
+  const info: WeatherInfo = {
+    temp: tempF != null ? `${Math.round(tempF)}°F` : undefined,
+    condition,
+    wind,
+    humidity: humidity != null ? `${Math.round(humidity)}%` : undefined,
+    feelsLike: feels != null && tempF != null && Math.round(feels) !== Math.round(tempF)
+      ? `feels ${Math.round(feels)}°F`
+      : undefined,
+    visibility: vis != null ? `${vis} mi vis` : undefined,
+    pressure: pressure != null ? `${pressure.toFixed(2)} inHg` : undefined,
+    dewPoint: dew != null ? `dew ${Math.round(dew)}°F` : undefined,
+    observedAt: res.observed_at ?? undefined,
+    hazardLevel: res.hazard?.level,
+    hazardReasons: res.hazard?.reasons?.length ? res.hazard.reasons : undefined,
+    icon: weatherIcon(condition),
+  };
+
+  const hasAnything = Boolean(
+    info.temp || info.condition || info.wind || info.humidity || info.hazardReasons,
+  );
+  return hasAnything ? info : null;
 }
 
 export interface UseMapInfoPanelResult {
@@ -80,6 +176,50 @@ function formatDistanceMi(meters: number): string {
   return mi >= 0.1 ? `${mi.toFixed(1)} mi` : `${Math.round(meters * 3.28084)} ft`;
 }
 
+/**
+ * Weather rows for the map popup.
+ *
+ * Mapbox popups are ordinary DOM inside the document, so CSS custom properties
+ * DO resolve here — unlike Mapbox *paint* properties, where `var()` blanks the
+ * layer and literal hex is mandatory. Hex fallbacks are supplied so the popup
+ * still reads correctly if a palette block ever omits a variable.
+ */
+function renderWeatherBlock(w: WeatherInfo): string {
+  const primary = [w.temp, w.feelsLike, w.condition].filter(Boolean) as string[];
+  const secondary = [
+    w.wind ? `Wind ${w.wind}` : null,
+    w.humidity ? `RH ${w.humidity}` : null,
+    w.dewPoint,
+    w.visibility,
+    w.pressure,
+  ].filter(Boolean) as string[];
+
+  const hazardColor = w.hazardLevel === 'warning'
+    ? 'var(--sev-critical, #ef4444)'
+    : 'var(--sev-warn, #f59e0b)';
+
+  const rows: string[] = [];
+  if (primary.length) {
+    rows.push(
+      `<div style="color:var(--text-primary,#e6edf5);font-size:11px;margin-top:4px;">` +
+      `${w.icon ?? '🌡'} ${primary.map(escapeHtml).join(' · ')}</div>`,
+    );
+  }
+  if (secondary.length) {
+    rows.push(
+      `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;margin-top:1px;">` +
+      `${secondary.map(escapeHtml).join(' · ')}</div>`,
+    );
+  }
+  if (w.hazardReasons?.length) {
+    rows.push(
+      `<div style="color:${hazardColor};font-size:10px;font-weight:700;margin-top:3px;">` +
+      `⚠ ${w.hazardReasons.map(escapeHtml).join(' · ')}</div>`,
+    );
+  }
+  return rows.join('');
+}
+
 // ── Hook ──────────────────────────────────────────────────
 
 export function useMapInfoPanel(
@@ -107,14 +247,14 @@ export function useMapInfoPanel(
     })
       .setLngLat(data.lngLat)
       .setHTML(`
-        <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
-          <div style="font-weight:700;color:${data.color || '#d4a017'};font-size:12px;margin-bottom:2px;">${escapeHtml(data.title)}</div>
-          ${data.subtitle ? `<div style="color:#888;font-size:10px;">${escapeHtml(data.subtitle)}</div>` : ''}
-          ${data.address ? `<div style="color:#666;font-size:10px;margin-top:4px;">📍 ${escapeHtml(data.address)}</div>` : ''}
-          ${data.weather ? `<div style="color:#666;font-size:10px;margin-top:2px;">🌡 ${escapeHtml(data.weather.temp)} · ${escapeHtml(data.weather.condition)} · Wind ${escapeHtml(data.weather.wind)}</div>` : ''}
+        <div style="background:var(--surface-raised,#15212e);color:var(--text-primary,#e6edf5);padding:8px 12px;border:1px solid var(--border-default,#2a3a4d);border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
+          <div style="font-weight:700;color:${data.color || 'var(--panel-header-color,#d4a017)'};font-size:12px;margin-bottom:2px;">${escapeHtml(data.title)}</div>
+          ${data.subtitle && data.subtitle !== data.address ? `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;">${escapeHtml(data.subtitle)}</div>` : ''}
+          ${data.address ? `<div style="color:var(--text-muted,#8fa3b8);font-size:10px;margin-top:4px;">📍 ${escapeHtml(data.address)}</div>` : ''}
+          ${data.weather ? renderWeatherBlock(data.weather) : ''}
           ${data.nearby && data.nearby.length > 0 ? `
             <div style="border-top:1px solid #222;margin-top:4px;padding-top:4px;">
-              <div style="color:#d4a017;font-size:9px;font-weight:700;">NEARBY</div>
+              <div style="color:var(--panel-header-color,#d4a017);font-size:9px;font-weight:700;">NEARBY</div>
               ${data.nearby.slice(0, 5).map(n =>
                 `<div style="font-size:10px;color:#aaa;margin-top:1px;">
                   <span style="color:${n.color || '#888'};">●</span> ${escapeHtml(n.label)} — ${escapeHtml(n.distance)}
@@ -151,7 +291,7 @@ export function useMapInfoPanel(
           id: u.id,
           label: u.call_sign,
           distance: formatDistanceMi(dist),
-          color: '#22c55e',
+          color: 'var(--sev-ok)',
         });
       }
     }
@@ -165,7 +305,7 @@ export function useMapInfoPanel(
           id: c.id,
           label: `${c.call_number} (P${c.priority})`,
           distance: formatDistanceMi(dist),
-          color: '#ef4444',
+          color: 'var(--sev-critical)',
         });
       }
     }
@@ -188,24 +328,15 @@ export function useMapInfoPanel(
       }
     } catch { /* use coords as fallback */ }
 
-    // Try weather
+    // Try weather. `apiFetch<T>` is a cast, not a validator — every field is
+    // re-checked inside toWeatherInfo(), which is why a shape drift now yields
+    // a missing row instead of a rendered "NaN°F ... Wind NaN mph undefined".
     let weather: WeatherInfo | null = null;
     try {
-      const weatherData = await apiFetch<{
-        temp_f: number;
-        condition: string;
-        wind_mph: number;
-        wind_dir: string;
-        humidity: number;
-      }>(`/weather?lat=${lat}&lng=${lng}`);
-      if (weatherData) {
-        weather = {
-          temp: `${Math.round(weatherData.temp_f)}°F`,
-          condition: weatherData.condition,
-          wind: `${Math.round(weatherData.wind_mph)} mph ${weatherData.wind_dir}`,
-          humidity: `${weatherData.humidity}%`,
-        };
-      }
+      const weatherData = await apiFetch<WeatherApiResponse>(
+        `/weather?lat=${lat}&lng=${lng}`,
+      );
+      weather = toWeatherInfo(weatherData);
     } catch { /* weather is optional */ }
 
     const data: InfoPanelData = {

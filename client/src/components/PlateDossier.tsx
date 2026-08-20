@@ -66,11 +66,11 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
         {/* Header */}
         <div className="sticky top-0 bg-surface-sunken border-b border-border-default px-3 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Car className="w-4 h-4 text-[#d4a017]" />
+            <Car className="w-4 h-4 [color:var(--field-label-color)]" />
             <span className="text-xl tracking-[0.2em] text-rmpg-100 font-semibold">{norm}</span>
-            {vehicle?.state && <span className="text-[11px] text-[#888888]">{vehicle.state}</span>}
+            {vehicle?.state && <span className="text-[11px] text-fg-muted">{vehicle.state}</span>}
           </div>
-          <button type="button" onClick={onClose} aria-label="Close dossier" className="text-[#888888] hover:text-rmpg-100"><X className="w-5 h-5" /></button>
+          <button type="button" onClick={onClose} aria-label="Close dossier" className="text-fg-muted hover:text-rmpg-100"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-3 space-y-3">
@@ -81,7 +81,7 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
             </div>
           ))}
           {hits.filter((h) => h.severity === 'warning').map((h, i) => (
-            <div key={`w${i}`} className="border border-[#d4a017] text-[#d4a017] text-[11px] px-3 py-1">{h.detail}</div>
+            <div key={`w${i}`} className="border border-accent-silver-400 text-accent-silver-400 text-[11px] px-3 py-1">{h.detail}</div>
           ))}
           {!loading && screenFailed && (
             <div className="bg-amber-950 border border-amber-600 text-amber-300 text-sm font-semibold px-3 py-2 flex items-center gap-2">
@@ -95,13 +95,13 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
           {/* Vehicle record */}
           {vehicle ? (
             <div className="border border-border-default bg-surface-base p-2.5">
-              <div className="text-[9px] uppercase tracking-wider text-[#888888] mb-1">On file</div>
+              <div className="text-[9px] uppercase tracking-wider text-fg-muted mb-1">On file</div>
               <div className="text-sm text-rmpg-100">{vehicleDesc || 'Vehicle record'}</div>
               {ownerName && <div className="text-[11px] text-rmpg-300 mt-0.5">Owner: {ownerName}</div>}
               {vehicle.is_stolen === 1 && <div className="text-[11px] text-red-400 font-semibold mt-0.5">⚠ FLAGGED STOLEN</div>}
             </div>
           ) : !loading && (
-            <div className="text-[11px] text-[#888888] border border-border-default px-3 py-1.5">Plate not on file — sightings only.</div>
+            <div className="text-[11px] text-fg-muted border border-border-default px-3 py-1.5">Plate not on file — sightings only.</div>
           )}
 
           {/* Map */}
@@ -109,11 +109,11 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
 
           {/* History */}
           <div className="border border-border-default">
-            <div className="px-2 py-[3px] text-[9px] font-semibold text-[#d4a017] border-b border-border-default flex items-center justify-between">
+            <div className="px-2 py-[3px] text-[9px] font-semibold [color:var(--panel-header-color)] border-b border-border-default flex items-center justify-between">
               <span>SIGHTING HISTORY</span><span>{sightings.length}</span>
             </div>
-            {loading && <div className="p-2 text-[11px] text-[#888888]">Loading…</div>}
-            {!loading && !sightings.length && <div className="p-2 text-[11px] text-[#888888]">No sightings.</div>}
+            {loading && <div className="p-2 text-[11px] text-fg-muted">Loading…</div>}
+            {!loading && !sightings.length && <div className="p-2 text-[11px] text-fg-muted">No sightings.</div>}
             {sightings.map((s) => {
               const src = sightingSource(s.notes);
               return (
@@ -122,8 +122,8 @@ export default function PlateDossier({ plate, onClose }: { plate: string; onClos
                   <span className="flex-1 min-w-0 truncate text-rmpg-300">
                     {s.location_text || (s.lat != null ? `${s.lat.toFixed(4)}, ${s.lng?.toFixed(4)}` : '—')}
                   </span>
-                  {s.confidence != null && <span className="text-[#888888] shrink-0">{Math.round(s.confidence * 100)}%</span>}
-                  <span className="text-rmpg-500 shrink-0">{String(s.created_at).slice(5, 16)}</span>
+                  {s.confidence != null && <span className="text-fg-muted shrink-0">{Math.round(s.confidence * 100)}%</span>}
+                  <span className="text-fg-muted shrink-0">{String(s.created_at).slice(5, 16)}</span>
                 </div>
               );
             })}

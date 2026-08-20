@@ -2,7 +2,7 @@
 // geocoded intel as toggleable circle layers; clicking a point selects the
 // entity into the shared context (right dossier panel) or navigates.
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../../utils/mapboxApiKey';
 import { MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../../utils/mapboxLoader';
@@ -11,6 +11,8 @@ import { safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 import { useIntelContext } from './IntelContext';
 import { useIntelGeo } from './useIntelGeo';
 import { LAYER_DEFS, toGeoJSON } from './map/geoLayers';
+import { escapeHtml } from '../../utils/sanitize';
+import { useWebglMapRecovery } from '../../hooks/useWebglMapRecovery';
 
 const DAYS_OPTS = [1, 7, 30];
 
@@ -18,6 +20,8 @@ export default function IntelMapPage() {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState('');
   const [active, setActive] = useState<Record<string, boolean>>(() => Object.fromEntries(LAYER_DEFS.map((l) => [l.key, true])));
@@ -25,7 +29,7 @@ export default function IntelMapPage() {
   const { selectEntity } = useIntelContext();
   const navigate = useNavigate();
 
-  // Create the map once.
+  // Create the map once (and again after a WebGL context-loss rebuild).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -36,18 +40,23 @@ export default function IntelMapPage() {
       const map = new mapboxgl.Map({
         container: ref.current!, style: MAPBOX_STYLE_DARK,
         center: [-111.891, 40.7608], zoom: 11,
+        projection: 'mercator',
       });
       mapRef.current = map;
       registerMapInstance(map);
+      webglRecoveryCleanupRef.current = attach(map, 'IntelMapPage');
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
       popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px' });
-      map.on('load', () => { if (!cancelled) setReady(true); });
+      map.on('load', () => { if (!cancelled) { onMapLoaded(map); setReady(true); } });
     })();
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+      setReady(false);
     };
-  }, []);
+  }, [rebuildNonce]);
 
   // Sync layers whenever data / toggles change.
   useEffect(() => {
@@ -72,7 +81,7 @@ export default function IntelMapPage() {
         const type = p.entity_type, id = Number(p.entity_id);
         if (type === 'vehicle' || type === 'person') { selectEntity(type, id, p.label || `#${id}`); return; }
         if (type === 'warrant') { navigate(`/warrants?id=${id}`); return; }
-        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:#111">${p.label || type}</div>`).addTo(map);
+        popupRef.current?.setLngLat(e.lngLat).setHTML(`<div style="font:11px monospace;color:#111">${escapeHtml(p.label || type)}</div>`).addTo(map);
       });
       map.on('mouseenter', srcId, () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', srcId, () => { map.getCanvas().style.cursor = ''; });
@@ -86,16 +95,16 @@ export default function IntelMapPage() {
 
   const toggle = (k: string) => setActive((a) => ({ ...a, [k]: !a[k] }));
 
-  if (err) return <div className="p-4 text-[11px] text-[#ff6b5e]">{err}</div>;
+  if (err) return <div className="p-4 text-[11px] text-red-400">{err}</div>;
 
   return (
     <div className="relative h-full w-full">
       <div ref={ref} className="absolute inset-0" />
-      <div className="absolute top-2 left-2 z-10 bg-[#000000cc] border border-border-default rounded-[2px] p-2 space-y-2">
+      <div className="absolute top-2 left-2 z-10 bg-black/80 border border-border-default rounded-[2px] p-2 space-y-2">
         <div className="flex gap-1 items-center">
           {DAYS_OPTS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
-              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-[#d4a017] text-[#d4a017]' : 'border-border-default text-[#888]'}`}>
+              className={`font-mono text-[9px] px-2 py-[2px] rounded-[2px] border ${days === d ? 'border-brand-400 text-brand-300' : 'border-border-default text-fg-muted'}`}>
               {d === 1 ? '24h' : `${d}d`}
             </button>
           ))}

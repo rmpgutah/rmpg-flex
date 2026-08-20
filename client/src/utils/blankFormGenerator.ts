@@ -8,14 +8,21 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { FORM_NUMBERS } from './pdfAssets';
 import {
-  COLOR, FONT, BORDER, LAYOUT, getContentWidth, getLeftX, getRightColumnX,
+  COLOR, FONT, BORDER, LAYOUT, PDF_VALUE_FONT, getContentWidth, getLeftX, getRightColumnX,
   getHalfFieldWidth, getFullFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import {
-  openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark,
-  addPageFooter, setActiveCaseNumber, setActiveFormKey,
+  openAutoSection, closeAutoSection, addConfidentialWatermark,
+  addPageFooter, sanitizePdfText, setActiveCaseNumber, setActiveFormKey,
 } from './pdfGenerator';
+import {
+  blankField, blankCheckbox, blankLogTable, blankCheckboxRow, blankTallyGrid,
+  ensureRoom, darPageBreak, darField, darFieldRow, darBand, darLegend, darLines,
+  darInspectionGrid, darMileageMath, darMathRow, addDarContinuationStrip,
+  DAR_ROW_H, DAR_INSPECTION_ITEMS,
+} from './blankForms/darPrimitives';
+import { VEHICLE_MOVEMENT_FORMS, VEHICLE_MOVEMENT_GENERATORS } from './blankForms/vehicleMovementForms';
 
 // All blank form definitions
 export interface BlankFormDef {
@@ -23,7 +30,7 @@ export interface BlankFormDef {
   name: string;
   formNumber: string;
   description: string;
-  category: 'incident' | 'record' | 'operations' | 'administrative' | 'service' | 'communications';
+  category: 'incident' | 'record' | 'operations' | 'fleet' | 'administrative' | 'service' | 'communications';
 }
 
 export const BLANK_FORMS: BlankFormDef[] = [
@@ -41,8 +48,10 @@ export const BLANK_FORMS: BlankFormDef[] = [
   { id: 'citation', name: 'Citation Record', formNumber: FORM_NUMBERS.citation, description: 'Traffic/municipal citation', category: 'record' },
   { id: 'evidence', name: 'Evidence / Property Record', formNumber: FORM_NUMBERS.evidence, description: 'Evidence chain of custody', category: 'record' },
   // Operations
-  { id: 'daily_activity', name: 'Daily Activity Report', formNumber: FORM_NUMBERS.daily_activity, description: 'Shift activity log', category: 'operations' },
+  { id: 'daily_activity', name: 'Daily Activity / Shift Report', formNumber: FORM_NUMBERS.daily_activity, description: 'Full handwritten shift report — vehicle mileage in/out, CFS log with dispatch/enroute/on-scene/clear/closed times + per-call mileage, patrol rounds, enforcement, tally, pass-down', category: 'operations' },
   { id: 'patrol_tracking', name: 'Patrol Tracking Report', formNumber: FORM_NUMBERS.patrol_tracking, description: 'Patrol route & activity log', category: 'operations' },
+  // Fleet / vehicle movement (PS-106-A..E) — companion sheets to the DAR
+  ...VEHICLE_MOVEMENT_FORMS,
   // Administrative
   { id: 'invoice', name: 'Invoice', formNumber: FORM_NUMBERS.invoice, description: 'Client billing invoice', category: 'administrative' },
   // Process Service (field service of legal documents)
@@ -54,6 +63,13 @@ export const BLANK_FORMS: BlankFormDef[] = [
   { id: 'comms_message',  name: 'Telephone / Message Log',    formNumber: FORM_NUMBERS.comms_message,  description: 'Incoming call & message log', category: 'communications' },
   { id: 'bolo_broadcast', name: 'BOLO Broadcast Record',      formNumber: FORM_NUMBERS.bolo_broadcast, description: 'Be-on-the-lookout broadcast record', category: 'communications' },
 ];
+
+/** The PS-106 field-form family: multi-page sheets an officer writes on in the
+ *  field. They share page furniture (no watermark, per-page identity strip) and
+ *  each draws its own labelled certification block. */
+function isFieldForm(formId: string): boolean {
+  return formId === 'daily_activity' || formId in VEHICLE_MOVEMENT_GENERATORS;
+}
 
 /** Generate a blank form PDF with empty fields for handwriting */
 export function generateBlankForm(formId: string): jsPDF {
@@ -71,10 +87,15 @@ export function generateBlankForm(formId: string): jsPDF {
   setActiveFormKey(formId);
   setActiveCaseNumber('');
 
-  // Watermark
-  addConfidentialWatermark(doc);
-  // @ts-expect-error jsPDF GState
-  doc.setGState(new doc.GState({ opacity: 1.0 }));
+  // Watermark. Skipped on the whole PS-106 field-form family: these are written
+  // on in the field and the 45° CONFIDENTIAL crosses the exact area a pen has to
+  // work in. The footer's "INTERNAL USE ONLY" carries the same handling notice
+  // without the interference.
+  if (!isFieldForm(formId)) {
+    addConfidentialWatermark(doc);
+    // @ts-expect-error jsPDF GState
+    doc.setGState(new doc.GState({ opacity: 1.0 }));
+  }
 
   // Header
   let y = drawNibrsHeader(doc, {
@@ -82,12 +103,21 @@ export function generateBlankForm(formId: string): jsPDF {
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: form.name.toUpperCase(),
     formNumber: form.formNumber,
-    caseNumber: '________________',
-    reportDate: '____/____/________',
+    // A single space, deliberately. sanitizePdfText strips `_`, so the old
+    // '____/____/________' reached the page as a bare "//". But '' is falsy and
+    // drawNibrsHeader gates the whole row on truthiness, which dropped the DATE
+    // and CASE NUMBER *labels* along with the value. ' ' keeps the labelled box
+    // and leaves it blank to write in.
+    caseNumber: ' ',
+    reportDate: ' ',
   });
 
-  // Generate blank sections based on form type
-  switch (formId) {
+  // Generate blank sections based on form type. The vehicle movement family is
+  // table-driven rather than five more switch arms.
+  const vehicleGen = VEHICLE_MOVEMENT_GENERATORS[formId];
+  if (vehicleGen) {
+    y = vehicleGen(doc, y, lx, rx, ffw, hfw, cw);
+  } else switch (formId) {
     case 'incident':
       y = blankIncidentForm(doc, y, lx, rx, ffw, hfw, cw);
       break;
@@ -147,18 +177,35 @@ export function generateBlankForm(formId: string): jsPDF {
       break;
   }
 
-  // Signature block at bottom
-  y = addBlankSignatureBlock(doc, y, lx, ffw);
+  // Signature block at bottom. Every PS-106 field form draws its own labelled
+  // certification inline (two-party on the DAR and the hand-off sheet), so the
+  // generic block is skipped to avoid a duplicate, unlabelled officer signature.
+  if (!isFieldForm(formId)) {
+    y = addBlankSignatureBlock(doc, y, lx, ffw);
+  }
 
   // Footer on all pages
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPageFooter(doc, i, totalPages);
+    addPageFooter(doc, i, totalPages, form.formNumber);
+  }
+
+  // Continuation-page identity strip. Only page 1 carries the agency header, so
+  // a multi-page handwritten form that gets separated leaves pages 2+ with no
+  // way to tell whose shift they belong to. Second pass, above the content
+  // start (y=15mm), so it never perturbs the layout flow.
+  if (isFieldForm(formId)) {
+    const code = (form.formNumber || '').replace(/^FORM /, '') || formId.toUpperCase();
+    for (let i = 2; i <= totalPages; i++) {
+      doc.setPage(i);
+      addDarContinuationStrip(doc, code, i, totalPages);
+    }
   }
 
   return doc;
 }
+
 
 /** Download a blank form */
 export function downloadBlankForm(formId: string): void {
@@ -170,23 +217,7 @@ export function downloadBlankForm(formId: string): void {
 
 // ── Helper: draw a blank field line ─────────────────────────
 
-function blankField(doc: jsPDF, label: string, x: number, y: number, w: number): number {
-  const lineY = y + 5.5;
-  // Label
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + 0.5, y + 2);
-  // Underline for writing
-  doc.setDrawColor(...COLOR.BORDER_TABLE);
-  doc.setLineWidth(BORDER.TABLE_ROW);
-  doc.line(x, lineY, x + w, lineY);
-  return lineY + 2;
-}
 
-function blankCheckbox(doc: jsPDF, label: string, x: number, y: number): number {
-  return addCheckboxField(doc, label, false, x, y);
-}
 
 function addBlankSignatureBlock(doc: jsPDF, y: number, lx: number, ffw: number): number {
   if (y > 230) { doc.addPage(); y = LAYOUT.PAGE_MARGIN + 5; }
@@ -655,36 +686,327 @@ function blankUseOfForceForm(doc: jsPDF, y: number, lx: number, rx: number, ffw:
   return y;
 }
 
+// ── Daily Activity / Shift Report (FORM PS-106) ─────────────────────────────
+// The DAR is the one blank form a guard fills for EVERY shift, so it is laid
+// out to the SHAPE OF A SHIFT rather than by topic: everything recorded at
+// check-in is on the front pages, everything logged while working is in the
+// middle, and everything computed at check-out (odometer in, mileage math,
+// equipment return, tally, sign-off) is at the back — so the officer never
+// flips backwards with a clipboard on their knee. Field labels mirror the CAD
+// column names so a records clerk keys a paper sheet straight into Dispatch
+// without translating.
+//
+// Check-in and check-out carry the heaviest detail because they are the two
+// moments a shift can be reconstructed from: an odometer, a fuel level and an
+// inspection state at each end bound everything that happened in between, and
+// they are the fields a client, an insurer or a payroll dispute actually asks
+// for months later.
+//
+// Print ergonomics: no diagonal watermark across the writing area, ~8mm log
+// rows and ~5mm field write-space (a pen needs more room than printed text),
+// and every continuation page carries an officer/date/unit strip so a loose
+// sheet can never be orphaned.
+
+
+
+
+
+
+
+
+
+
+
+
+
 function blankDailyActivityForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: number, hfw: number, cw: number): number {
+  const w3 = ffw / 3;
+
+  // ═══ CHECK-IN ══════════════════════════════════════════════
   { const sec = openAutoSection(doc, 'Shift Information', y); y = sec.contentY;
-    y = blankField(doc, 'Officer Name', lx, y, hfw);
-    blankField(doc, 'Badge #', rx, y - 7.5, hfw);
-    const w4 = ffw / 4;
-    y = blankField(doc, 'Date', lx, y, w4);
-    blankField(doc, 'Shift Start', lx + w4, y - 7.5, w4);
-    blankField(doc, 'Shift End', lx + w4 * 2, y - 7.5, w4);
-    blankField(doc, 'Total Hours', lx + w4 * 3, y - 7.5, w4);
-    y = blankField(doc, 'Section', lx, y, ffw / 3);
-    blankField(doc, 'Zone', lx + ffw / 3, y - 7.5, ffw / 3);
-    blankField(doc, 'Beat', lx + ffw * 2 / 3, y - 7.5, ffw / 3);
+    y = darFieldRow(doc, lx, y, ffw, ['Officer Name (Last, First)', 'Badge #', 'Employee ID', 'Rank / Title', 'Call Sign']);
+    y = darFieldRow(doc, lx, y, ffw, ['Shift Date', 'Day of Week', 'Sched. Start', 'Sched. End', 'Actual Start', 'Actual End']);
+    y = darFieldRow(doc, lx, y, ffw, ['Total Hours', 'OT Hours', 'Unpaid Meal (min)', 'Armed / Unarmed', 'Uniform / Attire']);
+    y = darFieldRow(doc, lx, y, ffw, ['Post / Property / Client', 'Contract / Site #', 'Shift (Day/Swing/Grave)']);
+    y = darFieldRow(doc, lx, y, ffw, ['Section', 'Zone', 'Beat', 'Supervisor on Duty', 'DAR #']);
+    y = darFieldRow(doc, lx, y, ffw, ['Partner / 2nd Officer', 'Relieved From (name / time)', 'Relieved By (name / time)', 'Weather / Conditions']);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
-  { const sec = openAutoSection(doc, 'Activity Log', y); y = sec.contentY;
-    // Table header
-    doc.setFillColor(...COLOR.BG_ZEBRA);
-    doc.rect(lx, y, ffw, 4.5, 'F');
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text('TIME', lx + 1.5, y + 3);
-    doc.text('ACTIVITY / CALL #', lx + ffw * 0.15 + 1.5, y + 3);
-    doc.text('LOCATION', lx + ffw * 0.55 + 1.5, y + 3);
-    doc.text('DISPOSITION', lx + ffw * 0.8 + 1.5, y + 3);
-    doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
-    doc.line(lx, y + 4.5, lx + ffw, y + 4.5);
-    y += 4.5;
-    for (let i = 0; i < 20; i++) { y += 5; doc.line(lx, y, lx + ffw, y); }
-    y += 2;
+
+  { const sec = openAutoSection(doc, 'Duty Status & Muster', y); y = sec.contentY;
+    y = darFieldRow(doc, lx, y, ffw, ['Time Reported for Duty', 'Time In Service (10-8)', 'Briefing Given By', 'Briefing Time']);
+    y = darBand(doc, 'Fitness & attendance - check each', lx, y + 1);
+    y = blankCheckboxRow(doc, ['Fit for duty', 'Roll call attended', 'Uniform / grooming OK', 'Licence + credentials carried'], lx, y + 2, lx + ffw);
+    y = blankCheckboxRow(doc, ['No impairing medication', 'Court / training today', 'Restricted duty', 'Working alone (no partner)'], lx, y, lx + ffw);
+    y = darBand(doc, 'Briefing notes / BOLOs / persons of interest', lx, y + 1);
+    y = darLines(doc, lx, y + 1, ffw, 4);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  { const sec = openAutoSection(doc, 'Communications & Systems Check', y); y = sec.contentY;
+    y = darFieldRow(doc, lx, y, ffw, ['Radio ID / Serial', 'Channel / Talkgroup', 'Radio Check w/ Dispatch (time)', 'Duty Phone #']);
+    y = blankCheckboxRow(doc, ['Radio check OK', 'Spare battery', 'Earpiece / mic', 'MDT login OK', 'GPS / AVL reporting'], lx, y + 1, lx + ffw);
+    y = blankCheckboxRow(doc, ['Panic / duress tested', 'Flex app logged in', 'Body cam paired', 'After-hours contact list'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Vehicle radio / repeater', 'Backup comms plan agreed', 'Dispatch notified 10-8'], lx, y, lx + ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Personal Equipment & Readiness', y); y = sec.contentY + 1;
+    y = blankCheckboxRow(doc, ['Body cam charged', 'Test recording', 'Prior footage uploaded', 'Radio + spare batt', 'MDT / phone'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Duty belt complete', 'OC spray', 'Taser + cartridge', 'Baton', 'Handcuffs (x2)'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Vest worn', 'Flashlight', 'First aid / IFAK', 'AED', 'Narcan'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Site keys / fobs', 'Citation book', 'Blank forms', 'ID visible', 'Notebook / pen'], lx, y, lx + ffw);
+    y = darField(doc, 'Missing / deficient equipment - describe and note who it was reported to', lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ PAGE 2 - vehicle out, post orders, breaks ═════════════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Start of Shift: Vehicle & Odometer Out', y); y = sec.contentY;
+    y = darFieldRow(doc, lx, y, ffw, ['Unit #', 'License Plate', 'Year / Make / Model', 'VIN (last 6)', 'Key / Fob #']);
+    y = darFieldRow(doc, lx, y, ffw, ['ODOMETER OUT (start)', 'Engine Hours Out', 'Time Out', 'Fuel Level Out (1/4 1/2 3/4 F)', 'Fuel Type']);
+    y = darBand(doc, 'Pre-trip inspection - mark OK or DEF (defect) for each point', lx, y + 1);
+    y = darInspectionGrid(doc, lx, y + 1, ffw, DAR_INSPECTION_ITEMS);
+    y = darBand(doc, 'Pre-existing damage / defects noted before driving (photograph and describe)', lx, y);
+    y = darLines(doc, lx, y + 1, ffw, 3);
+    y = darBand(doc, 'Vehicle equipment inventory', lx, y + 1);
+    y = blankCheckboxRow(doc, ['First aid kit', 'AED', 'Fire extinguisher', 'Road flares / cones', 'Jumper cables'], lx, y + 2, lx + ffw);
+    y = blankCheckboxRow(doc, ['Spill / biohazard kit', 'Blanket', 'Tow strap', 'Long gun secured', 'Spare tire + jack'], lx, y, lx + ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Post Orders, Access & Key Control', y); y = sec.contentY + 1;
+    y = blankCheckboxRow(doc, ['Post orders reviewed', 'Pass-down from prior shift read', 'BOLOs reviewed', 'Client instructions received'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Alarm codes verified', 'Key control log signed', 'Access card tested', 'Emergency contacts on hand'], lx, y, lx + ffw);
+    y = darFieldRow(doc, lx, y + 1, ffw, ['Keys / Fobs Issued (#)', 'Key Log #', 'Access Card #', 'Alarm Code Verified By']);
+    y = darBand(doc, 'Special instructions for this shift', lx, y + 1);
+    y = darLines(doc, lx, y + 1, ffw, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Breaks / Meal Periods & Out-of-Service', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Out of Svc',              frac: 0.14 },
+      { label: 'Back in Svc',             frac: 0.14 },
+      { label: 'Type (meal/break/admin)', frac: 0.26 },
+      { label: 'Location',                frac: 0.26 },
+      { label: 'Minutes',                 frac: 0.10 },
+      { label: 'Paid? Y/N',               frac: 0.10 },
+    ], 5, DAR_ROW_H);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ PAGE 3 - calls for service ════════════════════════════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Calls for Service (CFS) - CAD Times & Per-Call Mileage', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'CFS #',    frac: 0.095 },
+      { label: 'Type',     frac: 0.110 },
+      { label: 'Location', frac: 0.195 },
+      { label: 'Disp',     frac: 0.058 },
+      { label: 'Enrt',     frac: 0.058 },
+      { label: 'On Scn',   frac: 0.058 },
+      { label: 'Clear',    frac: 0.058 },
+      { label: 'Closed',   frac: 0.058 },
+      { label: 'Mi Out',   frac: 0.068 },
+      { label: 'Mi In',    frac: 0.068 },
+      { label: 'Mi Tot',   frac: 0.062 },
+      { label: 'Dispo',    frac: 0.112 },
+    ], 25, DAR_ROW_H);
+    y = darLegend(doc, lx, y, [
+      'Times 24-hour (HHMM). DISP = dispatched - ENRT = enroute - ON SCN = arrived on scene - CLEAR = cleared scene - CLOSED = call closed in CAD.',
+      'Dispo: RPT = report taken - ARR = arrest - CIT = citation - TW = trespass warning - GOA = gone on arrival',
+      'UTL = unable to locate - UNF = unfounded - ASST = assist - CBS = cleared by service.',
+    ]);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ PAGE 4 - hourly odometer + patrol ═════════════════════
+  // Odometer only at the ends of a shift gives one number and no way to place
+  // it in time. An hourly reading turns mileage into a timeline a supervisor
+  // can reconcile against CAD, GPS/AVL and the patrol log.
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Hourly Odometer & Unit Status Log', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Hour',              frac: 0.075 },
+      { label: 'Odometer',          frac: 0.115 },
+      { label: 'Miles This Hr',     frac: 0.105 },
+      { label: 'Location / Zone',   frac: 0.28 },
+      { label: 'Status',            frac: 0.10 },
+      { label: 'Engine Hrs',        frac: 0.10 },
+      { label: 'Notes',             frac: 0.225 },
+    ], 12, DAR_ROW_H);
+    y = darLegend(doc, lx, y, [
+      'Status: 10-8 = in service - 10-7 = out of service - 10-6 = busy / on scene - 10-23 = arrived - OOS = mechanical.',
+      'Take a reading at the top of every hour. Hourly readings are what let a mileage dispute be narrowed to an hour instead of a whole shift.',
+    ]);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Patrol Rounds & Post Checks', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Time',                 frac: 0.09 },
+      { label: 'Checkpoint / Area',    frac: 0.26 },
+      { label: 'Method',               frac: 0.09 },
+      { label: 'Odometer',             frac: 0.11 },
+      { label: 'Findings / Condition', frac: 0.36 },
+      { label: 'Init',                 frac: 0.09 },
+    ], 11, DAR_ROW_H);
+    y = darLegend(doc, lx, y, ['Method: F = foot - V = vehicle - B = bike - S = static post.']);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // One merged event log. Three separate tables (other activity / enforcement /
+  // contacts) cost three section headers and forced the officer to decide which
+  // grid an event belonged in mid-shift; a type code does that job in one column.
+  // ═══ PAGE 5 - activity log ═════════════════════════════════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Activity, Contacts & Enforcement Log', y); y = sec.contentY;
+    y = blankLogTable(doc, lx, y, ffw, [
+      { label: 'Time',                       frac: 0.09 },
+      { label: 'Code',                       frac: 0.08 },
+      { label: 'Subject / Plate / Report #', frac: 0.28 },
+      { label: 'Location',                   frac: 0.24 },
+      { label: 'Action / Outcome',           frac: 0.31 },
+    ], 11, DAR_ROW_H);
+    y = darLegend(doc, lx, y, [
+      'Code: PC = person contact - VC = vehicle check - IR = incident report - CIT = citation - TW = trespass warning - ARR = arrest - UOF = use of force',
+      'ESC = escort - ALM = alarm response - MNT = maintenance / facility issue - LE = law-enforcement assist - OTH = other (describe).',
+      'Wants / warrants run on a contact? Note WW-CLR (clear) or WW-HIT in the Action column.',
+    ]);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Shift Mileage Distribution - must total to miles driven', y); y = sec.contentY + 1;
+    y = blankTallyGrid(doc, lx, y, ffw, [
+      'Patrol', 'CFS Response', 'Escort / Transport', 'Deadhead / Repo',
+      'Fuel / Service', 'Admin / Court', 'Training', 'Commute / Personal',
+    ], 4);
+    y = darMathRow(doc, lx, y + 1, ffw,
+      ['Sum of Categories', 'Total Miles Driven', 'VARIANCE (must be 0)'], ['vs', '=']);
+    y = darBand(doc, 'Explanation of any variance', lx, y);
+    y = darLines(doc, lx, y + 1, ffw, 2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ CHECK-OUT ═════════════════════════════════════════════
+  // ═══ PAGE 5 - vehicle in, equipment return, tally ══════════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'End of Shift: Vehicle & Odometer In', y); y = sec.contentY;
+    y = darFieldRow(doc, lx, y, ffw, ['Time In', 'Engine Hours In', 'Fuel Level In (1/4 1/2 3/4 F)', 'Post-Trip Pass / Fail']);
+    y = darMileageMath(doc, lx, y + 1, ffw);
+    y = darFieldRow(doc, lx, y, ffw, ['Billable / Patrol Miles', 'Non-Billable / Deadhead', 'CFS Response Miles', 'Commute / Personal', 'Discrepancy (mi)']);
+    y = darFieldRow(doc, lx, y, ffw, ['Fuel Added (gal)', 'Fuel Cost ($)', 'Receipt # / Attached', 'Fuel Station', 'Odometer Photo Taken']);
+    y = darBand(doc, 'Post-trip inspection - mark OK or DEF (defect) for each point', lx, y + 1);
+    y = darInspectionGrid(doc, lx, y + 1, ffw, DAR_INSPECTION_ITEMS);
+    y = darBand(doc, 'NEW damage or mechanical issues arising THIS shift (photograph, describe, report to supervisor)', lx, y);
+    y = darLines(doc, lx, y + 1, ffw, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Vehicle Secured, Equipment Return & Evidence', y); y = sec.contentY + 1;
+    y = blankCheckboxRow(doc, ['Fueled for next shift', 'Interior cleaned', 'Trash removed', 'Locked / alarmed', 'Plugged in / charging'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Body cam docked', 'Footage uploaded', 'Radio returned / charging', 'Keys returned'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Citation book returned', 'All issued equipment returned', 'Lost / damaged reported', 'Evidence submitted'], lx, y, lx + ffw);
+    y = darFieldRow(doc, lx, y + 1, ffw, ['Parked / Stored At', 'Keys Returned To', 'Mileage Verified By', 'Time Out of Service (10-7)']);
+    y = darFieldRow(doc, lx, y, ffw, ['BWC Videos (#)', 'Photos (#)', 'Evidence Items (#)', 'Evidence Locker #', 'Submitted To']);
+    y = darFieldRow(doc, lx, y, ffw, ['Report #s Written This Shift', 'Property / Found Items Logged', 'Uniform / Gear Damage']);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Vehicle Utilization & Economy', y); y = sec.contentY;
+    y = darFieldRow(doc, lx, y, ffw, ['Engine Hours Out', 'Engine Hours In', 'Total Engine Hours', 'Idle Hours', 'Moving Hours']);
+    y = darFieldRow(doc, lx, y, ffw, ['Total Miles', 'Gallons Used', 'Miles per Gallon', 'Cost per Mile ($)', 'Miles per Engine Hr']);
+    y = darFieldRow(doc, lx, y, ffw, ['Avg Speed (mph)', 'Longest Single Leg (mi)', 'Idle Events > 10 min', 'Hard Brake / Accel Events']);
+    y = darFieldRow(doc, lx, y, ffw, ['Odometer Photo Taken (Y/N)', 'GPS / AVL Miles (system)', 'Variance vs Odometer', 'Variance Explained To']);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ PAGE 7 - tally + narrative ════════════════════════════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Shift Tally (enter counts)', y); y = sec.contentY + 1;
+    y = blankTallyGrid(doc, lx, y, ffw, [
+      'CFS Handled', 'Incid. Rpts', 'Citations', 'Tresp. Warns',
+      'Arrests', 'Use of Force', 'Alarms', 'Escorts',
+      'Patrol Rnds', 'Doors/Gates', 'Persons Cont.', 'Vehicles Chk',
+      'BWC Videos', 'Photos', 'LE Assists', 'Total Miles',
+    ], 8);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Shift Narrative & Notable Events', y); y = sec.contentY;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(sanitizePdfText('Chronological account of the shift. Reference CFS and report numbers rather than repeating their detail. Continue on a supplemental sheet if needed.'), lx, y + 2.5);
+    y = darLines(doc, lx, y + 3, ffw, 18);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Safety Concerns, Hazards & Suspicious Activity', y); y = sec.contentY;
+    y = darLines(doc, lx, y + 1, ffw, 5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ PAGE 7 - maintenance, pass-down, records, sign-off ════
+  y = darPageBreak(doc);
+  { const sec = openAutoSection(doc, 'Equipment, Vehicle & Facility Issues - Maintenance Requested', y); y = sec.contentY;
+    y = darLines(doc, lx, y + 1, ffw, 5);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  { const sec = openAutoSection(doc, 'Pass-Down to Next Shift / Follow-Up Required', y); y = sec.contentY;
+    y = darLines(doc, lx, y + 1, ffw, 7);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ═══ RECORDS ═══════════════════════════════════════════════
+  // Closes the paper-to-system loop: without it a handwritten sheet can sit in
+  // a clipboard for days with nobody able to tell what was keyed and what wasn't.
+  { const sec = openAutoSection(doc, 'RMPG Flex Data Entry (records use)', y); y = sec.contentY + 1;
+    y = blankCheckboxRow(doc, ['CFS entered', 'Incident reports entered', 'Citations entered', 'Mileage / fuel entered'], lx, y, lx + ffw);
+    y = blankCheckboxRow(doc, ['Patrol scans synced', 'Photos / BWC uploaded', 'Evidence logged', 'DAR submitted in Flex'], lx, y, lx + ffw);
+    y = darFieldRow(doc, lx, y + 1, ffw, ['Entered By', 'Date / Time Entered', 'Flex DAR #', 'Discrepancies Found (Y/N)']);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Certification & supervisor review ─────────────────────
+  { const sec = openAutoSection(doc, 'Certification & Supervisor Review', y); y = sec.contentY;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    // Wrap to the content width — a single doc.text() call does NOT wrap, it
+    // just runs off the page and over whatever is to the right.
+    const certLines = doc.splitTextToSize(
+      sanitizePdfText('I certify that the information recorded on this Daily Activity Report - including all times, odometer readings, inspection results and call dispositions - is true, complete and accurate to the best of my knowledge.'),
+      ffw,
+    ) as string[];
+    certLines.forEach((line, i) => doc.text(line, lx, y + 2.5 + i * 3.4));
+    y += certLines.length * 3.4 + 8;
+
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(lx, y, lx + ffw * 0.55, y);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('REPORTING OFFICER SIGNATURE', lx, y + 3);
+    darField(doc, 'Date / Time Submitted', lx + ffw * 0.6, y - 7, ffw * 0.4);
+    y += 6;
+    darField(doc, 'Printed Name', lx, y, w3 - 2);
+    darField(doc, 'Badge #', lx + w3, y, w3 - 2);
+    y = darField(doc, 'Employee ID', lx + w3 * 2, y, w3 - 2);
+    y += 3;
+
+    y = blankCheckboxRow(doc, ['Approved', 'Returned for correction', 'Mileage verified', 'CAD times verified', 'Inspection reviewed'], lx, y, lx + ffw);
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY); doc.setLineWidth(BORDER.SIGNATURE_LINE);
+    doc.line(lx, y + 6, lx + ffw * 0.55, y + 6);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('SUPERVISOR SIGNATURE', lx, y + 9);
+    darField(doc, 'Review Date / Time', lx + ffw * 0.6, y - 1, ffw * 0.4);
+    y += 12;
+    y = darBand(doc, 'Supervisor comments', lx, y);
+    y = darLines(doc, lx, y + 1, ffw, 4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   return y;
 }
 
@@ -709,42 +1031,8 @@ function blankGenericForm(doc: jsPDF, y: number, lx: number, rx: number, ffw: nu
 
 // ── Shared helpers for the service + communications log forms ───────────────
 
-/** Draw a multi-column log grid: zebra header + N empty body rows with column
- *  separators and an outer border. `cols` fracs should sum to ~1. Adds a page
- *  break first if the whole grid won't fit. Returns the y below the grid. */
-function blankLogTable(
-  doc: jsPDF, lx: number, y: number, tw: number,
-  cols: { label: string; frac: number }[], rows: number, rowH = 6,
-): number {
-  const headH = 5;
-  if (y + headH + rows * rowH > 248) { doc.addPage(); y = LAYOUT.PAGE_MARGIN + 5; }
-  const xs: number[] = []; let acc = 0;
-  for (const c of cols) { xs.push(lx + acc * tw); acc += c.frac; }
-  doc.setFillColor(...COLOR.BG_ZEBRA);
-  doc.rect(lx, y, tw, headH, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(FONT.SIZE_FIELD_LABEL); doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  cols.forEach((c, i) => doc.text(c.label.toUpperCase(), xs[i] + 1.5, y + 3.3));
-  doc.setDrawColor(...COLOR.BORDER_TABLE); doc.setLineWidth(BORDER.TABLE_ROW);
-  const top = y;
-  doc.line(lx, y + headH, lx + tw, y + headH);
-  y += headH;
-  for (let r = 0; r < rows; r++) { y += rowH; doc.line(lx, y, lx + tw, y); }
-  for (let i = 1; i < cols.length; i++) doc.line(xs[i], top, xs[i], y);
-  doc.line(lx, top, lx, y);
-  doc.line(lx + tw, top, lx + tw, y);
-  return y + 2;
-}
 
-/** Draw a horizontal row of empty checkboxes, wrapping at the right margin. */
-function blankCheckboxRow(doc: jsPDF, labels: string[], lx: number, y: number, maxX: number): number {
-  let x = lx;
-  for (const label of labels) {
-    const next = blankCheckbox(doc, label, x, y);
-    if (next > maxX && x > lx) { y += 6; x = blankCheckbox(doc, label, lx, y); }
-    else x = next;
-  }
-  return y + 6;
-}
+
 
 // ── Process Service forms (category: service) ───────────────────────────────
 

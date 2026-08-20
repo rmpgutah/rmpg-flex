@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
@@ -84,9 +85,9 @@ async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: numbe
          end_time = COALESCE(updated_at, start_time),
          duration_seconds = CAST((julianday(COALESCE(updated_at, start_time)) - julianday(start_time)) * 86400 AS INTEGER),
          notes = COALESCE(notes, '') || ' [auto-closed: stale active trip — no update in ${STALE_ACTIVE_MIN}+ min]',
-         updated_at = datetime('now','localtime')
+         updated_at = datetime('now')
      WHERE officer_id = ? AND status IN ('active', 'paused')
-       AND COALESCE(updated_at, start_time) < datetime('now','localtime','-${STALE_ACTIVE_MIN} minutes')`,
+       AND COALESCE(updated_at, start_time) < datetime('now','-${STALE_ACTIVE_MIN} minutes')`,
     userId);
 }
 
@@ -138,7 +139,7 @@ nav.post('/trip/start', async (c) => {
 
     // Cancel any existing pending trips for this user
     await execute(db,
-      `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
+      `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
     // Prevent duplicate active/paused trips (a genuinely fresh active trip still
@@ -190,7 +191,7 @@ nav.post('/trip/start', async (c) => {
       `INSERT INTO nav_trip_log
        (officer_id, vehicle_id, unit_id, call_id, start_lat, start_lng, start_accuracy,
         start_location, start_time, status, detected_by, purpose, device_type, route_points)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', ?,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'pending', ?,
                ?, ?, '[]')`,
       userId, vehicleId, unitId, callId,
       body.start_lat, body.start_lng, body.start_accuracy ?? null,
@@ -220,7 +221,7 @@ nav.put('/trip/:id/confirm', async (c) => {
     if (trip.status !== 'pending') return c.json({ error: `Trip is ${trip.status}, not pending` }, 400);
 
     await execute(db,
-      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now','localtime')
+      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now')
        WHERE id = ?`, tripId);
 
     return c.json({ success: true, status: 'active' });
@@ -245,7 +246,7 @@ nav.put('/trip/:id/pause', async (c) => {
     if (trip.status !== 'active') return c.json({ error: `Trip is ${trip.status}, not active` }, 400);
 
     await execute(db,
-      `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now','localtime')
+      `UPDATE nav_trip_log SET status = 'paused', updated_at = datetime('now')
        WHERE id = ?`, tripId);
 
     return c.json({ success: true, status: 'paused' });
@@ -270,7 +271,7 @@ nav.put('/trip/:id/resume', async (c) => {
     if (trip.status !== 'paused') return c.json({ error: `Trip is ${trip.status}, not paused` }, 400);
 
     await execute(db,
-      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now','localtime')
+      `UPDATE nav_trip_log SET status = 'active', updated_at = datetime('now')
        WHERE id = ?`, tripId);
 
     return c.json({ success: true, status: 'active' });
@@ -315,7 +316,7 @@ nav.put('/trip/:id/update', async (c) => {
     await execute(db,
       `UPDATE nav_trip_log
        SET route_points = ?, distance_miles = ?, max_speed_mph = CASE WHEN ? > COALESCE(max_speed_mph, 0) THEN ? ELSE max_speed_mph END,
-           updated_at = datetime('now','localtime')
+           updated_at = datetime('now')
        WHERE id = ?`,
       JSON.stringify(trimmed), distance, maxSpeed, maxSpeed, tripId);
 
@@ -359,25 +360,25 @@ nav.put('/trip/:id/end', async (c) => {
       } catch { /* keep finalDistance */ }
     }
 
-    // Duration. start_time is stored as datetime('now','localtime') — a NAIVE
+    // Duration. start_time is stored as datetime('now') — a NAIVE
     // America/Denver wall-clock string with no zone. The old code appended 'Z'
     // and diffed against `new Date()` (true UTC), so every trip's duration was
     // inflated by the Denver UTC offset (~6-7h). Compute it in SQL instead:
-    // both julianday('now','localtime') and julianday(start_time) are in the same
+    // both julianday('now') and julianday(start_time) are in the same
     // Denver frame, so the offset cancels. (closeStaleActiveTrips already does
     // this correctly; this brings the manual/stationary end path in line.)
     const durRow = await queryFirst<{ dur: number }>(db,
-      `SELECT CAST((julianday('now','localtime') - julianday(start_time)) * 86400 AS INTEGER) AS dur
+      `SELECT CAST((julianday('now') - julianday(start_time)) * 86400 AS INTEGER) AS dur
        FROM nav_trip_log WHERE id = ?`, tripId);
     const durationSec = Math.max(0, durRow?.dur ?? 0);
 
     await execute(db,
       `UPDATE nav_trip_log
        SET status = 'completed', end_lat = ?, end_lng = ?, end_accuracy = ?,
-           end_location = ?, end_time = datetime('now','localtime'),
+           end_location = ?, end_time = datetime('now'),
            distance_miles = COALESCE(NULLIF(?, 0), distance_miles), max_speed_mph = COALESCE(?, max_speed_mph),
            duration_seconds = ?, route_points = COALESCE(?, route_points),
-           notes = COALESCE(?, notes), updated_at = datetime('now','localtime')
+           notes = COALESCE(?, notes), updated_at = datetime('now')
        WHERE id = ?`,
       body.end_lat ?? null, body.end_lng ?? null, body.end_accuracy ?? null,
       body.end_location ?? null,
@@ -410,7 +411,7 @@ nav.put('/trip/:id/cancel', async (c) => {
     if (trip.status !== 'pending') return c.json({ error: `Trip is ${trip.status}, not pending` }, 400);
 
     await execute(db,
-      `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
+      `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now')
        WHERE id = ?`, tripId);
 
     return c.json({ success: true });
@@ -470,8 +471,8 @@ nav.get('/trip/history', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const limit = Math.min(Number(c.req.query('limit') || '50'), 200);
-    const offset = Number(c.req.query('offset') || '0');
+    const limit = clampIntParam(c.req.query('limit'), 50, 1, 200);
+    const offset = clampIntParam(c.req.query('offset'), 0, 0, 1000000);
     const status = c.req.query('status'); // optional filter
 
     let whereClause = 'WHERE ntl.officer_id = ?';

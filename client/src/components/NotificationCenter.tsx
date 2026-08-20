@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, Loader2 } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch } from '../hooks/useApi';
@@ -60,6 +60,7 @@ function formatTimestamp(dateStr: string): string {
   if (diffHr < 24) return `${diffHr}h AGO`;
 
   return date.toLocaleString('en-US', {
+    timeZone: 'America/Denver',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -362,7 +363,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
             background: 'var(--surface-overlay)',
             display: 'flex',
             flexDirection: 'column',
-            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 16px rgba(0, 0, 0, 0.3)',
+            boxShadow: '0 12px 40px rgba(0 0 0 / 0.65), 0 4px 16px rgba(0 0 0 / 0.3)',
             borderTop: '2px solid var(--border-strong)',
           }}
         >
@@ -444,7 +445,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
               >
                 <Bell className="w-6 h-6 mb-2 opacity-30" aria-hidden="true" />
                 <span style={{ fontSize: '10px' }}>No notifications</span>
-                <span className="text-rmpg-500" style={{ fontSize: '9px', marginTop: '2px' }}>You're all caught up</span>
+                <span className="text-fg-muted" style={{ fontSize: '9px', marginTop: '2px' }}>You're all caught up</span>
               </div>
             )}
 
@@ -517,7 +518,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         {formatTimestamp(notification.created_at)}
                       </span>
                       <span
-                        className="text-rmpg-500 uppercase"
+                        className="text-fg-muted uppercase"
                         style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '0.5px' }}
                       >
                         {toDisplayLabel(notification.type)}

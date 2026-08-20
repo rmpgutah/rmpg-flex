@@ -46,7 +46,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
       // Normalize DB column names (tire_position / installed_date) to the
       // UI shape — the raw rows never matched the diagram's `position`
       // lookup, so logged tires rendered as "No tire logged".
-      setTires((data || []).map((t) => ({
+      setTires((Array.isArray(data) ? data : []).map((t) => ({
         ...t,
         position: t.position ?? t.tire_position,
         install_date: t.install_date ?? t.installed_date,

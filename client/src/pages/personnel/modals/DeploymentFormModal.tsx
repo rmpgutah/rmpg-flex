@@ -18,7 +18,7 @@ export interface DeploymentFormData {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: DeploymentFormData) => void;
+  onSubmit: (data: DeploymentFormData) => Promise<void>;
   isSubmitting: boolean;
   officers: { id: string; name: string }[];
   properties: { id: string; name: string }[];
@@ -48,9 +48,10 @@ export default function DeploymentFormModal({
     isDirty,
     wasRestored,
     clearDraft,
+    signalSaved,
     snapshot,
   } = useFormDraft<DeploymentFormData>({
-    storageKey: 'rmpg_personnel_deployment_form',
+    storageKey: `rmpg_personnel_deployment_form_${initialData?.id ?? 'new'}`,
     defaultValue: EMPTY,
     isActive: isOpen,
   });
@@ -66,9 +67,17 @@ export default function DeploymentFormModal({
     }
   }, [isOpen, initialData]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(form);
+    try {
+      await onSubmit(form);
+      // Only clear the draft once the save is confirmed successful — on
+      // rejection the parent already shows a failure toast and keeps the
+      // modal open, so we deliberately keep the draft.
+      signalSaved();
+    } catch {
+      /* draft intentionally preserved on failure */
+    }
   };
 
   const handleClose = () => { setForm(EMPTY); onClose(); };

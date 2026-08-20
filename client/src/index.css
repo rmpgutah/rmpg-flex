@@ -1,4 +1,5 @@
 @import './styles/theme-palettes.css';
+@import './styles/fz55.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,25 +12,23 @@
 
 /* --- Theme Custom Properties ─────────────────────────────── */
 :root {
-  /* Surface, border, text, brand-color, and app-chrome vars are now owned by
-     client/src/styles/theme-palettes.css (imported above). */
-  /* Spillman module-bar (F-key nav) — beveled-tile states. Translucent so the
-     sunken/raised look adapts to any shell background (black or legacy blue). */
-  --toolbar-nav-text: #9a9a9a;
-  --toolbar-nav-text-hover: #dcdcdc;
-  --toolbar-nav-text-active: var(--brand-blue);
-  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
-  --toolbar-nav-active: rgba(0, 0, 0, 0.38);
-  /* Panel bevel highlight + title bar gradient — theme-aware. */
-  --bevel-highlight: #3a3a3a;
-  --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
-  /* Spillman Flex window chrome — 3D button bevel colors for panel title bars */
+  /* Surface, border, text, brand-color, app-chrome, AND module-bar/bevel/titlebar
+     vars are owned by client/src/styles/theme-palettes.css (imported above).
+     Nothing color-valued belongs in this block — anything defined here is
+     theme-invariant by construction and silently escapes the theme system.
+     That is what made every panel title bar render a pure-black gradient under
+     Blue & Silver (--titlebar-gradient) and the active nav tile render black
+     (--toolbar-nav-active). See the 2026-07-24 UI color repair spec. */
+
+  /* Window chrome traffic-light triad — intentionally theme-invariant.
+     These are control affordances (close/minimize/maximize), not brand chrome. */
   --window-chrome-close: #ef4444;
   --window-chrome-minimize: #d4a017;
   --window-chrome-maximize: #22c55e;
+
   /* Typography — centralized font tokens */
   --font-mono: 'Consolas', 'Courier New', ui-monospace, SFMono-Regular, monospace;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'Calibri', Arial, Helvetica, sans-serif;
 }
 
 /* --- Global Base Overrides --- */
@@ -1254,7 +1253,7 @@ body.fx-noise::after {
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--rmpg-500);
-    border-color: var(--rmpg-500);
+    border-color: var(--text-muted);
   }
 
   .btn-secondary {
@@ -3313,6 +3312,7 @@ html.hide-status-bar .status-bar { display: none !important; }
     --surface-sunken: #ffffff !important;
     --surface-overlay: #ffffff !important;
     --surface-deep: #ffffff !important;
+    --chart-plot-surface: #ffffff !important;
     --border-default: #cccccc !important;
     --border-subtle: #dddddd !important;
     --border-strong: #999999 !important;
@@ -3332,6 +3332,12 @@ html.hide-status-bar .status-bar { display: none !important; }
     --surface-sunken-rgb: 255 255 255 !important;
     --surface-overlay-rgb: 255 255 255 !important;
     --surface-deep-rgb: 255 255 255 !important;
+
+    /* Text channels — dark ink on paper. Mirrors the --text-* hex overrides
+       above; without these, every text-fg-* label prints its SCREEN value. */
+    --text-primary-rgb: 17 17 17 !important;
+    --text-secondary-rgb: 51 51 51 !important;
+    --text-muted-rgb: 102 102 102 !important;
 
     /* rmpg scale — INVERTED: low index = dark ink, high index = white/near-white paper */
     --rmpg-50-rgb: 20 20 20 !important;
@@ -3388,7 +3394,7 @@ html.hide-status-bar .status-bar { display: none !important; }
     color: #111 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-family: 'Calibri', Arial, Helvetica, sans-serif !important;
   }
 
   /* Remove CRT scanline overlay */
@@ -4298,8 +4304,6 @@ html.font-large { font-size: 19px; }
 html.theme-light {
   /* --surface-*, --border-*, --text-*, --brand-blue/gold, and app-chrome vars
      are now in theme-palettes.css (imported at top of this file). */
-  --bevel-highlight: #c3cdd8;
-  --titlebar-gradient: linear-gradient(180deg, #ece9dd 0%, #d6d3c8 50%, #c9c5b8 100%);
   color-scheme: light;
   background-color: #ece9dd;
 }
@@ -4474,9 +4478,18 @@ html:not(.theme-light) {
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
 
-/* iOS: safe area insets for modals and fixed overlays */
+/* iOS: safe area insets for modals and fixed overlays.
+   Wrapped in :where() so this contributes ZERO specificity. Written bare, the
+   selector `.fixed.inset-0` scores 0-2-0 and beats every single-class padding
+   utility -- which silently killed `p-4`/`p-6` on EVERY overlay in the app.
+   `env(safe-area-inset-*)` resolves to 0px off-notch, so the visible result was
+   an overlay whose declared padding did nothing, verified in production:
+   `p-4` -> 16.8px, but `fixed inset-0 p-4` -> 0px.
+   With :where(), an overlay that declares no padding still gets the safe-area
+   insets (nothing else competes), and one that declares `p-4` now actually
+   gets it. Do NOT unwrap this back to a bare selector. */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
-  .fixed.inset-0, [class*="fixed inset-0"] {
+  :where(.fixed.inset-0, [class*="fixed inset-0"]) {
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
@@ -4660,6 +4673,20 @@ select:not(.select-dark) {
   background-repeat: no-repeat;
   background-size: 1.5em 1.5em;
   padding-right: 2.5rem;
+}
+
+/* ============================================================
+   FIX 3a: Dark option backgrounds for ALL selects in dark theme.
+   <option> elements can't be styled via inline CSS, so this class
+   rule is the only way to prevent white dropdown backgrounds in
+   dark mode for selects that use custom inline styles instead of
+   .select-dark (e.g. PSO quick-action dropdowns, attempt-number
+   selects). The .select-dark option rule below takes precedence
+   for those elements — this is a safe catch-all.
+   ============================================================ */
+html:not(.theme-light) select option {
+  background-color: var(--surface-base);
+  color: var(--text-secondary);
 }
 
 /* ============================================================
@@ -5368,6 +5395,33 @@ html, body {
 .rounded-md { border-radius: 2px !important; }
 .rounded-t-md { border-top-left-radius: 2px !important; border-top-right-radius: 2px !important; }
 .rounded-b-md { border-bottom-left-radius: 2px !important; border-bottom-right-radius: 2px !important; }
+
+/* --- 1b. MAPBOX CONTAINER POSITION COLLISION ---
+   mapbox-gl.css ships `.mapboxgl-map { position: relative }` and Mapbox stamps
+   that class onto OUR container div at construction. Tailwind's `.absolute`
+   lives in the app stylesheet, mapbox-gl's rule lives in the vendor-mapbox
+   chunk, and the vendor chunk loads LAST — both selectors are a single class,
+   so specificity ties and SOURCE ORDER decides. The result: a container
+   written as `absolute inset-0` computes `position: relative`, `inset: 0`
+   becomes inert for sizing, and the box collapses to its content height.
+
+   Measured on live 2026-08-01 (/serve → Map tab): parent 798px, map container
+   12px — Mapbox then sized its canvas to that 12px box, which is the clipped
+   sliver on the Map tab and the apparently-blank pane in the Route Planner.
+
+   Six surfaces relied on the bare `absolute inset-0` (ServePage, PatrolPage,
+   NavigationPage, ServeRoutePlanner, ServeIntakeMap, NavMapView). MapboxMapPage
+   escaped it only because it carries a redundant-looking inline
+   `width:100%;height:100%` — a local workaround for this exact bug that was
+   never traced to its cause. Fix it once, by specificity (0,2,0 beats 0,1,0)
+   rather than by import order, so it holds no matter how the chunks are
+   emitted and so a NEW map surface can't reintroduce it.
+
+   Deliberately NOT `!important`: a map that genuinely wants a different
+   position should still be able to say so with a more specific rule. */
+.mapboxgl-map.absolute { position: absolute; }
+.mapboxgl-map.fixed { position: fixed; }
+.mapboxgl-map.sticky { position: sticky; }
 
 /* --- 2. SUBTLE SHADOWS ONLY ---
    Replace web-app drop shadows with CAD console depth via borders. */
@@ -10290,6 +10344,29 @@ td.sparkline-cell {
 .rmpg-crime-popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: #050505; }
 .rmpg-crime-popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: #050505; }
 .rmpg-crime-popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: #050505; }
+
+/* ── Map tab dark popup shell — every Map-tab mapboxgl.Popup passes
+   className:'mapbox-popup-dark' expecting this to theme the chrome, but the
+   class was never actually defined: every popup rendered with the default
+   Mapbox white background/box-shadow band around its dark inner content
+   (visually a "white outline"). Mirrors .rmpg-crime-popup's shape but uses
+   the app's dark-theme surface tokens instead of pure black/gold. */
+.mapbox-popup-dark .mapboxgl-popup-content {
+  background: var(--surface-raised, #15212e);
+  border: 1px solid var(--border-strong, #3a4f66);
+  border-radius: 2px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
+  padding: 0;
+  overflow: hidden;
+}
+.mapbox-popup-dark .mapboxgl-popup-close-button {
+  color: var(--text-muted, #8fa3b8); font-size: 15px; padding: 0 5px; background: transparent;
+}
+.mapbox-popup-dark .mapboxgl-popup-close-button:hover { color: var(--text-primary, #eef2f7); background: transparent; }
+.mapbox-popup-dark.mapboxgl-popup-anchor-top .mapboxgl-popup-tip { border-bottom-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: var(--surface-raised, #15212e); }
+.mapbox-popup-dark.mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: var(--surface-raised, #15212e); }
 .rmpg-pop { font-family: 'JetBrains Mono', monospace; min-width: 168px; }
 .rmpg-pop-head { display: flex; align-items: center; gap: 6px; padding: 7px 9px 4px; }
 .rmpg-pop-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent, #d4a017); box-shadow: 0 0 6px var(--accent, #d4a017); flex-shrink: 0; }
@@ -10301,7 +10378,7 @@ td.sparkline-cell {
 .rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
 
 /* ── Document Writer (TipTap) ── */
-.writer-content .tiptap { color: #111; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.7; }
+.writer-content .tiptap { color: #111; font-family: 'Calibri', Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.7; }
 .writer-content .tiptap:focus { outline: none; }
 .writer-content .tiptap p { margin: 0 0 8px; }
 .writer-content .tiptap h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; color: #000; }
@@ -10436,4 +10513,122 @@ td.sparkline-cell {
     rgb(var(--rmpg-100-rgb) / 0.06) 2px,
     rgb(var(--rmpg-100-rgb) / 0.06) 4px
   );
+}
+
+/* ============================================================
+   PRINT — FORMAL DOCUMENT MODE (2026-07-30)
+   The block above this one hides chrome via positional selectors
+   (`body > #root > div > div:first-child` etc.). Layout.tsx renders
+   a variable number of conditional siblings ahead of the brand bar
+   (UpdateBanner, DispatchAlertBanner x2, name-setup gate, contract-
+   manager banner) — every one of those shifts the indices, so the
+   positional hide rules silently stop matching the real chrome and
+   the dark toolbar/menu-bar/status-bar prints as-is. This block
+   replaces that with a DOM-position-independent isolation technique
+   (hide everything, reveal only #main-content) so it can never drift
+   out of sync with Layout.tsx again, then forces every element left
+   visible to real B&W ink-on-paper — not just the CSS-variable-backed
+   ones — so per-page hardcoded hex (the "hex tail" tracked in
+   CLAUDE.md) can't leave a navy card in the middle of a printed page.
+   Appended last so it wins the cascade over every earlier print rule
+   at equal specificity/importance.
+   ============================================================ */
+@media print {
+  @page {
+    size: letter portrait;
+    margin: 0.5in 0.6in;
+  }
+
+  /* Isolate #main-content (the routed page) — every ancestor sibling
+     (brand bar, menu bar, module toolbar, status bar, mobile nav, PTT
+     pill, banners, modals) is hidden regardless of where it sits in
+     the tree. */
+  body * {
+    visibility: hidden !important;
+  }
+  #main-content,
+  #main-content * {
+    visibility: visible !important;
+  }
+  #main-content {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Interactive controls have no meaning on paper — drop them
+     unconditionally rather than depending on a className/type match
+     that a page may not carry (the "Print"/"Refresh"/"View:" action
+     row is plain <button>, not .toolbar-btn). */
+  #main-content button,
+  #main-content [role="toolbar"],
+  #main-content input,
+  #main-content select,
+  #main-content textarea,
+  #main-content .menu-dropdown,
+  #main-content a[href]::after {
+    display: none !important;
+  }
+  #main-content .print-only { display: block !important; }
+  #main-content .print-table { display: table !important; }
+
+  /* Formal-document ink: flatten every remaining surface to white
+     paper + near-black text, independent of whether the element
+     reads a theme CSS variable or a hardcoded hex/rgb literal. */
+  #main-content,
+  #main-content * {
+    background-color: transparent !important;
+    background-image: none !important;
+    color: #111111 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  /* Re-apply structural borders (in place of the color-coded surfaces
+     removed above) so grids of stat tiles/panels still read as
+     distinct, table-like sections instead of one flat wall of text. */
+  #main-content [class*="grid"] > div,
+  #main-content [class*="panel"],
+  #main-content [class*="card"] {
+    border: 1px solid #999999 !important;
+    break-inside: avoid;
+  }
+
+  #main-content table,
+  #main-content th,
+  #main-content td {
+    border: 1px solid #999999 !important;
+    border-collapse: collapse;
+  }
+  #main-content thead,
+  #main-content th {
+    background-color: #e8e8e8 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    font-weight: 700 !important;
+  }
+
+  /* Preserve the one meaningful use of color on a printed CAD page —
+     Mapbox canvases paint via WebGL, not DOM color/background, so the
+     blanket override above cannot touch them; leave the map visible
+     rather than blacking out a canvas the rule can't reach anyway. */
+  #main-content canvas {
+    filter: none !important;
+  }
+
+  img {
+    filter: grayscale(1) contrast(1.15) !important;
+    max-width: 100% !important;
+  }
+
+  a[href] {
+    text-decoration: none !important;
+  }
 }

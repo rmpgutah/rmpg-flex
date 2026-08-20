@@ -10,14 +10,16 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetMaintenance } from '../../../types';
+import { safeDateStr, localToday } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   records: FleetMaintenance[];
   periodLabel?: string;
 }
 
-export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel }: Args): void {
+export function buildFleetMaintenanceHistoryPdf({ vehicle, records, periodLabel }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -68,7 +70,7 @@ export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLab
     ['Total Records', String(records.length)],
     ['Total Cost', fmtCurrency(totalCost)],
     ['Average Cost', fmtCurrency(avgCost)],
-    ['Types', Object.entries(typeCounts).map(([t, c]) => `${t.replace('_', ' ')}(${c})`).join(', ') || '-'],
+    ['Types', Object.entries(typeCounts).map(([t, c]) => `${toDisplayLabel(t)}(${c})`).join(', ') || '-'],
   ];
   for (const [label, value] of summaryItems) {
     doc.setFont('helvetica', 'bold');
@@ -116,8 +118,8 @@ export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLab
       drawHeader(y);
       y += 12;
     }
-    doc.text(r.performed_at ? r.performed_at.slice(0, 10) : '-', colDate, y);
-    doc.text((r.type || 'other').replace('_', ' '), colType, y);
+    doc.text(r.performed_at ? safeDateStr(r.performed_at, '-') : '-', colDate, y);
+    doc.text(toDisplayLabel(r.type || 'other'), colType, y);
     doc.text(truncate(r.description || '', 28), colDesc, y);
     doc.text(truncate(r.vendor || '-', 14), colVendor, y);
     doc.text(r.mileage_at_service != null ? r.mileage_at_service.toLocaleString() : '-', colMileage, y);
@@ -136,6 +138,13 @@ export function generateFleetMaintenanceHistoryPdf({ vehicle, records, periodLab
     doc.setTextColor(0);
   }
 
-  const filename = `maintenance-history-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the maintenance history PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetMaintenanceHistoryPdf(args: Args): void {
+  const doc = buildFleetMaintenanceHistoryPdf(args);
+  const filename = `maintenance-history-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

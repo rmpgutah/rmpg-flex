@@ -26,6 +26,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
 const coloradoDoc = new Hono<Env>();
 
 const PORTAL_URL = 'https://www.doc.state.co.us/oss/';
@@ -71,9 +72,10 @@ coloradoDoc.get('/search', async (c) => {
     if (lastName.length < 2) {
       return c.json({ error: 'lastName is required (minimum 2 characters)', code: 'LASTNAME_REQUIRED' }, 400);
     }
-    let sql = 'SELECT * FROM colorado_doc_offenders WHERE UPPER(last_name) LIKE ?';
-    const params: unknown[] = [`%${lastName.toUpperCase()}%`];
-    if (firstName) { sql += ' AND UPPER(first_name) LIKE ?'; params.push(`%${firstName.toUpperCase()}%`); }
+    const lastM = containsAnyClause(['last_name']);
+    let sql = `SELECT * FROM colorado_doc_offenders WHERE ${lastM.sql}`;
+    const params: unknown[] = [...lastM.binds(lastName)];
+    if (firstName) { const firstM = containsAnyClause(['first_name']); sql += ` AND ${firstM.sql}`; params.push(...firstM.binds(firstName)); }
     sql += ' ORDER BY last_name, first_name LIMIT 100';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json({

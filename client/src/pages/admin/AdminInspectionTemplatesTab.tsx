@@ -269,11 +269,11 @@ function TemplateModal({ mode, templateId, onClose, onSaved }: TemplateModalProp
       } else {
         await apiFetch('/inspection-templates', { method: 'POST', body: JSON.stringify(body) });
       }
-      setSaving(false);
       onSaved();
     } catch (e) {
-      setSaving(false);
       setErr(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -282,8 +282,7 @@ function TemplateModal({ mode, templateId, onClose, onSaved }: TemplateModalProp
       role="dialog"
       aria-modal="true"
       aria-labelledby="tmpl-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.6)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-overlay/60"
       onClick={saving ? undefined : onClose}
     >
       <div

@@ -1,4 +1,4 @@
-import type { Editor } from '@tiptap/react';
+import type { Editor } from '@tiptap/core';
 import { BubbleMenu } from '@tiptap/react/menus';
 import {
   Bold, Italic, Underline as UnderlineIcon, Highlighter, Link2, MessageSquarePlus,
@@ -18,7 +18,7 @@ export default function SelectionToolbar({
 }) {
   const btn = (active: boolean) =>
     `p-1 rounded-[2px] transition-colors ${
-      active ? 'bg-[#d4a017]/25 text-[#d4a017]' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
+      active ? 'bg-accent-silver-500/25 text-accent-silver-300' : 'text-rmpg-300 hover:text-rmpg-100 hover:bg-surface-raised'
     }`;
 
   const setLink = () => {

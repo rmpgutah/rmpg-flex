@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
@@ -55,11 +55,13 @@ export function ScreeningWorkspace() {
     if (deepLinkApplied.current) return;
     const screenId = searchParams.get('screen_id');
     const personId = searchParams.get('person_id');
-    if (!screenId && !personId) return;
+    const surname = searchParams.get('surname');
+    if (!screenId && !personId && !surname) return;
     deepLinkApplied.current = true;
     const next = new URLSearchParams(searchParams);
     if (screenId) { next.delete('screen_id'); setTab('review'); }
     if (personId) { next.delete('person_id'); setName(personId); }
+    if (surname) { next.delete('surname'); setName(surname); }
     setSearchParams(next, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -17,8 +17,9 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer';
-
+import { requireRole } from '../../middleware/auth';
 import { dbErrorResponse } from '../../utils/dbErrors';
+
 const routing = new Hono<Env>();
 
 // Boot reconciler — deploy migrations are continue-on-error, so the route
@@ -55,13 +56,17 @@ interface CallRow {
   status: string;
   latitude: number | null;
   longitude: number | null;
-  location: string | null;
+  // The live column is `location_address` — there is no `location` column on
+  // calls_for_service (verified via pragma_table_info: location_address,
+  // location_building, location_floor, location_room). Selecting `location`
+  // made every /optimize call fail with "no such column: location".
+  location_address: string | null;
   description: string | null;
   assigned_unit_ids: string | null;
 }
 
 // POST /optimize — build an ordered route over the unit's active CFS calls.
-routing.post('/optimize', async (c) => {
+routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<{ unit_id?: string | number; priority_weighted?: boolean }>().catch(() => ({} as any));
@@ -78,23 +83,23 @@ routing.post('/optimize', async (c) => {
     // set, so membership is filtered in JS rather than string-LIKE SQL.
     const candidates = await query<CallRow>(db, `
       SELECT id, call_number, incident_type, priority, status, latitude, longitude,
-             location, description, assigned_unit_ids
+             location_address, description, assigned_unit_ids
       FROM calls_for_service
-      WHERE status IN ('pending','on_hold','dispatched','enroute','onscene')
+      WHERE status IN ('pending','dispatched','enroute','onscene')
       ORDER BY created_at ASC LIMIT 500`);
-    const mine = candidates.filter((call) => {
+    const routable = candidates.filter((call) => {
+      if (call.latitude == null || call.longitude == null) return false;
       try {
-        const assigned = JSON.parse(call.assigned_unit_ids || '[]') as Array<number | string>;
-        return assigned.some((a) => String(a) === String(unitId));
+        const assignedIds = JSON.parse(call.assigned_unit_ids || '[]') as number[];
+        return assignedIds.includes(Number(unitId));
       } catch { return false; }
     });
-    const routable = mine.filter((call) => call.latitude != null && call.longitude != null);
-    const skipped = mine.length - routable.length;
+    const skipped = candidates.length - routable.length;
 
     let warning: string | undefined;
-    if (mine.length === 0) warning = 'No active calls are assigned to this unit.';
-    else if (routable.length === 0) warning = 'Assigned calls have no GPS coordinates — nothing to route.';
-    else if (skipped > 0) warning = `${skipped} assigned call(s) skipped — no GPS coordinates.`;
+    if (candidates.length === 0) warning = 'No active calls are available to route.';
+    else if (routable.length === 0) warning = 'Active calls have no GPS coordinates — nothing to route.';
+    else if (skipped > 0) warning = `${skipped} call(s) skipped — no GPS coordinates.`;
 
     // Origin: the unit's live position, else the first routable call.
     let origin = unit.latitude != null && unit.longitude != null
@@ -123,7 +128,7 @@ routing.post('/optimize', async (c) => {
       priority: s.call.priority || 'P3',
       latitude: s.latitude,
       longitude: s.longitude,
-      location_address: s.call.location || '',
+      location_address: s.call.location_address || '',
       status: s.call.status,
       description: s.call.description || undefined,
       distance_from_prev_miles: Math.round(legsMiles[i] * 100) / 100,
@@ -148,7 +153,7 @@ routing.post('/optimize', async (c) => {
 });
 
 // POST /save — persist the built route (supersedes prior active routes for the unit).
-routing.post('/save', async (c) => {
+routing.post('/save', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);
@@ -175,7 +180,7 @@ routing.post('/save', async (c) => {
         Number(body.total_distance_miles) || 0,
         Math.round(Number(body.estimated_time_minutes)) || 0,
         String(body.notes || ''),
-        (c as any).var?.user?.id ?? null,
+        c.get('userId') ?? null,
       )
       .run();
     return c.json({ success: true, id: result.meta.last_row_id });
@@ -186,7 +191,7 @@ routing.post('/save', async (c) => {
 });
 
 // GET /unit/:unitId — latest active saved routes (newest first).
-routing.get('/unit/:unitId', async (c) => {
+routing.get('/unit/:unitId', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);
@@ -205,7 +210,7 @@ routing.get('/unit/:unitId', async (c) => {
 
 // POST /:id/complete-stop — mark one waypoint done; completes the route when
 // every stop is done.
-routing.post('/:id/complete-stop', async (c) => {
+routing.post('/:id/complete-stop', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
     await ensureTable(db);

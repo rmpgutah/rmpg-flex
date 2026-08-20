@@ -3,7 +3,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2, Edit2,
@@ -28,6 +28,7 @@ import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { safeDateStr, parseTimestamp } from '../utils/dateUtils';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -310,9 +311,9 @@ export default function TrainingDocsPage() {
             <span className="text-[9px] text-rmpg-500 ml-2">Download blank PDF forms for field use</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {(['incident', 'record', 'operations', 'service', 'communications', 'administrative'] as const).map(cat => (
+            {(['incident', 'record', 'operations', 'fleet', 'service', 'communications', 'administrative'] as const).map(cat => (
               <div key={cat}>
-                <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat === 'service' ? 'Process Service' : cat}</h3>
+                <h3 className="text-[10px] font-bold text-rmpg-400 uppercase mb-2 tracking-wider">{cat === 'service' ? 'Process Service' : cat === 'fleet' ? 'Vehicle / Fleet' : cat}</h3>
                 {BLANK_FORMS.filter(f => f.category === cat).map(form => (
                   <button
                     key={form.id}
@@ -437,7 +438,7 @@ export default function TrainingDocsPage() {
                     <span className={`inline-block px-1.5 py-0.5 text-[8px] font-bold uppercase border flex-shrink-0 ${
                       CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.general
                     }`}>
-                      {doc.category?.replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(doc.category).toUpperCase()}
                     </span>
                   </div>
 
@@ -513,7 +514,7 @@ export default function TrainingDocsPage() {
             <div className="space-y-0.5">
               <div className="font-medium text-rmpg-100">{docToDelete.title}</div>
               {docToDelete.category && (
-                <div className="text-rmpg-500">{String(docToDelete.category).replace(/_/g, ' ')}</div>
+                <div className="text-rmpg-500">{toDisplayLabel(String(docToDelete.category))}</div>
               )}
             </div>
           )

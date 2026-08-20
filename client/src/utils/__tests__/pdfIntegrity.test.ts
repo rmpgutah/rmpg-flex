@@ -114,10 +114,12 @@ describe('active state setters', () => {
 
   it('signature round-trips', () => {
     const bundle = {
-      signature: 'sigB64',
-      publicKey: 'pubB64',
+      algorithmVersion: 'pdf-sig-v2' as const,
       signedAt: '2026-04-01T00:00:00Z',
-      algorithm: 'Ed25519' as const,
+      keyId: 'abcd1234',
+      ed25519: { signature: 'edSigB64', publicKey: 'edPubB64' },
+      mlDsa87: { signature: 'mlSigB64', publicKey: 'mlPubB64' },
+      slhDsa256f: { signature: 'slhSigB64', publicKey: 'slhPubB64' },
     };
     setActiveSignature(bundle);
     expect(getActiveSignature()).toEqual(bundle);
@@ -147,25 +149,31 @@ describe('fetchPdfSignature', () => {
   });
 
   it('parses a 200 response into a PdfSignatureBundle', async () => {
+    const serverBody = {
+      algorithmVersion: 'pdf-sig-v2',
+      signedAt: '2026-04-01T00:00:00Z',
+      keyId: 'abcd1234',
+      ed25519: { signature: 'edSigB64', publicKey: 'edPubB64' },
+      mlDsa87: { signature: 'mlSigB64', publicKey: 'mlPubB64' },
+      slhDsa256f: { signature: 'slhSigB64', publicKey: 'slhPubB64' },
+      formKey: 'incident', caseNumber: 'INC-1', payloadHash: 'a'.repeat(64),
+    };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({
-        signature: 'sigB64',
-        publicKey: 'pubB64',
-        signedAt: '2026-04-01T00:00:00Z',
-        algorithm: 'Ed25519',
-      }),
+      JSON.stringify(serverBody),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )));
     const result = await fetchPdfSignature('incident', 'INC-1', 'a'.repeat(64));
     expect(result).toEqual({
-      signature: 'sigB64',
-      publicKey: 'pubB64',
-      signedAt: '2026-04-01T00:00:00Z',
-      algorithm: 'Ed25519',
+      algorithmVersion: serverBody.algorithmVersion,
+      signedAt: serverBody.signedAt,
+      keyId: serverBody.keyId,
+      ed25519: serverBody.ed25519,
+      mlDsa87: serverBody.mlDsa87,
+      slhDsa256f: serverBody.slhDsa256f,
     });
   });
 
-  it('returns null when 200 response is missing signature field', async () => {
+  it('returns null when 200 response is missing the ed25519 signature field', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(
       JSON.stringify({ unrelated: 'shape' }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },

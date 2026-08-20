@@ -4,7 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Globe, Search, User, AlertTriangle, MapPin, Loader2, X, Shield, Gavel, ChevronDown, Printer } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -219,7 +219,7 @@ function coverageStroke(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return 'var(--sev-ok)';
     case 'pending': return 'var(--sev-warn)';
-    default: return 'var(--rmpg-600)';
+    default: return 'var(--text-muted)';
   }
 }
 function coverageHoverFill(status: CoverageStatus | undefined): string {
@@ -233,7 +233,7 @@ function coverageTextColor(status: CoverageStatus | undefined): string {
   switch (status) {
     case 'active': return 'var(--sev-ok-soft)';
     case 'pending': return 'var(--sev-warn-soft)';
-    default: return 'var(--rmpg-400)';
+    default: return 'var(--text-secondary)';
   }
 }
 
@@ -728,7 +728,7 @@ export default function NationalWarrantSearchPage() {
                           fontSize: 11,
                           fontWeight: 600,
                           fontFamily: 'JetBrains Mono, monospace',
-                          fill: isSelected ? 'var(--rmpg-400)' : coverageTextColor(status),
+                          fill: isSelected ? 'var(--text-secondary)' : coverageTextColor(status),
                         }}
                       >
                         {st.label}

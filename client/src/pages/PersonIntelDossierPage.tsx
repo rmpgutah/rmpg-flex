@@ -1,6 +1,6 @@
 // client/src/pages/PersonIntelDossierPage.tsx
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router';
 import {
   Search, ArrowLeft, Loader2, AlertTriangle, CheckCircle2, Clock,
   Shield, MapPin, Phone, Mail, Car, User, Globe, Briefcase, Gavel,
@@ -193,8 +193,15 @@ export default function PersonIntelDossierPage() {
   }, [deleteConfirmOpen, navigate]);
 
   const annotate = async (dpId: number, patch: Record<string, any>) => {
-    await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
-    await load();
+    // apiFetch rejects on any non-2xx. Unguarded, a failed flag/note PATCH
+    // left the click doing nothing at all — no toast, no state change, just an
+    // unhandled rejection in the console. Matches handleDelete's pattern below.
+    try {
+      await apiFetch(`/person-intel/${id}/data-point/${dpId}`, { method: 'PATCH', body: JSON.stringify(patch) });
+      await load();
+    } catch (e: any) {
+      addToast(e?.message ?? 'Failed to update data point', 'error');
+    }
   };
 
   const handleDelete = async () => {
@@ -247,7 +254,7 @@ export default function PersonIntelDossierPage() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-2">
-        <button onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
+        <button aria-label="Back" onClick={() => navigate('/person-intel')} className="text-rmpg-500 hover:text-rmpg-300">
           <ArrowLeft className="w-4 h-4" />
         </button>
         <PanelTitleBar title={`DOSSIER: ${dossier.subject_name.toUpperCase()}`} icon={Search} />
@@ -286,7 +293,7 @@ export default function PersonIntelDossierPage() {
           <div className="flex gap-1 flex-wrap">
             {riskFlags.map(f => (
               <span key={f} className="text-[10px] bg-red-600/20 text-red-400 border border-red-600/40 rounded px-1.5 py-0.5">
-                {f.toUpperCase().replace('_', ' ')}
+                {toDisplayLabel(f).toUpperCase()}
               </span>
             ))}
           </div>
@@ -300,7 +307,7 @@ export default function PersonIntelDossierPage() {
             </span>
           )}
           <span className="ml-auto flex items-center gap-1">
-            <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString()}
+            <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}
           </span>
         </div>
       </div>

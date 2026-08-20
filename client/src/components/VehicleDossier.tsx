@@ -6,6 +6,7 @@ import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
 import { parseTimestamp } from '../utils/dateUtils';
 import TrustBadge from './TrustBadge';
+import CarxeLookupPanel from './CarxeLookupPanel';
 
 interface DossierPackage {
   id: number;
@@ -29,7 +30,8 @@ interface DossierResponse {
 
 function fmtDate(iso: string): string {
   try {
-    return parseTimestamp(iso).toLocaleString([], {
+    return parseTimestamp(iso).toLocaleString('en-US', {
+      timeZone: 'America/Denver',
       month: 'numeric', day: 'numeric', year: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
@@ -60,7 +62,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
       <div className="w-full max-w-lg max-h-[85vh] flex flex-col border border-border-subtle bg-surface-sunken">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-border-default">
-          <span className="text-[11px] font-semibold tracking-wider text-[#d4a017]">
+          <span className="text-[11px] font-semibold tracking-wider text-[var(--field-label-color)]">
             VEHICLE FILE —{' '}
             <span className="font-mono text-rmpg-100">{plate}</span>
           </span>
@@ -71,6 +73,13 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
             className="text-[#888] hover:text-rmpg-100">
             <X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* CarsXE manual lookup — this dossier is keyed by plate only (no VIN
+            is available on DossierPackage or its callers), so this uses
+            mode="plate" rather than the VIN mode suggested by the task brief. */}
+        <div className="px-3 py-2 border-b border-border-default">
+          <CarxeLookupPanel mode="plate" plate={plate} />
         </div>
 
         {/* Body */}
@@ -132,7 +141,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                   </div>
                   {variants.length > 0 && (
                     <div className="text-[9px] text-[#888] border-t border-border-default pt-0.5 mt-0.5">
-                      variants: {variants.join(', ')} — <span className="text-[#d4a017]">verify</span>
+                      variants: {variants.join(', ')} — <span className="text-[var(--field-label-color)]">verify</span>
                     </div>
                   )}
                 </div>
@@ -143,7 +152,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
 
         {/* Footer */}
         {data && data.packages.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-rmpg-500">
+          <div className="px-3 py-1.5 border-t border-border-default text-[9px] text-fg-muted">
             {data.packages.length} package{data.packages.length !== 1 ? 's' : ''} on file · newest first
           </div>
         )}

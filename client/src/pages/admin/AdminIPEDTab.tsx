@@ -4,7 +4,7 @@ import {
   ExternalLink, ToggleLeft, ToggleRight, Shield, Download, HardDrive, Hash,
   Database, Activity, FileSearch, RefreshCw, Server,
 } from 'lucide-react';
-import { apiFetch } from '../../hooks/useApi';
+import { apiFetch, downloadUrl } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -438,7 +438,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-400 font-mono mb-1.5">{downloads.bundles.mac.filename}</div>
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.mac.version} • {(downloads.bundles.mac.size / 1048576).toFixed(0)} MB</div>
                 <a
-                  href={`/downloads/${downloads.bundles.mac.filename}`}
+                  href={downloadUrl(downloads.bundles.mac.filename)}
                   className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
@@ -460,7 +460,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                 <div className="text-[9px] text-rmpg-400 font-mono mb-1.5">{downloads.bundles.win.filename}</div>
                 <div className="text-[9px] text-rmpg-500 mb-2">v{downloads.bundles.win.version} • {(downloads.bundles.win.size / 1048576).toFixed(0)} MB</div>
                 <a
-                  href={`/downloads/${downloads.bundles.win.filename}`}
+                  href={downloadUrl(downloads.bundles.win.filename)}
                   className="toolbar-btn text-[10px] flex items-center gap-1 px-2.5 py-1 bg-brand-600 hover:bg-brand-500 text-rmpg-100 inline-flex"
                 >
                   <Download className="w-3 h-3" />
@@ -618,7 +618,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>
                 </div>
-                <button type="button"
+                <button aria-label="Remove" type="button"
                   onClick={() => handleRemoveHashSet(hs.name)}
                   className="text-rmpg-600 hover:text-red-400 shrink-0 ml-2"
                 >

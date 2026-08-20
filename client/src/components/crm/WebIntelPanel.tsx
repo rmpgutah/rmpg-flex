@@ -308,7 +308,7 @@ export default function WebIntelPanel() {
           >
             <Clock className="w-3 h-3 text-rmpg-400" />
             <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider flex-1">Recent Searches</span>
-            {historyExpanded ? <ChevronUp className="w-3 h-3 text-rmpg-500" /> : <ChevronDown className="w-3 h-3 text-rmpg-500" />}
+            {historyExpanded ? <ChevronUp className="w-3 h-3 text-fg-muted" /> : <ChevronDown className="w-3 h-3 text-fg-muted" />}
           </button>
           {historyExpanded && (
             <div className="px-3 pb-2 space-y-1">
@@ -318,10 +318,10 @@ export default function WebIntelPanel() {
                   onClick={() => handleSearch(h.query)}
                   className="w-full flex items-center gap-2 px-2 py-1 text-left hover:bg-rmpg-700/20 rounded-sm transition-colors"
                 >
-                  <Search className="w-2.5 h-2.5 text-rmpg-500 shrink-0" />
+                  <Search className="w-2.5 h-2.5 text-fg-muted shrink-0" />
                   <span className="text-[11px] text-rmpg-200 min-w-0 truncate flex-1">{h.query}</span>
-                  <span className="text-[9px] text-rmpg-500 font-mono shrink-0">{h.result_count} results</span>
-                  <span className="text-[9px] text-rmpg-600 font-mono shrink-0">{relativeTime(h.created_at)}</span>
+                  <span className="text-[9px] text-fg-muted font-mono shrink-0">{h.result_count} results</span>
+                  <span className="text-[9px] text-fg-muted font-mono shrink-0">{relativeTime(h.created_at)}</span>
                 </button>
               ))}
             </div>
@@ -389,7 +389,7 @@ export default function WebIntelPanel() {
               {savingTemplate ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
               Save
             </button>
-            <button
+            <button aria-label="Close"
               type="button"
               onClick={() => { setShowSaveForm(false); setSaveTemplateName(''); }}
               className="toolbar-btn flex items-center px-1.5"
@@ -432,14 +432,14 @@ export default function WebIntelPanel() {
 
         {!searching && results.length === 0 && query.trim() !== '' && (
           <div className="panel-beveled bg-surface-base p-6 text-center">
-            <Globe className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+            <Globe className="w-8 h-8 text-fg-muted mx-auto mb-2" />
             <p className="text-sm text-rmpg-400">No results found. Try a different query.</p>
           </div>
         )}
 
         {!searching && results.length === 0 && query.trim() === '' && (
           <div className="panel-beveled bg-surface-base p-6 text-center">
-            <Globe className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+            <Globe className="w-8 h-8 text-fg-muted mx-auto mb-2" />
             <p className="text-sm text-rmpg-400">Enter a search query to find potential leads on the web.</p>
           </div>
         )}

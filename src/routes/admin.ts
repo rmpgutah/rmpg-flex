@@ -1,11 +1,17 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, executeInChunks } from '../utils/db';
 import { fireRule, type NotificationRuleRow } from './notificationEngine';
 import { getAnthropicKey, getClaudeModel, callClaude, diagnoseAnthropicError } from '../utils/anthropic';
 import { getOpenAiKey, getOpenAiModel, callOpenAi, diagnoseOpenAiError } from '../utils/openai';
-import { denverOffsetHours } from '../utils/denverTime';
+import { denverNowDateExpr, denverHourExpr, denverStrftimeExpr } from '../utils/denverTime';
+import { ACTIVE_CALL_WHERE } from '../utils/callStatus';
+import { mergeDispositions, isDispositionRow, type DispositionConfigRow } from '../utils/dispositionConfig';
 
+import { log } from '../utils/logger';
+import { recordAudit } from '../utils/auditLog';
+import { parseUserAgentLabel } from '../utils/userAgent';
+import { getUserGraphToken } from '../utils/userGraphTokens';
 const admin = new Hono<Env>();
 
 // Admin mutations are reachable by any authenticated user once authMiddleware
@@ -27,13 +33,33 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 // dedicated /third-party-keys endpoints' redact-to-{configured:boolean}.
 const SECRET_KEY_PATTERN = /_(api_key|access_key|access_key_id|secret|secret_access_key|token|password|client_secret|app_key|key_id|webhook_url|webhook_token)$/i;
 
+// ── Router-wide role gate ───────────────────────────────────
+// Being mounted under /api/admin proves only that the caller has a VALID
+// SESSION — it does not make them an administrator. authMiddleware sets
+// `user` for every role, and readOnlyRoleGuard blocks only `client_viewer`
+// from writes, so an `officer` or `contract_manager` token reaches every
+// handler in this file. Each one must therefore declare its own roles;
+// a number of them historically did not, which left secret dumps, audit-log
+// purges and session revocation open to any logged-in account.
+//
+// Usage: `const denied = forbidUnlessRole(c, 'admin', 'manager'); if (denied) return denied;`
+function forbidUnlessRole(c: any, ...roles: string[]): Response | null {
+  const actor = c.get('user') as { role?: string } | undefined;
+  if (!actor?.role || !roles.includes(actor.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  return null;
+}
+
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
-// Dispositions come from system_config rows where key starts with
-// 'disposition.' (each value is JSON {code, description, color?}),
-// falling back to a baked-in common set so the Clear-call dropdown
-// is never empty even on a fresh database.
+// Dispositions are recognized from BOTH historical namespaces — legacy
+// config_key='disposition.<CODE>' rows and category='dispositions' rows
+// (what AdminSystemTab.tsx writes today, always under config_key
+// 'disposition_code') — and merged with the built-in roster for any code
+// not otherwise present. See src/utils/dispositionConfig.ts
+// (mergeDispositions/isDispositionRow) for the assembly + precedence rules.
 admin.get('/config', async (c) => {
   try {
     const actor = c.get('user') as { role: string } | undefined;
@@ -41,101 +67,36 @@ admin.get('/config', async (c) => {
       return c.json({ error: 'Forbidden' }, 403);
     }
     const db = getDb(c.env);
-    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
+    const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config ORDER BY id');
     const result: Record<string, any> = {};
-    const customDispositions: any[] = [];
+    const dispositionRows: DispositionConfigRow[] = [];
+
     for (const row of config) {
       // Live system_config columns are config_key/config_value (NOT key/value);
-      // reading key/value yielded "undefined" for every row, so custom
-      // dispositions + flat config never loaded once this route goes live.
+      // reading key/value yielded "undefined" for every row.
       const key = String(row.config_key);
       const value = String(row.config_value ?? '');
-      // Disposition rows live under the 'disposition.<code>' namespace
-      // so we can keep the flat key/value schema while still allowing
-      // the client to consume them as a typed array.
-      if (key.startsWith('disposition.')) {
-        try {
-          const parsed = JSON.parse(value);
-          customDispositions.push({
-            code: parsed.code,
-            description: parsed.description,
-            color: parsed.color,
-            is_active: parsed.is_active !== false,
-            // Keep `config_value` for backward-compat with the existing
-            // client mapping that JSON.parses each row.
-            config_value: value,
-          });
-        } catch { /* malformed row — skip */ }
+      const candidate: DispositionConfigRow = {
+        config_key: key,
+        config_value: value,
+        category: row.category == null ? null : String(row.category),
+      };
+
+      if (isDispositionRow(candidate)) {
+        // Consumed as a disposition below. Deliberately NOT also written into
+        // the flat map: every category='dispositions' row shares the constant
+        // config_key 'disposition_code', so doing both left a meaningless
+        // last-write-wins scalar on the response. Nothing reads it.
+        dispositionRows.push(candidate);
       } else if (!SECRET_KEY_PATTERN.test(key)) {
         result[key] = value;
       }
     }
 
-    // Baked-in defaults so the dropdown is never empty on a fresh
-    // database. Custom rows above OVERRIDE these by code (admin can
-    // tweak description/color in system_config without losing the
-    // built-in roster).
-    const defaults = [
-      { code: 'Report Taken',     description: 'Report Taken' },
-      { code: 'Unfounded',        description: 'Unfounded' },
-      { code: 'GOA',              description: 'Gone on Arrival' },
-      { code: 'Referred',         description: 'Referred to other agency' },
-      { code: 'No Action',        description: 'No Action Required' },
-      { code: 'Arrest',           description: 'Arrest Made' },
-      { code: 'Warning',          description: 'Warning Issued' },
-      { code: 'Citation',         description: 'Citation Issued' },
-      { code: 'Trespass Warning', description: 'Trespass Warning Issued' },
-      { code: 'Civil Matter',     description: 'Civil Matter — No Action' },
-      { code: 'Resolved',         description: 'Resolved on Scene' },
-      { code: 'Transported',      description: 'Subject Transported' },
-      { code: 'False Alarm',      description: 'False Alarm' },
-      { code: 'Verbal Warning',   description: 'Verbal Warning Issued' },
-      { code: 'Field Interview',  description: 'Field Interview (FI) Conducted' },
-      { code: 'Counseled',        description: 'Subject Counseled' },
-      { code: 'Documentation Only', description: 'Documentation Only' },
-      { code: 'UTL',              description: 'Unable to Locate' },
-      { code: 'Assist Rendered',  description: 'Assist Rendered' },
-      { code: 'Negative Contact', description: 'Negative Contact' },
-      { code: 'Patrol Completed', description: 'Patrol Completed' },
-      { code: 'Premise Secured',  description: 'Premise Secured' },
-      { code: 'Owner Notified',   description: 'Owner/Keyholder Notified' },
-      { code: 'Vehicle Towed',    description: 'Vehicle Towed' },
-      { code: 'Standby Complete', description: 'Standby Complete' },
-      // Process Service outcomes (paper service — pso_client_request / process_service calls).
-      // Namespaced with a 'PS ' code prefix so they group together and never
-      // collide with the law-enforcement codes above. Per-attempt diligence
-      // tracking still lives in the dedicated serve subsystem (serve_attempts);
-      // these are the call-level closeout codes.
-      { code: 'PS Served',            description: 'Process Served — Personal' },
-      { code: 'PS Sub-Served',        description: 'Process Served — Substitute' },
-      { code: 'PS Posted',            description: 'Process Served — Posted & Mailed' },
-      { code: 'PS Corporate',         description: 'Process Served — Corporate/Registered Agent' },
-      { code: 'PS Mailed',            description: 'Process Served — By Mail' },
-      { code: 'PS Non-Service',       description: 'Process — Unable to Serve' },
-      { code: 'PS Evasive',           description: 'Process — Evasive / Avoiding Service' },
-      { code: 'PS Vacant',            description: 'Process — Vacant / Unoccupied' },
-      { code: 'PS No Access',         description: 'Process — Gated / No Access' },
-      { code: 'PS Unknown',           description: 'Process — Recipient Unknown at Address' },
-      { code: 'PS Out of Jurisdiction', description: 'Process — Out of Jurisdiction' },
-      { code: 'PS Recalled',          description: 'Process — Recalled by Client' },
-      { code: 'PS Non Est',           description: 'Process — Returned Non-Est (Return of Service Filed)' },
-      { code: 'Cancelled',        description: 'Call Cancelled' },
-    ];
-    const overrideCodes = new Set(customDispositions.map((d) => d.code));
-    const merged = [
-      ...customDispositions,
-      ...defaults
-        .filter((d) => !overrideCodes.has(d.code))
-        .map((d) => ({
-          ...d,
-          is_active: true,
-          config_value: JSON.stringify(d),
-        })),
-    ];
-
-    result.dispositions = merged;
+    result.dispositions = mergeDispositions(dispositionRows);
     return c.json(result);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /config failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ============================================================
@@ -175,6 +136,7 @@ admin.get('/config-items', async (c) => {
     }
     return c.json(grouped);
   } catch (err) {
+    log.error('GET /config-items failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to fetch config items', detail: (err as Error).message }, 500);
   }
 });
@@ -217,6 +179,7 @@ admin.post('/config', async (c) => {
        FROM system_config WHERE id = ?`, id);
     return c.json(row);
   } catch (err) {
+    log.error('POST /config failed', { src: 'src/routes/admin.ts' }, err);
     const msg = (err as Error).message || '';
     // Live D1 has UNIQUE(config_key, config_value); surface duplicates clearly.
     if (/UNIQUE constraint failed/i.test(msg)) {
@@ -255,7 +218,7 @@ admin.put('/config/:id', async (c) => {
     if (typeof category === 'string' && category.trim()) { sets.push('category = ?'); args.push(category.trim()); }
     if (Number.isFinite(sort_order)) { sets.push('sort_order = ?'); args.push(Number(sort_order)); }
     if (is_active === 0 || is_active === 1) { sets.push('is_active = ?'); args.push(is_active); }
-    sets.push("updated_at = datetime('now','localtime')");
+    sets.push("updated_at = datetime('now')");
     args.push(id);
     const result = await execute(db,
       `UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`, ...args);
@@ -271,6 +234,7 @@ admin.put('/config/:id', async (c) => {
        FROM system_config WHERE id = ?`, id);
     return c.json(row);
   } catch (err) {
+    log.error('PUT /config/:id failed', { src: 'src/routes/admin.ts' }, err);
     const msg = (err as Error).message || '';
     if (/UNIQUE constraint failed/i.test(msg)) {
       return c.json({ error: 'Update would produce a duplicate config_key + config_value', code: 'DUPLICATE' }, 409);
@@ -302,32 +266,108 @@ admin.delete('/config/:id', async (c) => {
     }
     return c.json({ success: true, id });
   } catch (err) {
+    log.error('DELETE /config/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete config', detail: (err as Error).message }, 500);
   }
 });
 
-// GET /admin/call-templates
+// GET /admin/call-templates — AdminSystemTab's Quick Templates panel reads
+// `description_template`, which maps to this table's `notes` column.
 admin.get('/call-templates', async (c) => {
   try {
     const db = getDb(c.env);
-    const templates = await query<Record<string, unknown>>(db, 'SELECT * FROM call_templates ORDER BY name');
+    const templates = await query<Record<string, unknown>>(db,
+      `SELECT id, name, incident_type, priority, notes AS description_template,
+              owner_user_id, is_shared, use_count, active, created_at, updated_at
+         FROM call_templates ORDER BY name`);
     return c.json(templates);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /call-templates failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.post('/call-templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    type CallTemplateBody = { name?: string; incident_type?: string; priority?: string; description_template?: string | null };
+    const body = await c.req.json<CallTemplateBody>().catch(() => ({} as CallTemplateBody));
+    if (!body.name || !body.incident_type) return c.json({ error: 'name and incident_type are required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO call_templates (name, incident_type, priority, notes, owner_user_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      body.name, body.incident_type, body.priority || 'P3', body.description_template ?? null, userId);
+    return c.json({ success: true, id: r.meta.last_row_id });
+  } catch (err) {
+    log.error('POST /call-templates failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to create call template' }, 500); }
+});
+
+admin.put('/call-templates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    type CallTemplateBody = { name?: string; incident_type?: string; priority?: string; description_template?: string | null };
+    const body = await c.req.json<CallTemplateBody>().catch(() => ({} as CallTemplateBody));
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
+    if (body.incident_type !== undefined) { sets.push('incident_type = ?'); vals.push(body.incident_type); }
+    if (body.priority !== undefined) { sets.push('priority = ?'); vals.push(body.priority); }
+    if (body.description_template !== undefined) { sets.push('notes = ?'); vals.push(body.description_template); }
+    if (!sets.length) return c.json({ success: true });
+    sets.push("updated_at = datetime('now')");
+    vals.push(id);
+    await execute(db, `UPDATE call_templates SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json({ success: true });
+  } catch (err) {
+    log.error('PUT /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to update call template' }, 500); }
+});
+
+admin.delete('/call-templates/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'DELETE FROM call_templates WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) {
+    log.error('DELETE /call-templates/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed to delete call template' }, 500); }
 });
 
 // ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
+// Roles allowed to see full client records incl. commercial terms. The
+// external-facing roles (contract_manager, client_viewer) are deliberately
+// absent — there is no tenancy column on `users`, so nothing scopes a
+// client-side account to its OWN client, and any of them could otherwise
+// read every other client's rates by incrementing :id.
+const CLIENT_FULL_ROLES = ['admin', 'manager', 'supervisor'];
+
 admin.get('/clients', async (c) => {
   try {
     const db = getDb(c.env);
     const status = c.req.query('status');
+    // This list is a CLIENT PICKER for dispatch / incidents / serve /
+    // invoices, so it must stay readable to officers and dispatchers — but
+    // `SELECT *` also handed rate_per_hour, contract_value, total_invoiced,
+    // total_paid and outstanding_balance to every role. Privileged roles get
+    // the full row; everyone else gets only what a picker needs.
+    const actor = c.get('user') as { role?: string } | undefined;
+    // Restricted set is limited to columns the surrounding query already
+    // proves exist (ORDER BY name / WHERE status) — live D1 carries schema
+    // drift, and naming a missing column here would 500 the picker for
+    // every officer rather than degrade.
+    const cols = CLIENT_FULL_ROLES.includes(actor?.role ?? '')
+      ? '*'
+      : 'id, name, status';
     const sql = status
-      ? 'SELECT * FROM clients WHERE status = ? ORDER BY name'
-      : 'SELECT * FROM clients ORDER BY name';
+      ? `SELECT ${cols} FROM clients WHERE status = ? ORDER BY name`
+      : `SELECT ${cols} FROM clients ORDER BY name`;
     return c.json(status ? await query(db, sql, status) : await query(db, sql));
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /clients failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id', async (c) => {
+  // Detail view: contracts, contact persons, and the client's incidents and
+  // calls. Only AdminClientsTab consumes it, so gating costs no function.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
@@ -338,10 +378,13 @@ admin.get('/clients/:id', async (c) => {
     const incidents = await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 50`, id).catch(() => []);
     const calls = await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 50`, id).catch(() => []);
     return c.json({ ...client, contracts, persons, incidents, calls });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('GET /clients/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.get('/clients/:id/incidents', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -349,6 +392,8 @@ admin.get('/clients/:id/incidents', async (c) => {
 });
 
 admin.get('/clients/:id/calls', async (c) => {
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
@@ -356,6 +401,9 @@ admin.get('/clients/:id/calls', async (c) => {
 });
 
 admin.get('/clients/:id/billing', async (c) => {
+  // Rates, invoiced/paid totals and outstanding balance.
+  const denied = forbidUnlessRole(c, ...CLIENT_FULL_ROLES);
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
@@ -388,7 +436,8 @@ admin.post('/clients', async (c) => {
     }
     const r = await execute(db, `INSERT INTO clients (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', r.meta.last_row_id), 201);
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('POST /clients failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.put('/clients/:id', async (c) => {
@@ -409,7 +458,8 @@ admin.put('/clients/:id', async (c) => {
     vals.push(id);
     await execute(db, `UPDATE clients SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', id));
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('PUT /clients/:id failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.delete('/clients/:id', async (c) => {
@@ -419,7 +469,8 @@ admin.delete('/clients/:id', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+  } catch (e) {
+    log.error('DELETE /clients/:id failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
 });
 
 admin.post('/clients/:id/archive', async (c) => {
@@ -429,7 +480,8 @@ admin.post('/clients/:id/archive', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+  } catch (e) {
+    log.error('POST /clients/:id/archive failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed' }, 500); }
 });
 
 admin.post('/clients/:id/unarchive', async (c) => {
@@ -439,7 +491,8 @@ admin.post('/clients/:id/unarchive', async (c) => {
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'active', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
-  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+  } catch (e) {
+    log.error('POST /clients/:id/unarchive failed', { src: 'src/routes/admin.ts' }, e); return c.json({ error: 'Failed' }, 500); }
 });
 
 export default admin;
@@ -455,11 +508,10 @@ admin.get('/shift-stats', async (c) => {
     const endHour = shiftName === 'Day' ? 14 : shiftName === 'Swing' ? 22 : 6;
     // shiftHour/startHour/endHour are Denver wall-clock hours, but created_at is
     // stored UTC — strftime('%H', created_at) read the raw UTC hour, off by the
-    // MT UTC offset (6-7h). Shift the timestamp into Denver time before
-    // extracting the hour, same fix already applied to reports.ts's
-    // shift-comparison endpoint.
-    const offset = denverOffsetHours();
-    const shiftedHourExpr = `CAST(strftime('%H', created_at, '${offset} hours') AS INTEGER)`;
+    // MT UTC offset (6-7h). denverHourExpr shifts the timestamp into Denver
+    // time before extracting the hour (utils/denverTime.ts), same helper used
+    // by reports.ts's shift-comparison endpoint.
+    const shiftedHourExpr = denverHourExpr('created_at');
     const dateCondition = shiftName === 'Night'
       ? `(${shiftedHourExpr} >= ${startHour} OR ${shiftedHourExpr} < ${endHour})`
       : `${shiftedHourExpr} BETWEEN ${startHour} AND ${endHour - 1}`;
@@ -477,14 +529,17 @@ admin.get('/upcoming-court-dates', async (c) => {
     const days = parseInt(c.req.query('days') || '30', 10);
     // hearing_date is a plain calendar date (no time-of-day), but "today" needs
     // to be Denver's calendar date, not UTC's — DATE('now') is UTC and drifts a
-    // day off for ~6-7 hours around each midnight (same offset bug fixed above
-    // in shift-stats and previously in reports.ts).
-    const offset = denverOffsetHours();
+    // day off for ~6-7 hours around each midnight. Uses the shared
+    // denverNowDateExpr helper (utils/denverTime.ts) — same fix as shift-stats
+    // above and reports.ts.
     const rows = await query<{ date: string; case_number: string; officer_name: string }>(db,
-      `SELECT ce.hearing_date AS date, ce.case_number, COALESCE(u.full_name, 'Unassigned') AS officer_name
-       FROM court_events ce LEFT JOIN users u ON u.id = ce.officer_id
-       WHERE ce.hearing_date BETWEEN DATE('now', '${offset} hours') AND DATE('now', '${offset} hours', '+${Math.min(days, 90)} days')
-       ORDER BY ce.hearing_date LIMIT 50`);
+      // Live court_events uses event_date / court_case_number, and has no
+      // officer_id — created_by is the only user FK on the row.
+      `SELECT ce.event_date AS date, ce.court_case_number AS case_number,
+              COALESCE(u.full_name, 'Unassigned') AS officer_name
+       FROM court_events ce LEFT JOIN users u ON u.id = ce.created_by
+       WHERE ce.event_date BETWEEN ${denverNowDateExpr()} AND ${denverNowDateExpr(`+${Math.min(days, 90)} days`)}
+       ORDER BY ce.event_date LIMIT 50`);
     return c.json({ count: rows.length, dates: rows });
   } catch { return c.json({ count: 0, dates: [] }); }
 });
@@ -494,16 +549,26 @@ admin.get('/expiring-certifications', async (c) => {
     const db = getDb(c.env);
     const days = parseInt(c.req.query('days') || '30', 10);
     const rows = await query<{ officer_name: string; cert: string; days_left: number; expiry_date: string }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday(pc.expiry_date) - julianday('now') AS INTEGER) AS days_left, pc.expiry_date
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
-       ORDER BY pc.expiry_date LIMIT 30`);
+      // No personnel_certifications table: it's officer_certifications, keyed
+      // by officer_id, with expiration_date and a cert_type_id FK into
+      // certification_types (there is no certification_type text column).
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Certification') AS cert,
+              CAST(julianday(pc.expiration_date) - julianday('now') AS INTEGER) AS days_left,
+              pc.expiration_date AS expiry_date
+       FROM officer_certifications pc
+       LEFT JOIN users u ON u.id = pc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = pc.cert_type_id
+       WHERE pc.expiration_date BETWEEN DATE('now') AND DATE('now','+${Math.min(days, 90)} days')
+       ORDER BY pc.expiration_date LIMIT 30`);
     const expired = await query<{ officer_name: string; cert: string; days_left: number }>(db,
-      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name, pc.certification_type AS cert,
-              CAST(julianday('now') - julianday(pc.expiry_date) AS INTEGER) AS days_left
-       FROM personnel_certifications pc LEFT JOIN users u ON u.id = pc.user_id
-       WHERE pc.expiry_date < DATE('now') ORDER BY pc.expiry_date LIMIT 20`);
+      `SELECT COALESCE(u.full_name, 'Unknown') AS officer_name,
+              COALESCE(ct.cert_name, 'Certification') AS cert,
+              CAST(julianday('now') - julianday(pc.expiration_date) AS INTEGER) AS days_left
+       FROM officer_certifications pc
+       LEFT JOIN users u ON u.id = pc.officer_id
+       LEFT JOIN certification_types ct ON ct.id = pc.cert_type_id
+       WHERE pc.expiration_date < DATE('now') ORDER BY pc.expiration_date LIMIT 20`);
     return c.json({ expiring_count: rows.length, expired_count: expired.length, items: [...rows, ...expired.map(e => ({ ...e, expiry_date: 'EXPIRED' }))] });
   } catch { return c.json({ expiring_count: 0, expired_count: 0, items: [] }); }
 });
@@ -511,50 +576,108 @@ admin.get('/expiring-certifications', async (c) => {
 admin.get('/google-maps-config', (c) => c.json({}));
 admin.get('/config/branding', (c) => c.json([]));
 
-// ── AdminHealthTab observability stubs ──────────────────────
-// AdminHealthTab.tsx polls these on mount + every 60s. Without
-// these stubs the console flooded with 404s every minute.
-// Shapes match the TypeScript interfaces in AdminHealthTab.tsx
-// (HealthData, ChangelogData, plus the inline shape for
-// systemHealth/usersActivity/realtimeStats). The UI uses
-// optional chaining throughout so null/zero values render as
-// "—" or "0" rather than crashing. Promote any of these to
-// real queries in a follow-up — D1 size + host metrics aren't
-// available to a Worker so the host block stays undefined.
-admin.get('/health/detailed', (c) => c.json({
-  version: '1.0.0',
-  server: {
-    uptime: 0,
-    memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 },
-    nodeVersion: 'workerd',
-  },
-  database: { sizeBytes: 0, tables: {} },
-  operations: { activeSessions: 0, activeUnits: 0, pendingCalls: 0, connectedClients: 0 },
-  loginStats: { successful24h: 0, failed24h: 0 },
-  recentErrors: [],
-}));
+// ── AdminHealthTab observability ────────────────────────────
+// AdminHealthTab.tsx polls these on mount + every 60s. Host/process
+// metrics (rss, heap, node version) genuinely don't exist on a Worker
+// runtime, so `server` stays zeroed — but everything D1 can answer
+// (sessions, units, calls, login/error activity) is now real, using
+// only tables that already exist (sessions, units, calls_for_service,
+// login_attempts, error_log) rather than a not-yet-built metrics pipeline.
+admin.get('/health/detailed', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const cnt = async (sql: string, ...params: unknown[]) => (await queryFirst<{ n: number }>(db, sql, ...params).catch(() => null))?.n ?? 0;
+    const [activeSessions, activeUnits, pendingCalls, successful24h, failed24h, recentErrors] = await Promise.all([
+      cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
+      cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
+      // Logins are recorded in `login_attempts` (username/ip_address/success/
+      // failure_reason), NOT as audit_log rows. Nothing anywhere writes
+      // action='login_success'/'login_failed' — those strings existed only in
+      // these two queries — so the admin security panel reported zero login
+      // activity permanently. Verified on live: the audit_log form returns 0
+      // while this form returns 11 for the same 24h window.
+      // Same source as /api/auth/security/event-timeline (auth.ts).
+      cnt(`SELECT COUNT(*) AS n FROM login_attempts WHERE COALESCE(success,0) = 1 AND created_at > datetime('now','-1 day')`),
+      cnt(`SELECT COUNT(*) AS n FROM login_attempts WHERE COALESCE(success,0) = 0 AND created_at > datetime('now','-1 day')`),
+      query<Record<string, unknown>>(db, `SELECT id, severity, message, created_at FROM error_log ORDER BY created_at DESC LIMIT 10`).catch(() => []),
+    ]);
+    return c.json({
+      version: '1.0.0',
+      server: { uptime: 0, memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 }, nodeVersion: 'workerd' },
+      database: { sizeBytes: 0, tables: {} },
+      operations: { activeSessions, activeUnits, pendingCalls, connectedClients: 0 },
+      loginStats: { successful24h, failed24h },
+      recentErrors,
+    });
+  } catch (err) {
+    console.error('[Admin] GET health/detailed failed:', err);
+    return c.json({
+      version: '1.0.0',
+      server: { uptime: 0, memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 }, nodeVersion: 'workerd' },
+      database: { sizeBytes: 0, tables: {} },
+      operations: { activeSessions: 0, activeUnits: 0, pendingCalls: 0, connectedClients: 0 },
+      loginStats: { successful24h: 0, failed24h: 0 },
+      recentErrors: [],
+    });
+  }
+});
 
 admin.get('/changelog', (c) => c.json({
   version: '1.0.0',
   changelog: [],
 }));
 
-// Returning null lets the client's `d && setSystemHealth(d)`
-// guard skip the setState, keeping the panel hidden until a
-// real impl ships rather than rendering a frame of zeros.
-admin.get('/system-health', (c) => c.json(null));
+admin.get('/system-health', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const start = Date.now();
+    await queryFirst(db, 'SELECT 1');
+    const dbLatencyMs = Date.now() - start;
+    return c.json({ status: 'ok', database: { connected: true, latencyMs: dbLatencyMs }, checkedAt: new Date().toISOString() });
+  } catch (err) {
+    return c.json({ status: 'degraded', database: { connected: false, latencyMs: null }, checkedAt: new Date().toISOString() });
+  }
+});
 
-admin.get('/users-activity-summary', (c) => c.json({ data: [] }));
+admin.get('/users-activity-summary', async (c) => {
+  // Per-user 7-day activity counts (AdminHealthTab) — same ungated leak as
+  // GET /users above; restrict to admin/manager.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT u.id AS user_id, u.full_name, u.role,
+              COUNT(a.id) AS action_count,
+              MAX(a.created_at) AS last_active_at
+         FROM users u LEFT JOIN audit_log a ON a.user_id = u.id AND a.created_at > datetime('now','-7 days')
+        WHERE u.status = 'active'
+        GROUP BY u.id
+        ORDER BY action_count DESC LIMIT 50`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
 
-admin.get('/realtime-stats', (c) => c.json({
-  activeCalls: 0,
-  unitsOnDuty: 0,
-  pendingIncidents: 0,
-  activeBolos: 0,
-  activeSessions: 0,
-  todayActivity: 0,
-  todayCalls: 0,
-}));
+admin.get('/realtime-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const cnt = async (sql: string) => (await queryFirst<{ n: number }>(db, sql).catch(() => null))?.n ?? 0;
+    const [activeCalls, unitsOnDuty, pendingIncidents, activeBolos, activeSessions, todayActivity, todayCalls] = await Promise.all([
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE ${ACTIVE_CALL_WHERE}`),
+      cnt(`SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service','OFD')`),
+      cnt(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('closed','cleared')`),
+      cnt(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
+      cnt(`SELECT COUNT(*) AS n FROM sessions WHERE COALESCE(is_active,1) = 1 AND expires_at > datetime('now')`),
+      cnt(`SELECT COUNT(*) AS n FROM audit_log WHERE created_at > datetime('now','-1 day')`),
+      cnt(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at > datetime('now','-1 day')`),
+    ]);
+    return c.json({ activeCalls, unitsOnDuty, pendingIncidents, activeBolos, activeSessions, todayActivity, todayCalls });
+  } catch (err) {
+    console.error('[Admin] GET realtime-stats failed:', err);
+    return c.json({ activeCalls: 0, unitsOnDuty: 0, pendingIncidents: 0, activeBolos: 0, activeSessions: 0, todayActivity: 0, todayCalls: 0 });
+  }
+});
 
 // ── Departments / Retention / Announcements list stubs ─────
 // AdminDepartmentsTab, AdminRetentionTab, AdminAnnouncementsTab
@@ -575,17 +698,66 @@ admin.get('/retention/preview', (c) => c.json([]));
 // red error toasts on mount. Real implementations need a metrics
 // pipeline (api_call_log, system_health_pings tables) that doesn't
 // exist on live D1 yet.
-admin.get('/api-stats', (c) => c.json({
-  data: [], total_requests: 0, error_count: 0, avg_response_ms: 0,
-  by_endpoint: [], by_day: [],
-}));
-admin.get('/user-activity-heatmap', (c) => c.json({
-  data: [], cells: [], peak_hour: null, peak_day: null,
-}));
+// GET /admin/api-stats — top actions + top users over the window (AdminHealthTab's
+// ApiUsageStats panel reads stats.byAction/stats.byUser, NOT raw HTTP request
+// metrics — no request-log table exists, so this is action-volume from audit_log,
+// which is exactly what the panel already renders).
+admin.get('/api-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(Number(c.req.query('days') || 7), 90);
+    const byAction = await query<{ action: string; count: number }>(db, `
+      SELECT action, COUNT(*) AS count FROM audit_log
+      WHERE created_at > datetime('now', ?) AND action IS NOT NULL
+      GROUP BY action ORDER BY count DESC LIMIT 8
+    `, `-${days} days`);
+    const byUser = await query<{ full_name: string | null; count: number }>(db, `
+      SELECT u.full_name AS full_name, COUNT(*) AS count
+      FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+      WHERE a.created_at > datetime('now', ?)
+      GROUP BY a.user_id ORDER BY count DESC LIMIT 8
+    `, `-${days} days`);
+    return c.json({ data: { byAction: byAction || [], byUser: byUser || [] } });
+  } catch (err) {
+    console.error('[Admin] GET api-stats failed:', err);
+    return c.json({ data: { byAction: [], byUser: [] } });
+  }
+});
+
+// GET /admin/user-activity-heatmap — hour-of-day × day-of-week action volume
+// from audit_log over the window (AdminHealthTab's UserActivityHeatmap panel).
+admin.get('/user-activity-heatmap', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(Number(c.req.query('days') || 30), 90);
+    // Bucket in Mountain Time via the shared denverStrftimeExpr helper
+    // (utils/denverTime.ts), not raw UTC — matches the app-wide "MT MUST BE
+    // MT" display rule; a UTC-bucketed heatmap would show shift patterns
+    // shifted by 6-7 hours from what dispatchers actually see.
+    const rows = await query<{ day_of_week: number; hour: number; count: number }>(db, `
+      SELECT ${denverStrftimeExpr('%w', 'created_at')} AS day_of_week,
+             ${denverStrftimeExpr('%H', 'created_at')} AS hour,
+             COUNT(*) AS count
+      FROM audit_log
+      WHERE created_at > datetime('now', ?)
+      GROUP BY day_of_week, hour
+    `, `-${days} days`);
+    return c.json({ data: rows || [] });
+  } catch (err) {
+    console.error('[Admin] GET user-activity-heatmap failed:', err);
+    return c.json({ data: [] });
+  }
+});
 admin.get('/backup-status', (c) => c.json({
   data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+// Sole /config-history handler. A second one reading config_audit_log was
+// registered further down this file and was unreachable (Hono dispatches the
+// first match); config_audit_log has no writers anywhere in src/. Deleted
+// 2026-07-25.
 admin.get('/config-history', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const limit = Math.min(Number(c.req.query('limit') || 20), 100);
@@ -621,7 +793,7 @@ function buildPartialUpdate(
     }
   }
   if (sets.length === 0) return null;
-  sets.push(`updated_at = datetime('now','localtime')`);
+  sets.push(`updated_at = datetime('now')`);
   return { setSql: sets.join(', '), values };
 }
 
@@ -639,6 +811,7 @@ admin.get('/departments', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /departments failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load departments', detail: String(err) }, 500);
   }
 });
@@ -660,6 +833,7 @@ admin.post('/departments', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /departments failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create department', detail: String(err) }, 500);
   }
 });
@@ -679,6 +853,7 @@ admin.put('/departments/:id', async (c) => {
     await execute(db, `UPDATE departments SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /departments/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update department', detail: String(err) }, 500);
   }
 });
@@ -693,6 +868,7 @@ admin.delete('/departments/:id', async (c) => {
     await execute(db, `DELETE FROM departments WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /departments/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete department', detail: String(err) }, 500);
   }
 });
@@ -708,6 +884,7 @@ admin.get('/announcements/all', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /announcements/all failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load announcements', detail: String(err) }, 500);
   }
 });
@@ -732,6 +909,7 @@ admin.post('/announcements', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /announcements failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create announcement', detail: String(err) }, 500);
   }
 });
@@ -749,6 +927,7 @@ admin.put('/announcements/:id', async (c) => {
     await execute(db, `UPDATE announcements SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /announcements/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update announcement', detail: String(err) }, 500);
   }
 });
@@ -763,6 +942,7 @@ admin.delete('/announcements/:id', async (c) => {
     await execute(db, `DELETE FROM announcements WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /announcements/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete announcement', detail: String(err) }, 500);
   }
 });
@@ -776,6 +956,7 @@ admin.get('/notification-rules', async (c) => {
     );
     return c.json(rows);
   } catch (err) {
+    log.error('GET /notification-rules failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to load notification rules', detail: String(err) }, 500);
   }
 });
@@ -810,6 +991,7 @@ admin.post('/notification-rules', async (c) => {
     );
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
+    log.error('POST /notification-rules failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to create rule', detail: String(err) }, 500);
   }
 });
@@ -827,6 +1009,7 @@ admin.put('/notification-rules/:id', async (c) => {
     await execute(db, `UPDATE notification_rules SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /notification-rules/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update rule', detail: String(err) }, 500);
   }
 });
@@ -841,6 +1024,7 @@ admin.delete('/notification-rules/:id', async (c) => {
     await execute(db, `DELETE FROM notification_rules WHERE id = ?`, id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /notification-rules/:id failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to delete rule', detail: String(err) }, 500);
   }
 });
@@ -864,6 +1048,7 @@ admin.post('/notification-rules/:id/test', async (c) => {
     }, { testPrefix: true }, c.env);
     return c.json({ success: true, notified });
   } catch (err) {
+    log.error('POST /notification-rules/:id/test failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to send test notification', detail: String(err) }, 500);
   }
 });
@@ -900,7 +1085,7 @@ admin.put('/maintenance-mode', async (c) => {
     // system_config has no UNIQUE(config_key) on live, so update-then-insert.
     const r = await execute(
       db,
-      `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = ?`,
       value, MAINT_KEY,
     );
     if (!r.meta.changes) {
@@ -912,6 +1097,7 @@ admin.put('/maintenance-mode', async (c) => {
     }
     return c.json({ success: true, ...JSON.parse(value) });
   } catch (err) {
+    log.error('PUT /maintenance-mode failed', { src: 'src/routes/admin.ts' }, err);
     return c.json({ error: 'Failed to update maintenance mode', detail: String(err) }, 500);
   }
 });
@@ -1006,14 +1192,14 @@ admin.put('/third-party-keys', async (c) => {
     if (existing) {
       await execute(
         db,
-        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now') WHERE config_key = ?`,
         value, key,
       );
     } else {
       await execute(
         db,
         `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-         VALUES (?, ?, 'integrations', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+         VALUES (?, ?, 'integrations', 1, datetime('now'), datetime('now'))`,
         key, value,
       );
     }
@@ -1035,7 +1221,7 @@ admin.delete('/third-party-keys', async (c) => {
     const db = getDb(c.env);
     await execute(
       db,
-      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now') WHERE config_key = ?`,
       key,
     );
     return c.json({ success: true, message: `${key} cleared` });
@@ -1094,6 +1280,12 @@ admin.post('/third-party-keys/:key/test', async (c) => {
 // ============================================================
 
 admin.get('/users', async (c) => {
+  // Personnel roster (name, email, badge #, role) for every active user —
+  // was ungated while every other /users/:id/* endpoint in this file
+  // requires admin/manager. A client_viewer or contract_manager account
+  // could enumerate the entire org's staff directory.
+  const denied = forbidUnlessRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const role = c.req.query('role');
@@ -1120,13 +1312,431 @@ admin.get('/users', async (c) => {
   }
 });
 
-admin.get('/sessions', (c) => c.json([]));
-admin.get('/database/stats', (c) => c.json({ tables: 0, rows: 0, size_mb: 0 }));
-admin.get('/system-overview', (c) => c.json({ status: 'ok', uptime: 0, workers: 1 }));
+// ── Admin user security management (AdminUsersTab "Security" sub-tab) ──────
+// handleReset2FA, handleForcePasswordChange, handleRevokeAllSessions, the
+// inline "Reset 2FA" toolbar shortcut (DELETE /totp), and the Security
+// Questions panel have all called these since they shipped — none of them
+// existed, so every button in the sub-tab 404'd, and GET /admin/sessions
+// below was a permanent-empty stub, so "Active Sessions" always showed 0
+// regardless of what was actually live.
+
+async function resetUserTotp(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
+  await execute(db,
+    `UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL, totp_backup_codes = NULL,
+       totp_pending_secret = NULL, updated_at = datetime('now') WHERE id = ?`,
+    userId);
+  // Matches the client's own copy ("...delete the user's TOTP secret, backup
+  // codes, and trusted devices") — a reset device shouldn't still skip 2FA.
+  await execute(db, 'DELETE FROM trusted_devices WHERE user_id = ?', userId).catch(() => undefined);
+}
+
+// GET /admin/users/:id/security — status card data for the Security sub-tab.
+admin.get('/users/:id/security', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const user = await queryFirst<{ totp_enabled: number | null; must_change_password: number | null; password_changed_at: string | null }>(
+      db, 'SELECT totp_enabled, must_change_password, password_changed_at FROM users WHERE id = ?', id);
+    if (!user) return c.json({ error: 'User not found' }, 404);
+    const sq = await queryFirst<{ id: number }>(db, 'SELECT id FROM user_security_questions WHERE user_id = ?', id);
+
+    // 90-day policy mirrors GET /auth/password-policy's expiryDays — no
+    // enforcement exists yet (no login block on an expired password), this
+    // is purely the admin-facing status display.
+    let passwordExpiresAt: string | null = null;
+    let passwordExpiringSoon = false;
+    if (user.password_changed_at) {
+      const changed = new Date(user.password_changed_at.replace(' ', 'T'));
+      if (!isNaN(changed.getTime())) {
+        const expires = new Date(changed.getTime() + 90 * 24 * 60 * 60 * 1000);
+        passwordExpiresAt = expires.toISOString();
+        passwordExpiringSoon = expires.getTime() - Date.now() < 14 * 24 * 60 * 60 * 1000;
+      }
+    }
+
+    return c.json({
+      totpEnabled: !!user.totp_enabled,
+      totpSetupRequired: false,
+      passwordChangedAt: user.password_changed_at,
+      passwordExpiresAt,
+      passwordExpiringSoon,
+      forcePasswordChange: !!user.must_change_password,
+      securityQuestionsConfigured: !!sq,
+    });
+  } catch (err) {
+    console.error('[Admin] GET user security failed:', err);
+    return c.json({ error: 'Failed to load user security status' }, 500);
+  }
+});
+
+// POST /admin/users/:id/reset-2fa — same effect as the inline DELETE /totp
+// shortcut below; kept as two routes because the client calls both from
+// different buttons (the Security sub-tab's card vs. the header shortcut).
+admin.post('/users/:id/reset-2fa', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await resetUserTotp(db, id);
+    await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (POST /reset-2fa)' });
+    return c.json({ message: '2FA has been reset. User will be prompted to set up 2FA on next login.' });
+  } catch (err) {
+    console.error('[Admin] reset-2fa failed:', err);
+    return c.json({ error: 'Failed to reset 2FA' }, 500);
+  }
+});
+
+admin.delete('/users/:id/totp', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await resetUserTotp(db, id);
+    await recordAudit(c, { action: 'USER_2FA_RESET', entityType: 'user', entityId: id, details: 'Admin reset 2FA (DELETE /totp)' });
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE totp failed:', err);
+    return c.json({ error: 'Failed to reset 2FA' }, 500);
+  }
+});
+
+// POST /admin/users/:id/force-password-change
+admin.post('/users/:id/force-password-change', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, `UPDATE users SET must_change_password = 1, updated_at = datetime('now') WHERE id = ?`, id);
+    await recordAudit(c, { action: 'USER_FORCE_PASSWORD_CHANGE', entityType: 'user', entityId: id, details: 'Admin forced password change on next login' });
+    return c.json({ message: 'User will be required to change their password on next login.' });
+  } catch (err) {
+    console.error('[Admin] force-password-change failed:', err);
+    return c.json({ error: 'Failed to force password change' }, 500);
+  }
+});
+
+// POST /admin/users/:id/revoke-sessions — revoke every active session for a user.
+admin.post('/users/:id/revoke-sessions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const result = await execute(db,
+      `UPDATE sessions SET is_active = 0 WHERE user_id = ? AND COALESCE(is_active, 1) = 1`, id);
+    const count = result.meta.changes ?? 0;
+    await recordAudit(c, { action: 'USER_SESSIONS_REVOKED', entityType: 'user', entityId: id, details: `Admin revoked ${count} active session${count === 1 ? '' : 's'}` });
+    return c.json({ message: `${count} session${count === 1 ? '' : 's'} revoked.`, count });
+  } catch (err) {
+    console.error('[Admin] revoke-sessions failed:', err);
+    return c.json({ error: 'Failed to revoke sessions' }, 500);
+  }
+});
+
+// GET /admin/users/:id/security-questions — { configured, questions }. Never
+// returns answers (bcrypt-hashed, one-way) — an admin can see WHAT the
+// questions are and whether they're set up, not the answers themselves.
+admin.get('/users/:id/security-questions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const sq = await queryFirst<{ question_1: string; question_2: string; question_3: string }>(
+      db, 'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?', id);
+    return c.json({ configured: !!sq, questions: sq ? [sq.question_1, sq.question_2, sq.question_3] : [] });
+  } catch (err) {
+    console.error('[Admin] GET user security-questions failed:', err);
+    return c.json({ error: 'Failed to load security questions' }, 500);
+  }
+});
+
+// DELETE /admin/users/:id/security-questions — clears them so the user can
+// set up fresh ones (locked out and can't answer the old ones, or an admin
+// suspects they were compromised). Does NOT reset the password itself —
+// pair with Reset 2FA / Force Password Change as needed.
+admin.delete('/users/:id/security-questions', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, 'DELETE FROM user_security_questions WHERE user_id = ?', id);
+    await recordAudit(c, { action: 'USER_SECURITY_QUESTIONS_CLEARED', entityType: 'user', entityId: id, details: 'Admin cleared security questions' });
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE user security-questions failed:', err);
+    return c.json({ error: 'Failed to clear security questions' }, 500);
+  }
+});
+
+// GET /admin/users/:id/email-status — read-only view of whether this user
+// has connected their own Microsoft Graph mailbox (per-officer email, see
+// src/routes/email.ts's /connect/* flow). Reuses getUserGraphToken rather
+// than a separate query so this can never drift from what /email/connect
+// actually stores. Never returns the encrypted access/refresh tokens
+// themselves — only connected/mailbox, same shape as the self-service
+// GET /email/connect/status an officer sees on their own account.
+admin.get('/users/:id/email-status', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const token = await getUserGraphToken(db, c.env, id);
+    return c.json({ connected: !!token, mailbox: token?.mailbox ?? null });
+  } catch (err) {
+    console.error('[Admin] GET user email-status failed:', err);
+    return c.json({ error: 'Failed to load email connection status' }, 500);
+  }
+});
+
+// GET /admin/sessions — every currently-active session, joined for the
+// client's own user_id-based filter (AdminUsersTab's loadUserSessions).
+// Was a permanent `[]` stub, so "Active Sessions" always read 0.
+admin.get('/sessions', async (c) => {
+  // Returns up to 500 live sessions with user_id + ip_address + user_agent.
+  // Ungated, every account got a map of who is logged in from where.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ user_agent: string | null; browser: string | null; os: string | null }>(db,
+      `SELECT session_id AS id, user_id, ip_address, user_agent, created_at, last_used_at, expires_at,
+              COALESCE(is_active, 1) AS is_active,
+              device_type, browser, os, country, region, city, postal_code, timezone, latitude, longitude, asn, isp,
+              http_protocol, tls_version, likely_vpn_or_hosting, device_platform, device_platform_version,
+              device_latitude, device_longitude, device_geo_accuracy_m, device_geo_captured_at
+         FROM sessions
+        WHERE COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+        ORDER BY COALESCE(last_used_at, created_at) DESC
+        LIMIT 500`);
+    // The client only renders `device_name` — derive a friendly label. Rows
+    // created after migration 0231 already have real browser/os columns
+    // (captured at login); older rows fall back to parsing the raw UA.
+    const withDeviceName = (rows || []).map((r: any) => ({
+      ...r,
+      device_name: (r.browser || r.os) ? `${r.browser ?? 'Unknown Browser'} on ${r.os ?? 'Unknown OS'}` : parseUserAgentLabel(r.user_agent),
+      location: [r.city, r.region, r.country].filter(Boolean).join(', ') || null,
+    }));
+    return c.json(withDeviceName);
+  } catch (err) {
+    console.error('[Admin] GET sessions failed:', err);
+    return c.json([]);
+  }
+});
+
+// DELETE /admin/sessions/:id — revoke a single session (AdminSessionsTab).
+admin.delete('/sessions/:id', async (c) => {
+  // Revokes ANY session by id, with no ownership check. Combined with the
+  // ungated list above, any authenticated account could knock a specific
+  // officer or admin offline mid-shift. Matches the gating already on
+  // POST /users/:id/revoke-sessions.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, `UPDATE sessions SET is_active = 0 WHERE session_id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[Admin] DELETE session failed:', err);
+    return c.json({ error: 'Failed to revoke session' }, 500);
+  }
+});
+// GET /admin/database/stats — real D1 introspection for AdminGodModeTab's DbStats panel.
+admin.get('/database/stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tableRows = await query<{ name: string }>(db,
+      `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'd1_%'`);
+    const indexCount = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='index' AND name NOT LIKE 'sqlite_%'`);
+    const pageCount = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
+    const pageSize = await queryFirst<{ page_size: number }>(db, 'PRAGMA page_size');
+    const freelist = await queryFirst<{ freelist_count: number }>(db, 'PRAGMA freelist_count');
+    const journalMode = await queryFirst<{ journal_mode: string }>(db, 'PRAGMA journal_mode');
+    const sizeMb = ((pageCount?.page_count ?? 0) * (pageSize?.page_size ?? 4096)) / (1024 * 1024);
+    const freelistMb = ((freelist?.freelist_count ?? 0) * (pageSize?.page_size ?? 4096)) / (1024 * 1024);
+    const tables = (await Promise.all((tableRows || []).slice(0, 40).map(async (t) => {
+      const row = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM "${t.name}"`).catch(() => null);
+      return { name: t.name, row_count: row?.n ?? 0 };
+    })));
+    const totalRows = tables.reduce((sum, t) => sum + t.row_count, 0);
+    return c.json({
+      database_size_mb: Math.round(sizeMb * 100) / 100,
+      freelist_mb: Math.round(freelistMb * 100) / 100,
+      reclaimable_percent: sizeMb > 0 ? Math.round((freelistMb / sizeMb) * 10000) / 100 : 0,
+      table_count: tableRows?.length ?? 0,
+      total_rows: totalRows,
+      index_count: indexCount?.n ?? 0,
+      journal_mode: journalMode?.journal_mode ?? 'unknown',
+      integrity: 'not checked — use Integrity Check button',
+      tables,
+    });
+  } catch (err) {
+    console.error('[Admin] GET database/stats failed:', err);
+    return c.json({ database_size_mb: 0, freelist_mb: 0, reclaimable_percent: 0, table_count: 0, total_rows: 0, index_count: 0, journal_mode: 'unknown', integrity: 'unknown', tables: [] });
+  }
+});
+
+// GET /admin/system-overview — real D1-derived counts (Workers has no process/node
+// runtime info to report, so `server` is omitted rather than faked).
+admin.get('/system-overview', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const active24h = await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(DISTINCT user_id) AS n FROM sessions WHERE COALESCE(last_used_at, created_at) > datetime('now', '-1 day')`);
+    const countTable = async (t: string) => (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM "${t}"`).catch(() => null))?.n ?? 0;
+    const [users, calls, persons, warrants] = await Promise.all([
+      countTable('users'), countTable('calls_for_service'), countTable('persons'), countTable('warrants'),
+    ]);
+    return c.json({
+      status: 'ok',
+      active_users_24h: active24h?.n ?? 0,
+      record_counts: { users, calls_for_service: calls, persons, warrants },
+    });
+  } catch (err) {
+    console.error('[Admin] GET system-overview failed:', err);
+    return c.json({ status: 'degraded', active_users_24h: 0, record_counts: {} });
+  }
+});
+
+// GET /admin/gps-health — per-unit GPS freshness dashboard (AdminGpsHealthTab).
+//
+// "Authoritative" position = units.latitude/longitude/gps_source/gps_updated_at,
+// the canonical row every other surface (map, dispatch, CAD board) reads from.
+// "Live" = the most recent gps_breadcrumbs row for that unit, regardless of
+// source — breadcrumbs land more often than the authoritative row updates in
+// some flows (e.g. a lower-priority browser source pinging while a
+// higher-priority source is momentarily stale), which is exactly the
+// "fallback" case this dashboard exists to surface. No new schema — reuses
+// units.gps_source/gps_updated_at and gps_breadcrumbs.gps_source/recorded_at.
+const OFF_DUTY_STATUSES = new Set(['off_duty', 'out_of_service', 'OFD']);
+admin.get('/gps-health', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // gps_breadcrumbs grows unbounded (229k+ rows live and climbing) and this
+    // tab polls every 5s — an unbounded ROW_NUMBER() window over the whole
+    // table read 1.1M+ rows for 10 units in testing (live D1 EXPLAIN QUERY
+    // PLAN confirmed a full table SCAN: the bare recorded_at index migration
+    // 0001 defines never actually landed on live D1's dirty prod schema —
+    // fixed by migration 0196). Bounding to a 2-day window (nothing older
+    // matters — that's already "silent" via auth_age_seconds off the units
+    // row) plus the MATERIALIZED hint (recent_bc is referenced by both
+    // latest_bc and bc_24h_counts below; without it SQLite re-inlines and
+    // re-scans the base table for each reference) brought live reads from
+    // 1.1M down to ~36k for the same result set — verified via
+    // d1_database_query against 785de7ae before/after.
+    const rows = await query<{
+      id: number; call_sign: string; status: string; gps_source: string | null; gps_updated_at: string | null;
+      latitude: number | null; longitude: number | null; officer_name: string | null; badge_number: string | null;
+      live_source: string | null; live_at: string | null;
+      auth_age_seconds: number | null; live_age_seconds: number | null;
+      total_points_24h: number; authoritative_points_24h: number;
+    }>(db, `
+      WITH recent_bc AS MATERIALIZED (
+        SELECT unit_id, gps_source, recorded_at
+        FROM gps_breadcrumbs
+        WHERE recorded_at > datetime('now', '-2 days')
+      ),
+      latest_bc AS (
+        SELECT unit_id, gps_source, recorded_at,
+               ROW_NUMBER() OVER (PARTITION BY unit_id ORDER BY recorded_at DESC) AS rn
+        FROM recent_bc
+      ),
+      bc_24h_counts AS (
+        SELECT unit_id,
+               COUNT(*) AS total_points_24h,
+               SUM(CASE WHEN gps_source = (SELECT gps_source FROM units WHERE id = recent_bc.unit_id) THEN 1 ELSE 0 END) AS authoritative_points_24h
+        FROM recent_bc
+        WHERE recorded_at > datetime('now', '-1 day')
+        GROUP BY unit_id
+      )
+      SELECT
+        u.id, u.call_sign, u.status, u.gps_source, u.gps_updated_at, u.latitude, u.longitude,
+        usr.full_name AS officer_name, usr.badge_number,
+        lb.gps_source AS live_source, lb.recorded_at AS live_at,
+        CASE WHEN u.gps_updated_at IS NULL THEN NULL
+             ELSE CAST((julianday('now') - julianday(u.gps_updated_at)) * 86400 AS INTEGER) END AS auth_age_seconds,
+        CASE WHEN lb.recorded_at IS NULL THEN NULL
+             ELSE CAST((julianday('now') - julianday(lb.recorded_at)) * 86400 AS INTEGER) END AS live_age_seconds,
+        COALESCE(cnt.total_points_24h, 0) AS total_points_24h,
+        COALESCE(cnt.authoritative_points_24h, 0) AS authoritative_points_24h
+      FROM units u
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      LEFT JOIN latest_bc lb ON lb.unit_id = u.id AND lb.rn = 1
+      LEFT JOIN bc_24h_counts cnt ON cnt.unit_id = u.id
+      ORDER BY u.call_sign
+    `);
+
+    const units = (rows || []).map((r) => {
+      let classification: 'healthy' | 'warning' | 'critical' | 'silent' | 'fallback' | 'off_duty';
+      if (OFF_DUTY_STATUSES.has(r.status)) {
+        classification = 'off_duty';
+      } else if (r.auth_age_seconds == null || r.auth_age_seconds >= 86400) {
+        classification = 'silent';
+      } else if (r.auth_age_seconds >= 900) {
+        classification = 'critical';
+      } else if (r.auth_age_seconds >= 300) {
+        classification = 'warning';
+      } else if (
+        r.live_source != null && r.live_source !== r.gps_source &&
+        r.live_age_seconds != null && (r.auth_age_seconds == null || r.live_age_seconds < r.auth_age_seconds)
+      ) {
+        // Authoritative source is healthy, but a different source is
+        // currently writing fresher breadcrumbs than the authoritative row.
+        classification = 'fallback';
+      } else {
+        classification = 'healthy';
+      }
+      return {
+        id: r.id,
+        call_sign: r.call_sign,
+        status: r.status,
+        gps_source: r.gps_source,
+        gps_updated_at: r.gps_updated_at,
+        last_authoritative_gps_at: r.gps_updated_at,
+        last_authoritative_gps_source: r.gps_source,
+        latitude: r.latitude,
+        longitude: r.longitude,
+        officer_name: r.officer_name,
+        badge_number: r.badge_number,
+        authoritative_points_24h: r.authoritative_points_24h ?? 0,
+        total_points_24h: r.total_points_24h ?? 0,
+        auth_age_seconds: r.auth_age_seconds,
+        live_age_seconds: r.live_age_seconds,
+        classification,
+      };
+    });
+
+    return c.json({ units, generated_at: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Admin] GET gps-health failed:', err);
+    return c.json({ units: [], generated_at: new Date().toISOString() });
+  }
+});
 
 // GET /api/admin/users/presence — minimal presence snapshot for the
 // God Mode page. Reuses the users table + a sub-query against sessions.
 admin.get('/users/presence', async (c) => {
+  // Live "who is online right now" feed for AdminGodModeTab — was ungated
+  // alongside GET /users above; same fix (admin/manager only).
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(
@@ -1146,7 +1756,15 @@ admin.get('/users/presence', async (c) => {
 });
 
 // ── Internal Affairs ────────────────────────────────────────
+// IA complaints and disciplinary records are restricted personnel files:
+// they name the subject officer and the allegation. These three reads were
+// ungated, so an `officer` could read complaints filed against colleagues
+// (or themselves), and the external-facing `contract_manager` /
+// `client_viewer` roles could read the whole IA file. hr.ts gates its
+// parallel /disciplinary endpoints — this matches that standard.
 admin.get('/ia/complaints', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -1156,6 +1774,8 @@ admin.get('/ia/complaints', async (c) => {
 });
 
 admin.get('/ia/disciplinary', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
@@ -1165,6 +1785,8 @@ admin.get('/ia/disciplinary', async (c) => {
 });
 
 admin.get('/ia/stats', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   const db = getDb(c.env);
   async function cnt(sql: string): Promise<number> {
     try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
@@ -1192,7 +1814,7 @@ admin.get('/policies/acknowledgements', async (c) => {
 });
 
 // ── Database management ────────────────────────────────────
-admin.get('/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
+admin.on(['GET', 'POST'], '/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
 admin.get('/database/backups', (c) => c.json({ backups: [], note: 'D1 automatic backups — use Cloudflare dashboard or Time Travel API' }));
 
 admin.post('/database/analyze', async (c) => {
@@ -1200,15 +1822,30 @@ admin.post('/database/analyze', async (c) => {
     const db = getDb(c.env);
     await execute(db, 'ANALYZE');
     return c.json({ success: true, message: 'ANALYZE completed' });
-  } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
+  } catch (err) {
+    log.error('POST /database/analyze failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'ANALYZE failed' }, 500); }
 });
 
-admin.get('/database/integrity-check', async (c) => {
+// D1 rejects PRAGMA integrity_check outright (SQLITE_AUTH: "not authorized") —
+// confirmed live via a direct d1_database_query probe, not just a Workers-runtime
+// restriction. There's no substitute query that verifies page-level integrity,
+// so this honestly reports the platform limitation (200, not_supported) instead
+// of masking it as a fake "ok" (the pre-2026-07-20 stub) or a bare 500.
+admin.on(['GET', 'POST'], '/database/integrity-check', async (c) => {
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ integrity_check: string }>(db, "PRAGMA integrity_check");
-    return c.json({ result: row?.integrity_check ?? 'unknown', ok: row?.integrity_check === 'ok' });
-  } catch (err) { return c.json({ error: 'Integrity check failed' }, 500); }
+    const healthy = row?.integrity_check === 'ok';
+    return c.json({ result: row?.integrity_check ?? 'unknown', ok: healthy, healthy });
+  } catch (err) {
+    return c.json({
+      result: 'not_supported',
+      ok: false,
+      healthy: false,
+      code: 'not_supported',
+      message: 'D1 does not authorize PRAGMA integrity_check — Cloudflare manages storage integrity internally with no user-facing equivalent.',
+    });
+  }
 });
 
 admin.post('/database/vacuum', async (c) => {
@@ -1216,44 +1853,63 @@ admin.post('/database/vacuum', async (c) => {
     const db = getDb(c.env);
     const before = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
     return c.json({ success: true, page_count: before?.page_count ?? 0, note: 'D1 manages vacuuming automatically' });
-  } catch { return c.json({ error: 'Vacuum info failed' }, 500); }
+  } catch (err) {
+    log.error('POST /database/vacuum failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Vacuum info failed' }, 500); }
 });
 
 // ── Purge endpoints ────────────────────────────────────────
 admin.post('/purge/activity-logs', async (c) => {
+  // Admin-only: this DELETEs from audit_log, i.e. it destroys the CJIS audit
+  // trail — including the record of the actor's own prior access. Ungated,
+  // any authenticated non-client_viewer role could erase the entire table
+  // with `{"before_date":"9999-12-31"}`. Compare audit.ts /retention/enforce,
+  // which correctly requires admin for the same class of deletion.
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
-    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
-    const cutoff = body.before_date || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date
+      || new Date(Date.now() - (body.days_to_keep ?? 90) * 86400000).toISOString().slice(0, 10);
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM audit_log WHERE created_at < ?`, cutoff);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/activity-logs failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
 admin.post('/purge/notifications', async (c) => {
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
-    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
-    const cutoff = body.before_date || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const body: { before_date?: string; days_to_keep?: number } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date
+      || new Date(Date.now() - (body.days_to_keep ?? 30) * 86400000).toISOString().slice(0, 10);
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM notifications WHERE created_at < ? AND COALESCE(read_at, '') != ''`, cutoff);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/notifications failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
 admin.post('/purge/sessions', async (c) => {
+  // Deletes every inactive/expired session row. Ungated, any authenticated
+  // account could mass-invalidate session bookkeeping.
+  const denied = forbidUnlessRole(c, 'admin');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
-    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+    const deleted = r.meta.changes ?? 0;
+    return c.json({ success: true, deleted, purged: deleted });
   } catch (err) {
     console.error('POST /purge/sessions failed:', err);
-    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0, purged: 0 }, 500);
   }
 });
 
@@ -1273,11 +1929,17 @@ admin.post('/calls/bulk-reassign', async (c) => {
     if (!ids.length || !Number.isFinite(officerId)) return c.json({ error: 'call_ids and target_officer_id are required' }, 400);
     const officer = await queryFirst<{ full_name: string | null; username: string }>(db, 'SELECT full_name, username FROM users WHERE id = ?', officerId);
     if (!officer) return c.json({ error: 'Target officer not found' }, 404);
-    const placeholders = ids.map(() => '?').join(',');
-    const r = await execute(db,
-      `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${placeholders})`,
-      officerId, ...ids);
-    return c.json({ updated: r.meta.changes ?? 0, target: officer.full_name || officer.username });
+    // Chunked under D1's 100-bound-parameter cap (1 leading binding for
+    // officerId + one per id). A bulk reassign of 100+ calls was rejected at
+    // bind time and 500'd. NOT atomic across chunks — see executeInChunks; the
+    // single-statement version had the same partial-failure exposure.
+    const updated = await executeInChunks(
+      db,
+      ids,
+      (ph) => `UPDATE calls_for_service SET reporting_officer_id = ?, updated_at = datetime('now') WHERE id IN (${ph})`,
+      [officerId],
+    );
+    return c.json({ updated, target: officer.full_name || officer.username });
   } catch (err) {
     console.error('POST /admin/calls/bulk-reassign failed:', err);
     return c.json({ error: 'Bulk reassign failed' }, 500);
@@ -1295,7 +1957,7 @@ admin.post('/calls/force-close-all', async (c) => {
     const r = await execute(db,
       `UPDATE calls_for_service
           SET status = 'closed', closed_at = datetime('now'), disposition = ?, updated_at = datetime('now')
-        WHERE status NOT IN ('cleared','closed','cancelled','archived')`,
+        WHERE ${ACTIVE_CALL_WHERE}`,
       disp);
     return c.json({ closed: r.meta.changes ?? 0 });
   } catch (err) {
@@ -1337,8 +1999,8 @@ admin.get('/activity-feed', async (c) => {
       `SELECT a.*, u.full_name AS user_name
        FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
        ORDER BY a.created_at DESC LIMIT ?`, limit);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
+    return c.json({ data: rows, actions: rows });
+  } catch { return c.json({ data: [], actions: [] }); }
 });
 
 // ── Client-error telemetry (ErrorBoundary crash reports) ────
@@ -1376,12 +2038,22 @@ admin.get('/health/client-error', async (c) => {
 
 // ── System settings (org-wide config) ──────────────────────
 admin.get('/system-settings', async (c) => {
+  // system_config is the SAME flat bag that PUT /third-party-keys writes
+  // integration secrets into (microbilt_client_secret, traccar_password,
+  // roboflow_api_key, …). This handler used to return the whole table with
+  // no role check and no redaction, so any authenticated account — including
+  // client_viewer, since a GET isn't blocked by readOnlyRoleGuard — could
+  // read every third-party credential in plaintext. Mirror GET /config:
+  // gate the role AND drop secret-shaped keys.
+  const denied = forbidUnlessRole(c, 'admin', 'manager');
+  if (denied) return denied;
   try {
     const db = getDb(c.env);
     const rows = await query<{ config_key: string; config_value: string }>(db,
       `SELECT config_key, config_value FROM system_config ORDER BY config_key`);
     const settings: Record<string, unknown> = {};
     for (const r of rows) {
+      if (SECRET_KEY_PATTERN.test(r.config_key)) continue;
       try { settings[r.config_key] = JSON.parse(r.config_value); } catch { settings[r.config_key] = r.config_value; }
     }
     return c.json(settings);
@@ -1401,12 +2073,19 @@ admin.put('/system-settings', async (c) => {
       // on live D1 ("does not match any UNIQUE constraint"). DELETE+INSERT
       // collapses any multi-row history for the key to the single new value.
       await execute(db, `DELETE FROM system_config WHERE config_key = ?`, key);
+      // `category` is REQUIRED here. system_config.category is NOT NULL DEFAULT
+      // 'general', so omitting it silently filed every setting under 'general'
+      // while AdminSystemTab reloads from GET /config-items → grouped.system_settings
+      // — the panel's 60 fields saved and then reverted to defaults on refresh.
+      // 'system_settings' is the convention src/routes/audit.ts:312 already uses.
       await execute(db,
-        `INSERT INTO system_config (config_key, config_value, updated_at) VALUES (?, ?, datetime('now'))`,
+        `INSERT INTO system_config (config_key, config_value, category, is_active, updated_at)
+         VALUES (?, ?, 'system_settings', 1, datetime('now'))`,
         key, val);
     }
     return c.json({ success: true });
-  } catch (err: any) { return c.json({ error: err?.message || 'Failed' }, 500); }
+  } catch (err: any) {
+    log.error('PUT /system-settings failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: err?.message || 'Failed' }, 500); }
 });
 
 // ── Map config ─────────────────────────────────────────────
@@ -1471,14 +2150,15 @@ admin.put('/map-config', async (c) => {
        VALUES ('map_settings', ?, 'map_settings', 0, 1, datetime('now'), datetime('now'))`,
       JSON.stringify(merged));
     return c.json(merged);
-  } catch (err: any) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err: any) {
+    log.error('PUT /map-config failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Impersonate (admin-only view-as) ───────────────────────
-admin.post('/impersonate', async (c) => {
+admin.post('/impersonate/:id', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  const { user_id } = await c.req.json<{ user_id: number }>().catch(() => ({ user_id: 0 }));
+  const user_id = parseInt(c.req.param('id'), 10);
   if (!user_id) return c.json({ error: 'user_id required' }, 400);
   try {
     const db = getDb(c.env);
@@ -1486,25 +2166,18 @@ admin.post('/impersonate', async (c) => {
       `SELECT id, username, full_name, role, badge_number, status FROM users WHERE id = ?`, user_id);
     if (!target) return c.json({ error: 'User not found' }, 404);
     return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    log.error('POST /impersonate/:id failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
-// ── Config history ─────────────────────────────────────────
-admin.get('/config-history', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT * FROM config_audit_log ORDER BY created_at DESC LIMIT 200`);
-    return c.json({ data: rows });
-  } catch { return c.json({ data: [] }); }
-});
-
-// ── Settings reset ─────────────────────────────────────────
-admin.post('/settings/reset', async (c) => {
-  const user = c.get('user') as { role: string } | undefined;
-  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  return c.json({ success: true, message: 'Settings reset to defaults', note: 'No-op — org settings require manual review before reset' });
-});
+// NOTE: '/settings/reset' used to be a no-op stub here. Removed 2026-07-20 —
+// it resolved to the exact same final path as adminSettings.ts's real,
+// working POST /reset (mounted at /api/admin/settings, so /reset there ==
+// /api/admin/settings/reset here). Hono dispatches app.route() mounts in
+// registration order (see src/index.ts), and this router is registered
+// before adminSettings.ts in ROUTE_REGISTRY, so this fake-success stub was
+// silently shadowing the real reset handler — the Console Settings "Reset"
+// button returned a success toast but never actually reset anything.
 
 // ── Shift plans (admin view) ──────────────────────────────
 admin.get('/shift-plans', async (c) => {
@@ -1517,10 +2190,24 @@ admin.get('/shift-plans', async (c) => {
 });
 
 // ── System lockdown ────────────────────────────────────────
+// GET /admin/system/lockdown — current status (AdminGodModeTab loads this on mount).
+admin.get('/system/lockdown', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config WHERE config_key = 'system_lockdown'`);
+    const parsed = row?.config_value ? JSON.parse(row.config_value) : { enabled: false };
+    return c.json({ enabled: !!parsed.enabled, reason: parsed.reason ?? null, at: parsed.at ?? null });
+  } catch { return c.json({ enabled: false }); }
+});
+
 admin.post('/system/lockdown', async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
-  const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
+  const body: { enabled?: boolean; reason?: string; message?: string; kick_sessions?: boolean } =
+    await c.req.json().catch(() => ({}));
+  const enabled = body.enabled ?? true;
+  const reason = body.reason ?? body.message;
   try {
     const db = getDb(c.env);
     // Same composite-unique-index trap as system-settings above: live UNIQUE
@@ -1530,8 +2217,28 @@ admin.post('/system/lockdown', async (c) => {
       `INSERT INTO system_config (config_key, config_value, updated_at)
        VALUES ('system_lockdown', ?, datetime('now'))`,
       JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
-    return c.json({ success: true, lockdown: enabled });
-  } catch { return c.json({ error: 'Failed' }, 500); }
+    if (enabled && body.kick_sessions) {
+      await execute(db, `UPDATE sessions SET is_active = 0`);
+    }
+    return c.json({ success: true, lockdown: enabled, enabled });
+  } catch (err) {
+    log.error('POST /system/lockdown failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
+});
+
+// DELETE /admin/system/lockdown — disable lockdown (AdminGodModeTab's toggle-off path).
+admin.delete('/system/lockdown', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'system_lockdown'`);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('system_lockdown', ?, datetime('now'))`,
+      JSON.stringify({ enabled: false, at: new Date().toISOString() }));
+    return c.json({ success: true, lockdown: false, enabled: false });
+  } catch (err) {
+    log.error('DELETE /system/lockdown failed', { src: 'src/routes/admin.ts' }, err); return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── Auth recovery ───────────────────────────────────────────

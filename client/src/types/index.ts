@@ -355,6 +355,14 @@ export interface CallForService {
   process_served_at?: string;
   process_service_result?: string;
   court_name?: string;
+  attorney_name?: string;
+  jurisdiction?: string;
+  deadline?: string;
+  time_window?: string;
+  service_instructions?: string;
+  pso_72hr_deadline?: string;
+  pso_72hr_notified?: number | boolean;
+  parent_call_id?: number | string | null;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -383,6 +391,8 @@ export interface CallForService {
   risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
+  /** Linked serve_queue job — gates the recipient "scan to sign" QR on the call report. */
+  serve_queue_id?: number | null;
   // Pinned-to-top flag (dispatcher sticky)
   pinned?: number | boolean;
 }
@@ -403,7 +413,7 @@ export interface PsoServiceWindows {
 
 export interface VisitHistory {
   id: number;
-  call_id: string;
+  call_id: number;
   visit_number: number;
   status: CallStatus;
   dispatched_at?: string;
@@ -412,15 +422,14 @@ export interface VisitHistory {
   cleared_at?: string;
   closed_at?: string;
   assigned_units?: string; // JSON string of call signs
-  responding_vehicle_id?: string;
+  responding_vehicle_id?: number;
+  responding_vehicle_number?: string; // resolved from fleet_vehicles
   starting_mileage?: number;
   ending_mileage?: number;
   disposition?: string;
-  note?: string;
-  created_by?: string;
+  notes?: string;
+  officer_id?: number;
   created_at: string;
-  time_window?: 'early_morning' | 'daytime' | 'evening';
-  is_weekend?: number; // 0 or 1
 }
 
 // --- Units ---
@@ -443,6 +452,8 @@ export interface Unit {
   status: UnitStatus;
   current_call_id?: string | null;
   current_call_number?: string | null;
+  /** Ordered list of call IDs queued behind the active current_call_id. */
+  queued_call_ids?: number[];
   location?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -481,6 +492,9 @@ export interface Unit {
    *  ignition_state ('on'/'off'/etc.) is the last-synced vehicle state. */
   camera_device_id?: string | null;
   camera_ignition_state?: string | null;
+  /** Number of stops in the officer's active Process Server route plan for today.
+   *  Null/undefined means no route has been planned. */
+  ps_route_stops?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -621,6 +635,9 @@ export interface Person {
   voice_description?: string;
   religion?: string;
   dietary_restrictions?: string;
+  sex?: string;
+  nationality?: string;
+  aliases?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
   photo_url?: string;
@@ -1028,6 +1045,7 @@ export interface BodyCamVideo {
   detected_face_count?: number;
   detection_regions_json?: string;
   transcript?: string;
+  ai_analysis_json?: string;
   file_size: number;
   duration_seconds: number;
   mime_type: string;
@@ -1504,6 +1522,23 @@ export interface FleetVehicle {
   notes?: string;
   created_at: string;
   updated_at: string;
+  // Extended fields (migrations 0136, 0164)
+  next_service_mileage?: number | null;
+  next_service_type?: string | null;
+  fuel_level?: number | null;
+  is_pursuit_rated?: number | null;
+  fuel_volume_units?: string | null;
+  primary_meter_unit?: string | null;
+  secondary_meter_value?: number | null;
+  secondary_meter_unit?: string | null;
+  secondary_meter_label?: string | null;
+  watch_list?: number | null;
+  default_image_url?: string | null;
+  fuel_type_id?: number | null;
+  oil_type_id?: number | null;
+  oil_capacity_qts?: number | null;
+  coolant_capacity_qts?: number | null;
+  gvwr_lbs?: number | null;
 }
 
 export interface FleetMaintenance {
@@ -1520,6 +1555,52 @@ export interface FleetMaintenance {
   next_due_date?: string;
   next_due_mileage?: number;
   created_at: string;
+  // Extended fields present in DB but not originally typed
+  labor_cost?: number | null;
+  service_tasks?: string | null;
+}
+
+// --- Fleet Work Orders ---
+// Note: ids here are number (matching the actual D1/JSON runtime shape from
+// src/routes/workOrders.ts), unlike the string ids used elsewhere in this
+// file for other Fleet types.
+
+export type WorkOrderStatus = 'open' | 'in_progress' | 'waiting_parts' | 'completed' | 'cancelled';
+export type WorkOrderPriority = 'low' | 'normal' | 'high' | 'emergency';
+
+export interface WorkOrder {
+  id: number;
+  vehicle_id: number;
+  status: WorkOrderStatus;
+  number: string | null;
+  opened_at: string;
+  closed_at: string | null;
+  summary: string | null;
+  vendor_id: number | null;
+  est_cost: number | null;
+  actual_cost: number | null;
+  category_code: string | null;
+  notes: string | null;
+  priority?: WorkOrderPriority;
+  scheduled_date?: string | null;
+  failure_category?: string | null;
+  estimated_hours?: number | null;
+  labor_hours?: number | null;
+}
+
+export interface WorkOrderStats {
+  total: number;
+  open: number;
+  in_progress: number;
+  waiting_parts: number;
+  completed: number;
+  cancelled: number;
+  by_priority: Record<string, number>;
+  by_category: Record<string, number>;
+  total_estimated_cost: number;
+  total_actual_cost: number;
+  overdue_count: number;
+  scheduled_count: number;
 }
 
 // --- Fleet Fuel ---
@@ -1630,6 +1711,7 @@ export interface FleetInsurancePolicy {
   carrier?: string;
   policy_number?: string;
   premium?: number;
+  premium_amount?: number;
   [key: string]: any;
 }
 
@@ -1807,6 +1889,7 @@ export interface FleetPersonnelNote {
   officer_id?: string;
   officer_name?: string;
   note: string;
+  content?: string;
   created_by: string;
   created_by_name?: string;
   created_at: string;
@@ -1848,6 +1931,21 @@ export interface FleetAnalytics {
   oldest_vehicle_year?: number | null;
   avg_daily_miles?: number;
   top_issues?: Array<{ type: string; count: number; total_cost: number }>;
+  /**
+   * What this payload actually describes. Optional because Pages and the
+   * Worker deploy independently and can be briefly mismatched — a missing
+   * value is treated as 'fleet', which is the pre-scoping behavior.
+   */
+  scope?: 'vehicle' | 'fleet';
+  /** Block names that are fleet-only and must be hidden in vehicle scope. */
+  omitted_for_vehicle_scope?: string[];
+  /** Fleet baseline for the comparison band; null/absent when fleet-wide. */
+  fleet_comparison?: {
+    avg_mileage: number;
+    avg_mpg: number | null;
+    total_maintenance_cost: number;
+    total_fuel_cost: number;
+  } | null;
 }
 
 export interface FleetServiceAlert {
@@ -1857,8 +1955,16 @@ export interface FleetServiceAlert {
   model: string;
   year: number;
   issue: string;
+  /** Same value as `issue`/`type` — the alert category. The Analytics panel
+   *  reads this name, which the API did not send until 2026-08-01. */
+  service_type: string;
   due_date: string;
-  severity: 'critical' | 'warning';
+  /** Days until `due_date`; NEGATIVE means overdue. Sent by
+   *  GET /fleet/service-alerts. Optional because older cached responses and
+   *  other alert producers may omit it — render defensively, never
+   *  `${a.days_until}d` (that printed the literal "undefinedd" on live). */
+  days_until?: number | null;
+  severity: 'overdue' | 'critical' | 'warning';
 }
 
 export interface FleetServiceAlerts {
@@ -2123,7 +2229,11 @@ export type WSMessageType =
   // Speed tracking
   | 'speed:alert'
   | 'geofence:alert'
-  | 'officer_on_foot_overdue';
+  | 'officer_on_foot_overdue'
+  // Smart automation engine — fired by server or client-side rule evaluation.
+  // Payload: { action_type, rule_id, source:'officer'|'system', fired_at,
+  //            trigger_lat?, trigger_lng?, context? }
+  | 'automation_alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -3223,19 +3333,46 @@ export interface ServeJob {
   recipient_zip: string | null;
   recipient_lat: number | null;
   recipient_lng: number | null;
+  // Contact info (migration 0237)
+  recipient_phone: string | null;
+  recipient_email: string | null;
+  recipient_dob: string | null;
+  recipient_employer: string | null;
+  recipient_employer_address: string | null;
   document_type: string;
   case_number: string | null;
   court_name: string | null;
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  plaintiff_name: string | null;
+  defendant_name: string | null;
+  // Service classification (migration 0237)
+  serve_type: 'personal' | 'substituted' | 'corporate' | 'posting' | 'publication' | null;
+  case_type: 'civil' | 'criminal' | 'family' | 'eviction' | 'small_claims' | 'probate' | 'traffic' | null;
+  return_date: string | null;
+  co_defendants: string | null;
+  relationship: string | null;
+  // Billing (migration 0237)
+  serve_fee: number | null;
+  rush_fee: number | null;
+  payment_status: 'unpaid' | 'invoiced' | 'paid' | 'waived' | null;
+  // Operational (migration 0237)
+  diligence_required: number | null;
+  mileage_actual: number | null;
+  contact_restrictions: string | null;
+  building_access_notes: string | null;
   // Matches the serve_queue.priority CHECK constraint.
   priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';
   deadline: string | null;
   attempt_count: number;
   max_attempts: number;
-  status: 'pending' | 'in_progress' | 'served' | 'failed' | 'skipped' | 'archived';
+  // 'attempted' is the status the server writes after a non-terminal failed
+  // attempt (attempt logged, still under max_attempts — see codeToQueueStatus
+  // in src/utils/processServiceCodes.ts). It means "still needs another
+  // attempt", so deriveServeFolder below treats it like 'pending'.
+  status: 'pending' | 'in_progress' | 'served' | 'failed' | 'skipped' | 'archived' | 'attempted';
   sort_order: number;
   service_instructions: string | null;
   notes: string | null;
@@ -3255,6 +3392,31 @@ export interface ServeJob {
   skipTraces?: ServeSkipTrace[];
   /** QR "Notice of Attempt to Serve" scan evidence (migration 0189). */
   scans?: ServeNoticeScan[];
+  // Raw JSON blob written by commitIntake. Parsed client-side to extract
+  // _intake.address_class.{klass, confirmed} for the scheduling UI.
+  parsed_data?: string | null;
+  // Recipient type toggle (migration 0237_serve_queue_recipient_type)
+  recipient_type?: 'individual' | 'business' | null;
+  // Address unit line (migration 0092_address_unit_serve_properties)
+  recipient_address_2?: string | null;
+  // Business entity fields (migration 0237_serve_queue_recipient_type)
+  business_name?: string | null;
+  business_dba?: string | null;
+  business_ein?: string | null;
+  business_sos_filing?: string | null;
+  business_state_of_inc?: string | null;
+  registered_agent_name?: string | null;
+  registered_agent_title?: string | null;
+  registered_office_address?: string | null;
+  // Geocoding metadata (migration 0241_serve_queue_geocode_source)
+  geocode_source?: string | null;
+  // Relationships to parent contract/business records
+  contract_id?: number | null;
+  business_id?: number | null;
+  // Quality/intake review columns
+  quality_status?: string | null;
+  quality_reviewed_by?: string | null;
+  quality_reviewed_at?: string | null;
 }
 
 // ── Serve folder helpers ───────────────────────────────────────────────────
@@ -3264,7 +3426,11 @@ export type ServeFolder = 'in_progress' | 'pending' | 'served' | 'failed' | 'arc
 /** Map a job's status to its display folder. */
 export function deriveServeFolder(job: ServeJob): ServeFolder {
   if (job.status === 'in_progress') return 'in_progress';
-  if (job.status === 'pending') return 'pending';
+  // 'attempted' = a non-terminal failed attempt was logged but the job hasn't
+  // hit max_attempts yet — it still needs another attempt, same as 'pending'.
+  // Without this, every job with 1+ non-final attempts fell through to the
+  // 'archived' bucket and vanished from the officer's active work queues.
+  if (job.status === 'pending' || job.status === 'attempted') return 'pending';
   if (job.status === 'served') return 'served';
   if (job.status === 'failed') return 'failed';
   return 'archived'; // skipped | archived
@@ -3364,6 +3530,8 @@ export interface ServeRoute {
   start_lng: number | null;
   start_time: string | null;
   end_time: string | null;
+  // Planned start time (migration 0253_serve_routes_planned_start_time)
+  planned_start_time?: string | null;
 }
 
 export interface ServeRouteStop {

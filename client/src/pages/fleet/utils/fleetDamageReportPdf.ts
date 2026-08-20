@@ -11,6 +11,8 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle } from '../../../types';
+import { toDisplayLabel } from '../../../utils/formatters';
+import { localToday } from '../../../utils/dateUtils';
 
 interface DamageRecord {
   id?: number | string;
@@ -27,12 +29,12 @@ interface DamageRecord {
   reported_at?: string;
 }
 
-interface Args {
+export interface Args {
   vehicle: FleetVehicle;
   damages: DamageRecord[];
 }
 
-export function generateFleetDamageReportPdf({ vehicle, damages }: Args): void {
+export function buildFleetDamageReportPdf({ vehicle, damages }: Args): jsPDF {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const marginX = 40;
   const pageW = doc.internal.pageSize.getWidth();
@@ -111,7 +113,7 @@ export function generateFleetDamageReportPdf({ vehicle, damages }: Args): void {
     doc.setFontSize(9);
     const fields: [string, string][] = [
       ['Location', d.location_on_vehicle || '-'],
-      ['Repair Status', (d.repair_status || '-').replace('_', ' ')],
+      ['Repair Status', toDisplayLabel(d.repair_status) || '-'],
       ['Estimate', fmtCurrency(d.repair_estimate)],
       ['Actual Cost', fmtCurrency(d.repair_cost)],
     ];
@@ -171,6 +173,13 @@ export function generateFleetDamageReportPdf({ vehicle, damages }: Args): void {
     doc.setTextColor(0);
   }
 
-  const filename = `damage-report-${vehicle.vehicle_number || 'vehicle'}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  return doc;
+}
+
+/** Build the damage report PDF and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder + saver). */
+export function generateFleetDamageReportPdf(args: Args): void {
+  const doc = buildFleetDamageReportPdf(args);
+  const filename = `damage-report-${args.vehicle.vehicle_number || 'vehicle'}-${localToday()}.pdf`;
   doc.save(filename);
 }

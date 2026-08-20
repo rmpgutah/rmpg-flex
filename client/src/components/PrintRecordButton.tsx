@@ -21,6 +21,7 @@ import SignaturePad from './SignaturePad';
 import { PdfEmailDialog } from './PdfEmailDialog';
 import { emailBlob } from '../utils/emailPdf';
 import { useToast } from './ToastProvider';
+import { activeWarrantFlagFromLinkedMeta } from '../utils/recordLinks';
 
 interface PrintRecordButtonProps {
   /** Record type to generate PDF for */
@@ -209,6 +210,38 @@ export default function PrintRecordButton({
       } catch (err) {
         console.warn('[PrintRecordButton] Criminal history fetch failed, proceeding without:', err);
       }
+
+      // Fetch OSINT enrichment (FBI Wanted, BOP inmates, NSOPW, sanctions, etc.)
+      try {
+        const enrichmentSeed: Record<string, string> = {};
+        if (data.first_name) enrichmentSeed.first_name = data.first_name;
+        if (data.last_name)  enrichmentSeed.last_name  = data.last_name;
+        if (data.date_of_birth) enrichmentSeed.dob     = data.date_of_birth;
+        if (data.address)    enrichmentSeed.address     = data.address;
+        if (data.city)       enrichmentSeed.city        = data.city;
+        if (data.state)      enrichmentSeed.state       = data.state;
+        if (data.phone)      enrichmentSeed.phone       = data.phone;
+        if (data.email)      enrichmentSeed.email       = data.email;
+        if (data.dl_number)  enrichmentSeed.dl_number   = data.dl_number;
+        if (data.ssn_last4)  enrichmentSeed.ssn_last4   = data.ssn_last4;
+
+        if (enrichmentSeed.first_name && enrichmentSeed.last_name) {
+          const enrichmentResult = await apiFetch<any>('/enrichment/search', {
+            method: 'POST',
+            body: JSON.stringify(enrichmentSeed),
+          });
+          if (enrichmentResult) {
+            enriched._enrichment = {
+              match_tier:  enrichmentResult.match_tier,
+              records:     enrichmentResult.records,
+              sources:     enrichmentResult.sources,
+              searched_at: enrichmentResult.searched_at,
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[PrintRecordButton] Enrichment fetch failed, proceeding without:', err);
+      }
     }
 
     // For person records, fetch all linked records (all entity types)
@@ -221,11 +254,11 @@ export default function PrintRecordButton({
           // Properties (real-estate only, not businesses)
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property')
-            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+            .map((l: any) => ({ name: l.linked_label || '', address: l.linked_meta?.address || '', relationship: l.relationship }));
           // Businesses (separate table since migration 0125)
           enriched.linked_businesses = links
             .filter((l: any) => l.linked_type === 'business')
-            .map((l: any) => ({ name: l.linked_label || '', relationship: l.relationship }));
+            .map((l: any) => ({ name: l.linked_label || '', address: l.linked_meta?.address || '', relationship: l.relationship }));
           // Other persons linked to this person
           enriched.linked_persons = links
             .filter((l: any) => l.linked_type === 'person')
@@ -233,7 +266,7 @@ export default function PrintRecordButton({
               name: l.linked_label || '',
               relationship: l.relationship,
               dob: l.linked_meta?.dob || '',
-              flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+              flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
             }));
           // Evidence items cross-referenced to this person
           enriched.linked_evidence = links
@@ -278,14 +311,29 @@ export default function PrintRecordButton({
             name: l.linked_label || '',
             relationship: l.relationship,
             dob: l.linked_meta?.dob || '',
-            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+            flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
           }));
           enriched.linked_properties = links
             .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
             .map((l: any) => ({
               name: l.linked_label || '',
+              // linked_label is the property NAME; the address arrives separately
+              // in linked_meta. Omitting it left the PDF's ADDRESS column blank
+              // on every record even when the address was on file.
+              address: l.linked_meta?.address || '',
               relationship: l.relationship,
             }));
+          // The form printed "OWNER NAME: N/A" directly above a LINKED PERSONS
+          // row whose RELATIONSHIP read OWNER, because vehicles_records.owner_name
+          // was blank while record_links held the owner. Two contradictory answers
+          // to "who owns this" on one official record. Fall back to the linked
+          // owner ONLY when the column is empty, so an officer-entered owner_name
+          // always wins and this can never overwrite entered data.
+          if (!String(enriched.owner_name || '').trim()) {
+            const ownerLink = links.find((l: any) =>
+              l.linked_type === 'person' && String(l.relationship || '').toLowerCase() === 'owner');
+            if (ownerLink?.linked_label) enriched.owner_name = ownerLink.linked_label;
+          }
         }
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
@@ -320,7 +368,7 @@ export default function PrintRecordButton({
             name: l.linked_label || '',
             relationship: l.relationship,
             dob: l.linked_meta?.dob || '',
-            flags: (l.linked_meta?.active_warrants > 0) ? 'ACTIVE WARRANT' : '',
+            flags: activeWarrantFlagFromLinkedMeta(l.linked_meta),
           }));
           enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => splitVehicleLabel(l));
         }

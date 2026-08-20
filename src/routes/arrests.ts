@@ -33,9 +33,11 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
+import { containsAnyClause } from '../utils/searchText';
 const arrests = new Hono<Env>();
 
 // ── Allowed values ─────────────────────────────────────────
@@ -103,19 +105,28 @@ async function enrichLinkedPersons<T extends { id?: number; person_id?: number |
 ): Promise<T[]> {
   const ids = rows.map((r) => r.id).filter((v): v is number => typeof v === 'number');
   if (ids.length === 0) return rows.map((r) => ({ ...r, person_id: (r.person_id ?? null), linked_person: null }));
-  const placeholders = ids.map(() => '?').join(',');
-  const links = await query<{ arrest_record_id: number; person_id: number; name: string }>(
+  // queryInChunks, NOT a hand-rolled IN-list: `rows` is caller-sized and the
+  // list endpoint allows `?limit=` up to 500, so this built a 500-parameter
+  // query and D1 rejects anything over 100 AT BIND TIME. That throws from
+  // inside query() rather than the route body, so it 500s with nothing in
+  // error_log — and it only ever triggers once a page holds >100 arrests, which
+  // is why every test and dev run passed. See CLAUDE.md, D1 100-BOUND-PARAM cap.
+  const links = await queryInChunks<{ arrest_record_id: number; person_id: number; name: string }>(
     db,
-    `SELECT acl.arrest_record_id,
+    ids,
+    (placeholders) => `SELECT acl.arrest_record_id,
             acl.linked_id AS person_id,
             TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS name
        FROM arrest_cross_links acl
        JOIN persons p ON p.id = acl.linked_id
       WHERE acl.linked_type = 'person' AND acl.arrest_record_id IN (${placeholders})
       ORDER BY acl.created_at DESC`,
-    ...ids,
   );
   // Keep the most-recent link per arrest (rows arrive newest-first).
+  // NOTE: newest-first holds WITHIN a chunk. queryInChunks concatenates chunks
+  // rather than globally sorting, so this "first wins" reduction is still
+  // correct per arrest_record_id — every row for a given arrest lands in the
+  // same chunk, because chunking partitions BY arrest id.
   const byArrest = new Map<number, { person_id: number; name: string }>();
   for (const l of links) {
     if (!byArrest.has(l.arrest_record_id)) byArrest.set(l.arrest_record_id, { person_id: l.person_id, name: l.name });
@@ -221,6 +232,7 @@ arrests.get('/manual/:id', async (c) => {
     const [enriched] = await enrichLinkedPersons(db, [row]);
     return c.json({ data: enriched });
   } catch (err) {
+    log.error('GET /manual/:id failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to get arrest record', code: 'GET_ARREST_ERROR' }, 500);
   }
 });
@@ -271,6 +283,7 @@ arrests.put('/manual/:id', async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM arrest_records WHERE id = ?', id);
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /manual/:id failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to update arrest record', code: 'UPDATE_ARREST_ERROR' }, 500);
   }
 });
@@ -288,6 +301,7 @@ arrests.delete('/manual/:id', async (c) => {
     await execute(db, 'DELETE FROM arrest_records WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /manual/:id failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to delete arrest record', code: 'DELETE_ARREST_ERROR' }, 500);
   }
 });
@@ -319,6 +333,7 @@ arrests.get('/recent', async (c) => {
     );
     return c.json({ data: await enrichLinkedPersons(db, rows), total: totalRow?.n ?? rows.length });
   } catch (err) {
+    log.error('GET /recent failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to list recent arrests', code: 'RECENT_ARRESTS_ERROR' }, 500);
   }
 });
@@ -329,16 +344,16 @@ arrests.get('/search', async (c) => {
     const q = (c.req.query('q') ?? '').trim();
     if (q.length < 2) return c.json({ data: [] });
     const db = getDb(c.env);
-    const like = `%${q}%`;
+    const m = containsAnyClause(['full_name', 'first_name', 'last_name', 'booking_number']);
     const rows = await query<Record<string, unknown>>(
       db,
-      `SELECT * FROM arrest_records
-       WHERE full_name LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR booking_number LIKE ?
+      `SELECT * FROM arrest_records WHERE ${m.sql}
        ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT 100`,
-      like, like, like, like,
+      ...m.binds(q),
     );
     return c.json({ data: await enrichLinkedPersons(db, rows) });
   } catch (err) {
+    log.error('GET /search failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to search arrests', code: 'SEARCH_ARRESTS_ERROR' }, 500);
   }
 });
@@ -360,6 +375,7 @@ arrests.get('/:id/cross-links', async (c) => {
     );
     return c.json({ data: links });
   } catch (err) {
+    log.error('GET /:id/cross-links failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to get cross-links', code: 'CROSS_LINKS_ERROR' }, 500);
   }
 });
@@ -388,6 +404,7 @@ arrests.put('/:id/link-person', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('PUT /:id/link-person failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to link person', code: 'LINK_PERSON_ERROR' }, 500);
   }
 });
@@ -408,6 +425,7 @@ arrests.delete('/:id/link-person', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /:id/link-person failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to unlink person', code: 'UNLINK_PERSON_ERROR' }, 500);
   }
 });
@@ -461,6 +479,7 @@ arrests.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to export arrests', code: 'EXPORT_ARRESTS_ERROR' }, 500);
   }
 });
@@ -506,6 +525,7 @@ arrests.get('/manual/:id/checklist', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /manual/:id/checklist failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to get checklist', code: 'CHECKLIST_GET_ERROR' }, 500);
   }
 });
@@ -545,6 +565,7 @@ arrests.put('/manual/:id/checklist', async (c) => {
     );
     return c.json({ data: { arrest_id: id, item_key, completed: !!completed } });
   } catch (err) {
+    log.error('PUT /manual/:id/checklist failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to update checklist', code: 'CHECKLIST_PUT_ERROR' }, 500);
   }
 });
@@ -564,6 +585,7 @@ arrests.get('/manual/:id/property', async (c) => {
     const inventory = parseJsonCol<unknown[]>(record.property_inventory, []);
     return c.json({ data: { arrest_id: id, items: inventory, total_items: inventory.length } });
   } catch (err) {
+    log.error('GET /manual/:id/property failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to get property inventory', code: 'PROPERTY_GET_ERROR' }, 500);
   }
 });
@@ -611,6 +633,7 @@ arrests.post('/manual/:id/property', async (c) => {
     );
     return c.json({ data: item }, 201);
   } catch (err) {
+    log.error('POST /manual/:id/property failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to add property item', code: 'PROPERTY_POST_ERROR' }, 500);
   }
 });
@@ -640,6 +663,7 @@ arrests.delete('/manual/:id/property/:itemId', async (c) => {
     );
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /manual/:id/property/:itemId failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to remove property item', code: 'PROPERTY_DELETE_ERROR' }, 500);
   }
 });
@@ -659,6 +683,7 @@ arrests.get('/manual/:id/miranda', async (c) => {
     if (!record) return c.json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' }, 404);
     return c.json({ data: parseJsonCol<Record<string, unknown> | null>(record.miranda_data, null) });
   } catch (err) {
+    log.error('GET /manual/:id/miranda failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to get miranda record', code: 'MIRANDA_GET_ERROR' }, 500);
   }
 });
@@ -712,6 +737,7 @@ arrests.post('/manual/:id/miranda', async (c) => {
     );
     return c.json({ data: mirandaData }, 201);
   } catch (err) {
+    log.error('POST /manual/:id/miranda failed', { src: 'src/routes/arrests.ts' }, err);
     return c.json({ error: 'Failed to record miranda', code: 'MIRANDA_POST_ERROR' }, 500);
   }
 });

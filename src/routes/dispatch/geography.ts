@@ -5,6 +5,9 @@ import { resolveDistrict } from '../../utils/districtResolver';
 import { geocodeAddress } from '../geocode';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
+import { PMTiles, type Source, type RangeResponse } from 'pmtiles';
+import { lngLatToTile, neighborTiles } from '../../utils/osm/tileGeometry';
+import { nearestMaxspeedInTile, type SpeedLimitHit } from '../../utils/osm/speedLimitLookup';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const geography = new Hono<Env>();
@@ -72,6 +75,7 @@ geography.get('/codes', async (c) => {
     const codes = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_codes ORDER BY code');
     return c.json(codes);
   } catch (err) {
+    log.error('GET /codes failed', { src: 'src/routes/dispatch/geography.ts' }, err);
     return c.json({ error: 'Failed to get codes' }, 500);
   }
 });
@@ -176,6 +180,7 @@ geography.get('/districts', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    log.error('GET /districts failed', { src: 'src/routes/dispatch/geography.ts' }, err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -322,22 +327,25 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       const body = await c.req.json<Record<string, unknown>>();
       if (!body[meta.codeCol] || !body[meta.nameCol]) return c.json({ error: `${meta.codeCol} and ${meta.nameCol} required` }, 400);
       if (meta.parentCol && !body[meta.parentCol]) return c.json({ error: `${meta.parentCol} required` }, 400);
-      const cols = [meta.codeCol, meta.nameCol, 'active', "datetime('now')"];
+      const cols = [meta.codeCol, meta.nameCol, 'active'];
       const vals: unknown[] = [body[meta.codeCol], body[meta.nameCol], 1];
-      const ph = ['?', '?', '?', "datetime('now')"];
+      const ph = ['?', '?', '?'];
       if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
-      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
+      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')}, datetime('now'))`, ...vals);
       return c.json({ success: true, id: result.meta.last_row_id }, 201);
-    } catch (err) { return c.json({ error: 'Failed to create' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to create' }, 500); }
   });
 
   geography.delete(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
     try {
       const db = getDb(c.env);
       const id = c.req.param('id');
-      await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      const result = await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      if ((result.meta.changes ?? 0) === 0) return c.json({ error: 'Not found' }, 404);
       return c.json({ success: true });
-    } catch (err) { return c.json({ error: 'Failed to delete' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to delete' }, 500); }
   });
 
   // PUT /:id — edit a geography row. This handler was MISSING: the Geography
@@ -365,7 +373,8 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       vals.push(id);
       await execute(db, `UPDATE ${meta.table} SET ${sets.join(', ')} WHERE id = ?`, ...vals);
       return c.json({ success: true });
-    } catch (err) { return c.json({ error: 'Failed to update' }, 500); }
+    } catch (err) {
+      log.error('POST /backfill failed', { src: 'src/routes/dispatch/geography.ts' }, err); return c.json({ error: 'Failed to update' }, 500); }
   });
 }
 
@@ -383,6 +392,105 @@ geography.get('/zone-allocation', async (c) => {
        GROUP BY dz.id ORDER BY dz.zone_code`);
     return c.json(rows);
   } catch (err) { return c.json([]); }
+});
+
+// ── Posted speed limit at a point ───────────────────────────────────────────
+// GET /dispatch/geography/road-speed?lat=&lng=  ->  { limitMph, roadName, ... }
+//
+// Reads the osm-traffic PMTiles archive from R2 and returns the nearest way
+// carrying a maxspeed tag. This replaces a direct browser call to
+// overpass-api.de (a volunteer-run service whose fair-use policy excludes
+// production traffic) with RMPG's own data.
+//
+// EVERY failure mode degrades to 200 { limitMph: null }. This backs a drive-mode
+// HUD readout: "we don't know" and "there is no posted limit" are the same
+// operational answer, and neither justifies an error the caller must handle.
+
+/** Zoom of the maxspeed category in config/osm-layers.json. */
+const ROAD_SPEED_Z = 13;
+/** Source-layer name inside osm-traffic.pmtiles (the OSM group name). */
+const ROAD_SPEED_LAYER = 'traffic';
+/**
+ * Ignore a "nearest" road farther than this. At z13 a tile is ~4.9 km wide, so
+ * without a cap the lookup would confidently report a highway a suburb away.
+ */
+const ROAD_SPEED_MAX_M = 60;
+
+class RoadSpeedR2Source implements Source {
+  constructor(private bucket: R2Bucket, private key: string) {}
+  getKey() { return this.key; }
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
+    const obj = await this.bucket.get(this.key, { range: { offset, length } });
+    if (!obj) throw new Error(`archive not found: ${this.key}`);
+    return { data: await obj.arrayBuffer() };
+  }
+}
+
+geography.get('/road-speed', async (c) => {
+  const latRaw = c.req.query('lat');
+  const lngRaw = c.req.query('lng');
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+
+  if (latRaw == null || lngRaw == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng are required numbers' }, 400);
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return c.json({ error: 'lat/lng out of range' }, 400);
+  }
+
+  const miss = { limitMph: null, roadName: null, distanceM: null, source: 'osm' as const };
+
+  try {
+    const archive = new PMTiles(
+      new RoadSpeedR2Source(c.env.MAP_DATA, 'tiles/osm-traffic.pmtiles'),
+    );
+
+    const center = lngLatToTile(lng, lat, ROAD_SPEED_Z);
+    // A point near a tile edge can have its nearest road in the next tile over,
+    // so search the neighbours too and take the global minimum.
+    const candidates = [center, ...neighborTiles(center.x, center.y, ROAD_SPEED_Z)];
+
+    let best: SpeedLimitHit | null = null;
+    for (const t of candidates) {
+      let tile;
+      try {
+        tile = await archive.getZxy(ROAD_SPEED_Z, t.x, t.y);
+      } catch {
+        // Missing archive or unreadable tile — treat as no data here.
+        continue;
+      }
+      if (!tile || !tile.data) continue;
+
+      const hit = nearestMaxspeedInTile(
+        new Uint8Array(tile.data as ArrayBuffer),
+        ROAD_SPEED_Z, t.x, t.y, lng, lat, ROAD_SPEED_LAYER,
+      );
+      if (hit && (best == null || hit.distanceM < best.distanceM)) best = hit;
+    }
+
+    if (!best || best.distanceM > ROAD_SPEED_MAX_M) return c.json(miss);
+
+    return c.json(
+      {
+        limitMph: best.limitMph,
+        roadName: best.roadName,
+        distanceM: Math.round(best.distanceM),
+        source: 'osm' as const,
+      },
+      200,
+      // The archive is a static extract, so a coordinate's answer only changes
+      // when the extract is rebuilt — hence the 24h TTL. `private` (not
+      // `public`) because this route sits behind JWT auth: `public` would let
+      // a shared/proxy cache store a response served under a user's
+      // credentials, even though the payload itself (a posted speed limit) is
+      // not sensitive.
+      { 'Cache-Control': 'private, max-age=86400' },
+    );
+  } catch (err) {
+    log.error('road-speed lookup failed', { lat, lng }, err as Error);
+    return c.json(miss);
+  }
 });
 
 export default geography;

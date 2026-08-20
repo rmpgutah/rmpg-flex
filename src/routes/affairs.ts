@@ -16,6 +16,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { log } from '../utils/logger';
 const affairs = new Hono<Env>();
 
 function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
@@ -43,6 +44,13 @@ async function generateComplaintNumber(db: ReturnType<typeof getDb>): Promise<st
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/complaints', async (c) => {
+  // IA records are restricted personnel files (they name the subject officer
+  // and the allegation). Reads were ungated while every write in this file
+  // checks admin|manager|supervisor — so an `officer` could read complaints
+  // about colleagues, and the external `contract_manager` / `client_viewer`
+  // roles could read the entire IA file. Match the write policy.
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
@@ -65,11 +73,14 @@ affairs.get('/complaints', async (c) => {
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
+    log.error('GET /complaints failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list complaints', code: 'LIST_ERROR' }, 500);
   }
 });
 
 affairs.get('/complaints/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -79,6 +90,7 @@ affairs.get('/complaints/:id', async (c) => {
     if (!row) return c.json({ error: 'Complaint not found' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to get complaint' }, 500);
   }
 });
@@ -140,7 +152,7 @@ affairs.put('/complaints/:id', async (c) => {
     if (b.status === 'closed' || b.status === 'sustained' || b.status === 'not_sustained' || b.status === 'exonerated' || b.status === 'unfounded') {
       sets.push("closed_date = COALESCE(closed_date, date('now'))");
     }
-    sets.push(`updated_at = datetime('now','localtime')`); vals.push(id);
+    sets.push(`updated_at = datetime('now')`); vals.push(id);
     await execute(db, `UPDATE ia_complaints SET ${sets.join(', ')} WHERE id = ?`, ...vals);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM ia_complaints WHERE id = ?', id);
     // Capture which fields actually changed (status / disposition transitions
@@ -159,6 +171,7 @@ affairs.put('/complaints/:id', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to update complaint' }, 500);
   }
 });
@@ -189,6 +202,7 @@ affairs.delete('/complaints/:id', async (c) => {
     });
     return c.json({ success: true });
   } catch (err) {
+    log.error('DELETE /complaints/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to delete complaint' }, 500);
   }
 });
@@ -198,6 +212,8 @@ affairs.delete('/complaints/:id', async (c) => {
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/complaints/:id/investigations', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -205,6 +221,7 @@ affairs.get('/complaints/:id/investigations', async (c) => {
       'SELECT i.*, u.full_name as investigator_name FROM ia_investigations i LEFT JOIN users u ON i.investigator_id = u.id WHERE i.complaint_id = ? ORDER BY i.started_at DESC', id);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /complaints/:id/investigations failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list investigations' }, 500);
   }
 });
@@ -218,7 +235,7 @@ affairs.post('/complaints/:id/investigations', async (c) => {
     const b = await c.req.json<Record<string, unknown>>();
     const result = await execute(db,
       `INSERT INTO ia_investigations (complaint_id, investigator_id, started_at, summary, status)
-       VALUES (?, ?, COALESCE(?, datetime('now','localtime')), ?, ?)`,
+       VALUES (?, ?, COALESCE(?, datetime('now')), ?, ?)`,
       id, b.investigator_id ?? null, b.started_at ?? null, b.summary ?? null, b.status ?? 'open',
     );
     const newId = Number(result.meta.last_row_id);
@@ -235,6 +252,7 @@ affairs.post('/complaints/:id/investigations', async (c) => {
     });
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /complaints/:id/investigations failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to create investigation' }, 500);
   }
 });
@@ -250,11 +268,11 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
     const updatable = new Set(['investigator_id','completed_at','summary','findings','recommendations','reviewed_by','reviewed_at','status']);
     const sets: string[] = []; const vals: unknown[] = [];
     for (const [k, v] of Object.entries(b)) { if (updatable.has(k)) { sets.push(`${k} = ?`); vals.push(v ?? null); } }
-    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now','localtime'))"); }
+    if (b.status === 'completed') { sets.push("completed_at = COALESCE(completed_at, datetime('now'))"); }
     // Mirror the auto-stamp for 'reviewed' — without this, a reviewer-only
     // transition (completed → reviewed) leaves reviewed_at unset unless the
     // client explicitly passes it, which they don't today.
-    if (b.status === 'reviewed') { sets.push("reviewed_at = COALESCE(reviewed_at, datetime('now','localtime'))"); }
+    if (b.status === 'reviewed') { sets.push("reviewed_at = COALESCE(reviewed_at, datetime('now'))"); }
     if (sets.length === 0) return c.json({ error: 'No fields' }, 400);
     vals.push(iid, cid);
     await execute(db, `UPDATE ia_investigations SET ${sets.join(', ')} WHERE id = ? AND complaint_id = ?`, ...vals);
@@ -271,6 +289,7 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /complaints/:id/investigations/:invId failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to update investigation' }, 500);
   }
 });
@@ -280,6 +299,8 @@ affairs.put('/complaints/:id/investigations/:invId', async (c) => {
 // ═══════════════════════════════════════════════════════════════
 
 affairs.get('/flags', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const q = c.req.query.bind(c.req);
@@ -293,6 +314,7 @@ affairs.get('/flags', async (c) => {
       `SELECT f.*, u.full_name as officer_name FROM early_intervention_flags f LEFT JOIN users u ON f.officer_id = u.id ${where} ORDER BY f.flagged_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /flags failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to list flags' }, 500);
   }
 });
@@ -326,6 +348,7 @@ affairs.post('/flags', async (c) => {
     });
     return c.json({ data: created }, 201);
   } catch (err) {
+    log.error('POST /flags failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to create flag' }, 500);
   }
 });
@@ -355,11 +378,14 @@ affairs.put('/flags/:id', async (c) => {
     });
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /flags/:id failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to resolve flag' }, 500);
   }
 });
 
 affairs.get('/stats', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (denied) return c.json({ error: denied }, 403);
   try {
     const db = getDb(c.env);
     const complaintTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
@@ -369,6 +395,7 @@ affairs.get('/stats', async (c) => {
     const flags = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM early_intervention_flags WHERE resolved_at IS NULL'))?.count ?? 0;
     return c.json({ total_complaints: total, open_complaints: open, unresolved_flags: flags });
   } catch (err) {
+    log.error('GET /stats failed', { src: 'src/routes/affairs.ts' }, err);
     return c.json({ error: 'Failed to load stats' }, 500);
   }
 });

@@ -1,9 +1,11 @@
-// Locks in the 2026-07 rewrite: applyRmpgBasemap used to paint a hardcoded
-// pure-black/gold theme; it now reads live theme CSS custom properties off
-// <html> (theme-palettes.css) so every Mapbox surface follows whichever
-// theme is active (Blue & Silver by default) instead of one fixed palette.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { applyRmpgBasemap } from '../mapboxBasemap';
+// Locks in the 2026-07-24 rewrite: applyRmpgBasemap used to read live theme CSS
+// custom properties off <html> so the map's accent tracked whichever app theme
+// was active. That meant the map's "gold" tracked --brand-gold, which resolves
+// to SILVER under Blue & Silver — so the map had no gold at all. The palette is
+// now FIXED and literal (MAP_PALETTE in mapboxBasemap.ts), independent of any
+// className on <html>.
+import { describe, it, expect, afterEach } from 'vitest';
+import { applyRmpgBasemap, MAP_PALETTE } from '../mapboxBasemap';
 
 /** Minimal mapbox-like stub — records every setPaintProperty/setLayoutProperty
  *  call so assertions can check the resolved color values without a real
@@ -42,26 +44,26 @@ describe('applyRmpgBasemap', () => {
     expect(() => applyRmpgBasemap(map, { variant: 'dark' })).not.toThrow();
   });
 
-  it('paints the background from the live --surface-base-rgb custom property, not a hardcoded value', () => {
-    document.documentElement.style.setProperty('--surface-base-rgb', '34 64 95'); // Blue & Silver navy
+  it('paints the background from the fixed MAP_PALETTE navy, regardless of the active theme class', () => {
+    document.documentElement.className = 'theme-legacy-black';
     const map = makeMap([{ id: 'background', type: 'background' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints.background['background-color']).toBe('rgb(34, 64, 95)');
+    expect(map.__paints.background['background-color']).toBe(MAP_PALETTE.land);
   });
 
-  it('paints major-road accent from --brand-gold-rgb (the theme accent token, silver under Blue & Silver)', () => {
-    document.documentElement.style.setProperty('--brand-gold-rgb', '195 204 214'); // Blue & Silver silver
+  it('paints major-road accent from the fixed gold literal, not a theme-derived token', () => {
     const map = makeMap([{ id: 'road-motorway', type: 'line' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints['road-motorway']['line-color']).toBe('rgb(195, 204, 214)');
+    expect(map.__paints['road-motorway']['line-color']).toBe(MAP_PALETTE.arterial);
   });
 
-  it('falls back to the pre-2026-07 black/gold literals when a CSS variable is unset', () => {
-    // No custom properties set on <html> — simulates SSR / a pre-CSS-load render.
+  it('is unaffected by CSS custom properties on <html> (palette is literal, not var()-derived)', () => {
+    document.documentElement.style.setProperty('--surface-base-rgb', '0 0 0');
+    document.documentElement.style.setProperty('--brand-gold-rgb', '195 204 214');
     const map = makeMap([{ id: 'background', type: 'background' }, { id: 'road-primary', type: 'line' }]);
     applyRmpgBasemap(map, { variant: 'dark' });
-    expect(map.__paints.background['background-color']).toBe('rgb(0, 0, 0)');
-    expect(map.__paints['road-primary']['line-color']).toBe('rgb(212, 160, 23)');
+    expect(map.__paints.background['background-color']).toBe(MAP_PALETTE.land);
+    expect(map.__paints['road-primary']['line-color']).toBe(MAP_PALETTE.arterial);
   });
 
   it('hides POI/transit symbol noise regardless of theme', () => {
@@ -70,9 +72,15 @@ describe('applyRmpgBasemap', () => {
     expect(map.__layouts['poi-label'].visibility).toBe('none');
   });
 
-  it('leaves the light variant untouched (print path, intentionally not re-skinned)', () => {
+  it('routes the light variant through the dark restyle (fixes the bright tan mini-map)', () => {
     const map = makeMap([{ id: 'background', type: 'background' }]);
     applyRmpgBasemap(map, { variant: 'light' });
+    expect(map.__paints.background['background-color']).toBe(MAP_PALETTE.land);
+  });
+
+  it('leaves the print variant untouched (stock light style, intentionally not re-skinned)', () => {
+    const map = makeMap([{ id: 'background', type: 'background' }]);
+    applyRmpgBasemap(map, { variant: 'print' });
     expect(map.__paints.background).toBeUndefined();
   });
 });

@@ -121,19 +121,19 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
               fontWeight: 700,
               fontFamily: 'monospace',
               background: 'var(--surface-overlay)',
-              border: `2px solid ${error ? '#ef4444' : digits[i]?.trim() ? '#888888' : 'var(--border-subtle)'}`,
+              border: `2px solid ${error ? 'var(--sev-critical)' : digits[i]?.trim() ? 'var(--text-secondary)' : 'var(--border-subtle)'}`,
               borderRadius: 2,
               color: '#fff',
               outline: 'none',
-              caretColor: '#888888',
+              caretColor: 'var(--text-secondary)',
               transition: 'border-color 0.15s',
             }}
             onFocus={(e) => {
-              e.target.style.borderColor = '#888888';
+              e.target.style.borderColor = 'var(--text-secondary)';
               e.target.select();
             }}
             onBlur={(e) => {
-              e.target.style.borderColor = error ? '#ef4444' : digits[i]?.trim() ? '#888888' : 'var(--border-subtle)';
+              e.target.style.borderColor = error ? 'var(--sev-critical)' : digits[i]?.trim() ? 'var(--text-secondary)' : 'var(--border-subtle)';
             }}
           />
         ))}
@@ -152,7 +152,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           <div style={{
             width: `${timerProgress * 100}%`,
             height: '100%',
-            background: timerUrgent ? '#ef4444' : '#888888',
+            background: timerUrgent ? 'var(--sev-critical)' : 'var(--text-secondary)',
             transition: 'width 1s linear, background 0.3s',
             borderRadius: 2,
           }} />
@@ -161,7 +161,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
           fontSize: 10,
           fontFamily: 'monospace',
           fontWeight: 700,
-          color: timerUrgent ? '#ef4444' : 'var(--rmpg-500)',
+          color: timerUrgent ? 'var(--sev-critical)' : 'var(--text-muted)',
           minWidth: 24,
           textAlign: 'right',
         }}>
@@ -169,7 +169,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
         </span>
       </div>
       {timerUrgent && (
-        <p style={{ textAlign: 'center', fontSize: 9, color: '#ef4444', marginTop: 4 }}>
+        <p style={{ textAlign: 'center', fontSize: 9, color: 'var(--sev-critical)', marginTop: 4 }}>
           Code expiring — wait for next code if entry fails
         </p>
       )}

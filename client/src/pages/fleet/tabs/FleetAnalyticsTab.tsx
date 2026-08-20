@@ -12,6 +12,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatCostAbbrev, toDisplayLabel } from '../../../utils/formatters';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
+import { chartSeriesColors } from '../../../utils/chartPalette';
 
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
@@ -52,12 +53,16 @@ const MAINTENANCE_TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
-const ISSUE_BAR_COLORS = ['#888888', '#555555', 'var(--rmpg-500)', '#888888', '#d4a017'];
+// Built at render time (not module scope) — index 4 is the theme-resolved
+// gold series color, only correct once the theme class is stamped on <html>.
+function issueBarColors(): string[] {
+  return ['var(--text-muted)', 'var(--text-muted)', 'var(--text-muted)', 'var(--text-muted)', chartSeriesColors()[2]];
+}
 
 const STATUS_DOT_COLORS: Record<string, string> = {
-  in_service: '#22c55e',
-  maintenance: '#f59e0b',
-  out_of_service: '#ef4444',
+  in_service: 'var(--sev-ok)',
+  maintenance: 'var(--sev-warn)',
+  out_of_service: 'var(--sev-critical)',
 };
 
 const KPI_TOOLTIPS: Record<string, string> = {
@@ -385,7 +390,20 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
     utilization = { assigned: 0, unassigned: 0, rate: 0 },
     daily_usage = [], maintenance_forecast = [], oldest_vehicle_year = null, avg_daily_miles = null,
     top_issues = [],
+    scope = 'fleet',
+    omitted_for_vehicle_scope = [],
+    fleet_comparison = null,
   } = analytics || {};
+
+  // A card named by the server as fleet-only is hidden outright — an empty
+  // chart reads as "no data for this vehicle", which is a different and
+  // false claim.
+  const isOmitted = (block: string) => omitted_for_vehicle_scope.includes(block);
+
+  // On the scoped path every value below is THIS VEHICLE's, so the labels must
+  // say so. A card captioned "fleet-wide" over a single vehicle's number is the
+  // exact defect this scope work exists to remove.
+  const isVehicleScope = scope === 'vehicle';
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;
@@ -401,18 +419,53 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
   return (
     <div className="p-4 space-y-3">
+      <div
+        data-testid="analytics-scope-banner"
+        className="px-3 py-1.5 text-[9px] uppercase tracking-wider font-semibold text-fg-secondary border-b border-rmpg-700 bg-surface-sunken"
+      >
+        {scope === 'vehicle' ? 'Scope: this vehicle' : 'Scope: fleet-wide'}
+      </div>
+
+      {fleet_comparison && (
+        <div
+          data-testid="fleet-comparison"
+          className="px-3 py-1.5 flex items-center gap-4 text-[10px] font-mono border-b border-rmpg-700 bg-surface-sunken"
+        >
+          <span className="text-fg-muted uppercase tracking-wider text-[9px]">Fleet avg</span>
+          <span className="text-fg-secondary">
+            MPG <strong className="text-rmpg-100 tabular-nums">
+              {fleet_comparison.avg_mpg != null ? fleet_comparison.avg_mpg.toFixed(1) : '--'}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Miles <strong className="text-rmpg-100 tabular-nums">
+              {Math.round(fleet_comparison.avg_mileage).toLocaleString()}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Maint <strong className="text-rmpg-100 tabular-nums">
+              ${Math.round(fleet_comparison.total_maintenance_cost).toLocaleString()}
+            </strong>
+          </span>
+          <span className="text-fg-secondary">
+            Fuel <strong className="text-rmpg-100 tabular-nums">
+              ${Math.round(fleet_comparison.total_fuel_cost).toLocaleString()}
+            </strong>
+          </span>
+        </div>
+      )}
 
       {/* Period Filter */}
       <div className="flex items-center gap-1.5">
-        <Calendar className="w-3 h-3 text-[#d4a017]" />
-        <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider mr-2">Period</span>
+        <Calendar className="w-3 h-3 text-accent-silver-500" />
+        <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider mr-2">Period</span>
         {PERIOD_OPTIONS.map((opt) => (
           <button
             key={opt.value}
             onClick={() => handlePeriodChange(opt.value)}
             className={`px-2.5 py-1 text-[9px] font-mono font-bold tracking-wider rounded-[2px] border transition-colors duration-150
               ${period === opt.value
-                ? 'bg-[#888888] border-[#888888] text-rmpg-100'
+                ? 'bg-[color:var(--text-muted)] border-[color:var(--text-muted)] text-rmpg-100'
                 : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-600'
               }`}
           >
@@ -426,8 +479,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Total Fleet Costs */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <DollarSign className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Fleet Costs</span>
+            <DollarSign className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">{isVehicleScope ? 'Total Vehicle Costs' : 'Total Fleet Costs'}</span>
             <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
@@ -442,21 +495,22 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Average MPG */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Fuel className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Average MPG</span>
+            <Fuel className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Average MPG</span>
             <InfoTooltip text={KPI_TOOLTIPS.average_mpg} />
           </div>
           <div className="text-xl font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.avg_mpg != null ? fleet_summary.avg_mpg.toFixed(1) : '--'}
           </div>
-          <div className="text-[8px] text-rmpg-400 mt-1">Fleet-wide fuel economy</div>
+          <div className="text-[8px] text-rmpg-400 mt-1">{isVehicleScope ? "This vehicle's fuel economy" : 'Fleet-wide fuel economy'}</div>
         </div>
 
         {/* Service Compliance */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('service_compliance') && (
+        <div data-testid="card-service_compliance" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Wrench className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Service Compliance</span>
+            <Wrench className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Service Compliance</span>
             <InfoTooltip text={KPI_TOOLTIPS.service_compliance} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${complianceRate >= 80 ? 'text-green-400' : complianceRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -466,12 +520,13 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             {service_compliance ? `${service_compliance.compliant} ok / ${service_compliance.overdue} overdue` : '--'}
           </div>
         </div>
+        )}
 
         {/* Inspection Pass Rate */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <CheckCircle className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
+            <CheckCircle className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Inspection Pass Rate</span>
             <InfoTooltip text={KPI_TOOLTIPS.inspection_pass_rate} />
           </div>
           <div className={`text-xl font-bold font-mono tabular-nums ${inspPassRate >= 80 ? 'text-green-400' : inspPassRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
@@ -487,18 +542,18 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Maintenance Cost Trend (Bar Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Maintenance Cost Trend
           </h4>
           {maintenance_cost_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={maintenance_cost_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `$${v}`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [`$${Number(value).toFixed(0)}`, 'Cost']} />
-                <Bar dataKey="total_cost" fill="#888888" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="total_cost" fill="var(--text-muted)" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -508,18 +563,18 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Fuel Economy Trend (Line Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Fuel className="w-3 h-3" /> Fuel Economy Trend
           </h4>
           {fuel_economy_trend.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={fuel_economy_trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => `${v} mpg`} />
                 <Tooltip {...CHART_TOOLTIP_STYLE} formatter={(value: any) => [value != null ? `${value} mpg` : 'N/A', 'Avg MPG']} />
-                <Line type="monotone" dataKey="avg_mpg" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} connectNulls />
+                <Line type="monotone" dataKey="avg_mpg" stroke="var(--sev-ok)" strokeWidth={2} dot={{ r: 3, fill: 'var(--sev-ok)' }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -531,8 +586,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 3: Top Vehicles by Cost + Service Alerts */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Vehicles by Cost */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        {!isOmitted('cost_per_mile_ranking') && (
+        <div data-testid="card-cost_per_mile_ranking" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <TrendingUp className="w-3 h-3" /> Top Vehicles by Cost
           </h4>
           {(cost_per_mile_ranking && cost_per_mile_ranking.length > 0) ? (
@@ -566,10 +622,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="h-[120px] flex items-center justify-center text-[10px] text-rmpg-500">No cost data available</div>
           )}
         </div>
+        )}
 
         {/* Service Alerts */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <ShieldAlert className="w-3 h-3" /> Service Alerts
             {serviceAlerts.length > 0 && (
               <span className="ml-auto bg-red-900/40 text-red-400 px-1.5 py-0.5 rounded-[2px] text-[8px] font-mono tabular-nums">
@@ -588,7 +645,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <span className="font-mono font-bold text-rmpg-100">{alert.vehicle_number}</span>
                     <span className={`min-w-0 ${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
-                      {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
+                      {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) : '--'}
                     </span>
                   </div>
                 );
@@ -606,7 +663,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Mileage Run (GPS miles per day, fleet-wide) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Gauge className="w-3 h-3" /> Daily Mileage Run
           </h4>
           {dailyMileageRun.length > 0 ? (
@@ -615,7 +672,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 8 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
@@ -623,16 +680,16 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
-                <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
                 <Tooltip
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any) => [`${value} mi`, 'Miles']}
                   labelFormatter={(label) => {
-                    const d = parseTimestamp(label);
-                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const d = parseTimestamp(String(label));
+                    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
-                <Bar dataKey="miles" fill="#d4a017" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="miles" fill={chartSeriesColors()[2]} radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -641,8 +698,9 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         </div>
 
         {/* Fleet Status (Donut) */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        {!isOmitted('status_breakdown') && (
+        <div data-testid="card-status_breakdown" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Car className="w-3 h-3" /> Fleet Status
           </h4>
           {status_breakdown.length > 0 ? (
@@ -677,7 +735,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 {utilization && (
                   <div className="mt-2 pt-2 border-t border-rmpg-700 text-[9px] text-rmpg-400">
                     <span>Utilization: </span>
-                    <span className="font-mono font-bold text-[#d4a017] tabular-nums">{utilization.rate}%</span>
+                    <span className="font-mono font-bold text-rmpg-100 tabular-nums">{utilization.rate}%</span>
                     <span className="ml-1">({utilization.assigned} assigned)</span>
                   </div>
                 )}
@@ -687,28 +745,29 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <div className="h-[180px] flex items-center justify-center text-[10px] text-rmpg-500">No data</div>
           )}
         </div>
+        )}
       </div>
 
       {/* ROW 5: Daily Fleet Utilization + Maintenance Forecast */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Daily Fleet Utilization (Area Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
-            <Activity className="w-3 h-3" /> Daily Fleet Utilization
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <Activity className="w-3 h-3" /> {isVehicleScope ? 'Daily Vehicle Utilization' : 'Daily Fleet Utilization'}
           </h4>
           {daily_usage && daily_usage.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={daily_usage}>
                 <defs>
                   <linearGradient id="utilGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
-                    <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
+                    <stop offset="5%" stopColor="var(--text-muted)" stopOpacity={0.6} />
+                    <stop offset="95%" stopColor="var(--text-muted)" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 8 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 8 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   tickFormatter={(v) => {
@@ -717,7 +776,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   }}
                 />
                 <YAxis
-                  tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }}
+                  tick={{ fill: 'var(--text-muted)', fontSize: 9 }}
                   tickLine={false}
                   axisLine={{ stroke: 'var(--border-subtle)' }}
                   allowDecimals={false}
@@ -726,14 +785,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any, name: any) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
                   labelFormatter={(label) => {
-                    const d = parseTimestamp(label);
-                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const d = parseTimestamp(String(label));
+                    return d.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' });
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="active_vehicles"
-                  stroke="#888888"
+                  stroke="var(--text-muted)"
                   strokeWidth={2}
                   fill="url(#utilGradient)"
                 />
@@ -746,7 +805,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Maintenance Forecast */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Forecast
           </h4>
           {maintenance_forecast && maintenance_forecast.length > 0 ? (
@@ -796,46 +855,53 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {/* Avg Daily Miles */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Gauge className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Avg Daily Miles</span>
+            <Gauge className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Avg Daily Miles</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {avg_daily_miles != null && avg_daily_miles > 0 ? avg_daily_miles.toFixed(1) : '--'}
           </div>
-          <div className="text-[8px] text-rmpg-400 mt-1">Fleet avg from fuel logs</div>
+          <div className="text-[8px] text-rmpg-400 mt-1">{isVehicleScope ? "This vehicle's avg from fuel logs" : 'Fleet avg from fuel logs'}</div>
         </div>
 
-        {/* Total Vehicles */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {/* Total Vehicles — a fleet count, not a vehicle fact. It lives inside
+            fleet_summary rather than being its own block, so FLEET_ONLY_BLOCKS
+            cannot gate it; hide it directly on the scoped path instead. */}
+        {!isVehicleScope && (
+        <div data-testid="card-total_vehicles" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Car className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Total Vehicles</span>
+            <Car className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Total Vehicles</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {fleet_summary.total_vehicles}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Registered in fleet</div>
         </div>
+        )}
 
         {/* Oldest Vehicle */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('oldest_vehicle_year') && (
+        <div data-testid="card-oldest_vehicle_year" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Calendar className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Oldest Vehicle</span>
+            <Calendar className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Oldest Vehicle</span>
           </div>
           <div className="text-lg font-bold font-mono text-rmpg-100 tabular-nums">
             {oldest_vehicle_year ?? '--'}
           </div>
           <div className="text-[8px] text-rmpg-400 mt-1">Model year (non-retired)</div>
         </div>
+        )}
 
         {/* Fleet Utilization */}
-        <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
+        {!isOmitted('utilization') && (
+        <div data-testid="card-utilization" className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
           <div className="flex items-center gap-1.5 mb-1">
-            <Activity className="w-3 h-3 text-[#d4a017]" />
-            <span className="text-[8px] text-[#d4a017] uppercase font-bold tracking-wider">Fleet Utilization</span>
+            <Activity className="w-3 h-3 text-accent-silver-500" />
+            <span className="text-[8px] text-[color:var(--field-label-color)] uppercase font-bold tracking-wider">Fleet Utilization</span>
           </div>
-          <div className="text-lg font-bold font-mono tabular-nums text-[#d4a017]">
+          <div className="text-lg font-bold font-mono tabular-nums text-rmpg-100">
             {utilization ? `${utilization.rate}%` : '--'}
           </div>
           {utilization && (
@@ -845,7 +911,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   className="h-full rounded-[1px] transition-all duration-150"
                   style={{
                     width: `${Math.min(utilization.rate, 100)}%`,
-                    backgroundColor: utilization.rate >= 80 ? '#22c55e' : utilization.rate >= 50 ? '#f59e0b' : '#ef4444',
+                    backgroundColor: utilization.rate >= 80 ? 'var(--sev-ok)' : utilization.rate >= 50 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                   }}
                 />
               </div>
@@ -855,11 +921,12 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             </div>
           )}
         </div>
+        )}
       </div>
 
       {/* ROW 7: Combined Cost Trend (Full Width) */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <TrendingUp className="w-3 h-3" /> Combined Cost Trend (12 Months)
         </h4>
         {costTrendChartData.length > 0 ? (
@@ -867,17 +934,17 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <AreaChart data={costTrendChartData}>
               <defs>
                 <linearGradient id="maintGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#888888" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#888888" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="var(--text-muted)" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="var(--text-muted)" stopOpacity={0.05} />
                 </linearGradient>
                 <linearGradient id="fuelGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.6} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
+                  <stop offset="5%" stopColor="var(--sev-ok)" stopOpacity={0.6} />
+                  <stop offset="95%" stopColor="var(--sev-ok)" stopOpacity={0.05} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -886,8 +953,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return [`$${Number(value).toFixed(0)}`, label];
                 }}
               />
-              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="#888888" strokeWidth={2} fill="url(#maintGradient)" />
-              <Area type="monotone" dataKey="fuel_cost" stackId="1" stroke="#22c55e" strokeWidth={2} fill="url(#fuelGradient)" />
+              <Area type="monotone" dataKey="maintenance_cost" stackId="1" stroke="var(--text-muted)" strokeWidth={2} fill="url(#maintGradient)" />
+              <Area type="monotone" dataKey="fuel_cost" stackId="1" stroke="var(--sev-ok)" strokeWidth={2} fill="url(#fuelGradient)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
@@ -895,11 +962,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         )}
         <div className="flex items-center gap-4 mt-2">
           <div className="flex items-center gap-1.5 text-[8px]">
-            <div className="w-3 h-1.5 bg-[#888888] rounded-[1px]" />
+            <div className="w-3 h-1.5 bg-[color:var(--text-muted)] rounded-[1px]" />
             <span className="text-rmpg-400">Maintenance</span>
           </div>
           <div className="flex items-center gap-1.5 text-[8px]">
-            <div className="w-3 h-1.5 bg-[#22c55e] rounded-[1px]" />
+            <div className="w-3 h-1.5 bg-[color:var(--sev-ok)] rounded-[1px]" />
             <span className="text-rmpg-400">Fuel</span>
           </div>
         </div>
@@ -908,14 +975,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 7b: Monthly Spend (Last 8 Months) */}
       {monthlySpend.length > 0 && (
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <DollarSign className="w-3 h-3" /> Monthly Spend (Last 8 Months)
           </h4>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-              <XAxis dataKey="month" tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
-              <YAxis tick={{ fill: 'var(--rmpg-500)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
+              <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }} />
+              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} tickLine={false} axisLine={{ stroke: 'var(--border-subtle)' }}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
               <Tooltip
                 {...CHART_TOOLTIP_STYLE}
@@ -924,24 +991,24 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   return [`$${Number(value).toFixed(0)}`, labels[name] || name];
                 }}
               />
-              <Bar dataKey="fuel_cost" stackId="a" fill="#22c55e" radius={[0,0,0,0]} />
-              <Bar dataKey="maintenance_cost" stackId="a" fill="#888888" radius={[0,0,0,0]} />
-              <Bar dataKey="other_costs" stackId="a" fill="#f59e0b" radius={[0,0,0,0]} />
-              <Bar dataKey="loan_payments" stackId="a" fill="#ef4444" radius={[0,0,0,0]} />
+              <Bar dataKey="fuel_cost" stackId="a" fill="var(--sev-ok)" radius={[0,0,0,0]} />
+              <Bar dataKey="maintenance_cost" stackId="a" fill="var(--text-muted)" radius={[0,0,0,0]} />
+              <Bar dataKey="other_costs" stackId="a" fill="var(--sev-warn)" radius={[0,0,0,0]} />
+              <Bar dataKey="loan_payments" stackId="a" fill="var(--sev-critical)" radius={[0,0,0,0]} />
             </BarChart>
           </ResponsiveContainer>
           <div className="flex items-center gap-4 mt-2">
-            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#22c55e] rounded-[1px]" /><span className="text-rmpg-400">Fuel</span></div>
-            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#888888] rounded-[1px]" /><span className="text-rmpg-400">Maint</span></div>
-            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#f59e0b] rounded-[1px]" /><span className="text-rmpg-400">Other</span></div>
-            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#ef4444] rounded-[1px]" /><span className="text-rmpg-400">Loans</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[color:var(--sev-ok)] rounded-[1px]" /><span className="text-rmpg-400">Fuel</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[color:var(--text-muted)] rounded-[1px]" /><span className="text-rmpg-400">Maint</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[color:var(--sev-warn)] rounded-[1px]" /><span className="text-rmpg-400">Other</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[color:var(--sev-critical)] rounded-[1px]" /><span className="text-rmpg-400">Loans</span></div>
           </div>
         </div>
       )}
 
       {/* ROW 7c: Daily GPS Mileage (Start of Shift → End of Shift) */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
           <Gauge className="w-3 h-3" /> Daily GPS Mileage (Start of Shift — End of Shift)
         </h4>
         {dailyGpsLoading ? (
@@ -967,7 +1034,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <tr key={i} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                       <td className="py-1 pr-2 text-rmpg-200 font-mono">{d.date?.slice(5)}</td>
                       <td className="py-1 pr-2 text-rmpg-100 font-semibold">#{d.vehicle_number}</td>
-                      <td className="py-1 pr-2 text-right text-[#22c55e] font-mono font-bold tabular-nums">{d.gps_miles?.toFixed(1)} mi</td>
+                      <td className="py-1 pr-2 text-right text-[color:var(--sev-ok)] font-mono font-bold tabular-nums">{d.gps_miles?.toFixed(1)} mi</td>
                       <td className="py-1 pr-2 text-right text-rmpg-500 font-mono tabular-nums">{d.points_count}</td>
                       <td className="py-1 pr-2 text-rmpg-400 text-[9px]">{startTime}</td>
                       <td className="py-1 text-rmpg-400 text-[9px]">{endTime}</td>
@@ -988,7 +1055,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {/* Top Maintenance Issues (Horizontal Bar Chart) */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Top Maintenance Issues
           </h4>
           {top_issues && top_issues.length > 0 ? (
@@ -1009,7 +1076,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         className="h-full rounded-[1px] transition-all duration-150"
                         style={{
                           width: `${pct}%`,
-                          backgroundColor: ISSUE_BAR_COLORS[idx] || '#888888',
+                          backgroundColor: issueBarColors()[idx] || 'var(--text-muted)',
                         }}
                       />
                     </div>
@@ -1024,7 +1091,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
         {/* Vehicle Lifecycle Table */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <Activity className="w-3 h-3" /> Vehicle Lifecycle
           </h4>
           {lifecycle.length > 0 ? (
@@ -1049,7 +1116,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       <tr key={v.id} className="border-b border-rmpg-700/50 hover:bg-surface-sunken transition-colors duration-150">
                         <td className="py-1 pr-1">
                           <div className="flex items-center gap-1">
-                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || 'var(--rmpg-500)' }} />
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_DOT_COLORS[v.status] || 'var(--text-muted)' }} />
                             <span className="font-mono font-bold text-rmpg-100">{v.vehicle_number}</span>
                           </div>
                         </td>
@@ -1081,7 +1148,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           onClick={() => setCompareExpanded(!compareExpanded)}
           className="w-full flex items-center justify-between p-3 hover:bg-surface-sunken transition-colors duration-150"
         >
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Search className="w-3 h-3" /> Compare Vehicles
           </h4>
           {compareExpanded ? (
@@ -1106,7 +1173,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       onClick={() => toggleVehicleSelection(v.id)}
                       className={`px-2 py-1 text-[9px] font-mono rounded-[2px] border transition-colors duration-150
                         ${isSelected
-                          ? 'bg-[#888888] border-[#888888] text-rmpg-100'
+                          ? 'bg-[color:var(--text-muted)] border-[color:var(--text-muted)] text-rmpg-100'
                           : 'bg-surface-sunken border-rmpg-700 text-rmpg-400 hover:text-rmpg-100 hover:border-rmpg-600'
                         }`}
                     >
@@ -1119,7 +1186,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 <button
                   onClick={handleCompare}
                   disabled={selectedIds.length < 2 || selectedIds.length > 5 || compareLoading}
-                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[#888888] text-rmpg-100 border border-[#888888] hover:bg-[#5a5a5a] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
+                  className="px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-[2px] bg-[color:var(--text-muted)] text-rmpg-100 border border-[color:var(--text-muted)] hover:bg-rmpg-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-150"
                 >
                   {compareLoading ? 'Loading...' : 'Compare'}
                 </button>
@@ -1236,7 +1303,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 10: Vehicle Health Dashboard */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Heart className="w-3 h-3" /> Vehicle Health Scores
           </h4>
           <select id="ff-fleetanalyticstab-0"
@@ -1252,7 +1319,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
         {sortedHealthScores.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {sortedHealthScores.map((v) => {
-              const scoreColor = v.health_score >= 80 ? '#22c55e' : v.health_score >= 40 ? '#f59e0b' : '#ef4444';
+              const scoreColor = v.health_score >= 80 ? 'var(--sev-ok)' : v.health_score >= 40 ? 'var(--sev-warn)' : 'var(--sev-critical)';
               const circumference = 2 * Math.PI * 28;
               const strokeDash = (v.health_score / 100) * circumference;
               const badgeColors: Record<string, string> = {
@@ -1303,7 +1370,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                             className="h-full rounded-full transition-all duration-150"
                             style={{
                               width: `${factors[f]}%`,
-                              backgroundColor: factors[f] >= 80 ? '#22c55e' : factors[f] >= 40 ? '#f59e0b' : '#ef4444',
+                              backgroundColor: factors[f] >= 80 ? 'var(--sev-ok)' : factors[f] >= 40 ? 'var(--sev-warn)' : 'var(--sev-critical)',
                             }}
                           />
                         </div>
@@ -1326,7 +1393,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
       {/* ROW 11: Maintenance Schedule */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
         <div className="flex items-center gap-2 mb-3">
-          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
+          <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Wrench className="w-3 h-3" /> Maintenance Schedule
           </h4>
           {overdueCount > 0 && (
@@ -1351,10 +1418,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <tbody>
                 {maintSchedule.map((m) => {
                   const urgencyColors: Record<string, { dot: string; text: string }> = {
-                    overdue: { dot: '#ef4444', text: 'text-red-400' },
-                    critical: { dot: '#f59e0b', text: 'text-amber-400' },
-                    upcoming: { dot: '#888888', text: 'text-rmpg-400' },
-                    ok: { dot: '#22c55e', text: 'text-green-400' },
+                    overdue: { dot: 'var(--sev-critical)', text: 'text-red-400' },
+                    critical: { dot: 'var(--sev-warn)', text: 'text-amber-400' },
+                    upcoming: { dot: 'var(--text-muted)', text: 'text-rmpg-400' },
+                    ok: { dot: 'var(--sev-ok)', text: 'text-green-400' },
                   };
                   const uc = urgencyColors[m.urgency] || urgencyColors.ok;
                   return (
@@ -1389,7 +1456,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
 
       {/* ROW 12: Driver Performance */}
       <div className="bg-surface-raised border border-rmpg-700 rounded-[2px] p-3">
-        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
+        <h4 className="text-[9px] text-[color:var(--panel-header-color)] uppercase font-bold tracking-wider flex items-center gap-1.5 mb-3">
           <User className="w-3 h-3" /> Driver Performance
         </h4>
         {driverPerf.length > 0 ? (
@@ -1421,7 +1488,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         <span className="inline-flex items-center gap-1">
                           <span className="inline-block w-8 h-1 bg-rmpg-700 rounded-full overflow-hidden">
-                            <span className="block h-full rounded-full" style={{ width: `${d.idle_pct}%`, backgroundColor: d.idle_pct > 60 ? '#ef4444' : d.idle_pct > 30 ? '#f59e0b' : '#22c55e' }} />
+                            <span className="block h-full rounded-full" style={{ width: `${d.idle_pct}%`, backgroundColor: d.idle_pct > 60 ? 'var(--sev-critical)' : d.idle_pct > 30 ? 'var(--sev-warn)' : 'var(--sev-ok)' }} />
                           </span>
                           {d.idle_pct}%
                         </span>
@@ -1466,13 +1533,27 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <Clock className="w-3 h-3" /> Service Intervals Due ({serviceAlerts.length})
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {serviceAlerts.slice(0, 8).map((a: any) => (
-              <div key={a.vehicle_id} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
-                <span className="font-mono font-bold">{a.vehicle_number}</span>
-                <span>{toDisplayLabel(a.service_type || '')}</span>
-                <span className="font-mono">{a.days_until < 0 ? `${Math.abs(a.days_until)}d overdue` : `${a.days_until}d`}</span>
-              </div>
-            ))}
+            {serviceAlerts.slice(0, 8).map((a: any, i: number) => {
+              // Never interpolate a possibly-absent value straight into a
+              // template string: `${undefined}d` rendered the literal
+              // "undefinedd" on live until the server started sending
+              // days_until. Fall back to the due date, then to an em dash.
+              const days = typeof a.days_until === 'number' && Number.isFinite(a.days_until)
+                ? a.days_until : null;
+              const due = days != null
+                ? (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`)
+                : (a.due_date ? parseTimestamp(a.due_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—');
+              // vehicle_id alone is not unique — one vehicle can raise an
+              // insurance AND a registration alert, which collided as a key.
+              const label = toDisplayLabel(a.service_type || a.type || a.issue || '');
+              return (
+                <div key={`${a.vehicle_id ?? a.id ?? i}-${a.service_type ?? a.type ?? i}`} className={`flex items-center justify-between px-2 py-1.5 rounded text-[10px] border ${a.severity === 'overdue' ? 'bg-red-900/20 border-red-800/40 text-red-400' : a.severity === 'critical' ? 'bg-amber-900/20 border-amber-800/40 text-amber-400' : 'bg-surface-sunken/20 border-border-subtle/40 text-rmpg-400'}`}>
+                  <span className="font-mono font-bold">{a.vehicle_number}</span>
+                  <span>{label}</span>
+                  <span className="font-mono">{due}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1483,7 +1564,10 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <h4 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
             <CheckCircle className="w-3 h-3" /> Inspection Pass/Fail Summary
           </h4>
-          <div className="grid grid-cols-4 gap-2 mb-2">
+          {/* Five columns only when a non-pass/fail result exists. Without the
+              "Needs Attn" tile the tiles cannot reconcile: Total counts every
+              inspection, so Pass + Fail alone silently fell short of it. */}
+          <div className={`grid ${inspectionStats.other_count > 0 ? 'grid-cols-5' : 'grid-cols-4'} gap-2 mb-2`}>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
               <div className="text-sm font-bold font-mono text-rmpg-400">{inspectionStats.total_inspections}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total</div>
@@ -1496,6 +1580,19 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="text-sm font-bold font-mono text-red-400">{inspectionStats.fail_count}</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Fail</div>
             </div>
+            {inspectionStats.other_count > 0 && (
+              <div
+                className="text-center p-1.5 bg-surface-sunken rounded"
+                title={Object.entries(inspectionStats.other_breakdown ?? {})
+                  .map(([k, v]) => `${toDisplayLabel(k)}: ${v}`).join(', ')}
+              >
+                <div className="text-sm font-bold font-mono text-amber-400">{inspectionStats.other_count}</div>
+                {/* Uses the muted foreground token rather than the sibling
+                    tiles' rmpg ramp: that ramp is sub-AA and under a CI
+                    ratchet (accentTokens.test.ts). */}
+                <div className="text-[7px] text-fg-muted uppercase">Needs Attn</div>
+              </div>
+            )}
             <div className="text-center p-1.5 bg-surface-sunken rounded">
               <div className="text-sm font-bold font-mono text-brand-400">{inspectionStats.pass_rate}%</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Pass Rate</div>
@@ -1593,7 +1690,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   <XAxis dataKey="day" tick={{ fontSize: 8 }} />
                   <YAxis tick={{ fontSize: 8 }} allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="n" name="Conflicts" fill="#f59e0b" />
+                  <Bar dataKey="n" name="Conflicts" fill="var(--sev-warn)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

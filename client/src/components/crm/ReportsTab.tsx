@@ -57,14 +57,14 @@ interface CrmMetrics {
 
 // ── Stage colors ──────────────────────────────────────────
 const STAGE_COLORS: Record<PipelineStage, string> = {
-  new: '#888888',
-  contacted: '#8b5cf6',
-  qualified: '#d4a017',
-  proposal: '#f59e0b',
-  negotiation: '#f97316',
-  won: '#22c55e',
-  lost: '#ef4444',
-  dismissed: 'var(--rmpg-500)',
+  new: 'var(--text-muted)',
+  contacted: 'var(--sev-special)',
+  qualified: 'var(--accent-gold-300)',
+  proposal: 'var(--sev-warn)',
+  negotiation: 'var(--sev-high)',
+  won: 'var(--sev-ok)',
+  lost: 'var(--sev-critical)',
+  dismissed: 'var(--text-muted)',
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -247,7 +247,7 @@ export default function ReportsTab() {
                 <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: STAGE_COLORS[ps.stage] }} />
                 <div>
                   <div className="text-[10px] text-rmpg-400">{toDisplayLabel(ps.stage)}</div>
-                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-rmpg-500">({formatCurrency(ps.total_value)})</span></div>
+                  <div className="text-xs text-rmpg-100 font-mono">{ps.count} <span className="text-fg-muted">({formatCurrency(ps.total_value)})</span></div>
                 </div>
               </div>
             ))}

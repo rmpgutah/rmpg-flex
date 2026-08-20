@@ -229,6 +229,75 @@ describe('formatLawEnforcement — NCIC/NLETS fielded output', () => {
   });
 });
 
+describe('parseAamva — additional AAMVA fields', () => {
+  const raw = [
+    '@\n\x1e\rANSI 636040090002DL00410278ZU03410024DLDAQ123456789',
+    'DCSPETERSON',
+    'DACANDREW',
+    'DADSCOTT',
+    'DBB01151990',
+    'DBC1',
+    'DAYBRN',
+    'DAZBRO',
+    'DAU510',
+    'DAW180',
+    'DAGTEST ST',
+    'DAISLC',
+    'DAJUT',
+    'DAK84101',
+    'DBA01152030',
+    'DBD01152020',
+    'DCINew York',
+    'DCLW',
+    'DAFMr',
+    'DDB01152023',
+    'DDC01152025',
+    'DBI1',
+    'DDD1',
+    'DCJAUDIT123',
+  ].join('\r');
+
+  it('extracts place_of_birth from DCI', () => {
+    const r = parseAamva(raw);
+    expect(r.place_of_birth).toBe('New York');
+  });
+
+  it('extracts race from DCL', () => {
+    const r = parseAamva(raw);
+    expect(r.race).toBe('White');
+  });
+
+  it('extracts name_prefix from DAF', () => {
+    const r = parseAamva(raw);
+    expect(r.name_prefix).toBe('Mr');
+  });
+
+  it('extracts card_revision_date from DDB', () => {
+    const r = parseAamva(raw);
+    expect(r.card_revision_date).toBeTruthy();
+  });
+
+  it('extracts dl_hazmat_expiry from DDC', () => {
+    const r = parseAamva(raw);
+    expect(r.dl_hazmat_expiry).toBeTruthy();
+  });
+
+  it('extracts non_resident_indicator from DBI', () => {
+    const r = parseAamva(raw);
+    expect(r.non_resident_indicator).toBe(true);
+  });
+
+  it('extracts limited_duration_doc from DDD', () => {
+    const r = parseAamva(raw);
+    expect(r.limited_duration_doc).toBe(true);
+  });
+
+  it('extracts audit_info from DCJ', () => {
+    const r = parseAamva(raw);
+    expect(r.audit_info).toBe('AUDIT123');
+  });
+});
+
 describe('plain-English helpers for stored records', () => {
   it('translates restriction codes to English (code preserved)', async () => {
     const { describeRestrictions } = await import('../aamvaParser');

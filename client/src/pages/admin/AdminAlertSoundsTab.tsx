@@ -240,18 +240,18 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
   return (
     <div className="p-4 space-y-4">
       {/* Header callout */}
-      <div className="flex items-start gap-3 p-3 border border-[#222] bg-surface-raised" style={{ borderRadius: 2 }}>
-        <Volume2 className="w-5 h-5 text-[#d4a017] flex-shrink-0 mt-0.5" />
+      <div className="flex items-start gap-3 p-3 border border-border-default bg-surface-raised" style={{ borderRadius: 2 }}>
+        <Volume2 className="w-5 h-5 text-accent-silver-500 flex-shrink-0 mt-0.5" />
         <div className="flex-1">
           <h2 className="text-sm font-semibold text-white mb-1">Alert Sound Preferences</h2>
-          <p className="text-[12px] text-[#aaa] leading-relaxed">
+          <p className="text-[12px] text-text-secondary leading-relaxed">
             Fine-grained control over which alert categories play audio + visual cues.
             Settings are <strong className="text-white">per-browser</strong> (localStorage)
             and propagate live to other tabs. The global mute toggle in the menu bar
             silences every category at once and overrides these settings.
           </p>
           {globalMuted && (
-            <div className="mt-2 px-2 py-1 bg-[#3a1818] border border-red-700/50 text-red-300 text-[11px]" style={{ borderRadius: 2 }}>
+            <div className="mt-2 px-2 py-1 bg-red-900/20 border border-red-700/50 text-red-300 text-[11px]" style={{ borderRadius: 2 }}>
               <VolumeX className="inline w-3 h-3 mr-1" />
               Global sound is currently MUTED. Per-category settings below have no effect until you re-enable sounds.
             </div>
@@ -266,9 +266,9 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
 
       {/* Grouped category list */}
       {grouped.map(({ group, items }) => (
-        <div key={group} className="border border-[#222] bg-surface-raised" style={{ borderRadius: 2 }}>
-          <div className="px-3 py-2 border-b border-[#222] bg-surface-base">
-            <h3 className="text-[11px] font-bold uppercase tracking-wide text-[#d4a017]">{group}</h3>
+        <div key={group} className="border border-border-default bg-surface-raised" style={{ borderRadius: 2 }}>
+          <div className="px-3 py-2 border-b border-border-default bg-surface-base">
+            <h3 className="text-[11px] font-bold uppercase tracking-wide text-[color:var(--panel-header-color)]">{group}</h3>
           </div>
           {items.map(spec => {
             const enabled = prefs[spec.category];
@@ -277,11 +277,11 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
             return (
               <div
                 key={spec.category}
-                className="flex items-center gap-3 px-3 py-2 border-b border-[#1a1a1a] last:border-b-0 hover:bg-[#141414]"
+                className="flex items-center gap-3 px-3 py-2 border-b border-border-subtle last:border-b-0 hover:bg-surface-hover"
               >
-                <Icon className={`w-4 h-4 flex-shrink-0 ${enabled ? 'text-white' : 'text-[#555]'}`} />
+                <Icon className={`w-4 h-4 flex-shrink-0 ${enabled ? 'text-white' : 'text-rmpg-500'}`} />
                 <div className="flex-1 min-w-0">
-                  <div className={`text-[13px] font-medium ${enabled ? 'text-white' : 'text-[#888]'}`}>
+                  <div className={`text-[13px] font-medium ${enabled ? 'text-white' : 'text-text-muted'}`}>
                     {spec.label}
                     {spec.warnIfMuted && !enabled && (
                       <span className="ml-2 px-1.5 py-0.5 bg-red-900/40 border border-red-700/50 text-red-300 text-[9px] uppercase tracking-wide" style={{ borderRadius: 2 }}>
@@ -289,7 +289,7 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-[#777] truncate">{spec.description}</div>
+                  <div className="text-[11px] text-text-muted truncate">{spec.description}</div>
                 </div>
 
                 {/* Test button — fires real tone + flash + voice preview */}
@@ -297,7 +297,7 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
                   type="button"
                   onClick={() => testCategory(spec)}
                   disabled={isTesting}
-                  className="px-2 py-1 text-[11px] font-mono bg-surface-base border border-[#2e2e2e] hover:border-[#d4a017] hover:text-[#d4a017] text-[#aaa] disabled:opacity-50 flex items-center gap-1"
+                  className="px-2 py-1 text-[11px] font-mono bg-surface-base border border-border-default hover:border-accent-silver-500 hover:text-accent-silver-400 text-text-secondary disabled:opacity-50 flex items-center gap-1"
                   style={{ borderRadius: 2 }}
                   title="Preview this alert's tone + flash + voice"
                 >
@@ -322,7 +322,7 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
                   className={`px-2 py-1 text-[11px] font-mono flex items-center gap-1 border ${
                     enabled
                       ? 'bg-green-900/30 border-green-700/50 text-green-400'
-                      : 'bg-[#1a1a1a] border-[#444] text-[#888]'
+                      : 'bg-surface-sunken border-border-default text-text-muted'
                   }`}
                   style={{ borderRadius: 2 }}
                   aria-label={enabled ? `Mute ${spec.label}` : `Unmute ${spec.label}`}
@@ -346,12 +346,12 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
               setPrefs(getAllAlertPrefs());
             }
           }}
-          className="px-3 py-1.5 text-[12px] font-mono border border-[#2e2e2e] hover:border-[#d4a017] hover:text-[#d4a017] text-[#aaa]"
+          className="px-3 py-1.5 text-[12px] font-mono border border-border-default hover:border-accent-silver-500 hover:text-accent-silver-400 text-text-secondary"
           style={{ borderRadius: 2 }}
         >
           Reset all to default
         </button>
-        <span className="text-[10px] text-[#666]">Defaults: every category enabled.</span>
+        <span className="text-[10px] text-rmpg-500">Defaults: every category enabled.</span>
       </div>
 
       {/* Suppress unused-import warning for LoadingSpinner — included for prop

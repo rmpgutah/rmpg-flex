@@ -25,10 +25,12 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, columnExists } from '../utils/db';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { requireRole } from '../middleware/auth';
 import { screenVehicle } from '../utils/intelScreen';
 import { confirmReviewStatus, confirmWarning } from '../utils/alprReview';
 import { normalizeCaptureEdit, describeEdit } from '../utils/alprEdit';
+import { containsClause } from '../utils/searchText';
 import { recordAudit } from '../utils/auditLog';
 import { notConfigured } from '../utils/notConfigured';
 import { verifyEdgeSignature } from '../utils/edgeHmac';
@@ -41,6 +43,7 @@ import {
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
 
+import { log } from '../utils/logger';
 const alpr = new Hono<Env>();
 
 /** Acceptance threshold (0.85). Overridable via the ALPR_ACCEPT_CONFIDENCE env. */
@@ -167,8 +170,8 @@ async function ensureAlprSchema(db: ReturnType<typeof getDb>): Promise<boolean> 
     latitude REAL,
     longitude REAL,
     notes TEXT,
-    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   try { await execute(db, `ALTER TABLE field_photos ADD COLUMN incident_id INTEGER`); } catch { /* column exists */ }
 
@@ -325,11 +328,13 @@ async function finalizeCapture(
     try {
       const boloMatch = await queryFirst<{ id: number; bolo_number: string; description: string }>(
         db,
+        // bolos has `type` (not bolo_type) and NO plate column — a plate can
+        // only be matched against the free-text vehicle/general description.
         `SELECT id, bolo_number, description FROM bolos
-          WHERE status = 'active' AND bolo_type = 'vehicle'
-            AND (plate_number = ? OR UPPER(description) LIKE ?)
+          WHERE status = 'active' AND type = 'vehicle'
+            AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)
           LIMIT 1`,
-        plate, `%${plate.toUpperCase()}%`,
+        `%${plate.toUpperCase()}%`, `%${plate.toUpperCase()}%`,
       );
       if (boloMatch) {
         out.hits.push({
@@ -504,8 +509,9 @@ alpr.post('/capture', operational, async (c) => {
   // run the read + persist the row (image_url just resolves to a missing object).
   let imageStored = true;
   try {
-    await c.env.UPLOADS.put(imageKey, bytes, { httpMetadata: { contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
   } catch (err: any) {
+    if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
     console.error('[alpr] R2 image put failed:', err?.message);
   }
@@ -643,7 +649,7 @@ alpr.get('/captures', operational, async (c) => {
     else if (caseId) rows = await query<any>(db, `SELECT * FROM alpr_captures WHERE case_id = ? ORDER BY created_at DESC LIMIT ?`, caseId, limit);
     else {
       const where: string[] = []; const params: any[] = [];
-      if (plate) { where.push('plate LIKE ?'); params.push(`%${plate}%`); }
+      if (plate) { const m = containsClause('plate'); where.push(m.sql); params.push(m.bind(plate)); }
       if (accepted === '1' || accepted === '0') { where.push('accepted = ?'); params.push(Number(accepted)); }
       if (from) { where.push('created_at >= ?'); params.push(from); }
       if (to) { where.push('created_at <= ?'); params.push(to); }
@@ -680,6 +686,7 @@ alpr.get('/captures', operational, async (c) => {
     }
     return c.json(rows.map(shapeCapture));
   } catch (err: any) {
+    log.error('GET /captures failed', { src: 'src/routes/alpr.ts' }, err);
     return c.json({ error: err?.message, hint: 'migration 0108/0109 may not have reached live D1' }, 500);
   }
 });
@@ -969,11 +976,25 @@ alpr.get('/capture/:id/history', operational, async (c) => {
 alpr.get('/image/*', operational, async (c) => {
   const key = c.req.path.replace(/^.*\/image\//, '');
   if (!key.startsWith(ALPR_PREFIX) || key.includes('..')) return c.json({ error: 'Invalid key' }, 400);
-  const obj = await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Not found' }, 404);
-  return new Response(obj.body, {
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  if (decrypted) {
+    return new Response(decrypted.bytes, {
+      headers: {
+        'Content-Type': decrypted.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=86400',
+      },
+    });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // LEGACY object uploaded under alpr-captures/ before this feature shipped
+  // (object exists, no file_encryption_keys row) -- mirrors the fallback in
+  // fieldPhotos.ts's GET /file/*. Fall back to the raw R2 bytes rather than
+  // 404ing every unattached ALPR capture already in production R2.
+  const legacy = await c.env.UPLOADS.get(key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  return new Response(legacy.body, {
     headers: {
-      'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+      'Content-Type': legacy.httpMetadata?.contentType || 'image/jpeg',
       'Cache-Control': 'private, max-age=86400',
     },
   });
@@ -999,7 +1020,7 @@ alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
       ? (entry as File) : null;
     if (file) {
       const key = `alpr/vehicles/${id}/${field}.jpg`;
-      await c.env.UPLOADS.put(key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
       out[`${field}_r2_key`] = key;
     }
   }

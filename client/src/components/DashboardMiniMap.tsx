@@ -11,7 +11,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import mapboxgl from 'mapbox-gl';
 import { Maximize2, Loader2 } from 'lucide-react';
 import { getMapboxToken } from '../utils/mapboxApiKey';
@@ -19,8 +19,10 @@ import { injectMapboxStyles } from '../utils/mapboxLoader';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
 import { apiFetch } from '../hooks/useApi';
 import { buildUnitMarkerEl, buildUnitPopupHtml, buildCallMarkerEl, buildCallPopupHtml } from '../pages/map/utils/mapMarkers';
+import { isValidLngLat } from '../pages/map/utils/mapMarkers';
 import type { MapUnit, ActiveCall } from '../pages/map/utils/mapConstants';
 import IconButton from './IconButton';
+import { useWebglMapRecovery } from '../hooks/useWebglMapRecovery';
 
 const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608];
 const DEFAULT_ZOOM = 11;
@@ -31,10 +33,12 @@ export default function DashboardMiniMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [units, setUnits] = useState<MapUnit[]>([]);
   const [calls, setCalls] = useState<ActiveCall[]>([]);
+  const { rebuildNonce, attach, onMapLoaded } = useWebglMapRecovery();
 
   // Data fetch — same endpoints the full Map page uses.
   useEffect(() => {
@@ -67,6 +71,7 @@ export default function DashboardMiniMap() {
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: DEFAULT_ZOOM,
+          projection: 'mercator',
           interactive: true,
           attributionControl: false,
           dragRotate: false,
@@ -79,11 +84,12 @@ export default function DashboardMiniMap() {
         // 'load' never dispatches, leaving the loading overlay stuck forever).
         // 'idle' (no pending map operations) is a more reliable "ready" signal
         // and fires at least once after the first render regardless.
-        const markReady = () => { if (!cancelled) setLoaded(true); };
+        const markReady = () => { if (!cancelled) { onMapLoaded(map); setLoaded(true); } };
         map.on('load', markReady);
         map.on('idle', markReady);
         map.on('error', (e: mapboxgl.ErrorEvent) => { if (!cancelled) setError(e.error?.message || 'Map error'); });
         mapRef.current = map;
+        webglRecoveryCleanupRef.current = attach(map, 'DashboardMiniMap');
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load map');
       }
@@ -91,10 +97,14 @@ export default function DashboardMiniMap() {
 
     return () => {
       cancelled = true;
+      webglRecoveryCleanupRef.current?.();
+      webglRecoveryCleanupRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
+      setLoaded(false);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rebuildNonce]);
 
   // Marker sync + fit-bounds whenever units/calls/load-state change.
   useEffect(() => {
@@ -107,7 +117,7 @@ export default function DashboardMiniMap() {
     const bounds = new mapboxgl.LngLatBounds();
     let hasPoints = false;
 
-    units.filter(u => u.latitude != null && u.longitude != null).forEach(u => {
+    units.filter(u => isValidLngLat(u.longitude, u.latitude)).forEach(u => {
       const marker = new mapboxgl.Marker({ element: buildUnitMarkerEl(u) })
         .setLngLat([u.longitude!, u.latitude!])
         .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildUnitPopupHtml(u)))
@@ -117,10 +127,10 @@ export default function DashboardMiniMap() {
       hasPoints = true;
     });
 
-    calls.filter(c => c.latitude != null && c.longitude != null).forEach(c => {
+    calls.filter(c => isValidLngLat(c.longitude, c.latitude)).forEach(c => {
       const marker = new mapboxgl.Marker({ element: buildCallMarkerEl(c) })
         .setLngLat([c.longitude!, c.latitude!])
-        .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildCallPopupHtml(c)))
+        .setPopup(new mapboxgl.Popup({ offset: 12, closeButton: false }).setHTML(buildCallPopupHtml(c, false, Date.now())))
         .addTo(map);
       markersRef.current.push(marker);
       bounds.extend([c.longitude!, c.latitude!]);

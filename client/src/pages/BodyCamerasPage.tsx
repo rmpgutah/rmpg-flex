@@ -5,7 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { Video, Loader2, AlertTriangle } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -359,15 +359,17 @@ export default function BodyCamerasPage() {
     const path = opts?.force
       ? `/personnel/body-cameras/${camId}?force=true`
       : `/personnel/body-cameras/${camId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete body camera', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     setCameraToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Body camera destroyed (admin override)' : 'Body camera deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Camera list could not refresh — pull-to-refresh to retry', 'info'); }
@@ -380,15 +382,17 @@ export default function BodyCamerasPage() {
     const path = opts?.force
       ? `/personnel/bodycam-videos/${vidId}?force=true`
       : `/personnel/bodycam-videos/${vidId}`;
+    let deleteOk = false;
     try {
       await apiFetch(path, { method: 'DELETE' });
+      deleteOk = true;
     } catch (err: any) {
       addToast(err?.message || 'Failed to delete video', 'error');
+    } finally {
       setDeleting(false);
-      return;
     }
+    if (!deleteOk) return;
     setVideoToDelete(null);
-    setDeleting(false);
     addToast(opts?.force ? 'Video destroyed (admin override)' : 'Video deleted', 'success');
     try { await refreshBodyCameras(); }
     catch { addToast('Video list could not refresh — pull-to-refresh to retry', 'info'); }
@@ -607,11 +611,11 @@ export default function BodyCamerasPage() {
         <RedactionStudio
           eventId={redactingVideo.id}
           source="bodycam"
-          streamUrl={`${window.location.origin}/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
+          streamUrl={`/api/personnel/bodycam-videos/${redactingVideo.id}/stream`}
           stampLines={[
             redactingVideo.title,
             redactingVideo.officer_name || '',
-            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString() : '',
+            redactingVideo.recorded_at ? parseTimestamp(redactingVideo.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }) : '',
           ].filter(Boolean)}
           initialRegions={(() => {
             const raw = redactingVideo.detection_regions_json;
@@ -664,7 +668,7 @@ export default function BodyCamerasPage() {
         recordType="body-cam video"
         recordLabel={
           videoToDelete?.title
-          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString())
+          || (videoToDelete?.recorded_at && parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))
           || (videoToDelete ? `Video #${videoToDelete.id}` : undefined)
         }
         details={
@@ -674,7 +678,7 @@ export default function BodyCamerasPage() {
               {videoToDelete.classification && <div>Classification: {videoToDelete.classification}</div>}
               {videoToDelete.case_number && <div>Case {videoToDelete.case_number}</div>}
               {videoToDelete.recorded_at && (
-                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString()}</div>
+                <div className="text-rmpg-500">Recorded {parseTimestamp(videoToDelete.recorded_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}</div>
               )}
               {videoToDelete.duration_seconds != null && (
                 <div className="text-rmpg-500">{Math.round(videoToDelete.duration_seconds)}s</div>

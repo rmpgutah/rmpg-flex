@@ -17,8 +17,9 @@ import {
   hexToRgb,
 } from './pdfGenerator';
 import { LAYOUT, COLOR } from './pdfTokens';
-import { toDisplayLabel } from './formatters';
+import { formatEnumValue, toDisplayLabel } from './formatters';
 import { registerArialFont } from './pdf/fonts/registerArial';
+import { localToday } from './dateUtils';
 
 export interface SitRepCall {
   call_number: string;
@@ -75,7 +76,9 @@ const PRI_RGB: Record<string, [number, number, number]> = {
   P4: [122, 106, 63],
 };
 
-export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
+/** Build the Tactical Situation Report and return the jsPDF document
+ *  without saving it. */
+export async function buildMapSituationReportPdf(data: MapSituationReportData): Promise<jsPDF> {
   const branding = await fetchPdfBranding().catch(() => DEFAULT_PDF_BRANDING);
   const logoB64 = await loadLogoDarkBase64().catch(() => null);
   const accent = hexToRgb(branding.accent_color || DEFAULT_PDF_BRANDING.accent_color);
@@ -217,7 +220,7 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
       doc.setFillColor(pr[0], pr[1], pr[2]);
       doc.roundedRect(cx + 1.5, y + 1, 11, 3.2, 0.4, 0.4, 'F');
       doc.setTextColor(255, 255, 255); doc.setFontSize(5.5); doc.setFont('helvetica', 'bold');
-      doc.text(call.priority || '—', cx + 7, y + 3.3, { align: 'center' });
+      doc.text(formatEnumValue(call.priority) || '—', cx + 7, y + 3.3, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(20, 20, 20);
       cx += cols[1].w;
       doc.text(toDisplayLabel(call.incident_type).slice(0, 26) || '—', cx + 1.5, y + 3.5); cx += cols[2].w;
@@ -298,6 +301,14 @@ export async function generateMapSituationReport(data: MapSituationReportData): 
 
   finalizePoliceReport(doc, { watermark: 'CONFIDENTIAL' });
 
-  const dateStr = now.toISOString().slice(0, 10);
+  return doc;
+}
+
+/** Build the Tactical Situation Report and immediately save it to disk (same
+ *  filename/behaviour as before this function was split into a builder +
+ *  saver). */
+export async function generateMapSituationReport(data: MapSituationReportData): Promise<void> {
+  const doc = await buildMapSituationReportPdf(data);
+  const dateStr = localToday();
   doc.save(`RMPG_Situation_Report_${dateStr}.pdf`);
 }

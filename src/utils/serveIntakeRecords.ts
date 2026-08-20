@@ -33,18 +33,23 @@ import { geocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { deriveCrossStreetFromCoords } from './crossStreet';
 import { parseLocationParts } from './parseLocationParts';
-import { buildPsoBriefing, buildOcrContext } from './serveIntakeBriefing';
+import { buildPsoBriefing, buildOcrContext, isAutoCreatedBusinessRecord } from './serveIntakeBriefing';
 import type { IntakeDocMeta, OcrContext, PropertyRecord, BusinessRecord } from './serveIntakeBriefing';
 import { createCaseWithLinks } from './caseCreate';
 import {
   planAttemptWindows, escalatePriorityForDeadline,
-  clusterByProximity, applyUrgencyTier,
+  clusterByProximity, applyUrgencyTier, daysUntilDeadline,
 } from './serveDiligencePlanner';
 import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
+import { resolveAddressClass } from './serveAddressClass';
+import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
+import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
+import type { FieldConflict } from './serveIntakeArbitrate';
+import { toDisplayLabel } from './displayLabel';
 
 // ── Sentinel client for intake-generated properties ──────────
 // properties.client_id is NOT NULL and FKs to clients(id). Process-
@@ -79,6 +84,19 @@ export function normAddr(s: string | null | undefined): string {
 function normName(s: string | null | undefined): string {
   if (!s) return '';
   return s.toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// Finding 3 FIX: whether the ACTUAL planned attempt count (not a hardcoded
+// guess at what the default "should" be) fits the days remaining before the
+// deadline. `plannedWindowCount` must be the real `attemptPlan.length` —
+// business defaults are 2 windows, residential/unknown defaults are 3, and a
+// client schedule can specify any count; guessing any single constant is
+// wrong for at least one of those cases.
+export function computeScheduleImpossible(
+  plannedWindowCount: number,
+  daysRemaining: number | null,
+): boolean {
+  return !scheduleFitsDeadline(plannedWindowCount, daysRemaining);
 }
 
 // A registered-agent string is only a real human name worth a `persons` row
@@ -556,6 +574,18 @@ export interface CommitInput {
   // parsed_data. Optional — the legacy /intake path has no per-doc metadata.
   docs?: IntakeDocMeta[];
   allDates?: string[];
+  // Cross-document arbitration output (serveIntakeArbitrate.arbitrateFields).
+  // Embedded verbatim into parsed_data._intake.conflicts so the PR 4 review
+  // UI can offer the rejected candidate instead of the value we picked.
+  // Optional — single-document callers (/intake legacy path, document
+  // reprocessing) have nothing to arbitrate.
+  conflicts?: FieldConflict[];
+  // Cross-field validation issues (serveIntakeValidate.validateFields), e.g.
+  // ZIP↔state disagreement or a bad phone digit count. Previously these only
+  // reached log.warn, so an officer saw a confidence knocked down with no
+  // stated reason. Embedded verbatim into parsed_data._intake.validation_issues
+  // so PR 4's review UI can show the reason behind the lowered confidence.
+  validationIssues?: Array<{ field: string; severity: 'warn' | 'error'; message: string }>;
   // Operator-selected client (from the intake form's client dropdown). When
   // set, it is written directly to serve_queue.client_id and skips the
   // post-hoc name-based lookup that would otherwise resolve the contract.
@@ -683,10 +713,6 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     address: queueRow.recipient_address || null,
   });
 
-  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
-    isBusiness,
-    locationNote,
-  });
   const recipientFirst = get('recipient_first_name');
   const recipientMiddle = get('recipient_middle_name');
   const recipientLast = get('recipient_last_name');
@@ -703,9 +729,11 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
   const city = queueRow.recipient_city || '';
   const stateZip = [queueRow.recipient_state, queueRow.recipient_zip].filter(Boolean).join(' ');
   const addrLower = addr.toLowerCase();
+  // Use word-boundary regex so a 2-letter state abbreviation (e.g. "UT")
+  // doesn't falsely match mid-word street names like "South" (sou-TH → "ut").
   const cityAlreadyInAddr = !!city && addrLower.includes(city.toLowerCase());
   const stateAlreadyInAddr = !!queueRow.recipient_state &&
-    addrLower.includes(queueRow.recipient_state.toLowerCase());
+    new RegExp(`\\b${queueRow.recipient_state}\\b`, 'i').test(addr);
   const cityStateSuffix = cityAlreadyInAddr || stateAlreadyInAddr
     ? '' : [city, stateZip].filter(Boolean).join(', ');
   const fullLocation = [addr, cityStateSuffix].filter(Boolean).join(', ');
@@ -765,7 +793,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     if (!business.created && business.id) {
       businessRecord = await queryFirst<BusinessRecord>(
         db,
-        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes FROM businesses WHERE id = ?',
+        'SELECT owner_name, owner_phone, contact_name, contact_phone, phone, notes, business_type FROM businesses WHERE id = ?',
         business.id,
       ) ?? null;
     }
@@ -795,6 +823,19 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       });
       // For the queue's recipient_person_id, point at the agent —
       // that's who the officer needs to find on the door.
+      person = agentPerson;
+    } else if (recipientFirst || recipientLast) {
+      // Fallback: operator filled the agent's name into the First/Last Name
+      // fields (common when the registered agent is a known individual rather
+      // than a department). Don't drop these — create the person row from them.
+      agentPerson = await findOrCreatePerson(db, {
+        first_name: recipientFirst,
+        middle_name: recipientMiddle,
+        last_name: recipientLast || '-',
+        dob: recipientDob || null,
+        address: addr || null,
+        phone: recipientPhone || null,
+      });
       person = agentPerson;
     }
   } else if (recipientFirst || recipientLast) {
@@ -833,6 +874,86 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     }
   }
 
+  // Address class describes the LOCATION (operator decision D-2). A
+  // registered agent at a residence gets residential windows; isBusiness
+  // no longer selects timing, only who may accept service.
+  //
+  // propertyRecordClass is left undefined: the live `properties` table
+  // (see migrations/baseline/schema.sql) has no `address_class` column —
+  // only `property_type` ('business_service'/'residential_service', set
+  // by findOrCreateProperty above), which is a different vocabulary and
+  // not what resolveAddressClass expects. Adding a real column is out of
+  // scope for this task; resolution falls through to businessRecordMatched
+  // / instructionsText / extracted / unknown instead.
+  //
+  // R5: a matched `businesses` row only CONFIRMS a business location when it
+  // is independent evidence. findOrCreateBusiness above inserts a row for
+  // every corporate intake, marked 'Auto-created via serve intake' — so a
+  // corporation served through its registered agent AT THE AGENT'S HOME
+  // auto-created a business row at that residential address on the first
+  // intake, and the second intake matched it and self-confirmed as a
+  // business location: weekday business hours at a private residence. That
+  // is precisely the registered-agent-at-a-residence case D-2 exists to
+  // prevent. Auto-created rows are excluded from confirming.
+  const businessRecordIsIndependent = !!businessRecord && !isAutoCreatedBusinessRecord(businessRecord);
+  const addressClassResult = resolveAddressClass({
+    propertyRecordClass: undefined,
+    businessRecordMatched: businessRecordIsIndependent && isBusiness,
+    instructionsText: queueRow.service_instructions || '',
+    extracted: get('address_class'),
+  });
+
+  const rawClientSchedule = get('client_attempt_schedule');
+  const rawAllowedDays = get('service_days_allowed');
+  const clientBands = parseClientBands(rawClientSchedule);
+  const allowedDays = parseAllowedDays(rawAllowedDays);
+  const startNotBefore = get('attempt_start_not_before') || null;
+
+  // R3: fail-closed only works if the failure is VISIBLE. A non-empty source
+  // string that yields no bands / a null day set means the client dictated
+  // something we could not read — which is NOT the same as the client
+  // dictating nothing, and must not silently become "defaults apply".
+  const unparsedClientSchedule = rawClientSchedule.trim() && clientBands.length === 0
+    ? rawClientSchedule.trim() : null;
+  const unparsedAllowedDays = rawAllowedDays.trim() && allowedDays === null
+    ? rawAllowedDays.trim() : null;
+  if (unparsedClientSchedule || unparsedAllowedDays) {
+    log.warn('serve-intake client schedule present but unparseable — defaults applied', {
+      client_attempt_schedule: unparsedClientSchedule,
+      service_days_allowed: unparsedAllowedDays,
+      case_number: queueRow.case_number,
+    });
+  }
+
+  const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
+    isBusiness,
+    addressClass: addressClassResult.klass,
+    addressClassConfirmed: addressClassResult.confirmed,
+    clientBands,
+    allowedDays,
+    startNotBefore,
+    locationNote,
+  });
+
+  // Finding 3 FIX: `clientBands.length || 3` didn't match selectWindows'
+  // actual defaults (business → 2 windows, residential/unknown → 3), so a
+  // business job with no client schedule and 2 days remaining was wrongly
+  // flagged impossible. Use the ACTUAL planned window count instead of a
+  // hardcoded guess — see computeScheduleImpossible below.
+  const scheduleImpossible = computeScheduleImpossible(
+    attemptPlan.length,
+    daysUntilDeadline(nowIso, queueRow.deadline),
+  );
+
+  log.info('serve-intake attempt plan', {
+    address_class: addressClassResult.klass,
+    class_source: addressClassResult.source,
+    confirmed: addressClassResult.confirmed,
+    client_bands: clientBands.length,
+    authority: attemptPlan[0]?.authority ?? 'none',
+    schedule_impossible: scheduleImpossible,
+  });
+
   // ── OCR provenance context (filed on call notes + queue row) ──
   const ocrContext: OcrContext | null = input.docs?.length
     ? buildOcrContext(input.docs, fields, input.allDates ?? [], nowIso)
@@ -862,6 +983,12 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       locationNote,
       propertyRecord,
       businessRecord,
+      addressClass: addressClassResult.klass,
+      addressClassConfirmed: addressClassResult.confirmed,
+      scheduleImpossible,
+      hasClientSchedule: clientBands.length > 0,
+      unparsedClientSchedule,
+      unparsedAllowedDays,
     }, nowIso);
     // File the OCR provenance note AFTER the intake briefing so the feed
     // reads: safety → briefing → extraction context.
@@ -917,6 +1044,46 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       );
       callId = call.id;
       callNumber = cn;
+
+      // ── PSO / process-service ext fields ────────────────────
+      // Write the Information Form fields into calls_for_service_ext so the
+      // dispatch detail "PSO Client Request Details" and "Process Service
+      // Details" sections are pre-populated from OCR rather than blank.
+      try {
+        const psoServiceWindows = get('service_windows') || queueRow.service_instructions || null;
+        const psoServiceType = queueRow.document_type || get('process_type') || null;
+        const recipientFullName = queueRow.recipient_name ||
+          [recipientFirst, recipientLast].filter(Boolean).join(' ').trim() || null;
+        await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+        await execute(
+          db,
+          `UPDATE calls_for_service_ext SET
+            pso_requestor_name    = COALESCE(NULLIF(?, ''), pso_requestor_name),
+            pso_requestor_phone   = COALESCE(NULLIF(?, ''), pso_requestor_phone),
+            pso_requestor_email   = COALESCE(NULLIF(?, ''), pso_requestor_email),
+            pso_service_type      = COALESCE(NULLIF(?, ''), pso_service_type),
+            pso_service_windows   = COALESCE(NULLIF(?, ''), pso_service_windows),
+            process_service_type  = COALESCE(NULLIF(?, ''), process_service_type),
+            process_served_to     = COALESCE(NULLIF(?, ''), process_served_to),
+            process_served_address = COALESCE(NULLIF(?, ''), process_served_address),
+            case_number           = COALESCE(NULLIF(?, ''), case_number),
+            court_name            = COALESCE(NULLIF(?, ''), court_name)
+           WHERE id = ?`,
+          queueRow.client_name || queueRow.attorney_name || null,
+          get('attorney_phone') || null,
+          get('attorney_email') || null,
+          psoServiceType,
+          psoServiceWindows,
+          psoServiceType,
+          recipientFullName,
+          fullLocation || addr || null,
+          queueRow.case_number || null,
+          queueRow.court_name || null,
+          callId,
+        );
+      } catch (err) {
+        console.warn('[commitOneIntake] PSO ext write skipped (non-fatal):', err);
+      }
     } catch (err) {
       // Best-effort — if the call insert fails (FK or column drift),
       // surface it but don't abort the whole intake. The queue row
@@ -944,7 +1111,21 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       // json_extract(parsed_data, '$._intake.missing_critical') etc.
       _intake: {
         extracted_at: nowIso,
+        // R6: the resolved address class used to be computed here and then
+        // DISCARDED, so every downstream re-plan/backfill path fell back to
+        // the interim `isBusiness ? 'business' : 'unknown'` mapping — the
+        // exact defect this work exists to fix. Persist the full resolution
+        // (class + confirmation + source) so those paths can read the real
+        // answer. `confirmed` is load-bearing, not diagnostic: business
+        // TIMING is gated on it (D-2 / serveAttemptWindows).
+        address_class: {
+          klass: addressClassResult.klass,
+          confirmed: addressClassResult.confirmed,
+          source: addressClassResult.source,
+        },
         attempt_plan: attemptPlan,
+        conflicts: input.conflicts ?? [],
+        validation_issues: input.validationIssues ?? [],
         ...(ocrContext ? {
           documents: input.docs!.map((d) => ({
             file_name: d.file_name, doc_type: d.doc_type,
@@ -987,8 +1168,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         service_instructions, notes,
         plaintiff_name, defendant_name, court_date, parsed_data, status,
         geo_cluster_id, urgency_tier, urgency_computed_at,
-        quality_status, judge_run_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+        quality_status, judge_run_id, sm_job_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -1002,7 +1183,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       queueRow.service_instructions, queueNotes,
       queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
       geoClusterId, urgencyTier, urgencyComputedAt,
-      input.qualityStatus ?? 'clean', input.judgeRunId ?? null,
+      input.qualityStatus ?? 'clean', input.judgeRunId ?? null, queueRow.sm_job_id ?? null,
     );
     queueId = Number(ins.meta.last_row_id);
 
@@ -1087,7 +1268,8 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
       if (personIdForLink) {
         await execute(
           db,
-          `INSERT OR IGNORE INTO case_persons (case_id, person_id, relationship)
+          // case_persons stores the linkage label in `role`, not `relationship`.
+          `INSERT OR IGNORE INTO case_persons (case_id, person_id, role)
            VALUES (?, ?, ?)`,
           caseId, personIdForLink, relationshipLabel,
         );
@@ -1101,7 +1283,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         || [recipientFirst, recipientLast].filter(Boolean).join(' ').trim()
         || 'Unknown recipient';
       const docTypeLabel = queueRow.document_type
-        ? queueRow.document_type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+        ? toDisplayLabel(queueRow.document_type)
         : 'Service of Process';
       const title = `Service: ${recipientLabel} — ${docTypeLabel}`;
 

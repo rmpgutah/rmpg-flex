@@ -20,13 +20,13 @@
 // ============================================================
 
 import { useRef, useState, useEffect, useLayoutEffect, useMemo, type ReactElement } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
-  Route as RouteIcon, Grid3X3, Printer, type LucideIcon,
+  Route as RouteIcon, Grid3X3, Printer, Loader2, type LucideIcon,
 } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
@@ -40,8 +40,8 @@ import {
   HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge, HudPausedBadge,
   HudDeviceHealthBadge, HudOverSpeedBanner, HudZoneAlertBanner, HudWeatherBadge,
 } from './navigation/hud/HudInstruments';
-import { useSpeedLimit, shouldFireOverSpeedAlert } from './navigation/hud/useSpeedLimit';
-import { loadNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
+import { useSpeedLimit, shouldFireOverSpeedAlert } from '../hooks/useSpeedLimit';
+import { loadNavPrefs, saveNavPrefs, NAV_PREFS_CHANGED_EVENT, getEffectiveBrightness, type NavPrefs } from './navigation/NavSettingsPanel';
 import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
 import { playNavTone } from './navigation/hud/navTone';
 import { nextAnnouncement } from './navigation/hud/voiceGuidance';
@@ -75,6 +75,15 @@ import ModuleDirectoryPage from './ModuleDirectoryPage';
 import { useBattery } from '../components/BatteryIndicator';
 import type { MapUnit } from './map/utils/mapConstants';
 import { buildUnitMarkerEl, applyUnitMarkerState, buildUnitPopupHtml } from './map/utils/mapMarkers';
+// Mapbox's built-in Marker `color` option is written straight onto an SVG
+// `fill` PRESENTATION ATTRIBUTE, where `var(--x)` is not valid syntax (CSS
+// custom properties only resolve inside CSS properties). Passing the theme
+// variable silently produced an unparseable fill and a default-black pin, so
+// these two markers take the literal tactical value — the same fixed-palette
+// exemption the map basemap uses.
+import { TACTICAL_BRAND_GOLD } from './map/utils/tacticalPalette';
+import { withAlpha } from '../utils/withAlpha';
+import { toDisplayLabel } from '../utils/formatters';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -146,13 +155,13 @@ function fmtDuration(ms: number): string {
 }
 
 const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: string }> = {
-  gps: { icon: Satellite, color: '#22c55e', label: 'GPS' },
-  wifi: { icon: Wifi, color: '#d4a017', label: 'WiFi' },
-  ip: { icon: Globe, color: '#ef4444', label: 'IP' },
-  unknown: { icon: Globe, color: 'var(--rmpg-500)', label: '—' },
+  gps: { icon: Satellite, color: 'var(--sev-ok)', label: 'GPS' },
+  wifi: { icon: Wifi, color: 'var(--brand-gold)', label: 'WiFi' },
+  ip: { icon: Globe, color: 'var(--sev-critical)', label: 'IP' },
+  unknown: { icon: Globe, color: 'var(--text-muted)', label: '—' },
 };
 
-const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
+const PRIO_COLOR: Record<string, string> = { P1: 'var(--sev-critical)', P2: 'var(--sev-warn)', P3: 'var(--brand-gold)', P4: '#888888' };
 
 interface CrimePoint { id: string; source: 'slc' | 'local' | 'ccm' | 'crash'; category: string; label: string; date: string | null; lat: number; lng: number; area?: string | null; ref?: string | null; division?: string | null; agency?: string | null; kind?: 'crime' | 'crash' | 'cfs'; severity?: number | null }
 
@@ -161,12 +170,12 @@ interface CrimePoint { id: string; source: 'slc' | 'local' | 'ccm' | 'crash'; ca
 // from agency crime. Multi-agency (ccm) data is bucketed server-side into the
 // same Person/Property/Society classes, so it colors identically. (No blue.)
 function crimeColor(p: CrimePoint): string {
-  if (p.source === 'local') return '#22c55e';
+  if (p.source === 'local') return 'var(--sev-ok)';
   const cat = (p.category || '').toLowerCase();
-  if (cat.includes('person')) return '#ef4444';
-  if (cat.includes('property')) return '#f59e0b';
+  if (cat.includes('person')) return 'var(--sev-critical)';
+  if (cat.includes('property')) return 'var(--sev-warn)';
   if (cat.includes('society')) return '#a855f7';
-  return '#d4a017';
+  return 'var(--brand-gold)';
 }
 
 // Trim verbose agency names for the narrow panel ("… Police Department" → "PD",
@@ -185,8 +194,8 @@ function shortAgency(name: string): string {
 // render as hollow rings (separate layer) so they never blur into crime dots.
 function crashColor(severity: number | null | undefined): string {
   const s = Number(severity);
-  if (Number.isFinite(s) && s >= 3) return '#ef4444'; // serious / injury
-  if (Number.isFinite(s) && s >= 1) return '#f59e0b'; // minor injury
+  if (Number.isFinite(s) && s >= 3) return 'var(--sev-critical)'; // serious / injury
+  if (Number.isFinite(s) && s >= 1) return 'var(--sev-warn)'; // minor injury
   return '#e5e7eb';                                    // property damage only
 }
 
@@ -201,11 +210,11 @@ function crimeClass(p: CrimePoint): CrimeClass {
   return 'other';
 }
 const CLASS_META: Record<CrimeClass, { label: string; color: string }> = {
-  person: { label: 'Person', color: '#ef4444' },
-  property: { label: 'Property', color: '#f59e0b' },
+  person: { label: 'Person', color: 'var(--sev-critical)' },
+  property: { label: 'Property', color: 'var(--sev-warn)' },
   society: { label: 'Society', color: '#a855f7' },
-  cfs: { label: 'RMPG CFS', color: '#22c55e' },
-  other: { label: 'Other', color: '#d4a017' },
+  cfs: { label: 'RMPG CFS', color: 'var(--sev-ok)' },
+  other: { label: 'Other', color: 'var(--brand-gold)' },
 };
 
 // Escape agency/DB-sourced strings before injecting into popup HTML.
@@ -292,7 +301,7 @@ function SpeedGauge({ mph, max = 120 }: { mph: number | null; max?: number }) {
   const R = 42, C = 2 * Math.PI * R, sweep = 0.72;
   const track = C * sweep;
   const filled = track * (v / max);
-  const color = v > 80 ? '#ef4444' : v > 55 ? '#f59e0b' : '#22c55e';
+  const color = v > 80 ? 'var(--sev-critical)' : v > 55 ? 'var(--sev-warn)' : 'var(--sev-ok)';
   return (
     <div className="relative shrink-0" style={{ width: 116, height: 116 }} title="Speed">
       <svg viewBox="0 0 100 100" className="absolute inset-0" style={{ transform: 'rotate(129deg)' }} aria-hidden="true">
@@ -320,7 +329,7 @@ function HeadingTape({ heading }: { heading: number | null }) {
     const card = ['N', 'E', 'S', 'W'][deg / 90] || '';
     ticks.push(
       <div key={off} className="absolute top-0 flex flex-col items-center" style={{ left: `${x}%`, transform: 'translateX(-50%)' }}>
-        <div style={{ height: major ? 8 : 4, width: 1, background: major ? '#d4a017' : '#555' }} />
+        <div style={{ height: major ? 8 : 4, width: 1, background: major ? 'var(--brand-gold)' : '#555' }} />
         {major ? <span className="text-[8px] font-bold text-brand-300 leading-none mt-0.5">{card}</span>
           : deg % 30 === 0 ? <span className="text-[7px] text-rmpg-500 leading-none mt-0.5">{deg}</span> : null}
       </div>,
@@ -329,7 +338,7 @@ function HeadingTape({ heading }: { heading: number | null }) {
   return (
     <div className="relative h-5 w-full overflow-hidden">
       {ticks}
-      <div className="absolute left-1/2 top-0 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '6px solid #d4a017' }} />
+      <div className="absolute left-1/2 top-0 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '6px solid var(--brand-gold)' }} />
     </div>
   );
 }
@@ -345,7 +354,7 @@ function GForceBall({ longG, latG, peak, size = 66 }: {
   const c = size / 2, R = c - 9; // 1.0 g = R
   const toPx = (g: number) => Math.max(-1.15, Math.min(1.15, g)) * R;
   const mag = Math.hypot(longG, latG);
-  const col = mag > 0.55 ? '#ef4444' : mag > 0.32 ? '#f59e0b' : '#22c55e';
+  const col = mag > 0.55 ? 'var(--sev-critical)' : mag > 0.32 ? 'var(--sev-warn)' : 'var(--sev-ok)';
   const peakMag = Math.min(1.15, Math.hypot(Math.max(peak.accel, peak.brake), peak.lat));
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }} title="Live G-force — longitudinal vs lateral load · gold ring = session peak">
@@ -356,7 +365,7 @@ function GForceBall({ longG, latG, peak, size = 66 }: {
         <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="#181818" strokeWidth="1" />
         <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="#181818" strokeWidth="1" />
         {peakMag > 0.05 && (
-          <circle cx={c} cy={c} r={peakMag * R} fill="none" stroke="#d4a017" strokeOpacity="0.42" strokeWidth="1" strokeDasharray="2 2" />
+          <circle cx={c} cy={c} r={peakMag * R} fill="none" stroke="var(--brand-gold)" strokeOpacity="0.42" strokeWidth="1" strokeDasharray="2 2" />
         )}
         {/* live load vector + dot */}
         <line x1={c} y1={c} x2={c + toPx(latG)} y2={c - toPx(longG)} stroke={col} strokeWidth="1.25" strokeOpacity="0.55" />
@@ -383,7 +392,7 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
       <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
       <div
         className="font-mono font-bold text-[13px] leading-tight mt-0.5 truncate tabular-nums"
-        style={{ color: accent || (dim ? 'var(--rmpg-600)' : 'var(--rmpg-300)') }}
+        style={{ color: accent || (dim ? 'var(--text-muted)' : 'var(--text-secondary)') }}
       >
         {value}
       </div>
@@ -393,9 +402,9 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
 
 // Tactical color for a unit's status (friendly contacts on the scope/board).
 function statusColor(s: string): string {
-  if (s === 'available') return '#22c55e';
-  if (s === 'onscene') return '#ef4444';
-  if (s === 'enroute' || s === 'dispatched') return '#f59e0b';
+  if (s === 'available') return 'var(--sev-ok)';
+  if (s === 'onscene') return 'var(--sev-critical)';
+  if (s === 'enroute' || s === 'dispatched') return 'var(--sev-warn)';
   if (s === 'busy') return '#8b5cf6';
   return '#888888';
 }
@@ -429,7 +438,7 @@ function TacticalScope({ heading, contacts, maxRangeMi, size = 134 }: {
         <line x1={cc} y1={cc - R} x2={cc} y2={cc + R} stroke="#161616" strokeWidth="1" />
         <line x1={cc - R} y1={cc} x2={cc + R} y2={cc} stroke="#161616" strokeWidth="1" />
         {head && (
-          <line x1={cc} y1={cc} x2={head.x} y2={head.y} stroke="#d4a017" strokeWidth="1.5" strokeOpacity="0.65" />
+          <line x1={cc} y1={cc} x2={head.x} y2={head.y} stroke="var(--brand-gold)" strokeWidth="1.5" strokeOpacity="0.65" />
         )}
         {contacts.map((ct, i) => {
           const r = Math.min(1, ct.distMi / maxRangeMi) * R;
@@ -443,7 +452,7 @@ function TacticalScope({ heading, contacts, maxRangeMi, size = 134 }: {
           }
           return <circle key={i} cx={x} cy={y} r="2.6" fill={ct.color} stroke="#0a0a0a" strokeWidth="0.6" />;
         })}
-        <circle cx={cc} cy={cc} r="2.6" fill="#d4a017" stroke="#0a0a0a" strokeWidth="0.9" />
+        <circle cx={cc} cy={cc} r="2.6" fill="var(--brand-gold)" stroke="#0a0a0a" strokeWidth="0.9" />
       </svg>
       <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[7px] font-bold text-rmpg-500">N</span>
       <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] text-rmpg-700">S</span>
@@ -461,17 +470,17 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 }) {
   const rel = heading != null ? ((bearing - heading) % 360 + 360) % 360 : bearing;
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1 ${threat ? 'bg-red-500/10' : ''}`}>
-      <svg width="13" height="13" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${threat ? 'bg-red-500/10' : ''}`}>
+      <svg width="14" height="14" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
         <path d="M6 1 L9.5 10.5 L6 8 L2.5 10.5 Z" fill={color} />
       </svg>
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
-        <div className="text-[8px] text-rmpg-500 truncate leading-tight">{sub}</div>
+        <div className="text-[11px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
+        <div className="text-[10px] text-rmpg-500 truncate leading-tight">{sub}</div>
       </div>
       <div className="text-right shrink-0 leading-tight">
-        <div className="text-[10px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
-        <div className="text-[8px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
+        <div className="text-[11px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
+        <div className="text-[10px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
       </div>
     </div>
   );
@@ -568,7 +577,7 @@ export default function NavigationPage() {
           type: 'line',
           source: 'rmpg-route-source',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0 0 0 / 0)'] },
         });
         map.addLayer({
           id: 'rmpg-route-layer',
@@ -595,7 +604,7 @@ export default function NavigationPage() {
     try {
       map.setPaintProperty('rmpg-route-traveled', 'line-gradient', [
         'step', ['line-progress'],
-        'rgba(58,58,58,0.55)', Math.max(routeProgress.fraction, 0.0001), 'rgba(0,0,0,0)',
+        'rgba(58,58,58,0.55)', Math.max(routeProgress.fraction, 0.0001), 'rgba(0 0 0 / 0)',
       ]);
     } catch { /* style not ready */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -644,6 +653,35 @@ export default function NavigationPage() {
       if (e.key === null || e.key === 'rmpg_nav_prefs') {
         const p = loadNavPrefs();
         setBrightnessPrefs({ brightness: p.brightness, brightnessMode: p.brightnessMode });
+      }
+    };
+    window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  // Units/theme/clock/orientation — same live-reactive load/event pattern as
+  // brightnessPrefs/hudTiles above. These are set from NavPage.tsx's Settings
+  // panel (the two pages share the rmpg_nav_prefs blob) but were previously
+  // never read here, so changing them there had no visible effect on this
+  // page's live drive HUD.
+  const [displayPrefs, setDisplayPrefs] = useState(() => {
+    const p = loadNavPrefs();
+    return { units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation };
+  });
+  useEffect(() => {
+    const onPrefsChanged = (e: Event) => {
+      const detail = (e as CustomEvent<NavPrefs>).detail;
+      const p = detail ?? loadNavPrefs();
+      setDisplayPrefs({ units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation });
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === 'rmpg_nav_prefs') {
+        const p = loadNavPrefs();
+        setDisplayPrefs({ units: p.units, theme: p.theme, clock: p.clock, orientation: p.orientation });
       }
     };
     window.addEventListener(NAV_PREFS_CHANGED_EVENT, onPrefsChanged);
@@ -889,6 +927,8 @@ export default function NavigationPage() {
   // likely; each map rebuilds itself in place at its captured view.
   const [navRecoverNonce, setNavRecoverNonce] = useState(0);
   const [insetRecoverNonce, setInsetRecoverNonce] = useState(0);
+  const [isNavRecovering, setIsNavRecovering] = useState(false);
+  const [mapNeedsManualReload, setMapNeedsManualReload] = useState(false);
   const navRecoverCamRef = useRef<MapCamera | null>(null);
   const navRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const insetRecoveryCleanupRef = useRef<(() => void) | null>(null);
@@ -964,15 +1004,38 @@ export default function NavigationPage() {
   const [, force] = useState(0);
 
   // ── Drive-Mode HUD state (drive lane) ──
+  // Speed unit has its own dedicated in-HUD toggle (quick access while
+  // driving) persisted to its own storage key, but Settings (NavPage.tsx)
+  // also exposes a "Units" control writing prefs.units to the shared
+  // rmpg_nav_prefs blob — previously that never reached this page at all.
+  // Keep both writable, but seed from + stay reactive to whichever changed
+  // most recently: the in-HUD toggle also persists to prefs.units so the
+  // two controls can never silently disagree.
   const [speedUnit, setSpeedUnit] = useState<SpeedUnit>(() => loadSpeedUnit());
-  const cycleSpeedUnit = () => setSpeedUnit((u) => { const next: SpeedUnit = u === 'mph' ? 'kmh' : 'mph'; saveSpeedUnit(next); return next; });
+  const cycleSpeedUnit = () => setSpeedUnit((u) => {
+    const next: SpeedUnit = u === 'mph' ? 'kmh' : 'mph';
+    saveSpeedUnit(next);
+    saveNavPrefs({ ...loadNavPrefs(), units: next === 'kmh' ? 'metric' : 'imperial' });
+    return next;
+  });
+  // Reflect a Units change made from Settings (NavPage.tsx) back onto this
+  // page's speedUnit — the reverse direction of the write in cycleSpeedUnit
+  // above, so neither control can go stale relative to the other.
+  useEffect(() => {
+    const next: SpeedUnit = displayPrefs.units === 'metric' ? 'kmh' : 'mph';
+    setSpeedUnit((prev) => (prev === next ? prev : next));
+    saveSpeedUnit(next);
+  }, [displayPrefs.units]);
   const [footerCollapsed, setFooterCollapsed] = useState(false); // #45
   const [hudMuted, setHudMuted] = useState(false);               // #46 transient mute
   const [followActive, setFollowActive] = useState(true);        // #47 follow-me camera
   const followActiveRef = useRef(true);
   useEffect(() => { followActiveRef.current = followActive; }, [followActive]);
   const [pitched, setPitched] = useState(true);                  // #63 2D/3D
-  const [mapOrientation] = useState<'north-up' | 'heading-up'>('heading-up'); // #34 (map rotates to heading)
+  // #34 — map/compass orientation, driven by Settings (was a dead useState
+  // with no setter, permanently hardcoded to 'heading-up' regardless of the
+  // Settings panel's Map Orientation control).
+  const mapOrientation = displayPrefs.orientation;
   // #32/#53 — hard-event counters + transient G-ball flash.
   const hardBrakesRef = useRef(0);
   const hardAccelsRef = useRef(0);
@@ -1060,6 +1123,7 @@ export default function NavigationPage() {
           style: MAPBOX_STYLE_DARK,
           center: rc ? rc.center : [gps.longitude ?? -111.891, gps.latitude ?? 40.7608],
           zoom: rc ? rc.zoom : 16.5,
+          projection: 'mercator',
           pitch: rc ? rc.pitch : 55,
           bearing: rc ? rc.bearing : 0,
           attributionControl: false,
@@ -1080,6 +1144,8 @@ export default function NavigationPage() {
           navRecoveryCleanupRef.current = installWebglContextRecovery(map, {
             label: 'NavigationPage.main',
             onRebuild: (camera) => {
+              setIsNavRecovering(false);
+              setMapNeedsManualReload(false);
               navRecoverCamRef.current = camera;
               if (navRecoveryCleanupRef.current) { navRecoveryCleanupRef.current(); navRecoveryCleanupRef.current = null; }
               try { markerRef.current?.remove(); } catch { /* gone */ }
@@ -1088,8 +1154,11 @@ export default function NavigationPage() {
               setMapReady(false);
               setNavRecoverNonce((n) => n + 1);
             },
+            onContextLost: () => setIsNavRecovering(true),
+            onContextRestored: () => setIsNavRecovering(false),
+            onGiveUp: () => { setIsNavRecovering(false); setMapNeedsManualReload(true); },
           });
-          markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
+          markerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
             .addTo(map);
           setMapReady(true);
@@ -1125,6 +1194,7 @@ export default function NavigationPage() {
           style: MAPBOX_STYLE_DARK,
           center: [gps.longitude!, gps.latitude!],
           zoom: 17.4, pitch: 70, bearing: dir ?? 0,
+          projection: 'mercator',
           attributionControl: false, interactive: false,
         });
         m.on('style.load', () => applyRmpgBasemap(m, { variant: 'dark' }));
@@ -1143,8 +1213,9 @@ export default function NavigationPage() {
               setInsetReady(false);
               setInsetRecoverNonce((n) => n + 1);
             },
+            onGiveUp: () => setMapNeedsManualReload(true),
           });
-          insetMarkerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
+          insetMarkerRef.current = new mapboxgl.Marker({ color: TACTICAL_BRAND_GOLD, anchor: 'bottom' })
             .setLngLat([gps.longitude!, gps.latitude!]).addTo(m);
           setInsetReady(true);
         });
@@ -1190,25 +1261,37 @@ export default function NavigationPage() {
     if (effMph != null) {
       const p2 = accelRef.current;
       if (p2 && now > p2.t) {
-        const g = ((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94;
-        setGForce(g);
-        if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
-        else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
-        // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
-        // triggered so one event counts once, with a transient amber G-ball flash.
-        const HARD = 0.35;
-        if (g <= -HARD && lastGSignRef.current > -HARD) {
-          hardBrakesRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('brake');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
-        } else if (g >= HARD && lastGSignRef.current < HARD) {
-          hardAccelsRef.current += 1; forceEvents((n) => n + 1);
-          setGFlash('accel');
-          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
-          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+        const dts = (now - p2.t) / 1000;
+        // Mirror the lateral guard: reject sub-50 ms or >10 s intervals where
+        // GPS speed noise dominates and produces spurious multi-G spikes.
+        if (dts > 0.05 && dts < 10) {
+          const g = ((effMph - p2.mph) / dts) / 21.94;
+          if (Number.isFinite(g)) {
+            setGForce(g);
+            // Gate peaks on ≤1.5 g — a GPS speed glitch (large Δv in one short
+            // sample) can spike far above any real patrol-vehicle maneuver and
+            // permanently corrupt the session max shown in the Movement Report.
+            if (Math.abs(g) <= 1.5) {
+              if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
+              else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
+            }
+            // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
+            // triggered so one event counts once, with a transient amber G-ball flash.
+            const HARD = 0.35;
+            if (g <= -HARD && lastGSignRef.current > -HARD) {
+              hardBrakesRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('brake');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            } else if (g >= HARD && lastGSignRef.current < HARD) {
+              hardAccelsRef.current += 1; forceEvents((n) => n + 1);
+              setGFlash('accel');
+              if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+              gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+            }
+            lastGSignRef.current = g;
+          }
         }
-        lastGSignRef.current = g;
       }
       accelRef.current = { mph: effMph, t: now };
     }
@@ -1231,7 +1314,7 @@ export default function NavigationPage() {
         if (dts > 0.05 && dts < 10) {
           const omega = (dd / dts) * Math.PI / 180;     // rad/s, signed (+right / −left)
           let lg = (omega * (effMph / 2.237)) / 9.80665; // ω·v / g
-          if (!Number.isFinite(lg) || Math.abs(lg) > 2) lg = 0; // clamp GPS noise
+          if (!Number.isFinite(lg) || Math.abs(lg) > 1.5) lg = 0; // clamp GPS heading jitter
           setLatGLive(lg);
           peakGRef.current.lat = Math.max(peakGRef.current.lat, Math.abs(lg));
         }
@@ -1616,7 +1699,7 @@ export default function NavigationPage() {
             'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 12, 16, 28],
             'heatmap-opacity': 0.45,
             'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0,0,0,0)', 0.3, 'rgba(212,160,23,0.35)', 0.6, 'rgba(245,158,11,0.6)', 1, 'rgba(239,68,68,0.9)'],
+              0, 'rgba(0 0 0 / 0)', 0.3, 'rgba(212,160,23,0.35)', 0.6, 'rgba(245,158,11,0.6)', 1, 'rgba(239,68,68,0.9)'],
           },
         });
         map.addLayer({
@@ -1667,7 +1750,7 @@ export default function NavigationPage() {
           id: 'rmpg-crash-pts', type: 'circle', source: SRC,
           paint: {
             'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.6, 17, 6],
-            'circle-color': 'rgba(0,0,0,0)',           // hollow center → reads as a ring
+            'circle-color': 'rgba(0 0 0 / 0)',           // hollow center → reads as a ring
             'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 17, 1.8],
             'circle-stroke-color': ['get', 'scolor'],
             'circle-opacity': 1,
@@ -1696,7 +1779,7 @@ export default function NavigationPage() {
       const lng = Number(pr.lng), lat = Number(pr.lat);
       const isLocal = pr.source === 'local';
       const isCcm = pr.source === 'ccm';
-      const accent = String(pr.color || '#d4a017');
+      const accent = String(pr.color || 'var(--brand-gold)');
       // Source attribution: our CFS, SLC city, or a named county agency (ccm).
       const srcTag = isLocal ? 'RMPG CFS · county'
         : isCcm ? `${pr.agency || 'County agency'} · county`
@@ -1917,7 +2000,7 @@ export default function NavigationPage() {
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
-  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const clock = new Date().toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: displayPrefs.clock === '12h' });
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
   const course = gps.course ?? null;
@@ -2010,7 +2093,7 @@ export default function NavigationPage() {
         label: p || 'CALL',
         sub: [call.incident_type, call.call_number].filter(Boolean).join(' · '),
         aheadMi: ahead / 1609.34,
-        color: severity >= 3 ? '#ef4444' : severity === 2 ? '#f59e0b' : '#fbbf24',
+        color: severity >= 3 ? 'var(--sev-critical)' : severity === 2 ? 'var(--sev-warn)' : '#fbbf24',
         lat: call.lat, lng: call.lng,
         severity,
       });
@@ -2037,7 +2120,7 @@ export default function NavigationPage() {
         label: 'CRIME',
         sub: `${b.count} incidents · ${b.label}`,
         aheadMi: (b.along - myAlong) / 1609.34,
-        color: severity >= 3 ? '#ef4444' : '#f59e0b',
+        color: severity >= 3 ? 'var(--sev-critical)' : 'var(--sev-warn)',
         lat: b.lat, lng: b.lng,
         severity,
       });
@@ -2065,7 +2148,7 @@ export default function NavigationPage() {
         label: 'CRASH',
         sub: `${b.count} crashes · accident-prone`,
         aheadMi: (b.along - myAlong) / 1609.34,
-        color: severity >= 3 ? '#ef4444' : '#f59e0b',
+        color: severity >= 3 ? 'var(--sev-critical)' : 'var(--sev-warn)',
         lat: b.lat, lng: b.lng,
         severity,
       });
@@ -2150,8 +2233,8 @@ export default function NavigationPage() {
         if (!seen.has(c.call_number)) {
           seen.add(c.call_number);
           fireAlert(c.priority === 'P1' ? 'p1_alert' : 'warning',
-            `${c.priority} ${c.incident_type.replace(/_/g, ' ')} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
-            '#ef4444');
+            `${c.priority} ${toDisplayLabel(c.incident_type)} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
+            'var(--sev-critical)');
         }
       }
     }
@@ -2165,7 +2248,7 @@ export default function NavigationPage() {
     if (!alertsOn) return;
     if (!crimeHotRef.current && crimeNearby >= 8) {
       crimeHotRef.current = true;
-      fireAlert('alert', `High-crime area · ${crimeNearby} within ½mi (60d)`, '#f59e0b');
+      fireAlert('alert', `High-crime area · ${crimeNearby} within ½mi (60d)`, 'var(--sev-warn)');
     } else if (crimeHotRef.current && crimeNearby < 5) {
       crimeHotRef.current = false;
     }
@@ -2194,7 +2277,7 @@ export default function NavigationPage() {
     const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`;
     if (approachFiredRef.current !== key && destCrowMi <= 0.15) {
       approachFiredRef.current = key;
-      fireAlert('dispatch_bell', `Approaching ${destLabel || activeRoute?.callNumber || 'destination'} · ${Math.round(destCrowMi * 5280)} ft`, '#22c55e');
+      fireAlert('dispatch_bell', `Approaching ${destLabel || activeRoute?.callNumber || 'destination'} · ${Math.round(destCrowMi * 5280)} ft`, 'var(--sev-ok)');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destCrowMi, alertsOn]);
@@ -2333,10 +2416,17 @@ export default function NavigationPage() {
   const etaMins = etaToMinutes(routeProgress?.remainingEta ?? activeRoute?.eta ?? '');
   const etaArrival = arrivalClockFrom(etaMins);
   const etaCountdown = etaMins > 0 ? formatCountdown(etaMins) : null;
-  // #55/#56 — resolved day/night theme + brightness (drive lane reads prefs.brightness
-  // via the alert/brightness model; here we derive night from the local hour as a
-  // self-contained fallback so the footer dims without depending on other lanes).
-  const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
+  // #55/#56 — resolved day/night theme + brightness. Respects the Settings
+  // Theme control (displayPrefs.theme) when explicitly set to 'day'/'night';
+  // 'auto' (the default) falls back to the local-hour derivation this always
+  // used before the setting was wired up, so an untouched install's behavior
+  // is unchanged.
+  const nightTheme = useMemo(() => {
+    if (displayPrefs.theme === 'day') return false;
+    if (displayPrefs.theme === 'night') return true;
+    const h = new Date().getHours();
+    return h >= 19 || h < 6;
+  }, [displayPrefs.theme]);
   // #103 — effective brightness resolved via the SHARED getEffectiveBrightness
   // helper (also used by NavPage.tsx's overlay) so both pages that read the
   // same rmpg_nav_prefs blob can never silently diverge on Auto-mode behavior.
@@ -2389,9 +2479,9 @@ export default function NavigationPage() {
     if (hM) mins += parseInt(hM[1], 10) * 60;
     if (mM) mins += parseInt(mM[1], 10);
     if (!hM && !mM) { const cM = etaStr.match(/^(\d+):(\d{2})$/); if (cM) mins = parseInt(cM[1], 10) + (parseInt(cM[2], 10) >= 30 ? 1 : 0); }
-    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
+    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: displayPrefs.clock === '12h' }) : null;
     return { upcomingSteps: upcoming, arrivalClock };
-  }, [activeRoute, routeProgress]);
+  }, [activeRoute, routeProgress, displayPrefs.clock]);
 
   return viewMode === 'modules' ? (
     <div className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
@@ -2412,13 +2502,16 @@ export default function NavigationPage() {
   ) : (
     <div ref={rootRef} className="tactical-dark fixed inset-0 bg-surface-deep overflow-hidden">
       {/* #103 — brightness/dim overlay (manual slider or auto time-of-day curve),
-          same visual treatment as NavPage.tsx's #76 overlay. z-index above the
-          map/HUD but pointer-events-none so it never blocks touch. */}
+          same visual treatment as NavPage.tsx's #76 overlay. Sits above the
+          map/HUD but BELOW the z-20/z-40 alert banners (arrived, over-speed,
+          zone-entry, proximity) — those are safety-critical and must stay at
+          full brightness even in dim/night mode, not get darkened along with
+          the map. pointer-events-none so it never blocks touch either way. */}
       {effectiveBrightness < 1 && (
         <div
           aria-hidden
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6, zIndex: 45 }}
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{ background: '#000', opacity: (1 - effectiveBrightness) * 0.6 }}
         />
       )}
       {/* Map (or dark backdrop on failure) */}
@@ -2432,6 +2525,25 @@ export default function NavigationPage() {
         <div className="absolute inset-0 flex items-center justify-center text-rmpg-600 text-xs pointer-events-none">
           <Crosshair className="w-4 h-4 mr-2 animate-pulse text-brand-500" />
           Initializing map…
+        </div>
+      )}
+      {isNavRecovering && !mapNeedsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/80 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-5 h-5 text-brand-400 animate-spin" />
+            <span className="text-rmpg-300 text-[10px] font-mono tracking-widest">MAP RECONNECTING…</span>
+          </div>
+        </div>
+      )}
+      {mapNeedsManualReload && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
+          <div className="flex flex-col items-center gap-3 text-center px-6">
+            <span className="text-rmpg-100 text-sm font-mono">MAP GPU CRASH</span>
+            <span className="text-rmpg-400 text-xs">The map GPU context crashed repeatedly. Reload to restore.</span>
+            <button onClick={() => window.location.reload()} className="mt-1 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-mono" style={{ borderRadius: 2 }}>
+              RELOAD PAGE
+            </button>
+          </div>
         </div>
       )}
       {/* #2 — offline/cached basemap fallback indicator. The schematic
@@ -2463,7 +2575,7 @@ export default function NavigationPage() {
         className={`absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20 tab-scroll ${isMobile ? 'overflow-x-auto whitespace-nowrap [&>*]:shrink-0' : ''}`}
         style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)', paddingTop: 'calc(0.5rem + env(safe-area-inset-top, 0px))' }}
       >
-        <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
+        <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, var(--brand-gold) 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
         <Navigation2 className="w-4 h-4 text-brand-400" style={{ filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.5))' }} />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Navigation</span>
         <div className="ml-2"><NavViewToggle mode={viewMode} onMode={setViewMode} /></div>
@@ -2478,7 +2590,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setAlertsOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: alertsOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: alertsOn ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title={alertsOn ? 'Proximity alert tones ON' : 'Proximity alert tones OFF'}
           aria-label={alertsOn ? 'Mute proximity alerts' : 'Unmute proximity alerts'}
         >
@@ -2487,7 +2599,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--rmpg-400)' }}
+          style={{ color: searchOpen ? 'var(--brand-400)' : 'var(--text-secondary)' }}
           title="Search destination"
           aria-label="Search destination"
         >
@@ -2495,8 +2607,8 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrimeOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crimeOn ? 'var(--sev-warning)' : 'var(--rmpg-600)' }}
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
+          style={{ color: crimeOn ? 'var(--sev-warn)' : 'var(--text-muted)' }}
           title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
@@ -2504,8 +2616,8 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => setCrashOn((v) => !v)}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: crashOn ? 'var(--rmpg-200)' : 'var(--rmpg-600)' }}
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
+          style={{ color: crashOn ? 'var(--text-primary)' : 'var(--text-muted)' }}
           title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
           aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
         >
@@ -2514,7 +2626,7 @@ export default function NavigationPage() {
         <button
           onClick={() => setTrailOn((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
-          style={{ color: trailOn ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          style={{ color: trailOn ? 'var(--brand-400)' : 'var(--text-muted)' }}
           title={trailOn ? `Hide patrol trail (${trailPtsCount} pts)` : 'Show patrol breadcrumb trail'}
           aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
         >
@@ -2522,8 +2634,8 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
+          style={{ color: tripOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Movement report (speed, g-force, driving events)"
           aria-label="Toggle movement report"
         >
@@ -2531,8 +2643,8 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: tripsOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
+          style={{ color: tripsOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Trip chain — per-trip movement reports for this unit"
           aria-label="Toggle trips drawer"
         >
@@ -2540,8 +2652,8 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
-          style={{ color: logOpen ? 'var(--brand-400)' : 'var(--rmpg-600)' }}
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase"
+          style={{ color: logOpen ? 'var(--accent-active)' : 'var(--text-muted)' }}
           title="Call history log for this unit"
           aria-label="Toggle call history log"
         >
@@ -2557,7 +2669,7 @@ export default function NavigationPage() {
         </button>
         <button
           onClick={() => navigate('/map')}
-          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-rmpg-100"
+          className="toolbar-btn flex items-center gap-1 text-[11px] uppercase text-rmpg-300 hover:text-rmpg-100"
           title="Back to map"
           aria-label="Back to map"
         >
@@ -2569,7 +2681,7 @@ export default function NavigationPage() {
       {navAlert && (
         <div
           className="absolute z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 shadow-2xl animate-pulse"
-          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${navAlert.color}66` }}
+          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${withAlpha(navAlert.color, '66')}` }}
         >
           <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: navAlert.color }} />
           <span className="text-[12px] font-bold uppercase tracking-wide truncate" style={{ color: navAlert.color }}>{navAlert.text}</span>
@@ -2691,7 +2803,7 @@ export default function NavigationPage() {
           {corridorHazards.length > 0 && (
             <div className="border-t" style={{ borderColor: corridorCritical > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.35)' }}>
               <div className="flex items-center gap-1.5 px-3 py-1" style={{ background: corridorCritical > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(245,158,11,0.08)' }}>
-                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${corridorCritical > 0 ? 'animate-pulse' : ''}`} style={{ color: corridorCritical > 0 ? '#ef4444' : '#f59e0b' }} />
+                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${corridorCritical > 0 ? 'animate-pulse' : ''}`} style={{ color: corridorCritical > 0 ? 'var(--sev-critical)' : 'var(--sev-warn)' }} />
                 <span className="text-[9px] font-bold uppercase tracking-widest flex-1" style={{ color: corridorCritical > 0 ? '#fca5a5' : '#fcd34d' }}>Ahead on route</span>
                 <span className="text-[9px] font-mono text-rmpg-400">{corridorHazards.length}</span>
               </div>
@@ -2739,7 +2851,7 @@ export default function NavigationPage() {
         >
           <div className="relative flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
             <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.5))' }} />
-            <Flame className="w-3 h-3" style={{ color: '#f59e0b' }} />
+            <Flame className="w-3 h-3" style={{ color: 'var(--sev-warn)' }} />
             <span className="text-[9px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">SL County · Crime</span>
             <span className="text-[9px] font-mono text-brand-300">{crimeCounts.total}</span>
           </div>
@@ -2792,13 +2904,13 @@ export default function NavigationPage() {
             )}
             <div className="flex items-center gap-1 pt-1 border-t border-rmpg-800/60">
               <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Crime ½mi</span>
-              <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? '#ef4444' : crimeNearby >= 3 ? '#f59e0b' : '#22c55e' }}>{crimeNearby}</span>
+              <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? 'var(--sev-critical)' : crimeNearby >= 3 ? 'var(--sev-warn)' : 'var(--sev-ok)' }}>{crimeNearby}</span>
             </div>
             {crashOn && crashes.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full shrink-0 border" style={{ borderColor: 'var(--border-default)', background: 'transparent' }} />
                 <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Crashes ½mi</span>
-                <span className="text-[10px] font-mono font-bold" style={{ color: crashNearby >= 10 ? '#ef4444' : crashNearby >= 4 ? '#f59e0b' : '#888' }}>{crashNearby}</span>
+                <span className="text-[10px] font-mono font-bold" style={{ color: crashNearby >= 10 ? 'var(--sev-critical)' : crashNearby >= 4 ? 'var(--sev-warn)' : '#888' }}>{crashNearby}</span>
               </div>
             )}
             <div className="text-[8px] text-rmpg-600 leading-tight">
@@ -2843,7 +2955,7 @@ export default function NavigationPage() {
                   <span className="text-[8px] font-mono text-rmpg-600">{callContacts.length}</span>
                 </div>
                 {callContacts.slice(0, 4).map((c, i) => (
-                  <ContactRow key={`c${i}`} id={`${c.priority} · ${c.call_number || '—'}`} sub={c.incident_type.replace(/_/g, ' ')} color={PRIO_COLOR[c.priority] || '#888888'} bearing={c.bearing} distMi={c.distMi} heading={dir} threat={c.priority === 'P1' || c.priority === 'P2'} />
+                  <ContactRow key={`c${i}`} id={`${c.priority} · ${c.call_number || '—'}`} sub={toDisplayLabel(c.incident_type)} color={PRIO_COLOR[c.priority] || '#888888'} bearing={c.bearing} distMi={c.distMi} heading={dir} threat={c.priority === 'P1' || c.priority === 'P2'} />
                 ))}
               </>
             )}
@@ -2854,7 +2966,7 @@ export default function NavigationPage() {
                   <span className="text-[8px] font-mono text-rmpg-600">{unitContacts.length}</span>
                 </div>
                 {unitContacts.slice(0, 3).map((u, i) => (
-                  <ContactRow key={`u${i}`} id={u.call_sign} sub={u.status.replace(/_/g, ' ')} color={statusColor(u.status)} bearing={u.bearing} distMi={u.distMi} heading={dir} />
+                  <ContactRow key={`u${i}`} id={u.call_sign} sub={toDisplayLabel(u.status)} color={statusColor(u.status)} bearing={u.bearing} distMi={u.distMi} heading={dir} />
                 ))}
               </>
             )}
@@ -2892,24 +3004,26 @@ export default function NavigationPage() {
         />
       )}
 
-      {/* ── #64 — Destination-reached confirmation (lower HUD overlay) ── */}
-      {arrivedLabel && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
-          <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
-        </div>
-      )}
-
-      {/* ── #3 — Over-speed alert (lower HUD overlay) ── */}
-      {showOverSpeedBanner && limitMph != null && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 268 }}>
-          <HudOverSpeedBanner limitMph={limitMph} />
-        </div>
-      )}
-
-      {/* ── Generic geofence zone-entry alert (lower HUD overlay) ── */}
-      {zoneAlert?.show && (
-        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 326 }}>
-          <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
+      {/* ── Lower HUD overlay banners — arrived / over-speed / zone-entry ──
+          Stacked with flex + gap instead of individually hand-computed
+          `bottom` pixel offsets (previously 210/268/326, i.e. hardcoded 58px
+          gaps). All three can be simultaneously true (arriving while over
+          the speed limit while entering a geofenced zone), and a hardcoded
+          gap overlaps as soon as any banner's rendered height — which varies
+          with text length, font scaling, or accessibility zoom — exceeds
+          ~58px. flex-col-reverse + gap keeps them stacked bottom-up and
+          auto-sized regardless of content height. */}
+      {(arrivedLabel || (showOverSpeedBanner && limitMph != null) || zoneAlert?.show) && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2 bottom-[150px] flex flex-col-reverse items-center gap-2">
+          {arrivedLabel && (
+            <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+          )}
+          {showOverSpeedBanner && limitMph != null && (
+            <HudOverSpeedBanner limitMph={limitMph} />
+          )}
+          {zoneAlert?.show && (
+            <HudZoneAlertBanner zoneType={zoneAlert.zoneType} />
+          )}
         </div>
       )}
 
@@ -2930,7 +3044,7 @@ export default function NavigationPage() {
       {/* #68 — safe-area inset padding so controls clear rugged-tablet bezels. */}
       <div className="absolute bottom-0 inset-x-0 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
         {/* Gold accent riser — lifts the instrument panel off the map */}
-        <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 28%, #d4a017 50%, rgba(212,160,23,0.4) 72%, transparent 95%)' }} />
+        <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 28%, var(--brand-gold) 50%, rgba(212,160,23,0.4) 72%, transparent 95%)' }} />
         <div
           className="backdrop-blur-md border-t border-rmpg-800/80"
           style={{ background: nightTheme
@@ -3028,7 +3142,7 @@ export default function NavigationPage() {
                 {spark.length > 1 ? (
                   <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 162, height: 28 }} aria-hidden="true">
                     <polyline points={`0,24 ${spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} ${spark.length - 1},24`} fill="#d4a01722" stroke="none" />
-                    <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                    <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="var(--brand-gold)" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                   </svg>
                 ) : <div className="flex items-center text-[8px] text-rmpg-700" style={{ height: 28 }}>awaiting speed…</div>}
               </div>
@@ -3037,7 +3151,7 @@ export default function NavigationPage() {
                 <div className="relative" style={{ width: 66, height: 66 }}>
                   <GForceBall longG={gForce} latG={latGLive} peak={peakGRef.current} />
                   {gFlash && (
-                    <div className="absolute inset-0 pointer-events-none rounded-full" style={{ boxShadow: 'inset 0 0 0 3px #f59e0b, 0 0 10px #f59e0b88', borderRadius: '9999px', animation: 'none' }} aria-hidden="true" />
+                    <div className="absolute inset-0 pointer-events-none rounded-full" style={{ boxShadow: 'inset 0 0 0 3px var(--sev-warn), 0 0 10px #f59e0b88', borderRadius: '9999px', animation: 'none' }} aria-hidden="true" />
                   )}
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col gap-1.5">
@@ -3045,7 +3159,7 @@ export default function NavigationPage() {
                     <div className="flex items-center justify-between text-[7px] uppercase tracking-wider text-rmpg-600">
                       <span>Long</span><span className="font-mono text-rmpg-500">pk {Math.max(peakGRef.current.accel, peakGRef.current.brake).toFixed(2)}</span>
                     </div>
-                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(gForce) > 0.4 ? '#ef4444' : Math.abs(gForce) > 0.2 ? '#f59e0b' : '#22c55e' }}>
+                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(gForce) > 0.4 ? 'var(--sev-critical)' : Math.abs(gForce) > 0.2 ? 'var(--sev-warn)' : 'var(--sev-ok)' }}>
                       {gForce >= 0 ? '+' : '−'}{Math.abs(gForce).toFixed(2)}<span className="text-[8px] text-rmpg-600 ml-0.5">g</span>
                     </div>
                   </div>
@@ -3053,7 +3167,7 @@ export default function NavigationPage() {
                     <div className="flex items-center justify-between text-[7px] uppercase tracking-wider text-rmpg-600">
                       <span>Lat</span><span className="font-mono text-rmpg-500">pk {peakGRef.current.lat.toFixed(2)}</span>
                     </div>
-                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(latGLive) > 0.4 ? '#ef4444' : Math.abs(latGLive) > 0.2 ? '#f59e0b' : '#22c55e' }}>
+                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(latGLive) > 0.4 ? 'var(--sev-critical)' : Math.abs(latGLive) > 0.2 ? 'var(--sev-warn)' : 'var(--sev-ok)' }}>
                       {Math.abs(latGLive) < 0.02 ? '·' : latGLive >= 0 ? 'R' : 'L'} {Math.abs(latGLive).toFixed(2)}<span className="text-[8px] text-rmpg-600 ml-0.5">g</span>
                     </div>
                   </div>
@@ -3095,9 +3209,9 @@ export default function NavigationPage() {
                   style={{ borderRadius: 2, background: nightTheme ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)' }}
                   title={currentStreet || undefined}
                 >
-                  <div className={`text-[8px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
-                  <div className={`font-bold text-[15px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
-                    {truncateLabel(currentStreet, 30) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
+                  <div className={`text-[10px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
+                  <div className={`font-bold text-[18px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
+                    {truncateLabel(currentStreet, 24) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
                   </div>
                 </div>
                 {/* #31 — routed-remaining | crow-flies dual distance */}
@@ -3114,17 +3228,14 @@ export default function NavigationPage() {
               </div>
               <div
                 className="grid gap-1.5"
-                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
               >
-                {/* #67 — first tile cycles avg / max / elapsed / distance on long-press */}
+                {/* #67 — avg speed tile; Max/Elapsed/Distance each have a dedicated tile below */}
                 <HudStatTile night={nightTheme} metrics={[
                   { key: 'avg', label: 'Avg', value: formatSpeed(avgMph, speedUnit) },
-                  { key: 'max', label: 'Max', value: formatSpeed(maxMph, speedUnit) },
-                  { key: 'elapsed', label: 'Session', value: hudFormatDuration(sessionMs) },
-                  { key: 'distance', label: 'Distance', value: formatDistanceLong(distanceRef.current, speedUnit) },
                 ]} />
                 {/* #35 — current speed */}
-                <HudStatTile night={nightTheme} metrics={[{ key: 'cur', label: 'Speed', value: formatSpeed(liveMph, speedUnit), accent: liveMph != null && liveMph > 55 ? '#f59e0b' : undefined }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'cur', label: 'Speed', value: formatSpeed(liveMph, speedUnit), accent: liveMph != null && liveMph > 55 ? 'var(--sev-warn)' : undefined }]} />
                 {/* #36 — max-speed-this-session */}
                 <HudStatTile night={nightTheme} metrics={[{ key: 'maxs', label: 'Max', value: formatSpeed(maxMph, speedUnit) }]} />
                 {/* #37 — elapsed session timer */}
@@ -3136,11 +3247,11 @@ export default function NavigationPage() {
                 {/* #39 — heading cardinal + degrees */}
                 <HudStatTile night={nightTheme} metrics={[{ key: 'hdg', label: 'Heading', value: formatHeading(dir), dim: dir == null }]} />
                 {/* #49 — ETA mirror (arrival clock + countdown) */}
-                <HudStatTile night={nightTheme} metrics={[{ key: 'eta', label: 'ETA', value: etaArrival ? `${etaArrival} · ${etaCountdown}` : '—', accent: etaArrival ? '#22c55e' : undefined, dim: !etaArrival }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'eta', label: 'ETA', value: etaArrival ? `${etaArrival} · ${etaCountdown}` : '—', accent: etaArrival ? 'var(--sev-ok)' : undefined, dim: !etaArrival }]} />
                 <HudStatTile night={nightTheme} metrics={[{ key: 'acc', label: 'Accuracy', value: gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—', dim: gps.accuracy == null }]} />
                 <HudStatTile night={nightTheme} metrics={[{ key: 'elev', label: 'Elev', value: elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—', dim: elevFt == null }]} />
-                <HudStatTile night={nightTheme} metrics={[{ key: 'climb', label: 'Climb', value: `${Math.round(climbFt).toLocaleString()} ft`, accent: climbFt > 0 ? '#22c55e' : undefined, dim: climbFt === 0 }]} />
-                <HudStatTile night={nightTheme} metrics={[{ key: 'brg', label: 'Bearing', value: destBearing != null ? `${Math.round(destBearing)}°` : '—', accent: destBearing != null ? '#ef4444' : undefined, dim: destBearing == null }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'climb', label: 'Climb', value: `${Math.round(climbFt).toLocaleString()} ft`, accent: climbFt > 0 ? 'var(--sev-ok)' : undefined, dim: climbFt === 0 }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'brg', label: 'Bearing', value: destBearing != null ? `${Math.round(destBearing)}°` : '—', accent: destBearing != null ? 'var(--sev-critical)' : undefined, dim: destBearing == null }]} />
                 <HudStatTile night={nightTheme} metrics={[{ key: 'src', label: 'Source', value: src.label, accent: src.color }]} />
               </div>
               <div className={`mt-1.5 flex items-center gap-2 text-[9px] font-mono ${nightTheme ? 'font-bold' : ''}`}>

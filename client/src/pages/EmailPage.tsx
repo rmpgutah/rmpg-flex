@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
@@ -24,9 +24,9 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { asArray } from '../utils/asArray';
 import { openEmailThreadPdf } from '../utils/emailThreadPdf';
 import sanitizeHtml from 'sanitize-html';
-import EnrollmentBanner from '../components/email/EnrollmentBanner';
 import ForwardRedactionModal from '../components/email/ForwardRedactionModal';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { withAlpha } from '../utils/withAlpha';
 
 // ─── Per-user localStorage scoping ──────────────────────────────────────
 // The Email page used to write every preference and the compose-draft cache
@@ -93,14 +93,14 @@ const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
 // Sender-stable colors for the per-message avatar circles. Picked from the
 // content-flavor palette (NOT the brand-gold token) — these communicate
 // "different person" the same way Slack/Gmail use a per-user hash. Index
-// 0 and 7 used to both be `#888888` (a copy/paste slip in the original
+// 0 and 7 used to both be neutral grey (a copy/paste slip in the original
 // 10-element array); the duplicate halved the effective hashing space for
 // every other color, so neutral grey appeared roughly twice as often as
-// any other shade. Replaced index 7 with `#3b82f6` (blue-500) so the
-// distribution is uniform across all 10 buckets.
+// any other shade. Replaced index 7 with blue-500 so the distribution is
+// uniform across all 10 buckets.
 const AVATAR_COLORS = [
-  '#888888', '#8b5cf6', '#22c55e', '#10b981', '#f59e0b',
-  '#ef4444', '#ec4899', '#3b82f6', '#14b8a6', '#f97316',
+  'rgb(136,136,136)', 'rgb(139,92,246)', 'rgb(34,197,94)', 'rgb(16,185,129)', 'rgb(245,158,11)',
+  'rgb(239,68,68)', 'rgb(236,72,153)', 'rgb(59,130,246)', 'rgb(20,184,166)', 'rgb(249,115,22)',
 ] as const;
 
 function avatarColorFor(senderKey: string): string {
@@ -119,12 +119,13 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  if (msgDate.getTime() === today.getTime()) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  if (now.getTime() - msgDate.getTime() < 7 * 86400000) return d.toLocaleDateString('en-US', { weekday: 'short' });
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const tz = 'America/Denver';
+  // Compare day boundaries in MT so "today" is correct regardless of machine timezone
+  const todayMT = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const msgMT   = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  if (msgMT === todayMT) return d.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true });
+  if (Date.now() - d.getTime() < 7 * 86400000) return d.toLocaleDateString('en-US', { timeZone: tz, weekday: 'short' });
+  return d.toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
 }
 
 function formatSize(bytes: number): string {
@@ -387,7 +388,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
               <div className="text-[11px] text-rmpg-100 font-medium truncate">{t.name}</div>
               <div className="text-[9px] text-rmpg-500 truncate">{t.subject}</div>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{(t.category || '').replace(/_/g, ' ')}</span>
+                <span className="text-[8px] text-rmpg-600 capitalize bg-surface-sunken px-1 rounded-sm">{toDisplayLabel(t.category || '')}</span>
                 {t.is_system ? <span className="text-[8px] text-amber-600">system</span> : null}
               </div>
             </button>
@@ -427,8 +428,8 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
   ];
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4 my-auto">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
           <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
@@ -615,8 +616,8 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
               <div key={link.id} className="flex items-center gap-1 px-2 py-0.5 bg-surface-sunken border border-border-subtle rounded-sm text-[10px] text-rmpg-300 group">
                 <Icon className="w-3 h-3 text-brand-400" />
                 <span>{getLinkLabel(link)}</span>
-                {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{link.link_type}</span>}
-                <button type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
+                {link.link_type && <span className="text-[8px] text-rmpg-600 capitalize">{formatEnumValue(link.link_type)}</span>}
+                <button aria-label="Unlink" type="button" onClick={() => handleUnlink(link.id)} className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 text-rmpg-500 hover:text-red-400 transition-opacity">
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -650,7 +651,7 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
             <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : 'Link'}
             </button>
-            <button type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
+            <button aria-label="Close" type="button" onClick={() => { setShowForm(false); setLinkId(''); setLinkNotes(''); }} className="text-rmpg-500 hover:text-rmpg-100">
               <X className="w-3 h-3" />
             </button>
           </div>
@@ -721,7 +722,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
             </div>
             <div className="text-[9px] ml-[18px]">
               <span className={email.status === 'sent' ? 'text-green-500' : email.status === 'failed' ? 'text-red-400' : 'text-rmpg-500'}>
-                {email.status === 'pending' ? `Sends ${scheduledDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` :
+                {email.status === 'pending' ? `Sends ${scheduledDate.toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` :
                  email.status === 'sent' ? 'Sent' : 'Failed'}
               </span>
             </div>
@@ -755,6 +756,17 @@ function proxyEmailImages(html: string): string {
       const proxyUrl = `${window.location.origin}/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
       return `${before}${proxyUrl}${after}`;
     }
+  ).replace(
+    // Inline CID attachments: the server rewrites cid: refs to a RELATIVE
+    // "/api/email/messages/:id/attachments/:aid?inline=1" src. Same blob:
+    // iframe problem as above (relative src never resolves to our origin),
+    // plus <img> can't send an Authorization header — absolutize and append
+    // the query token the media-path auth fallback accepts.
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(\/api\/email\/messages\/[^"']+)(["'])/gi,
+    (_match, before, path, after) => {
+      const sep = path.includes('?') ? '&' : '?';
+      return `${before}${window.location.origin}${path}${sep}token=${encodeURIComponent(token)}${after}`;
+    }
   );
 }
 
@@ -771,16 +783,16 @@ function getReadingTheme(userId?: string | number | null): ReadingTheme {
 
 const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
   dark: `
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(192,208,224); background: rgb(12,12,12); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: rgb(136,136,136); text-decoration: underline; } a:hover { color: rgb(160,160,160); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(43,43,43); margin: 8px 0; padding: 4px 12px; color: rgb(136,153,170); }
+        pre { background: rgb(20,20,20); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(43,43,43); margin: 16px 0; }
   `,
   light: `
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #555555; text-decoration: underline; } a:hover { color: #1a1a1a; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #d8d8d8; margin: 8px 0; padding: 4px 12px; color: #555; }
-        pre { background: #f4f4f4; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+        body { font-family: Calibri, Arial, sans-serif; font-size: 13px; color: rgb(26,26,26); background: rgb(255,255,255); margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: rgb(85,85,85); text-decoration: underline; } a:hover { color: rgb(26,26,26); } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid rgb(216,216,216); margin: 8px 0; padding: 4px 12px; color: rgb(85,85,85); }
+        pre { background: rgb(244,244,244); padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid rgb(221,221,221); margin: 16px 0; }
   `,
 };
 
@@ -821,14 +833,14 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   // Build print document using safe DOM methods
   const style = doc.createElement('style');
   style.textContent = `
-    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12pt; color: #1a1a1a; margin: 40px; line-height: 1.6; }
-    .header { border-bottom: 2px solid #888888; padding-bottom: 12px; margin-bottom: 16px; }
-    .header h1 { font-size: 16pt; margin: 0 0 8px; color: #1a1a1a; }
-    .meta { font-size: 10pt; color: #555; margin: 2px 0; }
-    .meta strong { color: #333; min-width: 40px; display: inline-block; }
+    body { font-family: 'Calibri', Arial, sans-serif; font-size: 12pt; color: rgb(26,26,26); margin: 40px; line-height: 1.6; }
+    .header { border-bottom: 2px solid rgb(136,136,136); padding-bottom: 12px; margin-bottom: 16px; }
+    .header h1 { font-size: 16pt; margin: 0 0 8px; color: rgb(26,26,26); }
+    .meta { font-size: 10pt; color: rgb(85,85,85); margin: 2px 0; }
+    .meta strong { color: rgb(51,51,51); min-width: 40px; display: inline-block; }
     .body-content { margin-top: 16px; }
-    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #999; }
-    @media print { body { margin: 20px; } a { color: #888888; text-decoration: none; } }
+    .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid rgb(204,204,204); font-size: 9pt; color: rgb(153,153,153); }
+    @media print { body { margin: 20px; } a { color: rgb(136,136,136); text-decoration: none; } }
   `;
   doc.head.appendChild(style);
   doc.title = message.subject;
@@ -862,11 +874,11 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
     // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
-    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
+    const cleanHtml = proxyEmailImages(sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS));
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Calibri,Arial,sans-serif;font-size:12pt;color:rgb(26,26,26);margin:0;line-height:1.6;}a{color:rgb(136,136,136);}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid rgb(204,204,204);margin:8px 0;padding:4px 12px;color:rgb(102,102,102);}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -877,7 +889,7 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
 
   const footer = doc.createElement('div');
   footer.className = 'footer';
-  footer.textContent = `Printed from RMPG Flex — ${new Date().toLocaleString()}`;
+  footer.textContent = `Printed from RMPG Flex — ${new Date().toLocaleString('en-US', { timeZone: 'America/Denver' })}`;
   doc.body.appendChild(footer);
 
   setTimeout(() => { printWindow.print(); }, 500);
@@ -1307,7 +1319,7 @@ function ComposeModal({ mode, replyMessage, userId, onClose, onSent }: ComposeMo
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-3 py-1.5 flex items-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {error}
-              <button type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
+              <button aria-label="Close" type="button" onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-300"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -1422,14 +1434,14 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const ext = att.name.split('.').pop()?.toLowerCase() || '';
                 const isImage = ['jpg','jpeg','png','gif','webp'].includes(ext);
                 const isPdf = ext === 'pdf';
-                const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
+                const fileColor = isImage ? 'rgb(34,197,94)' : isPdf ? 'rgb(239,68,68)' : 'rgb(139,92,246)';
                 return (
                   <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-sunken border border-rmpg-700 rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
-                      style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
+                      style={{ backgroundColor: withAlpha(fileColor, '15'), color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
                     <span className="text-rmpg-600 text-[9px]">{formatSize(att.size)}</span>
-                    <button type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
+                    <button aria-label="Remove" type="button" onClick={() => removeAttachment(idx)} className="text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"><X className="w-3 h-3" /></button>
                   </div>
                 );
               })}
@@ -1844,8 +1856,8 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
     finally { setSaving(false); }
   };
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4 my-auto">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-rmpg-100 flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
           <IconButton onClick={onClose} className="text-rmpg-500 hover:text-rmpg-100" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
@@ -1892,8 +1904,8 @@ function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackb
 // ============================================================
 
 const CATEGORY_PRESET_COLORS: Record<string, string> = {
-  preset0: '#ef4444', preset1: '#f97316', preset2: '#d4a017', preset3: '#22c55e', preset4: '#10b981',
-  preset5: '#14b8a6', preset6: '#8b5cf6', preset7: '#ec4899', preset8: '#888888', preset9: '#a16207',
+  preset0: 'rgb(239,68,68)', preset1: 'rgb(249,115,22)', preset2: 'rgb(212,160,23)', preset3: 'rgb(34,197,94)', preset4: 'rgb(16,185,129)',
+  preset5: 'rgb(20,184,166)', preset6: 'rgb(139,92,246)', preset7: 'rgb(236,72,153)', preset8: 'rgb(136,136,136)', preset9: 'rgb(161,98,7)',
 };
 
 function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
@@ -1942,7 +1954,7 @@ function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
           cats.map(cat => (
             <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-rmpg-100 transition-colors">
-              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || 'rgb(136,136,136)' }} />
               <span className="min-w-0 flex-1 text-left truncate">{cat.displayName}</span>
               {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
             </button>
@@ -1989,33 +2001,74 @@ export default function EmailPage() {
   const canManage = user?.role === 'admin' || user?.role === 'manager';
   const { snackbar, show: showSnackbar, dismiss: dismissSnackbar } = useSnackbar();
 
-  // Status
-  const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
+  // ─── Per-user mailbox connect-gate (Phase 3 cutover) ───────────────────
+  // The backend moved from one shared admin-owned mailbox to personal
+  // per-user mailboxes (GET/DELETE /email/connect/*). This replaces the old
+  // Phase 4 "enrolled" gate, which read the shared mailbox's OAuth grant
+  // via /email/status — that flag is no longer a meaningful signal for
+  // whether THIS user can use email, and AdminEmailTab no longer offers a
+  // way to set it.
+  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
-  // Phase 4: per-user enrollment gate
-  const [enrolled, setEnrolled] = useState<boolean | null>(null);
-
-  // Fetch enrollment status on mount
-  useEffect(() => {
-    apiFetch<{ enrolled: boolean }>('/api/email/status')
-      .then(s => setEnrolled(s.enrolled))
-      .catch(() => setEnrolled(false));
+  const fetchConnectStatus = useCallback(() => {
+    apiFetch<{ connected: boolean; mailbox: string | null }>('/email/connect/status')
+      .then(setConnectStatus)
+      .catch(() => setConnectStatus({ connected: false, mailbox: null }));
   }, []);
+  useEffect(() => { fetchConnectStatus(); }, [fetchConnectStatus]);
 
-  // Handle ?enrolled=1 callback after Microsoft consent. Strip ONLY the
-  // enrolled flag — earlier this used `replaceState({}, '', '/email')` and
-  // nuked every other query param, which made it impossible to land an
-  // operator on a deep-link AFTER OAuth (the auth bounce always cleared
-  // ?message_id/?thread_id/?folder).
+  // Handle the ?connect_status=… callback after /email/connect/callback
+  // redirects the browser back here. That redirect is a full page
+  // navigation (not SPA routing), so fetchConnectStatus above already picks
+  // up the fresh connected state on mount — this only needs to surface an
+  // error message when the OAuth flow itself failed. Mirrors the old
+  // ?enrolled=1 handling's "strip only the consumed param" approach so a
+  // pending deep-link (?message_id/?thread_id/?folder) survives the bounce.
   useEffect(() => {
-    if (searchParams.get('enrolled') === '1') {
-      setEnrolled(true);
+    const connectStatusParam = searchParams.get('connect_status');
+    if (connectStatusParam) {
+      if (connectStatusParam === 'error') {
+        setConnectError(searchParams.get('message') || 'Failed to connect mailbox');
+      }
       const next = new URLSearchParams(searchParams);
-      next.delete('enrolled');
+      next.delete('connect_status');
+      next.delete('message');
       setSearchParams(next, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleConnectMailbox = async () => {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const data = await apiFetch<{ url: string }>('/email/connect/authorize');
+      // Validate redirect URL is a legitimate OAuth provider before leaving the app.
+      const url = new URL(data.url);
+      const allowedHosts = new Set(['login.microsoftonline.com', 'accounts.google.com', 'login.live.com']);
+      if (!allowedHosts.has(url.hostname)) {
+        throw new Error('Unexpected OAuth redirect domain');
+      }
+      window.location.href = data.url;
+    } catch (err: any) {
+      setConnectError(err.message);
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnectMailbox = async () => {
+    if (!window.confirm('Disconnect your Microsoft 365 mailbox? You can reconnect at any time.')) return;
+    try {
+      await apiFetch('/email/connect', { method: 'DELETE' });
+      setConnectStatus({ connected: false, mailbox: null });
+      setMessages([]);
+      setFolders([]);
+    } catch (err: any) {
+      addToast(err.message || 'Failed to disconnect mailbox', 'error');
+    }
+  };
 
   // ─── URL deep-link contract ──────────────────────────────────────────
   // /email?folder=<name>       — switch to that folder on mount (well-known
@@ -2102,15 +2155,34 @@ export default function EmailPage() {
   const [attViewer, setAttViewer] = useState<{ url: string; title: string; type: 'pdf' | 'image' } | null>(null);
   const [attBusyId, setAttBusyId] = useState<string | null>(null);
 
-  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment): Promise<string> => {
+  // MIME types we are willing to hand to a blob: URL for inline rendering.
+  // SVG is deliberately excluded (script-bearing XML) — it downloads instead.
+  const INLINE_IMAGE_MIME: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  };
+
+  // `forceType` is REQUIRED for anything that will be rendered rather than
+  // saved. Rationale: the response Content-Type is chosen by whoever SENT the
+  // email, and URL.createObjectURL() propagates the Blob's type into the
+  // blob: URL. A blob: document inherits the creating page's origin, and the
+  // app CSP allows 'unsafe-inline' script — so an attachment named
+  // "Case_Report.pdf" served as text/html used to execute the sender's script
+  // as https://rmpgutah.us and could read the session token out of
+  // localStorage. Re-wrapping the bytes with a type WE choose removes the
+  // sender's influence over how the bytes are interpreted.
+  const fetchAttachmentBlob = useCallback(async (att: EmailAttachment, forceType: string): Promise<string> => {
     const blob = await apiFetchBlob(`/email/messages/${encodeURIComponent(selectedMessage!.id)}/attachments/${encodeURIComponent(att.id)}?inline=1`);
-    return URL.createObjectURL(blob);
+    const retyped = new Blob([await blob.arrayBuffer()], { type: forceType });
+    return URL.createObjectURL(retyped);
   }, [selectedMessage]);
 
   const handleDownloadAttachment = useCallback(async (att: EmailAttachment) => {
     setAttBusyId(att.id);
     try {
-      const url = await fetchAttachmentBlob(att);
+      // Downloads never render, so the most inert type is correct — the
+      // filename (a.download) is what drives the OS app association.
+      const url = await fetchAttachmentBlob(att, 'application/octet-stream');
       const a = document.createElement('a');
       a.href = url; a.download = att.name || 'attachment';
       document.body.appendChild(a); a.click(); a.remove();
@@ -2124,12 +2196,17 @@ export default function EmailPage() {
   const handleOpenAttachment = useCallback(async (att: EmailAttachment) => {
     const ext = (att.name || '').split('.').pop()?.toLowerCase() || '';
     const ct = (att.contentType || '').toLowerCase();
-    const isImage = ct.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext);
+    // Resolve to a concrete MIME type from OUR allow-list. Both the declared
+    // content type and the extension are attacker-chosen, so neither is
+    // trusted as a value — they only select from types known to be inert.
+    // Anything unrecognized (incl. .svg, .html, .doc, .xlsx) downloads.
     const isPdf = ct === 'application/pdf' || ext === 'pdf';
-    if (!isImage && !isPdf) { void handleDownloadAttachment(att); return; } // no in-browser renderer for doc/xlsx etc.
+    const imageMime = INLINE_IMAGE_MIME[ext]
+      ?? (Object.values(INLINE_IMAGE_MIME).includes(ct) ? ct : undefined);
+    if (!isPdf && !imageMime) { void handleDownloadAttachment(att); return; } // no safe in-browser renderer
     setAttBusyId(att.id);
     try {
-      const url = await fetchAttachmentBlob(att);
+      const url = await fetchAttachmentBlob(att, isPdf ? 'application/pdf' : imageMime!);
       setAttViewer({ url, title: att.name || 'Attachment', type: isPdf ? 'pdf' : 'image' });
     } catch (err) {
       console.error('[EmailPage] attachment open failed:', err);
@@ -2272,10 +2349,6 @@ export default function EmailPage() {
 
   // ─── Data Fetching ───
 
-  const fetchStatus = useCallback(async () => {
-    try { const data = await apiFetch<{ configured: boolean; enabled: boolean; authorized: boolean }>('/email/status'); setStatus(data); } catch (err) { console.warn('[EmailPage] fetch status failed:', err); }
-  }, []);
-
   const fetchFolders = useCallback(async () => {
     try { const data = await apiFetch<EmailFolder[]>('/email/folders'); setFolders(data || []); } catch (err) { console.warn('[EmailPage] fetch folders failed:', err); }
   }, []);
@@ -2353,20 +2426,19 @@ export default function EmailPage() {
 
   useLiveSync('admin', fetchMessages);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => {
-    if (status?.authorized) { fetchFolders(); fetchMessages(1); }
-  }, [status?.authorized]); // eslint-disable-line
+    if (connectStatus?.connected) { fetchFolders(); fetchMessages(1); }
+  }, [connectStatus?.connected]); // eslint-disable-line
 
   // Open compose on mount when `?compose=1` was deep-linked. Fires once the
-  // enrollment + authorization gates have passed so the modal lands inside
-  // the real shell, not the splash.
+  // connect-gate has passed so the modal lands inside the real shell, not
+  // the splash.
   useEffect(() => {
-    if (status?.authorized && enrolled && pendingComposeRef.current) {
+    if (connectStatus?.connected && pendingComposeRef.current) {
       pendingComposeRef.current = false;
       setComposing('new');
     }
-  }, [status?.authorized, enrolled]);
+  }, [connectStatus?.connected]);
 
   // Once the folder messages hydrate, consume `?thread_id=` / `?message_id=`.
   // The list is paginated 25 at a time — if the target isn't on page 1 a
@@ -2680,7 +2752,7 @@ export default function EmailPage() {
     try {
       await apiFetch(`/email/messages/${selectedMessage.id}/snooze`, { method: 'POST', body: JSON.stringify({ until: untilIso }) });
       removeFromList(selectedMessage.id);
-      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
       debouncedFolderRefresh();
     } catch { showSnackbar('Failed to snooze', 'error'); }
   };
@@ -2842,53 +2914,6 @@ export default function EmailPage() {
   // Set document title
   useEffect(() => { document.title = 'Email \u2014 RMPG Flex'; }, []);
 
-  // ─── Not Configured ───
-
-  if (status && !status.configured) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
-            <WifiOff className="w-8 h-8 text-red-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Email Not Configured</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft 365 email integration needs to be set up by an administrator.
-          </p>
-          <div className="panel-beveled bg-surface-sunken p-3 text-left space-y-1.5 text-[10px] text-rmpg-400">
-            <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Setup Steps</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">1</span> Go to Admin → Integrations</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">2</span> Enter Microsoft Azure App credentials</div>
-            <div className="flex items-center gap-2"><span className="w-4 h-4 rounded-full bg-brand-500/20 text-brand-400 text-[8px] font-bold flex items-center justify-center flex-shrink-0">3</span> Complete OAuth authorization</div>
-          </div>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Go to Admin Settings
-          </a>
-        </div>
-      </div>
-    );
-  }
-
-  if (status && !status.authorized) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
-          <div className="w-16 h-16 mx-auto rounded-full bg-amber-500/10 flex items-center justify-center border border-amber-500/20">
-            <AlertTriangle className="w-8 h-8 text-amber-400/60" />
-          </div>
-          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Authorization Required</h2>
-          <p className="text-xs text-rmpg-400 leading-relaxed">
-            Microsoft email credentials are configured, but OAuth authorization hasn't been completed yet.
-            An administrator needs to sign in with the Microsoft 365 account.
-          </p>
-          <a href="/admin?tab=integrations" className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5">
-            Complete Authorization
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   // ─── Folder helpers ───
   const getFolderKey = (f: EmailFolder) => {
     const map: Record<string, string> = { 'Inbox': 'inbox', 'Sent Items': 'sentitems', 'Deleted Items': 'deleteditems', 'Drafts': 'drafts', 'Junk Email': 'junkemail', 'Archive': 'archive' };
@@ -2916,7 +2941,7 @@ export default function EmailPage() {
     ? displayedMessages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
-          if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
+          if (!(msg.fromName?.toLowerCase() ?? '').includes(s) && !(msg.fromAddress?.toLowerCase() ?? '').includes(s)) return false;
         }
         if (searchFilters.hasAttachments && !msg.hasAttachments) return false;
         if (searchFilters.isFlagged && !msg.isFlagged) return false;
@@ -3006,9 +3031,49 @@ export default function EmailPage() {
 
   // ─── Render ───
 
-  // Phase 4: per-user enrollment gate
-  if (enrolled === false) return <EnrollmentBanner />;
-  if (enrolled === null) return <div className="p-8 text-center text-xs text-rmpg-500">Checking enrollment...</div>;
+  // Per-user mailbox connect-gate — return early and skip mounting the rest
+  // of the inbox UI (and its data-fetching effects) until this user's own
+  // mailbox is connected, so an unconnected user doesn't fire a barrage of
+  // requests against endpoints that now require a connected mailbox.
+  if (connectStatus === null) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" />
+      </div>
+    );
+  }
+
+  if (!connectStatus.connected) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
+          <div className="w-16 h-16 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center border border-brand-500/20">
+            <Mail className="w-8 h-8 text-brand-400/60" />
+          </div>
+          <h2 className="text-sm font-semibold text-rmpg-100 tracking-wide">Connect Your Mailbox</h2>
+          <p className="text-xs text-rmpg-400 leading-relaxed">
+            Connect your Microsoft 365 mailbox to use email. Each operator now signs in with their own
+            account — your email stays in Microsoft's servers, RMPG Flex only displays it.
+          </p>
+          {connectError && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {connectError}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleConnectMailbox}
+            disabled={connecting}
+            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5"
+          >
+            {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Mail className="w-3.5 h-3.5" />}
+            {connecting ? 'Redirecting…' : 'Connect Microsoft 365'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -3049,8 +3114,8 @@ export default function EmailPage() {
                 <input id="ff-emailpage-16" value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
                   className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
-                <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
-                <button type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
+                <button aria-label="Mark complete" type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
+                <button aria-label="Close" type="button" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }} className="p-0.5 text-rmpg-500 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
               </div>
             ) : (
               <button type="button" onClick={() => setShowNewFolder(true)}
@@ -3094,6 +3159,11 @@ export default function EmailPage() {
             <button type="button" onClick={() => setShowAutoReply(true)}
               className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-rmpg-100 transition-colors py-0.5">
               <CalendarClock className="w-3 h-3" /> Automatic replies
+            </button>
+            <button type="button" onClick={handleDisconnectMailbox}
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-red-400 transition-colors py-0.5"
+              aria-label="Disconnect Microsoft 365 mailbox">
+              <X className="w-3 h-3" /> Disconnect mailbox
             </button>
             <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
               <div>Ctrl+N New &middot; Ctrl+R Reply</div>
@@ -3318,14 +3388,14 @@ export default function EmailPage() {
                           {/* Avatar / Select checkbox */}
                           <div className="relative flex-shrink-0 mt-0.5">
                             {selectedIds.has(msg.id) ? (
-                              <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
+                              <button aria-label="Mark complete" type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center">
                                 <CheckCircle className="w-4 h-4 text-rmpg-100" />
                               </button>
                             ) : (
                               <button type="button" onClick={e => { e.stopPropagation(); toggleSelectId(msg.id); }}
                                 className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-all group-hover:ring-2 group-hover:ring-rmpg-600"
-                                style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                                style={{ backgroundColor: withAlpha(avatarColor, '20'), color: avatarColor }}>
                                 {avatarInitial}
                               </button>
                             )}
@@ -3415,7 +3485,7 @@ export default function EmailPage() {
             <div className="border-b border-border-subtle bg-surface-base">
               {/* Subject + back button */}
               <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-                <button type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
+                <button aria-label="Previous" type="button" onClick={() => { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }} className="md:hidden p-1 text-rmpg-400 hover:text-rmpg-100 flex-shrink-0"><ChevronLeft className="w-4 h-4" /></button>
                 <h2 className="text-sm font-semibold text-rmpg-100 min-w-0 flex-1 truncate">{fullMessage.subject || '(no subject)'}</h2>
                 {fullMessage.importance === 'high' && (
                   <span className="text-[8px] px-1.5 py-0.5 bg-red-900/20 text-red-400 rounded-sm font-bold uppercase flex-shrink-0 border border-red-700/20 tracking-wider">Important</span>
@@ -3429,7 +3499,7 @@ export default function EmailPage() {
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5"
-                      style={{ backgroundColor: avatarColor + '20', color: avatarColor }}>
+                      style={{ backgroundColor: withAlpha(avatarColor, '20'), color: avatarColor }}>
                       {(fullMessage.fromName || fullMessage.fromAddress).charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -3438,7 +3508,7 @@ export default function EmailPage() {
                         <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                       {fullMessage.toAddresses.length > 0 && (
                         <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">
@@ -3562,7 +3632,7 @@ export default function EmailPage() {
                       const isPdf = ext === 'pdf';
                       const isDoc = ['doc','docx','rtf','odt'].includes(ext);
                       const isSheet = ['xls','xlsx','csv'].includes(ext);
-                      const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : isDoc ? '#888888' : isSheet ? '#10b981' : '#8b5cf6';
+                      const fileColor = isImage ? 'rgb(34,197,94)' : isPdf ? 'rgb(239,68,68)' : isDoc ? 'rgb(136,136,136)' : isSheet ? 'rgb(16,185,129)' : 'rgb(139,92,246)';
                       const viewable = isImage || isPdf;
                       return (
                         <div key={att.id}
@@ -3571,7 +3641,7 @@ export default function EmailPage() {
                             className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-50"
                             title={viewable ? 'Open in viewer' : 'Download'}>
                             <div className="w-8 h-8 rounded-sm flex items-center justify-center text-[8px] font-bold uppercase flex-shrink-0"
-                              style={{ backgroundColor: fileColor + '15', color: fileColor }}>
+                              style={{ backgroundColor: withAlpha(fileColor, '15'), color: fileColor }}>
                               {attBusyId === att.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : ext.slice(0, 4)}
                             </div>
                             <div className="min-w-0 flex-1">

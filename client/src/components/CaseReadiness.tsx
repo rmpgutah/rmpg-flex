@@ -30,18 +30,18 @@ export function CaseReadinessCard({ caseId, refreshKey }: { caseId: number | str
     return () => { cancelled = true; };
   }, [caseId, refreshKey]);
 
-  if (loading) return <div className="panel-beveled p-3 flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Evaluating readiness...</div>;
+  if (loading) return <div className="panel-beveled p-3 flex items-center gap-2 text-[10px] text-fg-muted"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Evaluating readiness...</div>;
   if (!data) return null;
 
-  const color = data.percent >= 100 ? '#22c55e' : data.percent >= 60 ? '#d4a017' : '#ef4444';
+  const color = data.percent >= 100 ? 'var(--sev-ok)' : data.percent >= 60 ? 'var(--sev-warn)' : 'var(--sev-critical)';
 
   return (
     <div className="panel-beveled p-4">
-      <div className="text-[10px] font-mono text-rmpg-500 uppercase mb-3">Case Readiness</div>
+      <div className="text-[10px] font-mono text-fg-secondary uppercase mb-3">Case Readiness</div>
       <div className="flex items-center gap-4">
         <div className="relative w-16 h-16 flex-shrink-0">
           <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#141414" strokeWidth="3" />
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="var(--surface-raised)" strokeWidth="3" />
             <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={color} strokeWidth="3" strokeDasharray={`${data.percent}, 100`} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
@@ -55,9 +55,9 @@ export function CaseReadinessCard({ caseId, refreshKey }: { caseId: number | str
                 ? <CheckCircle className="w-3 h-3 text-green-400 flex-shrink-0" />
                 : it.required
                   ? <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0" />
-                  : <Circle className="w-3 h-3 text-rmpg-600 flex-shrink-0" />}
-              <span className={it.met ? 'text-rmpg-300' : it.required ? 'text-red-300' : 'text-rmpg-500'}>
-                {it.label}{!it.required && <span className="text-rmpg-600"> (optional)</span>}
+                  : <Circle className="w-3 h-3 text-fg-muted flex-shrink-0" />}
+              <span className={it.met ? 'text-rmpg-300' : it.required ? 'text-red-300' : 'text-fg-muted'}>
+                {it.label}{!it.required && <span className="text-fg-muted"> (optional)</span>}
               </span>
             </div>
           ))}

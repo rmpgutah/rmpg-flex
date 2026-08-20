@@ -13,8 +13,7 @@ import RichTextArea from '../../components/RichTextArea';
 interface Rule {
   id: number;
   name: string;
-  priority: number;
-  enabled: number;
+  isActive: boolean;
   conditions_json: string;
   actions_json: string;
 }
@@ -24,10 +23,18 @@ export default function AdminEmailRulesTab() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [testFrom, setTestFrom] = useState('');
+  const [testSubject, setTestSubject] = useState('');
 
   const load = () =>
-    apiFetch<Rule[]>('/api/email/rules')
-      .then((data) => setRules(asArray<Rule>(data)))
+    apiFetch<{ rules: any[]; total: number }>('/api/email/rules')
+      .then((data) => setRules(asArray<any>(data?.rules).map((r) => ({
+        id: r.id,
+        name: r.name,
+        isActive: !!r.isActive,
+        conditions_json: JSON.stringify(r.conditions ?? {}, null, 2),
+        actions_json: JSON.stringify(r.actions ?? [], null, 2),
+      }))))
       .catch(err => console.error('Failed to load rules:', err));
 
   useEffect(() => {
@@ -46,8 +53,7 @@ export default function AdminEmailRulesTab() {
     }
     const payload = {
       name: editing.name,
-      priority: editing.priority ?? 100,
-      enabled: editing.enabled ?? 1,
+      isActive: editing.isActive ?? true,
       conditions: parsedConditions,
       actions: parsedActions,
     };
@@ -91,11 +97,14 @@ export default function AdminEmailRulesTab() {
       return;
     }
     try {
-      const r = await apiFetch<{ matched: number; total: number }>('/api/email/rules/test-match', {
+      const r = await apiFetch<{ matches: boolean }>('/api/email/rules/test-match', {
         method: 'POST',
-        body: JSON.stringify({ conditions: parsedConditions }),
+        body: JSON.stringify({
+          conditions: parsedConditions,
+          sample: { from: testFrom, subject: testSubject },
+        }),
       });
-      setTestResult(`Matched ${r.matched} of last ${r.total} inbox emails`);
+      setTestResult(r.matches ? 'Sample email MATCHES these conditions' : 'Sample email does not match');
     } catch (err: any) {
       setTestResult(`Test failed: ${err.message || err}`);
     }
@@ -117,13 +126,13 @@ export default function AdminEmailRulesTab() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-sm font-semibold text-[#d4a017]">EMAIL RULES</h2>
+        <h2 className="text-sm font-semibold text-[color:var(--panel-header-color)]">EMAIL RULES</h2>
         <button
           onClick={() => {
             setTestResult(null);
-            setEditing({ priority: 100, enabled: 1, conditions_json: '{}', actions_json: '[]' });
+            setEditing({ isActive: true, conditions_json: '{}', actions_json: '[]' });
           }}
-          className="px-3 py-1 border border-border-default text-xs hover:border-[#d4a017] hover:text-[#d4a017]"
+          className="px-3 py-1 border border-border-default text-xs hover:border-accent-silver-500 hover:text-accent-silver-400"
         >
           NEW RULE
         </button>
@@ -133,7 +142,6 @@ export default function AdminEmailRulesTab() {
         <thead>
           <tr className="text-left border-b border-border-default">
             <th className="py-1">Name</th>
-            <th className="py-1">Priority</th>
             <th className="py-1">Enabled</th>
             <th className="py-1"></th>
           </tr>
@@ -142,15 +150,14 @@ export default function AdminEmailRulesTab() {
           {rules.map(r => (
             <tr key={r.id} onContextMenu={(e) => openMenu(e, buildRuleMenu(r))} className="border-t border-border-default">
               <td className="py-1">{r.name}</td>
-              <td className="py-1">{r.priority}</td>
-              <td className="py-1">{r.enabled ? 'YES' : 'NO'}</td>
+              <td className="py-1">{r.isActive ? 'YES' : 'NO'}</td>
               <td className="py-1">
                 <button
                   onClick={() => {
                     setTestResult(null);
                     setEditing(r);
                   }}
-                  className="px-2 py-0.5 border border-border-default mr-2 hover:border-[#d4a017]"
+                  className="px-2 py-0.5 border border-border-default mr-2 hover:border-accent-silver-500"
                 >
                   EDIT
                 </button>
@@ -165,7 +172,7 @@ export default function AdminEmailRulesTab() {
           ))}
           {rules.length === 0 && (
             <tr>
-              <td colSpan={4} className="py-4 text-center text-rmpg-500">
+              <td colSpan={3} className="py-4 text-center text-rmpg-500">
                 No rules configured.
               </td>
             </tr>
@@ -179,13 +186,6 @@ export default function AdminEmailRulesTab() {
             placeholder="Rule name"
             value={editing.name || ''}
             onChange={e => setEditing({ ...editing, name: e.target.value })}
-            className="w-full bg-black text-rmpg-100 px-2 py-1"
-          />
-          <input id="ff-adminemailrulestab-1"
-            type="number"
-            placeholder="Priority"
-            value={editing.priority ?? 100}
-            onChange={e => setEditing({ ...editing, priority: Number(e.target.value) })}
             className="w-full bg-black text-rmpg-100 px-2 py-1"
           />
           <RichTextArea
@@ -203,21 +203,35 @@ export default function AdminEmailRulesTab() {
           <label className="flex items-center gap-2 text-xs">
             <input id="ff-adminemailrulestab-2"
               type="checkbox"
-              checked={!!editing.enabled}
-              onChange={e => setEditing({ ...editing, enabled: e.target.checked ? 1 : 0 })}
+              checked={!!editing.isActive}
+              onChange={e => setEditing({ ...editing, isActive: e.target.checked })}
             />
             Enabled
           </label>
+          <div className="grid grid-cols-2 gap-2">
+            <input id="ff-adminemailrulestab-3"
+              placeholder="Test: sender email"
+              value={testFrom}
+              onChange={e => setTestFrom(e.target.value)}
+              className="w-full bg-black text-rmpg-100 px-2 py-1"
+            />
+            <input id="ff-adminemailrulestab-4"
+              placeholder="Test: subject"
+              value={testSubject}
+              onChange={e => setTestSubject(e.target.value)}
+              className="w-full bg-black text-rmpg-100 px-2 py-1"
+            />
+          </div>
           <div className="flex gap-2 items-center">
             <button
               onClick={save}
-              className="px-3 py-1 border border-[#d4a017] text-[#d4a017]"
+              className="px-3 py-1 border border-accent-silver-500 text-accent-silver-500"
             >
               SAVE
             </button>
             <button
               onClick={testMatch}
-              className="px-3 py-1 border border-border-default hover:border-[#d4a017]"
+              className="px-3 py-1 border border-border-default hover:border-accent-silver-500"
             >
               TEST MATCH
             </button>

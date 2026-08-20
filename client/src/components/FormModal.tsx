@@ -111,7 +111,7 @@ export default function FormModal({
       <div className={`relative w-full ${maxWidth} mx-2 sm:mx-4 shadow-md animate-scale-in panel-beveled`} style={{ background:"var(--surface-sunken)", maxHeight: 'calc(100dvh - 16px)' }} onClick={(e) => { e.stopPropagation(); if ((e.target as HTMLElement).tagName === 'DIV' && document.activeElement instanceof HTMLElement) document.activeElement.blur(); }}>
         <div className="panel-title-bar">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2" style={{ background: '#888888' }} />
+            <div className="w-2 h-2" style={{ background: 'var(--text-muted)' }} />
             {Icon && <Icon className="title-icon" />}
             <span id={titleId}>{title}</span>
             {isDirty && (
@@ -126,7 +126,7 @@ export default function FormModal({
               onClick={guardedClose}
               className="toolbar-btn flex items-center justify-center"
               style={{ minWidth: 44, minHeight: 44, padding: '4px 8px', touchAction: 'manipulation' }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.color = '#ffffff'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--border-default)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ''; e.currentTarget.style.color = ''; }}
               aria-label="Close"
             >
@@ -136,7 +136,7 @@ export default function FormModal({
         </div>
         <form onSubmit={onSubmit} noValidate className="p-4 sm:p-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100dvh - 120px)' }}>
           {draftRestored && onDiscardDraft && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: 'rgb(var(--sev-warn-rgb) / 0.06)' }}>
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>

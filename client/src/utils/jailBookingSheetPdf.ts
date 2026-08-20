@@ -23,7 +23,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 
-import { stripHtmlForPdf } from './formatters';
+import { formatEnumValue, toDisplayLabel, stripHtmlForPdf } from './formatters';
+import { openPdfBlob } from './openPdfDocument';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -153,7 +154,7 @@ export function formatBail(amount: number | string | null | undefined): string {
 /** Public for testing. snake_case status → uppercase label. */
 export function prettyStatus(status: string | undefined | null): string {
   if (!status) return '—';
-  return status.replace(/_/g, ' ').toUpperCase();
+  return toDisplayLabel(status).toUpperCase();
 }
 
 /** Public for testing. The inmate is "in custody" (not yet
@@ -323,7 +324,7 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
     ['Arresting Agency', inmate.arresting_agency || '—'],
     ['Arresting Officer', inmate.arresting_officer_name || (inmate.arresting_officer_id ? String(inmate.arresting_officer_id) : '—')],
     ['Bail Amount', formatBail(inmate.bail_amount)],
-    ['Bond Type', inmate.bond_type || '—'],
+    ['Bond Type', formatEnumValue(inmate.bond_type) || '—'],
     ['Linked Incident', inmate.arrest_incident_id ? String(inmate.arrest_incident_id) : '—'],
     ['Release Reason', inmate.release_reason || '—'],
   ]);
@@ -426,8 +427,8 @@ export function generateJailBookingSheetPdf(input: JailBookingSheetInput): jsPDF
 
 export function openJailBookingSheetPdf(input: JailBookingSheetInput): void {
   const doc = generateJailBookingSheetPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Jail Booking Sheet');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -564,6 +565,6 @@ export function generateJailRosterSnapshotPdf(input: JailRosterSnapshotInput): j
 
 export function openJailRosterSnapshotPdf(input: JailRosterSnapshotInput): void {
   const doc = generateJailRosterSnapshotPdf(input);
-  const url = doc.output('bloburl');
-  window.open(url, '_blank');
+  const url = URL.createObjectURL(doc.output('blob'));
+  openPdfBlob(url, 'Jail Booking Sheet');
 }

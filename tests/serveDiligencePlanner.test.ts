@@ -26,13 +26,21 @@ describe('daysUntilDeadline', () => {
 });
 
 describe('planAttemptWindows', () => {
-  it('normal cadence: tomorrow evening, +2 morning, next Saturday', () => {
-    const plan = planAttemptWindows(NOW, null);
+  // UPDATED for Task 4 (D-2/D5): this test previously pinned the OLD
+  // entity-type-driven, hand-rolled slot cadence (tomorrow-evening →
+  // +2-morning → next-Saturday, three-letter weekdays, en-dash windows).
+  // Timing now delegates to selectWindows()'s fixed RESIDENTIAL_DEFAULTS
+  // order (early morning, midday, evening) placed on the earliest allowed
+  // day starting from `now` — residential allows any day of week, so
+  // attempt 1 lands the SAME day rather than waiting for tomorrow. Full
+  // weekday names (D5) and hyphen-separated windows (serveAttemptWindows.ts)
+  // replace the old abbreviated/en-dash forms.
+  it('residential cadence: earliest allowed day per band, in default order', () => {
+    const plan = planAttemptWindows(NOW, null, 'America/Denver', { addressClass: 'residential' });
     expect(plan).toHaveLength(3);
-    expect(plan[0]).toMatchObject({ attempt: 1, date: '2026-06-12', weekday: 'Fri', window: '17:00–20:30' });
-    expect(plan[1]).toMatchObject({ attempt: 2, date: '2026-06-13', weekday: 'Sat', window: '07:00–09:00' });
-    // Next Saturday at least 3 days out from Thu 06-11 → 06-20.
-    expect(plan[2]).toMatchObject({ attempt: 3, date: '2026-06-20', weekday: 'Sat', window: '10:00–14:00' });
+    expect(plan[0]).toMatchObject({ attempt: 1, date: '2026-06-11', weekday: 'Thursday', window: '07:00-09:00' });
+    expect(plan[1]).toMatchObject({ attempt: 2, date: '2026-06-12', weekday: 'Friday', window: '11:00-13:00' });
+    expect(plan[2]).toMatchObject({ attempt: 3, date: '2026-06-13', weekday: 'Saturday', window: '17:00-20:30' });
   });
 
   it('tight deadline compresses to daily attempts starting today', () => {
@@ -175,5 +183,208 @@ describe('replanAfterFailedAttempt', () => {
     expect(next).not.toBeNull();
     // With 2 days until deadline and 4 attempts remaining, next must be on 06-12 (tomorrow) not later.
     expect(next!.date).toBe('2026-06-12');
+  });
+});
+
+describe('D-2: timing keys off address class, not entity type', () => {
+  it('a business ENTITY at a residential address gets residential windows', () => {
+    // A registered agent at a house. isBusiness is true (corporate service)
+    // but the LOCATION is a residence, so evenings must be scheduled.
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: 'residential',
+    });
+    expect(plan.some((w) => w.window === '17:00-20:30')).toBe(true);
+    expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
+  });
+
+  it('an unknown address class is treated as residential', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: 'unknown',
+    });
+    expect(plan.some((w) => w.window === '17:00-20:30')).toBe(true);
+  });
+
+  it('a confirmed business location gets business windows', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: false,
+      addressClass: 'business',
+      // R4: confirmation is now explicit. The test always meant CONFIRMED.
+      addressClassConfirmed: true,
+    });
+    expect(plan.every((w) => w.authority === 'business default')).toBe(true);
+    expect(plan.every((w) => w.weekday !== 'Saturday' && w.weekday !== 'Sunday')).toBe(true);
+  });
+
+  it('D-2 (R4): an UNCONFIRMED business class gets residential windows and all-week days', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: 'business',
+      addressClassConfirmed: false,
+    });
+    expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
+    expect(plan.some((w) => w.window === '17:00-20:30')).toBe(true);
+  });
+});
+
+describe('D1: the deadline clamp must not collapse attempts onto one date', () => {
+  it('produces distinct dates when the deadline is tight', () => {
+    // Deadline two days out, three attempts required. Previously every
+    // offset past the deadline was clamped to the same day, so attempts
+    // 2 and 3 printed on the same date.
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', '2026-07-28', 'America/Denver', {
+      addressClass: 'residential',
+    });
+    const dates = plan.map((w) => w.date);
+    const windows = plan.map((w) => `${w.date} ${w.window}`);
+    // Either the dates differ, or same-day attempts occupy DIFFERENT bands.
+    expect(new Set(windows).size).toBe(plan.length);
+    expect(dates.length).toBe(plan.length);
+  });
+
+  it('never emits two attempts in the same band on the same date', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', '2026-07-27', 'America/Denver', {
+      addressClass: 'residential',
+    });
+    const keys = plan.map((w) => `${w.date}|${w.window}`);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('D5: weekday names are spelled out', () => {
+  it('emits full weekday names, not three-letter abbreviations', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+    });
+    for (const w of plan) {
+      expect(w.weekday).toMatch(/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/);
+    }
+  });
+});
+
+describe('client constraints', () => {
+  it('never schedules a prohibited day', () => {
+    // allowedDays excludes Sunday (0).
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      allowedDays: [1, 2, 3, 4, 5, 6],
+    });
+    expect(plan.every((w) => w.weekday !== 'Sunday')).toBe(true);
+  });
+
+  it('never schedules before the client start-date bar', () => {
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      startNotBefore: '2026-07-30',
+    });
+    expect(plan.every((w) => w.date >= '2026-07-30')).toBe(true);
+  });
+});
+
+describe('R6: the interim isBusiness -> addressClass mapping is superseded by the persisted class', () => {
+  // The interim mapping (`isBusiness ? 'business' : 'unknown'`) is GONE from
+  // all three replan/backfill sites — they now read the address class and the
+  // client's hours/days/start bar that commitIntake persisted into
+  // parsed_data._intake (see servePlanContext.ts). What still matters, and is
+  // pinned below, is that the planner does NOT infer business timing on its
+  // own — so those call sites genuinely have to supply the resolved class,
+  // and (per R4) its confirmation.
+  it('the planner alone does NOT infer business from isBusiness with no addressClass', () => {
+    // Documents WHY the interim mapping is necessary: if planAttemptWindows
+    // inferred business from isBusiness on its own, the four call sites
+    // would not need to derive addressClass at all. Pin the planner's
+    // actual (residential) behavior here so that assumption is falsifiable.
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+    });
+    expect(plan.every((w) => w.authority === 'residential default')).toBe(true);
+  });
+
+  it('a persisted CONFIRMED business class, threaded through as the replan sites now do, yields weekday business windows', () => {
+    // This mirrors what servePlanContext.planContextFromRow() hands to
+    // planAttemptWindows at serveAutoReplan.ts, serveIntake.ts
+    // (/schedule/backfill AND the failed-attempt replan route). It cannot
+    // exercise those call sites directly without DB/route mocking
+    // infrastructure this task does not build (no real case data, no live
+    // DB) — that limitation is stated plainly rather than papered over with
+    // a test that implies call-site coverage it doesn't have. What this DOES
+    // prove: the shape those sites pass produces business-only weekday
+    // windows, so a future refactor of planAttemptWindows/selectWindows
+    // can't silently break that assumption without this test noticing.
+    const ctx = { addressClass: 'business' as const, addressClassConfirmed: true };
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      isBusiness: true,
+      addressClass: ctx.addressClass,
+      addressClassConfirmed: ctx.addressClassConfirmed,
+    });
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan.every((w) => w.authority === 'business default')).toBe(true);
+    expect(plan.every((w) => w.window === '09:30-11:30' || w.window === '13:30-15:30')).toBe(true);
+    expect(plan.every((w) => w.weekday !== 'Saturday' && w.weekday !== 'Sunday')).toBe(true);
+  });
+});
+
+describe('Fix round 1 — Finding 2: no duplicate (date, window) pair even with duplicate client bands', () => {
+  it('duplicate clientBands under a same-day deadline never emit a duplicate (date, window) pair', () => {
+    // Three IDENTICAL client-specified bands, deadline = today (days = 0), so
+    // every spec's earliest offset gets clamped back to day 0. The old D1 fix
+    // recomputed `key` before the clamp but not after a clamp taken INSIDE the
+    // guard loop, so a clamp-and-break re-added the same stale key and pushed
+    // a duplicate (date, window) pair. This reproduces that path.
+    const plan = planAttemptWindows('2026-06-11T18:00:00.000Z', '2026-06-11', 'America/Denver', {
+      addressClass: 'residential',
+      clientBands: [
+        { start: '09:00', end: '10:00' },
+        { start: '09:00', end: '10:00' },
+        { start: '09:00', end: '10:00' },
+      ],
+    });
+    const keys = plan.map((w) => `${w.date}|${w.window}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    // At least the first band should still be scheduled today.
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan[0]).toMatchObject({ date: '2026-06-11', window: '09:00-10:00' });
+  });
+});
+
+describe('Fix round 1 — Finding 3: startNotBefore beyond the old 60-day scan bound', () => {
+  it('honours a start-date bar far past the old bound instead of silently dropping it', () => {
+    // The old minOffset search only scanned offsets 0..59. A startNotBefore
+    // more than ~59 days out fell through with minOffset left at its 0
+    // default, silently DROPPING the client's start-date bar — the unsafe
+    // direction, since an officer could then be scheduled to attempt before
+    // the client authorized any attempt. 2026-07-27 + 400 days is well past
+    // that bound.
+    const farStart = '2027-08-31'; // ~400 days after 2026-07-27
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      startNotBefore: farStart,
+    });
+    expect(plan.length).toBeGreaterThan(0);
+    expect(plan.every((w) => w.date >= farStart)).toBe(true);
+  });
+});
+
+describe('Fix round 2 — Finding 3a: unparseable startNotBefore must not crash the planner', () => {
+  it('a regex-shaped but calendar-invalid startNotBefore returns a normal plan instead of throwing', () => {
+    // '9999-99-99' matches /^\d{4}-\d{2}-\d{2}$/ (shape only) but is not a
+    // real calendar date: Date.parse('9999-99-99T00:00:00Z') is NaN. The
+    // Finding 3 walk fed that NaN into `new Date(NaN)` -> Intl.DateTimeFormat
+    // throws a RangeError, crashing planAttemptWindows entirely on a commit
+    // path. This must not throw, and must return a normal (unconstrained)
+    // plan since the malformed bar is ignored.
+    expect(() => {
+      planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+        addressClass: 'residential',
+        startNotBefore: '9999-99-99',
+      });
+    }).not.toThrow();
+
+    const plan = planAttemptWindows('2026-07-27T12:00:00Z', null, 'America/Denver', {
+      addressClass: 'residential',
+      startNotBefore: '9999-99-99',
+    });
+    expect(plan.length).toBe(3);
   });
 });

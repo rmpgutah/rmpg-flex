@@ -1,0 +1,92 @@
+#!/usr/bin/env sh
+# Husky pre-push hook — last local guardrail before code reaches GitHub.
+#
+# Layered gate architecture (Cloudflare Workers era):
+#   1. Husky pre-push (here)  — fast, local, runs on every `git push`
+#   2. GitHub Actions PR tests — runs in CI on PR open/update and push to main
+#   3. deploy.yml (Cloudflare)  — auto-deploys Worker + Pages on push to main
+#
+# Emergency bypass: `git push --no-verify` — CI (layer 2) and Cloudflare's
+# build (layer 3) will still catch regressions.
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Skip when nothing to push (rebase/force-push flows, already-pushed branches).
+if [ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]; then
+  echo "⤷ pre-push: no commits ahead of origin/main — skipping gate"
+  exit 0
+fi
+
+ensure_deps() {
+  dir="$1"
+  if [ ! -d "$dir/node_modules" ]; then
+    echo "  (installing $dir deps — worktree missing node_modules)"
+    (cd "$dir" && npm install --silent --no-audit --no-fund) || {
+      echo "✗ pre-push: npm install failed in $dir"
+      exit 1
+    }
+  fi
+}
+
+printf '⤷ pre-push: quality gate (worker types + client types + client tests + desktop tests)\n'
+START=$(date +%s)
+
+ensure_deps "$ROOT"
+ensure_deps "$ROOT/client"
+ensure_deps "$ROOT/desktop"
+
+echo "  [1/4] Worker TypeScript..."
+(cd "$ROOT" && npx tsc --noEmit) || {
+  echo "✗ pre-push: worker typecheck failed — run 'npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [2/4] Client TypeScript..."
+(cd "$ROOT/client" && npx tsc --noEmit) || {
+  echo "✗ pre-push: client typecheck failed — run 'cd client && npx tsc --noEmit' to see errors"
+  exit 1
+}
+
+echo "  [3/4] Client vitest..."
+(cd "$ROOT/client" && npx vitest run --reporter=dot) || {
+  echo "✗ pre-push: client tests failed — run 'cd client && npx vitest run' to see failures"
+  echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
+  exit 1
+}
+
+echo "  [4/4] Desktop tests..."
+# desktop/'s postinstall (electron-rebuild) normally leaves better-sqlite3
+# compiled for Electron's ABI, not Node's — the DB-backed tests in
+# desktop/__tests__/ run under plain `node --test` and need the Node ABI, so
+# a fresh/rebuilt checkout fails here with a NODE_MODULE_VERSION mismatch
+# even though nothing is actually broken. Rebuild for Node ABI only when
+# needed, and restore the Electron ABI via an EXIT trap (not npm
+# pretest/posttest — posttest doesn't reliably run when the test script
+# itself exits non-zero, which would leave `desktop && npm start` broken).
+restore_desktop_abi() {
+  echo "  (restoring better-sqlite3 to Electron ABI)"
+  (cd "$ROOT/desktop" && npm run rebuild --silent) >/dev/null 2>&1 || \
+    echo "⚠ pre-push: failed to restore better-sqlite3 to Electron ABI — run 'cd desktop && npm run rebuild' manually before 'npm start'"
+}
+
+if ! (cd "$ROOT/desktop" && node -e "new (require('better-sqlite3'))(':memory:')") >/dev/null 2>&1; then
+  echo "  (better-sqlite3 is built for Electron's ABI — rebuilding for Node to run desktop tests)"
+  (cd "$ROOT/desktop" && npm rebuild better-sqlite3 --silent) || {
+    echo "✗ pre-push: failed to rebuild better-sqlite3 for Node ABI"
+    exit 1
+  }
+  trap restore_desktop_abi EXIT
+fi
+
+(cd "$ROOT/desktop" && npm test --silent) || {
+  echo "✗ pre-push: desktop tests failed — run 'cd desktop && npm test' to see failures"
+  echo "           (no CI job runs desktop/ tests today — this hook is the only gate;"
+  echo "           'git push --no-verify' bypasses it with nothing else to catch a regression)"
+  exit 1
+}
+
+END=$(date +%s)
+printf '✓ pre-push: all gates passed in %ss\n' "$((END - START))"

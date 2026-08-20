@@ -24,13 +24,13 @@ export default function OnFootActivityModal({ unit, onClose }: { unit: Unit; onC
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div className="w-[420px] max-h-[70vh] overflow-auto border border-border-default bg-surface-sunken p-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#d4a017' }}>
+          <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: 'var(--field-label-color)' }}>
             ON-FOOT ACTIVITY — {unit.call_sign}
           </span>
           <button aria-label="Close" onClick={onClose}><X className="w-3.5 h-3.5 text-rmpg-400" /></button>
         </div>
-        {loading ? <div className="text-[10px] text-rmpg-500">Loading…</div> : rows.length === 0 ? (
-          <div className="text-[10px] text-rmpg-500">No on-foot segments recorded.</div>
+        {loading ? <div className="text-[10px] text-fg-muted">Loading…</div> : rows.length === 0 ? (
+          <div className="text-[10px] text-fg-muted">No on-foot segments recorded.</div>
         ) : (
           <div className="overflow-x-auto"><table className="table-dark w-full">
             <thead><tr><th>Started</th><th>Duration</th><th>Distance</th><th>Peak</th></tr></thead>

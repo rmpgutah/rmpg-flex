@@ -4,19 +4,42 @@
 // pushes locally-created records back when connectivity returns.
 // ============================================================
 
-const { net } = require('electron');
-const { getLocalDb, replaceTable, deltaSync, getSyncMeta, getConfig, setConfig,
-        getPendingQueue, markQueueItem, getQueueDepth } = require('./localDb');
+// Lazy: require('electron') is only valid inside the Electron runtime.
+// The test suite runs in plain Node.js and must not trigger this at module
+// load time — doing so throws "Electron failed to install correctly" on CI
+// where the Electron binary is absent. The real `net` object is only needed
+// inside pullAll/pullTable (lines below), which are never called from tests.
+function getElectronNet() { return require('electron').net; }
+const { getLocalDb, replaceTable, replaceUsersTable, deltaSync, getSyncMeta, getConfig, setConfig,
+        getPendingQueue, markQueueItem, getQueueDepth, wipeMirroredCacheTables } = require('./localDb');
+const { decodeJwtPayloadLocally, hasUserOrOrgMismatch } = require('./security/sessionAuth');
+const { isAllowedApiHost, withRequestTimeout, DEFAULT_IPC_REQUEST_TIMEOUT_MS } = require('./security/childProcessGuard');
 
 let serverUrl = '';
+// Hostname-only (no port) form of serverUrl, computed once when
+// startPullSchedule() sets serverUrl (mirrors REMOTE_SERVER_HOSTNAME in
+// main.js). Used by isAllowedApiHost() to pin this module's net.request
+// call sites (serverFetch/refreshAndRetry) to the server the app was
+// actually configured to talk to. Regression-guard framing: serverUrl is
+// always main.js's REMOTE_SERVER_URL (a const/env-derived literal, never
+// renderer-influenced) — this doesn't close an active vulnerability, it's
+// a tripwire against a future accidental change routing a request
+// elsewhere. Fails closed to `null` (never matched) until set.
+let allowedSyncHost = null;
 let mainWindow = null;
 let pullTimers = {};
 let isSyncing = false;
 let syncStartedAt = null;  // timestamp when sync started — for stale lock detection
 let lastPushAt = null;
+let isPaused = false;
 const SYNC_LOCK_TIMEOUT = 60_000; // 60s — if sync is still locked after this, force-release
 
 // ─── Pull Sync Intervals (ms) ───────────────────────────────
+// This object's keys are also the single source of truth for which tables
+// count as "mirrored/reference cache" — forceFullResync() below passes
+// Object.keys(PULL_INTERVALS) to localDb.js's wipeMirroredCacheTables()
+// rather than that function owning its own duplicate table list, since
+// localDb.js has no import of syncManager.js (avoiding a circular require).
 const PULL_INTERVALS = {
   users:              300_000,  // 5 min (reference)
   clients:            300_000,  // 5 min (reference)
@@ -27,6 +50,12 @@ const PULL_INTERVALS = {
   time_entries:       120_000,  // 2 min
   persons:            600_000,  // 10 min
   vehicles_records:   600_000,  // 10 min
+  // Process Server — pulled on the same cadence as incidents so an officer's
+  // job list is fresh when they go offline mid-shift. serve_attempts is slower
+  // because it's an append-only log the officer consults but rarely edits in
+  // the field; 10 min covers any supervisor re-assignment.
+  serve_queue:        120_000,  // 2 min
+  serve_attempts:     600_000,  // 10 min
 };
 
 const REFERENCE_TABLES = ['users', 'clients', 'properties'];
@@ -35,6 +64,11 @@ const REFERENCE_TABLES = ['users', 'clients', 'properties'];
 
 function startPullSchedule(url, window) {
   serverUrl = url;
+  try {
+    allowedSyncHost = new URL(url).hostname;
+  } catch {
+    allowedSyncHost = null;
+  }
   mainWindow = window;
 
   console.log('[SYNC] Starting pull schedule');
@@ -85,7 +119,18 @@ function releaseSyncLock() {
   syncStartedAt = null;
 }
 
+function pauseSync() {
+  isPaused = true;
+  console.log('[SYNC] Paused');
+}
+
+function resumeSync() {
+  isPaused = false;
+  console.log('[SYNC] Resumed');
+}
+
 async function pullAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -105,7 +150,44 @@ async function pullAll() {
   }
 }
 
+/**
+ * Destructively wipes the local mirrored/reference cache tables (exactly
+ * PULL_INTERVALS's keys — never sync_queue or gps_breadcrumbs, which hold
+ * local unsynced writes) and their sync_metadata bookkeeping, then does a
+ * full pullAll() to repopulate from the server. Used when the local cache
+ * is suspected corrupt/stale beyond what incremental pulls can repair.
+ *
+ * pullAll() already handles the sync-lock/progress-emit cycle and swallows
+ * its own per-table pull failures, so it doesn't normally throw — the
+ * try/catch here is defensive in case it (or the wipe) ever does.
+ *
+ * Bails out FIRST (before the wipe ever runs) if sync is currently paused.
+ * pullAll()'s own `if (isPaused) return;` guard only protects the repopulate
+ * half of this sequence — without a matching check here, a paused call would
+ * still genuinely wipe every mirrored/reference table (including `users`,
+ * which backs offline PIN auth), then have pullAll() no-op immediately, and
+ * still report {ok:true} — leaving the offline read cache empty while
+ * claiming success. Checking (and bailing) before the wipe respects the
+ * operator's explicit intent to pause (e.g. on a metered connection) instead
+ * of silently emptying the cache or burning bandwidth against their wishes.
+ */
+async function forceFullResync() {
+  if (isPaused) {
+    return { ok: false, error: 'cannot force a full resync while sync is paused — resume sync first' };
+  }
+
+  try {
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    await pullAll();
+    return { ok: true };
+  } catch (err) {
+    console.error('[SYNC] Force full resync failed:', err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 async function pushAll() {
+  if (isPaused) return;
   if (!acquireSyncLock()) return;
 
   try {
@@ -171,6 +253,7 @@ async function pushAll() {
           }
         }
       } catch (err) {
+        setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
         console.error('[SYNC] Batch push failed:', err.message);
         for (const item of batch) {
           markQueueItem(item.id, 'pending', null, err.message);
@@ -194,7 +277,42 @@ async function pushAll() {
 
 // ─── Internal Helpers ────────────────────────────────────────
 
+/**
+ * Applies a batch of pulled rows to the local mirror for `table`, choosing
+ * the correct write strategy. Extracted from pullTable() below so the
+ * dispatch logic (which table takes which local-write path) is testable in
+ * isolation, without a live network call — pullTable() itself is otherwise
+ * all network/timer plumbing.
+ *
+ * 'users' gets its own full-replace path (replaceUsersTable) instead of the
+ * generic replaceTable(), so the cached password_hash is encrypted via
+ * safeStorage before it touches disk (see localDb.js's
+ * upsertUserWithEncryptedHash — built by Group H, wired in here by Group C
+ * Task 10).
+ *
+ * Note: 'users' is a REFERENCE_TABLE, and pullTable() always sends
+ * `since: null` for reference tables. The server's /api/offline/sync/pull
+ * handler (src/routes/offline.ts) returns `fullReplace: since === null` —
+ * so a reference-table pull is *structurally* guaranteed to always report
+ * fullReplace === true. That means 'users' can only ever reach the
+ * `fullReplace` branch here, never the `deltaSync` branch below — deltaSync
+ * intentionally has no 'users'-specific handling, since that path can't be
+ * reached for it.
+ */
+function applyPulledRows(table, rows, fullReplace) {
+  if (fullReplace) {
+    if (table === 'users') {
+      replaceUsersTable(rows);
+    } else {
+      replaceTable(table, rows);
+    }
+  } else {
+    deltaSync(table, rows);
+  }
+}
+
 async function pullTable(table) {
+  if (isPaused) return;
   const meta = getSyncMeta(table);
   const isReference = REFERENCE_TABLES.includes(table);
 
@@ -214,20 +332,18 @@ async function pullTable(table) {
 
     if (response.rows.length === 0) return;
 
-    if (response.fullReplace) {
-      replaceTable(table, response.rows);
-    } else {
-      deltaSync(table, response.rows);
-    }
+    applyPulledRows(table, response.rows, response.fullReplace);
 
     console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err) {
+    setConfig('last_sync_error', JSON.stringify({ message: err.message, at: new Date().toISOString() }));
     // Silently fail — will retry on next interval
     console.warn(`[SYNC] Pull ${table} failed:`, err.message);
   }
 }
 
 async function pullSecrets() {
+  if (isPaused) return;
   try {
     const db = getLocalDb();
     const cachedRole = getConfig('current_user_role');
@@ -306,7 +422,12 @@ function serverFetch(endpoint, options = {}) {
       const token = getConfig('auth_token');
       const url = `${serverUrl}${endpoint}`;
 
-      const request = net.request({
+      if (!isAllowedApiHost(url, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
+
+      const request = getElectronNet().request({
         url,
         method: options.method || 'GET',
       });
@@ -366,36 +487,82 @@ function serverFetch(endpoint, options = {}) {
 
 /**
  * Attempt to refresh the JWT token and retry the request.
+ *
+ * A token refresh is the one point in this file where a fresh,
+ * server-authoritative identity claim becomes available — the refresh
+ * response's `token` is a brand-new JWT the server just issued for
+ * whichever user the refresh_token currently maps to. No sync-pull
+ * response (pullAll/pullTable/pullSecrets) carries a user/org identity
+ * field: `/api/offline/sync/pull` only returns `rows`/`fullReplace`, and
+ * `/api/offline/my-secret` / `/api/offline/secrets` only return
+ * `secret`/`admin_secret`/`secrets`. So rather than inventing a
+ * server-response field that doesn't exist, this decodes the refreshed
+ * JWT locally (decodeJwtPayloadLocally — never verifies the signature,
+ * matching this file's other local-only JWT inspection) and compares its
+ * embedded user id against this device's cached current_user_id. If they
+ * disagree (e.g. a different officer's session got refreshed on this
+ * installed desktop shell without the previous user's cache ever being
+ * wiped), the mirrored/reference cache is wiped instead of letting sync
+ * continue writing one user's data into another's local cache.
  */
 async function refreshAndRetry(endpoint, options) {
   const refreshToken = getConfig('refresh_token');
   if (!refreshToken) throw new Error('No refresh token available');
 
-  const refreshResponse = await new Promise((resolve, reject) => {
-    const request = net.request({
-      url: `${serverUrl}/api/auth/refresh`,
-      method: 'POST',
-    });
-    request.setHeader('Content-Type', 'application/json');
+  // Task 7: unlike serverFetch (which already carries its own inline
+  // 15s timeout+abort), this net.request had no timeout at all — a hung
+  // TCP connection or a server that accepts the connection but never
+  // responds would leave a token refresh (and every caller awaiting it,
+  // including offline:trigger-sync's pullAll() loop) hanging indefinitely.
+  // Wrapped in withRequestTimeout (childProcessGuard.js) for consistency
+  // with serverFetch's bound and geo:ip-locate's Task 7 wiring.
+  const refreshResponse = await withRequestTimeout(
+    new Promise((resolve, reject) => {
+      const refreshUrl = `${serverUrl}/api/auth/refresh`;
+      if (!isAllowedApiHost(refreshUrl, [allowedSyncHost])) {
+        reject(new Error('Blocked outbound sync request: host not allowlisted'));
+        return;
+      }
 
-    let body = '';
-    request.on('response', (response) => {
-      response.on('data', (chunk) => { body += chunk.toString(); });
-      response.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (response.statusCode === 200) {
-            resolve(data);
-          } else {
-            reject(new Error('Refresh failed'));
-          }
-        } catch { reject(new Error('Refresh parse error')); }
+      const request = getElectronNet().request({
+        url: refreshUrl,
+        method: 'POST',
       });
-    });
-    request.on('error', reject);
-    request.write(JSON.stringify({ refreshToken }));
-    request.end();
-  });
+      request.setHeader('Content-Type', 'application/json');
+
+      let body = '';
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { body += chunk.toString(); });
+        response.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (response.statusCode === 200) {
+              resolve(data);
+            } else {
+              reject(new Error('Refresh failed'));
+            }
+          } catch { reject(new Error('Refresh parse error')); }
+        });
+      });
+      request.on('error', reject);
+      request.write(JSON.stringify({ refreshToken }));
+      request.end();
+    }),
+    DEFAULT_IPC_REQUEST_TIMEOUT_MS,
+    setTimeout
+  );
+
+  // Check the freshly-issued token's embedded identity against this
+  // device's cached identity BEFORE trusting it for anything — see the
+  // doc comment above for why this is the hook point (no sync-pull
+  // response carries a user identity field to compare against instead).
+  const freshPayload = decodeJwtPayloadLocally(refreshResponse.token);
+  const freshUserId = freshPayload ? (freshPayload.user_id ?? freshPayload.userId) : null;
+  if (hasUserOrOrgMismatch(getConfig('current_user_id'), freshUserId)) {
+    console.warn('[SYNC] User/org identity mismatch detected on token refresh — wiping mirrored cache tables');
+    wipeMirroredCacheTables(Object.keys(PULL_INTERVALS));
+    throw new Error('user identity mismatch detected on token refresh — local cache wiped');
+  }
 
   // Store new tokens
   setConfig('auth_token', refreshResponse.token);
@@ -418,6 +585,12 @@ module.exports = {
   stopPullSchedule,
   pullAll,
   pushAll,
+  forceFullResync,
+  pauseSync,
+  resumeSync,
+  applyPulledRows,
+  pullSecrets,
   get isSyncing() { return isSyncing; },
   get lastPushAt() { return lastPushAt; },
+  get isPaused() { return isPaused; },
 };

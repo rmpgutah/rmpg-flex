@@ -10,18 +10,20 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw, Car, Wifi } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance, classifyMapboxError } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { applyRmpgBasemap } from '../utils/mapboxBasemap';
-import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../utils/mapMarkers';
-import { PRIORITY_HEX } from '../utils/statusColors';
+import { buildUnitMarker, isValidLngLat, STATUS_COLORS } from '../pages/map/utils/mapMarkers';
+import { priorityHex, CALL_MARKER_INK } from '../utils/statusColors';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
+import { withAlpha } from '../utils/withAlpha';
 import ManeuverArrow from './ManeuverArrow';
+import { isNavGuidanceActive, speedComparison } from './dispatchNavGate';
 import type { CallForService, Unit } from '../types';
 
 // `call.assigned_units` can arrive as id strings/numbers OR as full unit
@@ -65,8 +67,6 @@ function formatEta(seconds: number): string {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
 }
 
-const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
-
 /** Format meters into a human-readable distance */
 function formatDistance(meters: number): string {
   const miles = meters / 1609.344;
@@ -74,21 +74,21 @@ function formatDistance(meters: number): string {
 }
 
 /** Build a call marker DOM element with priority-colored badge */
-function buildCallMarker(label: string, priority?: string): HTMLElement {
-  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+export function buildCallMarker(label: string, priority?: string): HTMLElement {
+  const color = priorityHex(priority);
   const el = document.createElement('div');
   el.style.cssText = `
     display:flex;flex-direction:column;align-items:center;
-    filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));cursor:pointer;
+    filter:drop-shadow(0 2px 6px rgba(var(--surface-overlay-rgb) / 0.8));cursor:pointer;
   `;
 
   const tag = document.createElement('div');
   tag.style.cssText = `
-    background:${color};color:#fff;font-size:7px;font-weight:900;
-    padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);
+    background:${color};color:${CALL_MARKER_INK};font-size:7px;font-weight:900;
+    padding:2px 4px;border:1.5px solid ${CALL_MARKER_INK};
     white-space:nowrap;font-family:'JetBrains Mono',monospace;
     letter-spacing:0.03em;border-radius:1px;
-    box-shadow:0 0 8px ${color}50;
+    box-shadow:0 0 8px ${withAlpha(color, '50')};
   `;
   tag.textContent = label;
 
@@ -221,6 +221,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         style: MAPBOX_STYLE_DARK,
         center,
         zoom,
+        projection: 'mercator',
         attributionControl: false,
       });
       map.on('style.load', () => applyRmpgBasemap(map, { variant: 'dark' }));
@@ -453,16 +454,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // instruction CHANGES (the moment it becomes current). Throttled to one
   // utterance per distinct instruction so we don't repeat on every re-render.
   //
-  // AUDIBLE nav is gated to the EN-ROUTE phase only: it starts speaking when
-  // the call goes 'enroute' and stops once the unit is 'onscene' (and never
-  // speaks while pending/dispatched/cleared). The route line + on-screen
-  // maneuver banner still render at any status — this gate is voice-only, so
-  // simply opening the dispatch screen no longer triggers spoken directions.
-  // Resetting the throttle ref outside en-route means the first instruction is
-  // announced the instant status flips to 'enroute'.
+  // Both the spoken directions AND the on-screen turn-by-turn banner (its
+  // instruction text plus its own ETA/distance row) are gated to the EN-ROUTE
+  // phase via isNavGuidanceActive: guidance begins when the call goes
+  // 'enroute' and ends once the unit is 'onscene'. The route LINE deliberately
+  // still draws at any status — a dispatcher benefits from seeing the path to
+  // a dispatched-but-not-yet-enroute call — and the separate, always-visible
+  // ETA badge below is not gated either; only the turn-by-turn banner follows
+  // the status. Resetting the throttle ref outside en-route means the first
+  // instruction is announced the instant status flips to 'enroute'.
   const lastSpokenRef = useRef<string>('');
   useEffect(() => {
-    const isEnRoute = call?.status === 'enroute';
+    const isEnRoute = isNavGuidanceActive(call?.status);
     const current = activeRoute?.steps?.[0]?.instruction?.trim();
     if (!isEnRoute || !current) { lastSpokenRef.current = ''; return; }
     if (current === lastSpokenRef.current) return;
@@ -481,7 +484,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       callMarkerRef.current = null;
       unitMarkersRef.current.forEach((m) => m.remove());
       unitMarkersRef.current.clear();
-      if (mapRef.current) unregisterMapInstance(mapRef.current);
+      // unregisterMapInstance() only drops our bookkeeping entry — it does NOT
+      // release the map. Mapbox holds a WebGL context, a canvas, and
+      // window-level listeners until map.remove() is called, so leaving it out
+      // leaked a live GL context every time this mini-map unmounted (it is
+      // mounted per dispatch call, so the count climbs fast). Browsers cap
+      // WebGL contexts (~16 in Chrome) and silently kill the OLDEST on
+      // overflow, so the damage surfaces as unrelated maps going blank.
+      if (mapRef.current) {
+        unregisterMapInstance(mapRef.current);
+        try { mapRef.current.remove(); } catch { /* already gone */ }
+        mapRef.current = null;
+      }
     };
   }, []);
 
@@ -489,12 +503,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   if (isAuthError) {
     return (
       <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface-base)' }}>
-        <span className="text-[9px] text-rmpg-500">{error}</span>
+        <span className="text-[9px] text-fg-muted">{error}</span>
       </div>
     );
   }
 
-  const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
+  const priorityColor = priorityHex((call as any)?.priority);
 
   return (
     <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid var(--border-subtle)' }}>
@@ -508,10 +522,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {/* Title badge with priority accent */}
           <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5"
             style={{
-              background: 'rgba(0,0,0,0.8)',
+              background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
               backdropFilter: 'blur(4px)',
               borderLeft: `2px solid ${priorityColor}`,
-              color: '#aaaaaa',
+              color: 'var(--text-secondary)',
               fontFamily: "'JetBrains Mono', monospace",
               display: 'flex', alignItems: 'center', gap: 3,
             }}>
@@ -525,13 +539,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {assignedUnits.length > 0 && (
             <span className="text-[7px] font-bold px-1.5 py-0.5"
               style={{
-                background: 'rgba(0,0,0,0.8)',
+                background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
                 backdropFilter: 'blur(4px)',
-                color: '#666666',
+                color: 'var(--text-muted)',
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
               {assignedWithGpsCount}/{assignedUnits.length} UNITS
-              {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
+              {assignedWithGpsCount > 0 && <span style={{ color: 'var(--sev-ok)', marginLeft: 3 }}>●</span>}
             </span>
           )}
         </div>
@@ -539,7 +553,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           <button type="button"
             onClick={() => navigate('/map')}
             className="text-rmpg-400 hover:text-rmpg-100"
-            style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+            style={{ background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -548,7 +562,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             <button type="button"
               onClick={onClose}
               className="text-rmpg-400 hover:text-rmpg-100"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+              style={{ background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
               title="Close mini-map"
             >
               ✕
@@ -565,16 +579,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         }}>
           <div style={{
             width: 24, height: 24, borderRadius: '50%',
-            background: 'rgba(0,0,0,0.8)',
-            border: '1px solid #2b2b2b',
+            background: 'rgba(var(--surface-overlay-rgb) / 0.9)',
+            border: '1px solid var(--border-default)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             backdropFilter: 'blur(4px)',
           }}>
             <svg width="16" height="16" viewBox="0 0 16 16"
               style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
-              <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
-              <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
-              <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+              <polygon points="8,2 6.5,9 8,7.5 9.5,9" style={{ fill: 'var(--panel-header-color)' }} />
+              <polygon points="8,14 6.5,7 8,8.5 9.5,7" style={{ fill: 'var(--text-muted)' }} />
+              <text x="8" y="1.5" textAnchor="middle" style={{ fill: 'var(--panel-header-color)' }} fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
             </svg>
           </div>
         </div>
@@ -584,16 +598,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.92)', border: '1px solid #88888830',
+          background: 'rgba(var(--surface-overlay-rgb) / 0.92)', border: '1px solid rgba(var(--text-muted-rgb) / 0.19)',
           backdropFilter: 'blur(4px)',
           padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
-          borderLeft: '2px solid #22c55e',
+          borderLeft: '2px solid var(--sev-ok)',
         }}>
-          <span style={{ fontSize: 8, color: 'var(--rmpg-400)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+          <span style={{ fontSize: 8, color: 'var(--text-secondary)', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
             {activeRoute.unitCallSign}→{activeRoute.callNumber}
           </span>
-          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: 'var(--rmpg-500)' }}>{activeRoute.distance}</span>
+          <span style={{ fontSize: 9, color: 'var(--text-primary)', fontWeight: 900 }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 8, color: 'var(--text-muted)' }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -603,10 +617,10 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           steps[0] is always the current/next maneuver; it auto-advances as the
           unit drives, and each new instruction is announced by voice (effect
           below). */}
-      {activeRoute?.steps && activeRoute.steps.length > 0 && (
+      {isNavGuidanceActive(call?.status) && activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
-          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
+          background: 'rgba(var(--surface-overlay-rgb) / 0.97)', borderTop: '1px solid var(--border-default)', pointerEvents: 'auto',
         }}>
           {/* ETA + miles, above */}
           <div style={{
@@ -617,9 +631,41 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
             <span style={{ fontSize: 13, color: STATUS_COLORS.online, fontWeight: 900, letterSpacing: '0.02em' }}>
-              {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
+              {activeRoute.eta} <span style={{ fontSize: 8, color: 'var(--sev-ok)' }}>ETA</span>
             </span>
             <span style={{ fontSize: 12, color: STATUS_COLORS.warning, fontWeight: 900 }}>{activeRoute.distance}</span>
+            {(() => {
+              // Display-only speed context for the responding unit. Suppressed
+              // when the GPS fix is stale (see dispatchNavGate.speedComparison)
+              // so a paused reading never renders as a live fact.
+              const assigned = units.find((u) => u.call_sign === activeRoute.unitCallSign);
+              const cmp = speedComparison({
+                gpsSpeedMps: assigned?.gps_speed,
+                gpsUpdatedAt: assigned?.gps_updated_at,
+                postedLimitMph: activeRoute.postedLimitMph,
+                nowMs: Date.now(),
+              });
+              if (!cmp) {
+                if (activeRoute.postedLimitMph == null) return null;
+                return (
+                  <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 700 }}>
+                    {activeRoute.postedLimitMph} limit
+                  </span>
+                );
+              }
+              const over = cmp.speedMph > cmp.limitMph;
+              return (
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 900,
+                    color: over ? 'var(--sev-warn)' : 'var(--text-secondary)',
+                  }}
+                >
+                  {cmp.speedMph} in a {cmp.limitMph}
+                </span>
+              );
+            })()}
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
@@ -628,11 +674,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               modifier={activeRoute.steps[0].modifier}
               size={28}
             />
-            <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
               {activeRoute.steps[0].instruction}
             </span>
             {activeRoute.steps[0].distanceMeters > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--rmpg-400)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                 {activeRoute.steps[0].distanceText}
               </span>
             )}
@@ -657,7 +703,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: 'var(--surface-overlay)',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: 'var(--rmpg-500)' }} className="animate-spin" />
+          <RefreshCw style={{ width: 14, height: 14, color: 'var(--text-muted)' }} className="animate-spin" />
         </div>
       )}
 
@@ -668,7 +714,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: `1px solid ${STATUS_COLORS.warning}55`,
+            background: 'rgba(var(--surface-overlay-rgb) / 0.95)', border: `1px solid ${withAlpha(STATUS_COLORS.warning, '55')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -687,7 +733,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: `1px solid ${STATUS_COLORS.caution}40`,
+            background: 'rgba(var(--surface-overlay-rgb) / 0.92)', border: `1px solid ${withAlpha(STATUS_COLORS.caution, '40')}`,
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>
@@ -705,13 +751,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',
           display: 'flex', alignItems: 'center', gap: 3,
-          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+          background: 'rgba(var(--surface-overlay-rgb) / 0.85)', padding: '2px 5px', borderRadius: 2,
         }}>
           <div style={{
             width: 5, height: 5, borderRadius: '50%',
-            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+            background: 'var(--sev-ok)', boxShadow: '0 0 4px rgba(var(--sev-ok-rgb) / 0.5)',
           }} />
-          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
+          <Wifi style={{ width: 7, height: 7, color: 'rgba(var(--sev-ok-rgb) / 0.38)' }} />
         </div>
       )}
     </div>

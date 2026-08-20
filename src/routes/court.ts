@@ -174,7 +174,7 @@ ct.get('/statistics', async (c) => {
   const noShow = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM court_events WHERE status='no_show'");
   const upcoming7 = await queryFirst<{ n: number }>(
     db,
-    `SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now','localtime') AND date('now','localtime','+7 days')`,
+    `SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now') AND date('now','+7 days')`,
   );
   const byType = await query<{ event_type: string; n: number }>(
     db,
@@ -422,7 +422,7 @@ ct.put('/events/:id', async (c) => {
     args.push(v ?? null);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
-  sets.push("updated_at = datetime('now','localtime')");
+  sets.push("updated_at = datetime('now')");
   args.push(id);
   await execute(db, `UPDATE court_events SET ${sets.join(', ')} WHERE id = ?`, ...args);
   return c.json({ success: true });
@@ -449,7 +449,7 @@ ct.put('/events/:id/outcome', async (c) => {
     getDb(c.env),
     `UPDATE court_events
        SET outcome = ?, sentence = ?, fine_amount = ?, status = COALESCE(?, status),
-           updated_at = datetime('now','localtime')
+           updated_at = datetime('now')
      WHERE id = ?`,
     body.outcome ?? null, body.sentence ?? null, body.fine_amount ?? null,
     body.status && EVENT_STATUSES.has(body.status) ? body.status : null, id,
@@ -466,7 +466,7 @@ ct.put('/events/:id/verdict', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
-    `UPDATE court_events SET verdict = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE court_events SET verdict = ?, updated_at = datetime('now') WHERE id = ?`,
     body.verdict ?? null, id,
   );
   return c.json({ success: true });
@@ -475,10 +475,12 @@ ct.put('/events/:id/verdict', async (c) => {
 // ── PUT /events/:id/confirm — officer attendance confirmation ─
 // officer_confirmations is a JSON map { "<officer_id>": true|false }.
 ct.put('/events/:id/confirm', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher', 'officer');
+  if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<any>().catch(() => ({}));
-  const user = c.get('user') as { id: number } | undefined;
+  const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user) return c.json({ error: 'Unauthenticated' }, 401);
   const db = getDb(c.env);
   const row = await queryFirst<{ officer_confirmations: string }>(
@@ -486,10 +488,19 @@ ct.put('/events/:id/confirm', async (c) => {
   );
   if (!row) return c.json({ error: 'Not found' }, 404);
   const map = parseJsonCol<Record<string, boolean>>(row.officer_confirmations, {});
-  map[String(body.officer_id ?? user.id)] = body.confirmed !== false;
+  // The confirming officer is the AUTHENTICATED user, not a body field —
+  // otherwise anyone could forge or clear another officer's subpoena/
+  // attendance confirmation with {"officer_id":<victim>,"confirmed":false},
+  // falsifying a court record. Only a supervisor+ may confirm on someone
+  // else's behalf (e.g. logging attendance for a squad).
+  const canActForOthers = ['admin', 'manager', 'supervisor'].includes(user.role);
+  const targetOfficer = canActForOthers && body.officer_id != null
+    ? String(body.officer_id)
+    : String(user.id);
+  map[targetOfficer] = body.confirmed !== false;
   await execute(
     db,
-    `UPDATE court_events SET officer_confirmations = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE court_events SET officer_confirmations = ?, updated_at = datetime('now') WHERE id = ?`,
     JSON.stringify(map), id,
   );
   return c.json({ success: true, officer_confirmations: map });
@@ -525,7 +536,7 @@ ct.post('/events/:id/continuance', async (c) => {
        SET event_date = ?, event_time = COALESCE(?, event_time),
            continuance_count = continuance_count + 1,
            continuance_log = ?, status = 'continued',
-           updated_at = datetime('now','localtime')
+           updated_at = datetime('now')
      WHERE id = ?`,
     body.new_date, body.new_time ?? null, JSON.stringify(log), id,
   );
@@ -576,7 +587,7 @@ ct.post('/events/:id/documents', async (c) => {
   docs.push({ ...body.document, added_at: new Date().toISOString() });
   await execute(
     db,
-    `UPDATE court_events SET documents = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE court_events SET documents = ?, updated_at = datetime('now') WHERE id = ?`,
     JSON.stringify(docs), id,
   );
   return c.json({ success: true, documents: docs });
@@ -592,7 +603,7 @@ ct.put('/events/:id/witnesses', async (c) => {
   const witnesses = Array.isArray(body.witnesses) ? body.witnesses : [];
   await execute(
     getDb(c.env),
-    `UPDATE court_events SET witnesses = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE court_events SET witnesses = ?, updated_at = datetime('now') WHERE id = ?`,
     JSON.stringify(witnesses), id,
   );
   return c.json({ success: true });
@@ -607,7 +618,7 @@ ct.put('/events/:id/judge-notes', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   await execute(
     getDb(c.env),
-    `UPDATE court_events SET judge_notes = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+    `UPDATE court_events SET judge_notes = ?, updated_at = datetime('now') WHERE id = ?`,
     body.judge_notes ?? null, id,
   );
   return c.json({ success: true });
@@ -624,7 +635,7 @@ ct.put('/events/:id/prosecutor', async (c) => {
     getDb(c.env),
     `UPDATE court_events
        SET prosecutor = ?, prosecutor_phone = ?, prosecutor_email = ?,
-           updated_at = datetime('now','localtime')
+           updated_at = datetime('now')
      WHERE id = ?`,
     body.prosecutor ?? null, body.prosecutor_phone ?? null, body.prosecutor_email ?? null, id,
   );
@@ -642,7 +653,7 @@ ct.put('/events/:id/fees', async (c) => {
   await execute(
     getDb(c.env),
     `UPDATE court_events SET court_fees = ?, fine_amount = COALESCE(?, fine_amount),
-       updated_at = datetime('now','localtime') WHERE id = ?`,
+       updated_at = datetime('now') WHERE id = ?`,
     JSON.stringify(fees), body.fine_amount ?? null, id,
   );
   return c.json({ success: true });
@@ -658,7 +669,7 @@ ct.put('/events/:id/bail', async (c) => {
   await execute(
     getDb(c.env),
     `UPDATE court_events SET bail_amount = ?, bond_status = ?, surety_info = ?,
-       updated_at = datetime('now','localtime') WHERE id = ?`,
+       updated_at = datetime('now') WHERE id = ?`,
     body.bail_amount ?? null, body.bond_status ?? null, body.surety_info ?? null, id,
   );
   return c.json({ success: true });
@@ -673,8 +684,8 @@ ct.get('/dashboard', async (c) => {
   const [total, scheduled, upcoming7d, completedThisMonth, noShows, continuances] = await Promise.all([
     safe('SELECT COUNT(*) AS n FROM court_events'),
     safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'scheduled'"),
-    safe(`SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now','localtime') AND date('now','localtime','+7 days') AND status NOT IN ('cancelled','completed')`),
-    safe(`SELECT COUNT(*) AS n FROM court_events WHERE status = 'completed' AND substr(event_date,1,7) = substr(date('now','localtime'),1,7)`),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now') AND date('now','+7 days') AND status NOT IN ('cancelled','completed')`),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE status = 'completed' AND substr(event_date,1,7) = substr(date('now'),1,7)`),
     safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'no_show'"),
     safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'continued'"),
   ]);

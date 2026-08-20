@@ -1,0 +1,358 @@
+import { describe, it, expect, vi } from 'vitest';
+import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, optimizeRouteFullPipeline, checkTrafficDegradation } from '../src/utils/serveRouteOptimizer';
+
+const STOPS_3: RouteStop[] = [
+  { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
+  { jobId: 2, lat: 40.770, lng: -111.880, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'b', defendant: 'B', address: '2 B St', locationNote: null },
+  { jobId: 3, lat: 40.780, lng: -111.870, geocodeSource: 'point', deadlineAt: null, defendantType: 'business', addressHash: 'c', defendant: 'C Corp', address: '3 C Ave', locationNote: null },
+];
+
+describe('RouteStop type shape', () => {
+  it('compiles with all required fields', () => {
+    const stop: RouteStop = {
+      jobId: 1,
+      lat: 40.76,
+      lng: -111.89,
+      geocodeSource: 'point',
+      deadlineAt: '2026-08-13T17:00:00Z',
+      defendantType: 'individual',
+      addressHash: 'abc123',
+      defendant: 'Jane Smith',
+      address: '123 Main St, Salt Lake City',
+      locationNote: { serveStart: '08:00', serveEnd: '12:00' },
+    };
+    expect(stop.jobId).toBe(1);
+  });
+});
+
+// Helper: build a fetch mock that returns a Directions API response for every call
+function directionsOkMock(duration: number) {
+  return vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ routes: [{ duration }] }),
+  } as unknown as Response);
+}
+
+describe('buildCostMatrix', () => {
+  it('returns driving-traffic duration matrix when all calls succeed', async () => {
+    // 3 stops → 3×2 = 6 ordered pairs
+    global.fetch = directionsOkMock(120);
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(false);
+    expect(result.matrix[0][0]).toBe(0);  // diagonal
+    expect(result.matrix[0][1]).toBe(120);
+    expect(result.matrix[1][0]).toBe(120);
+    expect(result.matrix[1][2]).toBe(120);
+  });
+
+  it('calls the driving-traffic Directions API (not the Matrix API)', async () => {
+    const fetchMock = directionsOkMock(100);
+    global.fetch = fetchMock;
+
+    await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+
+    const firstUrl = (fetchMock.mock.calls[0][0] as string);
+    expect(firstUrl).toContain('directions/v5/mapbox/driving-traffic');
+    // Should NOT use the old matrix endpoint
+    expect(firstUrl).not.toContain('directions-matrix');
+  });
+
+  it('fires n×(n-1) parallel calls for n stops', async () => {
+    const fetchMock = directionsOkMock(100);
+    global.fetch = fetchMock;
+
+    await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    // 3 stops → 3×2 = 6 pairs
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('falls back per-pair to haversine when a Directions call fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 429 } as unknown as Response)  // pair 0→1 fails
+      .mockResolvedValue({ ok: true, json: async () => ({ routes: [{ duration: 120 }] }) } as unknown as Response);
+    global.fetch = fetchMock;
+
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.fallback).toBe(true);    // at least one pair used haversine
+    expect(result.matrix[0][1]).toBeGreaterThan(0);  // haversine fallback is non-zero
+    expect(result.matrix[0][2]).toBe(120); // other pairs still got real durations
+  });
+
+  it('falls back to haversine with reason when token is empty string', async () => {
+    global.fetch = vi.fn();
+    const result = await buildCostMatrix(STOPS_3, '2026-08-12T07:00:00Z', '');
+    expect(result.fallback).toBe(true);
+    expect(result.reason).toBe('no token configured');
+    expect((global.fetch as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('handles a single stop gracefully (no pairs needed)', async () => {
+    global.fetch = vi.fn();
+    const result = await buildCostMatrix([STOPS_3[0]], '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.matrix).toHaveLength(1);
+    expect(result.matrix[0][0]).toBe(0);
+    expect((global.fetch as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('scales to large stop counts without chunking', async () => {
+    const bigStops: RouteStop[] = Array.from({ length: 10 }, (_, i) => ({
+      jobId: i + 1,
+      lat: 40.7 + i * 0.01,
+      lng: -111.9 + i * 0.01,
+      geocodeSource: 'point' as const,
+      deadlineAt: null,
+      defendantType: 'individual' as const,
+      addressHash: String(i),
+      defendant: `D${i}`,
+      address: `${i} St`,
+      locationNote: null,
+    }));
+
+    global.fetch = directionsOkMock(200);
+
+    const result = await buildCostMatrix(bigStops, '2026-08-12T07:00:00Z', 'sk.fake');
+    expect(result.matrix).toHaveLength(10);
+    expect(result.matrix[0]).toHaveLength(10);
+    expect(result.matrix[0][0]).toBe(0);
+    expect(result.matrix[0][9]).toBe(200);
+    expect(result.fallback).toBe(false);
+    // 10×9 = 90 calls total, all in one batch (no chunking)
+    expect((global.fetch as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(90);
+  });
+});
+
+describe('deadlineCoefficient', () => {
+  const now = new Date('2026-08-12T08:00:00Z');
+
+  it('returns 1.0 for deadline > 72 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-15T10:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(1.0);
+  });
+
+  it('returns 0.7 for deadline 24–72 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-13T10:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.7);
+  });
+
+  it('returns 0.4 for deadline < 24 hours away', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-12T20:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.4);
+  });
+
+  it('returns 0.1 for past-deadline stop', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: '2026-08-11T08:00:00Z' };
+    expect(deadlineCoefficient(stop, now)).toBe(0.1);
+  });
+
+  it('returns 1.0 when deadlineAt is null', () => {
+    const stop = { ...STOPS_3[0], deadlineAt: null };
+    expect(deadlineCoefficient(stop, now)).toBe(1.0);
+  });
+});
+
+describe('applyTimeWindowPenalties', () => {
+  it('adds penalty when projected arrival falls outside serve window', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], locationNote: null },
+      {
+        ...STOPS_3[1],
+        locationNote: { serveStart: '08:00', serveEnd: '08:05' }, // extremely tight window
+      },
+    ];
+    const matrix = [[0, 300], [300, 0]]; // 5 min travel
+    const departAt = '2026-08-12T09:00:00-06:00'; // 9 AM MDT — arrives at stop[1] at 9:05, outside 08:00–08:05
+    const penalized = applyTimeWindowPenalties(matrix, stops, departAt, [0, 0]);
+    expect(penalized[0][1]).toBeGreaterThan(matrix[0][1]);
+  });
+
+  it('does not penalize stops with no location note', () => {
+    const stops = STOPS_3.map(s => ({ ...s, locationNote: null }));
+    const matrix = [[0, 300, 600], [300, 0, 300], [600, 300, 0]];
+    const penalized = applyTimeWindowPenalties(matrix, stops, '2026-08-12T08:00:00Z', [0, 0, 0]);
+    expect(penalized).toEqual(matrix);
+  });
+});
+
+describe('optimizeRoute', () => {
+  it('returns an ordering of all stop indices', () => {
+    const matrix = [[0, 100, 200], [100, 0, 100], [200, 100, 0]];
+    const now = new Date('2026-08-12T08:00:00Z');
+    const order = optimizeRoute(STOPS_3, matrix, '2026-08-12T08:00:00Z', now, [300, 300, 600]);
+    expect(order).toHaveLength(3);
+    expect(new Set(order).size).toBe(3);
+  });
+
+  it('places a critically overdue stop first regardless of geometry', () => {
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], deadlineAt: null },
+      { ...STOPS_3[1], deadlineAt: null },
+      { ...STOPS_3[2], deadlineAt: '2026-08-11T00:00:00Z' }, // past deadline
+    ];
+    // matrix is symmetric and uniform — geometry alone would give [0,1,2]
+    const matrix = [[0, 100, 100], [100, 0, 100], [100, 100, 0]];
+    const now = new Date('2026-08-12T08:00:00Z');
+    const order = optimizeRoute(stops, matrix, '2026-08-12T08:00:00Z', now, [0, 0, 0]);
+    expect(order[0]).toBe(2); // overdue stop must be first
+  });
+});
+
+describe('haversineMatrix', () => {
+  it('returns an n×n matrix of numbers', async () => {
+    const { haversineMatrix } = await import('../src/utils/serveRouteOptimizer');
+    const stops: RouteStop[] = [
+      { jobId: 1, lat: 40.76, lng: -111.89, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
+      { jobId: 2, lat: 40.77, lng: -111.88, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'b', defendant: 'B', address: '2 B St', locationNote: null },
+      { jobId: 3, lat: 40.78, lng: -111.87, geocodeSource: 'point', deadlineAt: null, defendantType: 'business', addressHash: 'c', defendant: 'C Corp', address: '3 C Ave', locationNote: null },
+    ];
+    const matrix = haversineMatrix(stops);
+    expect(matrix).toHaveLength(3);
+    expect(matrix[0]).toHaveLength(3);
+    expect(matrix[0][0]).toBe(0);
+    expect(matrix[0][1]).toBeGreaterThan(0);
+    expect(matrix[1][0]).toBeCloseTo(matrix[0][1], 0);
+  });
+});
+
+describe('geocodeQualityScore', () => {
+  it('returns high for point geocode', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'point' })).toBe('high');
+  });
+  it('returns low for centroid geocode', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: 'centroid' })).toBe('low');
+  });
+  it('returns none when geocodeSource is null', () => {
+    expect(geocodeQualityScore({ ...STOPS_3[0], geocodeSource: null })).toBe('high');
+  });
+});
+
+describe('collectGeocodeWarnings', () => {
+  it('includes low and none stops, excludes high and null (null = high by policy)', () => {
+    // null geocodeSource is treated as 'high' (benefit of the doubt for pre-existing jobs)
+    // A stop with no coords at all (lat/lng null) is 'none' and should warn.
+    const stops: RouteStop[] = [
+      { ...STOPS_3[0], geocodeSource: 'point' },
+      { ...STOPS_3[1], geocodeSource: 'centroid' },
+      { ...STOPS_3[2], geocodeSource: null },
+    ];
+    const warnings = collectGeocodeWarnings(stops);
+    // Only the centroid stop should warn; null and point are both 'high'.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].jobId).toBe(2);
+    expect(warnings[0].quality).toBe('low');
+  });
+
+  it('returns empty array when all stops have high quality', () => {
+    const stops = STOPS_3.map(s => ({ ...s, geocodeSource: 'point' as const }));
+    expect(collectGeocodeWarnings(stops)).toHaveLength(0);
+  });
+});
+
+describe('checkTrafficDegradation', () => {
+  const origin = { lat: 40.755, lng: -111.895 };
+  const originalEtas = [
+    '2026-08-12T08:10:00Z',
+    '2026-08-12T08:20:00Z',
+    '2026-08-12T08:30:00Z',
+  ];
+
+  it('returns degraded:false when traffic is unchanged', async () => {
+    // checkTrafficDegradation calls buildCostMatrix which now uses Directions API
+    // (one call per ordered pair); return a modest duration so no >15min degradation
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ routes: [{ duration: 300 }] }),
+    } as unknown as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.degraded).toBe(false);
+    expect(result.addedMinutes).toBeLessThan(15);
+  });
+
+  it('returns degraded:true when total added time exceeds 15 minutes', async () => {
+    // Return very high duration (35 min) so accumulated delay fires the degraded threshold
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ routes: [{ duration: 2100 }] }),
+    } as unknown as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.degraded).toBe(true);
+    expect(result.addedMinutes).toBeGreaterThanOrEqual(15);
+  });
+
+  it('returns matrixFallback:true when originalEtas is shorter than currentOrder', async () => {
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      { lat: 40.755, lng: -111.895 },
+      ['2026-08-12T08:10:00Z'], // only 1 ETA for 3 stops
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.matrixFallback).toBe(true);
+    expect(result.degraded).toBe(false);
+  });
+
+  it('returns matrixFallback:true and degraded:false when API calls all fail', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
+
+    const mockDb = {
+      prepare: () => ({
+        bind: () => ({
+          all: async () => ({ results: [] }),
+        }),
+      }),
+    } as unknown as D1Database;
+
+    const result = await checkTrafficDegradation(
+      STOPS_3,
+      [0, 1, 2],
+      origin,
+      originalEtas,
+      mockDb,
+      'sk.fake'
+    );
+    expect(result.matrixFallback).toBe(true);
+    expect(result.degraded).toBe(false);
+  });
+});

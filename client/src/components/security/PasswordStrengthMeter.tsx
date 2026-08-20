@@ -18,8 +18,8 @@ const requirements: Requirement[] = [
   { label: 'Number', test: (pw) => /\d/.test(pw) },
 ];
 
-function getStrength(password: string): { score: number; label: string; color: string } {
-  if (!password) return { score: 0, label: '', color: 'var(--rmpg-600)' };
+function getStrength(password: string): { score: number; label: string; barClass: string; textClass: string } {
+  if (!password) return { score: 0, label: '', barClass: 'bg-fg-muted', textClass: 'text-fg-muted' };
 
   let score = 0;
   if (password.length >= 8) score++;
@@ -28,11 +28,11 @@ function getStrength(password: string): { score: number; label: string; color: s
   if (/\d/.test(password)) score++;
   if (/[^A-Za-z0-9]/.test(password)) score++;
 
-  if (score <= 1) return { score, label: 'WEAK', color: '#dc2626' };
-  if (score === 2) return { score, label: 'FAIR', color: '#d4a017' };
-  if (score === 3) return { score, label: 'GOOD', color: '#888888' };
-  if (score >= 4) return { score, label: 'STRONG', color: '#22c55e' };
-  return { score: 0, label: '', color: 'var(--rmpg-600)' };
+  if (score <= 1) return { score, label: 'WEAK', barClass: 'bg-red-600', textClass: 'text-red-600' };
+  if (score === 2) return { score, label: 'FAIR', barClass: 'bg-amber-400', textClass: 'text-amber-400' };
+  if (score === 3) return { score, label: 'GOOD', barClass: 'bg-fg-muted', textClass: 'text-fg-muted' };
+  if (score >= 4) return { score, label: 'STRONG', barClass: 'bg-green-500', textClass: 'text-green-500' };
+  return { score: 0, label: '', barClass: 'bg-fg-muted', textClass: 'text-fg-muted' };
 }
 
 export default function PasswordStrengthMeter({ password, showRequirements = true }: Props) {
@@ -49,18 +49,12 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
           {[1, 2, 3, 4, 5].map(i => (
             <div
               key={i}
-              className="flex-1 transition-colors duration-300"
-              style={{
-                background: i <= strength.score ? strength.color : 'var(--border-subtle)',
-              }}
+              className={`flex-1 transition-colors duration-300 ${i <= strength.score ? strength.barClass : 'bg-[color:var(--border-subtle)]'}`}
             />
           ))}
         </div>
         {strength.label && (
-          <span
-            className="text-[9px] font-bold tracking-wider uppercase"
-            style={{ color: strength.color }}
-          >
+          <span className={`text-[9px] font-bold tracking-wider uppercase ${strength.textClass}`}>
             {strength.label}
           </span>
         )}
@@ -74,8 +68,7 @@ export default function PasswordStrengthMeter({ password, showRequirements = tru
             return (
               <div
                 key={req.label}
-                className="flex items-center gap-1 text-[9px]"
-                style={{ color: met ? '#22c55e' : 'var(--rmpg-500)' }}
+                className={`flex items-center gap-1 text-[9px] ${met ? 'text-green-500' : 'text-fg-muted'}`}
               >
                 {met ? (
                   <Check className="w-2.5 h-2.5" />

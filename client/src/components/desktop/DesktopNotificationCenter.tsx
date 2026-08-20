@@ -1,0 +1,317 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Bell, CheckCheck, AlertTriangle, Info, Shield, Car } from 'lucide-react';
+import { getNotificationHistory, markAllRead as markLocalAllRead, clearCategory, type StoredNotification } from '../../utils/notificationHistory';
+import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
+import { TASKBAR_HEIGHT_PX } from './DesktopTaskbar';
+import { getTaskbarPosition, getTaskbarSize } from '../../utils/taskbarPreferences';
+import { useOptionalDesktopSystem } from '../../context/DesktopSystemContext';
+
+interface Notification {
+  id: number;
+  type: string;
+  priority: string;
+  title: string;
+  message: string;
+  entity_type?: string;
+  entity_id?: number;
+  is_read: number;
+  created_at: string;
+}
+
+interface NotifResponse {
+  data: Notification[];
+  pagination: { page: number; per_page: number; total: number; totalPages: number };
+}
+
+const PRIORITY_COLOR: Record<string, string> = {
+  critical: 'var(--sev-critical)',
+  high: 'var(--sev-high)',
+  medium: 'var(--sev-warn)',
+  low: 'var(--text-muted)',
+  info: 'var(--accent-silver-400)',
+};
+
+function notifIcon(type: string) {
+  if (type.includes('warrant') || type.includes('alpr') || type.includes('watchlist')) return Shield;
+  if (type.includes('vehicle') || type.includes('plate')) return Car;
+  if (type.includes('alert') || type.includes('warn')) return AlertTriangle;
+  return Info;
+}
+
+function relativeTime(iso: string): string {
+  const diff = (Date.now() - parseTimestamp(iso).getTime()) / 1000;
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+export interface DesktopNotificationCenterProps {
+  onClose: () => void;
+}
+
+export default function DesktopNotificationCenter({ onClose }: DesktopNotificationCenterProps) {
+  const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [total, setTotal] = useState(0);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'unread'>('unread');
+  const [historyNotifs, setHistoryNotifs] = useState<StoredNotification[]>(() => getNotificationHistory());
+
+  function refreshHistory() {
+    setHistoryNotifs(getNotificationHistory());
+  }
+
+  const sysCtx = useOptionalDesktopSystem();
+  const focusAssist = sysCtx?.focusAssist ?? 'off';
+
+  const taskbarSize = getTaskbarSize();
+  const taskbarPos = getTaskbarPosition();
+  const barH = TASKBAR_HEIGHT_PX[taskbarSize];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ per_page: '50', ...(filter === 'unread' ? { unread: 'true' } : {}) });
+      const res = await apiFetch<NotifResponse>(`/notifications?${params}`);
+      const rows = res?.data ?? [];
+      setNotifs(rows);
+      setTotal(res?.pagination?.total ?? rows.length);
+      setUnread(rows.filter(n => !n.is_read).length);
+    } catch { /* silent */ }
+    finally { setLoading(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const markRead = useCallback(async (id: number) => {
+    await apiFetch(`/notifications/${id}/read`, { method: 'PUT' }).catch(() => {});
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, is_read: 1 } : n));
+    setUnread(prev => Math.max(0, prev - 1));
+  }, []);
+
+  const markAllRead = useCallback(async () => {
+    await apiFetch('/notifications/mark-all-read', { method: 'POST' }).catch(() => {});
+    setNotifs(prev => prev.map(n => ({ ...n, is_read: 1 })));
+    setUnread(0);
+  }, []);
+
+  // Panel placement: right side, above/below taskbar depending on position
+  const panelStyle: React.CSSProperties = {
+    position: 'fixed',
+    right: 8,
+    width: 360,
+    maxHeight: `calc(100vh - ${barH + 16}px)`,
+    display: 'flex',
+    flexDirection: 'column',
+    background: 'var(--surface-raised)',
+    border: '1px solid var(--border-default, rgba(195,204,214,0.15))',
+    boxShadow: '0 8px 32px rgba(0 0 0 / 0.5)',
+    zIndex: 1050,
+    ...(taskbarPos === 'top' ? { top: barH + 8 } : { bottom: barH + 8 }),
+  };
+
+  return (
+    <div style={panelStyle} role="region" aria-label="Notification center">
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 8px', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.1))' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Bell className="w-4 h-4" style={{ color: 'var(--accent-silver-400)' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.05em' }}>
+            Notifications
+          </span>
+          {unread > 0 && (
+            <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--sev-critical)', color: '#fff', borderRadius: 9, padding: '1px 5px' }}>
+              {unread}
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {unread > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              aria-label="Mark all as read"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              All read
+            </button>
+          )}
+          <button type="button" onClick={onClose} aria-label="Close notification center" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.1))' }}>
+        {(['unread', 'all'] as const).map(f => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFilter(f)}
+            style={{
+              flex: 1,
+              padding: '6px 0',
+              fontSize: 10,
+              fontWeight: filter === f ? 600 : 400,
+              background: filter === f ? 'rgba(var(--surface-hover-rgb, 62 116 168), 0.2)' : 'transparent',
+              color: filter === f ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: 'none',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+            }}
+          >
+            {f === 'unread' ? `Unread${unread > 0 ? ` (${unread})` : ''}` : `All (${total})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Focus Assist banner */}
+      {focusAssist !== 'off' && (
+        <div style={{ padding: '4px 12px', background: 'rgba(var(--rmpg-700-rgb,30 60 95),0.4)', fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-subtle)' }}>
+          FOCUS ASSIST: {focusAssist === 'priority' ? 'PRIORITY ONLY' : 'ALARMS ONLY'} — some notifications suppressed
+        </div>
+      )}
+
+      {/* Notification list */}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {loading ? (
+          <div style={{ padding: 20, textAlign: 'center', fontSize: 11, color: 'var(--text-muted)' }}>Loading…</div>
+        ) : notifs.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center' }}>
+            <Bell className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--border-default, rgba(195,204,214,0.2))' }} />
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
+            </div>
+          </div>
+        ) : notifs.filter(n => {
+  if (focusAssist === 'off') return true;
+  if (focusAssist === 'alarms-only') {
+    return n.priority === 'critical' || n.type.includes('welfare') || n.type.includes('panic');
+  }
+  // priority mode: only critical and high
+  return n.priority === 'critical' || n.priority === 'high';
+}).map(n => {
+          const Icon = notifIcon(n.type);
+          const prioColor = PRIORITY_COLOR[n.priority] ?? PRIORITY_COLOR.info;
+          const isUnread = !n.is_read;
+          return (
+            <div
+              key={n.id}
+              style={{
+                padding: '10px 14px',
+                borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))',
+                background: isUnread ? 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.3)' : 'transparent',
+                cursor: isUnread ? 'pointer' : 'default',
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+              }}
+              onClick={() => { if (isUnread) markRead(n.id); }}
+            >
+              <div style={{ marginTop: 1, flexShrink: 0 }}>
+                <Icon className="w-3.5 h-3.5" style={{ color: prioColor }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: isUnread ? 600 : 400, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {n.title}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                  {n.message}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 9, color: 'var(--text-muted)' }}>
+                  {relativeTime(n.created_at)}
+                  {' · '}
+                  <span style={{ textTransform: 'uppercase', letterSpacing: '0.05em', color: prioColor }}>{n.priority}</span>
+                </div>
+              </div>
+              {isUnread && (
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--sev-critical)', flexShrink: 0, marginTop: 4 }} />
+              )}
+            </div>
+          );
+        })}
+        {/* Grouped local notification history */}
+        {(() => {
+          const CATEGORY_LABELS: Record<string, string> = {
+            dispatch: 'Dispatch', warrant: 'Warrants', fleet: 'Fleet',
+            system: 'System', welfare: 'Welfare',
+          };
+          const grouped = historyNotifs.reduce((acc, n) => {
+            if (!acc[n.category]) acc[n.category] = [];
+            acc[n.category].push(n);
+            return acc;
+          }, {} as Record<string, StoredNotification[]>);
+
+          if (Object.keys(grouped).length === 0) return null;
+
+          return (
+            <div style={{ borderTop: '1px solid var(--border-subtle, rgba(195,204,214,0.1))', marginTop: 4, paddingTop: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 14px' }}>
+                <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--field-label-color)' }}>
+                  History
+                </span>
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 9, color: 'var(--text-muted)', padding: 0 }}
+                  onClick={() => { markLocalAllRead(); refreshHistory(); }}
+                >
+                  Mark all read
+                </button>
+              </div>
+              {Object.entries(grouped).map(([cat, items]) => (
+                <div key={cat} style={{ marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 14px', borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))' }}>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {CATEGORY_LABELS[cat] ?? cat}
+                    </span>
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 9, color: 'var(--text-muted)', padding: 0 }}
+                      onClick={() => { clearCategory(cat as StoredNotification['category']); refreshHistory(); }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {items.slice(0, 3).map(n => (
+                    <div
+                      key={n.id}
+                      style={{
+                        padding: '8px 14px',
+                        borderBottom: '1px solid var(--border-subtle, rgba(195,204,214,0.06))',
+                        background: !n.read ? 'rgba(var(--rmpg-700-rgb, 30 60 95), 0.25)' : 'transparent',
+                      }}
+                    >
+                      <p style={{ fontSize: 11, fontWeight: n.read ? 400 : 600, color: 'var(--text-primary)', margin: 0 }}>{n.title}</p>
+                      {n.body && (
+                        <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4, margin: '2px 0 0' }}>{n.body}</p>
+                      )}
+                      {n.actions && n.actions.length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                          {n.actions.map(a => (
+                            <button
+                              key={a.label}
+                              type="button"
+                              style={{ fontSize: 10, padding: '2px 8px', background: 'var(--surface-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', cursor: 'pointer', borderRadius: 2 }}
+                              onClick={() => window.dispatchEvent(new CustomEvent('flexos:navigate', { detail: a.route }))}
+                            >
+                              {a.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}

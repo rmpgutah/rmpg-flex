@@ -6,11 +6,12 @@
 // when no Mapbox token is configured.
 // ============================================================
 
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
+import { lazyRetry } from '../../utils/importWithRetry';
 import { useMapProvider } from './hooks/useMapProvider';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
-const MapboxMapPage = lazy(() => import('./MapboxMapPage'));
+const MapboxMapPage = lazyRetry(() => import('./MapboxMapPage'));
 
 const LOADING_FALLBACK = (
   <div className="flex items-center justify-center h-full w-full bg-surface-base">

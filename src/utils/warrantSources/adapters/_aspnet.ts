@@ -132,3 +132,81 @@ export async function aspNetPostback(opts: AspNetPostbackOptions): Promise<strin
 
   return postRes.text();
 }
+
+/**
+ * ASP.NET postback that follows DataPager / GridView pagination.
+ *
+ * Calls `aspNetPostback` for the initial search, then — while `detectNextPage`
+ * returns a non-null `__EVENTTARGET` string — issues additional POSTbacks using
+ * the refreshed viewstate tokens from each page's response body.  The cookie jar
+ * from the initial GET is forwarded across all postbacks.
+ *
+ * `detectNextPage(pageBody)` receives the raw HTML of each page and must return
+ * the `__EVENTTARGET` value to pass for the NEXT page, or `null` when done.
+ *
+ * Caps at MAX_PAGES to prevent runaway loops on a malformed source.
+ */
+const MAX_PAGES = 20;
+
+export async function aspNetPagedSearch(
+  opts: AspNetPostbackOptions,
+  detectNextPage: (body: string) => string | null,
+): Promise<string[]> {
+  const pages: string[] = [];
+
+  // Page 1 — standard postback flow (GET tokens, POST search).
+  const getRes = await fetchWithTimeout(opts.url, {
+    method: 'GET',
+    headers: { accept: 'text/html', 'user-agent': USER_AGENT },
+  });
+  const getBody = await getRes.text();
+  const cookie = extractCookies(getRes);
+
+  const buildForm = (body: string, extra: Record<string, string>) => {
+    const form = new URLSearchParams();
+    for (const name of VIEWSTATE_FIELDS) {
+      const val = extractHidden(body, name);
+      if (val != null) form.set(name, val);
+    }
+    for (const [k, v] of Object.entries(extra)) form.set(k, v);
+    return form;
+  };
+
+  const postHeaders: Record<string, string> = {
+    accept: 'text/html',
+    'user-agent': USER_AGENT,
+    'content-type': 'application/x-www-form-urlencoded',
+  };
+  if (cookie) postHeaders.cookie = cookie;
+
+  let postRes = await fetchWithTimeout(opts.url, {
+    method: 'POST',
+    headers: postHeaders,
+    body: buildForm(getBody, opts.fields).toString(),
+  });
+  if (!postRes.ok) throw new Error(`ASP.NET postback to ${opts.url} failed: HTTP ${postRes.status}`);
+  let pageBody = await postRes.text();
+  pages.push(pageBody);
+
+  // Subsequent pages — re-use the session cookie; re-extract viewstate per page
+  // (ASP.NET rotates it on every response).
+  let pageCount = 1;
+  while (pageCount < MAX_PAGES) {
+    const nextTarget = detectNextPage(pageBody);
+    if (!nextTarget) break;
+    postRes = await fetchWithTimeout(opts.url, {
+      method: 'POST',
+      headers: postHeaders,
+      body: buildForm(pageBody, {
+        __EVENTTARGET: nextTarget,
+        __EVENTARGUMENT: '',
+      }).toString(),
+    });
+    if (!postRes.ok) break; // partial result is better than throwing on page 2+
+    pageBody = await postRes.text();
+    pages.push(pageBody);
+    pageCount++;
+  }
+
+  return pages;
+}

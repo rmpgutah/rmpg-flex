@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
   RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
@@ -27,7 +27,7 @@ import { formatAddressDisplay } from '../utils/statusLabels';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 import { openTrespassOrderPdf } from '../utils/trespassOrderPdf';
-import { toDisplayLabel } from '../utils/formatters';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -110,7 +110,7 @@ export default function TrespassOrdersPage() {
     clearDraft: clearFormDraft,
     snapshot: snapshotForm,
   } = useFormDraft<typeof EMPTY_FORM>({
-    storageKey: 'rmpg_trespass_order_form',
+    storageKey: `rmpg_trespass_order_form_${editingOrder?.id ?? 'new'}`,
     defaultValue: EMPTY_FORM,
     isActive: formOpen,
   });
@@ -639,7 +639,7 @@ export default function TrespassOrdersPage() {
       {error && (
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" /> {error}
-          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+          <button aria-label="Close" type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
         </div>
       )}
 
@@ -687,7 +687,7 @@ export default function TrespassOrdersPage() {
                   <span className="text-[11px] font-bold font-mono text-brand-400">{order.order_number}</span>
                   <div className="flex items-center gap-1">
                     <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${TYPE_COLORS[order.order_type] || TYPE_COLORS.trespass_warning}`}>
-                      {(order.order_type || '').replace(/_/g, ' ').toUpperCase()}
+                      {toDisplayLabel(order.order_type || '').toUpperCase()}
                     </span>
                     <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${STATUS_COLORS[order.status]}`}>
                       {(order.status || '').toUpperCase()}
@@ -765,7 +765,7 @@ export default function TrespassOrdersPage() {
                   </>
                 )}
                 {canManage && (selectedOrder.status === 'expired' || selectedOrder.status === 'served') && (
-                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--rmpg-400)', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleRenew(selectedOrder)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', color: 'var(--text-secondary)', minHeight: isMobile ? 48 : undefined }}>
                     <RotateCcw style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Renew
                   </button>
                 )}
@@ -793,13 +793,13 @@ export default function TrespassOrdersPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-rmpg-100 font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-rmpg-100">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-rmpg-100">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-rmpg-100 flex items-center gap-1.5">{formatAddressDisplay(selectedOrder.location)}<ViewOnMapLink address={selectedOrder.location} label={selectedOrder.property_name} /></div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-rmpg-100">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-rmpg-100 capitalize">{toDisplayLabel(selectedOrder.order_type)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-rmpg-100 capitalize">{toDisplayLabel(selectedOrder.status)}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-rmpg-100">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-rmpg-100">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString('en-US', { timeZone: 'America/Denver' }) : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-rmpg-100">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-rmpg-100">{selectedOrder.authorized_by || '—'}</div></div>
               {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
@@ -816,7 +816,7 @@ export default function TrespassOrdersPage() {
             {selectedOrder.reason && (
               <div className="mt-3 pt-2 border-t border-rmpg-700">
                 <span className="text-brand-gold-500 text-[10px] uppercase font-bold tracking-wider">Reason</span>
-                <p className="text-xs text-rmpg-200 mt-1">{selectedOrder.reason}</p>
+                <p className="text-xs text-rmpg-200 mt-1">{formatEnumValue(selectedOrder.reason)}</p>
               </div>
             )}
             {selectedOrder.conditions && (

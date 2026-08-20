@@ -81,7 +81,7 @@ integrations.put('/services/rmpgutahps', async (c) => {
     for (const [k, v] of [['rmpgutahps_api_key', apiKey], ['rmpgutahps_url', siteUrl]] as const) {
       const r = await execute(
         db,
-        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime')
+        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now')
            WHERE config_key = ? AND category = 'integrations'`,
         v, k,
       );
@@ -89,7 +89,7 @@ integrations.put('/services/rmpgutahps', async (c) => {
         await execute(
           db,
           `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
-             VALUES (?, ?, 'integrations', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+             VALUES (?, ?, 'integrations', 1, datetime('now'), datetime('now'))`,
           k, v,
         );
       }
@@ -108,7 +108,7 @@ integrations.delete('/services/rmpgutahps', async (c) => {
     const db = getDb(c.env);
     await execute(
       db,
-      `UPDATE system_config SET is_active = 0, config_value = '', updated_at = datetime('now','localtime')
+      `UPDATE system_config SET is_active = 0, config_value = '', updated_at = datetime('now')
          WHERE config_key IN ('rmpgutahps_api_key', 'rmpgutahps_url') AND category = 'integrations'`,
     );
     return c.json({ success: true, message: 'rmpgutahps.us API key cleared.' });
@@ -178,7 +178,7 @@ integrations.post('/keys', async (c) => {
     const r = await execute(
       db,
       `INSERT INTO integration_api_keys (name, key_prefix, key_hash, is_active, scopes, created_by, created_at)
-         VALUES (?, ?, ?, 1, ?, ?, datetime('now','localtime'))`,
+         VALUES (?, ?, ?, 1, ?, ?, datetime('now'))`,
       name, keyPrefix, keyHash, scopeList, u?.id ?? null,
     );
     return c.json({
@@ -328,7 +328,7 @@ integrations.get('/keys/request-log', async (c) => {
 //     src/routes/dispatch/calls.ts uses for manually-created calls, so
 //     Dial Connect calls sort into the same per-year sequence.
 //   - created_at / status default: left to the column defaults
-//     (datetime('now','localtime') / 'pending', respectively — though status
+//     (datetime('now') / 'pending', respectively — though status
 //     is always explicit here since it's a required input).
 const VALID_INCIDENT_TYPES = new Set(['process_service', 'consultation', 'security', 'other']);
 const VALID_STATUSES = new Set(['open', 'dispatched', 'on_scene', 'resolved', 'closed']);
@@ -428,6 +428,56 @@ integrations.post('/calls-for-service', requireApiKeyScope('service_request'), a
   } catch (err) {
     console.error('[Integrations] Create calls-for-service failed:', err);
     return c.json({ error: 'Failed to create call for service' }, 500);
+  }
+});
+
+// ── Dial Connect ← calls_for_service read ─────────────────────
+// GET /api/integrations/calls-for-service?callerPhone=...
+//
+// Separate scope from the write route (service_request) on purpose:
+// service_request_read only lets a key look up existing CFS rows, never
+// create them. Same requireApiKeyScope middleware, same auth model as the
+// POST handler above (no human JWT session).
+integrations.get('/calls-for-service', requireApiKeyScope('service_request_read'), async (c) => {
+  try {
+    const callerPhone = c.req.query('callerPhone');
+    if (!callerPhone || !callerPhone.trim()) {
+      return c.json({ error: 'callerPhone query parameter is required' }, 400);
+    }
+
+    const db = getDb(c.env);
+    const row = await queryFirst<{
+      id: number;
+      call_number: string;
+      status: string;
+      incident_type: string;
+      priority: string;
+      created_at: string;
+    }>(
+      db,
+      `SELECT id, call_number, status, incident_type, priority, created_at
+       FROM calls_for_service
+       WHERE caller_phone = ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      callerPhone,
+    );
+
+    if (!row) {
+      return c.json({ error: 'No calls for service found for this caller' }, 404);
+    }
+
+    return c.json({
+      id: row.id,
+      callNumber: row.call_number,
+      status: row.status,
+      incidentType: row.incident_type,
+      priority: row.priority,
+      createdAt: row.created_at,
+    });
+  } catch (err) {
+    console.error('[Integrations] Lookup calls-for-service failed:', err);
+    return c.json({ error: 'Failed to look up calls for service' }, 500);
   }
 });
 

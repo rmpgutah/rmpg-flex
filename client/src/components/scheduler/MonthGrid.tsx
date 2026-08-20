@@ -36,6 +36,20 @@ const TIER_DOT: Record<string, string> = {
   standard: 'bg-blue-400',
 };
 
+const TIER_BORDER: Record<string, string> = {
+  critical: 'border-red-500',
+  tight: 'border-amber-400',
+  standard: 'border-blue-400',
+};
+
+// Month cells are aspect-square; more than this and the chips overflow the box.
+const MAX_CHIPS = 3;
+
+function surnameOf(name: string | null): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1].toUpperCase() : '—';
+}
+
 export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSlotDrop }: Props) {
   const cells = useMemo(() => monthCells(anchorYmd), [anchorYmd]);
   const grouped = useMemo(() => groupByDay(slots), [slots]);
@@ -44,6 +58,22 @@ export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSl
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+  };
+
+  // Month view rendered only aggregate tier badges, so there was no draggable
+  // element anywhere in it — every drop handler below was unreachable and
+  // "drag and drop doesn't work in month view" was literally true. Chips give
+  // the drag a source, using the same `application/json` payload WeekTimeline
+  // emits so a slot dragged in either view is understood by both.
+  const handleDragStart = (slot: ScheduleSlot) => (e: React.DragEvent<HTMLDivElement>) => {
+    const payload: DragPayload = {
+      slot_id: slot.id,
+      originating_date: slot.scheduled_date,
+      officer_id: slot.officer_id,
+    };
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+    e.stopPropagation();
   };
 
   const handleDrop = (ymd: string) => (e: React.DragEvent) => {
@@ -93,16 +123,28 @@ export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSl
             acc[t] = (acc[t] ?? 0) + 1;
             return acc;
           }, {});
+          const visible = daySlots.slice(0, MAX_CHIPS);
+          const overflow = daySlots.length - visible.length;
           return (
-            <button
+            // A <div role="button"> rather than a <button>: the draggable chips
+            // below are interactive descendants, which is invalid inside a
+            // button and lets the button swallow the drag gesture.
+            <div
               key={cell.ymd}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onDayClick?.(cell.ymd!)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onDayClick?.(cell.ymd!);
+                }
+              }}
               onDragOver={handleDragOver}
               onDragEnter={() => { if (onSlotDrop) setDragOverYmd(cell.ymd); }}
               onDragLeave={() => setDragOverYmd(null)}
               onDrop={handleDrop(cell.ymd!)}
-              className={`aspect-square border-r border-t border-rmpg-700 p-1 text-left hover:bg-brand-400/5 ${
+              className={`aspect-square overflow-hidden border-r border-t border-rmpg-700 p-1 text-left hover:bg-brand-400/5 ${
                 isToday ? 'ring-1 ring-inset ring-brand-400 bg-brand-500/10' : ''
               } ${
                 dragOverYmd === cell.ymd ? 'ring-1 ring-inset ring-amber-400 bg-amber-400/5' : ''
@@ -125,7 +167,26 @@ export default function MonthGrid({ anchorYmd, slots, todayYmd, onDayClick, onSl
                     ) : null,
                 )}
               </div>
-            </button>
+              <div className="mt-0.5 space-y-0.5">
+                {visible.map((slot) => (
+                  <div
+                    key={slot.id}
+                    draggable={Boolean(onSlotDrop)}
+                    onDragStart={handleDragStart(slot)}
+                    onClick={(e) => e.stopPropagation()}
+                    title={`${slot.recipient_name ?? ''} • ${slot.window_start}–${slot.window_end}`}
+                    className={`truncate rounded-[2px] px-1 text-[9px] leading-tight text-rmpg-100 bg-surface-raised border-l-2 ${
+                      TIER_BORDER[slot.urgency_tier ?? 'standard']
+                    } ${onSlotDrop ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                  >
+                    {surnameOf(slot.recipient_name)}
+                  </div>
+                ))}
+                {overflow > 0 && (
+                  <div className="px-1 text-[9px] text-fg-muted">+{overflow} more</div>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

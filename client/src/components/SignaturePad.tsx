@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Eraser, Check, X, Type, PenTool } from 'lucide-react';
+import { Eraser, Check, X, Type, PenTool, Undo2 } from 'lucide-react';
 import '../signatureFonts.css';
+import { makeSignatureTransparent } from '../utils/pdf/signatureImage';
 
 interface SignaturePadProps {
   /** Current signature data URL (PNG base64) or null */
@@ -46,14 +47,25 @@ interface StrokePoint { x: number; y: number; time: number; pressure: number; }
 export default function SignaturePad({
   value,
   onChange,
-  width = 400,
-  height = 150,
+  width = 420,
+  height = 124,
   label = 'Digital Signature',
   compact = false,
 }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasContent, setHasContent] = useState(false);
+  // Undo stack of canvas snapshots.
+  //
+  // Data URLs, not ImageData: the backing store is RENDER_SCALE(3)x, so a
+  // 340x140 pad is 1020x420 and one ImageData snapshot is ~1.7MB. Ten of
+  // those on a phone is real memory for a feature used twice. A PNG data
+  // URL of the same frame is tens of KB.
+  //
+  // Bounded at 8 — this is "I slipped", not a document editor, and an
+  // unbounded stack on a signature pad is a leak waiting for a long
+  // signing session.
+  const [undoStack, setUndoStack] = useState<string[]>([]);
   const [showPad, setShowPad] = useState(false);
   const [mode, setMode] = useState<'draw' | 'type'>('draw');
   const [typedName, setTypedName] = useState('');
@@ -66,9 +78,13 @@ export default function SignaturePad({
   const lastWidthRef = useRef(2);
   const movedRef = useRef(false);
 
-  // Canvas display dimensions (CSS px)
-  const cW = compact ? 280 : width;
-  const cH = compact ? 100 : height;
+  // Canvas display dimensions (CSS px). Widened vs. the original 280x100 /
+  // 400x150 boxes — a real signature runs long and shallow, and a captured
+  // pad that's nearly square imports into the PDF signature line looking
+  // cramped/oversized-tall. ~3.6:1 (compact) / ~3.4:1 (default) reads closer
+  // to a real signature strip.
+  const cW = compact ? 320 : width;
+  const cH = compact ? 88 : height;
 
   // Configure the 2D context to draw in CSS-px coordinates on a
   // RENDER_SCALE-times-larger backing store (crisp export).
@@ -112,7 +128,37 @@ export default function SignaturePad({
     lastPointRef.current = null;
     lastMidRef.current = null;
     setHasContent(false);
+    setUndoStack([]);
   }, [cW, cH, paintBackground, prepareCtx]);
+
+  /** Snapshot BEFORE a stroke, so undo restores the state it began from. */
+  const pushUndo = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const snap = canvas.toDataURL('image/png');
+      setUndoStack((prev) => [...prev.slice(-7), snap]);
+    } catch { /* tainted canvas — undo is a convenience, never a blocker */ }
+  }, []);
+
+  const undo = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx || undoStack.length === 0) return;
+    const snap = undoStack[undoStack.length - 1];
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      prepareCtx(ctx);
+      lastPointRef.current = null;
+      lastMidRef.current = null;
+    };
+    img.src = snap;
+    setUndoStack((prev) => prev.slice(0, -1));
+    // Emptying the stack means we are back at the blank pad.
+    if (undoStack.length === 1) setHasContent(false);
+  }, [undoStack, prepareCtx]);
 
   useEffect(() => {
     if (showPad && mode === 'draw') {
@@ -188,6 +234,9 @@ export default function SignaturePad({
 
   const startDraw = (e: React.PointerEvent) => {
     e.preventDefault();
+    // Snapshot before the stroke lands, not after — undo has to restore
+    // the state this stroke began from.
+    pushUndo();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     setIsDrawing(true);
     movedRef.current = false;
@@ -269,15 +318,11 @@ export default function SignaturePad({
     if (!ctx) return null;
     ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
 
-    // White background + baseline.
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cW, cH);
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(20, cH - 25);
-    ctx.lineTo(cW - 20, cH - 25);
-    ctx.stroke();
+    // Deliberately transparent — no white fill, no baseline rule. This is
+    // an OFFSCREEN export canvas (separate from the on-screen preview div
+    // above it, which keeps its own white surface + line for usability), so
+    // the exported PNG never bakes in a background or the grey rule that
+    // used to double up against the PDF's own signature line.
 
     // Typed name, auto-scaled to fit and centered on the baseline.
     ctx.fillStyle = '#161616';
@@ -309,7 +354,13 @@ export default function SignaturePad({
     } else {
       const canvas = canvasRef.current;
       if (!canvas || !hasContent) return;
-      onChange(canvas.toDataURL('image/png'));
+      // The on-screen canvas keeps its white surface + baseline for
+      // usability (drawing on an invisible pad is unusable) — the exported
+      // PNG has both stripped out via the transparency pass so the stored
+      // signature is ink-only, no white box, no doubled baseline rule.
+      const raw = canvas.toDataURL('image/png');
+      const transparent = await makeSignatureTransparent(raw);
+      onChange(transparent);
       setShowPad(false);
     }
   };
@@ -326,7 +377,7 @@ export default function SignaturePad({
     return (
       <div className="space-y-1">
         <label className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-        <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 inline-block">
+        <div className="relative bg-white rounded-sm border border-rmpg-600 p-2 block w-full">
           <img src={value} alt="Signature" className="max-h-16 object-contain" />
           <div className="absolute top-1 right-1 flex gap-1">
             {/* 65: Re-sign button with transition */}
@@ -371,8 +422,17 @@ export default function SignaturePad({
   return (
     <div className="space-y-1">
       <label htmlFor="ff-signaturepad-0" className="block text-xs font-semibold text-rmpg-300 uppercase">{label}</label>
-      {/* 48: Signature pad container with top accent */}
-      <div className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 inline-block" style={{ borderTop: '2px solid #888888' }}>
+      {/* 48: Signature pad container with top accent.
+          max-width (not inline-block) caps it at the pad's own size on a
+          wide screen while still letting it shrink on a narrow one — an
+          inline-block hugs its CHILD's intrinsic width, which is the fixed
+          canvas width itself, so it never shrinks and overflows any phone
+          narrower than that fixed width (e.g. a 340px pad on a 375px page
+          with 24px of padding on each side leaves only ~327px). */}
+      <div
+        className="bg-rmpg-800 border border-rmpg-600 rounded-sm p-2 w-full"
+        style={{ borderTop: '2px solid #888888', maxWidth: cW + 16 }}
+      >
         {/* 49: Mode toggle tabs with improved active state contrast */}
         <div className="flex gap-1 mb-2">
           <button
@@ -405,7 +465,7 @@ export default function SignaturePad({
             ref={canvasRef}
             aria-label="Signature drawing area"
             className="bg-white rounded-sm cursor-crosshair touch-none select-none"
-            style={{ width: cW, height: cH }}
+            style={{ width: '100%', maxWidth: cW, height: cH }}
             onPointerDown={startDraw}
             onPointerMove={draw}
             onPointerUp={endDraw}
@@ -416,7 +476,7 @@ export default function SignaturePad({
           /* Typed signature mode */
           <div
             className="bg-white rounded-sm flex flex-col items-center justify-center"
-            style={{ width: cW, height: cH }}
+            style={{ width: '100%', maxWidth: cW, height: cH }}
           >
             {/* Preview of typed signature */}
             <div className="flex-1 flex items-end justify-center w-full px-4 pb-1 overflow-hidden">
@@ -469,6 +529,21 @@ export default function SignaturePad({
 
         {/* 50: Action buttons with improved spacing and transition effects */}
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
+          {/* Undo before Clear. One bad stroke destroying an otherwise
+              good signature — with Clear as the only remedy — is the
+              difference between a small annoyance and re-signing the
+              whole thing. Hidden until there is something to undo, so it
+              never adds a dead control to a pad nobody has drawn on. */}
+          {mode === 'draw' && undoStack.length > 0 && (
+            <button
+              type="button"
+              onClick={undo}
+              aria-label="Undo last stroke"
+              className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rmpg-700 text-rmpg-200 rounded-sm hover:bg-rmpg-600 transition-colors duration-150"
+            >
+              <Undo2 className="w-3 h-3" /> Undo
+            </button>
+          )}
           <button
             type="button"
             onClick={handleClear}

@@ -3,7 +3,7 @@
 // /api/scheduler/upcoming feed. Click-through opens each item's native
 // surface; header opens the full SchedulerPage.
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { apiFetch } from '../../hooks/useApi';
 import { CalendarDays, FileText, Users, Gavel, ChevronRight } from 'lucide-react';
 
@@ -39,11 +39,11 @@ export default function UpcomingSchedulePanel() {
         <span className="flex items-center gap-2 text-[9px] font-semibold uppercase tracking-wider text-rmpg-400">
           <CalendarDays className="w-3.5 h-3.5 text-brand-400" /> Upcoming Schedule — 7 Days
         </span>
-        <ChevronRight className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400" />
+        <ChevronRight className="w-3.5 h-3.5 text-fg-muted group-hover:text-brand-400" />
       </button>
-      {!loaded && <div className="px-3 py-3 text-[10px] text-rmpg-600">Loading…</div>}
+      {!loaded && <div className="px-3 py-3 text-[10px] text-fg-muted">Loading…</div>}
       {loaded && items.length === 0 && (
-        <div className="px-3 py-3 text-[10px] text-rmpg-600">Nothing scheduled in the next 7 days.</div>
+        <div className="px-3 py-3 text-[10px] text-fg-muted">Nothing scheduled in the next 7 days.</div>
       )}
       <div className="divide-y divide-rmpg-800/60">
         {items.map((i) => {
@@ -52,7 +52,7 @@ export default function UpcomingSchedulePanel() {
             <button key={i.key} onClick={() => navigate(i.link || '/scheduler')}
               className="w-full flex items-center gap-2 px-3 py-[4px] text-left text-[11px] hover:bg-surface-base/60">
               <Icon className={`w-3.5 h-3.5 shrink-0 ${TONES[i.source]}`} />
-              <span className="font-mono text-rmpg-400 w-[86px] shrink-0">{i.date.slice(5)}{i.start ? ` ${i.start}` : ''}</span>
+              <span className="font-mono text-rmpg-400 w-[86px] shrink-0">{i.date?.slice(5) ?? ''}{i.start ? ` ${i.start}` : ''}</span>
               <span className="truncate text-rmpg-100">{i.title}</span>
             </button>
           );

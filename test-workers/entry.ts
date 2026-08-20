@@ -5,8 +5,21 @@
 import { Hono } from 'hono';
 import alpr from '../src/routes/alpr';
 import redactions from '../src/routes/redactions';
+import fieldPhotos from '../src/routes/fieldPhotos';
+import radio from '../src/routes/radio';
+import intel from '../src/routes/intel';
+import citations from '../src/routes/citations';
 import { bodycamVideosRouter } from '../src/routes/personnel/bodyCameras';
 import '../src/routes/personnel/bodyCameraUploads'; // attaches handlers to bodycamVideosRouter
+import uploads from '../src/routes/uploads';
+import inspections from '../src/routes/inspections';
+import businessPhotos from '../src/routes/business/photos';
+import propertyPhotos from '../src/routes/property/photos';
+import workOrders from '../src/routes/workOrders';
+import serveIntake from '../src/routes/serveIntake';
+import records from '../src/routes/records';
+import reports from '../src/routes/reports';
+import { authMiddleware } from '../src/middleware/auth';
 
 const app = new Hono<{ Bindings: Record<string, unknown>; Variables: { user: { id: number; role: string; username: string }; userId: number } }>();
 app.use('*', async (c, next) => {
@@ -17,6 +30,26 @@ app.use('*', async (c, next) => {
 });
 app.route('/api/alpr', alpr);
 app.route('/api/redactions', redactions);
+app.route('/api/field-photos', fieldPhotos);
+app.route('/api/radio', radio);
+app.route('/api/intel', intel);
+app.route('/api/citations', citations);
 app.route('/api/personnel/bodycam-videos', bodycamVideosRouter);
+app.route('/api/uploads', uploads);
+app.route('/api/inspections', inspections);
+app.route('/api/business-photos', businessPhotos);
+app.route('/api/property-photos', propertyPhotos);
+app.route('/api/work-orders', workOrders);
+app.route('/api/serve-intake', serveIntake);
+app.route('/api/records', records);
+
+// /api/reports is mounted with the REAL authMiddleware (not the fake-user
+// stub above) so dailyReports.test.ts can exercise real JWT + role-based
+// gating end-to-end via SELF.fetch, matching how src/index.ts mounts it
+// in production. The stub middleware above still runs first (registered
+// earlier) but authMiddleware overwrites c.var.user/userId with the real,
+// DB-backed identity once a valid token is presented.
+app.use('/api/reports/*', authMiddleware);
+app.route('/api/reports', reports);
 
 export default app;

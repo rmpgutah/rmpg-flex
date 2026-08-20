@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
-  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
+  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target, Minus,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
   CloudDrizzle, CloudFog, Snowflake, Navigation, RefreshCw, Droplets, Wind,
   ArrowUpRight, ArrowDownRight, Zap, Mail, ClipboardList,
@@ -31,6 +31,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { chartSeriesColors } from '../utils/chartPalette';
 import SpmGroup from './dashboard/SpmGroup';
 import DashboardViewSelector from './dashboard/DashboardViewSelector';
 import ServeSchedulerPanel from '../components/scheduler/ServeSchedulerPanel';
@@ -61,6 +62,9 @@ import CitationTracker from '../components/dashboard/CitationTracker';
 import TrainingCompliance from '../components/dashboard/TrainingCompliance';
 import AlarmStatus from '../components/dashboard/AlarmStatus';
 import IASummary from '../components/dashboard/IASummary';
+import { withAlpha } from '../utils/withAlpha';
+import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { SERVICE_TYPE_LABELS } from './dispatch/utils/dispatchConstants';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -206,7 +210,7 @@ const CHART_TOOLTIP_STYLE = {
   borderRadius: '2px',
   color: 'var(--text-primary)',
   fontSize: '11px',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+  boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
   padding: '8px 12px',
 };
 
@@ -475,7 +479,7 @@ function buildVolumeSeries(rows: { date: string; count: number }[], days: number
     const iso = d.toISOString().slice(0, 10);
     out.push({
       date: iso,
-      label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      label: d.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' }),
       count: map.get(iso) ?? 0,
     });
   }
@@ -591,6 +595,11 @@ export default function DashboardPage() {
   } | null>(null);
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
+  const [fleetStats, setFleetStats] = useState<{ total: number; active: number; in_maintenance: number; service_overdue: number } | null>(null);
+  const [trainingStats, setTrainingStats] = useState<{ active_certs: number; expiring_certs: number; courses: number; enrollments: number } | null>(null);
+  const [alarmStats, setAlarmStats] = useState<{ totalAlarms: number; permitsActive: number; permitsExpired: number } | null>(null);
+  const [iaStats, setIaStats] = useState<{ total_complaints: number; open_complaints: number; unresolved_flags: number } | null>(null);
 
   // Last-successful-sync timestamp drives the title-bar freshness chip.
   // Updated by every silent and non-silent dashboard fetch. Null until first
@@ -734,7 +743,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); failures++; return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz, us_, intDash, trn, alm, ia] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -747,6 +756,11 @@ export default function DashboardPage() {
       safe<any[]>('/dispatch/units'),
       safe<any>('/dispatch/call-volume?days=7'),
       safe<any>('/dispatch/by-zone?days=7'),
+      safe<any>('/reports/dashboard-unified-stats'),
+      safe<any>('/dispatch/integration-dashboard'),
+      safe<any>('/training/stats'),
+      safe<any>('/alarms/stats'),
+      safe<any>('/affairs/stats'),
     ]);
     setWidgetErrorCount(failures);
     if (sc) setShiftComparison(sc);
@@ -761,6 +775,11 @@ export default function DashboardPage() {
     if (Array.isArray(un)) setUnits(un);
     if (cv?.by_day) setCallVolume(cv.by_day);
     if (cz?.by_zone) setCallsByZone(cz.by_zone);
+    if (us_) setUnifiedStats(us_);
+    if (intDash?.fleet?.summary) setFleetStats(intDash.fleet.summary);
+    if (trn) setTrainingStats(trn);
+    if (alm) setAlarmStats(alm);
+    if (ia) setIaStats(ia);
   }, []);
 
   // Fetch enhanced dashboard data (weekly trend, calls by type, unit status)
@@ -933,8 +952,8 @@ export default function DashboardPage() {
     const dt = new Date(d.date + 'T12:00:00');
     return {
       date: d.date,
-      label: dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-      shortLabel: dt.toLocaleDateString('en-US', { weekday: 'short' }),
+      label: dt.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' }),
+      shortLabel: dt.toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short' }),
       count: d.count,
     };
   });
@@ -943,8 +962,18 @@ export default function DashboardPage() {
   const todayCount = weeklyTrend?.today ?? stats.calls_today;
   const yesterdayCount = weeklyTrend?.yesterday ?? 0;
   const lastWeekCount = weeklyTrend?.lastWeekSameDay ?? 0;
-  const vsYesterday = yesterdayCount > 0 ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100) : 0;
-  const vsLastWeek = lastWeekCount > 0 ? Math.round(((todayCount - lastWeekCount) / lastWeekCount) * 100) : 0;
+  // A ZERO baseline means "no comparison is possible", NOT "no change" — those
+  // are different statements and returning 0 conflated them. Observed live:
+  // CALLS TODAY 6 rendered as "0% vs yesterday (0 calls)", i.e. a flat neutral
+  // indicator on a day that went from nothing to six. A percentage change from
+  // zero is undefined, so the tile now says so instead of inventing 0%.
+  //
+  // null (not 0) so the render can distinguish it — see the `=== null` branches
+  // below. Genuine no-change days still show 0% with the neutral indicator.
+  const pctChange = (now: number, base: number): number | null =>
+    base > 0 ? Math.round(((now - base) / base) * 100) : null;
+  const vsYesterday = pctChange(todayCount, yesterdayCount);
+  const vsLastWeek = pctChange(todayCount, lastWeekCount);
 
   // ─── Incident clearance donut data ─────────────────────
   const incidentPieData = clearanceRate ? [
@@ -972,7 +1001,7 @@ export default function DashboardPage() {
               : 'led-green';
         const statusWord = error ? 'Sync Error' : isStale ? 'Stale' : 'Operational';
         const syncLabel = lastSyncedAt
-          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+          ? `Synced ${lastSyncedAt.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit' })}`
           : 'Awaiting first sync';
         return (
           <div className="spm-screen-title" onContextMenu={(e) => openMenu(e, [
@@ -1025,8 +1054,6 @@ export default function DashboardPage() {
         <div className={`flex items-center gap-4 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} relative`}>
           {/* Blue accent line */}
           <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, var(--spm-border), var(--spm-text-muted) 30%, var(--spm-text-muted) 70%, var(--spm-border))' }} />
-          {!isMobile && <RmpgLogo height={68} />}
-          {isMobile && <RmpgLogo height={36} iconOnly />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-3">
               <h1 className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold tracking-wider uppercase text-rmpg-200 select-none`}>
@@ -1045,7 +1072,7 @@ export default function DashboardPage() {
           </div>
           <div className="hidden md:flex items-center gap-3 text-[9px] font-mono text-rmpg-600 flex-shrink-0">
             <PrintButton />
-            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="border-l border-rmpg-800 pl-3">{new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
           </div>
         </div>
       </div>
@@ -1161,9 +1188,12 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  {vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
-                  <span className={`text-sm font-bold font-mono tabular-nums ${vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
-                    {vsYesterday > 0 ? '+' : ''}{vsYesterday}%
+                  {vsYesterday === null ? <Minus className="w-3 h-3 text-fg-muted" /> : vsYesterday > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsYesterday < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span
+                    className={`text-sm font-bold font-mono tabular-nums ${vsYesterday === null ? 'text-fg-muted' : vsYesterday > 0 ? 'text-red-400' : vsYesterday < 0 ? 'text-green-400' : 'text-rmpg-400'}`}
+                    title={vsYesterday === null ? 'No calls yesterday — percentage change from zero is undefined' : undefined}
+                  >
+                    {vsYesterday === null ? '—' : `${vsYesterday > 0 ? '+' : ''}${vsYesterday}%`}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Yesterday</div>
@@ -1171,9 +1201,12 @@ export default function DashboardPage() {
               </div>
               <div className="panel-beveled bg-surface-sunken p-2.5 text-center">
                 <div className="flex items-center justify-center gap-1 mb-1">
-                  {vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
-                  <span className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}>
-                    {vsLastWeek > 0 ? '+' : ''}{vsLastWeek}%
+                  {vsLastWeek === null ? <Minus className="w-3 h-3 text-fg-muted" /> : vsLastWeek > 0 ? <ArrowUpRight className="w-3 h-3 text-red-400" /> : vsLastWeek < 0 ? <ArrowDownRight className="w-3 h-3 text-green-400" /> : <TrendingUp className="w-3 h-3 text-rmpg-500" />}
+                  <span
+                    className={`text-sm font-bold font-mono tabular-nums ${vsLastWeek === null ? 'text-fg-muted' : vsLastWeek > 0 ? 'text-red-400' : vsLastWeek < 0 ? 'text-green-400' : 'text-rmpg-400'}`}
+                    title={vsLastWeek === null ? 'No calls on the same day last week — percentage change from zero is undefined' : undefined}
+                  >
+                    {vsLastWeek === null ? '—' : `${vsLastWeek > 0 ? '+' : ''}${vsLastWeek}%`}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 uppercase font-bold">vs Last Week</div>
@@ -1551,7 +1584,7 @@ export default function DashboardPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline gap-2">
                             <span className="text-[11px] font-bold font-mono tabular-nums" style={{ color: p.color }}>
-                              {call.priority}
+                              {formatEnumValue(call.priority)}
                             </span>
                             <span className="text-[11px] font-mono text-rmpg-200 tabular-nums">{call.call_number}</span>
                             <span className="ml-auto text-[10px] font-mono text-brand-400 tabular-nums">
@@ -1664,7 +1697,7 @@ export default function DashboardPage() {
       <div id="dashboard-panel-callAnalytics" className="grid grid-cols-1 lg:grid-cols-3 gap-4" role="region" aria-label="Call analytics">
         {/* Calls by Hour — Area Chart with Gradient */}
         <div className="lg:col-span-2 panel-beveled bg-surface-base shadow-md shadow-black/10">
-          <PanelTitleBar title="CALL VOLUME — 7-DAY TREND" icon={Activity} />
+          <PanelTitleBar title="CALL VOLUME — BY HOUR" icon={Activity} />
           <div className="p-3">
           <ResponsiveContainer width="100%" height={isMobile ? 160 : 220}>
             <AreaChart data={chartData}>
@@ -1695,7 +1728,7 @@ export default function DashboardPage() {
                   borderRadius: '2px',
                   color: 'var(--text-primary)',
                   fontSize: '11px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                   padding: '8px 12px',
                 }}
                 labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
@@ -1743,7 +1776,7 @@ export default function DashboardPage() {
                         borderRadius: '2px',
                         color: 'var(--text-primary)',
                         fontSize: '11px',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                         padding: '8px 12px',
                       }}
                       formatter={(value: any) => [`${value} calls`, '']}
@@ -1873,6 +1906,7 @@ export default function DashboardPage() {
               const series = buildVolumeSeries(callVolume, 7);
               const weekTotal = series.reduce((sum, d) => sum + d.count, 0);
               const peak = series.reduce((m, d) => Math.max(m, d.count), 0);
+              const goldSeries = chartSeriesColors()[2];
               return (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -1886,20 +1920,20 @@ export default function DashboardPage() {
                     <AreaChart data={series} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#d4a017" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
+                          <stop offset="5%" stopColor={goldSeries} stopOpacity={0.35} />
+                          <stop offset="95%" stopColor={goldSeries} stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" />
                       <XAxis dataKey="label" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} />
                       <YAxis tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} tickLine={{ stroke: 'var(--spm-border)' }} axisLine={{ stroke: 'var(--spm-border)' }} allowDecimals={false} width={28} />
                       <Tooltip
-                        contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        contentStyle={{ backgroundColor: 'var(--surface-raised)', border: '1px solid var(--border-strong)', borderRadius: '2px', color: 'var(--text-primary)', fontSize: '11px', boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)', padding: '8px 12px' }}
                         labelStyle={{ color: 'var(--spm-text-muted)', fontSize: '10px', marginBottom: '4px' }}
                         formatter={(value: any) => [`${value} calls`, '']}
-                        cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
+                        cursor={{ stroke: goldSeries, strokeWidth: 1, strokeDasharray: '4 4' }}
                       />
-                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: 'rgb(var(--brand-gold-300-rgb))', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }} animationDuration={700} />
+                      <Area type="monotone" dataKey="count" stroke={goldSeries} strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: goldSeries, r: 2, strokeWidth: 0 }} activeDot={{ fill: 'rgb(var(--brand-gold-300-rgb))', r: 5, strokeWidth: 2, stroke: 'var(--spm-text)' }} animationDuration={700} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1937,7 +1971,7 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="led-dot flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
                       <span className="text-xs font-bold font-mono text-rmpg-100 tabular-nums truncate">{u.call_sign ?? '—'}</span>
-                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{(u.status ?? '').replace(/_/g, ' ')}</span>
+                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{toDisplayLabel(u.status ?? '')}</span>
                     </div>
                     <div className="text-[9px] text-rmpg-400 truncate">
                       {u.officer_name ?? 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
@@ -1960,8 +1994,9 @@ export default function DashboardPage() {
         const maxZone = callsByZone.reduce((m, z) => Math.max(m, z.count), 0) || 1;
         const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
         // Gold→red ramp by relative volume so hot zones read at a glance.
+        const goldTier = chartSeriesColors()[2];
         const heatColor = (ratio: number) =>
-          ratio >= 0.75 ? 'var(--stat-accent-red-bright)' : ratio >= 0.5 ? 'var(--stat-accent-amber)' : ratio >= 0.25 ? '#d4a017' : 'var(--spm-text-muted)';
+          ratio >= 0.75 ? 'var(--stat-accent-red-bright)' : ratio >= 0.5 ? 'var(--stat-accent-amber)' : ratio >= 0.25 ? goldTier : 'var(--spm-text-muted)';
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
             <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
@@ -1978,7 +2013,7 @@ export default function DashboardPage() {
                   <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
                     <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
                     <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-rmpg-800 shadow-inner">
-                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
+                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${withAlpha(color, '55')}` }} />
                     </div>
                     <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
                   </div>
@@ -2030,10 +2065,10 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--spm-border)" horizontal={false} />
                   <XAxis type="number" tick={{ fill: 'var(--spm-text-muted)', fontSize: 9 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="type" width={100} tick={{ fill: 'var(--spm-text)', fontSize: 9 }} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: 'rgba(212, 160, 23, 0.06)' }} />
-                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill="#d4a017" animationDuration={600}>
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(value: any) => [`${value} calls`, '']} cursor={{ fill: `color-mix(in srgb, ${chartSeriesColors()[2]} 6%, transparent)` }} />
+                  <Bar dataKey="count" radius={[0, 3, 3, 0]} fill={chartSeriesColors()[2]} animationDuration={600}>
                     {callsByType.slice(0, 8).map((_, i) => (
-                      <Cell key={i} fill={i === 0 ? '#d4a017' : i < 3 ? 'rgb(var(--brand-gold-600-rgb))' : 'var(--spm-text-muted)'} />
+                      <Cell key={i} fill={i === 0 ? chartSeriesColors()[2] : i < 3 ? 'rgb(var(--brand-gold-600-rgb))' : 'var(--spm-text-muted)'} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -2201,7 +2236,7 @@ export default function DashboardPage() {
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                   <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
                   <Bar dataKey="calls" name="Calls" fill="var(--spm-text-muted)" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="incidents" name="Incidents" fill="#d4a017" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="incidents" name="Incidents" fill={chartSeriesColors()[2]} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               {/* Active shift highlight */}
@@ -2257,7 +2292,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
@@ -2316,7 +2351,7 @@ export default function DashboardPage() {
                 const colorMap: Record<string, string> = { draft: 'var(--spm-text-muted)', submitted: 'var(--spm-text-muted)', under_review: 'var(--stat-accent-amber)', approved: 'var(--stat-accent-green)', closed: 'var(--pri-scheduled)', open: 'var(--stat-accent-red-bright)' };
                 return (
                   <div key={s.status} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{(s.status || '').replace(/_/g, ' ')}</span>
+                    <span className="text-[9px] text-rmpg-400 capitalize w-20 truncate">{toDisplayLabel(s.status || '')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
                       <div className="h-full" style={{ width: `${Math.min(100, (s.count / Math.max(1, (unifiedStats.incidents?.by_status || []).reduce((a: number, b: any) => a + b.count, 0))) * 100)}%`, background: colorMap[s.status] || 'var(--spm-text-muted)' }} />
                     </div>
@@ -2330,7 +2365,7 @@ export default function DashboardPage() {
           {/* Crime Type Breakdown */}
           <div className="panel-beveled bg-surface-base p-3 cursor-pointer hover:bg-surface-raised transition-all duration-150" onClick={() => navigate('/incidents')}>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2" style={{ background: '#d4a017', borderRadius: '1px' }} />
+              <div className="w-2 h-2" style={{ background: chartSeriesColors()[2], borderRadius: '1px' }} />
               <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Top Incident Types</span>
             </div>
             <div className="space-y-1">
@@ -2338,9 +2373,9 @@ export default function DashboardPage() {
                 const maxCount = (unifiedStats.incidents?.by_type || [])[0]?.count || 1;
                 return (
                   <div key={t.incident_type || i} className="flex items-center gap-2">
-                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{(t.incident_type || 'Unknown').replace(/_/g, ' ')}</span>
+                    <span className="text-[9px] text-rmpg-400 w-24 truncate capitalize">{toDisplayLabel(t.incident_type || 'Unknown')}</span>
                     <div className="flex-1 h-2 bg-surface-sunken overflow-hidden" style={{ borderRadius: '1px' }}>
-                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: '#d4a017', opacity: 1 - i * 0.08 }} />
+                      <div className="h-full" style={{ width: `${(t.count / maxCount) * 100}%`, background: chartSeriesColors()[2], opacity: 1 - i * 0.08 }} />
                     </div>
                     <span className="text-[9px] font-mono text-rmpg-300 w-6 text-right">{t.count}</span>
                   </div>
@@ -2497,17 +2532,6 @@ export default function DashboardPage() {
         const serveRate = psoStats.serveResults.total > 0
           ? Math.round((psoStats.serveResults.served / psoStats.serveResults.total) * 100)
           : null;
-        const SERVICE_TYPE_LABELS: Record<string, string> = {
-          patrol_service: 'Patrol Service',
-          standing_guard: 'Standing Guard',
-          event_security: 'Event Security',
-          escort: 'Escort',
-          process_service: 'Process Service',
-          investigation: 'Investigation',
-          surveillance: 'Surveillance',
-          alarm_response: 'Alarm Response',
-          other: 'Other',
-        };
         return (
           <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="PSO Operations this month">
             <PanelTitleBar title="PSO OPERATIONS — THIS MONTH" icon={Briefcase} />
@@ -2571,7 +2595,7 @@ export default function DashboardPage() {
                         const pct = psoStats.monthCalls > 0 ? Math.round((st.count / psoStats.monthCalls) * 100) : 0;
                         return (
                           <div key={st.pso_service_type} className="flex items-center gap-2 group hover:bg-surface-raised/50 rounded-sm px-1 py-0.5 transition-colors">
-                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize group-hover:text-rmpg-200 transition-colors">{SERVICE_TYPE_LABELS[st.pso_service_type] || st.pso_service_type.replace(/_/g, ' ')}</span>
+                            <span className="text-[10px] text-rmpg-300 w-28 truncate capitalize group-hover:text-rmpg-200 transition-colors">{SERVICE_TYPE_LABELS[st.pso_service_type] || toDisplayLabel(st.pso_service_type)}</span>
                             <div className="flex-1 h-1.5 bg-rmpg-700 rounded-full overflow-hidden shadow-inner">
                               <div className="h-full bg-brand-500 transition-all duration-500 ease-out rounded-full" style={{ width: `${pct}%` }} />
                             </div>
@@ -2760,8 +2784,8 @@ export default function DashboardPage() {
           <SlaCompliance
             complianceRate={clearanceRate?.rate ?? Math.round((stats.calls_by_priority.P1 + stats.calls_by_priority.P2) / Math.max(stats.active_calls, 1) * 100)}
             avgResponseMinutes={stats.avg_response_time_minutes || 8}
-            totalCalls={stats.calls_today}
-            metTarget={Math.round(stats.calls_today * 0.78)}
+            totalCalls={clearanceRate?.total ?? stats.calls_today}
+            metTarget={clearanceRate?.cleared ?? 0}
           />
         </GlassPanel>
       </div>
@@ -2797,8 +2821,8 @@ export default function DashboardPage() {
           <ShiftComparison
             dayShift={stats.officers_on_duty}
             nightShift={Math.max(0, stats.units_total - stats.officers_on_duty)}
-            dayCalls={Math.round(stats.calls_today * 0.6)}
-            nightCalls={Math.round(stats.calls_today * 0.4)}
+            dayCalls={shiftComparison?.shifts?.find((s: any) => s.shift === 'Day')?.calls ?? 0}
+            nightCalls={shiftComparison?.shifts?.find((s: any) => s.shift === 'Night')?.calls ?? 0}
           />
         </GlassPanel>
       </div>
@@ -2811,7 +2835,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <WeatherWidget condition={weather?.description || 'Clear'} temp={weather?.temperature || 72} tempHigh={82} tempLow={62} humidity={weather?.humidity || 35} windSpeed={weather?.windSpeed || 8} />
         <CourtCountdown dates={upcomingCourt?.upcoming?.length ? upcomingCourt.upcoming.slice(0, 1).map((c: any) => ({ id: c.id || '0', case_number: c.case_number || 'N/A', court_name: c.court_name, court_date: c.date || c.court_date, purpose: c.description })) : []} />
-        <FleetSummary total={12} inService={9} inMaintenance={2} overdueService={1} />
+        <FleetSummary total={fleetStats?.total ?? 0} inService={fleetStats?.active ?? 0} inMaintenance={fleetStats?.in_maintenance ?? 0} overdueService={fleetStats?.service_overdue ?? 0} />
         <EvidenceSummary total={evidencePending?.total ?? 0} checkedOut={evidencePending?.checked_out ?? 0} pendingDisposal={evidencePending?.pending_disposal ?? 0} />
         <PersonnelRoster onDuty={officerActivity.slice(0, 5).map(o => ({ name: o.full_name, badge: o.badge_number, status: 'available' }))} total={stats.units_total} />
         <CitationTracker today={shiftStats?.citations ?? 0} thisWeek={Math.round((shiftStats?.citations ?? 0) * 4.5)} thisMonth={Math.round((shiftStats?.citations ?? 0) * 18)} pendingReview={0} />
@@ -2823,9 +2847,9 @@ export default function DashboardPage() {
       {hasPanel('adminExtras') && (
       <StaggerWrapper index={14} type="fade">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        <TrainingCompliance completed={48} total={52} overdue={2} expiringSoon={4} />
-        <AlarmStatus totalMonitored={18} activeAlerts={0} pendingResponse={0} />
-        <IASummary openCases={2} underInvestigation={1} closedThisMonth={3} />
+        <TrainingCompliance completed={trainingStats?.active_certs ?? 0} total={(trainingStats?.active_certs ?? 0) + (trainingStats?.expiring_certs ?? 0)} overdue={0} expiringSoon={trainingStats?.expiring_certs ?? 0} />
+        <AlarmStatus totalMonitored={alarmStats?.permitsActive ?? 0} activeAlerts={alarmStats?.permitsExpired ?? 0} pendingResponse={0} />
+        <IASummary openCases={iaStats?.open_complaints ?? 0} underInvestigation={iaStats?.unresolved_flags ?? 0} closedThisMonth={Math.max(0, (iaStats?.total_complaints ?? 0) - (iaStats?.open_complaints ?? 0))} />
         {psoStats && psoStats.serveManager.totalJobs > 0 && (
         <GlassPanel>
           <SpmGroup title="Serve Summary">
@@ -2887,7 +2911,7 @@ export default function DashboardPage() {
                       <tr key={cred.id ?? idx} className={`border-b border-rmpg-700/30 hover:bg-surface-raised/50 transition-colors duration-150 ${isMobile ? 'min-h-[48px]' : ''}`}>
                         <td className="px-3 py-2.5 text-rmpg-200 font-medium">{cred.officer_name || cred.user_name || '-'}</td>
                         <td className="px-3 py-2.5 text-rmpg-200">{cred.credential_type || cred.type || '-'}</td>
-                        {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
+                        {!isMobile && <td className="px-3 py-2.5 text-rmpg-200 font-mono tabular-nums">{exp.toLocaleDateString('en-US', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit' })}</td>}
                         <td className="px-3 py-2.5 font-mono font-bold tabular-nums" style={{ color: isExpired ? 'var(--stat-accent-red-bright)' : isUrgent ? 'var(--stat-accent-amber)' : 'var(--stat-accent-green)' }}>
                           {isExpired ? `${Math.abs(daysLeft)}d overdue` : `${daysLeft}d`}
                         </td>
@@ -2964,7 +2988,7 @@ export default function DashboardPage() {
                       borderRadius: '2px',
                       color: 'var(--text-primary)',
                       fontSize: '11px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      boxShadow: '0 4px 12px rgba(0 0 0 / 0.3)',
                       padding: '8px 12px',
                     }}
                     formatter={(value: any, _name: any, props: any) => [

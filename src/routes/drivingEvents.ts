@@ -11,11 +11,14 @@
 // ============================================================
 
 import { Hono, type Context } from 'hono';
+import { clampIntParam } from '../utils/paginationParams';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getR2Range, rangeNotSatisfiableInit } from '../utils/byteRange';
 import { classifyDrivingEvent, fleetStatusFor } from '../utils/drivingEvents';
 import { getApiConfig, listMediaForAsset, type CpgMediaObject } from '../utils/clearpathGps';
 import { recordAudit } from '../utils/auditLog';
+import { verifySignedResource } from '../utils/signedAccess';
 
 const drivingEvents = new Hono<Env>();
 
@@ -119,8 +122,8 @@ drivingEvents.get('/', async (c: Context<Env>): Promise<Response> => {
   const severity = (c.req.query('severity') || '').toLowerCase();
   const eventType = (c.req.query('event_type') || '').toLowerCase();
   const hasVideo = c.req.query('has_video');
-  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '200', 10), 1), 500);
-  const offset = Math.max(parseInt(c.req.query('offset') || '0', 10), 0);
+  const limit = clampIntParam(c.req.query('limit'), 200, 1, 500);
+  const offset = clampIntParam(c.req.query('offset'), 0, 0, 1000000);
 
   let rows = (await readEvents(db)).map(shapeEvent);
   if (source) rows = rows.filter((r) => r.source === source);
@@ -281,8 +284,19 @@ function parseEventRange(header: string): { offset: number; length?: number } | 
 /** Serve a clip from R2 with Range-request support. */
 async function serveR2Clip(env: Env['Bindings'], r2Key: string, rangeHeader: string | undefined): Promise<Response> {
   const parsed = rangeHeader ? parseEventRange(rangeHeader) : null;
-  const obj = parsed ? await env.UPLOADS.get(r2Key, { range: parsed }) : await env.UPLOADS.get(r2Key);
-  if (!obj) return new Response('Not found', { status: 404 });
+  // getR2Range() instead of a bare get(): R2 THROWS on an unsatisfiable range
+  // (start > end, or start past EOF). serveR2Clip has no try/catch of its own,
+  // so that throw reached the global onError as a 500 on a client error.
+  const got = await getR2Range(env.UPLOADS, r2Key, parsed ?? undefined);
+  if (got.kind === 'missing') return new Response('Not found', { status: 404 });
+  if (got.kind === 'unsatisfiable') {
+    const init = rangeNotSatisfiableInit(got.total);
+    return new Response(JSON.stringify(init.body), {
+      status: init.status,
+      headers: { 'Content-Type': 'application/json', ...init.headers },
+    });
+  }
+  const obj = got.obj;
   const status = rangeHeader ? 206 : 200;
   const headers = new Headers({
     'Content-Type': obj.httpMetadata?.contentType || 'video/mp4',
@@ -415,9 +429,25 @@ drivingEvents.get('/:id/media', async (c: Context<Env>): Promise<Response> => {
 // Stream the mp4. Serves from R2 when available; proxies ClearPath on first
 // access and downloads to R2 in the background so subsequent plays are instant.
 drivingEvents.get('/:id/stream', async (c: Context<Env>): Promise<Response> => {
+  // Auth: this path ends in `/stream`, so authMiddleware forwards header-less
+  // GETs carrying sig+exp WITHOUT verifying them (a <video> tag can't send an
+  // Authorization header). Verification is therefore this handler's job — and
+  // until it was added, the whole dashcam archive was readable unauthenticated
+  // by anyone passing `?sig=x&exp=1`, with sequential ids to enumerate.
+  // A plain JWT (header, cookie, or the media ?token= fallback) also works,
+  // since authMiddleware sets `user` in that case.
+  const idStr = c.req.param('id') ?? '';
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) {
+    const ok = await verifySignedResource(c.env.JWT_SECRET, 'driving-event', idStr, {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!ok) return c.json({ error: 'Authentication required' }, 401);
+  }
+
   const db = getDb(c.env);
   await ensureDashcamClipColumn(db);
-  const id = Number(c.req.param('id'));
+  const id = Number(idStr);
   let resolved: Awaited<ReturnType<typeof resolveEventMedia>> = null;
   try { resolved = await resolveEventMedia(c.env, db, id); } catch { resolved = null; }
 

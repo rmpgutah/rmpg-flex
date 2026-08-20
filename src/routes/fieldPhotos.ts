@@ -24,6 +24,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { recordAudit } from '../utils/auditLog';
+import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
 
 const fieldPhotos = new Hono<Env>();
 
@@ -45,8 +46,8 @@ async function ensureTable(db: ReturnType<typeof getDb>) {
     latitude REAL,
     longitude REAL,
     notes TEXT,
-    taken_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   // D1 has no IF NOT EXISTS on ADD COLUMN — swallow the re-apply error so the
   // column self-heals on tables created before incident linkage existed.
@@ -81,11 +82,11 @@ fieldPhotos.post('/', async (c) => {
   const ext = file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg';
   const key = `field-photos/${crypto.randomUUID()}${ext}`;
 
-  await c.env.UPLOADS.put(key, await file.arrayBuffer(), {
+  const db = getDb(c.env);
+  await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type },
   });
 
-  const db = getDb(c.env);
   await ensureTable(db);
   const r = await execute(db,
     `INSERT INTO field_photos (officer_id, call_id, incident_id, r2_key, content_type, size_bytes, latitude, longitude, notes)
@@ -129,15 +130,45 @@ fieldPhotos.get('/', async (c) => {
 // GET /file/field-photos/<uuid>.<ext> — stream from R2.
 // :key is multi-segment, so use a wildcard route + manual prefix check.
 fieldPhotos.get('/file/*', async (c) => {
+  // Auth: this path matches authMiddleware's media predicate
+  // (`/field-photos/file/`), so a header-less GET carrying sig+exp is
+  // forwarded here WITHOUT the signature being checked. Nothing in this
+  // handler used to check it either, which made every scene photo — the
+  // header below notes these may show victims, juveniles, or client
+  // interiors — readable by anyone holding or guessing an object key, and
+  // made the `exp` parameter meaningless (a signed URL never expired).
+  //
+  // The client renders these through authedImageUrl(), which appends the
+  // session token, so requiring a real session preserves every caller.
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+
   const key = c.req.path.replace(/^.*\/file\//, '');
   if (!key.startsWith('field-photos/') || key.includes('..')) {
     return c.json({ error: 'Invalid key' }, 400);
   }
-  const obj = await c.env.UPLOADS.get(key);
-  if (!obj) return c.json({ error: 'Not found' }, 404);
-  return new Response(obj.body, {
+  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  if (result) {
+    return new Response(result.bytes, {
+      headers: {
+        'Content-Type': result.httpMetadata?.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=3600',
+      },
+    });
+  }
+  // getDecrypted() returns null both for "object never existed" and for a
+  // genuinely crypto-shredded object with no key row -- neither is
+  // distinguishable here from a LEGACY object uploaded before this feature
+  // shipped (also "object exists, no key row"). Fall back to serving the
+  // raw R2 bytes as-is. Safe today because no code path does standalone
+  // crypto-shredding: this file's own DELETE handler (below) always removes
+  // the R2 object and its key row together, so "object present, row absent"
+  // can currently only mean "predates encryption," never "was shredded."
+  const legacy = await c.env.UPLOADS.get(key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  return new Response(legacy.body, {
     headers: {
-      'Content-Type': obj.httpMetadata?.contentType || 'image/jpeg',
+      'Content-Type': legacy.httpMetadata?.contentType || 'image/jpeg',
       'Cache-Control': 'private, max-age=3600',
     },
   });
@@ -158,6 +189,7 @@ fieldPhotos.delete('/:id', async (c) => {
     db, 'SELECT r2_key, officer_id FROM field_photos WHERE id = ?', id);
   if (!row) return c.json({ error: 'Not found' }, 404);
   await c.env.UPLOADS.delete(row.r2_key);
+  await deleteEncryptionKey(db, row.r2_key);
   await execute(db, 'DELETE FROM field_photos WHERE id = ?', id);
   await recordAudit(c, { action: 'FIELD_PHOTO_DELETE', entityType: 'field_photo', entityId: id, details: `Deleted field photo ${row.r2_key} (officer ${row.officer_id})`, actorId: user.id });
   return c.json({ success: true });

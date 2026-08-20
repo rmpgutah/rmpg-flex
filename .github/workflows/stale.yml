@@ -14,8 +14,9 @@ jobs:
   stale:
     name: Close stale PRs and issues
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/stale@v10
+      - uses: actions/stale@v11
         with:
           days-before-stale: 30
           days-before-close: 7

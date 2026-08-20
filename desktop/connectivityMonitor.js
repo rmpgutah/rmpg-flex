@@ -6,6 +6,7 @@
 // ============================================================
 
 const { net } = require('electron');
+const { isAllowedApiHost } = require('./security/childProcessGuard');
 
 class ConnectivityMonitor {
   constructor(serverUrl, options = {}) {
@@ -13,6 +14,34 @@ class ConnectivityMonitor {
     this.pollInterval = options.pollInterval || 10_000;    // 10s default
     this.stableCount = options.stableCount || 3;           // 3 consecutive checks to confirm transition
     this.requestTimeout = options.requestTimeout || 5_000; // 5s timeout per check
+
+    // Health checks go DIRECTLY to the API Worker (api.rmpgutah.us/api/health),
+    // which has a Cloudflare WAF skip rule that bypasses the managed challenge.
+    // The previous approach (rmpgutah.us/api/health via the strangler proxy)
+    // failed at startup because net.request has no cf_clearance cookie before
+    // the BrowserWindow solves the challenge, causing the monitor to report
+    // the server as unreachable for 30+ seconds after every cold boot.
+    this.healthCheckUrl = options.healthCheckUrl || (() => {
+      try {
+        const host = new URL(serverUrl).hostname;
+        return host === 'localhost' || host === '127.0.0.1'
+          ? `${serverUrl}/api/health`
+          : 'https://api.rmpgutah.us/api/health';
+      } catch {
+        return `${serverUrl}/api/health`;
+      }
+    })();
+
+    this._allowedHealthCheckHosts = (() => {
+      try {
+        const hosts = [new URL(serverUrl).hostname];
+        const healthHost = new URL(this.healthCheckUrl).hostname;
+        if (!hosts.includes(healthHost)) hosts.push(healthHost);
+        return hosts;
+      } catch {
+        return [];
+      }
+    })();
 
     this.isOnline = false;           // Current confirmed state
     this._consecutiveState = 0;      // How many consecutive checks agree
@@ -26,10 +55,15 @@ class ConnectivityMonitor {
    * Start monitoring.
    * @param {BrowserWindow} mainWindow — for sending IPC events to renderer
    * @param {Function} onTransition — called when online/offline state changes
+   * @param {Function} [onEachCheck] — called after EVERY raw health check with
+   *   (isReachable: boolean). Fires before the debounce/stable-count logic, so
+   *   callers can act on the first confirmed positive without waiting for 3
+   *   consecutive checks. Use this sparingly — it fires every 10s.
    */
-  start(mainWindow, onTransition) {
+  start(mainWindow, onTransition, onEachCheck) {
     this._mainWindow = mainWindow;
     this._onTransition = onTransition;
+    this._onEachCheck = onEachCheck || null;
 
     // Do an immediate check
     this._check();
@@ -56,6 +90,12 @@ class ConnectivityMonitor {
 
   async _check() {
     const reachable = await this._doHealthCheck();
+
+    // Fire the raw per-check callback first (before debounce logic) so callers
+    // can react to the first confirmed positive without waiting for stableCount.
+    if (this._onEachCheck) {
+      try { this._onEachCheck(reachable); } catch { /* never block the monitor */ }
+    }
 
     if (reachable === this._pendingState) {
       this._consecutiveState++;
@@ -84,8 +124,14 @@ class ConnectivityMonitor {
   _doHealthCheck() {
     return new Promise((resolve) => {
       try {
+        const url = this.healthCheckUrl;
+        if (!isAllowedApiHost(url, this._allowedHealthCheckHosts)) {
+          resolve(false);
+          return;
+        }
+
         const request = net.request({
-          url: `${this.serverUrl}/api/health`,
+          url,
           method: 'GET',
         });
 

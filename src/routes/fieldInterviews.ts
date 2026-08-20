@@ -18,9 +18,18 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { geocodeAddress } from './geocode';
+import { requireRole } from '../middleware/auth';
 
 import { dbErrorResponse } from '../utils/dbErrors';
+import { containsAnyClause } from '../utils/searchText';
+import { lookupFailedCoverage, LOOKUP_OK } from '../utils/screening/coverage';
+import { log } from '../utils/logger';
 const fi = new Hono<Env>();
+
+// Field-interview narratives are LE intelligence. Gate the router to the same
+// operational set intel.ts uses, so the external contract_manager /
+// client_viewer roles can neither read nor edit/archive FI records.
+fi.use('*', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'));
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -79,11 +88,8 @@ fi.get('/', async (c) => {
     else conditions.push('fi.archived_at IS NULL');
     const search = q('search');
     if (search) {
-      conditions.push(
-        '(fi.location LIKE ? OR fi.narrative LIKE ? OR fi.subject_first_name LIKE ? OR fi.subject_last_name LIKE ?)',
-      );
-      const s = `%${search}%`;
-      params.push(s, s, s, s);
+      const m = containsAnyClause(['fi.location', 'fi.narrative', 'fi.subject_first_name', 'fi.subject_last_name']);
+      conditions.push(m.sql); params.push(...m.binds(search));
     }
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -192,6 +198,7 @@ fi.get('/by-person/:personId', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /by-person/:personId failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to get FIs by person', code: 'FI_BY_PERSON_ERROR' }, 500);
   }
 });
@@ -233,6 +240,7 @@ fi.get('/by-location', async (c) => {
     );
     return c.json({ data: rows });
   } catch (err) {
+    log.error('GET /by-location failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to query FIs by location', code: 'FI_BY_LOCATION_ERROR' }, 500);
   }
 });
@@ -244,17 +252,24 @@ fi.get('/repeat-check', async (c) => {
   try {
     const db = getDb(c.env);
     const name = (c.req.query('name') ?? '').trim();
-    if (name.length < 2) return c.json({ count: 0 });
+    if (name.length < 2) return c.json({ count: 0, checked: false });
+    // instr(), not LIKE — D1 caps LIKE patterns at 50 chars (see searchText.ts).
+    const m = containsAnyClause(['subject_last_name']);
     const row = await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) AS n FROM field_interviews
-        WHERE subject_last_name LIKE ?
+        WHERE ${m.sql}
           AND COALESCE(date, created_at) >= datetime('now', '-30 days')`,
-      `%${name}%`,
+      ...m.binds(name),
     );
-    return c.json({ count: row?.n ?? 0 });
+    return c.json({ count: row?.n ?? 0, checked: true, coverage: LOOKUP_OK });
   } catch (err) {
-    return c.json({ count: 0 });
+    // Was `return c.json({ count: 0 })` — a failed lookup was indistinguishable
+    // from "no prior contacts in 30 days", which is the signal an officer reads
+    // to gauge repeat contact. 200 so the badge still renders, but `checked:
+    // false` + coverage make clear this is not a zero.
+    log.error('FI repeat-check failed', { name: c.req.query('name') }, err as Error);
+    return c.json({ count: 0, checked: false, coverage: lookupFailedCoverage('Repeat field-interview contacts') });
   }
 });
 
@@ -270,6 +285,7 @@ fi.post('/:id/archive', async (c) => {
     await execute(db, "UPDATE field_interviews SET archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /:id/archive failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to archive field interview', code: 'ARCHIVE_FI_ERROR' }, 500);
   }
 });
@@ -282,6 +298,7 @@ fi.post('/:id/unarchive', async (c) => {
     await execute(db, 'UPDATE field_interviews SET archived_at = NULL WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
+    log.error('POST /:id/unarchive failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to unarchive field interview', code: 'UNARCHIVE_FI_ERROR' }, 500);
   }
 });
@@ -313,6 +330,7 @@ fi.get('/:id', async (c) => {
     if (!row) return c.json({ error: 'Field interview not found', code: 'FI_NOT_FOUND' }, 404);
     return c.json({ data: row });
   } catch (err) {
+    log.error('GET /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to get field interview', code: 'GET_FI_ERROR' }, 500);
   }
 });
@@ -484,6 +502,7 @@ fi.put('/:id', async (c) => {
     );
     return c.json({ data: updated });
   } catch (err) {
+    log.error('PUT /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to update field interview', code: 'UPDATE_FI_ERROR' }, 500);
   }
 });
@@ -519,6 +538,7 @@ fi.delete('/:id', async (c) => {
 
     return c.json({ success: true, deleted_fi_number: existing.fi_number });
   } catch (err) {
+    log.error('DELETE /:id failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to delete field interview', code: 'DELETE_FI_ERROR' }, 500);
   }
 });
@@ -578,6 +598,7 @@ fi.get('/export/csv', async (c) => {
       },
     });
   } catch (err) {
+    log.error('GET /export/csv failed', { src: 'src/routes/fieldInterviews.ts' }, err);
     return c.json({ error: 'Failed to export field interviews', code: 'FI_EXPORT_ERROR' }, 500);
   }
 });
