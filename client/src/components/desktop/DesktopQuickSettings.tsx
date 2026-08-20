@@ -47,6 +47,39 @@ export default function DesktopQuickSettings({ onClose, open }: { onClose: () =>
     >
       <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--field-label-color)', letterSpacing: '0.08em', marginBottom: 10 }}>QUICK SETTINGS</div>
 
+      {/* 500+ Features Control HUD Banner */}
+      <button
+        type="button"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('flexos:open-kiosk-hud'));
+          onClose();
+        }}
+        style={{
+          width: '100%',
+          padding: '8px 10px',
+          marginBottom: 10,
+          background: 'linear-gradient(180deg, rgba(212,160,23,0.15) 0%, rgba(212,160,23,0.05) 100%)',
+          border: '1px solid var(--brand-gold)',
+          borderRadius: 2,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justify: 'between',
+          gap: 8,
+          textAlign: 'left'
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--brand-gold)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            500+ Features System HUD
+          </div>
+          <div style={{ fontSize: 8, color: 'var(--text-muted)' }}>
+            FZ-55 Telemetry · Kiosk Shell · Radar360
+          </div>
+        </div>
+        <ChevronRight className="w-3.5 h-3.5" style={{ color: 'var(--brand-gold)', marginLeft: 'auto', flexShrink: 0 }} />
+      </button>
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Night Light */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

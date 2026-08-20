@@ -57,10 +57,21 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
   const moduleResults = useMemo((): PaletteResult[] => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return allFunctions
+    const items: PaletteResult[] = [];
+    if ('500+ features system control hud'.includes(q) || 'hud'.includes(q) || 'kiosk'.includes(q) || 'hardware'.includes(q) || '500'.includes(q) || 'radar'.includes(q)) {
+      items.push({
+        type: 'module' as const,
+        id: 'kiosk-hud',
+        primary: '500+ Features System Control HUD',
+        secondary: 'FZ-55 Telemetry · Kiosk Shell · Radar360 · CAD Suite',
+        path: '__kiosk_hud__'
+      });
+    }
+    const matched = allFunctions
       .filter(fn => fn.label.toLowerCase().includes(q) || fn.path.toLowerCase().includes(q))
       .slice(0, 5)
       .map(fn => ({ type: 'module' as const, id: fn.path, primary: fn.label, secondary: fn.path, path: fn.path }));
+    return [...items, ...matched];
   }, [query, allFunctions]);
 
   useEffect(() => {
@@ -113,7 +124,11 @@ export default function DesktopCommandPalette({ allFunctions, onNavigate, onClos
   useEffect(() => { setSelectedIdx(0); }, [allResults.length]);
 
   const handleSelect = useCallback((result: PaletteResult) => {
-    if (result.path) onNavigate(result.path);
+    if (result.path === '__kiosk_hud__') {
+      window.dispatchEvent(new CustomEvent('flexos:open-kiosk-hud'));
+    } else if (result.path) {
+      onNavigate(result.path);
+    }
     onClose();
   }, [onNavigate, onClose]);
 

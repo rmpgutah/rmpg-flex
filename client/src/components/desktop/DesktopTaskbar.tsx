@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma } from 'lucide-react';
+import { Grid3X3, Bell, Clock as ClockIcon, Radio, FileWarning, Monitor, Lock, Search, Plus, SquareSigma, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDesktopWindows } from './DesktopWindowManager';
 import { activateNavFunction } from '../../utils/windowManager';
@@ -474,6 +474,28 @@ export default function DesktopTaskbar({ icons, catalog, onLock, onToggleNotifCe
           )}
         </div>
         <DesktopWelfareCountdown />
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('flexos:open-kiosk-hud'))}
+          title="500+ Features System Control HUD (Win+F / Alt+F)"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '3px 8px',
+            background: 'rgba(212,160,23,0.12)',
+            border: '1px solid rgba(212,160,23,0.4)',
+            borderRadius: 2,
+            color: 'var(--brand-gold)',
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: 'pointer',
+            flexShrink: 0
+          }}
+        >
+          <ShieldCheck style={{ width: 13, height: 13 }} />
+          <span style={{ letterSpacing: '0.04em' }}>500+ HUD</span>
+        </button>
         <QuickSettingsButton />
         <DesktopSystemTray />
         <div style={{ position: 'relative' }}>
