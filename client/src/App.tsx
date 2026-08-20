@@ -18,6 +18,7 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import ButtonHealthOverlay from './components/ButtonHealthOverlay';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+import SsoCallbackPage from './pages/SsoCallbackPage';
 import DownloadsPage from './pages/DownloadsPage';
 // Dashboard is the immediate post-login landing view, so it stays eager.
 import DashboardPage from './pages/DashboardPage';
@@ -489,10 +490,10 @@ function AppRoutes() {
               on ResetPasswordPage doesn't dead-end on a mismatched contract. */}
           <Route path="/forgot-password" element={<Navigate to="/login?forgot=1" replace />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          {/* Landing page for src/routes/oidc.ts's dialer SSO callback — see
-              OidcCallbackPage.tsx for why the session arrives in the URL
-              fragment instead of via a normal API call. */}
+          {/* Landing page for src/routes/oidc.ts's dialer SSO callback */}
           <Route path="/oidc-callback" element={<OidcCallbackPage />} />
+          {/* Dial Connect SSO redirect landing page — see src/routes/ssoAuth.ts */}
+          <Route path="/sso-callback" element={<SsoCallbackPage />} />
           {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
               per-shift QR on the ShiftCard; the :token IS the credential. */}
           <Route path="/m/shift/:token" element={<MobileShiftPage />} />

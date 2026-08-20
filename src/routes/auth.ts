@@ -289,12 +289,6 @@ async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { err
   return { user };
 }
 
-// Mints a full session (tokens + sessions row + login bookkeeping) for an
-// already-authenticated user, independent of the response shape the caller
-// wants. Shared by password login, 2FA/WebAuthn verify, AND the dialer OIDC
-// callback (src/routes/oidc.ts) — an SSO login is "authenticated" the moment
-// the id_token verifies, so it goes straight here rather than through
-// password/2FA checks.
 export async function mintLoginTokens(c: any, db: any, user: any) {
   const secret = c.env.JWT_SECRET;
   const claims = tokenClaims(user);
@@ -321,7 +315,7 @@ export async function mintLoginTokens(c: any, db: any, user: any) {
   };
 }
 
-async function issueLoginTokens(c: any, db: any, user: any) {
+export async function issueLoginTokens(c: any, db: any, user: any) {
   return c.json(await mintLoginTokens(c, db, user));
 }
 

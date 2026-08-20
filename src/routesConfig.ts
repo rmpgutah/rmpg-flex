@@ -52,6 +52,7 @@
 import type { Hono } from 'hono';
 
 import auth from './routes/auth';
+import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import tiles from './routes/tiles';
@@ -278,6 +279,8 @@ export interface RouteMount {
 export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Public ─────────────────────────────────────────────────
   { prefix: '/api/health', router: health, auth: 'public' },
+  { prefix: '/api/oidc/dialer', router: ssoAuth, auth: 'public',
+    note: 'Dial Connect SSO (OIDC relying party). Distinct top-level prefix from /api/auth — no trie overlap, so ordering relative to it doesn\'t matter.' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/oidc', router: oidc, auth: 'public',
     note: 'Sign in with Dialer (dialer.rmpgutah.us OIDC). Public — the browser redirects here mid-flow with no JWT/cookie, same reasoning as /api/email-oauth.' },

@@ -845,16 +845,18 @@ export default function LoginPage() {
                     showPasswordField ? 'Sign In' : 'Continue'
                   )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
-                                    className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
-                  aria-label="Forgot password"
-                >
-                  Forgot Password?
-                </button>
+                {showPasswordField && (
+                  <button
+                    type="button"
+                    onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
+                                      className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors text-rmpg-500"
+                    onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--brand-gold)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--rmpg-500)'; }}
+                    aria-label="Forgot password"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => { window.location.href = '/api/oidc/dialer/login'; }}
