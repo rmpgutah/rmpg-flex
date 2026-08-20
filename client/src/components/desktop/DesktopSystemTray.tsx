@@ -186,7 +186,7 @@ function useTrayPolling() {
   // Radio channel from unit assignment
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ radio_channel?: string; channel?: string }>('/units/my-assignment')
+    apiFetch<{ radio_channel?: string; channel?: string }>('/dispatch/units/my-assignment')
       .then(res => {
         if (!cancelled) setRadioChannel(res?.radio_channel ?? res?.channel ?? null);
       })
