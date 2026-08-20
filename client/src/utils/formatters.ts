@@ -50,9 +50,10 @@ export function formatPhone(phone: string | null | undefined): string {
  * Only accepts digits; automatically adds parentheses, space, and hyphen.
  * Use as onChange handler: onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
  */
-export function formatPhoneInput(value: string): string {
+export function formatPhoneInput(value: string | null | undefined): string {
+  if (!value) return '';
   // Strip everything except digits
-  let digits = value.replace(/\D/g, '');
+  let digits = String(value).replace(/\D/g, '');
   // Remove leading "1" country code if user types it
   if (digits.length > 10 && digits[0] === '1') digits = digits.substring(1);
   // Limit to 10 digits

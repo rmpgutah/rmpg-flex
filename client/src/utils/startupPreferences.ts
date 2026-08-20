@@ -24,5 +24,7 @@ export function getStartupWindows(): StartupWindow[] {
 }
 
 export function setStartupWindows(windows: StartupWindow[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(windows));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(windows));
+  } catch { /* silent fallback */ }
 }

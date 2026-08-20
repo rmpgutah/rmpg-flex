@@ -921,7 +921,7 @@ export default function UseOfForcePage() {
 
       {error && (
         <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
-          {error} <button className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
+          {error} <button type="button" className="ml-2 underline" onClick={() => setError('')}>dismiss</button>
         </div>
       )}
 

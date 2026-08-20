@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Shield, Radio, Users, AlertTriangle } from 'lucide-react';
 import { useClock } from '../../hooks/useClock';
 import { apiFetch } from '../../hooks/useApi';
+import DesktopScreenSaverModes, { type ScreenSaverModeType } from './DesktopScreenSaverModes';
 
-// Screensaver idle threshold in seconds (shorter than lock — dismiss with any input)
+// Screensaver idle threshold in seconds
 const DEFAULT_SS_SECS = 120; // 2 min
 
 function getScreenSaverSecs(): number {
@@ -11,13 +11,19 @@ function getScreenSaverSecs(): number {
     const v = localStorage.getItem('rmpg_desktop_screensaver_secs');
     if (v !== null) {
       const parsed = parseInt(v, 10);
-      // 0 = "Never" — must check separately; Math.max(30, 0) = 30 would silently
-      // override the user's choice and fire the screensaver every 30 seconds.
       if (parsed === 0) return Number.MAX_SAFE_INTEGER;
       return Math.max(30, parsed);
     }
   } catch { /* ignore */ }
   return DEFAULT_SS_SECS;
+}
+
+function getScreenSaverMode(): ScreenSaverModeType {
+  try {
+    const stored = localStorage.getItem('rmpg_desktop_ss_mode') as ScreenSaverModeType;
+    if (stored) return stored;
+  } catch { /* default */ }
+  return 'clock-drift';
 }
 
 interface AmbientStats {
@@ -27,32 +33,31 @@ interface AmbientStats {
   critical_calls: number;
 }
 
-// Animated floating position — the display drifts around slowly so it never
-// burns in the same pixels (classic CRT screensaver behaviour).
-function useDriftPosition() {
-  const [pos, setPos] = useState({ x: 50, y: 50 }); // percent
+// Animated floating position — drifts around slowly to prevent burn-in
+function useDriftPosition(isStealth = false) {
+  const [pos, setPos] = useState({ x: 50, y: 50 });
   useEffect(() => {
+    const intervalMs = isStealth ? 10_000 : 4000;
     const id = setInterval(() => {
       setPos(p => ({
-        x: Math.max(10, Math.min(90, p.x + (Math.random() - 0.5) * 3)),
-        y: Math.max(10, Math.min(90, p.y + (Math.random() - 0.5) * 3)),
+        x: Math.max(15, Math.min(85, p.x + (Math.random() - 0.5) * 4)),
+        y: Math.max(15, Math.min(85, p.y + (Math.random() - 0.5) * 4)),
       }));
-    }, 4000);
+    }, intervalMs);
     return () => clearInterval(id);
-  }, []);
+  }, [isStealth]);
   return pos;
 }
 
 export interface DesktopScreenSaverProps {
-  /** Controlled from parent: whether the screensaver is currently shown */
   isActive: boolean;
-  /** Called when user input dismisses the screensaver */
   onDismiss: () => void;
 }
 
 export default function DesktopScreenSaver({ isActive, onDismiss }: DesktopScreenSaverProps) {
   const { time, date } = useClock();
-  const pos = useDriftPosition();
+  const ssMode = getScreenSaverMode();
+  const pos = useDriftPosition(ssMode === 'battery-stealth');
   const [stats, setStats] = useState<AmbientStats | null>(null);
 
   // Load ambient CAD stats every 60s
@@ -63,7 +68,7 @@ export default function DesktopScreenSaver({ isActive, onDismiss }: DesktopScree
       try {
         const s = await apiFetch<AmbientStats>('/dispatch/ambient-stats');
         if (!cancelled && s) setStats(s);
-      } catch { /* silent — screensaver should never crash */ }
+      } catch { /* silent fallback */ }
     };
     load();
     const id = setInterval(load, 60_000);
@@ -92,66 +97,19 @@ export default function DesktopScreenSaver({ isActive, onDismiss }: DesktopScree
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9990, // just below lock screen (9999)
-        background: '#000',
+        zIndex: 9990,
+        background: ssMode === 'nvg-nightvision' ? '#0f0000' : '#000000',
         cursor: 'none',
         userSelect: 'none',
       }}
     >
-      {/* Drifting content block */}
-      <div
-        style={{
-          position: 'absolute',
-          left: `${pos.x}%`,
-          top: `${pos.y}%`,
-          transform: 'translate(-50%, -50%)',
-          transition: 'left 4s ease, top 4s ease',
-          textAlign: 'center',
-          color: '#fff',
-          minWidth: 280,
-        }}
-      >
-        {/* Agency shield */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
-          <Shield style={{ width: 20, height: 20, color: 'rgba(var(--accent-silver-400-rgb),0.4)' }} />
-          <span style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(var(--accent-silver-400-rgb),0.4)', fontWeight: 600 }}>
-            Rocky Mountain Protective Group
-          </span>
-        </div>
-
-        {/* Clock */}
-        <div style={{ fontSize: 64, fontWeight: 200, letterSpacing: '-0.02em', lineHeight: 1, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-          {time}
-        </div>
-        <div style={{ fontSize: 13, marginTop: 6, color: 'var(--text-muted)', letterSpacing: '0.06em' }}>
-          {date}
-        </div>
-
-        {/* Ambient stats (only if API returned them) */}
-        {stats && (
-          <div style={{ marginTop: 24, display: 'flex', gap: 20, justifyContent: 'center' }}>
-            <StatPill
-              icon={<Radio style={{ width: 12, height: 12 }} />}
-              label="Active"
-              value={stats.active_calls}
-              critical={stats.critical_calls > 0}
-            />
-            <StatPill
-              icon={<Users style={{ width: 12, height: 12 }} />}
-              label="Units"
-              value={`${stats.available_units}/${stats.total_units}`}
-            />
-            {stats.critical_calls > 0 && (
-              <StatPill
-                icon={<AlertTriangle style={{ width: 12, height: 12 }} />}
-                label="P1"
-                value={stats.critical_calls}
-                critical
-              />
-            )}
-          </div>
-        )}
-      </div>
+      <DesktopScreenSaverModes
+        mode={ssMode}
+        time={time}
+        date={date}
+        stats={stats}
+        pos={pos}
+      />
     </div>
   );
 }

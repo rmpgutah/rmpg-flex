@@ -47,7 +47,7 @@ export default function PricingTab() {
                 <td><input type="number" className="bg-surface-sunken border border-border-default px-1 w-14 text-right" value={r.attempts_included} onChange={(e) => edit(r.id, 'attempts_included', Number(e.target.value))} /></td>
                 <td><input type="checkbox" checked={!!r.is_active} onChange={(e) => edit(r.id, 'is_active', e.target.checked ? 1 : 0)} /></td>
                 <td>
-                  <button className="flex items-center gap-1 text-[var(--brand-gold)] disabled:opacity-50" disabled={savingId === r.id} onClick={() => saveRow(r)}>
+                  <button type="button" className="flex items-center gap-1 text-[var(--brand-gold)] disabled:opacity-50" disabled={savingId === r.id} onClick={() => saveRow(r)}>
                     <Save size={12} /> {savingId === r.id ? 'Saving…' : 'Save'}
                   </button>
                 </td>

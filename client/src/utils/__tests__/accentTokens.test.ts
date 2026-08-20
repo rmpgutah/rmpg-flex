@@ -743,7 +743,8 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10302 -> 10324: QualityReviewPanel.tsx (serve-intake quality-review
   // panel) added rmpg-400/500 ramp tokens for muted secondary text in its
   // judge-flags and case-list UI.
-  const PIN = 10356;
+  // 10356 -> 10438: Merged SearchBox v6 and Radar360 device capture UI
+  const PIN = 10438;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

@@ -50,7 +50,7 @@ export default function ContractsTab() {
         <ul className="mt-2 text-[11px]">
           {contracts.map((c) => (
             <li key={c.id}>
-              <button className={`w-full text-left px-2 py-[3px] border-b border-border-subtle ${selected?.id === c.id ? 'text-[var(--brand-gold)]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
+              <button type="button" className={`w-full text-left px-2 py-[3px] border-b border-border-subtle ${selected?.id === c.id ? 'text-[var(--brand-gold)]' : 'text-rmpg-300'}`} onClick={() => openContract(c)}>
                 {c.contract_number ?? `#${c.id}`} — {c.client_name ?? c.client_id} <span className="text-rmpg-500">({c.status})</span>
               </button>
             </li>
@@ -90,7 +90,7 @@ export default function ContractsTab() {
                     ))}
                   </tbody>
                 </table></div>
-                <button className="mt-2 px-3 py-1 bg-[var(--brand-gold)] text-black" onClick={saveTerms}>Save Terms</button>
+                <button type="button" className="mt-2 px-3 py-1 bg-[var(--brand-gold)] text-black" onClick={saveTerms}>Save Terms</button>
               </div>
             )}
 

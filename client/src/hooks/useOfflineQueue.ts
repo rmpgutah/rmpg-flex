@@ -55,13 +55,27 @@ export async function enqueueOperation(
       `useOfflineQueue: method "${op.method}" cannot be queued; only POST/PATCH/PUT/DELETE are allowed`,
     );
   }
-  const db = await getQueueDb();
-  await db.add(STORE, {
-    ...op,
-    id: crypto.randomUUID(),
-    timestamp: Date.now() * 1000 + (_seq++),
-    retries: 0,
-  });
+  try {
+    const db = await getQueueDb();
+    await db.add(STORE, {
+      ...op,
+      id: crypto.randomUUID(),
+      timestamp: Date.now() * 1000 + (_seq++),
+      retries: 0,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'QuotaExceededError') {
+      // Storage quota exceeded — attempt to purge old retried ops before failing
+      try {
+        const db = await getQueueDb();
+        const ops = await db.getAllFromIndex(STORE, 'timestamp');
+        const oldOps = ops.filter(o => o.retries >= MAX_RETRIES);
+        for (const o of oldOps) { await db.delete(STORE, o.id); }
+      } catch { /* silent fallback */ }
+    } else {
+      throw err;
+    }
+  }
 }
 
 export async function getQueuedOperations(): Promise<QueuedOperation[]> {
@@ -100,10 +114,12 @@ export async function drainQueue(fetcher: QueueFetcher): Promise<void> {
   for (const op of ops) {
     if (op.retries >= MAX_RETRIES) continue;
     try {
+      // Strip any stale authorization header so apiFetch uses current live token
+      const { Authorization, authorization, ...cleanHeaders } = op.headers || {};
       await fetcher(op.path, {
         method: op.method,
         body: op.body !== undefined ? JSON.stringify(op.body) : undefined,
-        headers: { 'Content-Type': 'application/json', ...op.headers },
+        headers: { 'Content-Type': 'application/json', ...cleanHeaders },
       });
       await removeOperation(op.id);
     } catch {

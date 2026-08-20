@@ -205,7 +205,7 @@ export default function DashcamPage() {
       {error && (
         <div className="bg-red-900/20 border border-red-800 text-red-400 px-4 py-2 text-sm">
           {error}
-          <button className="float-right" onClick={() => setError('')}>✕</button>
+          <button type="button" className="float-right" onClick={() => setError('')}>✕</button>
         </div>
       )}
 

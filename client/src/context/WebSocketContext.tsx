@@ -260,9 +260,14 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
+        const wasDisconnected = connectionLost;
         markConnected();
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         retryCountRef.current = 0;
+
+        if (wasDisconnected && typeof window !== 'undefined') {
+          try { window.dispatchEvent(new CustomEvent('rmpg:ws-reconnected')); } catch { /* silent */ }
+        }
 
         try {
           ws.send(JSON.stringify({ type: 'authenticate', token: tokenRef.current }));

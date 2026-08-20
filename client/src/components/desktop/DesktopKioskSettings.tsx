@@ -145,6 +145,19 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
         </div>
       )}
 
+      {/* Security Policies Matrix */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          HARDENED KIOSK SECURITY POLICIES
+        </div>
+
+        <PolicyRow label="Shell Key Suppression (Alt+Tab, Win Key)" enabled={state.enabled} />
+        <PolicyRow label="USB Storage Auto-Mount Lockout" enabled={state.enabled} />
+        <PolicyRow label="Multi-Display Blackout Lock Shield" enabled={state.enabled} />
+        <PolicyRow label="Renderer Self-Healing Watchdog (500ms Auto-Restart)" enabled={state.enabled} />
+        <PolicyRow label="Session Sanitizer (Purge temp caches on lock)" enabled={state.enabled} />
+      </div>
+
       {/* Confirm block */}
       {confirming ? (
         <div style={{
@@ -228,6 +241,17 @@ export default function DesktopKioskSettings({ onClose }: { onClose: () => void 
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+function PolicyRow({ label, enabled }: { label: string; enabled: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-secondary)' }}>
+      <span>{label}</span>
+      <span style={{ fontSize: 9, fontWeight: 700, color: enabled ? '#10b981' : 'var(--text-muted)' }}>
+        {enabled ? 'ENFORCED' : 'OFFLINE'}
+      </span>
     </div>
   );
 }

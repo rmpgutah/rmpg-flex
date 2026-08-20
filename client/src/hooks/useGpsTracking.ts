@@ -113,7 +113,7 @@ const POOR_FIX_SKIP_WINDOW_MS = 30_000;
 /** Whether the current device is likely a desktop/laptop (no GPS hardware).
  *  Used to relax accuracy thresholds — WiFi positioning on desktops in moving
  *  vehicles typically returns 100–500m accuracy. */
-const IS_DESKTOP = typeof window !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const IS_DESKTOP = typeof window !== 'undefined' && typeof navigator !== 'undefined' && !/Mobi|Android|iPhone|iPad/i.test(navigator?.userAgent ?? '');
 
 /** Reject GPS readings less accurate than this (meters).
  *  Mobile (GPS hardware): 100m — modern phones get 3-15m; 100m filters WiFi junk.

@@ -495,6 +495,11 @@ export default function MdtPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('dispatch', fetchData);
 
+  useEffect(() => {
+    window.addEventListener('rmpg:ws-reconnected', fetchData);
+    return () => window.removeEventListener('rmpg:ws-reconnected', fetchData);
+  }, [fetchData]);
+
   // ── Deep-link auto-select: /mdt?call_id=<id> ──
   // Fourth consecutive page-pass implementing this contract (Dashboard emits,
   // Dispatch/Map/MDT consume). Picks the call from either my-calls or

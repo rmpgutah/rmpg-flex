@@ -60,9 +60,14 @@ type ToneType = SoundId;
 let audioCtx: AudioContext | null = null;
 
 /** Lazy-init a shared AudioContext (browser requires user gesture). */
-function getAudioContext(): AudioContext {
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined' || typeof AudioContext === 'undefined') return null;
   if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new AudioContext();
+    try {
+      audioCtx = new AudioContext();
+    } catch {
+      return null;
+    }
   }
   // Resume if suspended (Chrome autoplay policy)
   if (audioCtx.state === 'suspended') {
@@ -774,6 +779,7 @@ export function playSound(sound: SoundId): { stop: () => void } | null {
 
   try {
     const ctx = getAudioContext();
+    if (!ctx) return false;
     const profile = PROFILES[sound];
     const now = ctx.currentTime;
 

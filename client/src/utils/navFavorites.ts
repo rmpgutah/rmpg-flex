@@ -9,7 +9,9 @@ export function loadFavorites(): Set<string> {
 }
 
 export function saveFavorites(favorites: Set<string>) {
-  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites]));
+  } catch { /* silent fallback */ }
 }
 
 export function loadRecent(): string[] {
