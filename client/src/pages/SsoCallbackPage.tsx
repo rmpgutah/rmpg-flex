@@ -57,10 +57,10 @@ export default function SsoCallbackPage() {
         {error ? (
           <>
             <p className="text-sm mb-2" style={{ color: '#ef7a7a' }}>{error}</p>
-            <a href="/login" className="text-xs uppercase tracking-wider" style={{ color: 'var(--rmpg-400)' }}>Back to login</a>
+            <a href="/login" className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Back to login</a>
           </>
         ) : (
-          <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--rmpg-500)' }}>Completing sign-in&hellip;</p>
+          <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Completing sign-in&hellip;</p>
         )}
       </div>
     </div>

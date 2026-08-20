@@ -745,7 +745,8 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // judge-flags and case-list UI.
   // 10356 -> 10438: Merged SearchBox v6 and Radar360 device capture UI
   // 10438 -> 10455: FZ-55 Kiosk HUD overlay telemetry classes
-  const PIN = 10455;
+  // 10455 -> 10474: 500+ Features Kiosk HUD system control panel & HUD controls
+  const PIN = 10474;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
