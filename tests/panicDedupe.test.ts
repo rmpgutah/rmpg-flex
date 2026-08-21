@@ -49,6 +49,8 @@ describe('POST /dispatch/panic — double-press dedupe', () => {
       { match: /SELECT id, call_sign, current_call_id, latitude, longitude FROM units WHERE officer_id/, rows: [{ id: 19, call_sign: 'D19', current_call_id: null, latitude: 40.76, longitude: -111.89 }] },
       // Dedupe SELECT — NOTHING recent.
       { match: /FROM calls_for_service\s+WHERE source = 'panic' AND dispatcher_id = \?/, rows: [] },
+      // call_number generation for the new panic CAD call.
+      { match: /SELECT MAX\(call_number\)/, rows: [{ max: null }] },
       // Final read of panic_alerts for the response payload.
       { match: /SELECT p\.\*, u\.full_name as user_name/, rows: [{ id: 1, call_number: 'PAN-2026-000001' }] },
     ]);
@@ -75,6 +77,8 @@ describe('POST /dispatch/panic — double-press dedupe', () => {
       { match: /SELECT full_name, badge_number FROM users WHERE id = \?/, rows: [{ full_name: 'Test Officer', badge_number: 'B042' }] },
       { match: /SELECT id, call_sign, current_call_id, latitude, longitude FROM units WHERE officer_id/, rows: [{ id: 19, call_sign: 'D19', current_call_id: null, latitude: 40.76, longitude: -111.89 }] },
       { match: /FROM calls_for_service\s+WHERE source = 'panic' AND dispatcher_id = \?/, rows: [] },
+      // call_number generation for the new panic CAD call.
+      { match: /SELECT MAX\(call_number\)/, rows: [{ max: null }] },
       { match: /SELECT p\.\*, u\.full_name as user_name/, rows: [{ id: 1 }] },
     ]);
     const request = buildApp(db);

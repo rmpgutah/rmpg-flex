@@ -163,7 +163,7 @@ const UNIT_WRITABLE_COLUMNS = new Set([
 units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') || '';
     const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
 
@@ -193,6 +193,7 @@ units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       params.push(v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
+    let prevCallId: number | null = null;
     if (typeof body.status === 'string') {
       // Status is changing → restart the board's time-in-status dwell timer.
       // Without this, a manual edit kept the OLD last_status_change and the
@@ -202,12 +203,32 @@ units.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
       // otherwise the stale current_call_id kept the unit pinned to a dead
       // call (and DELETE refused with UNIT_ON_CALL).
       if (['available', 'off_duty', 'out_of_service'].includes(body.status)) {
+        const prev = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', id).catch(() => null);
+        prevCallId = prev?.current_call_id ?? null;
         sets.push('current_call_id = NULL');
       }
     }
     sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
+
+    // If the unit just disengaged from a call, remove it from that call's
+    // assigned_unit_ids so the dispatch board doesn't show a ghost assignment.
+    if (prevCallId) {
+      try {
+        const callRow = await queryFirst<{ assigned_unit_ids: string }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prevCallId,
+        );
+        if (callRow) {
+          const unitIdNum = parseInt(id, 10);
+          const remaining = (JSON.parse(callRow.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unitIdNum);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(remaining), prevCallId);
+        }
+      } catch (callErr) {
+        log.error('PUT /units/:id call cleanup failed (non-fatal)', { unitId: id, callId: prevCallId }, callErr as Error);
+      }
+    }
+
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
     try {
       await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
@@ -326,14 +347,45 @@ units.post('/batch-status', requireRole('admin', 'manager', 'supervisor', 'dispa
     const VALID = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     if (!VALID.includes(status)) return c.json({ error: `status must be one of: ${VALID.join(', ')}` }, 400);
 
+    // Disengaged statuses must clear current_call_id and remove the unit
+    // from the call's assigned_unit_ids — otherwise the board shows ghost
+    // assignments and those calls never release for queue promotion.
+    const DISENGAGING = new Set(['available', 'off_duty', 'out_of_service', 'on_patrol']);
+    const isDisengaging = DISENGAGING.has(status);
+
     let updated = 0;
     const userId = c.get('userId') as number | undefined;
     for (const unitId of unit_ids) {
+      // Read current call assignment before status change for cleanup below.
+      const unitRow = isDisengaging
+        ? await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', unitId).catch(() => null)
+        : null;
+
       const r = await execute(db,
-        `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        isDisengaging
+          ? `UPDATE units SET status = ?, current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`
+          : `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
         status, unitId);
       if ((r as any)?.meta?.changes > 0) {
         updated++;
+
+        // Remove this unit from its previously active call's assigned_unit_ids.
+        if (isDisengaging && unitRow?.current_call_id) {
+          try {
+            const callRow = await queryFirst<{ assigned_unit_ids: string }>(
+              db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unitRow.current_call_id,
+            );
+            if (callRow) {
+              const remaining = (JSON.parse(callRow.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unitId);
+              await execute(db,
+                'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?',
+                JSON.stringify(remaining), unitRow.current_call_id);
+            }
+          } catch (callErr) {
+            log.error('batch-status call cleanup failed (non-fatal)', { unitId, callId: unitRow.current_call_id }, callErr as Error);
+          }
+        }
+
         if (userId) {
           await execute(db,
             `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'batch_status_change', 'unit', ?, ?)`,

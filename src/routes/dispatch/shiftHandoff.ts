@@ -67,17 +67,21 @@ handoff.get('/briefing', requireRole('officer', 'dispatcher', 'supervisor', 'man
     );
     results.units = unitCount[0];
 
-    // Active BOLOs
-    const boloCount = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'",
-    );
-    results.active_bolos = boloCount?.n ?? 0;
+    // Active BOLOs — wrapped individually so a missing table doesn't crash the briefing
+    try {
+      const boloCount = await queryFirst<{ n: number }>(
+        db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'",
+      );
+      results.active_bolos = boloCount?.n ?? 0;
+    } catch { results.active_bolos = 0; }
 
     // Pending serve jobs
-    const serveCount = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status IN ('pending','assigned','in_progress','attempted')",
-    );
-    results.pending_serve_jobs = serveCount?.n ?? 0;
+    try {
+      const serveCount = await queryFirst<{ n: number }>(
+        db, "SELECT COUNT(*) AS n FROM serve_queue WHERE status IN ('pending','assigned','in_progress','attempted')",
+      );
+      results.pending_serve_jobs = serveCount?.n ?? 0;
+    } catch { results.pending_serve_jobs = 0; }
 
     // Anomaly alerts
     const anomalyCount = await queryFirst<{ n: number }>(

@@ -621,6 +621,30 @@ calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', '
     if (statuses.length === 0) return c.json({ archived_count: 0 });
 
     const placeholders = statuses.map(() => '?').join(',');
+
+    // Release units from all calls that will be archived before archiving them.
+    // Without this, dispatched units keep pointing at archived calls and never
+    // return to available on the board.
+    try {
+      const toArchive = await query<{ id: number; assigned_unit_ids: string }>(
+        db,
+        `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status IN (${placeholders}) AND assigned_unit_ids IS NOT NULL AND assigned_unit_ids != '[]'`,
+        ...statuses,
+      );
+      const allUnitIds = toArchive.flatMap((c) => {
+        try { return JSON.parse(c.assigned_unit_ids || '[]') as number[]; } catch { return []; }
+      }).filter((id) => typeof id === 'number');
+      const callIds = toArchive.map((c) => c.id);
+      if (allUnitIds.length > 0) {
+        await executeInChunks(db, allUnitIds, (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
+      }
+      if (callIds.length > 0) {
+        await executeInChunks(db, callIds, (ph) => `UPDATE calls_for_service SET assigned_unit_ids = '[]', unit_call_signs = '[]' WHERE id IN (${ph})`);
+      }
+    } catch (unitErr) {
+      log.error('archive-bulk unit release failed (non-fatal)', {}, unitErr as Error);
+    }
+
     const result = await execute(db,
       `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
       ...statuses);
@@ -1591,7 +1615,9 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
   try {
     const db = getDb(c.env);
     const id = c.req.param('id') || '';
-    const { unit_id } = await c.req.json<{ unit_id: number }>();
+    const rawBody = await c.req.json<{ unit_id: number; confirm?: number | string }>();
+    const { unit_id } = rawBody;
+    const confirmOverride = rawBody.confirm == 1 || c.req.query('confirm') === '1';
     const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
@@ -1599,16 +1625,19 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
 
-    // Fleet maintenance guard: warn if unit's vehicle is out of service
-    const vehicle = await queryFirst<{ status: string; vehicle_number: string }>(
-      db, `SELECT fv.status, fv.vehicle_number FROM fleet_vehicles fv WHERE fv.assigned_unit_id = ?`, unit_id,
-    ).catch(() => null);
-    if (vehicle && (vehicle.status === 'out_of_service' || vehicle.status === 'in_maintenance')) {
-      return c.json({
-        warning: 'vehicle_unavailable',
-        message: `Unit's assigned vehicle (${vehicle.vehicle_number}) is ${vehicle.status}. Override with confirm=1 to proceed.`,
-        code: 'VEHICLE_UNAVAILABLE',
-      }, 409);
+    // Fleet maintenance guard: warn if unit's vehicle is out of service.
+    // Dispatcher can override by sending confirm=1 in the request body.
+    if (!confirmOverride) {
+      const vehicle = await queryFirst<{ status: string; vehicle_number: string }>(
+        db, `SELECT fv.status, fv.vehicle_number FROM fleet_vehicles fv WHERE fv.assigned_unit_id = ?`, unit_id,
+      ).catch(() => null);
+      if (vehicle && (vehicle.status === 'out_of_service' || vehicle.status === 'in_maintenance')) {
+        return c.json({
+          warning: 'vehicle_unavailable',
+          message: `Unit's assigned vehicle (${vehicle.vehicle_number}) is ${vehicle.status}. Override with confirm=1 to proceed.`,
+          code: 'VEHICLE_UNAVAILABLE',
+        }, 409);
+      }
     }
 
     // If the unit is already working a DIFFERENT open call, queue this
@@ -1959,12 +1988,15 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // default on live D1 — every redispatch INSERT failed against it until
     // this fix (SQLITE_CONSTRAINT_NOTNULL, see error_log id 11-15). Stamped
     // with the current time same as created_at.
+    // visit_history rows always reference the ROOT of the chain so the full
+    // attempt sequence can be read from one call_id. Use rootId, not id
+    // (which points at whatever the current non-root attempt is).
     await execute(db, `
       INSERT INTO call_visit_history
         (call_id, visit_date, visit_number, status, disposition, assigned_units, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
          responding_vehicle_id, starting_mileage, ending_mileage, created_at)
       VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      id, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
+      rootId, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
       parent.dispatched_at ?? null, parent.enroute_at ?? null, parent.onscene_at ?? null, parent.cleared_at ?? null, parent.closed_at ?? null,
       parent.responding_vehicle_id ?? null, parent.starting_mileage ?? null, parent.ending_mileage ?? null);
 
@@ -2170,6 +2202,9 @@ calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'mana
     await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_businesses WHERE call_id = ?', id);
+    // Orphaned serve_queue rows stay in 'pending' forever without this delete
+    // — the Process Server module keeps showing the undone visit as an active job.
+    await execute(db, 'DELETE FROM serve_queue WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service_ext WHERE id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
 

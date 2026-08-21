@@ -153,8 +153,18 @@ dataCapture.post('/session/:id/submit', async (c) => {
 
   const subjectIds: number[] = [];
 
-  // Insert caller as a subject if we have enough data and no person_id yet
+  // Insert caller as a subject if we have enough data and no person_id yet.
+  // Also back-fill caller_name / caller_phone on the parent CFS record so they
+  // appear in the call header and CSV exports (these fields were silently dropped
+  // before because cfs_subjects has no name/phone columns of its own).
   if (callerData.name || callerData.phone) {
+    // Build a narrative that includes the name/phone so it survives in cfs_subjects
+    const callerNarrative = [
+      callerData.description,
+      callerData.name ? `Name: ${callerData.name}` : null,
+      callerData.phone ? `Phone: ${callerData.phone}` : null,
+    ].filter(Boolean).join('; ') || null;
+
     const r = await execute(
       c.env.DB,
       `INSERT INTO cfs_subjects (call_id, person_id, role, relationship_to_call, description_narrative, captured_by)
@@ -162,10 +172,28 @@ dataCapture.post('/session/:id/submit', async (c) => {
       session.call_id,
       callerData.person_id ?? null,
       callerData.relationship ?? null,
-      callerData.description ?? null,
+      callerNarrative,
       userId
     );
     subjectIds.push(r.meta.last_row_id as number);
+
+    // Persist caller identity to the parent call row (COALESCE keeps existing
+    // dispatcher-entered data if the call was created manually first).
+    try {
+      await execute(
+        c.env.DB,
+        `UPDATE calls_for_service
+         SET caller_name  = COALESCE(NULLIF(caller_name,''),  ?),
+             caller_phone = COALESCE(NULLIF(caller_phone,''), ?),
+             updated_at   = datetime('now')
+         WHERE id = ?`,
+        callerData.name  ?? null,
+        callerData.phone ?? null,
+        session.call_id,
+      );
+    } catch (err) {
+      log.error('dataCapture: caller field update failed (non-fatal)', { callId: session.call_id }, err as Error);
+    }
   }
 
   // Insert each captured subject
