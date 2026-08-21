@@ -66,7 +66,7 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
     const dispatchedCalls = await query<{ created_at: string; assigned_unit_ids: string | null }>(
       db,
       `SELECT created_at, assigned_unit_ids FROM calls_for_service
-       WHERE status NOT IN ('closed','cancelled','completed')
+       WHERE COALESCE(status,'') NOT IN ('closed','cleared','cancelled','canceled','archived','completed')
          AND created_at >= ? AND created_at < ?`,
       `${dateStr} 00:00:00`, `${dateStr} 23:59:59`,
     );

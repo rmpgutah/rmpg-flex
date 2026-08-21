@@ -520,7 +520,7 @@ geography.get('/beat-coverage', requireRole('officer', 'dispatcher', 'supervisor
          COALESCE(beat, zone, 'Unzoned') AS beat,
          COUNT(*) AS call_count_active
        FROM calls_for_service
-       WHERE status NOT IN ('closed','cancelled','completed')
+       WHERE COALESCE(status,'') NOT IN ('closed','cleared','cancelled','canceled','archived','completed')
        GROUP BY beat`,
     );
     // Avg response time per beat in last 24 h (dispatch_time → on_scene_time)
