@@ -220,6 +220,12 @@ import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import dispatchDataCapture from './routes/dispatch/dataCapture';
+import notificationSubscriptions from './routes/dispatch/notificationSubscriptions';
+import dispatchWeather from './routes/dispatch/dispatchWeather';
+import shiftSchedule from './routes/dispatch/shiftSchedule';
+import unitMessages from './routes/dispatch/unitMessages';
+import analyticsDispatch from './routes/dispatch/analyticsDispatch';
+import callExtras from './routes/dispatch/callExtras';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -364,8 +370,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/calls', router: callActions, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /:id/{revert-status,le-notification,transfer,broadcast-note,notes/:noteId,generate-incident}' },
   { prefix: '/api/dispatch/calls', router: callWarnings, auth: 'required' },
+  // callExtras: BEFORE dispatchCalls — handles /:id/suggest-unit and /:id/notes/export
+  { prefix: '/api/dispatch/calls', router: callExtras, auth: 'required' },
   { prefix: '/api/dispatch/units', router: audioMode, auth: 'required' },
   { prefix: '/api/dispatch/units', router: unitStatus, auth: 'required' },
+  // unitMessages: BEFORE dispatchUnits — handles /:id/messages
+  { prefix: '/api/dispatch/units', router: unitMessages, auth: 'required' },
   { prefix: '/api/dispatch/premise-alerts', router: premiseAlerts, auth: 'required' },
   { prefix: '/api/dispatch/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/dispatch/welfare', router: welfareActive, auth: 'required' },
@@ -785,6 +795,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
   { prefix: '/api/dispatch/capture', router: dispatchDataCapture, auth: 'required' },
+  // Backend-C additions
+  { prefix: '/api/dispatch/notifications', router: notificationSubscriptions, auth: 'required' },
+  { prefix: '/api/dispatch', router: dispatchWeather, auth: 'required' },
+  { prefix: '/api/dispatch', router: shiftSchedule, auth: 'required' },
+  { prefix: '/api/dispatch/analytics', router: analyticsDispatch, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
   { prefix: '/api/traccar', router: traccar, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
