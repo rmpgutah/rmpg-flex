@@ -17,6 +17,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
 import { requireRole } from '../../middleware/auth';
 import { getDecrypted } from '../../utils/encryptedR2';
+import { log } from '../../utils/logger';
 
 const panic = new Hono<Env>();
 
@@ -149,15 +150,25 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   // when latitude/longitude weren't provided.
   try {
     if (body.latitude != null && body.longitude != null) {
-      const available = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
+      // H6: use haversine distance for nearest-unit selection (Euclidean treats
+      // degrees as equal in both axes, which silently skews E/W more than N/S
+      // at Utah latitudes ~40°N where 1° lng ≈ 0.77° lat).
+      function haversineMi(lat1: number, lng1: number, lat2: number, lng2: number): number {
+        const R = 3958.8;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      const allAvailable = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
         db,
         `SELECT id, call_sign, latitude, longitude FROM units
-          WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
-          ORDER BY (CASE WHEN latitude IS NULL OR longitude IS NULL THEN 999
-                    ELSE ((latitude - ?) * (latitude - ?) + (longitude - ?) * (longitude - ?)) END)
-          LIMIT 2`,
-        body.latitude, body.latitude, body.longitude, body.longitude,
+          WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL`,
       );
+      const available = allAvailable
+        .map((u) => ({ ...u, dist: haversineMi(body.latitude!, body.longitude!, u.latitude, u.longitude) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 2);
       if (available.length > 0) {
         const backupCallId = targetCallId;
         for (const unit of available) {
@@ -192,10 +203,10 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
         });
       }
     } else {
-      console.log('[panic] skipped auto-backup dispatch: no GPS coordinates on activation');
+      log.info('[panic] skipped auto-backup dispatch: no GPS coordinates on activation', { userId });
     }
   } catch (err) {
-    console.error('[panic] auto-backup dispatch failed:', err);
+    log.error('[panic] auto-backup dispatch failed', { userId }, err as Error);
   }
 
   return c.json(created, 201);
@@ -350,7 +361,7 @@ panic.post('/request-backup', requireRole('officer', 'dispatcher', 'supervisor',
     broadcastAll('dispatch_update', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {
-    console.error('[dispatch] request-backup error', err);
+    log.error('[dispatch] request-backup error', {}, err as Error);
     return c.json({ error: 'Failed to request backup', code: 'REQUEST_BACKUP_ERR' }, 500);
   }
 });
