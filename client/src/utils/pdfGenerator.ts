@@ -1597,11 +1597,11 @@ export function addSignatureBlock(
       doc.setLineWidth(BORDER.SIGNATURE_LINE);
       doc.line(x + SPACING.MD, sigLineY, x + width - SPACING.MD, sigLineY);
 
-      const maxW = Math.min(width * 0.5, 70);
+      const maxW = Math.min(width * 0.75, 100);
       const maxH = sigRowH - 3.5; // breathing room inside the row
       // Align the ink to the rule's own left edge rather than an arbitrary
       // +4 offset, so a signed block and an unsigned one share a left edge.
-      const imgX = x + SPACING.MD + 1;
+      const imgX = x + SPACING.MD;
       // Dynamic, aspect-preserving fit via computeSignatureRect (was a
       // fixed-box stretch) with a bounded overshoot so ink can realistically
       // run slightly past the box — hardLimits keeps it inside the
@@ -1619,7 +1619,7 @@ export function addSignatureBlock(
             {
               anchor: 'bottom',
               align: 'left',
-              hardLimits: { x: x + SPACING.MD, y: row1Y + 0.5, w: width - SPACING.MD * 2, h: sigLineY + 0.5 - (row1Y + 0.5) },
+              hardLimits: { x: x, y: row1Y + 0.5, w: width, h: sigLineY + 1 - (row1Y + 0.5) },
             },
           );
         }
