@@ -490,11 +490,10 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
   const handleExecuteFeature = useCallback((item: FeatureItem) => {
     if (item.route) {
       onClose();
-      if (openWindow) {
-        openWindow(item.route, item.name, { width: 1100, height: 850 });
-      } else {
-        window.location.href = item.route;
-      }
+      // Route items always navigate away from the desktop — never open as an
+      // iframe floating window, even when openWindow is available. Iframes are
+      // for appKey-based desktop apps; route items ARE full pages.
+      window.location.href = item.route;
       return;
     }
 
