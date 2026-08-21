@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Link2, Key, RefreshCw, CheckCircle2, XCircle, AlertTriangle,
   Loader2, Clock, Search, Eye, EyeOff, Trash2, Zap, Play, Save,
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
-  Settings, Bell, BellOff,
+  Settings, Bell, BellOff, Webhook, Copy, Check, Lock,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
@@ -40,6 +40,100 @@ const timeAgo = (date: string): string => {
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
 };
+
+// ─── Webhook Configuration Panel ──────────────────────────────────────────────
+// Shows the Worker webhook URL for pasting into ServeManager's webhook settings,
+// and lets the admin set the shared HMAC secret used to verify SM's signatures.
+function WebhookConfigPanel() {
+  const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
+  const [hasSecret, setHasSecret] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [secret, setSecret] = useState('');
+  const [showSecret, setShowSecret] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ webhook_url: string; has_secret: boolean }>('/servemanager/webhook-url')
+      .then((d) => { setWebhookUrl(d.webhook_url); setHasSecret(d.has_secret); })
+      .catch(() => {});
+  }, []);
+
+  const handleCopy = () => {
+    if (!webhookUrl) return;
+    navigator.clipboard.writeText(webhookUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleSaveSecret = async () => {
+    if (!secret.trim()) return;
+    setSaving(true);
+    try {
+      await apiFetch('/servemanager/webhook-secret', { method: 'PUT', body: JSON.stringify({ secret }) });
+      setSecret('');
+      setHasSecret(true);
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2000);
+    } catch { /* ignore */ } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3 space-y-3">
+      <div className="flex items-center gap-2 text-[10px] font-bold text-[color:var(--panel-header-color)] uppercase tracking-wider">
+        <Webhook className="w-3.5 h-3.5" />
+        Webhook — Real-Time Push
+      </div>
+      <p className="text-[10px] text-rmpg-400 leading-relaxed">
+        Paste this URL into ServeManager → Settings → Webhooks so SM notifies RMPG immediately when a job or attempt changes.
+        The shared secret is used to verify that the request came from ServeManager.
+      </p>
+
+      {/* Webhook URL copy row */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 bg-surface-sunken border border-rmpg-700 rounded-[2px] px-2.5 py-1.5 font-mono text-[10px] text-rmpg-300 truncate select-all">
+          {webhookUrl ?? '…'}
+        </div>
+        <button type="button" onClick={handleCopy}
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 shrink-0"
+        >
+          {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+
+      {/* Webhook secret row */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            type={showSecret ? 'text' : 'password'}
+            value={secret}
+            onChange={(e) => setSecret(e.target.value)}
+            placeholder={hasSecret ? 'Set new webhook secret…' : 'Webhook secret from ServeManager…'}
+            className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 pr-8 rounded-[2px] focus:border-accent-silver-500 focus:outline-none focus:ring-1 focus:ring-accent-silver-500/40 font-mono transition-colors"
+          />
+          <button type="button" onClick={() => setShowSecret(!showSecret)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300"
+          >
+            {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+        <button type="button" onClick={handleSaveSecret} disabled={saving || !secret.trim()}
+          className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-rmpg-100 disabled:opacity-50 shrink-0"
+        >
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Saving" /> : saveOk ? <Check className="w-3 h-3 text-green-400" /> : <Lock className="w-3 h-3" />}
+          {saveOk ? 'Saved' : 'Set Secret'}
+        </button>
+      </div>
+      {hasSecret && !saveOk && (
+        <div className="text-[10px] text-green-400/80 flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3" /> Webhook secret is configured
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError, isAdmin }: Props) {
   // ── Status ──
@@ -351,7 +445,12 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
   const handleCreateDispatch = async (jobId: number) => {
     setCreatingDispatchFor(jobId);
     try {
-      await apiFetch(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
+      const res = await apiFetch<{ success?: boolean; call_id?: number; code?: string }>(`/servemanager/jobs/${jobId}/create-dispatch`, { method: 'POST' });
+      if ((res as any)?.code === 'ALREADY_LINKED' && (res as any)?.call_id) {
+        // Job already has a dispatch call — navigate directly to it instead of showing a generic error.
+        window.location.hash = `#/dispatch/calls/${(res as any).call_id}`;
+        return;
+      }
       await fetchJobs();
       if (selectedJob?.id === jobId) await handleViewJob(jobId);
     } catch (err) {
@@ -507,6 +606,11 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
         )}
       </div>
       </form>
+
+      {/* ═══ Section 1b: Webhook Configuration ═══ */}
+      {status?.configured && (
+        <WebhookConfigPanel />
+      )}
 
       {/* ═══ Section 2: Sync Controls ═══ */}
       {status?.configured && (
