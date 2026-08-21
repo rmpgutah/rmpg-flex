@@ -20,7 +20,6 @@ import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer'
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 import { dbErrorResponse } from '../../utils/dbErrors';
-import { log } from '../../utils/logger';
 
 const routing = new Hono<Env>();
 
