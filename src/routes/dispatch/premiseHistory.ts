@@ -56,18 +56,24 @@ premise.get('/premise-history', requireRole('officer', 'dispatcher', 'supervisor
     params.push(`%${address.trim().toUpperCase().slice(0, 48)}%`);
   }
 
-  const rows = await query<PremiseHistoryRow>(
-    db,
-    `SELECT id, call_number, incident_type, priority, status,
-            location_address, created_at, cleared_at, disposition,
-            weapons_involved, domestic_violence, injuries_reported,
-            officer_safety_caution
-     FROM calls_for_service
-     ${whereClause}
-     ORDER BY created_at DESC
-     LIMIT 50`,
-    ...params,
-  );
+  let rows: PremiseHistoryRow[];
+  try {
+    rows = await query<PremiseHistoryRow>(
+      db,
+      `SELECT id, call_number, incident_type, priority, status,
+              location_address, created_at, cleared_at, disposition,
+              weapons_involved, domestic_violence, injuries_reported,
+              officer_safety_caution
+       FROM calls_for_service
+       ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      ...params,
+    );
+  } catch (err) {
+    log.error('GET /premise-history query failed', { address, propertyId }, err as Error);
+    return c.json({ hasWarnings: false, total: 0, entries: [] });
+  }
 
   // hasWarnings reflects the officer-safety signal — present rows with weapons /
   // DV / injuries / caution flag should make the modal play the alert tone

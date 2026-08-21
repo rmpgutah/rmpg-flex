@@ -775,6 +775,7 @@ export default function DesktopKioskHUD({ isOpen, onClose, onOpenWindow }: Deskt
                   <h3 className="text-sm font-bold text-rmpg-100">{selectedFeature.name}</h3>
                 </div>
                 <button
+                  aria-label="Close feature detail"
                   onClick={() => setSelectedFeature(null)}
                   className="w-6 h-6 flex items-center justify-center text-fg-muted hover:text-rmpg-100 rounded-sm"
                 >

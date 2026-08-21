@@ -74,12 +74,23 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   if (!targetCallId && recentCalls.length > 0) {
     targetCallId = recentCalls[0].id;
   } else if (!targetCallId) {
-    // Create new CAD call if none exists
+    // Create new CAD call if none exists. Generate a CFS call number so the
+    // panic call appears in number-based searches and exports.
+    const panicYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
+    const panicPrefix = `CFS${panicYear}-`;
+    const maxRows = await query<{ max: string | null }>(
+      db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${panicPrefix}%`,
+    );
+    const panicMax = maxRows[0]?.max ?? null;
+    const panicSeq = panicMax ? String(parseInt(panicMax.slice(panicPrefix.length), 10) + 1).padStart(5, '0') : '00001';
+    const panicCallNumber = `${panicPrefix}${panicSeq}`;
+
     const ins = await execute(
       db,
-      `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
+      `INSERT INTO calls_for_service (call_number, dispatcher_id, incident_type, priority, status, location_address, latitude, longitude,
          description, source, officer_safety_caution, created_at, updated_at)
-       VALUES ('panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, 'panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+      panicCallNumber, userId,
       body.location_address ?? 'Panic location',
       body.latitude ?? null, body.longitude ?? null,
       'Officer Panic Activation'
