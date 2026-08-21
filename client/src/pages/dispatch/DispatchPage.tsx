@@ -5414,7 +5414,7 @@ export default function DispatchPage() {
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
                                 {unitObj?.status === 'enroute' && unitEtas[String(unitIdStr)] != null && (
-                                  <span style={{ fontSize: '8px', color: 'var(--text-secondary, #8fa3b8)' }}>
+                                  <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>
                                     ETA ~{unitEtas[String(unitIdStr)]} min
                                   </span>
                                 )}
