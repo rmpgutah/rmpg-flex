@@ -1044,7 +1044,7 @@ sv.get('/folder-stats', async (c) => {
   const rows = await query<{ status: string; cnt: number }>(
     db,
     `SELECT status, COUNT(*) AS cnt FROM serve_queue
-     WHERE DATE(created_at) = ? OR DATE(serve_date) = ?
+     WHERE DATE(created_at, '-7 hours') = ? OR DATE(serve_date) = ?
      GROUP BY status`,
     date, date,
   );
@@ -2254,12 +2254,12 @@ sv.get('/stats/daily-run-summary', async (c) => {
       SUM(CASE WHEN result = 'not_home' THEN 1 ELSE 0 END) AS not_home,
       SUM(CASE WHEN result = 'refused'  THEN 1 ELSE 0 END) AS refused
     FROM serve_attempts
-    WHERE attempt_at >= date('now')
+    WHERE attempt_at >= date('now', '-7 hours')
   `);
   const mileRow = await queryFirst<{ total_miles: number }>(db, `
     SELECT SUM(mileage_actual) AS total_miles
     FROM serve_queue
-    WHERE closed_at >= date('now') AND status = 'served'
+    WHERE closed_at >= date('now', '-7 hours') AND status = 'served'
   `);
   return c.json({
     date: new Date().toISOString().slice(0, 10),
