@@ -140,6 +140,9 @@ export default function LoginPage() {
     if (!raw) return null;
     // Only same-origin paths — never let an attacker bounce to an external host
     if (!raw.startsWith('/') || raw.startsWith('//')) return null;
+    // Full-screen kiosk/drive surfaces aren't meaningful post-login destinations
+    const BLOCKED_RETURNS = ['/desktop', '/navigation'];
+    if (BLOCKED_RETURNS.some((p) => raw === p || raw.startsWith(p + '/'))) return null;
     return raw;
   }, [searchParams]);
   const [resetSuccess, setResetSuccess] = useState<boolean>(() => searchParams.get('reset') === '1');
