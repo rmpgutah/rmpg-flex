@@ -72,7 +72,7 @@ export function buildDarPdf(r: DailyActivityReport): jsPDF {
 
   // Header — navy banner
   y = drawNavyBanner(doc, {
-    title: `DAILY ACTIVITY REPORT${r.report_date ? ` — ${r.report_date}` : r.dar_number ? ` — ${r.dar_number}` : ''}`,
+    title: `DAILY ACTIVITY REPORT${r.shift_date ? ` — ${r.shift_date}` : r.dar_number ? ` — ${r.dar_number}` : ''}`,
     subtitle: 'Patrol Operations',
     rightLine1: r.dar_number || undefined,
     rightLine2: r.officer_name ? `Officer: ${r.officer_name}` : undefined,
