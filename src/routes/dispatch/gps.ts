@@ -951,13 +951,20 @@ gps.get('/zone-speed-stats', requireRole(...READ_ROLES), async (c) => {
     const beatInfo = new Map(beatRows.map((b) => [`${b.zone_code}|${b.beat_code}`, b]));
     const stats = new Map<string, { zone_code: string; beat_code: string; speeds: number[] }>();
 
-    for (const bc of breadcrumbs) {
-      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
-      if (!hit) continue;
-      const key = `${hit.zone_code}|${hit.beat_code}`;
-      let entry = stats.get(key);
-      if (!entry) { entry = { zone_code: hit.zone_code, beat_code: hit.beat_code, speeds: [] }; stats.set(key, entry); }
-      entry.speeds.push(bc.speed);
+    // C8/C9: parallel batches of 50 instead of serial per-row identifyBeat calls.
+    // identifyBeat does a D1 lookup; serial over 20k rows caused timeout.
+    const BATCH = 50;
+    for (let i = 0; i < breadcrumbs.length; i += BATCH) {
+      const slice = breadcrumbs.slice(i, i + BATCH);
+      const hits = await Promise.all(slice.map((bc) => identifyBeat(c.env, bc.latitude, bc.longitude)));
+      for (let j = 0; j < slice.length; j++) {
+        const hit = hits[j];
+        if (!hit) continue;
+        const key = `${hit.zone_code}|${hit.beat_code}`;
+        let entry = stats.get(key);
+        if (!entry) { entry = { zone_code: hit.zone_code, beat_code: hit.beat_code, speeds: [] }; stats.set(key, entry); }
+        entry.speeds.push(slice[j].speed);
+      }
     }
 
     const result = [...stats.values()].map(({ zone_code, beat_code, speeds }) => {
@@ -1015,20 +1022,26 @@ gps.get('/coverage-timeline', requireRole(...READ_ROLES), async (c) => {
         beats: new Map(),
       }));
 
-    for (const bc of breadcrumbs) {
-      const t = Date.parse(bc.recorded_at.endsWith('Z') ? bc.recorded_at : bc.recorded_at + 'Z');
-      if (!Number.isFinite(t)) continue;
-      const idx = Math.floor((t - startMs) / intervalMs);
-      if (idx < 0 || idx >= buckets.length) continue;
-
-      const hit = await identifyBeat(c.env, bc.latitude, bc.longitude);
-      if (!hit) continue;
-      const key = `${hit.zone_code}|${hit.beat_code}`;
-      const bucket = buckets[idx];
-      let entry = bucket.beats.get(key);
-      if (!entry) { entry = { units: new Set(), speeds: [] }; bucket.beats.set(key, entry); }
-      entry.units.add(bc.unit_id);
-      if (bc.speed != null && bc.speed > 0.2) entry.speeds.push(bc.speed);
+    // C8/C9: parallel batches of 50 for identifyBeat to avoid serial D1 per-row.
+    const BATCH = 50;
+    for (let i = 0; i < breadcrumbs.length; i += BATCH) {
+      const slice = breadcrumbs.slice(i, i + BATCH);
+      const hits = await Promise.all(slice.map((bc) => identifyBeat(c.env, bc.latitude, bc.longitude)));
+      for (let j = 0; j < slice.length; j++) {
+        const bc = slice[j];
+        const t = Date.parse(bc.recorded_at.endsWith('Z') ? bc.recorded_at : bc.recorded_at + 'Z');
+        if (!Number.isFinite(t)) continue;
+        const idx = Math.floor((t - startMs) / intervalMs);
+        if (idx < 0 || idx >= buckets.length) continue;
+        const hit = hits[j];
+        if (!hit) continue;
+        const key = `${hit.zone_code}|${hit.beat_code}`;
+        const bucket = buckets[idx];
+        let entry = bucket.beats.get(key);
+        if (!entry) { entry = { units: new Set(), speeds: [] }; bucket.beats.set(key, entry); }
+        entry.units.add(bc.unit_id);
+        if (bc.speed != null && bc.speed > 0.2) entry.speeds.push(bc.speed);
+      }
     }
 
     const distinctBeats = new Set<string>();
