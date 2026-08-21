@@ -77,6 +77,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'serve-jobs', label: 'Process Server Jobs', icon: Footprints, group: 'Units & Calls', colorVar: 'var(--sev-warn)', description: 'Active serve queue with a geocoded address' },
 
   // ── Historical Analysis ──
+  { id: 'incident-heatmap', label: 'Incident Heat', icon: Radar, group: 'Historical Analysis', colorVar: 'var(--sev-high)', description: 'Incident density last 24 hours' },
   { id: 'heatmap', label: 'Crime Heatmap', icon: Radar, group: 'Historical Analysis', colorVar: 'var(--sev-critical)', description: 'Incident density (H) — click label to switch Live/Historical' },
   { id: 'call-history', label: 'Call History', icon: History, group: 'Historical Analysis', colorVar: 'var(--sev-ok)', description: 'Past 30 days of calls' },
   { id: 'speed-heatmap', label: 'Speed Heatmap', icon: Gauge, group: 'Historical Analysis', colorVar: 'var(--sev-high)', description: 'GPS speed density' },
@@ -85,6 +86,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'response-time', label: 'Response Time by Beat', icon: Timer, group: 'Historical Analysis', colorVar: 'var(--sev-ok)', description: '30-day avg response time (historical)' },
 
   // ── Risk & Coverage ──
+  { id: 'beat-coverage', label: 'Beat Coverage', icon: Shield, group: 'Risk & Coverage', colorVar: 'var(--sev-ok)', description: 'Beat patrol coverage status (green=covered, amber=undermanned, red=uncovered)' },
   { id: 'coverage-gaps', label: 'Coverage Gaps', icon: SquareDashed, group: 'Risk & Coverage', colorVar: 'var(--sev-high)', description: 'Response-time gap grid' },
   { id: 'safety-zones', label: 'Safety Zones', icon: Shield, group: 'Risk & Coverage', colorVar: 'var(--sev-critical)', description: 'Risk-weighted call clusters' },
   { id: 'isochrone', label: 'Response Zones', icon: Hexagon, group: 'Risk & Coverage', colorVar: 'var(--sev-ok)', description: '5/10/15 min driving' },
