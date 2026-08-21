@@ -91,7 +91,7 @@ callExtras.post('/:id/suggest-unit', async (c) => {
            FROM dispatch_assignments da
            JOIN calls_for_service c ON c.id = da.call_id
           WHERE da.unit_id IN (${placeholders})
-            AND c.status NOT IN ('closed', 'cancelled', 'merged')
+            AND COALESCE(c.status,'') NOT IN ('closed','cleared','cancelled','canceled','archived','merged')
           GROUP BY da.unit_id`,
         ...chunk);
       for (const r of rows) activeCounts[r.unit_id] = r.active_calls;
