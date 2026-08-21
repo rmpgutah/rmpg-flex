@@ -219,6 +219,8 @@ import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
+import dispatchShiftStats from './routes/dispatch/shiftStats';
+import dispatchCallTemplates from './routes/dispatch/callTemplates';
 import dispatchDataCapture from './routes/dispatch/dataCapture';
 import notificationSubscriptions from './routes/dispatch/notificationSubscriptions';
 import dispatchWeather from './routes/dispatch/dispatchWeather';
@@ -794,6 +796,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/dispatch/shift-stats', router: dispatchShiftStats, auth: 'required' },
+  { prefix: '/api/dispatch/call-templates', router: dispatchCallTemplates, auth: 'required' },
   { prefix: '/api/dispatch/capture', router: dispatchDataCapture, auth: 'required' },
   // Backend-C additions
   { prefix: '/api/dispatch/notifications', router: notificationSubscriptions, auth: 'required' },
