@@ -302,4 +302,172 @@ radar360.post('/scan', async (c) => {
   return c.json(result);
 });
 
+// ── Signal detection types ────────────────────────────────
+
+type SignalType = 'wifi_ap' | 'bt_classic' | 'ble' | 'cell_tower';
+
+interface SignalDetectionRow {
+  id: number;
+  scan_session_id: string;
+  signal_type: SignalType;
+  identifier: string;
+  display_name: string | null;
+  rssi_dbm: number | null;
+  signal_pct: number | null;
+  tx_power_dbm: number | null;
+  distance_estimate_m: number | null;
+  scanner_lat: number | null;
+  scanner_lng: number | null;
+  scanner_device_id: string | null;
+  properties: string;
+  call_id: number | null;
+  incident_id: number | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+interface SignalDetection extends Omit<SignalDetectionRow, 'properties'> {
+  properties: Record<string, unknown>;
+}
+
+// Allowed signal types and property keys (no raw user strings in SQL)
+const ALLOWED_SIGNAL_TYPES: Set<string> = new Set(['wifi_ap', 'bt_classic', 'ble', 'cell_tower']);
+
+// ── POST /api/radar360/signal-scan ───────────────────────
+// Accepts a batch of signals from an Electron or mobile client.
+// Body: { scan_session_id, scanned_at, scanner_lat?, scanner_lng?,
+//         scanner_device_id?, call_id?, signals: SignalInput[] }
+// Each signal: { signal_type, identifier, display_name?, rssi_dbm?,
+//               signal_pct?, tx_power_dbm?, distance_estimate_m?,
+//               properties?, first_seen_at?, last_seen_at? }
+
+radar360.post('/signal-scan', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || !Array.isArray(body.signals) || body.signals.length === 0) {
+    return c.json({ error: 'signals array is required' }, 400);
+  }
+  if (body.signals.length > 200) {
+    return c.json({ error: 'signals array exceeds max 200 per batch' }, 400);
+  }
+
+  const db = getDb(c.env);
+  const sessionId = String(body.scan_session_id ?? crypto.randomUUID()).slice(0, 64);
+  const scannedAt = typeof body.scanned_at === 'string' ? body.scanned_at : new Date().toISOString();
+  const scannerLat = body.scanner_lat != null ? Number(body.scanner_lat) : null;
+  const scannerLng = body.scanner_lng != null ? Number(body.scanner_lng) : null;
+  const scannerDevice = body.scanner_device_id ? String(body.scanner_device_id).slice(0, 64) : null;
+  const callId = body.call_id != null ? Number(body.call_id) : null;
+  const userId = c.var.user?.id ?? null;
+
+  const inserted: string[] = [];
+  const skipped: string[] = [];
+
+  for (const sig of body.signals) {
+    const sigType = String(sig.signal_type ?? '');
+    if (!ALLOWED_SIGNAL_TYPES.has(sigType)) { skipped.push(sigType); continue; }
+    const identifier = String(sig.identifier ?? '').toLowerCase().slice(0, 64);
+    if (!identifier) { skipped.push('(empty identifier)'); continue; }
+
+    const displayName = sig.display_name ? String(sig.display_name).slice(0, 128) : null;
+    const rssiDbm = sig.rssi_dbm != null ? Math.round(Number(sig.rssi_dbm)) : null;
+    const signalPct = sig.signal_pct != null ? Math.min(100, Math.max(0, Math.round(Number(sig.signal_pct)))) : null;
+    const txPower = sig.tx_power_dbm != null ? Math.round(Number(sig.tx_power_dbm)) : null;
+    const distM = sig.distance_estimate_m != null ? Math.round(Number(sig.distance_estimate_m) * 10) / 10 : null;
+    const propStr = typeof sig.properties === 'string' ? sig.properties
+      : JSON.stringify(sig.properties ?? {});
+    const firstSeen = typeof sig.first_seen_at === 'string' ? sig.first_seen_at : scannedAt;
+    const lastSeen = typeof sig.last_seen_at === 'string' ? sig.last_seen_at : scannedAt;
+
+    try {
+      await db.prepare(
+        `INSERT INTO signal_detections
+           (scan_session_id, signal_type, identifier, display_name,
+            rssi_dbm, signal_pct, tx_power_dbm, distance_estimate_m,
+            scanner_lat, scanner_lng, scanner_device_id,
+            properties, call_id, submitted_by,
+            first_seen_at, last_seen_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      ).bind(
+        sessionId, sigType, identifier, displayName,
+        rssiDbm, signalPct, txPower, distM,
+        scannerLat, scannerLng, scannerDevice,
+        propStr, callId, userId,
+        firstSeen, lastSeen
+      ).run();
+      inserted.push(identifier);
+    } catch (err) {
+      log.warn('[Radar360] signal insert failed', { identifier, err });
+      skipped.push(identifier);
+    }
+  }
+
+  log.info('[Radar360] signal-scan stored', { session: sessionId, inserted: inserted.length, skipped: skipped.length });
+  return c.json({ ok: true, scan_session_id: sessionId, inserted: inserted.length, skipped: skipped.length });
+});
+
+// ── GET /api/radar360/signals ─────────────────────────────
+// Returns signal detections from the last 24 h within a bounding box.
+// Query params: lat, lng, radius_mi (default 1), type (optional filter),
+//               limit (max 200, default 100), since_session (optional)
+
+radar360.get('/signals', async (c) => {
+  const lat = parseFloat(c.req.query('lat') ?? '');
+  const lng = parseFloat(c.req.query('lng') ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng are required' }, 400);
+  }
+
+  const radiusMi = Math.min(Math.max(parseFloat(c.req.query('radius_mi') ?? '1'), 0.1), 10);
+  const typeFilter = c.req.query('type');
+  const limitParam = Math.min(parseInt(c.req.query('limit') ?? '100'), 200);
+  const sinceSession = c.req.query('since_session');
+
+  const box = bbox(lat, lng, radiusMi);
+  const db = getDb(c.env);
+
+  // D1 doesn't support SIN/COS, so bbox pre-filter + JS Haversine post-filter
+  const typeClause = typeFilter && ALLOWED_SIGNAL_TYPES.has(typeFilter) ? 'AND signal_type = ?' : '';
+  const sessionClause = sinceSession ? 'AND scan_session_id != ?' : '';
+
+  const rows = await query<SignalDetectionRow>(db,
+    `SELECT id, scan_session_id, signal_type, identifier, display_name,
+            rssi_dbm, signal_pct, tx_power_dbm, distance_estimate_m,
+            scanner_lat, scanner_lng, scanner_device_id,
+            properties, call_id, first_seen_at, last_seen_at
+     FROM signal_detections
+     WHERE scanner_lat BETWEEN ? AND ?
+       AND scanner_lng BETWEEN ? AND ?
+       AND last_seen_at >= datetime('now', '-24 hours')
+       ${typeClause} ${sessionClause}
+     ORDER BY last_seen_at DESC
+     LIMIT ?`,
+    box.minLat, box.maxLat, box.minLng, box.maxLng,
+    ...(typeFilter && ALLOWED_SIGNAL_TYPES.has(typeFilter) ? [typeFilter] : []),
+    ...(sinceSession ? [sinceSession] : []),
+    limitParam,
+  );
+
+  const signals: SignalDetection[] = rows.map((r) => ({
+    ...r,
+    properties: (() => { try { return JSON.parse(r.properties); } catch { return {}; } })(),
+  }));
+
+  log.info('[Radar360] signals query', { signals: signals.length, lat, lng, radiusMi });
+  return c.json({ signals, count: signals.length, lat, lng, radiusMi });
+});
+
+// ── GET /api/radar360/signals/:id ────────────────────────
+// Single signal detection full detail
+
+radar360.get('/signals/:id', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (!Number.isFinite(id)) return c.json({ error: 'invalid id' }, 400);
+  const db = getDb(c.env);
+  const row = await db.prepare(
+    `SELECT * FROM signal_detections WHERE id = ?`
+  ).bind(id).first<SignalDetectionRow>();
+  if (!row) return c.json({ error: 'not found' }, 404);
+  return c.json({ ...row, properties: (() => { try { return JSON.parse(row.properties); } catch { return {}; } })() });
+});
+
 export default radar360;
