@@ -53,3 +53,19 @@ export async function checkAndReserveLdhCall(
 
   return { allowed: true };
 }
+
+/** Read-only view of today's usage against the same KV counters
+ *  checkAndReserveLdhCall writes. Backs GET /usage. */
+export async function getLdhUsageToday(
+  kv: LdhKvLike,
+  nowMs: number,
+): Promise<{ day: string; calls_today: number; daily_budget: number; minute_budget: number }> {
+  const dKey = dayKey(nowMs);
+  const raw = await kv.get(dKey);
+  return {
+    day: new Date(nowMs).toISOString().slice(0, 10),
+    calls_today: raw ? parseInt(raw, 10) || 0 : 0,
+    daily_budget: LDH_DAILY_BUDGET,
+    minute_budget: LDH_MINUTE_BUDGET,
+  };
+}

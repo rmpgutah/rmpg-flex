@@ -17,6 +17,8 @@ import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 import { configFromEnv, resolveCitation, searchLegislation } from '../utils/legalDataHunter/client';
 import { LdhConfigError, LdhError } from '../utils/legalDataHunter/errors';
+import { checkAndReserveLdhCall, getLdhUsageToday } from '../utils/legalDataHunter/rateLimit';
+import { requireRole } from '../middleware/auth';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { containsClause, containedByClause } from '../utils/searchText';
 import { log } from '../utils/logger';
@@ -146,6 +148,14 @@ legalDataHunter.post('/validate', async (c) => {
       throw err;
     }
 
+    // Every live LDH call (resolve or search) must pass the self-imposed
+    // budget first (8/min, 18/day) — LDH's own limits are 10/min, 20/day,
+    // and this route is the only live caller.
+    const budget = await checkAndReserveLdhCall(c.env.KV, Date.now());
+    if (!budget.allowed) {
+      return c.json({ ok: false, code: 'rate_limited', reason: budget.reason });
+    }
+
     const countryHint = state ? 'US' : undefined;
     const citationLike = extractCitationLike(charge);
     let source: 'ldh_resolve' | 'ldh_search';
@@ -198,6 +208,14 @@ legalDataHunter.post('/validate', async (c) => {
     }
     return dbErrorResponse(c, err, 'Failed to validate charge against Legal Data Hunter');
   }
+});
+
+/** Today's live-call count against the self-imposed budget. Admin/manager
+ *  only — it's an ops/quota view, not officer-facing. Reads the same KV
+ *  counters checkAndReserveLdhCall writes. */
+legalDataHunter.get('/usage', requireRole('admin', 'manager'), async (c) => {
+  const usage = await getLdhUsageToday(c.env.KV, Date.now());
+  return c.json({ ok: true, ...usage });
 });
 
 export default legalDataHunter;
