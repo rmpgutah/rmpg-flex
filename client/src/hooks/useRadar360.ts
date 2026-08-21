@@ -102,7 +102,7 @@ export function useRadar360({
       });
       if (controller.signal.aborted) return;
       setContacts(result.contacts);
-      setScannedAt(new Date(result.scannedAt));
+      setScannedAt(new Date(result.scannedAt)); // new-date-ok: Worker emits ISO-8601 with Z suffix (not a naive D1 string)
       setError(false);
     } catch (err) {
       if (controller.signal.aborted) return;
