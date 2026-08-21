@@ -84,10 +84,12 @@ handoff.get('/briefing', requireRole('officer', 'dispatcher', 'supervisor', 'man
     } catch { results.pending_serve_jobs = 0; }
 
     // Anomaly alerts
-    const anomalyCount = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL",
-    );
-    results.unacknowledged_alerts = anomalyCount?.n ?? 0;
+    try {
+      const anomalyCount = await queryFirst<{ n: number }>(
+        db, "SELECT COUNT(*) AS n FROM anomaly_alerts WHERE acknowledged_at IS NULL",
+      );
+      results.unacknowledged_alerts = anomalyCount?.n ?? 0;
+    } catch { results.unacknowledged_alerts = 0; }
 
     // Zones with coverage gaps
     const zones = await query<{ zone: string; unit_count: number }>(
