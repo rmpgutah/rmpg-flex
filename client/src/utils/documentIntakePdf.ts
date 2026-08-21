@@ -27,6 +27,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp, localToday } from './dateUtils';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
@@ -142,24 +143,11 @@ export function generateDocumentIntakePdf(input: IntakePdfInput): jsPDF {
   const M = 36;
   let y = 36;
 
-  // ── Banner ─────────────────────────────────────────────────────
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('DOCUMENT INTAKE — EXTRACTION REPORT', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Generated ${fmtTimestamp(new Date().toISOString())}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Records Intake', M, y);
-  if (exportedBy) doc.text(`Reviewed by: ${exportedBy}`, W - M, y, { align: 'right' });
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: 'DOCUMENT INTAKE — EXTRACTION REPORT',
+    subtitle: 'Records Intake',
+    rightLine1: `Generated ${fmtTimestamp(new Date().toISOString())}`,
+  });
 
   // ── Source / detection summary ─────────────────────────────────
   doc.setDrawColor(BORDER);
