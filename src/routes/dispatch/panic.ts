@@ -22,22 +22,26 @@ const panic = new Hono<Env>();
 
 // GET /dispatch/panic — list panic alerts, default active only
 panic.get('/panic', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
-  const db = getDb(c.env);
-  const status = c.req.query('status') || 'active';
-  const rows = await query<Record<string, unknown>>(
-    db,
-    `SELECT p.*, u.full_name as user_name, u.badge_number,
-            ack.full_name as acknowledged_by_name,
-            res.full_name as resolved_by_name
-     FROM panic_alerts p
-     LEFT JOIN users u ON p.user_id = u.id
-     LEFT JOIN users ack ON p.acknowledged_by = ack.id
-     LEFT JOIN users res ON p.resolved_by = res.id
-     WHERE (? = 'all' OR p.status = ?)
-     ORDER BY p.created_at DESC LIMIT 500`,
-    status, status,
-  );
-  return c.json(rows);
+  try {
+    const db = getDb(c.env);
+    const status = c.req.query('status') || 'active';
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT p.*, u.full_name as user_name, u.badge_number,
+              ack.full_name as acknowledged_by_name,
+              res.full_name as resolved_by_name
+       FROM panic_alerts p
+       LEFT JOIN users u ON p.user_id = u.id
+       LEFT JOIN users ack ON p.acknowledged_by = ack.id
+       LEFT JOIN users res ON p.resolved_by = res.id
+       WHERE (? = 'all' OR p.status = ?)
+       ORDER BY p.created_at DESC LIMIT 500`,
+      status, status,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to load panic alerts' }, 500);
+  }
 });
 
 // POST /dispatch/panic — officer hits the panic button (any authenticated role may trigger their own)

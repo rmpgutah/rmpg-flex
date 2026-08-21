@@ -203,8 +203,15 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // (best-effort — weather endpoint may be unavailable)
     if (!body.officer_safety_caution && body.latitude != null && body.longitude != null) {
       try {
-        const weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${body.latitude}&longitude=${body.longitude}&current=weather_code&timezone=America%2FDenver`);
-        const weather = await weatherResp.json() as any;
+        const weatherAc = new AbortController();
+        const weatherTimer = setTimeout(() => weatherAc.abort(), 3000);
+        let weatherResp: Response;
+        try {
+          weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${body.latitude}&longitude=${body.longitude}&current=weather_code&timezone=America%2FDenver`, { signal: weatherAc.signal });
+        } finally {
+          clearTimeout(weatherTimer);
+        }
+        const weather = await weatherResp!.json() as any;
         const code = weather?.current?.weather_code;
         // WMO weather codes: 95-99 = thunderstorm, 71-77 = snow, 56-67 = freezing, 85-86 = snow showers
         if (code && (code >= 95 || code === 71 || code === 73 || code === 75 || code === 77 || code === 85 || code === 86 || code === 66 || code === 67)) {
@@ -593,6 +600,7 @@ calls.get('/hits', requireRole('officer', 'dispatcher', 'supervisor', 'manager',
           WHERE cp.call_id = c.id
         )
       )
+      LIMIT 500
     `);
     return c.json({ call_ids: rows.map((r) => r.call_id) });
   } catch (err) {
@@ -1247,10 +1255,17 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
 const D1_PARAM_CHUNK = 90;
 // Promote the next queued call for a unit that just cleared its active slot.
 // Called after unassign-unit and after terminal call-status transitions.
+// depth guard: a corrupt queued_call_ids list (all cancelled entries) could
+// recurse until the Workers call stack limit — cap at 20 iterations.
 async function promoteQueuedCall(
   db: Awaited<ReturnType<typeof getDb>>,
   unit_id: number,
+  _depth = 0,
 ): Promise<void> {
+  if (_depth >= 20) {
+    await execute(db, "UPDATE units SET queued_call_ids = '[]' WHERE id = ?", unit_id);
+    return;
+  }
   const row = await queryFirst<{ queued_call_ids: string }>(
     db, 'SELECT queued_call_ids FROM units WHERE id = ?', unit_id,
   );
@@ -1264,7 +1279,7 @@ async function promoteQueuedCall(
   );
   if (!nextCall || nextCall.status === 'closed' || nextCall.status === 'cancelled') {
     await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(remaining), unit_id);
-    if (remaining.length > 0) await promoteQueuedCall(db, unit_id);
+    if (remaining.length > 0) await promoteQueuedCall(db, unit_id, _depth + 1);
     return;
   }
   await executeBatch(db, [
