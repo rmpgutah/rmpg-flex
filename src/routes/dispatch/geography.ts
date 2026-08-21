@@ -493,4 +493,123 @@ geography.get('/road-speed', async (c) => {
   }
 });
 
+// ── GET /dispatch/geography/beat-coverage ──────────────────────
+// For each beat, returns unit count, active call count, and
+// avg response time in the last 24 h. coverage_status:
+//   'covered'   ≥1 available unit assigned
+//   'undermanned' ≥1 unit but all are busy / assigned to calls
+//   'uncovered'  0 units assigned
+geography.get('/beat-coverage', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Beat-level unit counts (grouped by assigned_beat)
+    const unitRows = await query<{ beat: string; unit_count: number; available_count: number }>(
+      db,
+      `SELECT
+         COALESCE(assigned_beat, 'Unzoned') AS beat,
+         COUNT(*) AS unit_count,
+         SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) AS available_count
+       FROM units
+       WHERE status NOT IN ('off_duty','out_of_service')
+       GROUP BY assigned_beat`,
+    );
+    // Active call counts per beat (zone/beat stored on the call)
+    const callRows = await query<{ beat: string; call_count_active: number }>(
+      db,
+      `SELECT
+         COALESCE(beat, zone, 'Unzoned') AS beat,
+         COUNT(*) AS call_count_active
+       FROM calls_for_service
+       WHERE status NOT IN ('closed','cancelled','completed')
+       GROUP BY beat`,
+    );
+    // Avg response time per beat in last 24 h (dispatch_time → on_scene_time)
+    const respRows = await query<{ beat: string; avg_response_time_24h: number | null }>(
+      db,
+      `SELECT
+         COALESCE(beat, zone, 'Unzoned') AS beat,
+         AVG(
+           (julianday(on_scene_time) - julianday(dispatch_time)) * 1440
+         ) AS avg_response_time_24h
+       FROM calls_for_service
+       WHERE on_scene_time IS NOT NULL
+         AND dispatch_time IS NOT NULL
+         AND created_at >= datetime('now', '-24 hours')
+       GROUP BY beat`,
+    );
+
+    // Build lookup maps
+    const callMap = new Map<string, number>();
+    for (const r of callRows) callMap.set(r.beat, r.call_count_active);
+    const respMap = new Map<string, number | null>();
+    for (const r of respRows) respMap.set(r.beat, r.avg_response_time_24h);
+
+    const result = unitRows.map((r) => {
+      let coverage_status: 'covered' | 'undermanned' | 'uncovered';
+      if (r.unit_count === 0) {
+        coverage_status = 'uncovered';
+      } else if (r.available_count === 0) {
+        coverage_status = 'undermanned';
+      } else {
+        coverage_status = 'covered';
+      }
+      const avgResp = respMap.get(r.beat) ?? null;
+      return {
+        beat: r.beat,
+        unit_count: r.unit_count,
+        call_count_active: callMap.get(r.beat) ?? 0,
+        avg_response_time_24h: avgResp != null ? Math.round(avgResp * 10) / 10 : null,
+        coverage_status,
+      };
+    });
+
+    return c.json(result);
+  } catch (err) {
+    log.error('[geography] GET /beat-coverage failed', {}, err);
+    return c.json({ error: 'Beat coverage unavailable' }, 500);
+  }
+});
+
+// ── GET /dispatch/geography/incident-heatmap ────────────────────
+// Returns lat/lng/weight/incident_type for all calls in the last
+// N hours (default 24, max 168). Used by Mapbox heatmap layer.
+geography.get('/incident-heatmap', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const hours = Math.min(168, Math.max(1, parseInt(c.req.query('hours') || '24', 10) || 24));
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{
+      latitude: number | null;
+      longitude: number | null;
+      incident_type: string | null;
+      priority: string | null;
+    }>(
+      db,
+      `SELECT latitude, longitude, incident_type, priority
+       FROM calls_for_service
+       WHERE latitude IS NOT NULL
+         AND longitude IS NOT NULL
+         AND created_at >= datetime('now', '-' || ? || ' hours')`,
+      hours,
+    );
+    // Weight by priority: critical=3, high=2, others=1
+    const heatmap = rows
+      .filter((r) => r.latitude != null && r.longitude != null)
+      .map((r) => {
+        const p = (r.priority ?? '').toLowerCase();
+        const weight = p === 'critical' || p === '1' ? 3
+          : p === 'high' || p === '2' ? 2 : 1;
+        return {
+          latitude: r.latitude as number,
+          longitude: r.longitude as number,
+          weight,
+          incident_type: r.incident_type ?? 'Unknown',
+        };
+      });
+    return c.json({ hours, count: heatmap.length, points: heatmap });
+  } catch (err) {
+    log.error('[geography] GET /incident-heatmap failed', { hours }, err);
+    return c.json({ error: 'Heatmap data unavailable' }, 500);
+  }
+});
+
 export default geography;

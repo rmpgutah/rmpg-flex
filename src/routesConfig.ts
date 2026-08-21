@@ -218,6 +218,8 @@ import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
+import dispatchAnalytics from './routes/dispatch/analyticsDispatch';
+import dispatchActivityFeed from './routes/dispatch/activityFeed';
 import dispatchDataCapture from './routes/dispatch/dataCapture';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
@@ -377,6 +379,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
     note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
+  { prefix: '/api/dispatch/analytics', router: dispatchAnalytics, auth: 'required',
+    note: 'Dispatch analytics: availability timeline (hourly staffing breakdown)' },
+  { prefix: '/api/dispatch/activity', router: dispatchActivityFeed, auth: 'required',
+    note: 'Dispatch activity feed: recent call/unit/panic events from audit_log, polled every 10s by dispatch board sidebar' },
   // NOTE: dispatchAggregates' internal routes are bare ('/call-volume',
   // '/by-zone', '/integration-dashboard', no '/aggregates' segment) — the
   // client was fixed to match this mount (2026-07-02, PR #2530) rather than

@@ -5,6 +5,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 import { denverNowDateExpr } from '../../utils/denverTime';
+import { haversineM } from '../../utils/tripTelemetry';
 
 const units = new Hono<Env>();
 
@@ -426,6 +427,48 @@ units.get('/my-assignment', async (c) => {
   } catch (err) {
     log.error('GET /dispatch/units/my-assignment failed', {}, err);
     return c.json({ call_sign: null, radio_channel: null, channel: null });
+  }
+});
+
+// ── GET /dispatch/units/:id/eta — estimated travel time to a call ─
+// Computes haversine distance from unit's last GPS → call location,
+// then divides by default urban speed (35 mph). The gps.ts ETA route
+// mirrors this but is mounted under /api/dispatch/gps (different prefix);
+// THIS route is the canonical /api/dispatch/units/:id/eta endpoint.
+const ETA_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+units.get('/:id/eta', requireRole(...ETA_READ_ROLES), async (c) => {
+  const unitId = c.req.param('id');
+  const callId = c.req.query('call_id');
+  if (!callId) return c.json({ error: 'call_id query param required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const unit = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM units WHERE id = ? LIMIT 1', unitId,
+    );
+    if (!unit || unit.latitude == null || unit.longitude == null) {
+      return c.json({ error: 'Unit GPS location unavailable' }, 404);
+    }
+    const call = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM calls_for_service WHERE id = ? LIMIT 1', callId,
+    );
+    if (!call || call.latitude == null || call.longitude == null) {
+      return c.json({ error: 'Call location unavailable' }, 404);
+    }
+    const distM = haversineM(unit.latitude, unit.longitude, call.latitude, call.longitude);
+    const distMiles = distM / 1609.344;
+    const speedMph = 35;
+    const etaMin = (distMiles / speedMph) * 60;
+    return c.json({
+      eta_minutes: Math.round(etaMin * 10) / 10,
+      distance_miles: Math.round(distMiles * 100) / 100,
+      unit_lat: unit.latitude,
+      unit_lng: unit.longitude,
+      call_lat: call.latitude,
+      call_lng: call.longitude,
+    });
+  } catch (err) {
+    log.error('[units] GET /:id/eta failed', { unitId, callId }, err);
+    return c.json({ error: 'ETA calculation failed' }, 500);
   }
 });
 
