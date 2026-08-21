@@ -90,7 +90,7 @@ function normalizeFees<T extends Record<string, unknown>>(job: T): T {
 const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
-const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled', 'archived']);
 // serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
 // value 500s the INSERT/UPDATE on the constraint).
 const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
@@ -269,7 +269,7 @@ sv.get('/active-routes', async (c) => {
   const [routes, jobs] = await Promise.all([
     query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
     query(db, `SELECT * FROM serve_queue
-               WHERE status NOT IN ('served','completed','cancelled','closed','failed')
+               WHERE status NOT IN ('served','cancelled','failed')
                ORDER BY sort_order, id DESC LIMIT 200`),
   ]);
   return c.json({ jobs, routes });
@@ -1403,7 +1403,14 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
       );
 
   // Dwell-time learning — write path
-  const arrivedAt = body.arrivedAt as string | undefined;
+  const arrivedAtRaw = body.arrivedAt as string | undefined;
+  // Guard: arrivedAt must be a parseable ISO timestamp. An unvalidated string
+  // causes dwellSeconds() to return NaN, which then passes shouldRecordDwell()
+  // and inserts a corrupt dwell_seconds row. Reject any value that doesn't
+  // parse to a finite timestamp.
+  const arrivedAt = (typeof arrivedAtRaw === 'string' && Number.isFinite(new Date(arrivedAtRaw).getTime()))
+    ? arrivedAtRaw
+    : undefined;
   if (arrivedAt) {
     const loggedAt = new Date().toISOString();
     const dwell = dwellSeconds(arrivedAt, loggedAt);
@@ -1574,11 +1581,15 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
   // [13] Consecutive non-service streak — after a non-served attempt, count
   // how many of the most recent consecutive attempts also failed to make contact.
   // At 5+ in a row, insert a system comment so supervisors see it in the thread.
+  // Fetch enough rows so a streak longer than the window is not silently capped.
+  // nextNum is the attempt count after this insert, so fetch nextNum rows —
+  // the true streak cannot exceed the total number of attempts.
   if (newStatus !== 'served' && newStatus !== 'failed') {
+    const fetchLimit = Math.max(nextNum, 10);
     const recentResults = await query<{ result: string }>(db,
       `SELECT result FROM serve_attempts WHERE serve_queue_id = ?
-       ORDER BY attempt_number DESC LIMIT 6`,
-      id,
+       ORDER BY attempt_number DESC LIMIT ?`,
+      id, fetchLimit,
     ).catch(() => [] as { result: string }[]);
     const streak = recentResults.findIndex((r) =>
       r.result === 'served' || r.result === 'sub_served',
@@ -1600,7 +1611,13 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
     id: ins.meta.last_row_id,
     attempt_number: nextNum,
     queue_status: newStatus,
-    due_diligence_complete: nextNum >= (queue.max_attempts ?? 3),
+    // attempt_threshold_reached: true when the attempt count reaches max_attempts.
+    // This is a count-only heuristic — NOT a legal diligence certification.
+    // Full Rule 4(d) diligence requires time separation and time-of-day variation
+    // that only the client-side assessDiligence() can evaluate. Renamed from
+    // 'due_diligence_complete' to avoid misleading officers into thinking a
+    // simple count satisfies the legal standard.
+    attempt_threshold_reached: nextNum >= (queue.max_attempts ?? 3),
     proximity_warning: proximityWarning,
   });
 }
@@ -1647,8 +1664,28 @@ sv.post('/:id/substitute-service', async (c) => {
     `UPDATE serve_queue SET attempt_count = ?, status = 'served', updated_at = datetime('now'), closed_at = datetime('now') WHERE id = ?`,
     nextNum, id,
   );
-  await generateServeCharges(db, id);
+  // generateServeCharges must never surface a billing failure as an HTTP 500
+  // on the attempt POST — the DB writes for the attempt already committed and
+  // cannot be rolled back. Swallow failures the same way logAttempt does.
+  await generateServeCharges(db, id).catch(() => {});
   syncServeCompletionToCfs(db, id).catch(() => {});
+  notifyServeCompletion(db, id, 'served').catch(() => {});
+
+  // Notify dispatchers and restore officer unit status — mirroring logAttempt's
+  // terminal-completion path so substitute-service is not invisible to dispatch.
+  broadcastAll('dispatch_update', {
+    action: 'serve_completed',
+    queue_id: id,
+    attempt_count: nextNum,
+  });
+  if (user?.id) {
+    execute(db,
+      `UPDATE units SET status = 'available', last_status_change = datetime('now'), updated_at = datetime('now')
+       WHERE user_id = ? AND status = 'on_serve'`,
+      user.id,
+    ).catch(() => {});
+  }
+
   return c.json({ success: true, id: ins.meta.last_row_id, attempt_number: nextNum });
 });
 

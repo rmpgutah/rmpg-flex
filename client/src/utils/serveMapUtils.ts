@@ -3,11 +3,14 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapbox
 import { escapeHtml } from './sanitize';
 import { parseTimestamp } from './dateUtils';
 
+// Priority colors use CSS custom properties so they follow the active theme.
+// Mapbox paint expressions cannot use var(), but these are only for DOM
+// markers (HTMLElement), not Mapbox layer paint — var() is safe here.
 export const SERVE_PRIORITY_COLOR: Record<string, string> = {
-  urgent: '#ef4444',
-  rush: '#f97316',
-  normal: '#3b82f6',
-  routine: '#6b7280',
+  urgent: 'var(--sev-critical, #ef4444)',
+  rush: 'var(--sev-high, #f97316)',
+  normal: 'var(--sev-medium, #3b82f6)',
+  routine: 'var(--text-secondary, #6b7280)',
 };
 
 export interface ServeMapEntry {
@@ -31,7 +34,7 @@ export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: bo
     ? (parseTimestamp(job.deadline).getTime() - Date.now()) / 3_600_000
     : null;
   const hasUrgencyRing = hoursLeft !== null && hoursLeft < 72;
-  const ringColor = hoursLeft !== null && hoursLeft < 24 ? '#ef4444' : '#f59e0b';
+  const ringColor = hoursLeft !== null && hoursLeft < 24 ? 'var(--sev-critical, #ef4444)' : 'var(--sev-warn, #f59e0b)';
   const isBusiness = job.document_type === 'eviction' || job.document_type === 'order_to_show_cause';
 
   const el = document.createElement('div');
@@ -46,8 +49,8 @@ export function buildServeJobMarkerEl(job: ServeMapEntry, opts?: { selected?: bo
   el.title = `${job.recipient_name ?? 'Unknown'} — ${job.priority}`;
 
   if (opts?.selected) {
-    el.style.border = '3px solid #22c55e';
-    el.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.4), 0 2px 6px rgba(0 0 0 / 0.4)';
+    el.style.border = '3px solid var(--sev-ok, #22c55e)';
+    el.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--sev-ok, #22c55e) 40%, transparent), 0 2px 6px rgba(0 0 0 / 0.4)';
   }
 
   if (hasUrgencyRing) {

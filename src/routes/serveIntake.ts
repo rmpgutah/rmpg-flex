@@ -98,7 +98,10 @@ import { routeJsonColumn } from '../utils/serveRoutePayload';
 let scheduleSchemaReconciled = false;
 async function reconcileScheduleSchema(db: D1Database): Promise<void> {
   if (scheduleSchemaReconciled) return;
-  scheduleSchemaReconciled = true;
+  // Set flag ONLY after all DDL succeeds — same pattern as ensureQualityGateColumns.
+  // Setting it before means a failed ALTER on one cold-start permanently skips
+  // reconciliation for the lifetime of that isolate.
+  let allOk = true;
 
   // serve_attempt_schedules columns from migration 0140
   for (const [name, type] of [
@@ -112,7 +115,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
 
   // serve_queue columns from migration 0140
@@ -125,7 +128,7 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_queue', name))) {
         await execute(db, `ALTER TABLE serve_queue ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
 
   // PR 2: updated_at for optimistic concurrency on PATCH /schedule/:slotId
@@ -136,8 +139,10 @@ async function reconcileScheduleSchema(db: D1Database): Promise<void> {
       if (!(await columnExists(db, 'serve_attempt_schedules', name))) {
         await execute(db, `ALTER TABLE serve_attempt_schedules ADD COLUMN ${name} ${type}`);
       }
-    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); }
+    } catch (err) { console.warn(`[serve-intake] reconcile ${name} failed:`, err); allOk = false; }
   }
+
+  if (allOk) scheduleSchemaReconciled = true;
 }
 
 // ── Migration 0152 runtime reconciler ───────────────────────
