@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { CodeViolation, VehicleTow } from '../types';
 import { parseTimestamp } from './dateUtils';
@@ -117,26 +118,12 @@ export function generateCodeViolationNoticePdf(v: CodeViolation): jsPDF {
   let y = 36;
 
   // ── Banner ──
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`NOTICE OF VIOLATION — ${v.violation_number || '—'}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Issued ${fmtDateTime(v.created_at)}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ──
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Code Enforcement', M, y);
-  doc.text(
-    `Officer: ${v.reporting_officer_name || '—'}`,
-    W - M, y, { align: 'right' },
-  );
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: `NOTICE OF VIOLATION — ${v.violation_number || '—'}`,
+    subtitle: 'Code Enforcement',
+    rightLine1: `Issued ${fmtDateTime(v.created_at)}`,
+    rightLine2: v.reporting_officer_name ? `Officer: ${v.reporting_officer_name}` : undefined,
+  });
 
   // ── Critical severity banner ──
   const sev = classifySeverity(v.severity);
