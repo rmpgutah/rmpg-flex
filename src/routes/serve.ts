@@ -268,8 +268,14 @@ sv.get('/active-routes', async (c) => {
     .format(new Date());
   const [routes, jobs] = await Promise.all([
     query(db, 'SELECT * FROM serve_routes WHERE route_date = ? ORDER BY id DESC LIMIT 50', today),
-    query(db, `SELECT * FROM serve_queue
-               WHERE status NOT IN ('served','completed','cancelled','closed','failed')
+    query(db, `SELECT id, call_id, sm_job_id, officer_id, recipient_name,
+                      recipient_address, recipient_city, recipient_state, recipient_zip,
+                      recipient_lat, recipient_lng, document_type, case_number,
+                      client_name, attorney_name, priority, deadline, status,
+                      attempt_count, sort_order, created_at, updated_at,
+                      serve_date, notes, time_window, max_attempts
+               FROM serve_queue
+               WHERE status NOT IN ('served','cancelled','failed')
                ORDER BY sort_order, id DESC LIMIT 200`),
   ]);
   return c.json({ jobs, routes });
@@ -1044,7 +1050,7 @@ sv.get('/folder-stats', async (c) => {
   const rows = await query<{ status: string; cnt: number }>(
     db,
     `SELECT status, COUNT(*) AS cnt FROM serve_queue
-     WHERE DATE(created_at) = ? OR DATE(serve_date) = ?
+     WHERE DATE(created_at, '-7 hours') = ? OR DATE(serve_date) = ?
      GROUP BY status`,
     date, date,
   );
@@ -2217,12 +2223,12 @@ sv.get('/stats/daily-run-summary', async (c) => {
       SUM(CASE WHEN result = 'not_home' THEN 1 ELSE 0 END) AS not_home,
       SUM(CASE WHEN result = 'refused'  THEN 1 ELSE 0 END) AS refused
     FROM serve_attempts
-    WHERE attempt_at >= date('now')
+    WHERE attempt_at >= date('now', '-7 hours')
   `);
   const mileRow = await queryFirst<{ total_miles: number }>(db, `
     SELECT SUM(mileage_actual) AS total_miles
     FROM serve_queue
-    WHERE closed_at >= date('now') AND status = 'served'
+    WHERE closed_at >= date('now', '-7 hours') AND status = 'served'
   `);
   return c.json({
     date: new Date().toISOString().slice(0, 10),

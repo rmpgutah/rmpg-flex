@@ -250,7 +250,7 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
       if (nextUrl) {
         // nextUrl is a full absolute URL; extract path+query and call smGet.
         const parsed = new URL(nextUrl);
-        const path = parsed.pathname.replace('/api', '');
+        const path = parsed.pathname.replace(/^\/api/, '');
         const params: Record<string, string> = {};
         parsed.searchParams.forEach((v, k) => { params[k] = v; });
         result = await smGet(path, key, params);
