@@ -848,8 +848,8 @@ sv.get('/', async (c) => {
     if (ids.length) {
       const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
       const attemptCols = hasDispositionCol
-        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
-        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
+        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name'
+        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name';
       // `limit` is caller-supplied and capped at 500, so `ids` routinely exceeds
       // D1's 100-bound-parameter cap — a hand-rolled IN-list 500s the whole
       // queue view the moment a dispatcher asks for more than 100 jobs.
@@ -864,6 +864,7 @@ sv.get('/', async (c) => {
       );
       const byQueue = new Map<number, any[]>();
       for (const a of attempts) {
+        a.photo_ids = (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })();
         const bucket = byQueue.get(a.serve_queue_id) ?? [];
         bucket.push(a);
         byQueue.set(a.serve_queue_id, bucket);
@@ -1133,13 +1134,16 @@ sv.get('/:id', async (c) => {
     id,
   );
   if (!row) return c.json({ error: 'Not found' }, 404);
-  const attempts = await query(
+  const attempts = (await query(
     db,
     `SELECT a.*, u.full_name AS officer_name
        FROM serve_attempts a LEFT JOIN users u ON u.id = a.officer_id
        WHERE a.serve_queue_id = ? ORDER BY a.attempt_at DESC`,
     id,
-  );
+  )).map((a: any) => ({
+    ...a,
+    photo_ids: (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })(),
+  }));
   const scans = await query(
     db,
     `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
