@@ -31,7 +31,10 @@ export function gridCellSizeForZoom(zoom: number): number {
   // cell size (0.000122 → 0.002), causing pins that were distinct at z19 to
   // merge into a cluster at z20. Apply the floor wherever the raw formula
   // would produce a cell smaller than 0.002°.
-  return Math.max(size, 0.002);
+  // Floor prevents floating-point underflow at extreme zoom (≥22).
+  // 0.0001° ≈ 11 m — small enough that natural zoom-based sizing drives
+  // clustering at all practical zoom levels (zoom 16 → ~0.001°).
+  return Math.max(size, 0.0001);
 }
 
 /**

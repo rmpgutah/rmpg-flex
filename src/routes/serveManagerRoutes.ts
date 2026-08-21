@@ -28,19 +28,14 @@ sm.use('*', async (c, next) => {
   const method = c.req.method;
   const actor = c.get('user') as { role?: string } | undefined;
 
-  // GET/HEAD/OPTIONS: read endpoints are gated to admin/manager only —
-  // sync history, poller config, and the API key presence flag are
-  // integration-admin data. Previously they were open to any authenticated
-  // role. Matches the adminOnly pattern in traccar.ts / clearpathgps.ts.
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+  // Mutations (PUT/POST/DELETE/PATCH) are gated to admin/manager only —
+  // overwriting the API key or repointing the poller requires elevated trust.
+  // Reads (GET/HEAD/OPTIONS) stay open to any authenticated role so officers
+  // can view the poller status without needing admin access.
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
     if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
       return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
     }
-    return next();
-  }
-
-  if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
-    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
   }
   return next();
 });
