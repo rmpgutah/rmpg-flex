@@ -67,8 +67,12 @@ export function isEntityName(name: string | null | undefined): boolean {
   return ENTITY_MARKERS.some((m) => t.includes(` ${m} `) || t.includes(` ${m}. `));
 }
 
-export function resolveReceiptVariant(i: VariantInputs): ReceiptVariant {
-  if (i.isNamedParty) return 'individual';
+export function resolveReceiptVariant(i: VariantInputs, partyName?: string | null): ReceiptVariant {
+  // A human signer can never BE a legal entity. Force isNamedParty false when
+  // the party name is a company, trust, etc., so "are you Chase Partners LLC?"
+  // cannot produce an (Individual) form. Mirrors server-side resolveReceiptVariant.
+  const isNamedParty = i.isNamedParty && !isEntityName(partyName);
+  if (isNamedParty) return 'individual';
   // Business is checked before co-habitant: someone can both work and
   // live at an address (a live-in manager, a home business), and when
   // the papers are directed at a business entity the business variant

@@ -371,24 +371,23 @@ psb.post('/serve-charges/:id/recompute', async (c) => {
 async function nextInvoiceNumber(db: ReturnType<typeof getDb>): Promise<string> {
   const yy = String(new Date().getFullYear()).slice(-2);
   const prefix = `INV-${yy}-`;
-  // Belt-and-suspenders: scan past numbers already minted by a racing writer.
-  for (let skip = 0; skip < 10; skip++) {
+  // Each retry increments by 1 from the last known maximum — NOT by the loop
+  // index. The previous `+ skip` compound produced gaps (1, 3, 6, …) under
+  // write contention. Cap at 20 iterations (not 10) for safety; a 500 here is
+  // preferable to an infinite CPU spin inside a Workers request.
+  for (let attempt = 0; attempt < 20; attempt++) {
     const last = await queryFirst<{ invoice_number: string }>(db, 'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1', `${prefix}%`);
-    let n = 1 + skip;
     const m = last?.invoice_number?.match(/^INV-\d{2}-(\d+)$/);
-    if (m) n = parseInt(m[1], 10) + 1 + skip;
+    const n = m ? parseInt(m[1], 10) + 1 : 1;
     const candidate = `${prefix}${String(n).padStart(4, '0')}`;
-    const exists = await queryFirst<{ n: number }>(
-      db, 'SELECT 1 FROM invoices WHERE invoice_number = ? LIMIT 1', candidate,
+    const exists = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM invoices WHERE invoice_number = ? LIMIT 1', candidate,
     );
     if (!exists) return candidate;
   }
-  // Fallback: raw MAX+1, caller must handle UNIQUE collision.
-  const last = await queryFirst<{ invoice_number: string }>(db, 'SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY id DESC LIMIT 1', `${prefix}%`);
-  let n = 1;
-  const m = last?.invoice_number?.match(/^INV-\d{2}-(\d+)$/);
-  if (m) n = parseInt(m[1], 10) + 1;
-  return `${prefix}${String(n).padStart(4, '0')}`;
+  // Exhausted all attempts — surface a hard error rather than silently minting
+  // a potentially-conflicting number. The caller's 5-retry loop will catch it.
+  throw new Error(`[billing] Could not allocate a unique invoice number after 20 attempts for prefix ${prefix}`);
 }
 
 psb.post('/invoices/from-serve-charges', async (c) => {
@@ -448,20 +447,38 @@ psb.post('/invoices/from-serve-charges', async (c) => {
     }
     if (invoiceId == null) continue;
 
+    // Collect all dependent writes as a batch so they succeed or fail atomically.
+    // The invoice header INSERT is outside the batch (we need last_row_id first);
+    // if the batch fails we clean up the orphaned header row ourselves.
     let subtotal = 0;
+    const batchStmts: D1PreparedStatement[] = [];
     for (const chargeId of group.ids) {
       const lines = await query<any>(db, 'SELECT * FROM serve_charge_lines WHERE serve_charge_id = ?', chargeId);
       for (const l of lines) {
         subtotal += finiteNumber(l.line_total) ?? 0;
-        await execute(db,
-          `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          invoiceId, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0);
+        batchStmts.push(
+          db.prepare(`INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, line_total, tax_applied)
+                      VALUES (?, ?, ?, ?, ?, ?)`)
+            .bind(invoiceId, l.description, l.quantity, l.unit_price, l.line_total, l.taxable ? 1 : 0),
+        );
       }
-      await execute(db, `UPDATE serve_charges SET status = 'invoiced', invoice_id = ? WHERE id = ?`, invoiceId, chargeId);
+      batchStmts.push(
+        db.prepare(`UPDATE serve_charges SET status = 'invoiced', invoice_id = ? WHERE id = ?`)
+          .bind(invoiceId, chargeId),
+      );
     }
     subtotal = Math.round(subtotal * 100) / 100;
-    await execute(db, `UPDATE invoices SET subtotal = ?, total_amount = ? WHERE id = ?`, subtotal, subtotal, invoiceId);
+    batchStmts.push(
+      db.prepare(`UPDATE invoices SET subtotal = ?, total_amount = ? WHERE id = ?`)
+        .bind(subtotal, subtotal, invoiceId),
+    );
+    try {
+      await db.batch(batchStmts);
+    } catch (batchErr) {
+      // Clean up the orphaned invoice header so the charge IDs remain billable.
+      await execute(db, `DELETE FROM invoices WHERE id = ?`, invoiceId).catch(() => {});
+      throw batchErr;
+    }
     await logAudit(db, user?.id ?? null, 'invoice', 'serve_charge', invoiceId, { invoice_number: invNumber, contract_id: contractId, charge_ids: group.ids });
     invoices.push({ invoice_id: invoiceId, invoice_number: invNumber, contract_id: contractId, client_id: group.client_id, charge_count: group.ids.length, subtotal });
   }

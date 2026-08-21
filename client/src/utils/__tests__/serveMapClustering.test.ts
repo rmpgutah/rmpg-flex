@@ -9,7 +9,9 @@ describe('gridCellSizeForZoom', () => {
   });
 
   it('never goes below the floor', () => {
-    expect(gridCellSizeForZoom(22)).toBeGreaterThanOrEqual(0.002);
+    // Floor is 0.0001 (≈11 m) — large enough to prevent float underflow at
+    // extreme zoom while still allowing zoom-16 items 0.001° apart to separate.
+    expect(gridCellSizeForZoom(22)).toBeGreaterThanOrEqual(0.0001);
   });
 });
 

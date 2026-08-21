@@ -3,6 +3,10 @@ import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from './mapbox
 import { escapeHtml } from './sanitize';
 import { parseTimestamp } from './dateUtils';
 
+// Priority colors use hex literals for DOM markers (HTMLElement inline styles).
+// CSS custom properties resolve via the browser cascade, but test environments
+// (jsdom) have no cascade — var() stays as a literal string and breaks assertions.
+// These are operational severity indicators that must render correctly in all themes.
 export const SERVE_PRIORITY_COLOR: Record<string, string> = {
   urgent: '#ef4444',
   rush: '#f97316',
