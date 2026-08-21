@@ -56,6 +56,8 @@ import { devLog, devWarn } from '../../utils/devLog';
 import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useIncidentHeatmap } from '../../hooks/useIncidentHeatmap';
+import { useBeatCoverage } from '../../hooks/useBeatCoverage';
 import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
 import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
 import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
@@ -80,6 +82,8 @@ import type { StreetViewTarget } from './components/StreetViewLightbox';
 import { useScaleControl, useFullscreenControl } from './components/ScaleFullscreenControls';
 import MinimapControl from './components/MinimapControl';
 import WeatherRadarControl from './components/WeatherRadarControl';
+import Radar360Panel from '../../components/Radar360Panel';
+import { useRadar360 } from '../../hooks/useRadar360';
 import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
 import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
 import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
@@ -331,6 +335,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const clustering = useMapClustering(mapRef.current, mapLoaded);
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
   const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
+  const incidentHeatmap = useIncidentHeatmap(mapRef.current, mapLoaded);
+  const beatCoverage = useBeatCoverage(mapRef.current, mapLoaded);
 
   const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
     if (mode === 'historical') {
@@ -392,7 +398,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     });
   }
   // Buffer Ring — built, tested (BufferRingTool.test.tsx).
-  const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | null>(null);
+  const [activeFloatingTool, setActiveFloatingTool] = useState<'buffer-ring' | 'annotation' | 'draw-geofence' | 'gps-replay' | 'nav-overlay' | 'radar-360' | null>(null);
+  // Radar 360 — scan center (defaults to GPS; user can right-click map to reposition)
+  const [radar360Center, setRadar360Center] = useState<{ lat: number; lng: number; label?: string } | null>(null);
   const [multiStopQueue, setMultiStopQueue] = useState<QueuedStop[]>([]);
   const [multiStopUnit, setMultiStopUnit] = useState<string | null>(null);
   const [multiStopPanelOpen, setMultiStopPanelOpen] = useState(false);
@@ -555,6 +563,18 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     };
   }, [identifyEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Right-click → set Radar 360 scan center when the panel is open.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    const onContextMenu = (e: mapboxgl.MapMouseEvent) => {
+      if (activeFloatingTool !== 'radar-360') return;
+      setRadar360Center({ lat: e.lngLat.lat, lng: e.lngLat.lng, label: `${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}` });
+    };
+    map.on('contextmenu', onContextMenu);
+    return () => { map.off('contextmenu', onContextMenu); };
+  }, [mapLoaded, activeFloatingTool]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const traffic = useMapTraffic(mapRef.current, mapLoaded);
   const measure = useMapMeasure(mapRef.current, mapLoaded);
   const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
@@ -601,6 +621,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
   const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
   const weatherAlerts = useMapWeatherAlerts(mapRef.current, mapLoaded);
+  // Radar 360 — only active while the panel is open; center falls back to GPS.
+  const radar360ScanLat = radar360Center?.lat ?? gps.latitude;
+  const radar360ScanLng = radar360Center?.lng ?? gps.longitude;
+  const radar360 = useRadar360({
+    lat: activeFloatingTool === 'radar-360' ? (radar360ScanLat ?? null) : null,
+    lng: activeFloatingTool === 'radar-360' ? (radar360ScanLng ?? null) : null,
+    refreshMs: activeFloatingTool === 'radar-360' ? 30_000 : 0,
+  });
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current, popup: null });
@@ -1282,6 +1310,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
     // ── Historical Analysis ──
+    'incident-heatmap': {
+      active: incidentHeatmap.enabled,
+      onToggle: incidentHeatmap.toggle,
+      loading: incidentHeatmap.loading,
+      error: incidentHeatmap.error ?? undefined,
+    },
     heatmap: {
       active: heatmap.enabled,
       onToggle: () => { void populateAndToggleHeatmap(); },
@@ -1320,6 +1354,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     ])),
 
     // ── Risk & Coverage ──
+    'beat-coverage': {
+      active: beatCoverage.enabled,
+      onToggle: beatCoverage.toggle,
+      loading: beatCoverage.loading,
+      error: beatCoverage.error ?? undefined,
+    },
     'coverage-gaps': { active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), loading: coverageGaps.loading, error: coverageGaps.error },
     'safety-zones': { active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), loading: safetyZones.loading, error: safetyZones.error },
     isochrone: { active: isochroneEnabled, onToggle: toggleIsochrone },
@@ -1346,6 +1386,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     measure: { active: measure.mode !== 'none', onToggle: () => setShowMeasureMenu((v) => !v) },
     'buffer-ring': { active: activeFloatingTool === 'buffer-ring', onToggle: () => setActiveFloatingTool((v) => v === 'buffer-ring' ? null : 'buffer-ring') },
     annotation: { active: activeFloatingTool === 'annotation', onToggle: () => setActiveFloatingTool((v) => v === 'annotation' ? null : 'annotation') },
+    'radar-360': { active: activeFloatingTool === 'radar-360', onToggle: () => { setActiveFloatingTool((v) => v === 'radar-360' ? null : 'radar-360'); setRadar360Center(null); } },
 
     // ── Drawing & Tracking ──
     draw: { active: drawing.mode !== 'none', onToggle: () => setShowDrawMenu((v) => !v) },
@@ -1375,6 +1416,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     incidentsLayer.error, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error,
     selfPosVisible, setSelfPosVisible, serveJobsEnabled, serveJobs.loading, serveJobs.error,
     optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
+    incidentHeatmap, beatCoverage,
     heatmap, populateAndToggleHeatmap, heatmapMode,
     historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
@@ -1892,6 +1934,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       {/* Radar timeline / opacity / legend — only while the Weather layer is on.
           The layer toggle itself stays in the Live Conditions dock section. */}
       {weatherRadar.enabled && <WeatherRadarControl radar={weatherRadar} />}
+
+      {/* Radar 360 — situational awareness panel. Right-click map to reposition scan center. */}
+      {activeFloatingTool === 'radar-360' && (
+        <div className="absolute top-16 left-3 z-30">
+          <Radar360Panel
+            radar={radar360}
+            centerLabel={radar360Center?.label ?? (gps.latitude != null ? 'GPS' : undefined)}
+            onClose={() => { setActiveFloatingTool(null); setRadar360Center(null); }}
+          />
+        </div>
+      )}
 
       {snapshotGalleryOpen && (
         <div

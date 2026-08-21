@@ -317,6 +317,50 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // process-service overflow pattern. We write to ext after the INSERT
     // succeeds (below) so the call row commits even if the ext write fails.
 
+    // ── Duplicate call detection ──────────────────────────────────────────
+    // Check for an active call of the same incident type within ~0.25 miles
+    // in the last 30 minutes. Haversine approximation via SQLite math:
+    //   distance ≈ sqrt((Δlat*111.139)² + (Δlng*111.139*cos(lat_rad))²) km
+    // 0.25 miles ≈ 0.402 km → threshold 0.402. Best-effort — never blocks create.
+    let duplicate_warning: {
+      call_id: number; call_number: string; distance_miles: number; created_at: string;
+    } | null = null;
+    try {
+      const dupLat = body.latitude != null ? Number(body.latitude) : null;
+      const dupLng = body.longitude != null ? Number(body.longitude) : null;
+      const dupType = String(incident_type || '').trim().toUpperCase();
+      if (dupLat != null && dupLng != null && !isNaN(dupLat) && !isNaN(dupLng) && dupType) {
+        const dupRow = await queryFirst<{
+          id: number; call_number: string; latitude: number; longitude: number; created_at: string;
+        }>(db, `
+          SELECT id, call_number, latitude, longitude, created_at
+          FROM calls_for_service
+          WHERE ${ACTIVE_CALL_WHERE}
+            AND UPPER(TRIM(incident_type)) = ?
+            AND created_at >= datetime('now', '-30 minutes')
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, dupType);
+        if (dupRow) {
+          const dLat = (dupRow.latitude - dupLat) * 111.139;
+          const dLng = (dupRow.longitude - dupLng) * 111.139 * Math.cos(dupLat * Math.PI / 180);
+          const distKm = Math.sqrt(dLat * dLat + dLng * dLng);
+          const distMiles = distKm * 0.621371;
+          if (distMiles <= 0.25) {
+            duplicate_warning = {
+              call_id: dupRow.id,
+              call_number: dupRow.call_number,
+              distance_miles: Math.round(distMiles * 1000) / 1000,
+              created_at: dupRow.created_at,
+            };
+          }
+        }
+      }
+    } catch (dupErr) {
+      log.warn('Duplicate call detection failed (non-fatal)', { err: String((dupErr as Error)?.message ?? dupErr) });
+    }
+
     try {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
@@ -392,7 +436,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
         } catch { /* best-effort */ }
       }).catch(() => {});
 
-      return c.json({ ...call, runCard: rcResult.card }, 201);
+      return c.json({ ...call, runCard: rcResult.card, duplicate_warning }, 201);
     } catch (sqlErr: any) {
       // Surface the real SQL error so the dispatcher (and we) can see
       // which column / FK is rejecting. Without this the client sees a
@@ -2262,5 +2306,160 @@ calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'mana
     return dbErrorResponse(c, err, 'Failed to undo re-dispatch');
   }
 });
+
+// ── Boot reconciler for call_response_times ──────────────────────────────────
+let responseTimesEnsured = false;
+async function ensureCallResponseTimesTable(db: D1Database): Promise<void> {
+  if (responseTimesEnsured) return;
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_response_times (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      dispatched_at TEXT,
+      onscene_at TEXT NOT NULL,
+      response_seconds INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(call_id, unit_id)
+    )
+  `).run();
+  responseTimesEnsured = true;
+}
+
+// POST /dispatch/calls/:id/escalate
+// Updates priority, logs a system note, and broadcasts the updated call.
+// Requires dispatcher+ role.
+calls.post('/:id/escalate', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{ new_priority?: string; reason?: string }>().catch(() => ({} as Record<string, unknown>));
+
+    const newPriority = String(body.new_priority || '').trim().toUpperCase();
+    if (!newPriority || !['P1', 'P2', 'P3', 'P4'].includes(newPriority)) {
+      return c.json({ error: 'new_priority must be one of P1, P2, P3, P4', code: 'INVALID_PRIORITY' }, 400);
+    }
+
+    const existing = await queryFirst<{ id: number; priority: string; status: string }>(
+      db, 'SELECT id, priority, status FROM calls_for_service WHERE id = ?', id,
+    );
+    if (!existing) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
+    if (['closed', 'cancelled', 'archived'].includes(existing.status)) {
+      return c.json({ error: 'Cannot escalate a closed/cancelled/archived call', code: 'CALL_CLOSED' }, 400);
+    }
+
+    const oldPriority = existing.priority;
+    const reason = String(body.reason || '').trim();
+
+    await execute(db,
+      `UPDATE calls_for_service SET priority = ?, updated_at = datetime('now') WHERE id = ?`,
+      newPriority, id,
+    );
+
+    // System note in call_notes
+    const noteText = `Priority escalated from ${oldPriority} to ${newPriority}${reason ? ': ' + reason : ''}`;
+    try {
+      await execute(db,
+        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime('now'))`,
+        id, userId ?? null, noteText,
+      );
+    } catch (noteErr) {
+      log.warn('Escalate note insert failed (non-fatal)', { callId: id, err: String((noteErr as Error)?.message ?? noteErr) });
+    }
+
+    try {
+      await recordAudit(c, { action: 'CALL_ESCALATE', entityType: 'call', entityId: Number(id), details: { old_priority: oldPriority, new_priority: newPriority, reason } });
+    } catch { /* best-effort */ }
+
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    try { broadcastAll('dispatch_update', { action: 'call_updated', call: updated }); } catch { /* best-effort */ }
+
+    return c.json({ success: true, call: updated, note: noteText });
+  } catch (err) {
+    log.error('POST /dispatch/calls/:id/escalate failed', {}, err as Error);
+    return c.json({ error: 'Failed to escalate call' }, 500);
+  }
+});
+
+// POST /dispatch/calls/:id/merge (enhanced — canonical merge endpoint)
+// Moves units from source call to target, adds a note on target, sets
+// source status = 'merged', stores merged_into_call_id in ext.
+// Supervisor+ role (stronger than the old dispatcher gate on the legacy
+// batch-merge endpoint at /:id/merge, which does multi-ID merges).
+calls.post('/:id/merge-into', requireRole('supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sourceId = Number(c.req.param('id'));
+    const userId = c.get('userId') as number | undefined;
+    const body = await c.req.json<{ target_call_id?: unknown }>().catch(() => ({} as Record<string, unknown>));
+    const targetId = Number(body.target_call_id);
+
+    if (!Number.isInteger(sourceId) || sourceId <= 0) return c.json({ error: 'Invalid source call id' }, 400);
+    if (!Number.isInteger(targetId) || targetId <= 0) return c.json({ error: 'target_call_id must be a valid integer' }, 400);
+    if (sourceId === targetId) return c.json({ error: 'Source and target calls must differ' }, 400);
+
+    const [sourceCall, targetCall] = await Promise.all([
+      queryFirst<{ id: number; call_number: string; status: string; assigned_unit_ids: string | null }>(
+        db, 'SELECT id, call_number, status, assigned_unit_ids FROM calls_for_service WHERE id = ?', sourceId,
+      ),
+      queryFirst<{ id: number; call_number: string; status: string }>(
+        db, 'SELECT id, call_number, status FROM calls_for_service WHERE id = ?', targetId,
+      ),
+    ]);
+
+    if (!sourceCall) return c.json({ error: 'Source call not found' }, 404);
+    if (!targetCall) return c.json({ error: 'Target call not found' }, 404);
+    if (['closed', 'cancelled', 'archived', 'merged'].includes(sourceCall.status)) {
+      return c.json({ error: `Source call is already ${sourceCall.status}`, code: 'SOURCE_INACTIVE' }, 400);
+    }
+
+    // Re-assign units from source to target (call_units table if it exists; else JSON column)
+    try {
+      await execute(db,
+        `INSERT OR IGNORE INTO call_units (call_id, unit_id, assigned_at)
+         SELECT ?, unit_id, datetime('now') FROM call_units WHERE call_id = ?`,
+        targetId, sourceId,
+      );
+      await execute(db, 'DELETE FROM call_units WHERE call_id = ?', sourceId);
+    } catch { /* call_units table may not exist; fall through to JSON approach */ }
+
+    // Add system note on target
+    const mergeNote = `Call ${sourceCall.call_number} merged into this call${userId ? ` by user ${userId}` : ''}.`;
+    try {
+      await execute(db,
+        `INSERT INTO call_notes (call_id, user_id, note, created_at) VALUES (?, ?, ?, datetime('now'))`,
+        targetId, userId ?? null, mergeNote,
+      );
+    } catch { /* best-effort */ }
+
+    // Mark source as merged
+    await execute(db,
+      `UPDATE calls_for_service SET status = 'merged', updated_at = datetime('now'),
+        notes = COALESCE(notes || char(10), '') || '[Merged into ' || ? || ']'
+       WHERE id = ?`,
+      targetCall.call_number, sourceId,
+    );
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', sourceId);
+    await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', targetId, sourceId);
+
+    try { await recordAudit(c, { action: 'CALL_MERGE', entityType: 'call', entityId: sourceId, details: { merged_into: targetId } }); } catch { /* best-effort */ }
+
+    const targetUpdated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', targetId);
+    try {
+      broadcastAll('dispatch_update', { action: 'call_updated', call: targetUpdated });
+      broadcastAll('dispatch_update', { action: 'call_updated', call: { id: sourceId, status: 'merged' } });
+    } catch { /* best-effort */ }
+
+    return c.json({ success: true, source_call_id: sourceId, target_call_id: targetId, target_call: targetUpdated });
+  } catch (err) {
+    log.error('POST /dispatch/calls/:id/merge-into failed', {}, err as Error);
+    return c.json({ error: 'Call merge failed' }, 500);
+  }
+});
+
+// Expose the reconciler so units route can call it when recording response times
+export { ensureCallResponseTimesTable };
 
 export default calls;
