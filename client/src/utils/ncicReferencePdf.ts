@@ -16,6 +16,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { getReferenceTables, getReferenceOffenses } from '../constants/ncicCodes';
 import { formatEnumValue } from './formatters';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 // ── Page geometry (points; US Letter = 612 x 792) ────────────────────────────
 const PAGE_W = 612;
@@ -128,6 +129,15 @@ function sectionHeader(doc: jsPDF, y0: number, title: string, subtitle?: string)
 // ── Section renderers ─────────────────────────────────────────────────────────
 
 function renderTitlePage(doc: jsPDF, now: Date): void {
+  const stamp = now.toISOString().slice(0, 10);
+  drawNavyBanner(doc, {
+    title: 'NCIC / NLETS OPERATOR REFERENCE',
+    subtitle: 'Rocky Mountain Protective Group · Utah',
+    rightLine1: `Generated ${stamp}`,
+    y: 8,
+    marginPt: 0,
+  });
+
   // Top gold rule
   setFill(doc, GOLD);
   doc.rect(MARGIN, 120, CONTENT_W, 4, 'F');
@@ -157,7 +167,6 @@ function renderTitlePage(doc: jsPDF, now: Date): void {
   // Generated date
   doc.setFontSize(8.5);
   setText(doc, GREY);
-  const stamp = now.toISOString().slice(0, 10);
   doc.text(`Generated ${stamp}`, PAGE_W / 2, y + 46, { align: 'center' });
 
   // Footer note about laminating

@@ -17,8 +17,8 @@ import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../t
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
 import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -145,27 +145,13 @@ export function generateTrespassOrderPdf(order: TrespassOrder): jsPDF {
   const M = 36;
   let y = 36;
 
-  // ── Gold banner ──
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`TRESPASS ORDER — ${order.order_number}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Issued ${fmtDateTime(order.created_at)}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Records Division', M, y);
-  doc.text(
-    `Issuing officer: ${order.issued_by_name || order.issued_by_display || '—'}`,
-    W - M, y, { align: 'right' },
-  );
-  y += 14;
+  // ── Navy banner ──
+  y = drawNavyBanner(doc, {
+    title: `TRESPASS ORDER — ${order.order_number}`,
+    subtitle: 'Records Division',
+    rightLine1: `Issued ${fmtDateTime(order.created_at)}`,
+    rightLine2: `Issuing officer: ${order.issued_by_name || order.issued_by_display || '—'}`,
+  });
 
   // ── Status banner ──
   const banner = bannerStyleFor(order.status);

@@ -21,8 +21,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { KbResult } from './knowledgeBase';
 import { kbTypeLabel } from './knowledgeBase';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -87,23 +87,11 @@ export function generateKnowledgeBaseSearchPdf(input: KnowledgeBaseSearchPdfInpu
 
   const generatedStamp = fmtNow(input.generatedAt ?? new Date());
 
-  // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('KNOWLEDGE BASE — SEARCH RESULTS', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(generatedStamp, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  System-Wide Records Search', M, y);
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: 'KNOWLEDGE BASE — SEARCH RESULTS',
+    subtitle: 'System-Wide Records Search',
+    rightLine1: generatedStamp,
+  });
 
   // Query strap (the canonical "what the operator asked" record)
   const queryText = (input.query || '').trim() || '(empty)';
