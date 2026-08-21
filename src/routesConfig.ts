@@ -187,7 +187,7 @@ import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
-import serveManagerRoutes from './routes/serveManagerRoutes';
+import serveManagerRoutes, { serveManagerWebhookRouter } from './routes/serveManagerRoutes';
 import { serveReceipt, serveReceiptAdmin } from './routes/serveReceipt';
 import { serveQrScan } from './routes/serveQrScan';
 import stubs from './routes/stubs';
@@ -786,6 +786,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/traccar', router: traccar, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',
     note: 'DL search (local dl_records/persons + live MicroBilt API when creds configured) + dl/stats + status. Was a stub mount — the DL SEARCH page 404d.' },
+  // Public webhook receiver must be declared BEFORE the auth-required router so
+  // SM's unsigned POST reaches it without a JWT. The HMAC signature is the guard.
+  { prefix: '/api/servemanager-webhook', router: serveManagerWebhookRouter, auth: 'public' },
   { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
   { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
 
