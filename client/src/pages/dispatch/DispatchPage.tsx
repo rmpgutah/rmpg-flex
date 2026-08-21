@@ -50,6 +50,7 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import { Combobox } from '../../components/Combobox';
 import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
+import IncidentTypeChart from '../../components/dispatch/IncidentTypeChart';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -771,6 +772,12 @@ export default function DispatchPage() {
   // ── Linked Persons / Vehicles on call ──
   const [callPersons, setCallPersons] = useState<any[]>([]);
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
+  // ── BOLOs linked to the selected call ──
+  const [callBolos, setCallBolos] = useState<any[]>([]);
+  const [bolosLoading, setBolosLoading] = useState(false);
+  const [showBoloSearch, setShowBoloSearch] = useState(false);
+  const [boloSearchQ, setBoloSearchQ] = useState('');
+  const [boloSearchResults, setBoloSearchResults] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
   const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
@@ -1048,6 +1055,12 @@ export default function DispatchPage() {
       fetchInvolvedPersons(cid);
       fetchInvolvedVehicles(cid);
       fetchCallNarrative(cid);
+      // Fetch linked BOLOs for the selected call
+      setBolosLoading(true);
+      apiFetch<any[]>(`/dispatch/calls/${cid}/bolos`)
+        .then((data) => setCallBolos(Array.isArray(data) ? data : []))
+        .catch(() => setCallBolos([]))
+        .finally(() => setBolosLoading(false));
     } else {
       setCallPersons([]);
       setCallVehicles([]);
@@ -1055,7 +1068,10 @@ export default function DispatchPage() {
       setInvolvedPersons([]);
       setInvolvedVehicles([]);
       setCallNarrative('');
+      setCallBolos([]);
+      setShowBoloSearch(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses, fetchInvolvedPersons, fetchInvolvedVehicles, fetchCallNarrative]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
@@ -1119,10 +1135,43 @@ export default function DispatchPage() {
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
   const [routeInfo, setRouteInfo] = useState<{ unitCallSign: string; callNumber: string; eta: string; distance: string } | null>(null);
+  // Per-unit ETA for enroute units (keyed by unitId string)
+  const [unitEtas, setUnitEtas] = useState<Record<string, number>>({});
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string; contact_name: string; contact_phone: string; address: string }[]>([]);
   // Properties list for property selector (non-archived)
   const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
+
+  // ── Unit ETA fetch for enroute units (every 30s) ──────────────────────────
+  useEffect(() => {
+    if (!selectedCall?.id) { setUnitEtas({}); return; }
+    const callId = selectedCall.id;
+    let cancelled = false;
+
+    const fetchEtas = async () => {
+      const enrouteUnits = (selectedCall.assigned_units || []).filter((uid: string) => {
+        const u = units.find((u) => String(u.id) === String(uid));
+        return u?.status === 'enroute';
+      });
+      if (!enrouteUnits.length) { if (!cancelled) setUnitEtas({}); return; }
+      const etaMap: Record<string, number> = {};
+      await Promise.allSettled(
+        enrouteUnits.map(async (uid: string) => {
+          try {
+            const data = await apiFetch<{ eta_seconds?: number; eta_minutes?: number }>(`/dispatch/units/${uid}/eta?call_id=${callId}`);
+            const mins = data?.eta_minutes ?? (data?.eta_seconds != null ? Math.ceil(data.eta_seconds / 60) : null);
+            if (mins != null && !cancelled) etaMap[String(uid)] = mins;
+          } catch { /* best-effort */ }
+        }),
+      );
+      if (!cancelled) setUnitEtas(etaMap);
+    };
+
+    void fetchEtas();
+    const iv = setInterval(() => { void fetchEtas(); }, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall?.id, selectedCall?.assigned_units, selectedCall?.status]);
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -4002,6 +4051,11 @@ export default function DispatchPage() {
         {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
         <DispatchAnalyticsStrip />
 
+        {/* Incident Type Analytics Chart */}
+        <div className="px-3 py-2 border-b border-[var(--spm-border)] flex-shrink-0">
+          <IncidentTypeChart />
+        </div>
+
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
@@ -5359,6 +5413,11 @@ export default function DispatchPage() {
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
+                                {unitObj?.status === 'enroute' && unitEtas[String(unitIdStr)] != null && (
+                                  <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>
+                                    ETA ~{unitEtas[String(unitIdStr)]} min
+                                  </span>
+                                )}
                                 {!isEditing && unitObj && !TERMINAL_STATUSES.has(selectedCall.status) && (
                                   <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
@@ -5803,7 +5862,12 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
-                                <WarrantBadge flags={cp.flags} size="sm" />
+                                <WarrantBadge flags={cp.flags ?? cp.warrant_hits ?? []} size="sm" />
+                                {(!cp.flags && cp.warrant_hits && Array.isArray(cp.warrant_hits) && cp.warrant_hits.length > 0) && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-700 px-1.5 py-px rounded-sm">
+                                    WARRANT ({cp.warrant_hits.length})
+                                  </span>
+                                )}
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{toDisplayLabel(cp.race)}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{toDisplayLabel(cp.sex)}</span>}
@@ -5825,6 +5889,80 @@ export default function DispatchPage() {
                             ))}
                           </div>
                         )}
+                        {/* ── Linked BOLOs ── */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">
+                              Linked BOLOs{callBolos.length > 0 ? ` (${callBolos.length})` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                              onClick={() => setShowBoloSearch((v) => !v)}
+                            >
+                              {showBoloSearch ? 'Cancel' : 'Link BOLO'}
+                            </button>
+                          </div>
+                          {bolosLoading && <span className="text-[9px] text-rmpg-500 italic">Loading…</span>}
+                          {callBolos.map((bolo: any) => (
+                            <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
+                              <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-rmpg-100">{bolo.description || bolo.notes || '—'}</span>
+                                {bolo.plate_number && <span className="ml-1 text-brand-400">PLT:{bolo.plate_number}</span>}
+                                {bolo.subject_name && <span className="ml-1 text-rmpg-300">{bolo.subject_name}</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {showBoloSearch && (
+                            <div className="mt-1 space-y-1">
+                              <input
+                                type="text"
+                                className="input-dark text-xs w-full"
+                                placeholder="Search BOLO by plate or name…"
+                                value={boloSearchQ}
+                                onChange={(e) => {
+                                  setBoloSearchQ(e.target.value);
+                                  if (e.target.value.length >= 2) {
+                                    apiFetch<any[]>(`/dispatch/bolos?q=${encodeURIComponent(e.target.value)}`)
+                                      .then((r) => setBoloSearchResults(Array.isArray(r) ? r : []))
+                                      .catch(() => setBoloSearchResults([]));
+                                  } else {
+                                    setBoloSearchResults([]);
+                                  }
+                                }}
+                              />
+                              {boloSearchResults.length > 0 && (
+                                <div className="bg-rmpg-800 border border-rmpg-600 max-h-32 overflow-y-auto">
+                                  {boloSearchResults.map((bolo: any) => (
+                                    <button
+                                      key={bolo.id}
+                                      type="button"
+                                      className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0"
+                                      onClick={async () => {
+                                        try {
+                                          await apiFetch(`/dispatch/calls/${selectedCall.id}/bolos`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({ bolo_id: bolo.id }),
+                                          });
+                                          setCallBolos((prev) => [...prev, bolo]);
+                                          setShowBoloSearch(false);
+                                          setBoloSearchQ('');
+                                          setBoloSearchResults([]);
+                                        } catch { /* best-effort */ }
+                                      }}
+                                    >
+                                      <span className="font-semibold text-amber-400">BOLO</span>
+                                      {' '}{bolo.description || bolo.notes || '—'}
+                                      {bolo.plate_number && <span className="ml-1 text-brand-400 text-[9px]">PLT:{bolo.plate_number}</span>}
+                                      {bolo.subject_name && <span className="ml-1 text-rmpg-400 text-[9px]">{bolo.subject_name}</span>}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>

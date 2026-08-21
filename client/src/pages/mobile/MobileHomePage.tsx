@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { lazyRetry } from '../../utils/importWithRetry';
 import { useAuth } from '../../context/AuthContext';
 import { useMobileLayout, CardId } from './hooks/useMobileLayout';
+import QuickStatusBar from './components/QuickStatusBar';
 
 const CARDS: Record<CardId, React.LazyExoticComponent<any>> = {
   unit: lazyRetry(() => import('./cards/UnitStatusCard')),
@@ -25,6 +26,8 @@ export default function MobileHomePage() {
           RMPG FLEX · MOBILE
         </h1>
       </header>
+      {/* Quick-status bar — one-thumb status update, always visible */}
+      <QuickStatusBar />
       <main className="p-3 space-y-3">
         {cards.map((id) => {
           const Card = CARDS[id];

@@ -56,6 +56,8 @@ import { devLog, devWarn } from '../../utils/devLog';
 import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
 import { useMapClustering } from '../../hooks/useMapClustering';
 import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useIncidentHeatmap } from '../../hooks/useIncidentHeatmap';
+import { useBeatCoverage } from '../../hooks/useBeatCoverage';
 import { useMapboxIncidents } from '../../hooks/useMapboxIncidents';
 import { useMapboxSpeedHeatmap } from '../../hooks/useMapboxSpeedHeatmap';
 import { useMapboxSpeedViolations } from '../../hooks/useMapboxSpeedViolations';
@@ -333,6 +335,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const clustering = useMapClustering(mapRef.current, mapLoaded);
   const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
   const [heatmapMode, setHeatmapMode] = useState<'live' | 'historical'>('live');
+  const incidentHeatmap = useIncidentHeatmap(mapRef.current, mapLoaded);
+  const beatCoverage = useBeatCoverage(mapRef.current, mapLoaded);
 
   const refreshHeatmapPoints = useCallback(async (mode: 'live' | 'historical') => {
     if (mode === 'historical') {
@@ -1306,6 +1310,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     'optim-routes': { active: optimRoutes.visible, onToggle: optimRoutes.toggle, loading: optimRoutes.loading, error: optimRoutes.error },
 
     // ── Historical Analysis ──
+    'incident-heatmap': {
+      active: incidentHeatmap.enabled,
+      onToggle: incidentHeatmap.toggle,
+      loading: incidentHeatmap.loading,
+      error: incidentHeatmap.error ?? undefined,
+    },
     heatmap: {
       active: heatmap.enabled,
       onToggle: () => { void populateAndToggleHeatmap(); },
@@ -1344,6 +1354,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     ])),
 
     // ── Risk & Coverage ──
+    'beat-coverage': {
+      active: beatCoverage.enabled,
+      onToggle: beatCoverage.toggle,
+      loading: beatCoverage.loading,
+      error: beatCoverage.error ?? undefined,
+    },
     'coverage-gaps': { active: coverageGapsEnabled, onToggle: () => setCoverageGapsEnabled((v) => !v), loading: coverageGaps.loading, error: coverageGaps.error },
     'safety-zones': { active: safetyZonesEnabled, onToggle: () => setSafetyZonesEnabled((v) => !v), loading: safetyZones.loading, error: safetyZones.error },
     isochrone: { active: isochroneEnabled, onToggle: toggleIsochrone },
@@ -1400,6 +1416,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     incidentsLayer.error, repeatAddressesEnabled, repeatAddresses.loading, repeatAddresses.error,
     selfPosVisible, setSelfPosVisible, serveJobsEnabled, serveJobs.loading, serveJobs.error,
     optimRoutes.visible, optimRoutes.toggle, optimRoutes.loading, optimRoutes.error,
+    incidentHeatmap, beatCoverage,
     heatmap, populateAndToggleHeatmap, heatmapMode,
     historyCallsEnabled, historyCalls.loading, historyCalls.error, speedHeatmapEnabled,
     speedHeatmap.loading, speedHeatmap.error, speedViolationsEnabled, speedViolationsLayer.loading,
