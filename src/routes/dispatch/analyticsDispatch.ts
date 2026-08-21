@@ -1,5 +1,5 @@
 // ── Dispatch analytics endpoints ──────────────────────────────
-// Officer availability timeline for staffing charts.
+// Officer availability timeline + incident-type analytics.
 // Mounted at /api/dispatch/analytics via ROUTE_REGISTRY.
 
 import { Hono } from 'hono';
@@ -8,27 +8,19 @@ import { getDb, query } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 
-const analytics = new Hono<Env>();
+const analyticsDispatch = new Hono<Env>();
 
 const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
 
 // ── GET /dispatch/analytics/availability?date=YYYY-MM-DD ───────
 // Returns hourly breakdown of on-duty units and active calls for
-// the given date (defaults to today in America/Denver). Uses
-// time_entries for officer on-duty windows and calls_for_service
-// created_at + closed_at for call activity.
-//
-// Response: [{ hour: 0..23, available_units, dispatched_units, total_calls }, ...]
-analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
-  // Accept a date in YYYY-MM-DD form (America/Denver local).
-  // We store timestamps as UTC-ish sqlite datetime strings, so we
-  // compare against the requested date string prefix directly.
+// the given date (defaults to today in America/Denver).
+analyticsDispatch.get('/availability', requireRole(...READ_ROLES), async (c) => {
   const dateParam = c.req.query('date');
   let dateStr: string;
   if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
     dateStr = dateParam;
   } else {
-    // Default: today in America/Denver (UTC-6 / UTC-7)
     const now = new Date();
     const denver = new Date(now.toLocaleString('en-US', { timeZone: 'America/Denver' }));
     const y = denver.getFullYear();
@@ -40,9 +32,6 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
 
-    // For each hour 0-23, count officers whose time_entry window overlaps
-    // that hour on the given date. We do a single broad pull and classify
-    // in JS to avoid 24 D1 queries.
     const entries = await query<{ clock_in: string; clock_out: string | null }>(
       db,
       `SELECT clock_in, clock_out FROM time_entries
@@ -51,7 +40,6 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
       dateStr, dateStr, dateStr,
     );
 
-    // Calls created on that date (by created_at prefix)
     const calls = await query<{ created_at: string; status: string }>(
       db,
       `SELECT created_at, status FROM calls_for_service
@@ -59,10 +47,6 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
       `${dateStr} 00:00:00`, `${dateStr} 23:59:59`,
     );
 
-    // Active unit assignments: units that were dispatched (status=dispatched)
-    // at some point on that date — approximate via unit_assignments if exists,
-    // fallback to call assignments.
-    // We use calls_for_service.assigned_unit_ids for dispatched count.
     const dispatchedCalls = await query<{ created_at: string; assigned_unit_ids: string | null }>(
       db,
       `SELECT created_at, assigned_unit_ids FROM calls_for_service
@@ -71,7 +55,6 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
       `${dateStr} 00:00:00`, `${dateStr} 23:59:59`,
     );
 
-    // Build 24-slot result
     const hours: {
       hour: number;
       available_units: number;
@@ -83,7 +66,6 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
       const hourStart = `${dateStr} ${String(h).padStart(2, '0')}:00:00`;
       const hourEnd = `${dateStr} ${String(h).padStart(2, '0')}:59:59`;
 
-      // Officers on duty during this hour
       let available = 0;
       for (const e of entries) {
         const cin = e.clock_in;
@@ -91,12 +73,10 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
         if (cin <= hourEnd && cout >= hourStart) available++;
       }
 
-      // Calls created this hour
       const totalCalls = calls.filter(
         (call) => call.created_at >= hourStart && call.created_at <= hourEnd,
       ).length;
 
-      // Dispatched units: count unique unit ids across active calls this hour
       const dispatchedUnitIds = new Set<string>();
       for (const dc of dispatchedCalls) {
         if (dc.created_at >= hourStart && dc.created_at <= hourEnd && dc.assigned_unit_ids) {
@@ -123,4 +103,55 @@ analytics.get('/availability', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
-export default analytics;
+// ── GET /dispatch/analytics/incident-types?days=7 ──────────────
+// Returns [{ incident_type, count, avg_duration_minutes,
+//            avg_units_assigned, pct_of_total }]
+analyticsDispatch.get('/incident-types', async (c) => {
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? '7'), 1), 365);
+  const db = getDb(c.env);
+
+  const rows = await query<{
+    incident_type: string | null;
+    count: number;
+    avg_duration_minutes: number | null;
+    avg_units_assigned: number | null;
+  }>(db, `
+    SELECT
+      COALESCE(c.incident_type, 'Unknown') AS incident_type,
+      COUNT(*)                              AS count,
+      AVG(
+        CASE
+          WHEN c.closed_at IS NOT NULL
+          THEN CAST((julianday(c.closed_at) - julianday(c.created_at)) * 1440 AS REAL)
+          ELSE NULL
+        END
+      )                                     AS avg_duration_minutes,
+      AVG(ua.unit_count)                    AS avg_units_assigned
+    FROM calls_for_service c
+    LEFT JOIN (
+      SELECT call_id, COUNT(DISTINCT unit_id) AS unit_count
+        FROM dispatch_assignments
+       GROUP BY call_id
+    ) ua ON ua.call_id = c.id
+    WHERE c.created_at >= datetime('now', ? || ' days')
+    GROUP BY COALESCE(c.incident_type, 'Unknown')
+    ORDER BY count DESC
+  `, String(-days));
+
+  const total = rows.reduce((s, r) => s + (r.count ?? 0), 0);
+  const result = rows.map((r) => ({
+    incident_type: r.incident_type ?? 'Unknown',
+    count: r.count,
+    avg_duration_minutes: r.avg_duration_minutes !== null
+      ? Math.round((r.avg_duration_minutes ?? 0) * 10) / 10
+      : null,
+    avg_units_assigned: r.avg_units_assigned !== null
+      ? Math.round((r.avg_units_assigned ?? 0) * 100) / 100
+      : null,
+    pct_of_total: total > 0 ? Math.round((r.count / total) * 1000) / 10 : 0,
+  }));
+
+  return c.json({ ok: true, days, total_calls: total, incident_types: result });
+});
+
+export default analyticsDispatch;

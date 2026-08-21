@@ -1716,11 +1716,11 @@ function drawSignatureSlot(
       const props = doc.getImageProperties(img);
       const rect = computeSignatureRect(
         { width: props.width, height: props.height },
-        { x: x + 3, y: y + 3, w: w - 6, h: sigY - (y + 3) },
+        { x: x + 1, y: y + 3, w: w - 2, h: sigY - (y + 3) },
         {
           anchor: 'bottom',
           align: 'left',
-          hardLimits: { x: x + 1.5, y: y + 3, w: w - 3, h: sigY + 3 - (y + 3) },
+          hardLimits: { x: x, y: y + 2.5, w: w, h: sigY + 4 - (y + 2.5) },
         },
       );
       if (rect.w > 0 && rect.h > 0) {

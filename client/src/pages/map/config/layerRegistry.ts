@@ -112,6 +112,7 @@ const STATIC_LAYERS: MapLayerDef[] = [
   { id: 'measure', label: 'Measure', icon: Ruler, group: 'Measurement & Marking', colorVar: 'var(--sev-info)', description: 'Distance / area measurement' },
   { id: 'buffer-ring', label: 'Buffer Ring', icon: CircleDot, group: 'Measurement & Marking', colorVar: 'var(--sev-high)', description: 'Radius rings around a point' },
   { id: 'annotation', label: 'Annotations', icon: MapPin, group: 'Measurement & Marking', colorVar: 'var(--sev-info)', description: 'Pin notes on the map' },
+  { id: 'radar-360', label: 'Radar 360°', icon: Radar, group: 'Measurement & Marking', colorVar: 'var(--brand-400)', description: 'Situational awareness scan — nearby calls, persons, vehicles, units within a radius. Right-click map to reposition.' },
 
   // ── Drawing & Tracking ──
   { id: 'draw', label: 'Quick Draw', icon: PenTool, group: 'Drawing & Tracking', colorVar: 'var(--accent-silver-400)', description: 'Polygon / polyline / circle — session-only, not saved' },
