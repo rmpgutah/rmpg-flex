@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
+import type { D1Database } from '@cloudflare/workers-types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, queryInChunks, execute, executeInChunks, executeBatch, columnExists } from '../../utils/db';
@@ -15,6 +16,17 @@ import { dbErrorResponse } from '../../utils/dbErrors';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 import { assignStackGroup, leaveStackGroup, reassignStackGroup, syncToStack, type SyncFields } from '../../utils/stackSync';
 const calls = new Hono<Env>();
+
+// ── Atomic call-number sequence (C2) ──────────────────────────────────────
+// The sequence table is created once per isolate (boot reconciler pattern used
+// throughout this codebase). INSERT INTO ... DEFAULT VALUES returns a unique,
+// monotonically increasing id under concurrent Workers — no SELECT MAX race.
+let callSeqEnsured = false;
+async function ensureCallNumberSeq(db: D1Database): Promise<void> {
+  if (callSeqEnsured) return;
+  await db.prepare(`CREATE TABLE IF NOT EXISTS call_number_seq (id INTEGER PRIMARY KEY AUTOINCREMENT)`).run();
+  callSeqEnsured = true;
+}
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
@@ -228,22 +240,12 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // collide with the old sequence.
     const year = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2); // Denver-zone year, not the UTC Workers host's — avoids rolling the CFS# prefix ~5-7pm MT on Dec 31
     const prefix = `CFS${year}-`;
-    // call_number carries a UNIQUE constraint, and this read-max-then-increment
-    // isn't atomic — two near-simultaneous creates can read the same MAX and
-    // collide on insert. nextCallNumber() is re-run on that specific collision
-    // below rather than surfacing a raw INSERT_FAILED to the dispatcher.
-    const nextCallNumber = async () => {
-      const [{ max }] = await query<{ max: string | null }>(
-        db,
-        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-        `${prefix}%`,
-      );
-      const seq = max
-        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-        : '00001';
-      return `${prefix}${seq}`;
-    };
-    let callNumber = await nextCallNumber();
+    // ── Atomic call-number generation (C2) ──
+    // INSERT into the sequence table — AUTOINCREMENT guarantees uniqueness
+    // under concurrent Workers without a MAX read-then-increment race.
+    await ensureCallNumberSeq(db);
+    const seqResult = await db.prepare("INSERT INTO call_number_seq DEFAULT VALUES").run();
+    let callNumber = `${prefix}${String(seqResult.meta.last_row_id).padStart(5, '0')}`;
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -316,21 +318,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // succeeds (below) so the call row commits even if the ext write fails.
 
     try {
-      let result;
-      for (let attempt = 0; ; attempt++) {
-        try {
-          result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
-          break;
-        } catch (raceErr: any) {
-          const raceMsg = String(raceErr?.message || raceErr || 'unknown');
-          if (attempt < 4 && /SQLITE_CONSTRAINT/i.test(raceMsg) && /call_number/i.test(raceMsg)) {
-            callNumber = await nextCallNumber();
-            bindParams[0] = callNumber;
-            continue;
-          }
-          throw raceErr;
-        }
-      }
+      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
 
       // Record which run card was applied — to ext (PSO/process-service home).
@@ -1220,14 +1208,14 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
         m.crossLinkPsoCloseToServe(db, id, { actorUserId: userId ?? null })
           .then((r: { skipped: boolean; queueId: number | null; attemptId: number | null; dispositionCode: string | null }) => {
             if (!r.skipped) {
-              console.log(`[pso-crosslink] CFS ${id} → queue ${r.queueId} attempt ${r.attemptId} (${r.dispositionCode})`);
+              log.info(`[pso-crosslink] CFS ${id} → queue ${r.queueId} attempt ${r.attemptId} (${r.dispositionCode})`);
               // Broadcast serve queue change so ServePage polls and picks up the new entry
               try {
                 broadcastAll('data_changed', { module: 'process-server', entity: 'queue', action: 'crosslinked', queue_id: r.queueId, call_id: id });
               } catch { /* best-effort */ }
             }
           })
-          .catch((err: Error) => console.error('[pso-crosslink] sync failed:', err));
+          .catch((err: Error) => log.error('[pso-crosslink] sync failed', {}, err));
       }).catch(() => {});
     }
 
@@ -1250,7 +1238,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
           headers: { 'Content-Type': 'application/json', Authorization: webhookSecret },
           body: JSON.stringify({ cfsId: parseInt(id, 10), callNumber: updated?.call_number, status }),
         });
-      }).catch((err) => console.error('[dispatch] Dial Connect status webhook failed:', err));
+      }).catch((err) => log.error('[dispatch] Dial Connect status webhook failed', {}, err instanceof Error ? err : new Error(String(err))));
     }
 
     // Broadcast so every connected dispatcher/map/MDT client re-renders
