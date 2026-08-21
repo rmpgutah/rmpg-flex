@@ -266,13 +266,44 @@ export default React.memo(function UnitStatusBoard({
                     if (gpsStatus === 'stale') return <span title="GPS stale (>2min)"><AlertTriangle className="w-3 h-3 text-amber-400" /></span>;
                     return null;
                   })()}
+                  {/* Workload indicator dot */}
+                  {unitWorkload && (() => {
+                    const count = unitWorkload.get(String(unit.id)) ?? 0;
+                    if (count === 0) return (
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-green-500" title="0 active calls" aria-hidden="true" />
+                    );
+                    if (count <= 2) return (
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-amber-400" title={`${count} active call${count > 1 ? 's' : ''}`} aria-hidden="true" />
+                    );
+                    return (
+                      <span className="w-2 h-2 rounded-full flex-shrink-0 bg-red-500" title={`${count} active calls`} aria-hidden="true" />
+                    );
+                  })()}
                 </div>
               </td>
               {/* 29: Italic styling on unassigned officer for distinction */}
               <td className="text-rmpg-200">{unit.officer_name || <span className="text-fg-muted italic">Unassigned</span>}</td>
               <td>
                 <div className="flex items-center gap-1.5">
-                  <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                  {onStatusChange ? (
+                    <select
+                      className="text-[9px] font-bold font-mono px-1 py-0.5 cursor-pointer"
+                      style={{ background: 'var(--surface-raised)', border: '1px solid var(--spm-border)', color: 'var(--spm-text)', borderRadius: 2 }}
+                      value={unit.status}
+                      aria-label={`Change status for ${unit.call_sign}`}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onStatusChange(unit.id, e.target.value as UnitStatus);
+                      }}
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>{prettyStatus(s)}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                  )}
                   {(() => {
                     const dwell = statusDwell(unit);
                     return dwell ? (
