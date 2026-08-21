@@ -180,6 +180,7 @@ import investigation from './routes/investigation';
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import knowledgeBase from './routes/knowledgeBase';
+import radar360 from './routes/radar360';
 import recruitment from './routes/recruitment';
 import refData from './routes/refData';
 import reports from './routes/reports';
@@ -521,6 +522,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Case intelligence & cross-reference engine: FTS5 unified search, entity link CRUD, MO pattern matching. See investigation.ts.' },
     { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
+  { prefix: '/api/radar360', router: radar360, auth: 'required',
+    note: 'Radar 360º situational awareness scan: nearby calls, flagged persons, stolen vehicles, active units, incidents within a configurable radius.' },
   { prefix: '/api/redactions', router: redactionsRouter, auth: 'required',
     note: 'Imported but never mounted (dead code since import) — dashcam video redaction upload/list/download.' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
