@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, ChevronLeft, ChevronRight, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route, Activity,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus } from '../../types';
@@ -111,6 +111,9 @@ import PersonFormModal, { type PersonFormData } from '../../components/PersonFor
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import CallFilterBar, { type QuickFilter } from '../../components/dispatch/CallFilterBar';
+import ShiftStatsBar from '../../components/dispatch/ShiftStatsBar';
+import ActivityFeed from '../../components/dispatch/ActivityFeed';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
@@ -623,6 +626,9 @@ export default function DispatchPage() {
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; callNumber?: string; callId?: string } | null>(null);
 
   // Queue sort mode. Persisted via two layers:
   //   1. localStorage (fast first-render hint — used while the /user/preferences
@@ -2003,6 +2009,16 @@ export default function DispatchPage() {
     if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
     if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
     return true;
+  }).filter((call) => {
+    // Quick filter bar — client-side status/priority chips
+    if (quickFilter === 'all') return true;
+    if (quickFilter === 'P1') return call.priority === 'P1';
+    if (quickFilter === 'P2') return call.priority === 'P2';
+    if (quickFilter === 'pending') return call.status === 'pending';
+    if (quickFilter === 'dispatched') return call.status === 'dispatched';
+    if (quickFilter === 'onscene') return call.status === 'onscene';
+    if (quickFilter === 'mybeat') return !!(user as any)?.beat_id && call.beat_id === (user as any).beat_id;
+    return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
     if (filterTab === 'archived') {
@@ -2046,7 +2062,7 @@ export default function DispatchPage() {
     const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap, quickFilter, (user as any)?.beat_id]);
 
   // The "Search calls" box lives in the shared toolbar above both the CAD
   // board and the classic list, but was only ever wired into filteredCalls
@@ -2269,6 +2285,22 @@ export default function DispatchPage() {
     setShowNewCallModal(true);
   };
 
+  // Feature: Quick unit status change from unit board — PATCH /api/dispatch/units/:id/status
+  const handleQuickUnitStatus = useCallback(async (unitId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/dispatch/units/${unitId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setUnits((prev) =>
+        prev.map((u) => (String(u.id) === String(unitId) ? { ...u, status: newStatus as any } : u)),
+      );
+      addToast('Saved', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update unit status', 'error');
+    }
+  }, [setUnits, addToast]);
+
   const handleNewCall = async (callData: Partial<CallForService> & Record<string, any>) => {
     setIsSaving(true);
     try {
@@ -2354,6 +2386,14 @@ export default function DispatchPage() {
         ...(callData.closed_at ? { closed_at: callData.closed_at } : {}),
       };
       const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
+      // Surface duplicate warning if backend detected a nearby active call
+      if (result?.duplicate_warning) {
+        setDuplicateWarning({
+          message: result.duplicate_warning.message || 'Similar call already active nearby.',
+          callNumber: result.duplicate_warning.call_number,
+          callId: result.duplicate_warning.call_id ? String(result.duplicate_warning.call_id) : undefined,
+        });
+      }
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
       rememberRecentId(newCall.id);
@@ -3645,6 +3685,36 @@ export default function DispatchPage() {
           <Shield style={{ width: 20, height: 20 }} />
         </button>
 
+        {/* Duplicate call warning banner — shown when POST /dispatch/calls returns duplicate_warning */}
+        {duplicateWarning && (
+          <div
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
+            style={{ background: 'rgb(234 179 8 / 0.18)', border: '1px solid rgb(234 179 8 / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            role="alert"
+          >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span>&#9888; {duplicateWarning.message}</span>
+              {duplicateWarning.callNumber && duplicateWarning.callId && (
+                <button
+                  type="button"
+                  className="ml-2 underline hover:no-underline"
+                  onClick={() => {
+                    const c = calls.find((x) => String(x.id) === duplicateWarning.callId);
+                    if (c) setSelectedCall(c);
+                    setDuplicateWarning(null);
+                  }}
+                >
+                  View #{duplicateWarning.callNumber}
+                </button>
+              )}
+            </div>
+            <button type="button" aria-label="Dismiss duplicate warning" onClick={() => setDuplicateWarning(null)} className="text-yellow-300 hover:text-yellow-100 ml-1">
+              <X style={{ width: 12, height: 12 }} />
+            </button>
+          </div>
+        )}
+
         {/* New Call Modal (shared with desktop) */}
         <NewCallModal
           isOpen={showNewCallModal}
@@ -3709,6 +3779,15 @@ export default function DispatchPage() {
           >
             <Hash style={{ width: 10, height: 10 }} />
             Codes
+          </button>
+          {/* Activity Feed toggle */}
+          <button type="button"
+            onClick={() => setShowActivityFeed(prev => !prev)}
+            className={`toolbar-btn ${showActivityFeed ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showActivityFeed ? 'Close activity feed' : 'Open activity feed'}
+          >
+            <Activity style={{ width: 10, height: 10 }} />
+            Activity
           </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
@@ -4051,6 +4130,16 @@ export default function DispatchPage() {
         {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
         <DispatchAnalyticsStrip />
 
+        {/* Shift Stats Bar — calls/incidents/active units this shift, polls every 60s */}
+        <ShiftStatsBar activeUnits={units.filter((u) => u.status !== 'off_duty').length} />
+
+        {/* Quick filter bar — chips for All / P1 / P2 / status / my beat */}
+        <CallFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          myBeat={(user as any)?.beat_id ?? null}
+        />
+
         {/* Incident Type Analytics Chart */}
         <div className="px-3 py-2 border-b border-[var(--spm-border)] flex-shrink-0">
           <IncidentTypeChart />
@@ -4218,6 +4307,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* RIGHT PANEL - Call Detail + Map (top), USB (bottom shorter) */}
       {/* ============================================================ */}
+      <div className="flex-1 flex min-w-0">
       <div className="flex-1 flex flex-col min-w-0">
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
@@ -7147,9 +7237,13 @@ export default function DispatchPage() {
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               unitWorkload={unitWorkload}
               onAssignUnit={selectedCall && !TERMINAL_STATUSES.has(selectedCall.status) ? handleAssignUnit : undefined}
+              onStatusChange={handleQuickUnitStatus}
             />
           </div>
         </div>
+      </div>
+      {/* Activity Feed collapsible sidebar */}
+      <ActivityFeed isOpen={showActivityFeed} onClose={() => setShowActivityFeed(false)} />
       </div>
 
       {/* Keyboard-shortcut cheat sheet (toggle with "?") */}
