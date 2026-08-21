@@ -107,7 +107,7 @@ geography.get('/codes/lookup/:code', async (c) => {
 // path — which routed to env.API and 404'd (no handler). Serve the read here.
 // Always filtered to active + unexpired. flags is returned as the raw string the
 // client's PremiseAlert type expects.
-geography.get('/premise-alerts', async (c) => {
+geography.get('/premise-alerts', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin', 'client_viewer'), async (c) => {
   try {
     const db = getDb(c.env);
     const address = (c.req.query('address') || '').trim();
@@ -215,7 +215,7 @@ geography.get('/districts/identify', async (c) => {
 // calls + incidents near a clicked location (cross-system map<->dispatch/RMS).
 // Bounding-box filter on lat/lng (indexed), newest first. Best-effort — a
 // query error degrades to empty so the popup still renders geography.
-geography.get('/premise-intel', async (c) => {
+geography.get('/premise-intel', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const lat = Number.parseFloat(c.req.query('lat') ?? '');
   const lng = Number.parseFloat(c.req.query('lng') ?? '');
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });

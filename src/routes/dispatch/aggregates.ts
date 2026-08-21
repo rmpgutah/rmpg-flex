@@ -367,7 +367,7 @@ aggregates.get('/heatmap/predictions', async (c) => {
         MAX(created_at) AS last_incident
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        AND CAST(strftime('%H', datetime(created_at, '+6 hours')) AS INTEGER) IN (${hours.join(',')})
+        AND CAST(strftime('%H', datetime(created_at, '${denverOffsetHours()} hours')) AS INTEGER) IN (${hours.join(',')})
         AND created_at >= datetime('now', '-90 days')
       GROUP BY ROUND(latitude, 2), ROUND(longitude, 2)
       HAVING incident_count >= 2

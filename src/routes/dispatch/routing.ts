@@ -18,6 +18,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer';
 import { requireRole } from '../../middleware/auth';
+import { log } from '../../utils/logger';
 import { dbErrorResponse } from '../../utils/dbErrors';
 
 const routing = new Hono<Env>();
@@ -147,7 +148,7 @@ routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'ma
       ...(warning ? { warning } : {}),
     });
   } catch (err) {
-    console.error('POST /dispatch/routing/optimize failed:', err);
+    log.error('POST /dispatch/routing/optimize failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to optimize route');
   }
 });
@@ -185,7 +186,7 @@ routing.post('/save', requireRole('officer', 'dispatcher', 'supervisor', 'manage
       .run();
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
-    console.error('POST /dispatch/routing/save failed:', err);
+    log.error('POST /dispatch/routing/save failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to save route');
   }
 });
@@ -203,7 +204,7 @@ routing.get('/unit/:unitId', requireRole('officer', 'dispatcher', 'supervisor', 
       ORDER BY created_at DESC, id DESC LIMIT 5`, c.req.param('unitId'));
     return c.json(rows);
   } catch (err) {
-    console.error('GET /dispatch/routing/unit failed:', err);
+    log.error('GET /dispatch/routing/unit failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to load saved routes');
   }
 });
@@ -243,7 +244,7 @@ routing.post('/:id/complete-stop', requireRole('officer', 'dispatcher', 'supervi
       JSON.stringify(waypoints), allDone ? 'completed' : 'active', id);
     return c.json({ success: true, completed_route: allDone });
   } catch (err) {
-    console.error('POST /dispatch/routing/complete-stop failed:', err);
+    log.error('POST /dispatch/routing/complete-stop failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to complete stop');
   }
 });

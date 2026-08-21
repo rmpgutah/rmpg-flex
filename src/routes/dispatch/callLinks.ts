@@ -75,7 +75,7 @@ links.get('/calls/:id/persons', requireRole('officer', 'dispatcher', 'supervisor
 });
 
 // POST /dispatch/calls/:id/persons  body { person_id, role, notes? }
-links.post('/calls/:id/persons', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+links.post('/calls/:id/persons', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
@@ -225,7 +225,7 @@ links.patch('/calls/:id/persons/:linkId', requireRole('dispatcher', 'supervisor'
 //
 // Static segment beats :linkId in Hono's router without explicit ordering
 // because it's registered first. Keep static routes above parameterized ones.
-links.post('/calls/:id/persons/quick-add', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+links.post('/calls/:id/persons/quick-add', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
   const db = getDb(c.env);
   const callId = c.req.param('id') || '';
   const userId = c.get('userId') as number;
