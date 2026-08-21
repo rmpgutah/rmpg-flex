@@ -185,29 +185,42 @@ radar360.post('/scan', async (c) => {
       }
     }).catch((err) => log.warn('[Radar360] units query failed', { err })),
 
-    // ── Persons with active flags (warrants, officer safety, etc.) ──
+    // ── Flagged persons linked to active in-box calls ──────────
+    // `persons` has no coordinate columns and no boolean flag columns; flag
+    // data lives in the free-text `persons.flags` field and in `warrants`
+    // (subject_person_id, status). Anchor each flagged person to the location
+    // of the active call they're linked to via call_persons.
     query<{
       id: number; first_name: string | null; last_name: string | null;
-      latitude: number | null; longitude: number | null;
-      has_warrant: number | null; officer_safety: number | null;
-      gang_affiliation: string | null; sex_offender: number | null;
+      flags: string | null; latitude: number; longitude: number;
+      has_warrant: number;
     }>(db,
-      `SELECT id, first_name, last_name, latitude, longitude,
-              has_warrant, officer_safety, gang_affiliation, sex_offender
-       FROM persons
-       WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
-         AND latitude IS NOT NULL AND longitude IS NOT NULL
-         AND (has_warrant = 1 OR officer_safety = 1 OR gang_affiliation IS NOT NULL OR sex_offender = 1)
-       ORDER BY officer_safety DESC, has_warrant DESC LIMIT 30`,
+      `SELECT p.id, p.first_name, p.last_name, p.flags,
+              c.latitude AS latitude, c.longitude AS longitude,
+              EXISTS(
+                SELECT 1 FROM warrants w
+                WHERE w.subject_person_id = p.id
+                  AND LOWER(COALESCE(w.status,'')) IN ('active','outstanding')
+              ) AS has_warrant
+       FROM call_persons cp
+       JOIN calls_for_service c ON c.id = cp.call_id
+       JOIN persons p ON p.id = cp.person_id
+       WHERE c.latitude BETWEEN ? AND ? AND c.longitude BETWEEN ? AND ?
+         AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+         AND c.status NOT IN ('closed','cancelled','archived')
+       GROUP BY p.id
+       ORDER BY has_warrant DESC LIMIT 30`,
       box.minLat, box.maxLat, box.minLng, box.maxLng,
     ).then((rows) => {
       for (const r of rows) {
         if (r.latitude == null || r.longitude == null) continue;
+        const flagText = (r.flags ?? '').toLowerCase();
         const flags: string[] = [];
-        if (r.officer_safety) flags.push('OFFICER SAFETY');
+        if (flagText.includes('officer safety') || flagText.includes('violent')) flags.push('OFFICER SAFETY');
         if (r.has_warrant) flags.push('WARRANT');
-        if (r.gang_affiliation) flags.push('GANG');
-        if (r.sex_offender) flags.push('SEX OFFENDER');
+        if (flagText.includes('gang')) flags.push('GANG');
+        if (flagText.includes('sex offender')) flags.push('SEX OFFENDER');
+        if (!flags.length) continue;
         const name = [r.first_name, r.last_name].filter(Boolean).join(' ') || `Person #${r.id}`;
         addContact({
           kind: 'person',
