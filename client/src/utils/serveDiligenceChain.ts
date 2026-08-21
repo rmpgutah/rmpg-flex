@@ -142,7 +142,12 @@ export function assessDiligence(attempts: readonly ServeAttempt[]): DiligenceAss
       gaps.push('All attempts fall in one time-of-day band — vary morning / afternoon / evening.');
     }
     if (!hasWeekendAttempt) gaps.push('No weekend attempt on the record.');
-    if (failedAttempts >= 2 && largestGapDays !== null && largestGapDays === 0) {
+    // Use distinctDays (calendar days) rather than largestGapDays (which rounds
+    // to 0 for any two attempts fewer than 12h apart). A morning + evening pair
+    // on the same calendar date represents meaningful time-of-day variation under
+    // Utah R. Civ. P. 4(d) and should NOT be flagged as "same day" — only flag
+    // when all attempts truly share a single calendar date.
+    if (failedAttempts >= 2 && daySet.size === 1) {
       gaps.push('All attempts on the same day — courts expect reasonable intervals.');
     }
   }

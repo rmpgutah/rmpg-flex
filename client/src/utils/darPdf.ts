@@ -10,6 +10,7 @@
 import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { DailyActivityReport } from '../types';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 const GRAY = '#888888';
 
@@ -69,15 +70,13 @@ export function buildDarPdf(r: DailyActivityReport): jsPDF {
     doc.text(str, x, y);
   };
 
-  // Header — clean line-and-text format
-  y = M;
-  doc.setFont('Arial', 'bold'); doc.setFontSize(16); doc.setTextColor('#000000');
-  doc.text('RMPG FLEX — DAILY ACTIVITY REPORT', M, y);
-  if (r.dar_number) {
-    doc.setFontSize(10); doc.setTextColor(GRAY);
-    doc.text(r.dar_number, W - M, y, { align: 'right' });
-    doc.setTextColor('#000000');
-  }
+  // Header — navy banner
+  y = drawNavyBanner(doc, {
+    title: `DAILY ACTIVITY REPORT${r.shift_date ? ` — ${r.shift_date}` : r.dar_number ? ` — ${r.dar_number}` : ''}`,
+    subtitle: 'Patrol Operations',
+    rightLine1: r.dar_number || undefined,
+    rightLine2: r.officer_name ? `Officer: ${r.officer_name}` : undefined,
+  });
   y += 14;
   doc.setDrawColor(0); doc.setLineWidth(1.2); doc.line(M, y, W - M, y); y += 2;
   doc.setLineWidth(0.4); doc.line(M, y, W - M, y); y += 14;

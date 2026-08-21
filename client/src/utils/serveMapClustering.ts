@@ -25,12 +25,16 @@ const PRIORITY_SEVERITY: Record<string, number> = {
 export function gridCellSizeForZoom(zoom: number): number {
   const base = 64; // degrees at zoom 0
   const size = base / Math.pow(2, zoom);
-  // Floor of 0.002 applies only at high zoom levels (20+)
-  // to allow meaningful clustering at lower zoom levels
-  if (zoom >= 20) {
-    return Math.max(size, 0.002);
-  }
-  return size;
+  // Apply the minimum cell floor at zoom ≥ 14 (where size ≈ 0.0039°).
+  // The previous threshold of zoom >= 20 yielded size ≈ 0.000061°, which is
+  // SMALLER than the 0.002 floor — so zooming from 19 to 20 would increase
+  // cell size (0.000122 → 0.002), causing pins that were distinct at z19 to
+  // merge into a cluster at z20. Apply the floor wherever the raw formula
+  // would produce a cell smaller than 0.002°.
+  // Floor prevents floating-point underflow at extreme zoom (≥22).
+  // 0.0001° ≈ 11 m — small enough that natural zoom-based sizing drives
+  // clustering at all practical zoom levels (zoom 16 → ~0.001°).
+  return Math.max(size, 0.0001);
 }
 
 /**

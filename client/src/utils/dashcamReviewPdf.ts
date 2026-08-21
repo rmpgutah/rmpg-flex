@@ -14,6 +14,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { formatEnumValue, toDisplayLabel } from './formatters';
@@ -163,23 +164,12 @@ export function generateDashcamReviewPdf(input: DashcamReviewPdfInput): jsPDF {
   let y = 36;
 
   // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`MVR REVIEW — ${video.title || `Video #${video.id ?? '?'}`}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(fmtDateTime(new Date().toISOString()), W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Mobile Video Recorder / Dash Camera', M, y);
-  if (preparedBy) doc.text(`Prepared by: ${preparedBy}`, W - M, y, { align: 'right' });
-  y += 16;
+  y = drawNavyBanner(doc, {
+    title: `MVR REVIEW — ${video.title || `Video #${video.id ?? '?'}`}`,
+    subtitle: 'Mobile Video Recorder / Dash Camera',
+    rightLine1: fmtDateTime(new Date().toISOString()),
+    rightLine2: preparedBy ? `Prepared by: ${preparedBy}` : undefined,
+  });
 
   // Missing-case-link alert — evidence-classified video with no case link
   // means defense discovery has a dangling artifact. Surface it loudly so

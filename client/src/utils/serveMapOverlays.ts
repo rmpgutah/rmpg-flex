@@ -15,7 +15,20 @@ export function urgencyTierForDeadline(deadline: string | null, now: number): Ur
   return 'none';
 }
 
-const SAFETY_KEYWORDS = ['officer safety', 'weapon', 'aggressive dog', 'hostile', 'restraining order', 'armed'];
+// Whole-word keyword patterns. Simple .includes() matching produced false
+// positives: 'armed' matched 'unarmed', 'restraining order' matched 'restraining
+// order lifted'. Using \b word-boundary anchors prevents these collisions.
+// Each entry is either a literal phrase (matched with \b on both ends) or an
+// explicit regex. Phrases with spaces use a space-aware pattern so the anchor
+// applies to the phrase edges, not each word individually.
+const SAFETY_KEYWORD_RES = [
+  /\bofficer\s+safety\b/,
+  /\bweapon\b/,
+  /\baggressive\s+dog\b/,
+  /\bhostile\b/,
+  /\brestraining\s+order\s+(in\s+effect|active|filed)\b|\bactive\s+restraining\s+order\b/,
+  /\b(?<!un)armed\b/,  // negative lookbehind: matches 'armed' but not 'unarmed'
+] as const;
 
 export function isRiskFlagged(item: {
   priority: string;
@@ -24,7 +37,7 @@ export function isRiskFlagged(item: {
 }): boolean {
   if (item.priority === 'urgent') return true;
   const note = `${item.location_note_text || ''} ${item.service_instructions || ''}`.toLowerCase();
-  return SAFETY_KEYWORDS.some((kw) => note.includes(kw));
+  return SAFETY_KEYWORD_RES.some((re) => re.test(note));
 }
 
 export type DeadlineFilter = 'all' | 'today' | 'three_days' | 'week' | 'overdue' | 'served' | 'in_progress';

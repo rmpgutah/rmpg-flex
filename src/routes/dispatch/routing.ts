@@ -18,7 +18,9 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { optimizeStops, estimateDriveMinutes } from '../../utils/routeOptimizer';
 import { requireRole } from '../../middleware/auth';
+import { log } from '../../utils/logger';
 import { dbErrorResponse } from '../../utils/dbErrors';
+import { log } from '../../utils/logger';
 
 const routing = new Hono<Env>();
 
@@ -79,27 +81,32 @@ routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'ma
     if (!unit) return c.json({ error: 'Unit not found' }, 404);
 
     // Active workload: calls assigned to this unit that are still being worked.
-    // assigned_unit_ids is a JSON int array on calls_for_service — small working
-    // set, so membership is filtered in JS rather than string-LIKE SQL.
+    // H10: push the unit-membership filter into SQL using json_each so only
+    // calls actually assigned to this unit are returned — previously LIMIT 500
+    // returned up to 500 agency-wide active calls and then JS-filtered them,
+    // meaning a busy agency could push the target unit's calls past the cap.
+    const CAP = 200;
     const candidates = await query<CallRow>(db, `
       SELECT id, call_number, incident_type, priority, status, latitude, longitude,
              location_address, description, assigned_unit_ids
       FROM calls_for_service
       WHERE status IN ('pending','dispatched','enroute','onscene')
-      ORDER BY created_at ASC LIMIT 500`);
-    const routable = candidates.filter((call) => {
-      if (call.latitude == null || call.longitude == null) return false;
-      try {
-        const assignedIds = JSON.parse(call.assigned_unit_ids || '[]') as number[];
-        return assignedIds.includes(Number(unitId));
-      } catch { return false; }
-    });
+        AND EXISTS (
+          SELECT 1 FROM json_each(assigned_unit_ids) je WHERE je.value = ?
+        )
+      ORDER BY created_at ASC LIMIT ?`, Number(unitId), CAP + 1);
+
+    const hitCap = candidates.length > CAP;
+    if (hitCap) candidates.splice(CAP);
+
+    const routable = candidates.filter((call) => call.latitude != null && call.longitude != null);
     const skipped = candidates.length - routable.length;
 
     let warning: string | undefined;
     if (candidates.length === 0) warning = 'No active calls are available to route.';
     else if (routable.length === 0) warning = 'Active calls have no GPS coordinates — nothing to route.';
     else if (skipped > 0) warning = `${skipped} call(s) skipped — no GPS coordinates.`;
+    if (hitCap) warning = [warning, `Route capped at ${CAP} calls. Some calls may be excluded.`].filter(Boolean).join(' ');
 
     // Origin: the unit's live position, else the first routable call.
     let origin = unit.latitude != null && unit.longitude != null
@@ -147,7 +154,7 @@ routing.post('/optimize', requireRole('officer', 'dispatcher', 'supervisor', 'ma
       ...(warning ? { warning } : {}),
     });
   } catch (err) {
-    console.error('POST /dispatch/routing/optimize failed:', err);
+    log.error('POST /dispatch/routing/optimize failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to optimize route');
   }
 });
@@ -185,7 +192,7 @@ routing.post('/save', requireRole('officer', 'dispatcher', 'supervisor', 'manage
       .run();
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) {
-    console.error('POST /dispatch/routing/save failed:', err);
+    log.error('POST /dispatch/routing/save failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to save route');
   }
 });
@@ -203,7 +210,7 @@ routing.get('/unit/:unitId', requireRole('officer', 'dispatcher', 'supervisor', 
       ORDER BY created_at DESC, id DESC LIMIT 5`, c.req.param('unitId'));
     return c.json(rows);
   } catch (err) {
-    console.error('GET /dispatch/routing/unit failed:', err);
+    log.error('GET /dispatch/routing/unit failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to load saved routes');
   }
 });
@@ -243,7 +250,7 @@ routing.post('/:id/complete-stop', requireRole('officer', 'dispatcher', 'supervi
       JSON.stringify(waypoints), allDone ? 'completed' : 'active', id);
     return c.json({ success: true, completed_route: allDone });
   } catch (err) {
-    console.error('POST /dispatch/routing/complete-stop failed:', err);
+    log.error('POST /dispatch/routing/complete-stop failed', {}, err as Error);
     return dbErrorResponse(c, err, 'Failed to complete stop');
   }
 });

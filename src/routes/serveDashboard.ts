@@ -66,61 +66,35 @@ sd.get('/daily-summary', async (c) => {
   const db = getDb(c.env);
   const today = toDenverWallClock(new Date()).slice(0, 10);
 
-  const total = await queryFirst<{ n: number }>(
+  // Single GROUP BY instead of 7 separate count queries (N+1 anti-pattern).
+  const rows = await query<{ status: string; n: number }>(
     db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE DATE(created_at) = ?",
+    `SELECT status, COUNT(*) AS n FROM serve_queue WHERE DATE(created_at) = ? GROUP BY status`,
     today,
   );
-  const pending = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'pending' AND DATE(created_at) = ?",
-    today,
-  );
-  const assigned = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'assigned' AND DATE(created_at) = ?",
-    today,
-  );
-  const inProgress = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'in_progress' AND DATE(created_at) = ?",
-    today,
-  );
-  const served = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'served' AND DATE(created_at) = ?",
-    today,
-  );
-  const failed = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'failed' AND DATE(created_at) = ?",
-    today,
-  );
-  const attempted = await queryFirst<{ n: number }>(
-    db,
-    "SELECT COUNT(*) AS n FROM serve_queue WHERE status = 'attempted' AND DATE(created_at) = ?",
-    today,
-  );
+  const byStatus: Record<string, number> = {};
+  let totalN = 0;
+  for (const r of rows) { byStatus[r.status] = r.n; totalN += r.n; }
 
-  const totalN = total?.n ?? 0;
+  const cnt = (s: string) => byStatus[s] ?? 0;
   const pct = (n: number) => totalN ? Math.round((n / totalN) * 10000) / 100 : 0;
 
   return c.json({
     date: today,
     total: totalN,
-    pending: pending?.n ?? 0,
-    assigned: assigned?.n ?? 0,
-    in_progress: inProgress?.n ?? 0,
-    served: served?.n ?? 0,
-    failed: failed?.n ?? 0,
-    attempted: attempted?.n ?? 0,
+    pending: cnt('pending'),
+    assigned: cnt('assigned'),
+    in_progress: cnt('in_progress'),
+    served: cnt('served'),
+    failed: cnt('failed'),
+    attempted: cnt('attempted'),
     percentages: {
-      pending: pct(pending?.n ?? 0),
-      assigned: pct(assigned?.n ?? 0),
-      in_progress: pct(inProgress?.n ?? 0),
-      served: pct(served?.n ?? 0),
-      failed: pct(failed?.n ?? 0),
-      attempted: pct(attempted?.n ?? 0),
+      pending: pct(cnt('pending')),
+      assigned: pct(cnt('assigned')),
+      in_progress: pct(cnt('in_progress')),
+      served: pct(cnt('served')),
+      failed: pct(cnt('failed')),
+      attempted: pct(cnt('attempted')),
     },
   });
 });
@@ -457,7 +431,17 @@ sd.get('/weekly-trend', async (c) => {
        COALESCE(wa.queues_served, 0) AS queues_served,
        COALESCE(wc.queues_created, 0) AS queues_created
      FROM weekly_attempts wa
-     FULL OUTER JOIN weekly_created wc ON wa.week_start = wc.week_start
+     LEFT JOIN weekly_created wc ON wa.week_start = wc.week_start
+     UNION
+     SELECT
+       wc2.week_start,
+       COALESCE(wa2.total_attempts, 0),
+       COALESCE(wa2.successful_attempts, 0),
+       COALESCE(wa2.queues_served, 0),
+       wc2.queues_created
+     FROM weekly_created wc2
+     LEFT JOIN weekly_attempts wa2 ON wc2.week_start = wa2.week_start
+     WHERE wa2.week_start IS NULL
      ORDER BY week_start ASC`,
     cutoff, cutoff,
   );
@@ -503,7 +487,7 @@ sd.get('/county-breakdown', async (c) => {
        SUM(CASE WHEN q.status = 'failed' THEN 1 ELSE 0 END) AS failed,
        SUM(CASE WHEN q.status IN ('pending', 'assigned', 'in_progress', 'attempted') THEN 1 ELSE 0 END) AS pending,
        ROUND(
-         CAST(COALESCE(q.attempt_count, 0) AS REAL) / MAX(COUNT(DISTINCT q.id), 1),
+         CAST(SUM(COALESCE(q.attempt_count, 0)) AS REAL) / MAX(COUNT(DISTINCT q.id), 1),
          2
        ) AS avg_attempts
      FROM serve_queue q

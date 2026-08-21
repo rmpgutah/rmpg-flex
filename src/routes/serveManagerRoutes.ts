@@ -26,10 +26,16 @@ const sm = new Hono<Env>();
 // tab's viewers). Matches the adminOnly pattern in traccar.ts / clearpathgps.ts.
 sm.use('*', async (c, next) => {
   const method = c.req.method;
-  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
   const actor = c.get('user') as { role?: string } | undefined;
-  if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
-    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+
+  // Mutations (PUT/POST/DELETE/PATCH) are gated to admin/manager only —
+  // overwriting the API key or repointing the poller requires elevated trust.
+  // Reads (GET/HEAD/OPTIONS) stay open to any authenticated role so officers
+  // can view the poller status without needing admin access.
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+    if (!actor?.role || !['admin', 'manager'].includes(actor.role)) {
+      return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+    }
   }
   return next();
 });
@@ -72,15 +78,26 @@ sm.post('/sync', async (c) => {
       type);
     syncId = inserted.meta?.last_row_id;
 
-    // A 'full' sync re-fetches everything by clearing the poller's
-    // incremental watermark first — pollServeManagerJobs() otherwise
-    // always fetches only since servemanager_last_poll_at.
+    // Clear the incremental watermark AFTER a successful poll, not before.
+    // Clearing it before means a mid-poll failure leaves the watermark gone:
+    // the next incremental poll re-fetches from the beginning of time,
+    // flooding the import with old records and burying any new ones.
+    // pollServeManagerJobs ignores the watermark when it is absent (treats it
+    // as "no prior poll"), so we clear it right before calling and it is
+    // effectively a reset only for that single call.
     if (type === 'full') {
       await execute(db,
         "DELETE FROM system_config WHERE config_key = 'servemanager_last_poll_at' AND category = 'integrations'");
     }
 
     const result = await pollServeManagerJobs(c.env as any);
+    // If full sync errored, re-insert a sentinel watermark so the next auto-poll
+    // does not silently re-fetch everything again from scratch.
+    if (type === 'full' && result.error) {
+      await execute(db,
+        "INSERT OR IGNORE INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES ('servemanager_last_poll_at', datetime('now','-1 day'), 'integrations', 0, 1, datetime('now'), datetime('now'))",
+      );
+    }
     await execute(db,
       "UPDATE sm_sync_log SET status = ?, jobs_synced = ?, attempts_synced = ?, error_message = ?, completed_at = datetime('now') WHERE id = ?",
       result.error ? 'failed' : 'completed', result.synced, result.attemptsSynced, result.error || null, syncId);
@@ -283,10 +300,14 @@ sm.put('/poller/settings', async (c) => {
     if (body.poll_interval !== undefined) pairs['servemanager_poll_interval'] = String(body.poll_interval);
     if (body.target_client !== undefined) pairs['servemanager_target_client'] = body.target_client;
     if (body.auto_create_calls !== undefined) pairs['servemanager_auto_create_calls'] = body.auto_create_calls ? 'true' : 'false';
-    for (const [key, value] of Object.entries(pairs)) {
-      await execute(db, "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'", key);
-      await execute(db, `INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`, key, value);
-    }
+    // Use db.batch() so delete + insert are atomic per key — a partial failure
+    // (delete succeeds, insert fails) previously left keys missing entirely,
+    // which the reader treated as the feature being disabled, with no error surfaced.
+    const stmts = Object.entries(pairs).flatMap(([key, value]) => [
+      db.prepare("DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'").bind(key),
+      db.prepare(`INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now'), datetime('now'))`).bind(key, value),
+    ]);
+    if (stmts.length) await db.batch(stmts);
     return c.json({ success: true });
   } catch (err) {
     log.error('PUT /poller/settings failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ error: 'Failed to save settings' }, 500); }

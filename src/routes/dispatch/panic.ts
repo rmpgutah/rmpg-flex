@@ -17,27 +17,32 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
 import { requireRole } from '../../middleware/auth';
 import { getDecrypted } from '../../utils/encryptedR2';
+import { log } from '../../utils/logger';
 
 const panic = new Hono<Env>();
 
 // GET /dispatch/panic — list panic alerts, default active only
 panic.get('/panic', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
-  const db = getDb(c.env);
-  const status = c.req.query('status') || 'active';
-  const rows = await query<Record<string, unknown>>(
-    db,
-    `SELECT p.*, u.full_name as user_name, u.badge_number,
-            ack.full_name as acknowledged_by_name,
-            res.full_name as resolved_by_name
-     FROM panic_alerts p
-     LEFT JOIN users u ON p.user_id = u.id
-     LEFT JOIN users ack ON p.acknowledged_by = ack.id
-     LEFT JOIN users res ON p.resolved_by = res.id
-     WHERE (? = 'all' OR p.status = ?)
-     ORDER BY p.created_at DESC LIMIT 500`,
-    status, status,
-  );
-  return c.json(rows);
+  try {
+    const db = getDb(c.env);
+    const status = c.req.query('status') || 'active';
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT p.*, u.full_name as user_name, u.badge_number,
+              ack.full_name as acknowledged_by_name,
+              res.full_name as resolved_by_name
+       FROM panic_alerts p
+       LEFT JOIN users u ON p.user_id = u.id
+       LEFT JOIN users ack ON p.acknowledged_by = ack.id
+       LEFT JOIN users res ON p.resolved_by = res.id
+       WHERE (? = 'all' OR p.status = ?)
+       ORDER BY p.created_at DESC LIMIT 500`,
+      status, status,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to load panic alerts' }, 500);
+  }
 });
 
 // POST /dispatch/panic — officer hits the panic button (any authenticated role may trigger their own)
@@ -74,12 +79,23 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   if (!targetCallId && recentCalls.length > 0) {
     targetCallId = recentCalls[0].id;
   } else if (!targetCallId) {
-    // Create new CAD call if none exists
+    // Create new CAD call if none exists. Generate a CFS call number so the
+    // panic call appears in number-based searches and exports.
+    const panicYear = new Date().toLocaleString('en-US', { timeZone: 'America/Denver', year: 'numeric' }).slice(-2);
+    const panicPrefix = `CFS${panicYear}-`;
+    const maxRows = await query<{ max: string | null }>(
+      db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${panicPrefix}%`,
+    );
+    const panicMax = maxRows[0]?.max ?? null;
+    const panicSeq = panicMax ? String(parseInt(panicMax.slice(panicPrefix.length), 10) + 1).padStart(5, '0') : '00001';
+    const panicCallNumber = `${panicPrefix}${panicSeq}`;
+
     const ins = await execute(
       db,
-      `INSERT INTO calls_for_service (incident_type, priority, status, location_address, latitude, longitude,
+      `INSERT INTO calls_for_service (call_number, dispatcher_id, incident_type, priority, status, location_address, latitude, longitude,
          description, source, officer_safety_caution, created_at, updated_at)
-       VALUES ('panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, 'panic_alarm', 'P1', 'pending', ?, ?, ?, ?, 'panic', 1, datetime('now'), datetime('now'))`,
+      panicCallNumber, userId,
       body.location_address ?? 'Panic location',
       body.latitude ?? null, body.longitude ?? null,
       'Officer Panic Activation'
@@ -138,15 +154,25 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   // when latitude/longitude weren't provided.
   try {
     if (body.latitude != null && body.longitude != null) {
-      const available = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
+      // H6: use haversine distance for nearest-unit selection (Euclidean treats
+      // degrees as equal in both axes, which silently skews E/W more than N/S
+      // at Utah latitudes ~40°N where 1° lng ≈ 0.77° lat).
+      function haversineMi(lat1: number, lng1: number, lat2: number, lng2: number): number {
+        const R = 3958.8;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      }
+      const allAvailable = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(
         db,
         `SELECT id, call_sign, latitude, longitude FROM units
-          WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
-          ORDER BY (CASE WHEN latitude IS NULL OR longitude IS NULL THEN 999
-                    ELSE ((latitude - ?) * (latitude - ?) + (longitude - ?) * (longitude - ?)) END)
-          LIMIT 2`,
-        body.latitude, body.latitude, body.longitude, body.longitude,
+          WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL`,
       );
+      const available = allAvailable
+        .map((u) => ({ ...u, dist: haversineMi(body.latitude!, body.longitude!, u.latitude, u.longitude) }))
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 2);
       if (available.length > 0) {
         const backupCallId = targetCallId;
         for (const unit of available) {
@@ -181,10 +207,10 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
         });
       }
     } else {
-      console.log('[panic] skipped auto-backup dispatch: no GPS coordinates on activation');
+      log.info('[panic] skipped auto-backup dispatch: no GPS coordinates on activation', { userId });
     }
   } catch (err) {
-    console.error('[panic] auto-backup dispatch failed:', err);
+    log.error('[panic] auto-backup dispatch failed', { userId }, err as Error);
   }
 
   return c.json(created, 201);
@@ -339,7 +365,7 @@ panic.post('/request-backup', requireRole('officer', 'dispatcher', 'supervisor',
     broadcastAll('dispatch_update', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {
-    console.error('[dispatch] request-backup error', err);
+    log.error('[dispatch] request-backup error', {}, err as Error);
     return c.json({ error: 'Failed to request backup', code: 'REQUEST_BACKUP_ERR' }, 500);
   }
 });

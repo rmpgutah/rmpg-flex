@@ -19,8 +19,8 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import { parseTimestamp } from './dateUtils';
 import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -85,27 +85,11 @@ export function generateSkipTracerReportPdf(
   const age = firstOf(subject, 'Age', 'age');
   const livesIn = firstOf(subject, 'Lives in', 'livesIn', 'lives_in');
 
-  // ── Gold banner ──
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text(`SKIP TRACE REPORT — ${name.toUpperCase()}`, M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Generated ${fmtDateTime(new Date())}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // ── Agency strap ──
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Investigations / Skip Trace', M, y);
-  if (ctx.officerName) {
-    const right = ctx.badgeNumber ? `${ctx.officerName} #${ctx.badgeNumber}` : ctx.officerName;
-    doc.text(right, W - M, y, { align: 'right' });
-  }
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: `SKIP TRACE REPORT — ${name.toUpperCase()}`,
+    subtitle: 'Investigations / Skip Trace',
+    rightLine1: `Generated ${fmtDateTime(new Date())}`,
+  });
 
   // ── Query context block ──
   doc.setDrawColor(BORDER);

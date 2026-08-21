@@ -5,7 +5,7 @@
 // audit Trip Log PDF.
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 const trips = new Hono<Env>();
@@ -55,7 +55,7 @@ trips.get('/active', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT id, unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type, prev_trip_id, start_time, start_lat, start_lng, start_mileage, end_time, end_lat, end_lng, end_mileage, close_reason, distance_m, max_speed, speed_sum, fix_count, max_lat_g, harsh_accel_count, harsh_brake_count, harsh_corner_count, stop_count, anchor_lat, anchor_lng, last_move_at, last_fix_ts, prev_lat, prev_lng, prev_mph, prev_bearing, duration_s, avg_speed, created_at, updated_at FROM unit_trips WHERE status = 'active' ORDER BY unit_id, start_time DESC`);
+      `SELECT id, unit_id, officer_id, vehicle_id, trip_type, status, call_id, call_number, call_type, prev_trip_id, start_time, start_lat, start_lng, start_mileage, end_time, end_lat, end_lng, end_mileage, close_reason, distance_m, max_speed, speed_sum, fix_count, max_lat_g, harsh_accel_count, harsh_brake_count, harsh_corner_count, stop_count, anchor_lat, anchor_lng, last_move_at, last_fix_ts, prev_lat, prev_lng, prev_mph, prev_bearing, duration_s, avg_speed, created_at, updated_at FROM unit_trips WHERE status = 'active' ORDER BY unit_id, start_time DESC LIMIT 200`);
     return c.json(rows);
   } catch (e) {
     log.error('GET /active failed', { src: 'src/routes/dispatch/trips.ts' }, e);
@@ -143,12 +143,23 @@ trips.delete('/:id', async (c) => {
     if (!isPrivileged && !isOwner) {
       return c.json({ error: 'Insufficient permissions' }, 403);
     }
+    // Officers (non-privileged) may only delete PATROL trips auto-flagged as
+    // false positives. CALL_RESPONSE and TRANSPORT trips are audit-critical
+    // and require a supervisor/admin role.
+    if (!isPrivileged && ['CALL_RESPONSE', 'call_response', 'TRANSPORT', 'transport'].includes(trip.trip_type)) {
+      return c.json({ error: 'Call response and transport trips require supervisor or admin to delete', code: 'AUDIT_TRIP_PROTECTED' }, 403);
+    }
     if (trip.status === 'active') {
       return c.json({ error: 'Cannot delete an active trip — end it first' }, 409);
     }
 
-    await execute(db, 'UPDATE gps_breadcrumbs SET trip_id = NULL WHERE trip_id = ?', id);
-    await execute(db, 'DELETE FROM unit_trips WHERE id = ?', id);
+    // Atomic: detach breadcrumbs and delete the trip in a single batch so a
+    // mid-flight Worker termination cannot orphan breadcrumbs or leave a
+    // trip row with no GPS history.
+    await executeBatch(db, [
+      { sql: 'UPDATE gps_breadcrumbs SET trip_id = NULL WHERE trip_id = ?', bindings: [id] },
+      { sql: 'DELETE FROM unit_trips WHERE id = ?', bindings: [id] },
+    ]);
 
     try {
       await execute(db,

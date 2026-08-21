@@ -203,8 +203,15 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
     // (best-effort — weather endpoint may be unavailable)
     if (!body.officer_safety_caution && body.latitude != null && body.longitude != null) {
       try {
-        const weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${body.latitude}&longitude=${body.longitude}&current=weather_code&timezone=America%2FDenver`);
-        const weather = await weatherResp.json() as any;
+        const weatherAc = new AbortController();
+        const weatherTimer = setTimeout(() => weatherAc.abort(), 3000);
+        let weatherResp: Response;
+        try {
+          weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${body.latitude}&longitude=${body.longitude}&current=weather_code&timezone=America%2FDenver`, { signal: weatherAc.signal });
+        } finally {
+          clearTimeout(weatherTimer);
+        }
+        const weather = await weatherResp!.json() as any;
         const code = weather?.current?.weather_code;
         // WMO weather codes: 95-99 = thunderstorm, 71-77 = snow, 56-67 = freezing, 85-86 = snow showers
         if (code && (code >= 95 || code === 71 || code === 73 || code === 75 || code === 77 || code === 85 || code === 86 || code === 66 || code === 67)) {
@@ -340,7 +347,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
             callId,
           );
         } catch (extErr) {
-          console.warn('run_card ext write failed (non-fatal):', extErr);
+          log.warn('run_card ext write failed (non-fatal)', { callId, err: String((extErr as Error)?.message ?? extErr) });
         }
       }
 
@@ -365,7 +372,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
           userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
         );
       } catch (auditErr) {
-        console.warn('audit_log insert failed for call create:', auditErr);
+        log.warn('audit_log insert failed for call create (non-fatal)', { callId, err: String((auditErr as Error)?.message ?? auditErr) });
       }
 
       // Broadcast to every connected dispatcher so rosters re-render
@@ -403,12 +410,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
       // which column / FK is rejecting. Without this the client sees a
       // generic 500 and we can't debug from production.
       const msg = String(sqlErr?.message || sqlErr || 'unknown');
-      console.error('Create call INSERT failed:', {
-        msg,
-        userId,
-        cols,
-        params: bindParams,
-      });
+      log.error('Create call INSERT failed', { msg, userId, cols }, new Error(msg));
       if (msg.includes('FOREIGN KEY')) {
         return c.json({
           error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${(body as any).client_id ?? null}. Detail: ${msg}`,
@@ -418,7 +420,7 @@ calls.post('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'a
       return c.json({ error: `Failed to create call: ${msg}`, code: 'INSERT_FAILED' }, 500);
     }
   } catch (err: any) {
-    console.error('Create call outer error:', err);
+    log.error('Create call outer error', {}, err as Error);
     return c.json({ error: `Failed to create call: ${err?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
   }
 });
@@ -593,6 +595,7 @@ calls.get('/hits', requireRole('officer', 'dispatcher', 'supervisor', 'manager',
           WHERE cp.call_id = c.id
         )
       )
+      LIMIT 500
     `);
     return c.json({ call_ids: rows.map((r) => r.call_id) });
   } catch (err) {
@@ -621,6 +624,30 @@ calls.post('/archive-bulk', requireRole('dispatcher', 'supervisor', 'manager', '
     if (statuses.length === 0) return c.json({ archived_count: 0 });
 
     const placeholders = statuses.map(() => '?').join(',');
+
+    // Release units from all calls that will be archived before archiving them.
+    // Without this, dispatched units keep pointing at archived calls and never
+    // return to available on the board.
+    try {
+      const toArchive = await query<{ id: number; assigned_unit_ids: string }>(
+        db,
+        `SELECT id, assigned_unit_ids FROM calls_for_service WHERE status IN (${placeholders}) AND assigned_unit_ids IS NOT NULL AND assigned_unit_ids != '[]'`,
+        ...statuses,
+      );
+      const allUnitIds = toArchive.flatMap((c) => {
+        try { return JSON.parse(c.assigned_unit_ids || '[]') as number[]; } catch { return []; }
+      }).filter((id) => typeof id === 'number');
+      const callIds = toArchive.map((c) => c.id);
+      if (allUnitIds.length > 0) {
+        await executeInChunks(db, allUnitIds, (ph) => `UPDATE units SET status = 'available', current_call_id = NULL WHERE id IN (${ph})`);
+      }
+      if (callIds.length > 0) {
+        await executeInChunks(db, callIds, (ph) => `UPDATE calls_for_service SET assigned_unit_ids = '[]', unit_call_signs = '[]' WHERE id IN (${ph})`);
+      }
+    } catch (unitErr) {
+      log.error('archive-bulk unit release failed (non-fatal)', {}, unitErr as Error);
+    }
+
     const result = await execute(db,
       `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
       ...statuses);
@@ -652,6 +679,7 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
+    if (!Number.isFinite(Number(id))) return c.json({ error: 'Invalid id' }, 400);
 
     const call = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
@@ -719,7 +747,7 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
       visit_history: visitHistory,
     });
   } catch (err) {
-    console.error('GET /dispatch/calls/:id failed:', err);
+    log.error('GET /dispatch/calls/:id failed', { id: c.req.param('id') }, err as Error);
     return dbErrorResponse(c, err, 'Failed to get call');
   }
 });
@@ -894,7 +922,7 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
 
     return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
-    console.error('PUT /dispatch/calls/:id failed:', err);
+    log.error('PUT /dispatch/calls/:id failed', { id: c.req.param('id') }, err as Error);
     return dbErrorResponse(c, err, 'Failed to update call');
   }
 });
@@ -924,7 +952,7 @@ calls.get('/:id/audit-trail', requireRole('officer', 'dispatcher', 'supervisor',
     );
     return c.json({ events: rows });
   } catch (err) {
-    console.error('GET /dispatch/calls/:id/audit-trail failed:', err);
+    log.error('GET /dispatch/calls/:id/audit-trail failed', {}, err as Error);
     return c.json({ events: [] });
   }
 });
@@ -973,7 +1001,7 @@ calls.post('/:id/merge', requireRole('dispatcher', 'supervisor', 'manager', 'adm
     }
     return c.json({ success: true, merged, master_call_id: id });
   } catch (err) {
-    console.error('[dispatch] call merge failed:', err);
+    log.error('[dispatch] call merge failed', {}, err as Error);
     return c.json({ error: 'Call merge failed' }, 500);
   }
 });
@@ -1122,7 +1150,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
         await execute(db,
           `UPDATE calls_for_service SET response_time_seconds = (julianday(onscene_at) - julianday(dispatched_at)) * 86400 WHERE id = ? AND response_time_seconds IS NULL`,
           id);
-      } catch (err) { console.error('[dispatch] failed to compute response_time_seconds:', err); }
+      } catch (err) { log.error('[dispatch] failed to compute response_time_seconds', { callId: id }, err as Error); }
     }
 
     // ── Cascade non-terminal transitions to assigned units ──
@@ -1142,7 +1170,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
             (ph) => `UPDATE units SET status = ?, last_status_change = datetime('now') WHERE id IN (${ph}) AND status IN ('dispatched', 'enroute', 'onscene')`,
             [status]);
         }
-      } catch (err) { console.error('[dispatch] failed to cascade unit status on call transition:', err); }
+      } catch (err) { log.error('[dispatch] failed to cascade unit status on call transition', { callId: id, status }, err as Error); }
     }
 
     // ── Release assigned units on a terminal transition ──
@@ -1171,7 +1199,7 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
             );
           }
         }
-      } catch (err) { console.error('[dispatch] failed to release units on call close:', err); }
+      } catch (err) { log.error('[dispatch] failed to release units on call close', { callId: id }, err as Error); }
     }
 
     // ── Stack group: leave on terminal status ──
@@ -1247,10 +1275,17 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
 const D1_PARAM_CHUNK = 90;
 // Promote the next queued call for a unit that just cleared its active slot.
 // Called after unassign-unit and after terminal call-status transitions.
+// depth guard: a corrupt queued_call_ids list (all cancelled entries) could
+// recurse until the Workers call stack limit — cap at 20 iterations.
 async function promoteQueuedCall(
   db: Awaited<ReturnType<typeof getDb>>,
   unit_id: number,
+  _depth = 0,
 ): Promise<void> {
+  if (_depth >= 20) {
+    await execute(db, "UPDATE units SET queued_call_ids = '[]' WHERE id = ?", unit_id);
+    return;
+  }
   const row = await queryFirst<{ queued_call_ids: string }>(
     db, 'SELECT queued_call_ids FROM units WHERE id = ?', unit_id,
   );
@@ -1264,7 +1299,7 @@ async function promoteQueuedCall(
   );
   if (!nextCall || nextCall.status === 'closed' || nextCall.status === 'cancelled') {
     await execute(db, 'UPDATE units SET queued_call_ids = ? WHERE id = ?', JSON.stringify(remaining), unit_id);
-    if (remaining.length > 0) await promoteQueuedCall(db, unit_id);
+    if (remaining.length > 0) await promoteQueuedCall(db, unit_id, _depth + 1);
     return;
   }
   await executeBatch(db, [
@@ -1591,7 +1626,9 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
   try {
     const db = getDb(c.env);
     const id = c.req.param('id') || '';
-    const { unit_id } = await c.req.json<{ unit_id: number }>();
+    const rawBody = await c.req.json<{ unit_id: number; confirm?: number | string }>();
+    const { unit_id } = rawBody;
+    const confirmOverride = rawBody.confirm == 1 || c.req.query('confirm') === '1';
     const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
@@ -1599,16 +1636,19 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
 
-    // Fleet maintenance guard: warn if unit's vehicle is out of service
-    const vehicle = await queryFirst<{ status: string; vehicle_number: string }>(
-      db, `SELECT fv.status, fv.vehicle_number FROM fleet_vehicles fv WHERE fv.assigned_unit_id = ?`, unit_id,
-    ).catch(() => null);
-    if (vehicle && (vehicle.status === 'out_of_service' || vehicle.status === 'in_maintenance')) {
-      return c.json({
-        warning: 'vehicle_unavailable',
-        message: `Unit's assigned vehicle (${vehicle.vehicle_number}) is ${vehicle.status}. Override with confirm=1 to proceed.`,
-        code: 'VEHICLE_UNAVAILABLE',
-      }, 409);
+    // Fleet maintenance guard: warn if unit's vehicle is out of service.
+    // Dispatcher can override by sending confirm=1 in the request body.
+    if (!confirmOverride) {
+      const vehicle = await queryFirst<{ status: string; vehicle_number: string }>(
+        db, `SELECT fv.status, fv.vehicle_number FROM fleet_vehicles fv WHERE fv.assigned_unit_id = ?`, unit_id,
+      ).catch(() => null);
+      if (vehicle && (vehicle.status === 'out_of_service' || vehicle.status === 'in_maintenance')) {
+        return c.json({
+          warning: 'vehicle_unavailable',
+          message: `Unit's assigned vehicle (${vehicle.vehicle_number}) is ${vehicle.status}. Override with confirm=1 to proceed.`,
+          code: 'VEHICLE_UNAVAILABLE',
+        }, 409);
+      }
     }
 
     // If the unit is already working a DIFFERENT open call, queue this
@@ -1636,8 +1676,18 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
       }
     }
 
+    // Rebuild unit_call_signs in sync with assigned_unit_ids (C1).
+    let callSigns: string[] = [];
+    try {
+      if (assigned.length > 0) {
+        const unitRows = await queryInChunks<{ id: number; call_sign: string }>(
+          db, assigned, (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`);
+        callSigns = assigned.map((uid) => unitRows.find((u) => u.id === uid)?.call_sign ?? '').filter(Boolean);
+      }
+    } catch { /* best-effort — at minimum keep the ids */ }
+
     await executeBatch(db, [
-      { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', bindings: [JSON.stringify(assigned), id] },
+      { sql: 'UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ? WHERE id = ?', bindings: [JSON.stringify(assigned), JSON.stringify(callSigns), id] },
       { sql: "UPDATE units SET status = 'dispatched', current_call_id = ?, queued_call_ids = '[]' WHERE id = ?", bindings: [parseInt(id, 10), unit_id] },
     ]);
 
@@ -1698,7 +1748,7 @@ calls.post('/:id/assign-unit', requireRole('dispatcher', 'supervisor', 'manager'
           }
         }
       }
-    } catch (err) { console.error('[dispatch] premise auto-push:', err); }
+    } catch (err) { log.error('[dispatch] premise auto-push failed', { callId: id, unit_id }, err as Error); }
 
     return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
   } catch (err) {
@@ -1713,8 +1763,17 @@ calls.post('/:id/unassign-unit', requireRole('dispatcher', 'supervisor', 'manage
     const { unit_id } = await c.req.json<{ unit_id: number }>();
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
+    const assigned = (() => { try { return (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id); } catch { return []; } })();
+    // Rebuild unit_call_signs in sync with updated assigned_unit_ids (C1).
+    let unassignCallSigns: string[] = [];
+    try {
+      if (assigned.length > 0) {
+        const unitRows2 = await queryInChunks<{ id: number; call_sign: string }>(
+          db, assigned, (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`);
+        unassignCallSigns = assigned.map((uid) => unitRows2.find((u) => u.id === uid)?.call_sign ?? '').filter(Boolean);
+      }
+    } catch { /* best-effort */ }
+    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ? WHERE id = ?', JSON.stringify(assigned), JSON.stringify(unassignCallSigns), id);
 
     // If the unit's active call is this one, clear it and promote from queue.
     // If this call was only queued (not active), just remove it from the queue.
@@ -1769,10 +1828,21 @@ calls.post('/:id/dispatch', requireRole('dispatcher', 'supervisor', 'manager', '
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
+    const assigned = new Set((() => { try { return JSON.parse(call.assigned_unit_ids || '[]') as number[]; } catch { return []; } })());
     for (const uid of unit_ids) assigned.add(uid);
 
-    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
+    // Rebuild unit_call_signs in sync with assigned_unit_ids (C1).
+    const assignedArr = [...assigned];
+    let dispatchCallSigns: string[] = [];
+    try {
+      if (assignedArr.length > 0) {
+        const dispUnitRows = await queryInChunks<{ id: number; call_sign: string }>(
+          db, assignedArr, (ph) => `SELECT id, call_sign FROM units WHERE id IN (${ph})`);
+        dispatchCallSigns = assignedArr.map((uid) => dispUnitRows.find((u) => u.id === uid)?.call_sign ?? '').filter(Boolean);
+      }
+    } catch { /* best-effort */ }
+
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, unit_call_signs = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify(assignedArr), JSON.stringify(dispatchCallSigns), id);
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
@@ -1952,19 +2022,22 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
         const units = await queryInChunks<{ call_sign: string }>(db, unitIds, (ph) => `SELECT call_sign FROM units WHERE id IN (${ph})`);
         assignedCallSigns = units.map((u) => u.call_sign).filter(Boolean);
       }
-    } catch (err) { console.error('[redispatch] failed to snapshot assigned units:', err); }
+    } catch (err) { log.error('[redispatch] failed to snapshot assigned units', { callId: id }, err as Error); }
 
     // visit_date is a legacy NOT NULL column (predates the visit_number/
     // status chain-tracking columns added later on this same table) with no
     // default on live D1 — every redispatch INSERT failed against it until
     // this fix (SQLITE_CONSTRAINT_NOTNULL, see error_log id 11-15). Stamped
     // with the current time same as created_at.
+    // visit_history rows always reference the ROOT of the chain so the full
+    // attempt sequence can be read from one call_id. Use rootId, not id
+    // (which points at whatever the current non-root attempt is).
     await execute(db, `
       INSERT INTO call_visit_history
         (call_id, visit_date, visit_number, status, disposition, assigned_units, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
          responding_vehicle_id, starting_mileage, ending_mileage, created_at)
       VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      id, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
+      rootId, currentAttempt, parent.status, parent.disposition ?? null, JSON.stringify(assignedCallSigns),
       parent.dispatched_at ?? null, parent.enroute_at ?? null, parent.onscene_at ?? null, parent.cleared_at ?? null, parent.closed_at ?? null,
       parent.responding_vehicle_id ?? null, parent.starting_mileage ?? null, parent.ending_mileage ?? null);
 
@@ -2078,23 +2151,31 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
     // above) rather than the parent's serve_queue row, since serve_queue is
     // dedup'd per call_id — each visit in the chain gets its own row.
     try {
-      const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
-      const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
-      await execute(db,
-        `INSERT INTO serve_queue (
-           call_id, officer_id, recipient_name, recipient_address,
-           recipient_lat, recipient_lng, document_type, case_number, client_name,
-           priority, status, deadline, service_instructions
-         ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
-        newCallId, userId,
-        mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
-        mergedNew.process_served_address || mergedNew.location_address || null,
-        mergedNew.latitude ?? null, mergedNew.longitude ?? null,
-        mergedNew.process_service_type || mergedNew.pso_service_type || null,
-        mergedNew.case_number || null, mergedNew.client_name || null,
-        mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+      // C5: idempotency guard — never double-insert a serve_queue row for the same call.
+      const existingServeRow = await queryFirst<{ id: number }>(
+        db, "SELECT id FROM serve_queue WHERE call_id = ? AND status IN ('pending','assigned','in_progress') LIMIT 1", newCallId,
       );
-    } catch (err) { console.error('[redispatch] serve_queue link failed:', err); }
+      if (existingServeRow) {
+        log.info('[redispatch] serve_queue row already exists for call (idempotent skip)', { callId: newCallId, queueId: existingServeRow.id });
+      } else {
+        const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
+        const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
+        await execute(db,
+          `INSERT INTO serve_queue (
+             call_id, officer_id, recipient_name, recipient_address,
+             recipient_lat, recipient_lng, document_type, case_number, client_name,
+             priority, status, deadline, service_instructions
+           ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
+          newCallId, userId,
+          mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
+          mergedNew.process_served_address || mergedNew.location_address || null,
+          mergedNew.latitude ?? null, mergedNew.longitude ?? null,
+          mergedNew.process_service_type || mergedNew.pso_service_type || null,
+          mergedNew.case_number || null, mergedNew.client_name || null,
+          mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+        );
+      }
+    } catch (err) { log.error('[redispatch] serve_queue link failed', { callId: newCallId }, err as Error); }
 
     // Copy linked persons/vehicles/businesses from the parent call.
     const linkTables: Array<[string, readonly string[]]> = [
@@ -2170,6 +2251,9 @@ calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'mana
     await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_businesses WHERE call_id = ?', id);
+    // Orphaned serve_queue rows stay in 'pending' forever without this delete
+    // — the Process Server module keeps showing the undone visit as an active job.
+    await execute(db, 'DELETE FROM serve_queue WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service_ext WHERE id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
 

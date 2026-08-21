@@ -25,8 +25,8 @@ import type { EmailMessage, EmailAttachment } from '../types';
 import { stripHtmlForPdf } from './formatters';
 import { parseTimestamp } from './dateUtils';
 import { openPdfBlob } from './openPdfDocument';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
-const RMPG_GOLD = '#d4a017';
 const TEXT_DARK = '#1a1a1a';
 const TEXT_MUTED = '#555555';
 const BORDER = '#9a9a9a';
@@ -159,24 +159,11 @@ export function generateEmailThreadPdf(input: EmailThreadPdfInput): jsPDF {
   // participants/dates row. Empty thread = "(No Subject)".
   const subject = sorted[0]?.subject?.trim() || '(No Subject)';
 
-  // Banner
-  doc.setFillColor(RMPG_GOLD);
-  doc.rect(M, y, W - 2 * M, 28, 'F');
-  doc.setFont('Arial', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(TEXT_DARK);
-  doc.text('EMAIL THREAD TRANSCRIPT', M + 10, y + 19);
-  doc.setFontSize(9);
-  doc.setFont('Arial', 'normal');
-  doc.text(`Generated ${fmtDateTime(new Date().toISOString())}`, W - M - 10, y + 19, { align: 'right' });
-  y += 38;
-
-  // Agency strap
-  doc.setFontSize(9);
-  doc.setTextColor(TEXT_MUTED);
-  doc.text('Rocky Mountain Protective Group  ·  Microsoft 365 Mailbox', M, y);
-  if (exportedBy) doc.text(`Exported by: ${exportedBy}`, W - M, y, { align: 'right' });
-  y += 14;
+  y = drawNavyBanner(doc, {
+    title: 'EMAIL THREAD TRANSCRIPT',
+    subtitle: 'Microsoft 365 Mailbox',
+    rightLine1: `Generated ${fmtDateTime(new Date().toISOString())}`,
+  });
 
   // Subject line (rendered prominently — court packages get filed by it)
   doc.setFont('Arial', 'bold');

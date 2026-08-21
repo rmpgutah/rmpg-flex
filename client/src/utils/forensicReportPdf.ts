@@ -11,6 +11,7 @@ import jsPDF from 'jspdf';
 import { registerArialFont } from './pdf/fonts/registerArial';
 import type { TrackStats } from './dashcamForensics';
 import type { TrackPoint } from './dashcamForensics';
+import { drawNavyBanner } from './pdfStandaloneHeader';
 
 export interface ForensicReportData {
   eventType?: string | null;
@@ -61,11 +62,12 @@ export function exportForensicReport(d: ForensicReportData): void {
   const font = registerArialFont(doc);
   const W = doc.internal.pageSize.getWidth();
   const M = 40;
-  let y = M;
-
-  doc.setFont(font, 'bold'); doc.setFontSize(15); doc.setTextColor(20);
-  doc.text('RMPG FLEX — FORENSIC EVENT REPORT', M, y); y += 18;
-  doc.setDrawColor(GOLD); doc.setLineWidth(1.2); doc.line(M, y, W - M, y); y += 16;
+  let y = drawNavyBanner(doc, {
+    title: `FORENSIC EVENT REPORT${d.device ? ` — ${d.device}` : ''}`,
+    subtitle: 'Forensic Laboratory',
+    rightLine1: d.timestamp || undefined,
+    rightLine2: d.officer ? `Officer: ${d.officer}` : undefined,
+  });
 
   doc.setFont(font, 'normal'); doc.setFontSize(10); doc.setTextColor(40);
   const head = [
