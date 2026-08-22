@@ -6004,9 +6004,9 @@ export default function DispatchPage() {
                             <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
                               <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
                               <div className="flex-1 min-w-0">
-                                <span className="text-rmpg-100">{bolo.description || bolo.notes || '—'}</span>
-                                {bolo.plate_number && <span className="ml-1 text-brand-400">PLT:{bolo.plate_number}</span>}
-                                {bolo.subject_name && <span className="ml-1 text-fg-secondary">{bolo.subject_name}</span>}
+                                <span className="text-rmpg-100">{bolo.title || bolo.description || '—'}</span>
+                                {bolo.vehicle_description && <span className="ml-1 text-brand-400">{bolo.vehicle_description}</span>}
+                                {bolo.subject_description && <span className="ml-1 text-fg-secondary">{bolo.subject_description}</span>}
                               </div>
                             </div>
                           ))}
@@ -6049,9 +6049,9 @@ export default function DispatchPage() {
                                       }}
                                     >
                                       <span className="font-semibold text-amber-400">BOLO</span>
-                                      {' '}{bolo.description || bolo.notes || '—'}
-                                      {bolo.plate_number && <span className="ml-1 text-brand-400 text-[9px]">PLT:{bolo.plate_number}</span>}
-                                      {bolo.subject_name && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_name}</span>}
+                                      {' '}{bolo.title || bolo.description || '—'}
+                                      {bolo.vehicle_description && <span className="ml-1 text-brand-400 text-[9px]">{bolo.vehicle_description}</span>}
+                                      {bolo.subject_description && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_description}</span>}
                                     </button>
                                   ))}
                                 </div>
