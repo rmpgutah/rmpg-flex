@@ -36,6 +36,8 @@ app.get('/health', async (c) => {
 // ── GET /cache/:plate ────────────────────────────────────────────────────────
 app.get('/cache/:plate', async (c) => {
   const plate = c.req.param('plate').trim().toUpperCase();
+  const state = (c.req.query('state') ?? '').trim().toUpperCase();
+  const plateKey = `${plate}|${state}`;
   const row = await queryFirst<{
     plate_number: string;
     state: string | null;
@@ -50,9 +52,9 @@ app.get('/cache/:plate', async (c) => {
   }>(
     c.env.DB,
     'SELECT plate_number, state, vin, make, model, year, trim, color, vehicle_type, enriched_at FROM vehicle_enrichment_cache WHERE plate_key = ?',
-    `${plate}|`,
+    plateKey,
   );
-  if (!row) return c.json({ ok: false, code: 'not_found' }, 404);
+  if (!row) return c.json({ ok: false, cached: false });
   return c.json({ ok: true, cached: row });
 });
 
