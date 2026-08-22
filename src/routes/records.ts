@@ -13,6 +13,7 @@ import { upsertDlRecord } from './dlRecords';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { toDisplayLabel } from '../utils/displayLabel';
+import { decodeVinCached } from '../utils/vinDecoder';
 const records = new Hono<Env>();
 
 // Inline role gate — same pattern as admin.ts. Destructive / chain-of-custody
@@ -1155,11 +1156,29 @@ const VEHICLE_WRITABLE_COLUMNS = new Set([
   'commercial_vehicle', 'hazmat', 'vehicle_use',
   'stolen_status', 'stolen_date', 'recovery_date', 'ncic_entry_number',
   'tow_status', 'tow_company', 'tow_location', 'tow_date',
+  'tow_lot_location', 'tow_release_date', 'tow_release_to', 'tow_reason',
   'title_status', 'exterior_condition', 'interior_condition',
   'estimated_value', 'window_tint', 'modifications', 'equipment_notes',
   'damage_description', 'distinguishing_features',
   'flags', 'notes',
 ]);
+
+// GET /records/vehicles/decode-vin — NHTSA VIN decode with D1 cache.
+// Must be registered BEFORE /vehicles/:id so Hono doesn't interpret
+// 'decode-vin' as an :id param (even though :id is digit-constrained below,
+// this guard is belt-and-suspenders for the POST route above).
+records.get('/vehicles/decode-vin', async (c) => {
+  try {
+    const vin = c.req.query('vin');
+    if (!vin || vin.length !== 17) return c.json({ error: 'Invalid VIN' }, 400);
+    const db = getDb(c.env);
+    const result = await decodeVinCached(db, vin.toUpperCase());
+    return c.json(result);
+  } catch (err) {
+    log.error('GET /vehicles/decode-vin failed', { src: 'src/routes/records.ts' }, err);
+    return c.json({ error: 'VIN decode failed' }, 500);
+  }
+});
 
 // POST /records/vehicles
 records.post('/vehicles', async (c) => {
@@ -1167,6 +1186,14 @@ records.post('/vehicles', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.plate_number) return c.json({ error: 'plate_number required' }, 400);
+    // Duplicate plate detection — same plate+state already on file.
+    const dupCheck = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM vehicles_records WHERE plate_number = ? AND (state = ? OR (state IS NULL AND ? IS NULL)) LIMIT 1',
+      String(body.plate_number),
+      body.state ?? null,
+      body.state ?? null,
+    );
+    if (dupCheck) return c.json({ error: 'duplicate', existing_id: dupCheck.id }, 409);
     const cols: string[] = [];
     const vals: string[] = [];
     const params: unknown[] = [];
@@ -1177,6 +1204,8 @@ records.post('/vehicles', async (c) => {
         vals.push('?');
         if (key === 'commercial_vehicle' || key === 'hazmat') {
           params.push(val ? 1 : 0);
+        } else if (key === 'doors') {
+          params.push(val !== '' && val != null ? parseInt(String(val), 10) : null);
         } else {
           params.push(val ?? null);
         }
@@ -1186,7 +1215,15 @@ records.post('/vehicles', async (c) => {
     vals.push("datetime('now')");
     const result = await execute(db,
       `INSERT INTO vehicles_records (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
-    const vehicle = await queryFirst(db, 'SELECT * FROM vehicles_records WHERE id = ?', Number(result.meta.last_row_id));
+    const newId = Number(result.meta.last_row_id);
+    const vehicle = await queryFirst(db, 'SELECT * FROM vehicles_records WHERE id = ?', newId);
+    // Audit trail — fire-and-forget via recordAudit (which uses waitUntil internally).
+    recordAudit(c, {
+      action: 'create',
+      entityType: 'vehicle',
+      entityId: newId,
+      details: { plate_number: body.plate_number, state: body.state },
+    }).catch(() => {/* never block response */});
     return c.json(vehicle, 201);
   } catch (err) {
     console.error('POST /records/vehicles failed:', err);
@@ -1246,14 +1283,32 @@ records.put('/vehicles/:id', async (c) => {
         cols.push(`${key} = ?`);
         if (key === 'commercial_vehicle' || key === 'hazmat') {
           params.push(val ? 1 : 0);
+        } else if (key === 'doors') {
+          params.push(val !== '' && val != null ? parseInt(String(val), 10) : null);
         } else {
           params.push(val ?? null);
         }
       }
     }
+    // Sync is_stolen INTEGER whenever stolen_status is being written.
+    if ('stolen_status' in body) {
+      const sv = String(body.stolen_status ?? '');
+      const isStolenInt = (sv === 'Stolen' || sv === 'Active') ? 1 : 0;
+      cols.push('is_stolen = ?');
+      params.push(isStolenInt);
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
+    cols.push("updated_at = datetime('now')");
+    const updatedCols = cols.filter(c => c !== "updated_at = datetime('now')");
     await execute(db, `UPDATE vehicles_records SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
+    // Audit trail.
+    recordAudit(c, {
+      action: 'update',
+      entityType: 'vehicle',
+      entityId: Number(id),
+      details: { fields: updatedCols },
+    }).catch(() => {/* never block response */});
     return c.json(updated);
   } catch (err) {
     console.error('PUT /records/vehicles/:id failed:', err);
