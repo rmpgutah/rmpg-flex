@@ -788,6 +788,9 @@ uploads.put('/:fileId/replace', async (c) => {
     if (!blob || blob.size === 0) return c.json({ error: 'No body', code: 'NO_BODY' }, 400);
 
     const buffer = new Uint8Array(await blob.arrayBuffer());
+    // Delete the existing encryption-key row so putEncrypted can insert a fresh
+    // one — the file_encryption_keys table has a UNIQUE index on r2_key.
+    await db.prepare('DELETE FROM file_encryption_keys WHERE r2_key = ?').bind(att.file_path).run();
     await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, buffer, {
       httpMetadata: { contentType: att.mime_type },
     });
