@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { getDecrypted } from '../../utils/encryptedR2';
 import { log } from '../../utils/logger';
@@ -136,6 +137,10 @@ panic.post('/panic', requireRole('officer', 'dispatcher', 'supervisor', 'manager
   // broadcastAll fans to every connected client; the panic_alert type
   // is what voice/tone subscribers listen for.
   broadcastAll('panic_alert', { action: 'panic_activated', panic: created });
+  // Cross-isolate fan-out: broadcastAll only reaches THIS isolate's sockets
+  // (usually none) — AlertHubDO is what every connected console/MDT hears,
+  // and emitting also arms the DO's forced-ack re-broadcast lifecycle.
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_activated', panic: created });
 
   // Push to dispatcher/supervisor roles by user id. We don't have a
   // sendToRole helper in main yet, so do a quick role-scoped lookup.
@@ -239,6 +244,7 @@ panic.post('/panic/:id/acknowledge', requireRole('dispatcher', 'supervisor', 'ma
   }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_acknowledged', panic: updated });
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_acknowledged', panic: updated });
   return c.json(updated);
 });
 
@@ -263,6 +269,7 @@ panic.post('/panic/:id/resolve', requireRole('dispatcher', 'supervisor', 'manage
   }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_resolved', panic: updated });
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
   return c.json(updated);
 });
 
@@ -294,6 +301,7 @@ panic.post('/panic/:id/cancel', async (c) => {
   }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_cancelled', panic: updated });
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_cancelled', panic: updated });
   return c.json(updated);
 });
 
@@ -316,6 +324,7 @@ panic.post('/panic/:id/false-alarm', requireRole('dispatcher', 'supervisor', 'ma
   }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_false_alarm', panic: updated });
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
 });
 
@@ -391,6 +400,7 @@ panic.post('/panic/:id/deactivate', requireRole('manager', 'admin'), async (c) =
   }
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_resolved', panic: updated });
+  await emitAlert(c.env, 'panic_alert', { action: 'panic_resolved', panic: updated });
   return c.json(updated);
 });
 

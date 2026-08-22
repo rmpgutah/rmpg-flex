@@ -573,36 +573,53 @@ async function markClearedWarrants(
   db: D1Database,
   runStartedAt: string,
   runId: string,
+  checkedPersonIds: number[],
 ): Promise<number> {
-  // Identify the rows that are about to clear BEFORE flipping them, so we can
-  // emit a per-warrant notification and archive the canonical record. (A bulk
-  // UPDATE alone loses the identity of what cleared.)
-  const clearing = await query<{
-    person_id: number | null; first_name: string | null; last_name: string | null;
-    utah_person_id: string; utah_warrant_id: string; court_name: string | null;
-    case_id: string | null; charges: string | null; issue_date: string | null;
-  }>(
-    db,
-    `SELECT person_id, first_name, last_name, utah_person_id, utah_warrant_id,
-            court_name, case_id, charges, issue_date
-       FROM utah_warrants
-      WHERE is_active = 1 AND datetime(last_seen_at) < datetime(?)`,
-    runStartedAt,
-  );
-  if (clearing.length === 0) return 0;
+  // SCOPED to the persons this run actually (successfully) checked. Runs are
+  // cursor-sliced (LIMIT max_persons_per_run), so "unseen since run start"
+  // is only meaningful for people whose warrants this run refreshed — an
+  // unscoped sweep after a tail slice cleared LIVE warrants belonging to
+  // everyone in the head slice (their last_seen_at predates this run's
+  // started_at by design). Persons whose fetch errored are excluded too:
+  // their rows weren't refreshed, so "unseen" would be a false clear.
+  if (checkedPersonIds.length === 0) return 0;
+  let clearedTotal = 0;
+  const CHUNK = 90; // stay under D1's 100-bound-parameter cap (+1 for the timestamp)
+  for (let i = 0; i < checkedPersonIds.length; i += CHUNK) {
+    const chunk = checkedPersonIds.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    // Identify the rows that are about to clear BEFORE flipping them, so we can
+    // emit a per-warrant notification and archive the canonical record. (A bulk
+    // UPDATE alone loses the identity of what cleared.)
+    const clearing = await query<{
+      person_id: number | null; first_name: string | null; last_name: string | null;
+      utah_person_id: string; utah_warrant_id: string; court_name: string | null;
+      case_id: string | null; charges: string | null; issue_date: string | null;
+    }>(
+      db,
+      `SELECT person_id, first_name, last_name, utah_person_id, utah_warrant_id,
+              court_name, case_id, charges, issue_date
+         FROM utah_warrants
+        WHERE is_active = 1 AND datetime(last_seen_at) < datetime(?)
+          AND person_id IN (${placeholders})`,
+      runStartedAt, ...chunk,
+    );
+    if (clearing.length === 0) continue;
 
-  // Flip the cache rows inactive — RETAINED, never deleted, so the warrant
-  // survives in our DB after Utah drops it from their public feed.
-  await execute(
-    db,
-    `UPDATE utah_warrants
-        SET is_active = 0
-      WHERE is_active = 1
-        AND datetime(last_seen_at) < datetime(?)`,
-    runStartedAt,
-  );
+    // Flip the cache rows inactive — RETAINED, never deleted, so the warrant
+    // survives in our DB after Utah drops it from their public feed.
+    await execute(
+      db,
+      `UPDATE utah_warrants
+          SET is_active = 0
+        WHERE is_active = 1
+          AND datetime(last_seen_at) < datetime(?)
+          AND person_id IN (${placeholders})`,
+      runStartedAt, ...chunk,
+    );
+    clearedTotal += clearing.length;
 
-  for (const r of clearing) {
+    for (const r of clearing) {
     // Archive the canonical record (if one was auto-created for a confirmed
     // hit). 'recalled' = no longer in force per the source; archived_at marks
     // the soft-archive; the row is RETAINED for the permanent record.
@@ -622,8 +639,9 @@ async function markClearedWarrants(
     }
     // Notification: warrant no longer active on the source DB.
     await logWatchEvent(db, 'warrant_cleared', r, r.person_id, runId);
+    }
   }
-  return clearing.length;
+  return clearedTotal;
 }
 
 /**
@@ -712,9 +730,10 @@ export async function runUtahWarrantScan(
 
   const config = await queryFirst<{
     max_persons_per_run: number | null; persons_cursor_id: number | null; consecutive_errors: number | null;
+    last_run_at: string | null;
   }>(
     db,
-    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors FROM warrant_scraper_config WHERE source_name = ?',
+    'SELECT max_persons_per_run, persons_cursor_id, consecutive_errors, last_run_at FROM warrant_scraper_config WHERE source_name = ?',
     SOURCE_KEY,
   );
   const maxPersonsPerRun = config?.max_persons_per_run ?? DEFAULT_MAX_PERSONS_PER_RUN;
@@ -728,7 +747,18 @@ export async function runUtahWarrantScan(
   // upstream every 4 hours forever. Wire it below (post-run) and gate here:
   // if 5+ consecutive whole-run failures, skip the actual scan (no upstream
   // calls, no rate-budget burn) and report a failed run immediately.
-  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1))) {
+  // Half-open recovery: the skip path below never reaches the post-run config
+  // update (the only place consecutive_errors resets), so a pure streak-count
+  // circuit could NEVER close — a multi-day upstream outage would disable Utah
+  // scanning permanently until someone hand-edited the DB. Allow one probe run
+  // once the last REAL attempt (last_run_at is only written by real runs, not
+  // by these skips) is older than the probe window; a failed probe re-opens
+  // the circuit for another window, a successful one resets the streak to 0.
+  const CIRCUIT_PROBE_WINDOW_MS = 6 * 60 * 60 * 1000;
+  const lastRealRunMs = config?.last_run_at ? Date.parse(config.last_run_at) : 0;
+  const probeAllowed = !Number.isFinite(lastRealRunMs) || lastRealRunMs === 0
+    || Date.now() - lastRealRunMs >= CIRCUIT_PROBE_WINDOW_MS;
+  if (isCircuitOpen(Array(config?.consecutive_errors ?? 0).fill(1)) && !probeAllowed) {
     error_message = `Circuit open after ${config?.consecutive_errors} consecutive failed runs — skipping this scan.`;
     const completed_at = new Date().toISOString();
     await execute(
@@ -817,6 +847,9 @@ export async function runUtahWarrantScan(
         ? 0
         : persons[persons.length - 1].id;
     let lastProcessedId: number | null = null;
+    // Persons whose fetch SUCCEEDED this run — the only population the
+    // cleared-warrant sweep may legally reason about (see markClearedWarrants).
+    const successfullyCheckedIds: number[] = [];
 
     for (const person of persons) {
       // Hard wall-budget guard. Stop BEFORE starting another person (each costs
@@ -841,6 +874,7 @@ export async function runUtahWarrantScan(
           if (isNew) await logWatchEvent(db, 'warrant_found', w, person.id, run_id);
         }
         new_warrants_found += fetched.length;
+        successfullyCheckedIds.push(person.id);
       } catch (err) {
         errors++;
         console.warn(
@@ -871,19 +905,17 @@ export async function runUtahWarrantScan(
       }
     }
 
-    // Sweep: anything whose last_seen_at predates this run is cleared —
-    // archives the canonical record + emits a warrant_cleared notification.
-    //
-    // MUST NOT run on a budget-truncated pass. The sweep's premise is "this run
-    // saw everyone, so anything unseen is gone"; on a partial pass that premise
-    // is false and it would clear live warrants belonging to people we simply
-    // never got to. Skipping it only defers clearing to a pass that completes.
+    // Sweep: warrants belonging to persons THIS RUN successfully checked whose
+    // last_seen_at predates the run are cleared — archives the canonical record
+    // + emits a warrant_cleared notification. Scoping to the checked set makes
+    // the sweep safe on sliced AND budget-truncated passes alike; the old
+    // unscoped sweep ("this run saw everyone") mass-cleared live warrants for
+    // every person outside the current slice.
+    warrants_cleared = await markClearedWarrants(db, started_at, run_id, successfullyCheckedIds);
     if (budgetExhausted) {
       console.warn(
-        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — skipping cleared-warrant sweep, resuming next tick`,
+        `[Utah Warrants] wall budget (${wallBudgetMs}ms) reached after ${persons_checked}/${persons.length} persons — resuming next tick`,
       );
-    } else {
-      warrants_cleared = await markClearedWarrants(db, started_at, run_id);
     }
 
     // Advance the resume cursor so the next run covers a fresh slice of

@@ -489,10 +489,9 @@ units.get('/workload', requireRole('officer', 'dispatcher', 'supervisor', 'manag
     }>(db, `
       SELECT u.id, u.call_sign, u.status,
         te.clock_in
-      FROM dispatch_units u
-      LEFT JOIN time_entries te ON te.user_id = u.user_id
+      FROM units u
+      LEFT JOIN time_entries te ON te.officer_id = u.officer_id
         AND te.clock_out IS NULL
-        AND te.type = 'shift'
       WHERE u.status != 'off_duty'
       ORDER BY u.call_sign ASC
     `);

@@ -55,7 +55,10 @@ subjects.get('/search', async (c) => {
   if (q.length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const like = `%${q}%`;
+  // D1 rejects LIKE patterns over 50 chars ("LIKE pattern too complex"), so the
+  // wildcarded term must stay ≤48 — a longer paste would otherwise throw and the
+  // catch below would silently return no subjects.
+  const like = `%${q.slice(0, 48)}%`;
   const exact = q;
   const prefix = q.toLowerCase();
   const results: SubjectResult[] = [];

@@ -56,7 +56,7 @@ shiftStats.get('/', requireRole('officer', 'dispatcher', 'supervisor', 'manager'
 
     // Active units right now (status = 'available' or on a call)
     const activeUnits = await queryFirst<{ cnt: number }>(db, `
-      SELECT COUNT(*) as cnt FROM dispatch_units WHERE status != 'off_duty'
+      SELECT COUNT(*) as cnt FROM units WHERE status != 'off_duty'
     `);
 
     // Response time from call_response_times table if it exists

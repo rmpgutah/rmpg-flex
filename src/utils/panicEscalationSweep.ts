@@ -23,6 +23,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 import { sendToUser } from '../routes/ws';
+import { emitAlert } from './alertHub';
 
 const MAX_ESCALATION_LEVEL = 10;
 
@@ -34,7 +35,10 @@ interface ActivePanicRow {
   created_at: string;
 }
 
-export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated: number }> {
+export async function sweepPanicEscalation(
+  db: D1Database,
+  env?: { ALERT_HUB?: DurableObjectNamespace },
+): Promise<{ escalated: number }> {
   const rows = await query<ActivePanicRow>(db,
     `SELECT id, user_id, location_address, escalation_level, created_at
      FROM panic_alerts WHERE status = 'active'`);
@@ -54,7 +58,7 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
 
     const nextLevel = row.escalation_level + 1;
     await execute(db,
-      `UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime('now') WHERE id = ? AND status = 'active'`,
+      `UPDATE panic_alerts SET escalation_level = MAX(escalation_level, ?), updated_at = datetime('now') WHERE id = ? AND status = 'active'`,
       nextLevel, row.id);
 
     const payload = {
@@ -65,6 +69,10 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
       location_address: row.location_address,
     };
     for (const t of targets) sendToUser(t.id, 'panic_alert', payload);
+    // sendToUser only reaches sockets in THIS isolate — a cron isolate has
+    // none, so the re-alert was invisible. AlertHubDO is the cross-isolate
+    // fan-out every connected console/MDT actually hears.
+    if (env) await emitAlert(env, 'panic_alert', payload);
     escalated++;
   }
   return { escalated };

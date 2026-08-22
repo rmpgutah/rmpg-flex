@@ -1149,6 +1149,12 @@ export default function DispatchPage() {
   const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
 
   // ── Unit ETA fetch for enroute units (every 30s) ──────────────────────────
+  // Read units through a ref: the effect deliberately doesn't re-run on the
+  // units poll (deps below), so a closure over `units` froze the snapshot from
+  // when the call was selected — a unit going enroute AFTER selection never
+  // matched the filter and its ETA badge never appeared.
+  const unitsRefForEta = useRef(units);
+  unitsRefForEta.current = units;
   useEffect(() => {
     if (!selectedCall?.id) { setUnitEtas({}); return; }
     const callId = selectedCall.id;
@@ -1156,7 +1162,7 @@ export default function DispatchPage() {
 
     const fetchEtas = async () => {
       const enrouteUnits = (selectedCall.assigned_units || []).filter((uid: string) => {
-        const u = units.find((u) => String(u.id) === String(uid));
+        const u = unitsRefForEta.current.find((u) => String(u.id) === String(uid));
         return u?.status === 'enroute';
       });
       if (!enrouteUnits.length) { if (!cancelled) setUnitEtas({}); return; }
@@ -5998,9 +6004,9 @@ export default function DispatchPage() {
                             <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
                               <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
                               <div className="flex-1 min-w-0">
-                                <span className="text-rmpg-100">{bolo.description || bolo.notes || '—'}</span>
-                                {bolo.plate_number && <span className="ml-1 text-brand-400">PLT:{bolo.plate_number}</span>}
-                                {bolo.subject_name && <span className="ml-1 text-rmpg-300">{bolo.subject_name}</span>}
+                                <span className="text-rmpg-100">{bolo.title || bolo.description || '—'}</span>
+                                {bolo.vehicle_description && <span className="ml-1 text-brand-400">{bolo.vehicle_description}</span>}
+                                {bolo.subject_description && <span className="ml-1 text-rmpg-300">{bolo.subject_description}</span>}
                               </div>
                             </div>
                           ))}
@@ -6009,7 +6015,7 @@ export default function DispatchPage() {
                               <input
                                 type="text"
                                 className="input-dark text-xs w-full"
-                                placeholder="Search BOLO by plate or name…"
+                                placeholder="Search BOLO by title, subject, or vehicle…"
                                 value={boloSearchQ}
                                 onChange={(e) => {
                                   setBoloSearchQ(e.target.value);
@@ -6043,9 +6049,9 @@ export default function DispatchPage() {
                                       }}
                                     >
                                       <span className="font-semibold text-amber-400">BOLO</span>
-                                      {' '}{bolo.description || bolo.notes || '—'}
-                                      {bolo.plate_number && <span className="ml-1 text-brand-400 text-[9px]">PLT:{bolo.plate_number}</span>}
-                                      {bolo.subject_name && <span className="ml-1 text-rmpg-400 text-[9px]">{bolo.subject_name}</span>}
+                                      {' '}{bolo.title || bolo.description || '—'}
+                                      {bolo.vehicle_description && <span className="ml-1 text-brand-400 text-[9px]">{bolo.vehicle_description}</span>}
+                                      {bolo.subject_description && <span className="ml-1 text-rmpg-400 text-[9px]">{bolo.subject_description}</span>}
                                     </button>
                                   ))}
                                 </div>

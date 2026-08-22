@@ -175,11 +175,22 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
   }, 5000);
 
   let authed = false;
+  let authInFlight = false;
   let hubSide: WebSocket | null = null;
+  // Frames the client sends between its authenticate frame and the hub bridge
+  // coming up. Without this queue they were silently dropped (the handler is
+  // async — verifyToken + the DO upgrade take real time), and a duplicate
+  // authenticate frame during that window opened a SECOND hub socket that
+  // orphaned the first.
+  const pendingFrames: (string | ArrayBuffer)[] = [];
 
   edgeSide.addEventListener('message', async (event) => {
     if (authed && hubSide) {
       try { hubSide.send(event.data as any); } catch {}
+      return;
+    }
+    if (authInFlight) {
+      pendingFrames.push(event.data as string | ArrayBuffer);
       return;
     }
     let msg: any;
@@ -190,11 +201,14 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     }
     if (msg.type !== 'authenticate' || typeof msg.token !== 'string') return;
 
+    authInFlight = true;
     const user = await verifyToken(msg.token, env);
     if (!user) {
       try { edgeSide.send(JSON.stringify({ type: 'auth_error', message: 'Invalid token' })); } catch {}
       try { edgeSide.close(4002, 'Auth failed'); } catch {}
       clearTimeout(authTimer);
+      authInFlight = false;
+      pendingFrames.length = 0;
       return;
     }
 
@@ -216,11 +230,18 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     const ws = (resp as any).webSocket as WebSocket | null;
     if (!ws) {
       try { edgeSide.close(1011, 'Hub unavailable'); } catch {}
+      authInFlight = false;
+      pendingFrames.length = 0;
       return;
     }
     ws.accept();
     hubSide = ws;
     authed = true;
+    authInFlight = false;
+    // Flush frames the client sent while the bridge was being established.
+    for (const frame of pendingFrames.splice(0)) {
+      try { ws.send(frame as any); } catch {}
+    }
 
     ws.addEventListener('message', (e) => {
       try { edgeSide.send((e as MessageEvent).data as any); } catch {}
