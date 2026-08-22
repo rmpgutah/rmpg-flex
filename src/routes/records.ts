@@ -261,6 +261,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'date_last_seen', 'location_last_seen', 'alias_dob',
   'watchlist_match', 'watchlist_checked_at',
   'voice_description', 'religion', 'dietary_restrictions',
+  'blood_type',
 ]);
 
 // Overflow columns. `persons` is at the D1 100-column SELECT-result cap, so these
