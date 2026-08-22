@@ -633,6 +633,10 @@ export default function FleetPage() {
         vehicle={selectedVehicle}
         isOpen={showPretripModal}
         onClose={() => setShowPretripModal(false)}
+        onSaved={() => {
+          if (selectedId != null) fetchDetail(selectedId);
+          fetchVehicles({ silent: true });
+        }}
       />
 
       {/* ── Cost/mile popover ── */}
