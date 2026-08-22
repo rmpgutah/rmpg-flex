@@ -11,6 +11,9 @@ export interface VehicleEnrichData {
   trim?: string | null;
   body_style?: string | null;
   vehicle_type?: string | null;
+  /** Plate identity fields for passing through to upsertVehicleFromCarxe. */
+  plate_number?: string | null;
+  state?: string | null;
 }
 
 export interface EnrichmentResult {
@@ -19,6 +22,8 @@ export interface EnrichmentResult {
   data: VehicleEnrichData;
   stepsRun: ('plateToVin' | 'decodeVin' | 'decodePlate')[];
   stepErrors: Record<string, string>;
+  /** VIN resolved during enrichment, if any. */
+  vin?: string;
 }
 
 export class VehicleEnrichConfigError extends Error {
@@ -46,5 +51,12 @@ export class VehicleEnrichHttpError extends Error {
     message: string,
   ) {
     super(`${step} HTTP ${status}: ${message}`);
+  }
+}
+
+export class VehicleEnrichRateLimitError extends Error {
+  readonly name = 'VehicleEnrichRateLimitError';
+  constructor(public readonly api: string) {
+    super(`Rate limit reached for API: ${api}`);
   }
 }

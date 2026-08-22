@@ -3,6 +3,7 @@ import {
   VehicleEnrichConfigError,
   VehicleEnrichTimeoutError,
   VehicleEnrichHttpError,
+  VehicleEnrichRateLimitError,
 } from '../src/utils/vehicleEnrichment/types';
 
 describe('VehicleEnrich error types', () => {
@@ -27,5 +28,12 @@ describe('VehicleEnrich error types', () => {
     expect(err.name).toBe('VehicleEnrichHttpError');
     expect(err.step).toBe('decodeVin');
     expect(err.status).toBe(429);
+  });
+
+  it('VehicleEnrichRateLimitError is an Error with correct name and api field', () => {
+    const err = new VehicleEnrichRateLimitError('plateToVin');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('VehicleEnrichRateLimitError');
+    expect(err.api).toBe('plateToVin');
   });
 });
