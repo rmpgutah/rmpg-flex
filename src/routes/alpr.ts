@@ -237,7 +237,7 @@ function collectParameters(form: FormData): AlprParameters {
  *  record; creates a new one otherwise. Returns null for a plate-less vehicle. */
 async function upsertVehicleRecord(
   db: ReturnType<typeof getDb>, v: AlprVehicle, existingId: number | null,
-): Promise<{ id: number; created: boolean } | null> {
+): Promise<{ id: number; created: boolean; vin: string | null } | null> {
   if (!v.plate || v.plate.length < 2) return null;
   if (existingId) {
     try {
@@ -250,13 +250,14 @@ async function upsertVehicleRecord(
          WHERE id = ?`,
         v.make, v.model, v.color, v.year, v.state, v.vehicleType, v.plateType, existingId);
     } catch (err: any) { console.error('[alpr] vehicle enrich failed:', err?.message); }
-    return { id: existingId, created: false };
+    const existing = await queryFirst<{ vin: string | null }>(db, `SELECT vin FROM vehicles_records WHERE id = ?`, existingId);
+    return { id: existingId, created: false, vin: existing?.vin ?? null };
   }
   const r = await execute(db,
     `INSERT INTO vehicles_records (plate_number, state, make, model, year, color, body_style, plate_type, notes, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
     v.plate, v.state, v.make, v.model, v.year, v.color, v.vehicleType, v.plateType, 'Created from ALPR capture');
-  return { id: Number(r.meta.last_row_id), created: true };
+  return { id: Number(r.meta.last_row_id), created: true, vin: null };
 }
 
 /** Map a Cloudflare Workers AI plate read into the AlprVehicle shape the record
@@ -373,10 +374,10 @@ async function finalizeCapture(
       // Auto-trigger enrichment for newly created records.  Workers AI reads
       // never produce a VIN, so every new row from this path is VIN-less.
       // Fire-and-forget via waitUntil — never delays the response.
-      if (up?.created && plate && executionCtx) {
+      if (up?.created && !up.vin && plate && executionCtx) {
         executionCtx.waitUntil(
           enrichVehicleRecord(plate, read.state ?? '', db, env, executionCtx as ExecutionContext)
-            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err?.message })),
+            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err?.message, stack: err?.stack })),
         );
       }
       if (recordId && args.callId != null) {
