@@ -27,9 +27,10 @@ interface Props {
   vehicle: FleetVehicle | null;
   isOpen: boolean;
   onClose: () => void;
+  onSaved?: () => void;
 }
 
-export default function FleetPretripModal({ vehicle, isOpen, onClose }: Props) {
+export default function FleetPretripModal({ vehicle, isOpen, onClose, onSaved }: Props) {
   const { addToast } = useToast();
   const titleId = useId();
   const firstItemRef = useRef<HTMLInputElement | null>(null);
@@ -60,11 +61,12 @@ export default function FleetPretripModal({ vehicle, isOpen, onClose }: Props) {
         result.overall_pass ? 'success' : 'error',
       );
       setForm({ ...PRETRIP_DEFAULTS, notes: '' } as PretripForm);
+      onSaved?.();
       onClose();
     } catch (err: unknown) {
       addToast((err as Error)?.message || 'Failed to submit pre-trip', 'error');
     } finally { setSaving(false); }
-  }, [vehicle, form, addToast, onClose]);
+  }, [vehicle, form, addToast, onClose, onSaved]);
 
   useEffect(() => {
     if (isOpen) firstItemRef.current?.focus();
