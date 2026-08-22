@@ -513,27 +513,29 @@ geography.get('/beat-coverage', requireRole('officer', 'dispatcher', 'supervisor
        WHERE status NOT IN ('off_duty','out_of_service')
        GROUP BY assigned_beat`,
     );
-    // Active call counts per beat (zone/beat stored on the call)
+    // Active call counts per beat. CFS geography columns are beat_id /
+    // zone_beat / zone_name (there is no `beat` or `zone` column).
     const callRows = await query<{ beat: string; call_count_active: number }>(
       db,
       `SELECT
-         COALESCE(beat, zone, 'Unzoned') AS beat,
+         COALESCE(beat_id, zone_beat, zone_name, 'Unzoned') AS beat,
          COUNT(*) AS call_count_active
        FROM calls_for_service
        WHERE COALESCE(status,'') NOT IN ('closed','cleared','cancelled','canceled','archived','completed')
        GROUP BY beat`,
     );
-    // Avg response time per beat in last 24 h (dispatch_time → on_scene_time)
+    // Avg response time per beat in last 24 h (dispatched_at → onscene_at;
+    // there are no dispatch_time / on_scene_time columns).
     const respRows = await query<{ beat: string; avg_response_time_24h: number | null }>(
       db,
       `SELECT
-         COALESCE(beat, zone, 'Unzoned') AS beat,
+         COALESCE(beat_id, zone_beat, zone_name, 'Unzoned') AS beat,
          AVG(
-           (julianday(on_scene_time) - julianday(dispatch_time)) * 1440
+           (julianday(onscene_at) - julianday(dispatched_at)) * 1440
          ) AS avg_response_time_24h
        FROM calls_for_service
-       WHERE on_scene_time IS NOT NULL
-         AND dispatch_time IS NOT NULL
+       WHERE onscene_at IS NOT NULL
+         AND dispatched_at IS NOT NULL
          AND created_at >= datetime('now', '-24 hours')
        GROUP BY beat`,
     );

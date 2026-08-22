@@ -17,8 +17,18 @@ interface IncidentTypeRow {
   count: number;
 }
 
+// Endpoint returns an envelope, not a bare array.
+interface IncidentTypesResponse {
+  ok?: boolean;
+  days?: number;
+  total_calls?: number;
+  incident_types: IncidentTypeRow[];
+}
+
 const BAR_COLOR = 'var(--accent-silver-400, #8fa3b8)';
-const BAR_ACTIVE_COLOR = 'var(--accent-gold-300, #d9bd72)';
+// Hover accent stays silver — gold is reserved for field labels /
+// panel headers only per the theme policy.
+const BAR_ACTIVE_COLOR = 'var(--accent-silver-300, #c3ccd6)';
 const CHART_HEIGHT = 80;
 const MAX_BARS = 8;
 const DAYS = 7;
@@ -33,9 +43,10 @@ export default function IncidentTypeChart() {
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    apiFetch<IncidentTypeRow[]>(`/dispatch/analytics/incident-types?days=${DAYS}`)
+    apiFetch<IncidentTypesResponse>(`/dispatch/analytics/incident-types?days=${DAYS}`)
       .then((data) => {
-        const sorted = (Array.isArray(data) ? data : [])
+        const list = Array.isArray(data?.incident_types) ? data.incident_types : [];
+        const sorted = list
           .slice()
           .sort((a, b) => b.count - a.count)
           .slice(0, MAX_BARS)

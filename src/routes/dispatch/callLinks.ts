@@ -182,9 +182,11 @@ links.post('/calls/:id/persons', requireRole('officer', 'dispatcher', 'superviso
       issued_date: string | null;
     }>(
       db,
-      `SELECT id AS warrant_id, charge, status, issued_date
+      `SELECT id AS warrant_id,
+              COALESCE(charge_description, offense_description, offense) AS charge,
+              status, issued_date
        FROM warrants
-       WHERE subject_person_id = ? AND status = 'active'
+       WHERE subject_person_id = ? AND LOWER(COALESCE(status,'')) IN ('active','outstanding')
        ORDER BY issued_date DESC LIMIT 20`,
       body.person_id,
     );

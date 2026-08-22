@@ -42,7 +42,10 @@ function formatCallDuration(createdAt: string, status?: string, archivedAt?: str
   // isActiveStatus already treats cleared as inactive; without it a cleared
   // call's duration ticked up forever.
   if (status && ['archived', 'closed', 'cancelled', 'cleared'].includes(status)) {
-    const endTime = archivedAt || createdAt;
+    // No terminal timestamp at all (e.g. a cancelled call that was never
+    // archived/cleared/closed) — showing "0:00" would misreport the lifespan.
+    if (!archivedAt) return '—';
+    const endTime = archivedAt;
     const start = parseTimestamp(createdAt).getTime();
     const end = parseTimestamp(endTime).getTime();
     const elapsed = end - start;
