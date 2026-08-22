@@ -34,8 +34,12 @@ import { estimateEta } from './eta';
 import { withUniqueRetry } from './serveIntakeRecords';
 import { CLOSED_CALL_STATUSES } from './callStatus';
 
-// Statuses that mean a unit is not currently working.
-const OFF_DUTY_UNIT_STATUSES = ['off_duty', 'offline', 'out_of_service', 'oos', 'unavailable'];
+// Statuses that mean a unit is not currently working. Mirrors the canonical
+// set (VALID_UNIT_STATUSES in extensions.ts:483, and gps.ts:64's own mirror
+// comment) — 'offline'/'oos'/'unavailable' can never appear in units.status
+// and were dead entries that gave a false sense of coverage while silently
+// drifted from the real enum. Keep these three copies in sync.
+const OFF_DUTY_UNIT_STATUSES = ['off_duty', 'out_of_service'];
 
 async function safe<T>(p: Promise<T[]>): Promise<T[]> {
   try { return await p; } catch (err) {

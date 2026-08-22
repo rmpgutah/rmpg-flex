@@ -851,6 +851,10 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
   'body_camera_active', 'photos_taken', 'trespass_issued',
   'vehicle_pursuit', 'foot_pursuit', 'pinned',
+  // geography — submitted by NewCallModal and the edit panel but were
+  // missing from both column sets so every area_code/area_name edit was
+  // silently dropped into the skipped[] bucket and never written
+  'area_code', 'area_name',
 ]);
 
 // PUT /dispatch/calls/:id - Update call
@@ -868,7 +872,7 @@ calls.put('/:id', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), a
     const extParams: unknown[] = [];
     const skipped: string[] = [];
 
-    const VALID_CALL_STATUSES = new Set(['pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','merged','split']);
+    const VALID_CALL_STATUSES = new Set(['pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived','merged','split','on_hold']);
     for (const [key, val] of Object.entries(body)) {
       if (key === 'status' && val != null && !VALID_CALL_STATUSES.has(String(val))) {
         return c.json({ error: `Invalid status '${val}'`, code: 'INVALID_STATUS' }, 400);

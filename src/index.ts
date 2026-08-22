@@ -22,7 +22,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { jsonBodyGuard } from './middleware/jsonBodyGuard';
 import { apiRateLimit } from './middleware/rateLimit';
-import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { handleWebSocket, sendToUser } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -36,6 +36,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 import { log, logErrorToDb } from './utils/logger';
+import { emitAlert } from './utils/alertHub';
 import { initTursoSingleton } from './utils/tursoClient';
 
 // Export Durable Object classes so wrangler can find them at build time.
@@ -199,9 +200,31 @@ app.post('/__welfare-fire', async (c) => {
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // broadcastAll only reaches sockets held by THIS isolate's in-memory map —
+    // the live /api/ws client connects to a different (legacy) worker, so that
+    // map is always empty here. And even if delivery worked, the client hooks
+    // (useDispatchVoiceAlerts.ts, useDispatchVoice.ts) subscribe to the
+    // DISCRETE alert type 'welfare_alert', not to 'dispatch_update' with an
+    // action field — so this Stage-2 escalation reached no dispatcher at all.
+    // emitAlert delivers via AlertHubDO under the exact type the client
+    // filters on, matching the already-correct pattern in routes/welfare.ts.
+    await emitAlert(c.env, 'welfare_alert', {
+      action: 'welfare_alert',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    await emitAlert(c.env, 'welfare_emergency', {
+      action: 'welfare_emergency',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      call_id: watch.call_id,
+      call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
