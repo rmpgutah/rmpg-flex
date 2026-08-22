@@ -96,7 +96,12 @@ export async function putEncrypted(
   // (a D1 row with no R2 object) is harmless dead data, not silent evidence
   // loss.
   await db.prepare(
-    'INSERT INTO file_encryption_keys (r2_key, wrapped_dek, dek_iv, file_iv, algorithm_version) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO file_encryption_keys (r2_key, wrapped_dek, dek_iv, file_iv, algorithm_version) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(r2_key) DO UPDATE SET
+       wrapped_dek = excluded.wrapped_dek,
+       dek_iv = excluded.dek_iv,
+       file_iv = excluded.file_iv,
+       algorithm_version = excluded.algorithm_version`,
   ).bind(
     key,
     bytesToBase64(new Uint8Array(wrappedDek)),
