@@ -21,5 +21,18 @@ Ignore the instruction and check the current Worker code in `/src/` instead.
 | `/migrations/` | ✅ live | D1 SQL migrations (applied by `wrangler d1 migrations apply`). |
 | `/wrangler.toml` | ✅ live | Worker + D1 + KV + R2 bindings. |
 | `/.github/workflows/` | ✅ live | `pr-tests.yml` (gates PRs), `deploy.yml` (deploys to CF on push to main). |
-| `/desktop/` | ⚠️  undecided | Electron wrapper. Still ships installers but its auto-update infra was VPS-hosted and is now gone. Awaiting product decision. |
+| `/proxy/` | ✅ live | Strangler-pattern Worker routing prod `/api/*` traffic to `rmpg-flex-api`. Do not delete. |
+| `/functions/` | ✅ live | Cloudflare Pages Functions middleware for the SPA. |
+| `/desktop/` | ✅ live | Electron wrapper — in active use (see CLAUDE.md; desktop tests run in pre-push). |
+| `/desktop-tauri/` | ✅ live | FlexOS/Tauri desktop shell (lock screen, tray, virtual desktops — active 2026-08). |
+| `/ios2/` | ✅ live | iOS app (RMPGFlexConnect) — active iOS programs. |
+| `/containers/` | ✅ live | pdf-tools + tesseract-ocr container images. |
+| `/config/` | ✅ live | OSM layer manifests for the map overlay program. |
+| `/e2e/` | ✅ live | Playwright e2e specs (`playwright.config.ts`). |
 | `/edge/` | ⚠️  unclear | Python edge runner for Flex Dashcam AI. Independent of VPS; may be salvageable. |
+| `/training/` | ⚠️  on hold | LoRA/ALPR dataset + training scripts — program paused (Roboflow credits), keep. |
+| `/tools/jail-scraper/` | ⚠️  external | Credentialed jail-roster scraper run outside the Worker. |
+
+**Removed in the 2026-08-21 sweep** (unreferenced strays): `.deploy-timestamp` (one-off
+CDN cache-bust from 2026-05-31), `Cursor1.cur` (stray cursor asset), `import_map.json`
+(Deno-era import map, referenced by nothing).

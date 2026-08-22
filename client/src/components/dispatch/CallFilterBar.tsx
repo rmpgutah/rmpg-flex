@@ -36,7 +36,7 @@ export default function CallFilterBar({ active, onChange, myBeat }: CallFilterBa
             className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition-colors rounded-sm ${
               isActive
                 ? 'bg-rmpg-600 text-rmpg-100'
-                : 'text-rmpg-400 hover:text-rmpg-200 hover:bg-surface-raised'
+                : 'text-fg-muted hover:text-rmpg-200 hover:bg-surface-raised'
             }`}
             aria-pressed={isActive}
           >

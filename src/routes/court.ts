@@ -117,7 +117,8 @@ ct.get('/events', async (c) => {
   if (to) { where.push('event_date <= ?'); args.push(to); }
   if (search) {
     where.push('(defendant_name LIKE ? OR court_case_number LIKE ? OR event_number LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM court_events ${whereSql}`, ...args);

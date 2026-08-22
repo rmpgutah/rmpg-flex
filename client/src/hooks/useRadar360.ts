@@ -43,6 +43,8 @@ export interface UseRadar360Options {
   lat: number | null;
   lng: number | null;
   radiusMi?: number;
+  /** Optional call ID to associate with signal scans. */
+  callId?: number | null;
   /** Auto-refresh interval in ms. Default 30 s. Pass 0 to disable. */
   refreshMs?: number;
 }
@@ -65,6 +67,10 @@ export interface UseRadar360Result {
   filtered: RadarContact[];
   radiusMi: number;
   setRadiusMi: (v: number) => void;
+  /** Pass-through for signals panel (center coordinate + call context). */
+  lat: number | null;
+  lng: number | null;
+  callId?: number | null;
 }
 
 const ALL_KINDS: ContactKind[] = ['call', 'person', 'vehicle', 'unit', 'incident'];
@@ -74,6 +80,7 @@ export function useRadar360({
   lat,
   lng,
   radiusMi: radiusProp = 1,
+  callId = null,
   refreshMs = REFRESH_MS_DEFAULT,
 }: UseRadar360Options): UseRadar360Result {
   const [contacts, setContacts] = useState<RadarContact[]>([]);
@@ -155,5 +162,8 @@ export function useRadar360({
     filtered,
     radiusMi,
     setRadiusMi,
+    lat,
+    lng,
+    callId,
   };
 }

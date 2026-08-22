@@ -16,11 +16,14 @@ const BC_SOURCE = 'rmpg-beat-coverage';
 const BC_FILL_LAYER = 'beat-coverage-fill';
 const BC_LINE_LAYER = 'beat-coverage-line';
 
+// Matches the /dispatch/geography/beat-coverage response rows:
+// { beat, unit_count, call_count_active, avg_response_time_24h, coverage_status }
 export interface BeatCoverageRow {
-  beat_id: string;
-  beat?: string;
-  status: 'covered' | 'undermanned' | 'uncovered';
+  beat: string;
+  coverage_status: 'covered' | 'undermanned' | 'uncovered';
   unit_count?: number;
+  call_count_active?: number;
+  avg_response_time_24h?: number | null;
 }
 
 export interface UseBeatCoverageResult {
@@ -51,13 +54,18 @@ function buildCoverageExpression(coverage: BeatCoverageRow[]): mapboxgl.Expressi
   // mapboxgl.ExpressionSpecification[] can't be typed narrowly here, so we use
   // a plain string[] and cast at the return site.
   const pairs: string[] = [];
+  const seen = new Set<string>();
   for (const row of coverage) {
-    const beatId = row.beat_id ?? row.beat;
-    const color = STATUS_COLORS[row.status] ?? STATUS_COLORS.uncovered;
-    if (beatId) {
+    const beatId = row.beat;
+    const color = STATUS_COLORS[row.coverage_status] ?? STATUS_COLORS.uncovered;
+    if (beatId && !seen.has(beatId)) {
+      seen.add(beatId);
       pairs.push(beatId, color);
     }
   }
+  // A 'match' expression with zero branches is invalid Mapbox syntax —
+  // fall back to a plain color when we have no coverage rows.
+  if (!pairs.length) return STATUS_COLORS.uncovered as unknown as mapboxgl.Expression;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return ['match', ['coalesce', ['get', 'beat'], ['get', 'BEAT'], ['get', 'beat_id'], ''], ...pairs, STATUS_COLORS.uncovered] as any as mapboxgl.Expression;
 }
@@ -105,10 +113,22 @@ export function useBeatCoverage(
       return;
     }
 
+    let disposed = false;
     whenStyleReady(map, () => {
-      if (!hasSource(map, BC_SOURCE)) {
+      // The queued callback can fire after this effect run has been cleaned
+      // up (whenStyleReady can't be cancelled) — bail instead of re-adding a
+      // stale source/expression that the newer run's hasSource guard would
+      // then skip over.
+      if (disposed) return;
+      const colorExpr = buildCoverageExpression(coverage);
+      if (hasSource(map, BC_SOURCE)) {
+        // Source already present (coverage refresh): update paint in place.
+        if (map.getLayer(BC_FILL_LAYER)) map.setPaintProperty(BC_FILL_LAYER, 'fill-color', colorExpr);
+        if (map.getLayer(BC_LINE_LAYER)) map.setPaintProperty(BC_LINE_LAYER, 'line-color', colorExpr);
+        return;
+      }
+      {
         map.addSource(BC_SOURCE, { type: 'geojson', data: beatGeoJSON });
-        const colorExpr = buildCoverageExpression(coverage);
         map.addLayer({
           id: BC_FILL_LAYER,
           type: 'fill',
@@ -132,6 +152,7 @@ export function useBeatCoverage(
     });
 
     return () => {
+      disposed = true;
       safeRemoveLayer(map, BC_LINE_LAYER);
       safeRemoveLayer(map, BC_FILL_LAYER);
       safeRemoveSource(map, BC_SOURCE);

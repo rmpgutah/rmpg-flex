@@ -61,14 +61,14 @@ export default function ActivityFeed({ isOpen, onClose }: ActivityFeedProps) {
         className="flex items-center justify-between px-2 py-1 border-b border-[var(--spm-border)] flex-shrink-0"
         style={{ background: 'var(--surface-sunken)' }}
       >
-        <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-400 flex items-center gap-1">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-fg-muted flex items-center gap-1">
           <Activity className="w-3 h-3" /> Activity
         </span>
         <button
           type="button"
           aria-label="Close activity feed"
           onClick={onClose}
-          className="text-rmpg-500 hover:text-rmpg-200 transition-colors"
+          className="text-fg-muted hover:text-rmpg-200 transition-colors"
         >
           <X className="w-3 h-3" />
         </button>
@@ -76,7 +76,7 @@ export default function ActivityFeed({ isOpen, onClose }: ActivityFeedProps) {
       {/* Feed */}
       <div className="flex-1 overflow-y-auto scrollbar-dark">
         {entries.length === 0 ? (
-          <div className="p-3 text-[9px] text-rmpg-500 italic text-center">No recent activity</div>
+          <div className="p-3 text-[9px] text-fg-muted italic text-center">No recent activity</div>
         ) : (
           entries.map((entry, i) => {
             const Icon = entryIcon(entry);
@@ -88,13 +88,13 @@ export default function ActivityFeed({ isOpen, onClose }: ActivityFeedProps) {
                 key={entry.id ?? i}
                 className="flex items-start gap-1.5 px-2 py-1.5 border-b border-[var(--spm-border)] hover:bg-surface-raised transition-colors"
               >
-                <Icon className="w-3 h-3 mt-0.5 flex-shrink-0 text-rmpg-500" aria-hidden="true" />
+                <Icon className="w-3 h-3 mt-0.5 flex-shrink-0 text-fg-muted" aria-hidden="true" />
                 <div className="min-w-0">
                   <div className="text-[9px] text-rmpg-200 truncate capitalize">{label}</div>
                   {entry.user_name && (
-                    <div className="text-[8px] text-rmpg-500 truncate">{entry.user_name}</div>
+                    <div className="text-[8px] text-fg-muted truncate">{entry.user_name}</div>
                   )}
-                  <div className="text-[8px] text-rmpg-600 tabular-nums">
+                  <div className="text-[8px] text-fg-muted tabular-nums">
                     {timeAgo(entry.created_at)}
                   </div>
                 </div>

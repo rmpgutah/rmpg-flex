@@ -607,11 +607,12 @@ personnel.get('/schedules', async (c) => {
     // Backfill missing officer_name in one query rather than N lookups.
     const needsName = expanded.filter(r => !r.officer_name);
     if (needsName.length > 0 && officerIds.size > 0) {
-      const placeholders = Array.from(officerIds).map(() => '?').join(',');
-      const users = await query<{ id: number; full_name: string; badge_number: string | null }>(
+      // officerIds is already a Set (deduped); chunk the IN-list so >100 ids
+      // can't blow D1's 100-bound-parameter cap.
+      const users = await queryInChunks<{ id: number; full_name: string; badge_number: string | null }>(
         db,
-        `SELECT id, full_name, badge_number FROM users WHERE id IN (${placeholders})`,
-        ...Array.from(officerIds)
+        Array.from(officerIds),
+        (placeholders) => `SELECT id, full_name, badge_number FROM users WHERE id IN (${placeholders})`,
       );
       const nameById = new Map(users.map(u => [u.id, u.full_name]));
       for (const r of needsName) {
@@ -1385,11 +1386,11 @@ personnel.get('/coverage-gaps', async (c) => {
     }
     const missingNameIds = Array.from(allPropertyIds).filter(pid => pid && !propertyById.get(pid));
     if (missingNameIds.length > 0) {
-      const placeholders = missingNameIds.map(() => '?').join(',');
-      const rows = await query<{ id: number; name: string }>(
+      // Dedupe + chunk so >100 property ids can't blow D1's 100-bound-parameter cap.
+      const rows = await queryInChunks<{ id: number; name: string }>(
         db,
-        `SELECT id, name FROM properties WHERE id IN (${placeholders})`,
-        ...missingNameIds
+        Array.from(new Set(missingNameIds)),
+        (placeholders) => `SELECT id, name FROM properties WHERE id IN (${placeholders})`,
       );
       for (const r of rows) propertyById.set(String(r.id), r.name);
     }

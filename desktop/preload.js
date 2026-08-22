@@ -133,6 +133,8 @@ contextBridge.exposeInMainWorld('electron', {
   getAutoLaunchState: () => ipcRenderer.invoke('device:auto-launch-state'),
   setKioskShell: (enabled) => ipcRenderer.invoke('device:set-kiosk-shell', enabled),
   getKioskShellState: () => ipcRenderer.invoke('device:kiosk-shell-state'),
+  /** Run a passive WiFi + Bluetooth RF scan. opts: { lat, lng, deviceId, callId } */
+  rfScan: (opts) => ipcRenderer.invoke('device:rf-scan', opts ?? {}),
   registerGlobalShortcut: (accelerator, actionId) => ipcRenderer.invoke('device:register-shortcut', accelerator, actionId),
   unregisterGlobalShortcut: (accelerator) => ipcRenderer.invoke('device:unregister-shortcut', accelerator),
   onShortcutTriggered: (callback) => {

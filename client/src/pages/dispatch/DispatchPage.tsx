@@ -2023,7 +2023,7 @@ export default function DispatchPage() {
     if (quickFilter === 'pending') return call.status === 'pending';
     if (quickFilter === 'dispatched') return call.status === 'dispatched';
     if (quickFilter === 'onscene') return call.status === 'onscene';
-    if (quickFilter === 'mybeat') return !!(user as any)?.beat_id && call.beat_id === (user as any).beat_id;
+    if (quickFilter === 'mybeat') return !!(user as any)?.beat_id && String(call.beat_id ?? '') === String((user as any).beat_id);
     return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
@@ -3695,7 +3695,7 @@ export default function DispatchPage() {
         {duplicateWarning && (
           <div
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
-            style={{ background: 'rgb(234 179 8 / 0.18)', border: '1px solid rgb(234 179 8 / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
             role="alert"
           >
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -5993,20 +5993,20 @@ export default function DispatchPage() {
                             </span>
                             <button
                               type="button"
-                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-400"
                               onClick={() => setShowBoloSearch((v) => !v)}
                             >
                               {showBoloSearch ? 'Cancel' : 'Link BOLO'}
                             </button>
                           </div>
-                          {bolosLoading && <span className="text-[9px] text-rmpg-500 italic">Loading…</span>}
+                          {bolosLoading && <span className="text-[9px] text-fg-muted italic">Loading…</span>}
                           {callBolos.map((bolo: any) => (
                             <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
                               <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
                               <div className="flex-1 min-w-0">
                                 <span className="text-rmpg-100">{bolo.title || bolo.description || '—'}</span>
                                 {bolo.vehicle_description && <span className="ml-1 text-brand-400">{bolo.vehicle_description}</span>}
-                                {bolo.subject_description && <span className="ml-1 text-rmpg-300">{bolo.subject_description}</span>}
+                                {bolo.subject_description && <span className="ml-1 text-fg-secondary">{bolo.subject_description}</span>}
                               </div>
                             </div>
                           ))}
@@ -6051,7 +6051,7 @@ export default function DispatchPage() {
                                       <span className="font-semibold text-amber-400">BOLO</span>
                                       {' '}{bolo.title || bolo.description || '—'}
                                       {bolo.vehicle_description && <span className="ml-1 text-brand-400 text-[9px]">{bolo.vehicle_description}</span>}
-                                      {bolo.subject_description && <span className="ml-1 text-rmpg-400 text-[9px]">{bolo.subject_description}</span>}
+                                      {bolo.subject_description && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_description}</span>}
                                     </button>
                                   ))}
                                 </div>
