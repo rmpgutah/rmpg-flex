@@ -25,7 +25,7 @@ import type { UploadProgress, EvidenceMeta } from '../hooks/useApi';
 import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { stampPhoto, getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
+import { getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
 
 interface Attachment {
   id: number;
@@ -51,12 +51,10 @@ interface FileAttachmentsProps {
   entityId: string | number;
   readOnly?: boolean;
   compact?: boolean;
-  /** Override the burned-in photo-context label (else derived from entityType). */
+  /** Context label shown in the evidence overlay reference line. */
   photoContext?: string;
-  /** Case/incident number woven into the stamp for evidence photos. */
+  /** Case/incident number shown in the evidence overlay reference line. */
   caseNumber?: string;
-  /** Disable the forensic photo stamp for this surface (default: on). */
-  disablePhotoStamp?: boolean;
 }
 
 const TOKEN_KEY = 'rmpg_token';
@@ -426,7 +424,6 @@ export default function FileAttachments({
   compact = false,
   photoContext,
   caseNumber,
-  disablePhotoStamp = false,
 }: FileAttachmentsProps) {
   const { user } = useAuth();
   const canEditMeta = user?.role === 'admin' || user?.role === 'manager';
@@ -471,19 +468,6 @@ export default function FileAttachments({
     let geo: { lat: number; lon: number } | null = null;
     try { geo = await getGeoFix(); } catch { /* none */ }
     const takenAt = new Date().toISOString();
-
-    // Forensic photo stamp — burns metadata into pixels
-    if (!disablePhotoStamp && fileArray.some(f => f.type.startsWith('image/'))) {
-      try {
-        const context = photoContext || contextLabelForEntity(entityType, caseNumber);
-        const officerLast = (user?.last_name || user?.full_name?.split(' ').slice(-1)[0] || user?.username || '').trim();
-        fileArray = await Promise.all(fileArray.map(f =>
-          f.type.startsWith('image/')
-            ? stampPhoto(f, { officerLast, badge: user?.badge_number, context, lat: geo?.lat, lon: geo?.lon })
-            : Promise.resolve(f),
-        ));
-      } catch { /* leave files unstamped */ }
-    }
 
     const evidenceMeta: EvidenceMeta = {
       latitude: geo?.lat,
