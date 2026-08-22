@@ -37,3 +37,56 @@ describe('VehicleEnrich error types', () => {
     expect(err.api).toBe('plateToVin');
   });
 });
+
+import {
+  checkAndReservePlateToVin,
+  checkAndReserveVinDecoder,
+  checkAndReservePlateDecoder,
+  ENRICH_RATE_LIMITS,
+} from '../src/utils/vehicleEnrichment/rateLimit';
+
+describe('vehicle enrichment rate limits', () => {
+  const makeKv = (stored: Record<string, string>) => ({
+    get: async (k: string) => stored[k] ?? null,
+    put: async (k: string, v: string) => { stored[k] = v; },
+  });
+
+  it('allows call when under daily limit (plateToVin)', async () => {
+    const kv = makeKv({});
+    const result = await checkAndReservePlateToVin(kv, Date.now());
+    expect(result.allowed).toBe(true);
+  });
+
+  it('blocks when daily budget exhausted (plateToVin)', async () => {
+    const kv = makeKv({});
+    const now = Date.now();
+    const day = new Date(now).toISOString().slice(0, 10);
+    // Pre-fill to the limit
+    await kv.put(`vehicle_enrich:plate_to_vin:day:${day}`, String(ENRICH_RATE_LIMITS.plateToVin.daily));
+    const result = await checkAndReservePlateToVin(kv, now);
+    expect(result.allowed).toBe(false);
+    expect((result as { allowed: false; reason: string }).reason).toBe('daily_limit');
+  });
+
+  it('allows vinDecoder call when under monthly limit', async () => {
+    const kv = makeKv({});
+    const result = await checkAndReserveVinDecoder(kv, Date.now());
+    expect(result.allowed).toBe(true);
+  });
+
+  it('blocks vinDecoder when monthly budget exhausted', async () => {
+    const kv = makeKv({});
+    const now = Date.now();
+    const month = new Date(now).toISOString().slice(0, 7);
+    await kv.put(`vehicle_enrich:vin_decoder:month:${month}`, String(ENRICH_RATE_LIMITS.vinDecoder.monthly));
+    const result = await checkAndReserveVinDecoder(kv, now);
+    expect(result.allowed).toBe(false);
+    expect((result as { allowed: false; reason: string }).reason).toBe('monthly_limit');
+  });
+
+  it('allows plateDecoder call when under daily limit', async () => {
+    const kv = makeKv({});
+    const result = await checkAndReservePlateDecoder(kv, Date.now());
+    expect(result.allowed).toBe(true);
+  });
+});
