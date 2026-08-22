@@ -124,7 +124,7 @@ export async function enrichVehicleRecord(
       log.warn('vehicle-enrichment plateToVin failed', { plate, state, msg });
     }
   } else {
-    stepErrors['plateToVin'] = 'rate_limit:no_key';
+    stepErrors['plateToVin'] = 'config:no_key';
   }
 
   // Step 2: VIN → specs (only if we have a VIN)
@@ -149,9 +149,9 @@ export async function enrichVehicleRecord(
     }
   }
 
-  // Step 3: Plate decoder fallback — only when we still lack make/model
+  // Step 3: Plate decoder fallback — only when step 1 returned no VIN
   const pdKey = env.PLATE_DECODER_API_KEY ?? '';
-  if (!data.make && pdKey) {
+  if (!resolvedVin && pdKey) {
     try {
       await checkAndReservePlateDecoder(kv, nowMs);
       const r = await decodePlate(plate, state, pdKey);
@@ -215,6 +215,21 @@ export async function enrichVehicleRecord(
       plate.trim().toUpperCase(),
     ).catch(() => null);
     vehicleId = vRow?.id ?? 0;
+
+    if (_ctx) {
+      logErrorToDb(
+        db,
+        {
+          severity: 'warning',
+          category: 'integration',
+          message: 'all vehicle enrichment steps failed — plate enrichment returned no data',
+          details: { plate, state, stepErrors },
+          source: 'enrichChain',
+          statusCode: 0,
+        },
+        _ctx,
+      );
+    }
   }
 
   // ── Upsert cache row (even if all steps failed, to record the attempt) ────
