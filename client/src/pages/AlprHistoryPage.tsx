@@ -273,9 +273,9 @@ export default function AlprHistoryPage() {
                     </span>
                   ) : null}
                   {row.accepted === 1 ? (
-                    <CheckCircle className="w-3 h-3 text-green-500" title="Accepted" />
+                    <CheckCircle className="w-3 h-3 text-green-500" aria-label="Accepted" />
                   ) : row.accepted === 0 && row.review_status !== 'needs_review' ? (
-                    <XCircle className="w-3 h-3 text-red-500" title="Rejected" />
+                    <XCircle className="w-3 h-3 text-red-500" aria-label="Rejected" />
                   ) : null}
                   {chip && (
                     <span className={`text-[9px] border px-1.5 py-0.5 ${chip.cls}`}>{chip.label}</span>
