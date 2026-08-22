@@ -25,7 +25,7 @@ export function checkFenceViolation(position:{lat:number;lng:number}, fences:Geo
     for (let i=0,j=points.length-1;i<points.length;j=i++) {
       if ((points[i].lat>position.lat)!==(points[j].lat>position.lat)&&position.lng<(points[j].lng-points[i].lng)*(position.lat-points[i].lat)/(points[j].lat-points[i].lat)+points[i].lng) inside=!inside;
     }
-    return inside && f.alertOnEntry;
+    return f.active && inside && f.alertOnEntry;
   });
 }
 

@@ -292,9 +292,17 @@ gps.post('/', async (c) => {
             next = 'enroute';
           }
           if (next && next !== unit.status) {
-            await execute(db,
-              `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-              next, unitId);
+            // Compare-and-swap on the status this handler actually read: two
+            // concurrent GPS posts for the same unit (offline-queue flush +
+            // a live ping, or a flaky-network retry) can both read the same
+            // stale `unit.status` and both decide the same transition. The
+            // WHERE status=? guard makes only ONE of them actually change a
+            // row; the loser's changes===0 skips the call update, mileage
+            // backfill, and duplicate 'unit_status_changed' alert below.
+            const statusUpdate = await execute(db,
+              `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = ?`,
+              next, unitId, unit.status);
+            if (statusUpdate.meta?.changes) {
             const timeField = next === 'enroute' ? 'enroute_at' : 'onscene_at';
             await execute(db,
               `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'),
@@ -352,6 +360,7 @@ gps.post('/', async (c) => {
               action: 'unit_status_changed',
               unit: { id: unitId, call_sign: callSign, status: next, current_call_id: callId },
             });
+            } // statusUpdate.meta?.changes
           }
         }
       } catch (err) {
@@ -391,7 +400,34 @@ gps.post('/', async (c) => {
         const priorZoneId = priorState?.zone_id ?? null;
 
         const transition = diffZoneMembership(priorZoneId, currentZoneId);
-        if (transition) {
+        // Compare-and-swap the state write BEFORE logging/broadcasting anything.
+        // Two GPS posts for the same unit landing close together (offline-queue
+        // flush racing a live ping, or a flaky-network retry) previously both
+        // read the same stale priorZoneId here, both computed the same
+        // transition, and both inserted a geofence_events row + broadcast —
+        // there was no lock/version check between the read and the write. The
+        // writes below are guarded on the exact priorZoneId this request read,
+        // so only the request that actually wins the write reports the
+        // transition; the loser's `changes === 0` short-circuits it.
+        let wonTransition = false;
+        if (transition && currentZoneId != null) {
+          const result = await execute(db,
+            `INSERT INTO unit_geofence_state (unit_id, zone_id, entered_at)
+             VALUES (?, ?, datetime('now'))
+             ON CONFLICT(unit_id) DO UPDATE SET
+               zone_id = excluded.zone_id,
+               entered_at = excluded.entered_at
+             WHERE unit_geofence_state.zone_id IS ?`,
+            unitId, currentZoneId, priorZoneId);
+          wonTransition = (result.meta?.changes ?? 0) > 0;
+        } else if (transition && currentZoneId == null && priorZoneId != null) {
+          const result = await execute(db,
+            'DELETE FROM unit_geofence_state WHERE unit_id = ? AND zone_id = ?',
+            unitId, priorZoneId);
+          wonTransition = (result.meta?.changes ?? 0) > 0;
+        }
+
+        if (transition && wonTransition) {
           const transitionEvents: { zoneId: number; eventType: 'enter' | 'exit' }[] =
             transition.type === 'transfer'
               ? [
@@ -421,7 +457,10 @@ gps.post('/', async (c) => {
           log.info(`[gps] unit ${callSign ?? unitId} geofence ${transition.type}`, { unitId, transition });
         }
 
-        if (currentZoneId != null) {
+        if (currentZoneId != null && !transition) {
+          // No transition detected (still in the same zone as last time) —
+          // keep the row fresh without re-deciding entered_at. Safe to run
+          // unconditionally since it's a no-op zone_id-preserving touch.
           await execute(db,
             `INSERT INTO unit_geofence_state (unit_id, zone_id, entered_at)
              VALUES (?, ?, datetime('now'))
@@ -430,11 +469,52 @@ gps.post('/', async (c) => {
                entered_at = CASE WHEN unit_geofence_state.zone_id != excluded.zone_id
                                   THEN excluded.entered_at ELSE unit_geofence_state.entered_at END`,
             unitId, currentZoneId);
-        } else if (priorZoneId != null) {
-          await execute(db, 'DELETE FROM unit_geofence_state WHERE unit_id = ?', unitId);
         }
+        // The currentZoneId == null (exit) case is already handled by the
+        // CAS-guarded DELETE above when a transition was detected — no
+        // unconditional fallback delete needed (and one here would race
+        // against a concurrent request's fresh INSERT for this same unit).
       } catch (err) {
         log.error('[gps] geofence detection failed (non-fatal)', {}, err);
+      }
+    }
+
+    // ── Beat-breach detection (unit_outside_beat) ──────────────
+    // Feeds the 'geofence-breach' dispatcher coaching rule
+    // (client/src/utils/dispatcherRules/coaching.ts), which has listened for
+    // this event type since it was added but had NO server-side emitter —
+    // the rule's own comment said "Server-side emitter comes next in Task
+    // 3.3" and that task was never done, so the rule could never fire.
+    // identifyBeat() is backed by an in-memory, module-cached beat polygon
+    // set (src/utils/geofence.ts) — cheap to call per GPS POST after the
+    // first cold load. Rate-limited to 1 per unit per 3-minute window (the
+    // same cadence as the client rule's own cooldownMs) so a unit sitting
+    // outside its beat doesn't re-alert on every fix. Best-effort; never
+    // blocks the breadcrumb write.
+    if (unitId && lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+      try {
+        const unitBeat = await queryFirst<{ assigned_beat: string | null }>(
+          db, 'SELECT assigned_beat FROM units WHERE id = ?', unitId);
+        const assignedBeat = unitBeat?.assigned_beat ?? null;
+        if (assignedBeat) {
+          const hit = await identifyBeat(c.env, lastPt.latitude, lastPt.longitude);
+          if (hit?.beat_code && hit.beat_code !== assignedBeat) {
+            const allowed = await rateLimitAllow(c.env.KV, `beat-breach:unit:${unitId}`, 1, 180);
+            if (allowed) {
+              await emitAlert(c.env, 'dispatch_update', {
+                action: 'unit_outside_beat',
+                unit_id: unitId,
+                call_sign: callSign,
+                beat: hit.beat_code,
+                assigned_beat: assignedBeat,
+                latitude: lastPt.latitude,
+                longitude: lastPt.longitude,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        log.warn('[gps] beat-breach detection failed (non-fatal)', { unitId, err });
       }
     }
 
@@ -477,9 +557,15 @@ gps.post('/', async (c) => {
               prevLat, prevLng,
             },
           });
+          // Only advance the distance-from-prev anchor on success. Previously
+          // this ran unconditionally after the try/catch, so a fix the engine
+          // never actually applied (a throw here is swallowed as non-fatal)
+          // still became the baseline for the NEXT fix's movement check —
+          // silently distorting trip open/close distance detection for the
+          // rest of the batch on a single mid-batch failure.
+          prevLat = pt.latitude;
+          prevLng = pt.longitude;
         } catch { log.warn('[gps] trip engine failed', { unitId, pointCount: points.length }); /* trip engine is non-fatal — never break GPS write */ }
-        prevLat = pt.latitude;
-        prevLng = pt.longitude;
       }
 
       // Stamp this batch's breadcrumbs with the unit's active trip so trip replay
@@ -530,7 +616,18 @@ gps.post('/', async (c) => {
     try {
       const rules = await loadRulesForUser(db, userId, unitId ?? null);
       if (rules.length > 0) {
-        await evaluateServerRules(db, c.env, c.executionCtx, userId, unitId ?? null, incomingFixes, rules);
+        // Feeds the 'call_proximity' trigger, which needs the unit's currently
+        // assigned call location to test fixes against (mirrors the client
+        // evaluator's state.assignedCallLatLng in automationEngine.ts).
+        let assignedCallLatLng: { lat: number; lng: number } | null = null;
+        if (unit?.current_call_id != null) {
+          const assignedCall = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+            db, 'SELECT latitude, longitude FROM calls_for_service WHERE id = ?', unit.current_call_id);
+          if (assignedCall?.latitude != null && assignedCall?.longitude != null) {
+            assignedCallLatLng = { lat: assignedCall.latitude, lng: assignedCall.longitude };
+          }
+        }
+        await evaluateServerRules(db, c.env, c.executionCtx, userId, unitId ?? null, incomingFixes, rules, assignedCallLatLng);
       }
     } catch (err) {
       log.error('[gps] automation evaluation failed', { userId }, err);
