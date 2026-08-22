@@ -13,6 +13,12 @@ IPA_PATH="$EXPORT_PATH/RMPGFlexConnect.ipa"
 OTA_BASE="https://api.rmpgutah.us/api/ios-ota"
 TEAM_ID="${APPLE_TEAM_ID:-}"
 BUNDLE_ID="com.rmpg.flex.connect"
+# "ad-hoc" needs an Apple Distribution cert (paid Developer Program, generated
+# in the Apple Developer portal). No such cert exists on this Mac's keychains
+# as of 2026-08-22 — only "Apple Development" identities. Default to
+# "development" so OTA install works today for UDID-registered devices; flip
+# EXPORT_METHOD=ad-hoc once a distribution cert + provisioning profile exist.
+EXPORT_METHOD="${EXPORT_METHOD:-development}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,7 +68,7 @@ xcodebuild -exportArchive \
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>ad-hoc</string>
+    <string>${EXPORT_METHOD}</string>
     <key>teamID</key>
     <string>${TEAM_ID}</string>
     <key>compileBitcode</key>
