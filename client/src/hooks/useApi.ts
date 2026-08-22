@@ -643,6 +643,14 @@ export interface UploadOptions {
   onRetry?: (attempt: number, max: number) => void;
 }
 
+/** Evidence metadata captured at upload time (geo, timestamp, reference). */
+export interface EvidenceMeta {
+  latitude?: number;
+  longitude?: number;
+  taken_at?: string;       // ISO-8601
+  reference_notes?: string;
+}
+
 /**
  * Decide whether a failed upload attempt is worth retrying.
  *
@@ -710,6 +718,7 @@ async function apiUploadFilesMultipart(
   entityType?: string,
   entityId?: string | number,
   opts?: UploadOptions,
+  evidenceMeta?: EvidenceMeta,
 ): Promise<any[]> {
   const token = localStorage.getItem('rmpg_token');
   const maxRetries = Math.max(0, opts?.retries ?? 0);
@@ -726,6 +735,10 @@ async function apiUploadFilesMultipart(
     for (const file of files) formData.append('files', file);
     if (entityType) formData.append('entity_type', entityType);
     if (entityId) formData.append('entity_id', String(entityId));
+    if (evidenceMeta?.latitude != null) formData.append('latitude', String(evidenceMeta.latitude));
+    if (evidenceMeta?.longitude != null) formData.append('longitude', String(evidenceMeta.longitude));
+    if (evidenceMeta?.taken_at) formData.append('taken_at', evidenceMeta.taken_at);
+    if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     try {
       const res = await fetchWithTimeout(UPLOADS_URL, {
@@ -759,6 +772,7 @@ export async function apiUploadFiles(
   entityType?: string,
   entityId?: string | number,
   opts?: UploadOptions,
+  evidenceMeta?: EvidenceMeta,
 ): Promise<any[]> {
   const smallIndices: number[] = [];
   const smallFiles: File[] = [];
@@ -776,7 +790,7 @@ export async function apiUploadFiles(
   const results: any[] = new Array(files.length);
 
   if (smallFiles.length > 0) {
-    const smallResults = await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts);
+    const smallResults = await apiUploadFilesMultipart(smallFiles, entityType, entityId, opts, evidenceMeta);
     smallIndices.forEach((origIdx, i) => { results[origIdx] = smallResults[i]; });
   }
 
@@ -793,10 +807,11 @@ export async function apiUploadFilesWithProgress(
   entityType?: string,
   entityId?: string | number,
   onProgress?: (progress: UploadProgress, fileIndex: number, totalFiles: number) => void,
+  evidenceMeta?: EvidenceMeta,
 ): Promise<any[]> {
   // If no progress callback, fall back to the simpler fetch-based upload
   if (!onProgress) {
-    return apiUploadFiles(files, entityType, entityId);
+    return apiUploadFiles(files, entityType, entityId, undefined, evidenceMeta);
   }
 
   const token = localStorage.getItem('rmpg_token') || '';
@@ -816,6 +831,10 @@ export async function apiUploadFilesWithProgress(
     formData.append('files', file);
     if (entityType) formData.append('entity_type', entityType);
     if (entityId) formData.append('entity_id', String(entityId));
+    if (evidenceMeta?.latitude != null) formData.append('latitude', String(evidenceMeta.latitude));
+    if (evidenceMeta?.longitude != null) formData.append('longitude', String(evidenceMeta.longitude));
+    if (evidenceMeta?.taken_at) formData.append('taken_at', evidenceMeta.taken_at);
+    if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     const result = await uploadWithProgress(
       UPLOADS_URL,
