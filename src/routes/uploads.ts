@@ -733,9 +733,9 @@ uploads.delete('/:fileId', async (c) => {
 
 // PATCH /api/uploads/:fileId/metadata — admin/manager: edit evidence metadata
 uploads.patch('/:fileId/metadata', async (c) => {
-  const user = c.var.user;
+  const auth = await resolveAuth(c);
   const allowedRoles = ['admin', 'manager'];
-  if (!user || !allowedRoles.includes(user.role)) {
+  if (!auth || !allowedRoles.includes(auth.role)) {
     return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
   }
   const fileId = c.req.param('fileId');
@@ -772,8 +772,8 @@ uploads.patch('/:fileId/metadata', async (c) => {
 // PUT /api/uploads/:fileId/replace — admin: replace R2 object with a new image blob
 // Used by the de-stamp tool to swap a pixel-stamped photo with a clean cropped version.
 uploads.put('/:fileId/replace', async (c) => {
-  const user = c.var.user;
-  if (!user || user.role !== 'admin') {
+  const auth = await resolveAuth(c);
+  if (!auth || auth.role !== 'admin') {
     return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
   }
   const fileId = c.req.param('fileId');
