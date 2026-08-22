@@ -9,6 +9,12 @@
  *
  * We crop exactly bannerH pixels from the bottom of each image and upload the
  * result to PUT /api/uploads/:fileId/replace (admin only).
+ *
+ * IMPORTANT: We fetch image bytes via authed fetch() rather than <img crossOrigin>
+ * to avoid CORS canvas taint. An <img crossOrigin="anonymous"> drawing onto a canvas
+ * requires the server to emit Access-Control-Allow-Origin on the image response;
+ * signed R2 download URLs don't include that header. Fetching the bytes directly
+ * and passing them to createImageBitmap() sidesteps the taint restriction entirely.
  */
 
 import { apiFetch } from '../hooks/useApi';
@@ -21,17 +27,6 @@ function stampBannerHeight(imageWidth: number): number {
   return 3 * lineH + pad * 2;
 }
 
-/** Load a URL into an HTMLImageElement (naturalWidth/Height filled). */
-function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(`Failed to load ${src}`));
-    img.src = src;
-  });
-}
-
 export interface DeStampResult {
   fileId: string;
   ok: boolean;
@@ -42,12 +37,23 @@ export interface DeStampResult {
 
 /**
  * Download one stamped image, crop the bottom banner, re-upload.
- * `imageUrl` must be an authenticated URL (from authUrl()).
+ * `downloadUrl` must be an authenticated URL (token param or sig param).
  */
-export async function deStampOne(fileId: string, imageUrl: string): Promise<DeStampResult> {
-  const img = await loadImg(imageUrl);
-  const W = img.naturalWidth;
-  const H = img.naturalHeight;
+export async function deStampOne(fileId: string, downloadUrl: string): Promise<DeStampResult> {
+  const token = localStorage.getItem('rmpg_token') ?? '';
+
+  // Fetch image bytes with auth — avoids CORS canvas taint from <img crossOrigin>
+  const imgRes = await fetch(downloadUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!imgRes.ok) {
+    return { fileId, ok: false, error: `Download failed: HTTP ${imgRes.status}`, originalSize: { w: 0, h: 0 }, croppedHeight: 0 };
+  }
+  const imgBlob = await imgRes.blob();
+  const bitmap = await createImageBitmap(imgBlob);
+
+  const W = bitmap.width;
+  const H = bitmap.height;
   const bannerH = stampBannerHeight(W);
   const newH = Math.max(1, H - bannerH);
 
@@ -55,28 +61,31 @@ export async function deStampOne(fileId: string, imageUrl: string): Promise<DeSt
   canvas.width = W;
   canvas.height = newH;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas not available');
+  if (!ctx) {
+    bitmap.close();
+    return { fileId, ok: false, error: 'Canvas not available', originalSize: { w: W, h: H }, croppedHeight: newH };
+  }
 
   // Draw only the top `newH` rows — leaving the stamp band out entirely.
-  ctx.drawImage(img, 0, 0, W, newH, 0, 0, W, newH);
+  ctx.drawImage(bitmap, 0, 0, W, newH, 0, 0, W, newH);
+  bitmap.close();
 
-  const blob: Blob = await new Promise((res, rej) =>
-    canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/jpeg', 0.92),
+  const outputBlob: Blob = await new Promise((res, rej) =>
+    canvas.toBlob(b => b ? res(b) : rej(new Error('toBlob failed — canvas may still be tainted')), 'image/jpeg', 0.92),
   );
 
-  const token = localStorage.getItem('rmpg_token') ?? '';
-  const res = await fetch(`/api/uploads/${fileId}/replace`, {
+  const putRes = await fetch(`/api/uploads/${fileId}/replace`, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'image/jpeg',
     },
-    body: blob,
+    body: outputBlob,
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as { error?: string };
-    return { fileId, ok: false, error: err.error ?? `HTTP ${res.status}`, originalSize: { w: W, h: H }, croppedHeight: newH };
+  if (!putRes.ok) {
+    const err = await putRes.json().catch(() => ({})) as { error?: string };
+    return { fileId, ok: false, error: err.error ?? `HTTP ${putRes.status}`, originalSize: { w: W, h: H }, croppedHeight: newH };
   }
 
   return { fileId, ok: true, originalSize: { w: W, h: H }, croppedHeight: newH };
@@ -91,10 +100,10 @@ export async function deStampAll(
   const attachments = await apiFetch<any[]>(`/uploads?entity_type=${entityType}&entity_id=${entityId}`);
   const images = (attachments ?? []).filter((a: any) => (a.mime_type as string)?.startsWith('image/'));
 
+  const token = localStorage.getItem('rmpg_token') ?? '';
   const results: DeStampResult[] = [];
   for (let i = 0; i < images.length; i++) {
     const att = images[i];
-    const token = localStorage.getItem('rmpg_token') ?? '';
     const imgUrl = att.access_sig && att.access_exp
       ? `/api/uploads/${att.file_id}?sig=${encodeURIComponent(att.access_sig)}&exp=${att.access_exp}`
       : `/api/uploads/${att.file_id}?token=${encodeURIComponent(token)}`;
