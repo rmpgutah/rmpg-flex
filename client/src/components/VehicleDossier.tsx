@@ -27,6 +27,7 @@ interface DossierPackage {
 interface DossierResponse {
   plate: string;
   packages: DossierPackage[];
+  vehicle_record_id: number | null;
 }
 
 function fmtDate(iso: string): string {
@@ -50,7 +51,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
 
   const handleEnrich = async () => {
     if (!data) return;
-    const vehicleId = (data as unknown as { vehicleId?: number }).vehicleId;
+    const vehicleId = data.vehicle_record_id;
     if (!vehicleId) {
       setEnrichMsg('No vehicle record ID available');
       return;

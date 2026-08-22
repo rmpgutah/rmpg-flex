@@ -1054,7 +1054,10 @@ alpr.get('/vehicle/:plate/dossier', operational, async (c) => {
   if (!plate || plate.length < 2) return c.json({ error: 'Invalid plate' }, 400);
   const rows = await query<Record<string, unknown>>(db,
     `SELECT * FROM vehicle_capture_photos WHERE canonical_plate = ? ORDER BY created_at DESC`, plate);
-  return c.json({ plate, packages: rows });
+  const vrRow = await db.prepare(
+    `SELECT id FROM vehicles_records WHERE UPPER(TRIM(plate_number)) = UPPER(TRIM(?)) LIMIT 1`
+  ).bind(plate).first<{ id: number }>();
+  return c.json({ plate, packages: rows, vehicle_record_id: vrRow?.id ?? null });
 });
 
 // ── Edge device ingest: Jetson vision-LoRA structured ALPR record ────────────
