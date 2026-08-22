@@ -28,7 +28,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { escapeLike, codedLike } from '../utils/searchText';
+import { cappedLikePattern, codedLike } from '../utils/searchText';
 import { mergeTimeline } from '../utils/intelDossier';
 import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
 import { recordAudit } from '../utils/auditLog';
@@ -942,8 +942,10 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const raw = q.trim();
-  const term = `%${escapeLike(raw)}%`;
+  // D1 LIKE cap: pattern >50 chars fails. escapeLike LENGTHENS the string, so
+  // cappedLikePattern truncates the ESCAPED term to keep '%'+escaped+'%' <=50.
+  const raw = q.trim().slice(0, 40);
+  const term = cappedLikePattern(raw);
   const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 

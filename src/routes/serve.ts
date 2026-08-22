@@ -813,7 +813,8 @@ sv.get('/', async (c) => {
   if (priority) { where.push('q.priority = ?'); args.push(priority); }
   if (search) {
     where.push('(q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   // FK reference guards: CASE expressions are re-emitted AFTER q.* so
   // they win on duplicate column names. serve_queue rows can reference
