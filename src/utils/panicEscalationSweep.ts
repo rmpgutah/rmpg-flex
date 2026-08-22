@@ -25,7 +25,6 @@ import { query, execute } from './db';
 import { sendToUser } from '../routes/ws';
 import { emitAlert } from './alertHub';
 import { parseD1TimestampMs } from './fleetio/sync';
-import { emitAlert } from './alertHub';
 
 const MAX_ESCALATION_LEVEL = 10;
 
