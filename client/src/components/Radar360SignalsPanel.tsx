@@ -66,14 +66,14 @@ const SIGNAL_TYPE_CONFIG: Record<SignalType, {
   wifi_ap:    { label: 'WiFi Networks', Icon: Wifi,      color: 'var(--brand-400)',   bgColor: 'rgba(var(--brand-400-rgb,59,130,246),0.12)' },
   bt_classic: { label: 'Bluetooth',     Icon: Bluetooth, color: 'var(--accent-silver-300)', bgColor: 'rgba(var(--accent-silver-300-rgb,195,204,214),0.12)' },
   ble:        { label: 'BLE',           Icon: Zap,       color: 'var(--sev-high)',    bgColor: 'rgba(var(--sev-high-rgb,234,88,12),0.10)' },
-  cell_tower: { label: 'Cell Towers',   Icon: Signal,    color: 'var(--sev-low)',     bgColor: 'rgba(var(--sev-low-rgb,34,197,94),0.10)' },
+  cell_tower: { label: 'Cell Towers',   Icon: Signal,    color: 'var(--sev-ok)',      bgColor: 'rgba(var(--sev-ok-rgb,34,197,94),0.10)' },
 };
 
 /** Translate dBm to a rough quality label. */
 function rssiQuality(dbm: number | null): { label: string; bars: number; color: string } {
   if (dbm == null) return { label: '—',        bars: 0, color: 'var(--text-muted)' };
-  if (dbm >= -50)  return { label: 'Excellent', bars: 5, color: 'var(--sev-low)' };
-  if (dbm >= -60)  return { label: 'Good',      bars: 4, color: 'var(--sev-low)' };
+  if (dbm >= -50)  return { label: 'Excellent', bars: 5, color: 'var(--sev-ok)' };
+  if (dbm >= -60)  return { label: 'Good',      bars: 4, color: 'var(--sev-ok)' };
   if (dbm >= -70)  return { label: 'Fair',      bars: 3, color: 'var(--sev-warn)' };
   if (dbm >= -80)  return { label: 'Weak',      bars: 2, color: 'var(--sev-warn)' };
   return                  { label: 'Very Weak', bars: 1, color: 'var(--sev-critical)' };
@@ -232,7 +232,7 @@ function proximityTier(m: number | null): { label: string; color: string } {
   if (m < 5)       return { label: 'Immediate (<5m)', color: 'var(--sev-critical)' };
   if (m < 20)      return { label: 'Close (<20m)',    color: 'var(--sev-high)' };
   if (m < 60)      return { label: 'Near (<60m)',     color: 'var(--sev-warn)' };
-  if (m < 200)     return { label: 'Moderate',        color: 'var(--sev-low)' };
+  if (m < 200)     return { label: 'Moderate',        color: 'var(--sev-ok)' };
   return              { label: 'Distant',             color: 'var(--text-muted)' };
 }
 

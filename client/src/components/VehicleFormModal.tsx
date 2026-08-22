@@ -430,7 +430,7 @@ export default function VehicleFormModal({
             className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors ${
               activeSection === s.id
                 ? 'text-red-400 bg-red-900/20 border border-red-700/40'
-                : 'text-rmpg-400 hover:text-rmpg-100 hover:bg-rmpg-700/40 border border-transparent'
+                : 'text-fg-muted hover:text-fg-primary hover:bg-rmpg-700/40 border border-transparent'
             }`}
           >
             {s.label}
@@ -503,7 +503,7 @@ export default function VehicleFormModal({
           <FormField label="VIN">
             <div className="flex gap-2">
               <input name="vin" type="text" required maxLength={17} className="input-dark mt-1 font-mono uppercase flex-1" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
-              <button type="button" onClick={handleVinDecode} disabled={vinDecoding || form.vin.length !== 17} className="mt-1 px-2 py-1 text-[9px] font-bold bg-surface-raised border border-rmpg-600 text-rmpg-300 hover:text-brand-300 hover:border-brand-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1">
+              <button type="button" onClick={handleVinDecode} disabled={vinDecoding || form.vin.length !== 17} className="mt-1 px-2 py-1 text-[9px] font-bold bg-surface-raised border border-rmpg-600 text-fg-secondary hover:text-fg-primary hover:border-brand-500/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-1">
                 {vinDecoding ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                 Decode
               </button>
@@ -620,7 +620,7 @@ export default function VehicleFormModal({
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
-            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
+            <label htmlFor="ff-vehicleformmodal-addrunit" className="text-[10px] text-fg-muted uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Owner Name">
                 <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />
@@ -715,12 +715,12 @@ export default function VehicleFormModal({
           </div>
 
           <div className="flex items-center gap-6 py-2">
-            <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-fg-secondary cursor-pointer">
               <input type="checkbox" name="commercial_vehicle" checked={form.commercial_vehicle} onChange={handleChange}
                 className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-brand-500 focus:ring-brand-500" />
               Commercial Vehicle
             </label>
-            <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+            <label className="flex items-center gap-2 text-xs text-fg-secondary cursor-pointer">
               <input type="checkbox" name="hazmat" checked={form.hazmat} onChange={handleChange}
                 className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-red-600 focus:ring-red-500" />
               HAZMAT
@@ -745,7 +745,7 @@ export default function VehicleFormModal({
                     className={`px-2 py-0.5 text-[9px] font-bold border transition-colors ${
                       active
                         ? 'bg-red-900/40 border-red-600/60 text-red-300'
-                        : 'bg-transparent border-rmpg-700 text-rmpg-500 hover:border-rmpg-500 hover:text-rmpg-300'
+                        : 'bg-transparent border-rmpg-700 text-fg-muted hover:border-rmpg-500 hover:text-fg-secondary'
                     }`}
                   >
                     {flag}

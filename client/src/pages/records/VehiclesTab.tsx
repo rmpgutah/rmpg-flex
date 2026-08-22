@@ -673,7 +673,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
           <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
           {(['plate', 'make', 'newest'] as const).map(s => (
             <button key={s} type="button" onClick={() => setSortBy(s)}
-              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-fg-muted hover:text-fg-secondary'}`}>
               {s === 'plate' ? 'Plate' : s === 'make' ? 'Make' : 'Newest'}
             </button>
           ))}
@@ -904,7 +904,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {vehicleAlerts.length > 0 && <AlertBanner alerts={vehicleAlerts} />}
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1 flex-wrap">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
@@ -923,21 +923,21 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                 setPdfGenerating(false);
               }
             }}
-            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50 disabled:opacity-50"
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50 disabled:opacity-50"
           >
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> Print Record
           </button>
           <button
             type="button"
             onClick={() => downloadExport(`/records/vehicles/export?format=csv&archived=false`, `vehicle-${selectedVehicle.license_plate}.csv`).catch(() => {})}
-            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50"
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50"
           >
             Export CSV
           </button>
           <button
             type="button"
             onClick={() => setDossierPlate(selectedVehicle.license_plate)}
-            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50"
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50"
           >
             <Shield style={{ width: 10, height: 10, display: 'inline' }} /> ALPR Sightings
           </button>
