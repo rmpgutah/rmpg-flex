@@ -26,20 +26,20 @@ const STAGE_GAP_MS = 500;
 
 async function persistSourceResult(db: D1Database, dossierId: number, r: any) {
   await execute(db, `INSERT INTO person_intel_sources (dossier_id,source_name,phase,status,response_time_ms,data_points_found,error_message) VALUES (?,?,?,?,?,?,?)`,
-    [dossierId, r.sourceName, r.phase, r.status, r.responseTimeMs, r.dataPoints?.length ?? 0, r.errorMessage ?? null]);
+    dossierId, r.sourceName, r.phase, r.status, r.responseTimeMs, r.dataPoints?.length ?? 0, r.errorMessage ?? null);
 }
 
 async function persistDataPoints(db: D1Database, dossierId: number, pts: any[]) {
   for (const p of pts) {
     await execute(db, `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence) VALUES (?,?,?,?,?,?)`,
-      [dossierId, p.category, p.field, p.value, JSON.stringify(p.sources), p.confidence]);
+      dossierId, p.category, p.field, p.value, JSON.stringify(p.sources), p.confidence);
   }
 }
 
 async function persistConnections(db: D1Database, dossierId: number, conns: any[]) {
   for (const c of conns) {
     await execute(db, `INSERT INTO person_intel_connections (dossier_id,from_subject,relationship,to_subject,confidence,sources) VALUES (?,?,?,?,?,?)`,
-      [dossierId, c.fromSubject, c.relationship, c.toSubject, c.confidence, JSON.stringify(c.sources)]);
+      dossierId, c.fromSubject, c.relationship, c.toSubject, c.confidence, JSON.stringify(c.sources));
   }
 }
 
@@ -55,7 +55,7 @@ export class PersonIntelDO {
   async fetch(request: Request): Promise<Response> {
     const { dossierId, seed } = await request.json<{ dossierId: number; seed: IntelSeed }>();
     await this.state.storage.put<DOState>('s', { dossierId, seed, stage: 'phase1' });
-    await execute(this.env.DB, `UPDATE person_intelligence SET status='running', phase=1 WHERE id=?`, [dossierId]);
+    await execute(this.env.DB, `UPDATE person_intelligence SET status='running', phase=1 WHERE id=?`, dossierId);
     await this.state.storage.setAlarm(Date.now() + STAGE_GAP_MS);
     return new Response(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } });
   }
@@ -71,7 +71,7 @@ export class PersonIntelDO {
     } catch (e: any) {
       log.error('handler failed', { src: 'src/durable-objects/PersonIntelDO.ts' }, e);
       await execute(this.env.DB, `UPDATE person_intelligence SET status='error', notes=? WHERE id=?`,
-        [String(e?.message ?? e).slice(0, 500), st.dossierId]);
+        String(e?.message ?? e).slice(0, 500), st.dossierId);
       st.stage = 'error';
       await this.state.storage.put('s', st);
       return;
@@ -85,7 +85,7 @@ export class PersonIntelDO {
     await persistSourceResult(this.env.DB, st.dossierId, result);
     const merged = mergeDataPoints(result.dataPoints);
     st.phase1Points = merged;
-    await execute(this.env.DB, `UPDATE person_intelligence SET phase=1, phase1_completed_at=datetime('now') WHERE id=?`, [st.dossierId]);
+    await execute(this.env.DB, `UPDATE person_intelligence SET phase=1, phase1_completed_at=datetime('now') WHERE id=?`, st.dossierId);
     await persistDataPoints(this.env.DB, st.dossierId, merged);
     st.stage = 'phase2';
     await this.state.storage.put('s', st);
@@ -100,7 +100,7 @@ export class PersonIntelDO {
     st.phase2Connections = connections;
     st.riskFlags = riskFlags;
     await execute(this.env.DB, `UPDATE person_intelligence SET phase=2, phase2_completed_at=datetime('now'), sources_queried=sources_queried+?, sources_succeeded=sources_succeeded+? WHERE id=?`,
-      [sourceResults.length, sourceResults.filter(r => r.status === 'success').length, st.dossierId]);
+      sourceResults.length, sourceResults.filter(r => r.status === 'success').length, st.dossierId);
     st.stage = 'phase3';
     await this.state.storage.put('s', st);
   }
@@ -116,10 +116,19 @@ export class PersonIntelDO {
     // Auto-link: check if persons table has a match
     let linkedPersonId: number | null = null;
     if (st.seed.name) {
-      // persons has first_name/last_name, not full_name — this threw
-      // "no such column: full_name" and the lookup always came back empty.
-      const person = await this.env.DB.prepare(`SELECT id FROM persons WHERE (first_name || ' ' || last_name) LIKE ? LIMIT 1`).bind(`%${st.seed.name.split(' ')[0]}%`).first<{ id: number }>();
-      if (person) linkedPersonId = person.id;
+      // Exact first+last match only. A substring LIKE on the first name token
+      // matched arbitrary persons ("Ann" hit "Joanne", "Brianna") and stamped
+      // their warrant/SOR flags onto the wrong dossier. Ambiguity (>1 match)
+      // is treated as no-link rather than picking an arbitrary row.
+      const parts = st.seed.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const first = parts[0];
+        const last = parts[parts.length - 1];
+        const matches = await this.env.DB.prepare(
+          `SELECT id FROM persons WHERE UPPER(first_name)=UPPER(?) AND UPPER(last_name)=UPPER(?) LIMIT 2`,
+        ).bind(first, last).all<{ id: number }>();
+        if (matches.results?.length === 1) linkedPersonId = matches.results[0].id;
+      }
     }
 
     // Check warrants and NSO → additional risk flags
@@ -136,7 +145,7 @@ export class PersonIntelDO {
 
     await persistDataPoints(this.env.DB, st.dossierId, merged);
     await execute(this.env.DB, `UPDATE person_intelligence SET status='complete', phase=3, phase3_completed_at=datetime('now'), completed_at=datetime('now'), risk_score=?, risk_flags=?, linked_person_id=?, data_points_found=? WHERE id=?`,
-      [riskScore, JSON.stringify(uniqueFlags), linkedPersonId, (dataPointsCount?.c ?? 0), st.dossierId]);
+      riskScore, JSON.stringify(uniqueFlags), linkedPersonId, (dataPointsCount?.c ?? 0), st.dossierId);
 
     st.stage = 'done';
     await this.state.storage.put('s', st);

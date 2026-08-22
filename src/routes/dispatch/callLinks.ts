@@ -1025,9 +1025,9 @@ links.get('/calls/:id/bolos', requireRole('officer', 'dispatcher', 'supervisor',
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT cb.id AS link_id, cb.linked_at, cb.linked_by,
-              b.id AS bolo_id, b.bolo_type, b.description, b.status,
-              b.plate_number, b.vehicle_make, b.vehicle_model, b.vehicle_color,
-              b.subject_name, b.issued_date, b.expiration_date
+              b.id, b.id AS bolo_id, b.bolo_number, b.type, b.title,
+              b.description, b.subject_description, b.vehicle_description,
+              b.status, b.priority, b.expires_at
        FROM call_bolos cb
        JOIN bolos b ON b.id = cb.bolo_id
        WHERE cb.call_id = ?

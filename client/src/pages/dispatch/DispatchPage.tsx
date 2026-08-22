@@ -1149,6 +1149,12 @@ export default function DispatchPage() {
   const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
 
   // ── Unit ETA fetch for enroute units (every 30s) ──────────────────────────
+  // Read units through a ref: the effect deliberately doesn't re-run on the
+  // units poll (deps below), so a closure over `units` froze the snapshot from
+  // when the call was selected — a unit going enroute AFTER selection never
+  // matched the filter and its ETA badge never appeared.
+  const unitsRefForEta = useRef(units);
+  unitsRefForEta.current = units;
   useEffect(() => {
     if (!selectedCall?.id) { setUnitEtas({}); return; }
     const callId = selectedCall.id;
@@ -1156,7 +1162,7 @@ export default function DispatchPage() {
 
     const fetchEtas = async () => {
       const enrouteUnits = (selectedCall.assigned_units || []).filter((uid: string) => {
-        const u = units.find((u) => String(u.id) === String(uid));
+        const u = unitsRefForEta.current.find((u) => String(u.id) === String(uid));
         return u?.status === 'enroute';
       });
       if (!enrouteUnits.length) { if (!cancelled) setUnitEtas({}); return; }
@@ -6009,7 +6015,7 @@ export default function DispatchPage() {
                               <input
                                 type="text"
                                 className="input-dark text-xs w-full"
-                                placeholder="Search BOLO by plate or name…"
+                                placeholder="Search BOLO by title, subject, or vehicle…"
                                 value={boloSearchQ}
                                 onChange={(e) => {
                                   setBoloSearchQ(e.target.value);

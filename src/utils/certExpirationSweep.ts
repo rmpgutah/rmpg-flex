@@ -34,6 +34,10 @@ export async function sweepCertExpirations(
     WHERE oc.status = 'active'
       AND oc.expiration_date IS NOT NULL
       AND oc.expiration_date <= date('now', '+30 days')
+      -- Floor: a cert that expired long ago (and was never status-flipped)
+      -- matched forever and re-notified daily, unbounded. One week of
+      -- post-expiry reminders is the alerting window; older rows are records.
+      AND oc.expiration_date >= date('now', '-7 days')
   `);
 
   const today = Date.now();

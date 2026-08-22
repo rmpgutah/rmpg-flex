@@ -535,7 +535,7 @@ export default {
       // nothing ever advanced it or re-broadcast an unacknowledged alert.
       ctx.waitUntil(
         import('./utils/panicEscalationSweep').then((m) =>
-          m.sweepPanicEscalation(env.DB).then((r) => {
+          m.sweepPanicEscalation(env.DB, env).then((r) => {
             if (r.escalated > 0) log.info(`[panic-escalation] escalated ${r.escalated}`);
           }).catch((err) => log.error('Panic escalation sweep failed:', {}, err)),
         ).catch(() => {}),
@@ -552,9 +552,12 @@ export default {
         ).catch(() => {}),
       );
       // [12] Serve priority auto-escalation — jobs with a deadline ≤ 3 days
-      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'.
+      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'
+      // (including jobs already escalated to 'rush' — the old NOT IN filter
+      // excluded them, so a rush job could never make the final bump).
       // Runs every minute so a crossing detected mid-day gets caught quickly
-      // (capped at 100 rows per sweep to stay within cron budget).
+      // (capped at 100 rows per sweep via the id-subquery — a bare
+      // UPDATE … LIMIT needs a SQLite compile flag D1 doesn't guarantee).
       ctx.waitUntil(
         env.DB.prepare(`
           UPDATE serve_queue
@@ -563,11 +566,17 @@ export default {
                                 ELSE 'rush'
                               END,
                  updated_at = datetime('now')
-           WHERE status NOT IN ('served','failed','cancelled')
-             AND deadline IS NOT NULL
-             AND julianday(deadline) - julianday('now') <= 3
-             AND priority NOT IN ('urgent','rush')
-           LIMIT 100
+           WHERE id IN (
+             SELECT id FROM serve_queue
+              WHERE status NOT IN ('served','failed','cancelled')
+                AND deadline IS NOT NULL
+                AND julianday(deadline) - julianday('now') <= 3
+                AND (
+                  priority NOT IN ('urgent','rush')
+                  OR (priority = 'rush' AND julianday(deadline) - julianday('now') <= 1)
+                )
+              LIMIT 100
+           )
         `).run()
           .then((r) => { if (r.meta.changes > 0) log.info(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
           .catch((err) => log.error('Serve priority auto-escalation failed:', {}, err)),
@@ -719,8 +728,13 @@ export default {
 
           for (const job of jobs) {
             try {
-              // Timeout jobs that have been pending/processing for more than 10 minutes
-              const ageMs = Date.now() - new Date(job.created_at).getTime();
+              // Timeout jobs that have been pending/processing for more than 10
+              // minutes. created_at is a zone-less D1 datetime('now') string —
+              // parse via parseD1TimestampMs, not new Date(), which reads it as
+              // host-local and skews the timeout by hours off a UTC host.
+              const { parseD1TimestampMs } = await import('./utils/fleetio/sync');
+              const createdMs = parseD1TimestampMs(job.created_at);
+              const ageMs = createdMs === null ? 0 : Date.now() - createdMs;
               if (ageMs > 10 * 60 * 1000) {
                 await db
                   .prepare(
