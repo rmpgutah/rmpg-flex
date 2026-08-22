@@ -1078,12 +1078,11 @@ async function createMainWindow() {
         const found = await findGpsPort();
         if (found) {
           mainWindow?.webContents.send('hardware:gps-plugged', found);
-          // If GPS reader is not currently active, auto-start
+          // If GPS reader is not currently active, auto-start via the shared
+          // helper so this wires the same channels/geofence hookup as the
+          // renderer-initiated start path (see startInternalGpsReader).
           if (!internalGpsReader) {
-            internalGpsReader = new InternalGps();
-            internalGpsReader.on('position', (pos) => mainWindow?.webContents.send('geo:position', pos));
-            internalGpsReader.on('gps:constellation', (c) => mainWindow?.webContents.send('gps:constellation', c));
-            await internalGpsReader.start(found.path);
+            await startInternalGpsReader(found.path);
           }
         }
       }, 1500); // brief delay for device driver init
@@ -4210,36 +4209,15 @@ guardedHandle('app:force-refresh', async () => {
 
 let internalGpsReader = null;
 
-// ── Geofence engine ──────────────────────────────────────────
-let _geofenceZones = []; // [{ id, lat, lng, radiusM, label }]
-let _activeZoneIds = new Set(); // currently inside zones
-
-function haversineM(lat1, lng1, lat2, lng2) {
-  const R = 6_371_000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function checkGeofences(latitude, longitude) {
-  for (const zone of _geofenceZones) {
-    const dist = haversineM(latitude, longitude, zone.lat, zone.lng);
-    const inside = dist <= zone.radiusM;
-    const wasInside = _activeZoneIds.has(zone.id);
-    if (inside && !wasInside) {
-      _activeZoneIds.add(zone.id);
-      mainWindow?.webContents.send('geo:geofence-enter', { zoneId: zone.id, label: zone.label });
-    } else if (!inside && wasInside) {
-      _activeZoneIds.delete(zone.id);
-      mainWindow?.webContents.send('geo:geofence-exit', { zoneId: zone.id, label: zone.label });
-    }
-  }
-}
+// NOTE: a main-process geofence engine (_geofenceZones/_activeZoneIds/
+// checkGeofences/haversineM, plus a 'geo:set-geofence-zones' IPC handler and
+// 'geo:geofence-enter'/'geo:geofence-exit' events) previously lived here.
+// Removed as dead code: preload.js exposed no setter for zones and no
+// listener for the enter/exit events, no renderer code called any of it, so
+// zones were always empty and checkGeofences() was a permanent no-op even
+// before that. Geofencing is handled server-side in
+// src/routes/dispatch/gps.ts against the live geofence_zones table — that
+// system works and is exercised by real traffic; this one never was.
 
 /**
  * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
@@ -4328,7 +4306,16 @@ async function detectToughbook() {
 
 guardedHandle('geo:internal-gps-detect', detectToughbook);
 
-guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+// Single source of truth for standing up the internal GPS reader — wires the
+// channel names the preload/renderer actually listen on
+// (`geo:internal-gps-update` / `geo:internal-gps-error`). Used by both the
+// renderer-initiated `geo:internal-gps-start` IPC handler and the USB
+// hot-plug auto-start below; a second, divergent copy of this wiring previously
+// lived at the hot-plug site, sent on channels nothing listened for
+// (`geo:position`/`gps:constellation`) — so any USB insertion (mouse,
+// scanner, phone) silently killed location updates for the rest of the
+// session by claiming `internalGpsReader` before the real start path could run.
+async function startInternalGpsReader(portPath, baudRate) {
   if (internalGpsReader) return { ok: true, alreadyRunning: true };
   if (!portPath) {
     const detected = await detectToughbook();
@@ -4340,17 +4327,29 @@ guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('geo:internal-gps-update', pos);
     }
-    if (!pos.estimated) checkGeofences(pos.latitude, pos.longitude);
   });
   internalGpsReader.on('error', (err) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('geo:internal-gps-error', { message: err.message });
     }
   });
+  // InternalGps emits this on $GPGSV sentences (satellite count/signal), but
+  // nothing forwarded it to the renderer — no IPC channel, no preload
+  // exposure. Forward it under its own event so a future satellite-count UI
+  // has something to subscribe to (see onGpsConstellation in preload.js).
+  internalGpsReader.on('gps:constellation', (c) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-constellation', c);
+    }
+  });
   // No baud default here — let InternalGps probe its 9600-first ladder
   // (u-blox NEO-M8 ships at 9600; the old 4800 default never locked).
   const ok = await internalGpsReader.start(portPath, baudRate);
   return { ok, portPath };
+}
+
+guardedHandle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+  return startInternalGpsReader(portPath, baudRate);
 });
 
 guardedHandle('geo:internal-gps-stop', async () => {
@@ -4360,17 +4359,6 @@ guardedHandle('geo:internal-gps-stop', async () => {
     internalGpsReader = null;
   }
   return { ok: true };
-});
-
-// ── Geofence zone loader (called by renderer after server sync) ──
-guardedHandle('geo:set-geofence-zones', (_event, zones) => {
-  if (!Array.isArray(zones)) return { ok: false };
-  _geofenceZones = zones.filter(
-    (z) => z && typeof z.id !== 'undefined' &&
-    Number.isFinite(z.lat) && Number.isFinite(z.lng) && Number.isFinite(z.radiusM)
-  );
-  _activeZoneIds = new Set(); // reset membership on zone reload
-  return { ok: true, count: _geofenceZones.length };
 });
 
 // ─── Power management (keep navigation alive off-screen) ─────
