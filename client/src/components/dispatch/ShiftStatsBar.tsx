@@ -48,8 +48,8 @@ export default function ShiftStatsBar({ className = '', activeUnits }: ShiftStat
     >
       {items.map((item, i) => (
         <React.Fragment key={item.label}>
-          {i > 0 && <span className="text-rmpg-600" aria-hidden="true">|</span>}
-          <span className="text-rmpg-500">{item.label}:</span>
+          {i > 0 && <span className="text-fg-muted" aria-hidden="true">|</span>}
+          <span className="text-fg-muted">{item.label}:</span>
           <span className="text-rmpg-200 font-bold tabular-nums">{item.value}</span>
         </React.Fragment>
       ))}

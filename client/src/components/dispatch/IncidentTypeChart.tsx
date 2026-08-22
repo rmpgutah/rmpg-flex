@@ -79,13 +79,13 @@ export default function IncidentTypeChart() {
           <BarChart2 size={12} />
           Incident Types · Last {DAYS} Days
         </span>
-        {open ? <ChevronUp size={12} className="text-rmpg-500" /> : <ChevronDown size={12} className="text-rmpg-500" />}
+        {open ? <ChevronUp size={12} className="text-fg-muted" /> : <ChevronDown size={12} className="text-fg-muted" />}
       </button>
 
       {open && (
         <div className="px-3 pb-3">
           {loading && (
-            <div className="h-[80px] flex items-center justify-center text-rmpg-500 text-[10px] animate-pulse">
+            <div className="h-[80px] flex items-center justify-center text-fg-muted text-[10px] animate-pulse">
               Loading…
             </div>
           )}
@@ -93,7 +93,7 @@ export default function IncidentTypeChart() {
             <div className="text-[10px] text-amber-400 py-2">{error}</div>
           )}
           {!loading && !error && rows.length === 0 && (
-            <div className="text-rmpg-500 text-[10px] py-2 italic">No data</div>
+            <div className="text-fg-muted text-[10px] py-2 italic">No data</div>
           )}
           {!loading && !error && rows.length > 0 && (
             <>
@@ -161,7 +161,7 @@ export default function IncidentTypeChart() {
               {/* Legend row */}
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
                 {rows.map((row) => (
-                  <span key={row.incident_type} className="text-[9px] text-rmpg-400">
+                  <span key={row.incident_type} className="text-[9px] text-fg-muted">
                     <span className="font-semibold text-rmpg-200">{row.count}</span>
                     {' '}{row.incident_type}
                   </span>

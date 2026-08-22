@@ -123,7 +123,7 @@ export default function QuickStatusBar() {
               'transition-all duration-150 select-none',
               isActive || isFlashing
                 ? btn.activeColor
-                : 'bg-surface-raised border-border-default text-rmpg-400',
+                : 'bg-surface-raised border-border-default text-fg-muted',
               busy ? 'opacity-60' : 'active:scale-95',
             ].join(' ')}
           >

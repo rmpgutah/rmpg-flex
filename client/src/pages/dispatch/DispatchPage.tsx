@@ -5987,20 +5987,20 @@ export default function DispatchPage() {
                             </span>
                             <button
                               type="button"
-                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-rmpg-300 hover:text-rmpg-100 hover:border-rmpg-400"
+                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-400"
                               onClick={() => setShowBoloSearch((v) => !v)}
                             >
                               {showBoloSearch ? 'Cancel' : 'Link BOLO'}
                             </button>
                           </div>
-                          {bolosLoading && <span className="text-[9px] text-rmpg-500 italic">Loading…</span>}
+                          {bolosLoading && <span className="text-[9px] text-fg-muted italic">Loading…</span>}
                           {callBolos.map((bolo: any) => (
                             <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
                               <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
                               <div className="flex-1 min-w-0">
                                 <span className="text-rmpg-100">{bolo.description || bolo.notes || '—'}</span>
                                 {bolo.plate_number && <span className="ml-1 text-brand-400">PLT:{bolo.plate_number}</span>}
-                                {bolo.subject_name && <span className="ml-1 text-rmpg-300">{bolo.subject_name}</span>}
+                                {bolo.subject_name && <span className="ml-1 text-fg-secondary">{bolo.subject_name}</span>}
                               </div>
                             </div>
                           ))}
@@ -6045,7 +6045,7 @@ export default function DispatchPage() {
                                       <span className="font-semibold text-amber-400">BOLO</span>
                                       {' '}{bolo.description || bolo.notes || '—'}
                                       {bolo.plate_number && <span className="ml-1 text-brand-400 text-[9px]">PLT:{bolo.plate_number}</span>}
-                                      {bolo.subject_name && <span className="ml-1 text-rmpg-400 text-[9px]">{bolo.subject_name}</span>}
+                                      {bolo.subject_name && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_name}</span>}
                                     </button>
                                   ))}
                                 </div>
