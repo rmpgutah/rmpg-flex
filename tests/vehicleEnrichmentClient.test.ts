@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import {
   VehicleEnrichConfigError,
   VehicleEnrichTimeoutError,
@@ -11,6 +11,18 @@ import {
   checkAndReservePlateDecoder,
   ENRICH_RATE_LIMITS,
 } from '../src/utils/vehicleEnrichment/rateLimit';
+import { plateToVin, decodeVin, decodePlate } from '../src/utils/vehicleEnrichment/client';
+
+const originalFetch = globalThis.fetch;
+
+beforeAll(() => {
+  // nothing — just ensures originalFetch is captured before any test mutates it
+});
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
+});
 
 describe('VehicleEnrich error types', () => {
   it('VehicleEnrichConfigError is an Error with correct name', () => {
@@ -83,8 +95,6 @@ describe('vehicle enrichment rate limits', () => {
   });
 });
 
-import { plateToVin, decodeVin, decodePlate } from '../src/utils/vehicleEnrichment/client';
-
 describe('plateToVin client', () => {
   it('throws VehicleEnrichConfigError when apiKey is empty', async () => {
     await expect(plateToVin('ABC123', 'UT', '')).rejects.toBeInstanceOf(VehicleEnrichConfigError);
@@ -101,11 +111,13 @@ describe('plateToVin client', () => {
     expect(result.vin).toBe('1HGBH41JXMN109186');
   });
 
-  it('throws VehicleEnrichHttpError on 401', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
+  it('throws VehicleEnrichHttpError on 401 without retrying', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
       ok: false, status: 401, text: async () => 'Unauthorized',
-    }) as unknown as typeof fetch;
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     await expect(plateToVin('ABC123', 'UT', 'bad-key')).rejects.toBeInstanceOf(VehicleEnrichHttpError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it('returns null vin when API returns no match', async () => {
@@ -115,6 +127,24 @@ describe('plateToVin client', () => {
     }) as unknown as typeof fetch;
     const result = await plateToVin('ZZZNONE', 'UT', 'test-key');
     expect(result.vin).toBeNull();
+  });
+
+  it('retries on 500 and succeeds if retry returns 200', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'Server Error' })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ vin: '1HGBH41JXMN109186' }) });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+    const result = await plateToVin('ABC123', 'UT', 'test-key');
+    expect(result.vin).toBe('1HGBH41JXMN109186');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws VehicleEnrichHttpError when both 500 calls fail', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValue({ ok: false, status: 500, text: async () => 'Server Error' });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+    await expect(plateToVin('ABC123', 'UT', 'test-key')).rejects.toBeInstanceOf(VehicleEnrichHttpError);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -136,11 +166,13 @@ describe('decodeVin client', () => {
     expect(result.year).toBe(2021);
   });
 
-  it('throws VehicleEnrichHttpError on 400', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
+  it('throws VehicleEnrichHttpError on 400 without retrying', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
       ok: false, status: 400, text: async () => 'Bad Request',
-    }) as unknown as typeof fetch;
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     await expect(decodeVin('BADINPUT', 'test-key')).rejects.toBeInstanceOf(VehicleEnrichHttpError);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -149,10 +181,20 @@ describe('decodePlate client', () => {
     await expect(decodePlate('ABC123', 'UT', '')).rejects.toBeInstanceOf(VehicleEnrichConfigError);
   });
 
-  it('throws VehicleEnrichHttpError on 500', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false, status: 500, text: async () => 'Internal Server Error',
-    }) as unknown as typeof fetch;
+  it('throws VehicleEnrichHttpError when both 500 calls fail', async () => {
+    const mockFetch = vi.fn()
+      .mockResolvedValue({ ok: false, status: 500, text: async () => 'Internal Server Error' });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
     await expect(decodePlate('ABC123', 'UT', 'test-key')).rejects.toBeInstanceOf(VehicleEnrichHttpError);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('parses string-form year correctly', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({ make: 'Ford', model: 'F-150', year: '2019', vehicle_type: 'Truck' }),
+    }) as unknown as typeof fetch;
+    const result = await decodePlate('ABC123', 'UT', 'test-key');
+    expect(result.year).toBe(2019);
   });
 });
