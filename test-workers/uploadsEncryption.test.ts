@@ -19,7 +19,8 @@ describe('attachments/ — envelope encryption', () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, file_id TEXT UNIQUE, original_name TEXT, stored_name TEXT,
       file_path TEXT, mime_type TEXT, file_size INTEGER, entity_type TEXT, entity_id INTEGER,
       -- Live attachments has no uploaded_at (created_at is the timestamp).
-      folder_id INTEGER, uploaded_by INTEGER
+      folder_id INTEGER, uploaded_by INTEGER,
+      latitude REAL, longitude REAL, taken_at TEXT, reference_notes TEXT
     )`).run();
     await db.prepare(`CREATE TABLE IF NOT EXISTS activity_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, action TEXT, entity_type TEXT,
