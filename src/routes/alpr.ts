@@ -42,6 +42,7 @@ import {
   type AlprVehicle,
 } from '../utils/roboflowAlpr';
 import { readPlateCloudflare, type CloudflarePlateResult } from '../utils/cloudflarePlate';
+import { enrichVehicleRecord } from '../utils/vehicleEnrichment/enrichChain';
 
 import { log } from '../utils/logger';
 const alpr = new Hono<Env>();
@@ -293,6 +294,7 @@ async function finalizeCapture(
     lat: number | null; lng: number | null; locationText: string | null; userId: number;
     derivedTrust?: number;
   },
+  executionCtx?: { waitUntil(p: Promise<unknown>): void },
 ): Promise<FinalizeResult> {
   const read = args.read;
   const plate = read?.plate ?? null;
@@ -368,6 +370,15 @@ async function finalizeCapture(
       const up = await upsertVehicleRecord(db, cfReadToVehicle(read), screen.vehicleId);
       recordId = up?.id ?? screen.vehicleId ?? null;
       if (recordId) out.recordIds.push(recordId);
+      // Auto-trigger enrichment for newly created records.  Workers AI reads
+      // never produce a VIN, so every new row from this path is VIN-less.
+      // Fire-and-forget via waitUntil — never delays the response.
+      if (up?.created && plate && executionCtx) {
+        executionCtx.waitUntil(
+          enrichVehicleRecord(plate, read.state ?? '', db, env, executionCtx as ExecutionContext)
+            .catch((err: Error) => log.warn('auto-enrich failed', { plate, error: err?.message })),
+        );
+      }
       if (recordId && args.callId != null) {
         try {
           await execute(db,
@@ -565,7 +576,7 @@ alpr.post('/capture', operational, async (c) => {
   const fin = await finalizeCapture(c.env, db, {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
     derivedTrust,
-  });
+  }, c.executionCtx);
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   const fieldPhotoLinked = fieldPhotoId !== null;
