@@ -23,6 +23,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 import { sendToUser } from '../routes/ws';
+import { emitAlert } from './alertHub';
 import { parseD1TimestampMs } from './fleetio/sync';
 
 const MAX_ESCALATION_LEVEL = 10;
