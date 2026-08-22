@@ -1177,6 +1177,8 @@ records.post('/vehicles', async (c) => {
         vals.push('?');
         if (key === 'commercial_vehicle' || key === 'hazmat') {
           params.push(val ? 1 : 0);
+        } else if (key === 'doors') {
+          params.push(val !== '' && val != null ? parseInt(String(val), 10) : null);
         } else {
           params.push(val ?? null);
         }
@@ -1246,12 +1248,15 @@ records.put('/vehicles/:id', async (c) => {
         cols.push(`${key} = ?`);
         if (key === 'commercial_vehicle' || key === 'hazmat') {
           params.push(val ? 1 : 0);
+        } else if (key === 'doors') {
+          params.push(val !== '' && val != null ? parseInt(String(val), 10) : null);
         } else {
           params.push(val ?? null);
         }
       }
     }
     if (cols.length === 0) return c.json({ message: 'No changes' });
+    cols.push("updated_at = datetime('now')");
     await execute(db, `UPDATE vehicles_records SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
     return c.json(updated);

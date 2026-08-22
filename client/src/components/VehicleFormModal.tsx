@@ -8,7 +8,7 @@ import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
-import { composeAddressUnit } from '../utils/addressUnit';
+import { composeAddressUnit, splitAddressUnit } from '../utils/addressUnit';
 import {
   VEHICLE_BODY_STYLE_OPTIONS, VEHICLE_COLOR_OPTIONS,
   VEHICLE_FUEL_OPTIONS, VEHICLE_TRANSMISSION_OPTIONS,
@@ -231,14 +231,18 @@ export default function VehicleFormModal({
           owner_name: editingVehicle.owner_name || '',
           registered_owner: editingVehicle.registered_owner || '',
           registration_state: editingVehicle.registration_state || '',
-          insurance_expiry: (editingVehicle as any).insurance_expiry || '',
-          owner_dob: (editingVehicle as any).owner_dob || '',
-          owner_dl_number: (editingVehicle as any).owner_dl_number || '',
-          tow_location: (editingVehicle as any).tow_location || '',
-          ncic_entry_number: (editingVehicle as any).ncic_entry_number || '',
-          primary_driver_name: (editingVehicle as any).primary_driver_name || '',
-          vehicle_use: (editingVehicle as any).vehicle_use || '',
+          insurance_expiry: editingVehicle.insurance_expiry || '',
+          owner_dob: editingVehicle.owner_dob || '',
+          owner_dl_number: editingVehicle.owner_dl_number || '',
+          tow_location: editingVehicle.tow_location || '',
+          ncic_entry_number: editingVehicle.ncic_entry_number || '',
+          primary_driver_name: editingVehicle.primary_driver_name || '',
+          vehicle_use: editingVehicle.vehicle_use || '',
         };
+        // Split stored "123 Main St #2B" back into street + unit fields
+        const { street, unit } = splitAddressUnit(editingVehicle.owner_address || '');
+        initial.owner_address = street;
+        setOwnerAddressUnit(unit);
         setForm(initial);
         snapshot();
       } else {
@@ -248,26 +252,29 @@ export default function VehicleFormModal({
     }
   }, [isOpen, editingVehicle, snapshot]);
 
+  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
       setForm((prev) => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
     } else {
-      setForm((prev) => ({ ...prev, [name]: value }));
+      setForm((prev) => {
+        const next = { ...prev, [name]: value };
+        // Auto-populate doors from body style when doors is not yet set
+        if (name === 'body_style' && !prev.doors) {
+          const m = value.match(/(\d+)-Door/i);
+          if (m) next.doors = m[1];
+        }
+        return next;
+      });
     }
     // Editing year/vin clears the inline validation error for that field
-    // so the operator sees the error disappear as they correct the value.
     if (name === 'year' || name === 'vin') {
       setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
     }
   };
-
-  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
-  // Inline validation errors per field. Surface them on click — previously
-  // the handler silently `return`-ed on bad year/VIN with NO feedback,
-  // which read to the operator as "Create button is dead". Reported
-  // in-session 2026-06-21.
-  const [fieldErrors, setFieldErrors] = useState<{ year?: string; vin?: string }>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
