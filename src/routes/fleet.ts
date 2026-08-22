@@ -157,7 +157,7 @@ fleet.get('/', async (c) => {
     }
     if (q.search) {
       where.push('(v.plate_number LIKE ? OR v.make LIKE ? OR v.model LIKE ? OR v.vehicle_number LIKE ?)');
-      const pat = `%${q.search}%`;
+      const pat = `%${q.search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
       params.push(pat, pat, pat, pat);
     }
 
@@ -692,7 +692,7 @@ fleet.get('/dashcam-videos', async (c) => {
     const params: unknown[] = [];
     if (q.search) {
       where.push('(v.title LIKE ? OR v.case_number LIKE ? OR v.notes LIKE ?)');
-      const pat = `%${q.search}%`;
+      const pat = `%${q.search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
       params.push(pat, pat, pat);
     }
     if (q.vehicle_id) {
