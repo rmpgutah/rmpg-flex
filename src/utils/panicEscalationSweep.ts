@@ -23,7 +23,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 import { sendToUser } from '../routes/ws';
-import { emitAlert } from './alertHub';
+import { parseD1TimestampMs } from './fleetio/sync';
 
 const MAX_ESCALATION_LEVEL = 10;
 
@@ -51,7 +51,11 @@ export async function sweepPanicEscalation(
   let escalated = 0;
   for (const row of rows) {
     if (row.escalation_level >= MAX_ESCALATION_LEVEL) continue;
-    const minutesUnacked = Math.floor((Date.now() - Date.parse(row.created_at)) / 60000);
+    // created_at is a zone-less D1 datetime('now') (UTC); Date.parse reads it
+    // as LOCAL time, skewing the age on any non-UTC host — use parseD1TimestampMs.
+    const createdMs = parseD1TimestampMs(row.created_at);
+    if (createdMs == null) continue;
+    const minutesUnacked = Math.floor((Date.now() - createdMs) / 60000);
     // Level N corresponds to N minutes unacknowledged — only escalate once
     // a full additional minute has elapsed since the last level bump.
     if (minutesUnacked <= row.escalation_level) continue;

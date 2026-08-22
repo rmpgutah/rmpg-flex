@@ -29,6 +29,7 @@ const { formatSerialPorts, parseSystemProfilerBluetoothOutput, classifyGpsPresen
 const { buildSecondaryWindowUrl, coerceBadgeCount, isValidTrayStatus, formatTrayTooltip, restoreWindowBounds, saveWindowBounds } = require('./windowManager');
 const { buildShellRegistryValue, MAX_BOOT_FAILURES, resetBootAttemptState, nextBootAttemptState, shouldSelfRevert, KIOSK_ESCAPE_ACCELERATORS, selectEscapeAccelerator, shouldUseKioskChrome, shouldRelaunchOnAllWindowsClosed, validateEscapeLoginResponse, validateFlexOsLoginResponse } = require('./kioskShell');
 const { isRecoverableCrashReason, shouldAutoRecover, recordRecoveryAttempt } = require('./crashRecovery');
+const { runRfScan } = require('./rfScanner');
 const fs = require('fs');
 
 // ─── Lazy-load native modules ─────────────────────────────────
@@ -2273,6 +2274,24 @@ function deleteHkcuShell() {
 // Replaces explorer.exe as the Windows login shell so this machine boots
 // directly into the RMPG Flex desktop. See docs/superpowers/specs/
 // 2026-07-21-desktop-kiosk-shell-mode-design.md for the full design.
+// ── RF / signal intelligence scan ────────────────────────────────────
+// Runs a passive WiFi + Bluetooth scan via OS commands and returns the
+// structured session object ready to POST to /api/radar360/signal-scan.
+// opts: { lat, lng, deviceId, callId }
+guardedHandle('device:rf-scan', async (event, opts = {}) => {
+  try {
+    const result = await runRfScan({
+      lat: opts.lat ?? null,
+      lng: opts.lng ?? null,
+      deviceId: opts.deviceId ?? null,
+      callId: opts.callId ?? null,
+    });
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: err && err.message };
+  }
+});
+
 guardedHandle('device:set-kiosk-shell', async (event, enabled) => {
   if (process.platform !== 'win32') {
     return { ok: false, error: 'Kiosk mode is only available on Windows' };

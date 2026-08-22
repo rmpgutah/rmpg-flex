@@ -23,12 +23,26 @@ export interface UseIncidentHeatmapResult {
   toggle: () => void;
 }
 
-function toGeoJSON(rows: Array<{ latitude: number; longitude: number; count?: number }>): GeoJSON.FeatureCollection {
+interface HeatmapPoint {
+  latitude: number;
+  longitude: number;
+  weight?: number;
+  incident_type?: string;
+}
+
+interface HeatmapResponse {
+  hours: number;
+  count: number;
+  points: HeatmapPoint[];
+}
+
+function toGeoJSON(rows: HeatmapPoint[]): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
     features: rows.map((r) => ({
       type: 'Feature' as const,
-      properties: { weight: Math.min(1, (r.count ?? 1) / 10) },
+      // Server weights are priority-based 1–3; normalize to 0–1 for the paint spec.
+      properties: { weight: Math.min(1, (r.weight ?? 1) / 3) },
       geometry: { type: 'Point' as const, coordinates: [r.longitude, r.latitude] },
     })),
   };
@@ -42,7 +56,7 @@ export function useIncidentHeatmap(
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<Array<{ latitude: number; longitude: number; count?: number }>>([]);
+  const [rows, setRows] = useState<HeatmapPoint[]>([]);
 
   // Fetch data when enabled
   useEffect(() => {
@@ -50,12 +64,13 @@ export function useIncidentHeatmap(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    apiFetch<Array<{ latitude: number; longitude: number; count?: number }>>(
+    apiFetch<HeatmapResponse>(
       `/dispatch/geography/incident-heatmap?hours=${hours}`,
     )
       .then((data) => {
         if (cancelled) return;
-        setRows(Array.isArray(data) ? data : []);
+        // Endpoint returns an envelope: { hours, count, points: [...] }.
+        setRows(Array.isArray(data?.points) ? data.points : []);
       })
       .catch((e: any) => {
         if (cancelled) return;
@@ -89,7 +104,7 @@ export function useIncidentHeatmap(
             'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 0.5, 14, 1],
             'heatmap-color': [
               'interpolate', ['linear'], ['heatmap-density'],
-              0, 'rgba(0 0 0 / 0)',
+              0, 'rgba(0,0,0,0)',
               0.1, 'rgba(33,102,172,0.4)',
               0.3, 'rgba(103,169,207,0.6)',
               0.5, 'rgba(209,229,143,0.7)',

@@ -12,6 +12,7 @@ import { log } from './logger';
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, execute } from './db';
 import { isRealValue, normalizeAddress } from './intelMatch';
+import { parseD1TimestampMs } from './fleetio/sync';
 
 // ── Escalation scoring (pure) ────────────────────────────────
 
@@ -31,8 +32,9 @@ export function computeEscalation(events: WeightedEvent[]): Escalation {
   let recent = 0, recentCount = 0, prior = 0;
   for (const e of events) {
     if (!e.date) continue;
-    const t = Date.parse(e.date);
-    if (!Number.isFinite(t)) continue;
+    // D1 timestamps are zone-less UTC; Date.parse would read them as local time.
+    const t = parseD1TimestampMs(e.date);
+    if (t == null) continue;
     const w = KIND_WEIGHT[e.kind] || 1;
     if (t >= d30) { recent += w; recentCount++; }
     else if (t >= d120) prior += w;
@@ -119,7 +121,7 @@ export async function detectRepeatLocations(db: D1Database): Promise<number> {
     }
     const d7 = Date.now() - 7 * 86400000;
     for (const [addr, calls] of byAddr) {
-      const recent = calls.filter((c) => Date.parse(c.created_at) >= d7);
+      const recent = calls.filter((c) => (parseD1TimestampMs(c.created_at) ?? 0) >= d7);
       if (recent.length < 3) continue;
       const priorWeekly = (calls.length - recent.length) / 4;
       if (recent.length < priorWeekly * 2) continue;

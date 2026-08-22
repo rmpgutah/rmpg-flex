@@ -2,7 +2,7 @@
 // RMPG Flex — QuickStatusBar (Mobile)
 // ============================================================
 // Prominent 4-button status bar for one-thumb status updates.
-// Sends PATCH /api/dispatch/units/me/status.
+// Sends PUT /api/dispatch/units/:id/status.
 // Statuses: En Route, On Scene, Available, Unavailable.
 // ============================================================
 
@@ -39,7 +39,13 @@ export default function QuickStatusBar() {
   const [currentStatus, setCurrentStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<BackendStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const unitIdRef = useRef<number | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+  }, []);
 
   const officerId = (user as any)?.officer_id ?? (user as any)?.id ?? null;
 
@@ -76,17 +82,19 @@ export default function QuickStatusBar() {
     if (!unitId || busy) return;
     setBusy(true);
     setFlash(backend);
+    setError(null);
     try {
       await apiFetch(`/api/dispatch/units/${unitId}/status`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify({ status: backend }),
       });
       setCurrentStatus(backend);
     } catch {
-      // silent — status will refresh via WS
+      setError('Status update failed');
     } finally {
       setBusy(false);
-      setTimeout(() => setFlash(null), 600);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setFlash(null), 600);
     }
   }, [unitId, busy]);
 
@@ -115,7 +123,7 @@ export default function QuickStatusBar() {
               'transition-all duration-150 select-none',
               isActive || isFlashing
                 ? btn.activeColor
-                : 'bg-surface-raised border-border-default text-rmpg-400',
+                : 'bg-surface-raised border-border-default text-fg-muted',
               busy ? 'opacity-60' : 'active:scale-95',
             ].join(' ')}
           >
@@ -123,6 +131,14 @@ export default function QuickStatusBar() {
           </button>
         );
       })}
+      {error && (
+        <div
+          role="alert"
+          className="col-span-4 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--sev-critical)]"
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

@@ -813,7 +813,8 @@ sv.get('/', async (c) => {
   if (priority) { where.push('q.priority = ?'); args.push(priority); }
   if (search) {
     where.push('(q.recipient_name LIKE ? OR q.case_number LIKE ? OR q.recipient_address LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   // FK reference guards: CASE expressions are re-emitted AFTER q.* so
   // they win on duplicate column names. serve_queue rows can reference
@@ -848,8 +849,8 @@ sv.get('/', async (c) => {
     if (ids.length) {
       const hasDispositionCol = await columnExists(db, 'serve_attempts', 'disposition_code');
       const attemptCols = hasDispositionCol
-        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name'
-        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, u.full_name AS officer_name';
+        ? 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.disposition_code, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name'
+        : 'a.id, a.serve_queue_id, a.attempt_number, a.attempt_at, a.attempt_type, a.result, a.notes, a.latitude, a.longitude, a.officer_id, a.photo_ids, u.full_name AS officer_name';
       // `limit` is caller-supplied and capped at 500, so `ids` routinely exceeds
       // D1's 100-bound-parameter cap — a hand-rolled IN-list 500s the whole
       // queue view the moment a dispatcher asks for more than 100 jobs.
@@ -864,6 +865,7 @@ sv.get('/', async (c) => {
       );
       const byQueue = new Map<number, any[]>();
       for (const a of attempts) {
+        a.photo_ids = (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })();
         const bucket = byQueue.get(a.serve_queue_id) ?? [];
         bucket.push(a);
         byQueue.set(a.serve_queue_id, bucket);
@@ -1044,7 +1046,7 @@ sv.get('/folder-stats', async (c) => {
   const rows = await query<{ status: string; cnt: number }>(
     db,
     `SELECT status, COUNT(*) AS cnt FROM serve_queue
-     WHERE DATE(created_at) = ? OR DATE(serve_date) = ?
+     WHERE DATE(created_at, '-7 hours') = ? OR DATE(serve_date) = ?
      GROUP BY status`,
     date, date,
   );
@@ -1133,13 +1135,16 @@ sv.get('/:id', async (c) => {
     id,
   );
   if (!row) return c.json({ error: 'Not found' }, 404);
-  const attempts = await query(
+  const attempts = (await query(
     db,
     `SELECT a.*, u.full_name AS officer_name
        FROM serve_attempts a LEFT JOIN users u ON u.id = a.officer_id
        WHERE a.serve_queue_id = ? ORDER BY a.attempt_at DESC`,
     id,
-  );
+  )).map((a: any) => ({
+    ...a,
+    photo_ids: (() => { try { return JSON.parse(a.photo_ids || '[]'); } catch { return []; } })(),
+  }));
   const scans = await query(
     db,
     `SELECT id, serve_queue_id, job_ref, scanned_at, ip_address, user_agent,
@@ -2254,12 +2259,12 @@ sv.get('/stats/daily-run-summary', async (c) => {
       SUM(CASE WHEN result = 'not_home' THEN 1 ELSE 0 END) AS not_home,
       SUM(CASE WHEN result = 'refused'  THEN 1 ELSE 0 END) AS refused
     FROM serve_attempts
-    WHERE attempt_at >= date('now')
+    WHERE attempt_at >= date('now', '-7 hours')
   `);
   const mileRow = await queryFirst<{ total_miles: number }>(db, `
     SELECT SUM(mileage_actual) AS total_miles
     FROM serve_queue
-    WHERE closed_at >= date('now') AND status = 'served'
+    WHERE closed_at >= date('now', '-7 hours') AND status = 'served'
   `);
   return c.json({
     date: new Date().toISOString().slice(0, 10),

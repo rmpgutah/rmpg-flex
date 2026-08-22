@@ -1728,7 +1728,8 @@ si.get('/', async (c) => {
   if (priority) { where.push('priority = ?'); args.push(priority); }
   if (search) {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    const s = `%${search.slice(0, 48)}%`; // D1 LIKE cap: pattern >50 chars silently returns nothing
+    args.push(s, s, s);
   }
   const sql = `
     SELECT q.*, u.full_name AS officer_name

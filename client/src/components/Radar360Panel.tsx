@@ -14,10 +14,11 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   ScanLine, RefreshCw, AlertTriangle, Loader2,
-  Radio, Car, User, Map, FileText,
+  Radio, Car, User, Map, FileText, Wifi,
 } from 'lucide-react';
 import PanelTitleBar from './PanelTitleBar';
 import IconButton from './IconButton';
+import Radar360SignalsPanel from './Radar360SignalsPanel';
 import type { RadarContact, ContactKind, UseRadar360Result } from '../hooks/useRadar360';
 
 // ── Design tokens (theme-variable-backed, never hardcode hex) ──
@@ -104,6 +105,8 @@ function ContactDot({ contact, radiusMi, selected, onSelect }: ContactDotProps) 
 
 // ── Main component ────────────────────────────────────────
 
+type Tab = 'radar' | 'signals';
+
 interface Props {
   radar: UseRadar360Result;
   /** Optional label for the scan center (e.g. call number, address). */
@@ -116,8 +119,10 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
     filtered, loading, error, scannedAt, refresh,
     visibleKinds, toggleKind, flaggedOnly, setFlaggedOnly,
     radiusMi, setRadiusMi,
+    lat, lng, callId,
   } = radar;
 
+  const [activeTab, setActiveTab] = useState<Tab>('radar');
   const [selected, setSelected] = useState<RadarContact | null>(null);
 
   const selectContact = useCallback((c: RadarContact) => {
@@ -163,6 +168,43 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
         </IconButton>
       </PanelTitleBar>
+
+      {/* Tab bar */}
+      <div className="flex border-b border-border-default">
+        {([
+          { id: 'radar' as Tab, label: 'Radar', Icon: ScanLine },
+          { id: 'signals' as Tab, label: 'Signals', Icon: Wifi },
+        ]).map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveTab(id)}
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-semibold transition-colors"
+            style={{
+              borderBottom: activeTab === id ? '2px solid var(--brand-400)' : '2px solid transparent',
+              color: activeTab === id ? 'var(--brand-400)' : 'var(--text-muted)',
+            }}
+          >
+            <Icon className="w-3 h-3" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Signals tab */}
+      {activeTab === 'signals' && (
+        <div className="px-3 py-2 flex-1 overflow-hidden">
+          <Radar360SignalsPanel
+            lat={lat ?? null}
+            lng={lng ?? null}
+            radiusMi={radiusMi}
+            callId={callId ?? null}
+          />
+        </div>
+      )}
+
+      {/* Radar tab content (hidden when signals tab active) */}
+      {activeTab === 'radar' && (<>
 
       {/* Scan metadata */}
       <div className="px-3 py-1.5 border-b border-border-default flex items-center justify-between gap-2">
@@ -421,6 +463,8 @@ export default function Radar360Panel({ radar, centerLabel, onClose }: Props) {
         </span>
         <span className="text-[9px] text-muted font-mono">{radiusMi} mi radius</span>
       </div>
+
+      </>)}
     </div>
   );
 }

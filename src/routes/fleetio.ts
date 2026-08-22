@@ -34,19 +34,14 @@ import { matchLocalVehicle, buildLocalInsertFromFleetio, decideMatchAction, buil
 import type { RmpgFleetVehicleRow, SeedOutcome, SeedSummary } from '../utils/fleetio/types';
 import { recordAudit } from '../utils/auditLog';
 import fleetioWebhook from './fleetioWebhook';
-import { rmpgTableToResource, getQueueHealth, isPermanentFailureMessage } from '../utils/fleetio/sync';
+import { rmpgTableToResource, getQueueHealth, isPermanentFailureMessage, PACE_MS, pace, coerceScalarForD1 } from '../utils/fleetio/sync';
 import { emitFleetioEvent, type FleetioEmitKind } from '../utils/fleetio/events';
 
 const fleetio = new Hono<Env>();
 
-/** Inter-request spacing for every paced Fleet.io loop in this file.
- *  Fleet.io's account ceiling is 50 req/min (confirmed 2026-06-21 against the
- *  Token-scope settings page), so 1.2 s lands exactly at the ceiling with
- *  headroom for a concurrent sync. Shared by /seed, /seed-vendors, /seed-parts
- *  and /pull so one endpoint can't quietly diverge and start earning 429s. */
-const PACE_MS = 1200;
-
-const pace = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+// PACE_MS / pace live in src/utils/fleetio/sync.ts (shared with the
+// applyOutbound drain). Self-imposed pacing — Fleet.io limits are
+// plan-dependent (no fixed published number).
 
 // Mount the PR 4 webhook subrouter at the bare /webhook path. The bypass
 // in src/middleware/auth.ts lets the request through without a JWT; the
@@ -337,6 +332,9 @@ fleetio.post('/conflicts/:id{[0-9]+}/resolve', requireRole('admin'), async (c) =
       }
       let remoteValue: unknown = null;
       try { remoteValue = conflict.remote_value ? JSON.parse(conflict.remote_value) : null; } catch { /* leave null */ }
+      // D1 bind() throws on objects/arrays; store non-scalars as their JSON
+      // text (same convention as applyInbound's coerceScalarForD1).
+      remoteValue = coerceScalarForD1(remoteValue);
       await execute(db,
         `UPDATE ${conflict.rmpg_table} SET ${conflict.field} = ?, updated_at = datetime('now') WHERE id = ?`,
         remoteValue, conflict.rmpg_id);
