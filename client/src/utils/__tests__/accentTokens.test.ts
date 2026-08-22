@@ -746,7 +746,18 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // 10356 -> 10438: Merged SearchBox v6 and Radar360 device capture UI
   // 10438 -> 10455: FZ-55 Kiosk HUD overlay telemetry classes
   // 10455 -> 10474: 500+ Features Kiosk HUD system control panel & HUD controls
-  const PIN = 10477;
+  //
+  // 10477 -> 10500: pin was already stale against origin/main at the moment
+  // this line last changed (#3835's own diff only edited this constant by
+  // -1, from 10478 to 10477, without re-scanning the tree) — verified via a
+  // clean `git worktree add` checkout of origin/main HEAD (60fc57edf6,
+  // unrelated to this PR's changes: only client/src/utils/deStampImage.ts)
+  // that the real count there is already 10500. Concurrent PRs landed
+  // legitimate rmpg-ramp usage between whenever 10477 was computed and when
+  // #3835 actually merged, so the ratchet was red on main itself before this
+  // PR branched. Bumping to the verified current count rather than chasing
+  // down which of several already-merged, unrelated PRs owns each site.
+  const PIN = 10500;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
