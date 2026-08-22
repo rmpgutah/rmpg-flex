@@ -58,7 +58,7 @@ function dateFrom(filter: DateFilter): string | undefined {
   if (filter === 'all') return undefined;
   const now = Date.now();
   if (filter === 'today') {
-    const d = new Date(now);
+    const d = new Date(now); // new-date-ok — epoch number, not a server string
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()); // new-date-ok local wall-clock
     return start.toISOString();
   }
