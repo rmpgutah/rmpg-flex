@@ -327,6 +327,12 @@ uploads.post('/', async (c) => {
     const entityIdRaw = formData.get('entity_id') ? String(formData.get('entity_id')) : null;
     const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
 
+    // Evidence metadata supplied by the client at upload time.
+    const geoLat = formData.get('latitude') ? parseFloat(String(formData.get('latitude'))) : null;
+    const geoLon = formData.get('longitude') ? parseFloat(String(formData.get('longitude'))) : null;
+    const takenAt = formData.get('taken_at') ? String(formData.get('taken_at')) : null;
+    const referenceNotes = formData.get('reference_notes') ? String(formData.get('reference_notes')) : null;
+
     // Direct folder placement: callers (PDF editor, document writer, Documents
     // page) may pass `folder_id` to file the upload straight into a
     // document_folders row via attachments.folder_id, avoiding a second
@@ -373,8 +379,8 @@ uploads.post('/', async (c) => {
 
       await execute(
         db,
-        `INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by, latitude, longitude, taken_at, reference_notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         fileId,
         file.name,
         `${fileId}${ext}`,
@@ -384,6 +390,10 @@ uploads.post('/', async (c) => {
         entityType,
         entityId,
         userId,
+        geoLat ?? null,
+        geoLon ?? null,
+        takenAt ?? null,
+        referenceNotes ?? null,
       );
 
       if (effectiveFolderId != null) {
@@ -718,6 +728,44 @@ uploads.delete('/:fileId', async (c) => {
   } catch (err) {
     log.error('Delete attachment failed', { fileId: c.req.param('fileId') }, err as Error);
     return c.json({ error: 'Failed to delete attachment', code: 'DELETE_ATTACHMENT_ERROR' }, 500);
+  }
+});
+
+// PATCH /api/uploads/:fileId/metadata — admin/manager: edit evidence metadata
+uploads.patch('/:fileId/metadata', async (c) => {
+  const user = c.var.user;
+  const allowedRoles = ['admin', 'manager'];
+  if (!user || !allowedRoles.includes(user.role)) {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  const fileId = c.req.param('fileId');
+  const db = c.env.DB;
+  try {
+    const body = await c.req.json<{
+      latitude?: number | null;
+      longitude?: number | null;
+      taken_at?: string | null;
+      reference_notes?: string | null;
+    }>();
+
+    const att = await queryFirst<any>(db, 'SELECT file_id FROM attachments WHERE file_id = ?', fileId);
+    if (!att) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+
+    await execute(
+      db,
+      `UPDATE attachments SET latitude = ?, longitude = ?, taken_at = ?, reference_notes = ? WHERE file_id = ?`,
+      body.latitude ?? null,
+      body.longitude ?? null,
+      body.taken_at ?? null,
+      body.reference_notes ?? null,
+      fileId,
+    );
+
+    const updated = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
+    return c.json(updated);
+  } catch (err) {
+    log.error('Patch attachment metadata failed', { fileId }, err as Error);
+    return c.json({ error: 'Failed to update metadata', code: 'METADATA_UPDATE_ERROR' }, 500);
   }
 });
 
