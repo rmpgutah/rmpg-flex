@@ -126,7 +126,6 @@ export interface PersonFormData {
   work_phone: string;
   // Newly surfaced — all accepted by PERSON_FIELD_MAP in the live Worker.
   suffix: string;
-  sex: string;
   nationality: string;
   aliases: string;
   photo_url: string;
@@ -226,7 +225,6 @@ const EMPTY_FORM: PersonFormData = {
   home_phone: '',
   work_phone: '',
   suffix: '',
-  sex: '',
   nationality: '',
   aliases: '',
   photo_url: '',
@@ -372,7 +370,6 @@ export default function PersonFormModal({
           home_phone: editingPerson.home_phone || '',
           work_phone: editingPerson.work_phone || '',
           suffix: editingPerson.suffix || '',
-          sex: editingPerson.sex || '',
           nationality: editingPerson.nationality || '',
           aliases: editingPerson.aliases || '',
           photo_url: editingPerson.photo_url || '',
@@ -631,15 +628,6 @@ export default function PersonFormModal({
               <select name="gender" className="select-dark mt-1" value={form.gender} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </FormField>
-            <FormField label="Sex (Birth/Legal)">
-              <select name="sex" className="select-dark mt-1" value={form.sex} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                <option value="M">M</option>
-                <option value="F">F</option>
-                <option value="X">X / Non-binary</option>
-                <option value="U">Unknown</option>
               </select>
             </FormField>
             <FormField label="Race / Ethnicity">

@@ -1321,6 +1321,18 @@ hr.put('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
   }
 });
 
+hr.delete('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM overtime_requests WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /payroll/overtime/:id', err);
+    return c.json({ error: 'Failed to delete OT request', code: 'HR_OT_DELETE_ERR' }, 500);
+  }
+});
+
 // ─── Payroll CSV Export ──────────────────────────────────────
 
 hr.get('/payroll/export/csv', requireRole(...MANAGER_ROLES), async (c) => {
@@ -1591,6 +1603,39 @@ hr.post('/attendance', requireRole(...MANAGER_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] POST /attendance', err);
     return c.json({ error: 'Failed to create attendance record', code: 'HR_ATTEND_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const ALLOWED = new Set(['type', 'date', 'minutes_late', 'reason', 'excused', 'documented_by']);
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, v] of Object.entries(body ?? {})) {
+      if (ALLOWED.has(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    }
+    if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+    vals.push(id);
+    await execute(db, `UPDATE hr_attendance SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /attendance/:id', err);
+    return c.json({ error: 'Failed to update attendance record', code: 'HR_ATTEND_UPDATE_ERR' }, 500);
+  }
+});
+
+hr.delete('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM hr_attendance WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /attendance/:id', err);
+    return c.json({ error: 'Failed to delete attendance record', code: 'HR_ATTEND_DELETE_ERR' }, 500);
   }
 });
 
