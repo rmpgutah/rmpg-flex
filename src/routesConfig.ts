@@ -55,6 +55,7 @@ import auth from './routes/auth';
 import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
+import iosOta from './routes/iosOta';
 import tiles from './routes/tiles';
 import osmOverrides from './routes/osmOverrides';
 import geo from './routes/geo';
@@ -324,6 +325,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
     note: "RMPG's internal edit layer over the OSM overlays, keyed by OSM element id. Auth REQUIRED — unlike /api/tiles (public reference data), these are internal corrections attributable to a named user." },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+  { prefix: '/api/ios-ota', router: iosOta, auth: 'public',
+    note: 'Wireless install package (manifest.plist/ipa/icons) for ios2/RMPGFlexConnect, served from R2 DOWNLOADS under ios-ota/. Public — itms-services on the device fetches these unauthenticated. Needs the same WAF managed-challenge skip as /api/health or the install link 403s (see docs/superpowers/specs/2026-08-22-ios-ota-wireless-install-design.md).' },
 
   // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
   // token IS the credential — no JWT required because the page is meant for
