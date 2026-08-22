@@ -159,6 +159,7 @@ const IntelAiAnalyst = lazyRetry(() => import('./pages/intel/IntelAiAnalyst'));
 const BoloBoard = lazyRetry(() => import('./pages/intel/BoloBoard'));
 const IntelSearch = lazyRetry(() => import('./pages/intel/IntelSearch'));
 const PlateLogPage = lazyRetry(() => import('./pages/PlateLogPage'));
+const AlprHistoryPage = lazyRetry(() => import('./pages/AlprHistoryPage'));
 const AnalyticsPage = lazyRetry(() => import('./pages/AnalyticsPage'));
 const QuickCapturePage = lazyRetry(() => import('./pages/QuickCapturePage'));
 const JailRecordsPage = lazyRetry(() => import('./pages/JailRecordsPage'));
@@ -648,6 +649,7 @@ function AppRoutes() {
               <Route path="alerts" element={<RouteErrorBoundary><AlertsSection /></RouteErrorBoundary>} />
               <Route path="jail" element={<RouteErrorBoundary><JailRecordsPage /></RouteErrorBoundary>} />
               <Route path="plate-log" element={<RouteErrorBoundary><PlateLogPage /></RouteErrorBoundary>} />
+              <Route path="alpr-history" element={<RouteErrorBoundary><AlprHistoryPage /></RouteErrorBoundary>} />
               <Route path="queues" element={<RouteErrorBoundary><ReviewQueues /></RouteErrorBoundary>} />
               <Route path="map" element={<RouteErrorBoundary><IntelMapPage /></RouteErrorBoundary>} />
               <Route path="ai" element={<RouteErrorBoundary><IntelAiAnalyst /></RouteErrorBoundary>} />

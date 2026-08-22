@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, ChevronLeft, ChevronRight, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route, Activity,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route, Activity, ScanSearch,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus } from '../../types';
@@ -117,6 +117,7 @@ import ActivityFeed from '../../components/dispatch/ActivityFeed';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
+import PlateScanModal from '../../components/PlateScanModal';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { withAlpha } from '../../utils/withAlpha';
@@ -513,6 +514,7 @@ export default function DispatchPage() {
     });
   };
   const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showPlateScanModal, setShowPlateScanModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
 
@@ -3856,6 +3858,10 @@ export default function DispatchPage() {
           <button type="button" onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
+          </button>
+          <button type="button" onClick={() => setShowPlateScanModal(true)} className="toolbar-btn" title="Plate Scan — scan a license plate or create a vehicle record">
+            <ScanSearch style={{ width: 10, height: 10 }} />
+            Plate Scan
           </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
@@ -7526,6 +7532,12 @@ export default function DispatchPage() {
         onSubmit={handleNewCall}
         onExpandToFullForm={handlePsoExpandToFullForm}
       />
+
+      {showPlateScanModal && (
+        <PlateScanModal
+          onClose={() => setShowPlateScanModal(false)}
+        />
+      )}
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
