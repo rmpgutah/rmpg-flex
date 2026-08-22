@@ -5,6 +5,12 @@ import {
   VehicleEnrichHttpError,
   VehicleEnrichRateLimitError,
 } from '../src/utils/vehicleEnrichment/types';
+import {
+  checkAndReservePlateToVin,
+  checkAndReserveVinDecoder,
+  checkAndReservePlateDecoder,
+  ENRICH_RATE_LIMITS,
+} from '../src/utils/vehicleEnrichment/rateLimit';
 
 describe('VehicleEnrich error types', () => {
   it('VehicleEnrichConfigError is an Error with correct name', () => {
@@ -38,13 +44,6 @@ describe('VehicleEnrich error types', () => {
   });
 });
 
-import {
-  checkAndReservePlateToVin,
-  checkAndReserveVinDecoder,
-  checkAndReservePlateDecoder,
-  ENRICH_RATE_LIMITS,
-} from '../src/utils/vehicleEnrichment/rateLimit';
-
 describe('vehicle enrichment rate limits', () => {
   const makeKv = (stored: Record<string, string>) => ({
     get: async (k: string) => stored[k] ?? null,
@@ -53,8 +52,7 @@ describe('vehicle enrichment rate limits', () => {
 
   it('allows call when under daily limit (plateToVin)', async () => {
     const kv = makeKv({});
-    const result = await checkAndReservePlateToVin(kv, Date.now());
-    expect(result.allowed).toBe(true);
+    await expect(checkAndReservePlateToVin(kv, Date.now())).resolves.toBeUndefined();
   });
 
   it('blocks when daily budget exhausted (plateToVin)', async () => {
@@ -63,15 +61,12 @@ describe('vehicle enrichment rate limits', () => {
     const day = new Date(now).toISOString().slice(0, 10);
     // Pre-fill to the limit
     await kv.put(`vehicle_enrich:plate_to_vin:day:${day}`, String(ENRICH_RATE_LIMITS.plateToVin.daily));
-    const result = await checkAndReservePlateToVin(kv, now);
-    expect(result.allowed).toBe(false);
-    expect((result as { allowed: false; reason: string }).reason).toBe('daily_limit');
+    await expect(checkAndReservePlateToVin(kv, now)).rejects.toThrow(VehicleEnrichRateLimitError);
   });
 
   it('allows vinDecoder call when under monthly limit', async () => {
     const kv = makeKv({});
-    const result = await checkAndReserveVinDecoder(kv, Date.now());
-    expect(result.allowed).toBe(true);
+    await expect(checkAndReserveVinDecoder(kv, Date.now())).resolves.toBeUndefined();
   });
 
   it('blocks vinDecoder when monthly budget exhausted', async () => {
@@ -79,14 +74,11 @@ describe('vehicle enrichment rate limits', () => {
     const now = Date.now();
     const month = new Date(now).toISOString().slice(0, 7);
     await kv.put(`vehicle_enrich:vin_decoder:month:${month}`, String(ENRICH_RATE_LIMITS.vinDecoder.monthly));
-    const result = await checkAndReserveVinDecoder(kv, now);
-    expect(result.allowed).toBe(false);
-    expect((result as { allowed: false; reason: string }).reason).toBe('monthly_limit');
+    await expect(checkAndReserveVinDecoder(kv, now)).rejects.toThrow(VehicleEnrichRateLimitError);
   });
 
   it('allows plateDecoder call when under daily limit', async () => {
     const kv = makeKv({});
-    const result = await checkAndReservePlateDecoder(kv, Date.now());
-    expect(result.allowed).toBe(true);
+    await expect(checkAndReservePlateDecoder(kv, Date.now())).resolves.toBeUndefined();
   });
 });
