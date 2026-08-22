@@ -61,14 +61,19 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
     try {
       await apiFetch(`/vehicle-enrichment/enrich/${vehicleId}`, { method: 'POST' });
       setEnrichMsg('Enriched');
+      setTimeout(() => setEnrichMsg(null), 4000);
       setLoading(true);
-      apiFetch<DossierResponse>(`/alpr/vehicle/${encodeURIComponent(plate)}/dossier`)
-        .then((r) => setData(r))
-        .catch((e) => setErr(e?.message || 'Failed to reload'))
-        .finally(() => setLoading(false));
+      try {
+        const r = await apiFetch<DossierResponse>(`/alpr/vehicle/${encodeURIComponent(plate)}/dossier`);
+        setData(r);
+      } catch (e: unknown) {
+        setErr((e as Error)?.message || 'Failed to reload');
+      } finally {
+        setLoading(false);
+        setEnriching(false);
+      }
     } catch {
       setEnrichMsg('Enrichment failed');
-    } finally {
       setEnriching(false);
     }
   };
