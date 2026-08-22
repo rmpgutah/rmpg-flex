@@ -769,4 +769,35 @@ uploads.patch('/:fileId/metadata', async (c) => {
   }
 });
 
+// PUT /api/uploads/:fileId/replace — admin: replace R2 object with a new image blob
+// Used by the de-stamp tool to swap a pixel-stamped photo with a clean cropped version.
+uploads.put('/:fileId/replace', async (c) => {
+  const user = c.var.user;
+  if (!user || user.role !== 'admin') {
+    return c.json({ error: 'Forbidden', code: 'FORBIDDEN' }, 403);
+  }
+  const fileId = c.req.param('fileId');
+  const db = c.env.DB;
+  try {
+    const att = await queryFirst<{ file_path: string; mime_type: string }>(
+      db, 'SELECT file_path, mime_type FROM attachments WHERE file_id = ?', fileId,
+    );
+    if (!att) return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
+
+    const blob = await c.req.blob();
+    if (!blob || blob.size === 0) return c.json({ error: 'No body', code: 'NO_BODY' }, 400);
+
+    const buffer = new Uint8Array(await blob.arrayBuffer());
+    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, buffer, {
+      httpMetadata: { contentType: att.mime_type },
+    });
+
+    await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', buffer.byteLength, fileId);
+    return c.json({ ok: true, file_id: fileId, size: buffer.byteLength });
+  } catch (err) {
+    log.error('Replace attachment failed', { fileId }, err as Error);
+    return c.json({ error: 'Failed to replace attachment', code: 'REPLACE_ERROR' }, 500);
+  }
+});
+
 export default uploads;

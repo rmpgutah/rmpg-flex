@@ -26,6 +26,8 @@ import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
 import { getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
+import { deStampOne } from '../utils/deStampImage';
+import { Eraser } from 'lucide-react';
 
 interface Attachment {
   id: number;
@@ -285,12 +287,38 @@ interface LightboxProps {
 function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved }: LightboxProps) {
   const [idx, setIdx] = useState(startIdx);
   const [editing, setEditing] = useState(false);
+  const [destamping, setDestamping] = useState(false);
+  const [destampMsg, setDestampMsg] = useState<string | null>(null);
+  // imgKey increments to bust the <img> cache after a de-stamp re-upload
+  const [imgKey, setImgKey] = useState(0);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const att = attachments[idx];
   const imgUrl = att
-    ? authUrl(`/api/uploads/${att.file_id}`, att.access_sig, att.access_exp)
+    ? authUrl(`/api/uploads/${att.file_id}`, att.access_sig, att.access_exp) + `&_k=${imgKey}`
     : '';
+
+  const isStamped = att?.original_name?.includes('_stamped');
+
+  const handleDeStamp = async () => {
+    if (!att || destamping) return;
+    setDestamping(true);
+    setDestampMsg(null);
+    try {
+      const url = authUrl(`/api/uploads/${att.file_id}`, att.access_sig, att.access_exp);
+      const result = await deStampOne(att.file_id, url);
+      if (result.ok) {
+        setImgKey(k => k + 1);
+        setDestampMsg(`Stamp removed — image cropped from ${result.originalSize.h}px → ${result.croppedHeight}px`);
+      } else {
+        setDestampMsg(`Failed: ${result.error}`);
+      }
+    } catch (e) {
+      setDestampMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDestamping(false);
+    }
+  };
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -395,6 +423,18 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
             </div>
           </div>
 
+          {canEdit && isStamped && (
+            <button
+              type="button"
+              title="Remove burned-in stamp from image pixels"
+              onClick={handleDeStamp}
+              disabled={destamping}
+              style={{ background: 'none', border: '1px solid rgba(255,100,100,0.4)', borderRadius: 2, cursor: destamping ? 'not-allowed' : 'pointer', color: 'rgba(255,150,150,0.85)', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}
+            >
+              {destamping ? <Loader2 size={10} className="animate-spin" /> : <Eraser size={10} />}
+              {destamping ? 'Removing…' : 'De-stamp'}
+            </button>
+          )}
           {canEdit && (
             <button type="button" title="Edit evidence metadata" onClick={() => setEditing(e => !e)}
               style={{ background: editing ? 'rgba(255,200,80,0.15)' : 'none', border: '1px solid rgba(255,200,80,0.3)', borderRadius: 2, cursor: 'pointer', color: 'rgba(255,200,80,0.80)', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 10 }}>
@@ -411,6 +451,11 @@ function EvidenceLightbox({ attachments, startIdx, onClose, canEdit, onMetaSaved
             <Download size={10} />
           </a>
         </div>
+        {destampMsg && (
+          <div style={{ padding: '4px 10px', fontSize: 9, fontFamily: '"Courier New", Courier, monospace', color: destampMsg.startsWith('Failed') || destampMsg.startsWith('Error') ? 'rgba(255,120,120,0.9)' : 'rgba(120,255,150,0.9)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            {destampMsg}
+          </div>
+        )}
       </div>
     </div>
   );
