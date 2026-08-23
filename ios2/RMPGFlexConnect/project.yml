@@ -11,16 +11,36 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     IPHONEOS_DEPLOYMENT_TARGET: "18.0"
 
-packages:
-  RMPGFlexModules:
-    path: .
-
 targets:
   RMPGFlexConnect:
     type: application
     platform: iOS
     sources:
       - path: App
+      - path: Sources/CoreAPI
+      - path: Sources/CoreAuth
+      - path: Sources/CorePush
+      - path: Sources/CoreLocationService
+      - path: Sources/CoreOffline
+      - path: Sources/CoreIDScan
+      - path: Sources/CoreAudioService
+      - path: Sources/DesignSystem
+      - path: Sources/FeatureShell
+      - path: Sources/FeatureDispatch
+      - path: Sources/FeatureRecords
+      - path: Sources/FeatureIncidents
+      - path: Sources/FeatureCases
+      - path: Sources/FeaturePatrol
+      - path: Sources/FeatureFleet
+      - path: Sources/FeatureServe
+      - path: Sources/FeatureWarrants
+      - path: Sources/FeatureQuickActions
+      - path: Packages/FeatureCFS/Sources/FeatureCFS
+      - path: Packages/FeatureDuty/Sources/FeatureDuty
+      - path: Packages/FeatureRunID/Sources/FeatureRunID
+      - path: Packages/FeatureRunPlate/Sources/FeatureRunPlate
+      - path: Packages/FeatureReports/Sources/FeatureReports
+      - path: Packages/FeatureMap/Sources/FeatureMap
     settings:
       base:
         INFOPLIST_FILE: App/Info.plist
@@ -32,15 +52,6 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         ENABLE_USER_SCRIPT_SANDBOXING: "NO"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEMO"
-    dependencies:
-      - package: RMPGFlexModules
-        product: FeatureShell
-      - package: RMPGFlexModules
-        product: CoreAuth
-      - package: RMPGFlexModules
-        product: DesignSystem
-      - package: RMPGFlexModules
-        product: CoreIDScan
 
 schemes:
   RMPGFlexConnect:
