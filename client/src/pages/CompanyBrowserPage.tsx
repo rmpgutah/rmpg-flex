@@ -175,7 +175,7 @@ export default function CompanyBrowserPage() {
   const darkReaderKeyRef = useRef<string | null>(null);
 
   const webviewRefs = useRef<Record<string, HTMLWebViewElement | null>>({});
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const webviewContainerRef = useRef<HTMLDivElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstLoad = useRef(true);
   const addressRef = useRef<HTMLInputElement>(null);
@@ -453,6 +453,40 @@ export default function CompanyBrowserPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  // Electron's <webview> has been observed to NOT reliably pick up a
+  // CSS-only size (percentage width/height, `inset: 0`, `display: flex`)
+  // for its internal guest frame — confirmed live: a real page loaded but
+  // rendered only in a thin strip matching its own intrinsic content
+  // height, with the rest of the box blank, regardless of the CSS applied
+  // to the element or its container. The reliable fix used by real-world
+  // Electron apps is to explicitly set the element's pixel width/height in
+  // JS, driven by a ResizeObserver on the container, rather than trusting
+  // CSS sizing alone. Applied to every mounted webview (not just the active
+  // one) so a background tab is already correctly sized before it's
+  // switched to.
+  useEffect(() => {
+    const container = webviewContainerRef.current;
+    if (!container) return;
+
+    const applySize = () => {
+      const { width, height } = container.getBoundingClientRect();
+      for (const el of Object.values(webviewRefs.current)) {
+        if (!el) continue;
+        el.style.width = `${width}px`;
+        el.style.height = `${height}px`;
+      }
+    };
+
+    applySize();
+    // ResizeObserver doesn't exist in the jsdom test environment (only in a
+    // real browser/Electron renderer) — a single applySize() call on mount
+    // still covers that environment's needs.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(applySize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [tabs.length]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--surface-base)', userSelect: 'none' }}>
 
@@ -579,17 +613,17 @@ export default function CompanyBrowserPage() {
         </div>
       )}
 
-      {/* ── Find bar ───────────────────────────────────────────────────────── */}
-      {panel === 'find' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: 'var(--surface-raised)', borderBottom: '1px solid var(--border-subtle)' }}>
-          <input
-            autoFocus
-            type="text"
-            placeholder="Find in page…"
-            value={findQuery}
-            onChange={e => setFindQuery(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') doFind(!e.shiftKey); if (e.key === 'Escape') stopFind(); }}
-            style={{ flex: 1, padding: '2px 6px', fontSize: 11, background: 'var(--surface-base)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)', outline: 'none' }}
+      <div ref={webviewContainerRef} className="flex-1 relative">
+        {tabs.map(tab => (
+          <webview
+            key={tab.id}
+            ref={(el) => { webviewRefs.current[tab.id] = el; }}
+            src={tab.url}
+            style={{
+              position: 'absolute', inset: 0,
+              display: tab.id === activeTabId ? 'flex' : 'none',
+            }}
+            partition={`persist:company-browser-${tab.id}`
           />
           <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input type="checkbox" checked={findMatchCase} onChange={e => setFindMatchCase(e.target.checked)} />
