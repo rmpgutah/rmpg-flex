@@ -3,7 +3,7 @@
 // Orchestrates the three-step vehicle enrichment chain:
 //   Step 1: Plate → VIN (plateToVin)
 //   Step 2: VIN → specs (decodeVin) — only when step 1 produced a VIN
-//   Step 3: Plate decoder fallback (decodePlate) — only when no make after steps 1-2
+//   Step 3: Plate decoder fallback (decodePlate) — only when step 1 returned no VIN
 //
 // Cache check first; returns cached data immediately unless opts.force === true.
 // All steps are independent try/catch; a step failure logs + continues.
@@ -186,6 +186,7 @@ export async function enrichVehicleRecord(
           trim: data.trim ?? null,
           color: data.color ?? null,
           body_style: null,
+          // vehicle_type is not a vehicles_records column; it lives in the enrichment cache only
         },
         'vehicle-enrichment-api',
       );
@@ -232,7 +233,8 @@ export async function enrichVehicleRecord(
     }
   }
 
-  // ── Upsert cache row (even if all steps failed, to record the attempt) ────
+  // ── Upsert cache row only when at least one step succeeded ──────────────
+  if (stepsRun.length > 0) {
   try {
     await execute(
       db,
@@ -268,6 +270,7 @@ export async function enrichVehicleRecord(
     );
   } catch (err) {
     log.warn('vehicle-enrichment cache upsert failed', { plateKey, err: (err as Error).message });
+  }
   }
 
   return { vehicleId, fromCache: false, data, stepsRun, stepErrors };
