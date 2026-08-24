@@ -39,7 +39,7 @@
     "pdf-lib": "^1.17.1",
     "pmtiles": "^4.5.0",
     "unpdf": "^1.8.1",
-    "uuid": "^14.0.1",
+    "uuid": "^14.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
