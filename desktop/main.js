@@ -75,6 +75,7 @@ const { InternalGps, findGpsPort, listSerialPorts, probeGpsPortOpen } = require(
 // ─── Configuration ──────────────────────────────────────────
 const APP_TITLE = 'RMPG Flex — CAD/RMS';
 const DEV_MODE = process.argv.includes('--dev');
+const KIOSK_SHELL_ARGV = process.argv.includes('--kiosk-shell');
 
 // Remote server URL — the single source of truth for the app shell this
 // window loads.
@@ -880,7 +881,15 @@ async function createMainWindow() {
   // point without a successful ready-to-show (see the counter reset below),
   // the shell key is reverted back to explorer.exe so the machine never
   // gets stuck showing a black kiosk screen with no way back in.
-  const isKioskShell = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+  // Detect kiosk mode from either: (1) the config flag set by in-app Settings,
+  // or (2) the --kiosk-shell argument passed by the Winlogon registry launch.
+  const isKioskShell = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
+  // If launched with --kiosk-shell but config not yet set, persist it now so
+  // subsequent boots and renderer queries see the correct state.
+  if (isKioskShell && getConfig('kiosk_shell_enabled') !== true) {
+    setConfig('kiosk_shell_enabled', true);
+    console.log('[KIOSK] Detected --kiosk-shell argv — enabling kiosk_shell_enabled config');
+  }
   // Module-level flag consulted by the 'window-all-closed' handler below.
   // Set from isKioskShell — "did Windows launch this process as the login
   // shell" — and NOT from useKioskChrome, which answers a different question
@@ -1211,18 +1220,22 @@ async function createMainWindow() {
   // restart. Strategy: wait UNRESPONSIVE_RELOAD_DELAY_MS to give Chromium
   // time to recover on its own (it sometimes does for transient jank), then
   // force-reload if the renderer hasn't come back yet.
+  // 2026-08-23: increased from 30s to 60s — Toughbooks under memory pressure
+  // (field apps, multiple tabs, GPS/radio polling) can be slow but eventually
+  // recover; 30s caused unnecessary reloads that looked like random restarts.
+  const UNRESPONSIVE_RELOAD_DELAY_MS = 60_000;
   let _unresponsiveTimer = null;
   mainWindow.webContents.on('unresponsive', () => {
-    console.warn('[APP] Renderer unresponsive — will reload in 30s if not recovered');
+    console.warn(`[APP] Renderer unresponsive — will reload in ${UNRESPONSIVE_RELOAD_DELAY_MS / 1000}s if not recovered`);
     if (_unresponsiveTimer) return; // already counting down
     _unresponsiveTimer = setTimeout(() => {
       _unresponsiveTimer = null;
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      console.error('[APP] Renderer still unresponsive after 30s — force-reloading');
+      console.error('[APP] Renderer still unresponsive after 60s — force-reloading');
       mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
         console.warn('[APP] Unresponsive-recovery loadURL failed:', err && err.message);
       });
-    }, 30_000);
+    }, UNRESPONSIVE_RELOAD_DELAY_MS);
   });
   mainWindow.webContents.on('responsive', () => {
     if (_unresponsiveTimer) {
@@ -1580,7 +1593,7 @@ guardedHandle('sys:battery', async () => {
   if (process.platform === 'win32') {
     // When running as the Windows shell (Winlogon), WMI (winmgmt) may not be
     // ready yet at boot — use a longer timeout and retry before falling back.
-    const isShellContext = getConfig('kiosk_shell_enabled') === true;
+    const isShellContext = getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV;
     const cimTimeout = isShellContext ? 8000 : 3000;
     const maxAttempts = isShellContext ? 2 : 1;
 
@@ -5352,7 +5365,7 @@ app.whenReady().then(async () => {
     // In kiosk shell mode, Windows starts this process before the network
     // stack is fully up — use more retries so the initial check doesn't
     // seed the monitor as "offline" just because the NIC wasn't ready yet.
-    const isKioskContext = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+    const isKioskContext = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
     const connectivityPromise = checkServerConnectivity({ kioskShell: isKioskContext });
 
     // Kick off Windows account lookup in parallel with connectivity check.
@@ -5363,7 +5376,7 @@ app.whenReady().then(async () => {
     // After DB init, we know if this is a kiosk shell session.
     // Drive phase transitions only in kiosk shell mode.
     Promise.all([accountInfoPromise, minBootPromise]).then(([accountInfo]) => {
-      const isKioskForSplash = process.platform === 'win32' && getConfig('kiosk_shell_enabled') === true;
+      const isKioskForSplash = process.platform === 'win32' && (getConfig('kiosk_shell_enabled') === true || KIOSK_SHELL_ARGV);
       if (isKioskForSplash && splashWindow && !splashWindow.isDestroyed()) {
         const phaseMsg = {
           phase: 'lock',
@@ -5511,14 +5524,11 @@ app.whenReady().then(async () => {
     //
     // Both shortcuts unregister themselves in the 'before-quit' handler via
     // globalShortcut.unregisterAll(), matching the kiosk escape hatch pattern.
-    globalShortcut.register('F5', () => {
+    const f5Registered = globalShortcut.register('F5', () => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      // Manual reload: clear the crash-loop counter so a human override
-      // isn't blocked by stale automatic-recovery timestamps.
       rendererRecoveryTimestamps = [];
       const currentUrl = mainWindow.webContents.getURL();
       if (currentUrl.startsWith('data:')) {
-        // On the offline or crash-loop page — navigate back to the real app
         mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
           console.warn('[RELOAD] F5 loadURL failed:', err && err.message);
         });
@@ -5527,28 +5537,90 @@ app.whenReady().then(async () => {
       }
       console.log('[RELOAD] F5: soft reload');
     });
+    console.log(`[RELOAD] F5 shortcut registered: ${f5Registered}`);
 
-    globalShortcut.register('Ctrl+Shift+F5', async () => {
+    // Ctrl+Shift+F5 — hard reload: clears all caches then navigates.
+    // On Windows, this accelerator can conflict with OEM/driver software
+    // (e.g. Intel Graphics hotkeys). Try the primary combo first; if it
+    // fails, register Ctrl+Alt+F5 as a fallback that field users can
+    // reach more reliably on Toughbooks.
+    function doHardReload() {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      // Manual hard reload: clear the crash-loop counter (same rationale as F5).
       rendererRecoveryTimestamps = [];
-      console.log('[RELOAD] Ctrl+Shift+F5: hard reload — clearing caches');
-      try {
-        await mainWindow.webContents.session.clearCache();
-        await mainWindow.webContents.session.clearStorageData({
-          storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+      console.log('[RELOAD] Hard reload — clearing caches');
+      (async () => {
+        try {
+          await mainWindow.webContents.session.clearCache();
+          await mainWindow.webContents.session.clearStorageData({
+            storages: ['serviceworkers', 'cachestorage', 'appcache', 'filesystem'],
+          });
+          await mainWindow.webContents.executeJavaScript(`
+            if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
+            if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
+          `).catch(() => {});
+        } catch (err) {
+          console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+        }
+        mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+          console.warn('[RELOAD] Hard reload loadURL failed:', err && err.message);
         });
-        await mainWindow.webContents.executeJavaScript(`
-          if ('caches' in window) { caches.keys().then(keys => keys.forEach(k => caches.delete(k))); }
-          if (navigator.serviceWorker) { navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())); }
-        `).catch(() => {});
-      } catch (err) {
-        console.warn('[RELOAD] Hard reload cache clear failed (continuing):', err && err.message);
+      })();
+    }
+
+    const hardReloadRegistered = globalShortcut.register('Ctrl+Shift+F5', doHardReload);
+    console.log(`[RELOAD] Ctrl+Shift+F5 shortcut registered: ${hardReloadRegistered}`);
+    if (!hardReloadRegistered) {
+      const fallbackRegistered = globalShortcut.register('Ctrl+Alt+F5', doHardReload);
+      console.log(`[RELOAD] Ctrl+Alt+F5 fallback registered: ${fallbackRegistered}`);
+      if (!fallbackRegistered) {
+        console.warn('[RELOAD] WARNING: Neither Ctrl+Shift+F5 nor Ctrl+Alt+F5 could be registered — hard reload unavailable');
       }
-      mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
-        console.warn('[RELOAD] Ctrl+Shift+F5 loadURL failed:', err && err.message);
+    }
+
+    // ─── Kiosk-mode keyboard fallback (before-input-event) ─────
+    // In kiosk mode (kiosk:true), the BrowserWindow captures ALL keyboard
+    // input at the Chromium level before globalShortcut (the OS-level
+    // shortcut handler) ever sees it. This means F5 and Ctrl+Shift+F5
+    // registered via globalShortcut.register() never fire in kiosk mode.
+    // Solution: also listen on webContents 'before-input-event', which
+    // intercepts keyboard input at the Chromium level BEFORE it's consumed
+    // by the kiosk window. This gives us the same key combos in kiosk mode
+    // that globalShortcut provides in normal windowed mode.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.on('before-input-event', (event, input) => {
+        if (input.type !== 'keyDown') return;
+
+        const ctrl = input.control;
+        const shift = input.shift;
+        const alt = input.alt;
+        const key = input.key;
+
+        // F5 — soft reload
+        if (key === 'F5' && !ctrl && !shift && !alt) {
+          event.preventDefault();
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          rendererRecoveryTimestamps = [];
+          const currentUrl = mainWindow.webContents.getURL();
+          if (currentUrl.startsWith('data:')) {
+            mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+              console.warn('[RELOAD] (kiosk) F5 loadURL failed:', err && err.message);
+            });
+          } else {
+            mainWindow.webContents.reload();
+          }
+          console.log('[RELOAD] (kiosk before-input-event) F5: soft reload');
+          return;
+        }
+
+        // Ctrl+Shift+F5 or Ctrl+Alt+F5 — hard reload
+        if (key === 'F5' && ctrl && (shift || alt)) {
+          event.preventDefault();
+          doHardReload();
+          console.log('[RELOAD] (kiosk before-input-event) hard reload');
+          return;
+        }
       });
-    });
+    }
 
     // Await connectivity (usually already resolved by now)
     const isReachable = await connectivityPromise;
