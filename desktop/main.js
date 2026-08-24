@@ -259,11 +259,8 @@ const secondaryWindows = new Map();
 // connection during a `systemctl restart rmpg-flex`) crashes the
 // whole desktop app and shows the Electron error dialog.
 //
-// TODO(you): implement isTransientNetworkError() below. Decide:
-//   - swallow `net::*` codes (most are transient — server restart,
-//     flaky WiFi, captive portal redirects) so dispatchers stay up
-//   - re-throw everything else so real bugs (null deref, type
-//     errors) still surface in dev/staging instead of rotting
+// isTransientNetworkError() decides whether to swallow the error
+// (keep the dispatcher connected) or re-throw (surface real bugs).
 // Reference: Chromium net error list — net::ERR_CONNECTION_CLOSED,
 // net::ERR_NETWORK_CHANGED, net::ERR_INTERNET_DISCONNECTED, etc.
 // All have message strings starting with "net::ERR_".
@@ -4241,13 +4238,7 @@ let internalGpsReader = null;
  *
  * Returns: { isToughbook: boolean, manufacturer: string, model: string, portPath: string | null }
  *
- * TODO: Christopher — fill in the manufacturer/model predicate below.
- * What you know that I don't:
- *   - Which Toughbook models RMPG actually deploys (CF-33? FZ-55? FZ-G2?)
- *   - Whether the manufacturer string is "Panasonic Corporation",
- *     "Matsushita Electric", "Panasonic" alone, or something else
- *   - Whether any non-Toughbook Panasonic gear should also qualify
- *     (e.g., Lenovo ThinkPad with aftermarket u-blox dongle — same code path)
+ * Detects RMPG Toughbook FZ-55 hardware via WMI + u-blox serial port enumeration.
  */
 async function detectToughbook() {
   if (process.platform !== 'win32') {
