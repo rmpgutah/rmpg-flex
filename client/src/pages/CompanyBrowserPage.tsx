@@ -215,7 +215,7 @@ export default function CompanyBrowserPage() {
 
   // Resize webviews imperatively (CSS sizing isn't reliable for <webview>)
   useEffect(() => {
-    const container = containerRef.current;
+    const container = webviewContainerRef.current;
     if (!container) return;
     const apply = () => {
       const { width, height } = container.getBoundingClientRect();
@@ -678,7 +678,7 @@ export default function CompanyBrowserPage() {
       {/* ── Main content area ──────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', position: 'relative', overflow: 'hidden' }}>
         {/* Webview area */}
-        <div ref={containerRef} style={{ flex: 1, position: 'relative' }}>
+        <div ref={webviewContainerRef} style={{ flex: 1, position: 'relative' }}>
           {isElectron ? (
             tabs.map(tab => (
               <webview
