@@ -623,7 +623,7 @@ export default function CompanyBrowserPage() {
               position: 'absolute', inset: 0,
               display: tab.id === activeTabId ? 'flex' : 'none',
             }}
-            partition={`persist:company-browser-${tab.id}`
+            partition={`persist:company-browser-${tab.id}`}
           />
           <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input type="checkbox" checked={findMatchCase} onChange={e => setFindMatchCase(e.target.checked)} />
