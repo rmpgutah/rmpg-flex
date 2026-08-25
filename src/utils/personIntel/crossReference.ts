@@ -80,7 +80,7 @@ export async function persistCrossRefs(
         db,
         `INSERT INTO person_intel_cross_refs
            (dossier_id, source, external_ref, external_url, label,
-            matched_fields, confidence, is_criminal, risk_flags, captured_by)
+            matched_fields, confidence, is_criminal, risk_flags, meta_json, captured_by)
          VALUES (?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(dossier_id, source, external_ref) DO UPDATE SET
            external_url=excluded.external_url,
@@ -88,7 +88,8 @@ export async function persistCrossRefs(
            matched_fields=excluded.matched_fields,
            confidence=excluded.confidence,
            is_criminal=excluded.is_criminal,
-           risk_flags=excluded.risk_flags`,
+           risk_flags=excluded.risk_flags,
+           meta_json=COALESCE(excluded.meta_json, meta_json)`,
         dossierId,
         c.source,
         c.externalRef,
@@ -98,6 +99,7 @@ export async function persistCrossRefs(
         c.confidence,
         c.isCriminal ? 1 : 0,
         JSON.stringify(c.riskFlags),
+        c.meta ? JSON.stringify(c.meta) : null,
         capturedBy ?? null,
       );
       written++;
@@ -118,7 +120,8 @@ export async function fetchCrossRefs(db: D1Database, dossierId: number): Promise
   const rows = await query<any>(
     db,
     `SELECT id, dossier_id, source, external_ref, external_url, label,
-            matched_fields, confidence, is_criminal, risk_flags, captured_at, captured_by
+            matched_fields, confidence, is_criminal, risk_flags, meta_json,
+            captured_at, captured_by
        FROM person_intel_cross_refs
        WHERE dossier_id=? ORDER BY is_criminal DESC, confidence DESC`,
     dossierId,
@@ -134,6 +137,7 @@ export async function fetchCrossRefs(db: D1Database, dossierId: number): Promise
     confidence: r.confidence,
     isCriminal: !!r.is_criminal,
     riskFlags: safeParse(r.risk_flags, []),
+    meta: safeParse<Record<string, unknown> | undefined>(r.meta_json, undefined),
     capturedAt: r.captured_at,
     capturedBy: r.captured_by ?? undefined,
   }));

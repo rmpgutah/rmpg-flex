@@ -1,5 +1,6 @@
 // src/routes/personIntel.ts
 import { Hono } from 'hono';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { execute, query } from '../utils/db';
 import type { IntelSeed, VerificationMethod } from '../utils/personIntel/types';
@@ -7,6 +8,7 @@ import { fetchCrossRefs, persistCrossRefs } from '../utils/personIntel/crossRefe
 import { computeVerdict, persistVerification, fetchVerifications, effectiveConfidence } from '../utils/personIntel/verification';
 import { runLegalPhase } from '../utils/personIntel/phaseLegal';
 import { pendingCentraliaResult, normalizeCentraliaResult, centraliaToDataPoints } from '../utils/personIntel/centraliaModel';
+import { extractOpinionWithAi } from '../utils/personIntel/centraliaExtractAi';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { log } from '../utils/logger';
 
@@ -67,7 +69,7 @@ app.get('/', async (c) => {
   const user = c.get('user');
   const orgId: string | null = (user as any).org_id ?? null;
   const rows = await c.env.DB.prepare(
-    `SELECT id, subject_name, subject_dob, status, phase, risk_score, risk_flags, linked_person_id, data_points_found, created_at, completed_at
+    `SELECT id, subject_name, subject_dob, status, phase, risk_score, risk_flags, linked_person_id, data_points_found, cross_refs_found, created_at, completed_at
      FROM person_intelligence WHERE created_by = ? OR org_id = ?
      ORDER BY created_at DESC LIMIT 50`
   ).bind(user.id, orgId ?? '').all();
@@ -304,6 +306,41 @@ app.post('/opinions/extract', async (c) => {
   return c.json({ ok: true, opinionId, r2Key, status: skeleton.status, warnings: skeleton.warnings });
 });
 
+/**
+ * Persist a centralia result on its opinion row and fold the recovered
+ * `legal` data points + docket cross-ref into the linked dossier. Shared by
+ * /complete (client/sidecar-supplied) and /extract-ai (server-side run).
+ */
+async function applyCentraliaResult(
+  db: D1Database,
+  opinionId: number,
+  dossierId: number | null,
+  result: ReturnType<typeof normalizeCentraliaResult>,
+  userId: number,
+): Promise<void> {
+  await execute(db,
+    `UPDATE person_intel_opinions SET extracted=?, status=?, completed_at=datetime('now') WHERE id=?`,
+    JSON.stringify(result), result.status, opinionId);
+  if (!dossierId) return;
+  const pts = centraliaToDataPoints(result);
+  for (const p of pts) {
+    await execute(db,
+      `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence) VALUES (?,?,?,?,?,?)`,
+      dossierId, p.category, p.field, p.value, JSON.stringify([p.source]), 0.6);
+  }
+  if (result.cluster.docket_number || result.cluster.case_name) {
+    await execute(db,
+      `INSERT INTO person_intel_cross_refs
+         (dossier_id, source, external_ref, external_url, label, matched_fields, confidence, is_criminal, risk_flags, captured_by)
+       VALUES (?, 'COURTLISTENER', ?, ?, ?, ?, ?, ?, '[]', ?)
+       ON CONFLICT(dossier_id, source, external_ref) DO UPDATE SET label=excluded.label`,
+      dossierId, result.cluster.docket_number || result.cluster.case_name || `opinion:${opinionId}`,
+      undefined, result.cluster.case_name || result.cluster.docket_number || 'Court opinion',
+      JSON.stringify([{ field: 'docket_number', value: result.cluster.docket_number || '' }]),
+      0.5, 0, userId);
+  }
+}
+
 // POST /api/person-intel/opinions/:id/complete — accept a centralia-shaped
 // JSON result (from a client-side Pyodide centralia run or a sidecar),
 // normalize + persist it, and fold its `legal` data points into the dossier.
@@ -312,34 +349,43 @@ app.post('/opinions/:id/complete', async (c) => {
   const opinionId = Number(c.req.param('id'));
   const body = await c.req.json<{ result: unknown; dossier_id?: number }>();
   if (!body.result) return c.json({ error: 'result required' }, 400);
+  const row = await c.env.DB.prepare(`SELECT dossier_id FROM person_intel_opinions WHERE id=?`)
+    .bind(opinionId).first<{ dossier_id: number | null }>();
+  if (!row) return c.json({ error: 'not found' }, 404);
   const result = normalizeCentraliaResult(body.result);
-  await execute(c.env.DB,
-    `UPDATE person_intel_opinions SET extracted=?, status=?, completed_at=datetime('now') WHERE id=?`,
-    JSON.stringify(result), result.status, opinionId);
-
-  // Fold extracted legal data points into the dossier (if linked).
-  const dossierId = body.dossier_id ?? null;
-  if (dossierId) {
-    const pts = centraliaToDataPoints(result);
-    for (const p of pts) {
-      await execute(c.env.DB,
-        `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence) VALUES (?,?,?,?,?,?)`,
-        dossierId, p.category, p.field, p.value, JSON.stringify([p.source]), 0.6);
-    }
-    // Capture a cross-ref for the opinion's docket.
-    if (result.cluster.docket_number || result.cluster.case_name) {
-      await execute(c.env.DB,
-        `INSERT INTO person_intel_cross_refs
-           (dossier_id, source, external_ref, external_url, label, matched_fields, confidence, is_criminal, risk_flags, captured_by)
-         VALUES (?, 'COURTLISTENER', ?, ?, ?, ?, ?, ?, '[]', ?)
-         ON CONFLICT(dossier_id, source, external_ref) DO UPDATE SET label=excluded.label`,
-        dossierId, result.cluster.docket_number || result.cluster.case_name || `opinion:${opinionId}`,
-        undefined, result.cluster.case_name || result.cluster.docket_number || 'Court opinion',
-        JSON.stringify([{ field: 'docket_number', value: result.cluster.docket_number || '' }]),
-        0.5, 0, user.id);
-    }
-  }
+  await applyCentraliaResult(c.env.DB, opinionId, body.dossier_id ?? row.dossier_id ?? null, result, user.id);
   return c.json({ ok: true, status: result.status, cluster: result.cluster, opinionCount: result.opinions.length });
+});
+
+// POST /api/person-intel/opinions/:id/extract-ai — run the extraction
+// server-side: pull the stored PDF from R2, read its text layer (unpdf), then
+// structure it into the centralia contract via the callAi provider chain.
+// Fills the same row a client-side Pyodide run would have filled via /complete.
+app.post('/opinions/:id/extract-ai', async (c) => {
+  const user = c.get('user');
+  const opinionId = Number(c.req.param('id'));
+  const row = await c.env.DB.prepare(
+    `SELECT id, dossier_id, court_id, r2_key FROM person_intel_opinions WHERE id=?`,
+  ).bind(opinionId).first<{ id: number; dossier_id: number | null; court_id: string; r2_key: string | null }>();
+  if (!row) return c.json({ error: 'not found' }, 404);
+  if (!c.env.AI) return c.json({ error: 'AI binding unavailable', code: 'not_configured' }, 503);
+  if (!row.r2_key) return c.json({ error: 'opinion has no stored PDF' }, 400);
+
+  const obj = await c.env.UPLOADS.get(row.r2_key).catch(() => null);
+  if (!obj) return c.json({ error: 'stored PDF missing from object storage' }, 502);
+  const bytes = await obj.arrayBuffer();
+
+  const result = await extractOpinionWithAi(c.env as never, bytes);
+  // Echo the court id the row was created with (the extractor can't know it).
+  result.court_id = row.court_id;
+  await applyCentraliaResult(c.env.DB, opinionId, row.dossier_id, result, user.id);
+  return c.json({
+    ok: true,
+    status: result.status,
+    cluster: result.cluster,
+    opinionCount: result.opinions.length,
+    warnings: result.warnings ?? [],
+  });
 });
 
 // GET /api/person-intel/opinions/:id — fetch a stored opinion's centralia result.

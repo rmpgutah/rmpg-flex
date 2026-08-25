@@ -94,6 +94,19 @@ async function audit(
 // Returns the full metadata row AND a human-readable label derived from
 // it — one SELECT per node instead of two.
 
+// Each traversal query is independent — a missing/legacy table (or any single
+// failure) must not blind the WHOLE node. A rejected Promise.all here used to
+// drop every edge of that type when just one junction table was absent.
+// Tuple-preserving so each batch element keeps its own row type.
+async function allSettledRows<T extends readonly Promise<unknown[]>[]>(
+  qs: T,
+): Promise<{ -readonly [K in keyof T]: T[K] extends Promise<infer R> ? R : never }> {
+  const settled = await Promise.allSettled(qs);
+  return settled.map((s) => (s.status === 'fulfilled'
+    ? s.value
+    : ([] as unknown))) as { -readonly [K in keyof T]: T[K] extends Promise<infer R> ? R : never };
+}
+
 async function loadNode(
   db: D1Database,
   type: string,
@@ -273,7 +286,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
   try {
     switch (type) {
       case 'person': {
-        const personQueries = await Promise.all([
+        const personQueries = await allSettledRows([
           query<any>(db, 'SELECT incident_id, role FROM incident_persons WHERE person_id = ?', id),
           query<any>(db, 'SELECT call_id, role FROM call_persons WHERE person_id = ?', id),
           query<any>(db, 'SELECT id FROM vehicles_records WHERE owner_person_id = ?', id),
@@ -338,7 +351,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
 
       case 'vehicle': {
         const idStr = String(id);
-        const vehicleQueries = await Promise.all([
+        const vehicleQueries = await allSettledRows([
           query<any>(db, 'SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?', id),
           query<any>(db, 'SELECT call_id, role FROM call_vehicles WHERE vehicle_id = ?', id),
           queryFirst<any>(db, 'SELECT owner_person_id FROM vehicles_records WHERE id = ?', id),
@@ -369,7 +382,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
       }
 
       case 'incident': {
-        const incidentQueries = await Promise.all([
+        const incidentQueries = await allSettledRows([
           query<any>(db, 'SELECT person_id, role FROM incident_persons WHERE incident_id = ?', id),
           query<any>(db, 'SELECT vehicle_id, role FROM incident_vehicles WHERE incident_id = ?', id),
           query<any>(db, 'SELECT id FROM evidence WHERE incident_id = ?', id),
@@ -395,7 +408,7 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
       }
 
       case 'call': {
-        const callQueries = await Promise.all([
+        const callQueries = await allSettledRows([
           query<any>(db, 'SELECT person_id, role FROM call_persons WHERE call_id = ?', id),
           query<any>(db, 'SELECT vehicle_id, role FROM call_vehicles WHERE call_id = ?', id),
           query<any>(db, 'SELECT id FROM incidents WHERE call_id = ?', id),
