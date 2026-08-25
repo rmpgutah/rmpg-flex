@@ -42,6 +42,10 @@ export interface CapturedCrossRef {
   confidence: number;
   isCriminal: boolean;
   riskFlags: RiskFlag[];
+  /** Source-shaped structured payload (e.g. the full WebOlivia skip-trace
+   *  profile: typed/provider-tagged phones, previous addresses w/ timespans,
+   *  relatives & associates with ages). Persisted as meta_json. */
+  meta?: Record<string, unknown>;
 }
 
 export interface SourceResult {
@@ -99,6 +103,8 @@ export interface CrossReference {
   confidence: number;          // 0–1, name-only match is a lead (<0.5)
   isCriminal: boolean;
   riskFlags: RiskFlag[];
+  /** Structured source payload (see CapturedCrossRef.meta). */
+  meta?: Record<string, unknown>;
   capturedAt?: string;
   capturedBy?: number;
 }

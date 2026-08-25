@@ -22,6 +22,15 @@ interface CrossRef {
   isCriminal: boolean;
   riskFlags: string[];
   effectiveConfidence: number;
+  /** Structured source payload — the WebOlivia skip-trace profile for SKIP_TRACE refs. */
+  meta?: {
+    firstName?: string; lastName?: string; age?: string; born?: string;
+    phones?: { number: string; type?: string; provider?: string }[];
+    previousAddresses?: { street?: string; city?: string; state?: string; zip?: string; timespan?: string }[];
+    relatives?: { name: string; age?: string }[];
+    associates?: { name: string; age?: string }[];
+    personLink?: string;
+  };
   verifications: {
     id: number;
     method: string;
@@ -189,6 +198,25 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
               {' · matched: '}
               {xr.matchedFields.map(m => `${m.field}=${m.value}`).join(', ') || 'name'}
             </div>
+
+            {/* Skip-trace profile summary (structured meta) */}
+            {xr.meta && (xr.source === 'SKIP_TRACE' || xr.meta.personLink) && (
+              <div className="text-[10px] text-fg-muted space-y-0.5 border-l-2 border-rmpg-800 pl-2">
+                {xr.meta.age && <div>Age {xr.meta.age}{xr.meta.born ? ` · born ${xr.meta.born}` : ''}</div>}
+                {!!xr.meta.phones?.length && (
+                  <div>Phones: {xr.meta.phones.slice(0, 3).map(p => `${p.number}${p.type ? ` (${p.type})` : ''}`).join(', ')}</div>
+                )}
+                {!!xr.meta.previousAddresses?.length && (
+                  <div>{xr.meta.previousAddresses.length} previous address{xr.meta.previousAddresses.length === 1 ? '' : 'es'}</div>
+                )}
+                {!!xr.meta.relatives?.length && (
+                  <div>Relatives: {xr.meta.relatives.slice(0, 3).map(r => `${r.name}${r.age ? ` (${r.age})` : ''}`).join(', ')}{xr.meta.relatives.length > 3 ? ` +${xr.meta.relatives.length - 3}` : ''}</div>
+                )}
+                {!!xr.meta.associates?.length && (
+                  <div>Associates: {xr.meta.associates.slice(0, 3).map(a => a.name).join(', ')}{xr.meta.associates.length > 3 ? ` +${xr.meta.associates.length - 3}` : ''}</div>
+                )}
+              </div>
+            )}
 
             {xr.verifications.length > 0 && (
               <div className="border-t border-rmpg-800 pt-1 space-y-0.5">
