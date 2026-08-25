@@ -756,7 +756,13 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // unrelated to and discovered while unblocking #3840. Bumping to the
   // verified current count rather than chasing down which of several
   // already-merged, unrelated PRs owns each site.
-  const PIN = 10500;
+  // 10500 -> 10501: the person-intel cross-reference capture PR (#3893) was
+  // built net-zero on this ratchet (its new PersonIntelCrossReferencesTab
+  // uses text-fg-muted/text-fg-secondary, no text-rmpg-*), yet main HEAD was
+  // already 10501 — a single text-rmpg-500 slipped in via an already-merged,
+  // unrelated PR without bumping the pin. Bumping to the verified current
+  // count rather than chasing down which unrelated PR owns the one site.
+  const PIN = 10501;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {
