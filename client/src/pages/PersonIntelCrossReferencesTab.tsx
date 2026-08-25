@@ -188,7 +188,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
               </span>
             </div>
             <div className="text-xs text-rmpg-100 font-medium">{xr.label}</div>
-            <div className="text-[10px] text-rmpg-500">
+            <div className="text-[10px] text-fg-muted">
               {xr.externalRef}
               {xr.externalUrl && (
                 <a href={xr.externalUrl} target="_blank" rel="noreferrer" className="ml-2 text-brand-400 inline-flex items-center gap-0.5 hover:underline">
