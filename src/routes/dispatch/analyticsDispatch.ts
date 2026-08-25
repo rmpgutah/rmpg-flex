@@ -130,7 +130,7 @@ analyticsDispatch.get('/incident-types', async (c) => {
     FROM calls_for_service c
     LEFT JOIN (
       SELECT call_id, COUNT(DISTINCT unit_id) AS unit_count
-        FROM dispatch_assignments
+        FROM call_units
        GROUP BY call_id
     ) ua ON ua.call_id = c.id
     WHERE c.created_at >= datetime('now', ? || ' days')

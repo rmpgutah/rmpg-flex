@@ -3088,19 +3088,25 @@ const VEHICLES_BULK_COLUMNS = `id, vin, plate_number, state, make, model, year, 
   owner_name, owner_phone, owner_address, owner_person_id, registered_owner, insurance_company, insurance_policy, insurance_expiry,
   is_stolen, stolen_status, flags, notes, created_at, updated_at`;
 
-// GET /records/persons?search=...&limit=...
+// GET /records/persons?search=...&limit=...&officer_safety=true
 // Bulk list for SYNC. search is a soft LIKE across name + alias + phone + email.
+// officer_safety=true filters to persons with active officer safety flags.
 records.get('/persons', async (c) => {
   try {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
     const archived = c.req.query('archived');
+    const officerSafety = c.req.query('officer_safety') === 'true';
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
     if (archived === 'true') {
       wheres.push("flags LIKE '%archived%'");
     } else if (archived !== 'all') {
       wheres.push("(flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')");
+    }
+    if (officerSafety) {
+      // Filter to persons with active officer safety flags (weapon_draw, running, struggle, etc.)
+      wheres.push("(flags LIKE '%weapon_draw%' OR flags LIKE '%running%' OR flags LIKE '%struggle%' OR flags LIKE '%officer_safety%')");
     }
     const params: unknown[] = [];
     if (search) {

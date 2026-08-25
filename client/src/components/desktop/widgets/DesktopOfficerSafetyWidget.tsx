@@ -40,23 +40,13 @@ export default function DesktopOfficerSafetyWidget() {
   const fetchFlags = useCallback(async () => {
     try {
       const resp = await apiFetch<{ data: SafetyPerson[] } | SafetyPerson[]>(
-        '/intel/persons?flag=officer_safety&limit=5',
+        '/records/persons?officer_safety=true&limit=5',
       );
       const rows: SafetyPerson[] = Array.isArray(resp) ? resp : ((resp as { data: SafetyPerson[] }).data ?? []);
       setPersons(rows);
       setUnavailable(false);
     } catch {
-      // fallback endpoint
-      try {
-        const resp2 = await apiFetch<{ data: SafetyPerson[] } | SafetyPerson[]>(
-          '/persons?officer_safety=true&limit=5',
-        );
-        const rows: SafetyPerson[] = Array.isArray(resp2) ? resp2 : ((resp2 as { data: SafetyPerson[] }).data ?? []);
-        setPersons(rows);
-        setUnavailable(false);
-      } catch {
-        setUnavailable(true);
-      }
+      setUnavailable(true);
     } finally {
       setLoading(false);
     }
