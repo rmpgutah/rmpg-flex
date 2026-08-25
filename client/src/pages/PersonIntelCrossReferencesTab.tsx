@@ -45,7 +45,7 @@ function confColor(c: number): string {
   if (c >= 0.80) return 'text-green-400';
   if (c >= 0.55) return 'text-blue-400';
   if (c >= 0.40) return 'text-amber-400';
-  return 'text-rmpg-500';
+  return 'text-fg-muted';
 }
 
 function resultBadge(r: string) {
@@ -127,7 +127,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
   };
 
   if (loading) return (
-    <div className="flex items-center gap-2 text-rmpg-400 text-xs py-8 justify-center">
+    <div className="flex items-center gap-2 text-fg-secondary text-xs py-8 justify-center">
       <Loader2 className="w-4 h-4 animate-spin" />Loading cross-references…
     </div>
   );
@@ -152,7 +152,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
       </div>
 
       {xrefs.length === 0 ? (
-        <div className="text-center py-8 text-rmpg-500 text-xs">
+        <div className="text-center py-8 text-fg-muted text-xs">
           <Search className="w-5 h-5 mx-auto mb-2 text-rmpg-700" />
           No cross-references captured yet. Click <span className="text-brand-400">Refresh</span> to run the
           CourtListener / FBI Wanted / criminal-DB / skip-trace fan-out.
@@ -163,7 +163,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
           <div key={xr.id} className="bg-surface-raised rounded p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Icon className="w-3.5 h-3.5 text-brand-400" />
-              <span className="text-[10px] text-rmpg-500 uppercase tracking-wide">{toDisplayLabel(xr.source)}</span>
+              <span className="text-[10px] text-fg-muted uppercase tracking-wide">{toDisplayLabel(xr.source)}</span>
               {xr.isCriminal && (
                 <span className="text-[10px] text-red-400 border border-red-600/40 rounded px-1">CRIMINAL</span>
               )}
@@ -172,14 +172,14 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
                   {toDisplayLabel(f).toUpperCase()}
                 </span>
               ))}
-              <span className="ml-auto text-[10px] text-rmpg-500">
+              <span className="ml-auto text-[10px] text-fg-muted">
                 conf <span className={confColor(xr.confidence)}>{(xr.confidence * 100).toFixed(0)}%</span>
                 {' → '}
                 <span className={confColor(xr.effectiveConfidence)}>{(xr.effectiveConfidence * 100).toFixed(0)}%</span>
               </span>
             </div>
             <div className="text-xs text-rmpg-100 font-medium">{xr.label}</div>
-            <div className="text-[10px] text-rmpg-500">
+            <div className="text-[10px] text-fg-muted">
               {xr.externalRef}
               {xr.externalUrl && (
                 <a href={xr.externalUrl} target="_blank" rel="noreferrer" className="ml-2 text-brand-400 inline-flex items-center gap-0.5 hover:underline">
@@ -193,7 +193,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
             {xr.verifications.length > 0 && (
               <div className="border-t border-rmpg-800 pt-1 space-y-0.5">
                 {xr.verifications.map(v => (
-                  <div key={v.id} className="text-[10px] text-rmpg-500 flex items-center gap-2">
+                  <div key={v.id} className="text-[10px] text-fg-muted flex items-center gap-2">
                     {resultBadge(v.result)}
                     <span className="uppercase">{toDisplayLabel(v.method)}</span>
                     <span className="truncate">“{v.evidence}”</span>
