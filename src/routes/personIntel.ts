@@ -1,8 +1,14 @@
 // src/routes/personIntel.ts
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { execute } from '../utils/db';
-import type { IntelSeed } from '../utils/personIntel/types';
+import { execute, query } from '../utils/db';
+import type { IntelSeed, VerificationMethod } from '../utils/personIntel/types';
+import { fetchCrossRefs, persistCrossRefs } from '../utils/personIntel/crossReference';
+import { computeVerdict, persistVerification, fetchVerifications, effectiveConfidence } from '../utils/personIntel/verification';
+import { runLegalPhase } from '../utils/personIntel/phaseLegal';
+import { pendingCentraliaResult, normalizeCentraliaResult, centraliaToDataPoints } from '../utils/personIntel/centraliaModel';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { log } from '../utils/logger';
 
 const app = new Hono<Env>();
 
@@ -118,8 +124,235 @@ app.delete('/:id', async (c) => {
   await execute(c.env.DB, `DELETE FROM person_intel_data_points WHERE dossier_id=?`, [dossierId]);
   await execute(c.env.DB, `DELETE FROM person_intel_connections WHERE dossier_id=?`, [dossierId]);
   await execute(c.env.DB, `DELETE FROM person_intel_sources WHERE dossier_id=?`, [dossierId]);
+  await execute(c.env.DB, `DELETE FROM person_intel_cross_refs WHERE dossier_id=?`, [dossierId]);
   await execute(c.env.DB, `DELETE FROM person_intelligence WHERE id=?`, [dossierId]);
   return c.json({ ok: true });
+});
+
+// ============================================================
+// Cross-reference capture & verification
+// ============================================================
+
+// POST /api/person-intel/:id/cross-refs/refresh — run the legal phase inline
+// (CourtListener/juriscraper + FBI Wanted + criminal-DB + skip-trace) and
+// capture the resulting cross-refs. Returns the captured cross-refs.
+app.post('/:id/cross-refs/refresh', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
+  const dossier = await c.env.DB.prepare(`SELECT subject_seed FROM person_intelligence WHERE id=?`).bind(dossierId).first<{ subject_seed: string }>();
+  if (!dossier) return c.json({ error: 'not found' }, 404);
+  let seed: IntelSeed;
+  try { seed = JSON.parse(dossier.subject_seed); } catch { return c.json({ error: 'invalid seed' }, 400); }
+
+  const result = await runLegalPhase(c.env.DB, seed);
+  // Persist source rows + cross-refs inline (mirror the DO's legal phase).
+  for (const r of result.sourceResults) {
+    await execute(c.env.DB,
+      `INSERT INTO person_intel_sources (dossier_id,source_name,phase,status,response_time_ms,data_points_found,error_message) VALUES (?,?,?,?,?,?,?)`,
+      dossierId, r.sourceName, r.phase, r.status, r.responseTimeMs, r.dataPoints?.length ?? 0, r.errorMessage ?? null);
+  }
+  const captured = await persistCrossRefs(c.env.DB, dossierId, result.crossRefs, c.get('user').id);
+  const crossRefs = await fetchCrossRefs(c.env.DB, dossierId);
+  return c.json({ ok: true, captured, crossRefs, sources: result.sourceResults, riskFlags: result.riskFlags });
+});
+
+// GET /api/person-intel/:id/cross-refs — list captured cross-refs with their
+// verifications and effective (post-verification) confidence.
+app.get('/:id/cross-refs', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
+  const crossRefs = await fetchCrossRefs(c.env.DB, dossierId);
+  const enriched = await Promise.all(crossRefs.map(async (xr) => {
+    const verifs = await fetchVerifications(c.env.DB, xr.id!);
+    return { ...xr, verifications: verifs, effectiveConfidence: effectiveConfidence(xr, verifs) };
+  }));
+  return c.json(enriched);
+});
+
+// POST /api/person-intel/:id/cross-refs/:xrefId/verify — verify a cross-ref.
+// Body: { method: 'dob'|'address'|'phone'|'email'|'identifier'|'officer_review', evidence: string }
+app.post('/:id/cross-refs/:xrefId/verify', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
+  const xrefId = Number(c.req.param('xrefId'));
+  const body = await c.req.json<{ method: VerificationMethod; evidence: string }>();
+  if (!body.method || typeof body.evidence !== 'string') {
+    return c.json({ error: 'method and evidence required' }, 400);
+  }
+  // Load the cross-ref (scoped to this dossier).
+  const xrRow = await c.env.DB.prepare(
+    `SELECT id, dossier_id, source, external_ref, external_url, label, matched_fields,
+            confidence, is_criminal, risk_flags
+       FROM person_intel_cross_refs WHERE id=? AND dossier_id=?`,
+  ).bind(xrefId, dossierId).first<any>();
+  if (!xrRow) return c.json({ error: 'not found' }, 404);
+
+  let matchedFields: { field: string; value: string }[] = [];
+  let riskFlags: string[] = [];
+  try {
+    matchedFields = JSON.parse(xrRow.matched_fields || '[]');
+    riskFlags = JSON.parse(xrRow.risk_flags || '[]');
+  } catch { /* defaults */ }
+  const crossRef = {
+    id: xrRow.id, dossierId: xrRow.dossier_id, source: xrRow.source,
+    externalRef: xrRow.external_ref, externalUrl: xrRow.external_url ?? undefined,
+    label: xrRow.label, matchedFields, confidence: xrRow.confidence,
+    isCriminal: !!xrRow.is_criminal, riskFlags: riskFlags as any,
+  };
+  // Known values = the dossier's corroborated data points.
+  const knownRows = await c.env.DB.prepare(
+    `SELECT value FROM person_intel_data_points WHERE dossier_id=?`,
+  ).bind(dossierId).all<{ value: string }>();
+  const knownValues = (knownRows.results ?? []).map(r => r.value);
+  const user = c.get('user');
+
+  const outcome = computeVerdict(crossRef, body.method, body.evidence, knownValues);
+  await persistVerification(c.env.DB, crossRef,
+    { crossRefId: xrefId, method: body.method, evidence: body.evidence, verifiedBy: user.id },
+    outcome);
+  return c.json({ ok: true, result: outcome.result, adjustedConfidence: outcome.adjustedConfidence, reason: outcome.reason });
+});
+
+// ============================================================
+// Reporting (GautaVaid/Skip_Tracing professional reporting pattern)
+// ============================================================
+
+// GET /api/person-intel/:id/report?format=pdf|csv
+app.get('/:id/report', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
+  const format = (c.req.query('format') || 'pdf').toLowerCase();
+  const dossier = await c.env.DB.prepare(`SELECT * FROM person_intelligence WHERE id=?`).bind(dossierId).first<any>();
+  if (!dossier) return c.json({ error: 'not found' }, 404);
+  const crossRefs = await fetchCrossRefs(c.env.DB, dossierId);
+  const enriched = await Promise.all(crossRefs.map(async (xr) => {
+    const v = await fetchVerifications(c.env.DB, xr.id!);
+    return { ...xr, verifications: v, effectiveConfidence: effectiveConfidence(xr, v) };
+  }));
+  const dataPoints = await query<any>(c.env.DB,
+    `SELECT category, field, value, sources, confidence FROM person_intel_data_points WHERE dossier_id=? ORDER BY confidence DESC`, dossierId);
+
+  if (format === 'csv') {
+    const rows = [['type', 'source', 'label', 'external_ref', 'is_criminal', 'confidence', 'effective', 'verified_result']];
+    for (const xr of enriched) {
+      rows.push(['cross_ref', xr.source, xr.label, xr.externalRef, String(xr.isCriminal), String(xr.confidence), String(xr.effectiveConfidence), xr.riskFlags.join('|')]);
+    }
+    for (const dp of dataPoints) {
+      rows.push(['data_point', dp.sources, dp.field, dp.value, '', String(dp.confidence), '', '']);
+    }
+    const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    return new Response(csv, { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="intel-${dossierId}.csv"` } });
+  }
+
+  // PDF via pdf-lib (already a dependency).
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const page = doc.addPage([595, 842]); // A4
+  let y = 800;
+  const navy = rgb(0.13, 0.25, 0.37);
+  page.drawText('RMPG Flex — Person Intelligence Report', { x: 40, y, size: 16, font: bold, color: navy });
+  y -= 28;
+  page.drawText(`Dossier #${dossierId} — ${dossier.subject_name ?? 'Unknown'}`, { x: 40, y, size: 12, font, color: rgb(0.1, 0.1, 0.1) });
+  y -= 18;
+  page.drawText(`Risk score: ${dossier.risk_score ?? 0}   Flags: ${dossier.risk_flags ?? '[]'}   Status: ${dossier.status}`, { x: 40, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
+  y -= 24;
+  page.drawText('Cross-References', { x: 40, y, size: 12, font: bold, color: navy });
+  y -= 16;
+  for (const xr of enriched) {
+    if (y < 80) { y = 800; doc.addPage([595, 842]); }
+    const line = `[${xr.source}] ${xr.label} — ${xr.isCriminal ? 'CRIMINAL' : 'civil'} — conf ${xr.confidence.toFixed(2)} → ${xr.effectiveConfidence.toFixed(2)}`;
+    page.drawText(line.slice(0, 95), { x: 40, y, size: 9, font, color: rgb(0.15, 0.15, 0.15) });
+    y -= 13;
+    if (xr.externalUrl) { page.drawText(`  ${xr.externalUrl.slice(0, 90)}`, { x: 40, y, size: 8, font, color: rgb(0.35, 0.35, 0.35) }); y -= 11; }
+  }
+  const bytes = await doc.save();
+  return new Response(bytes, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="intel-${dossierId}.pdf"` } });
+});
+
+// ============================================================
+// centralia opinion extraction (freelawproject/centralia)
+// ============================================================
+
+// POST /api/person-intel/opinions/extract — accept a court PDF + court_id,
+// stash it in R2 (UPLOADS/intel-opinions/), create a pending opinion row,
+// return the centralia skeleton the client/sidecar will fill.
+app.post('/opinions/extract', async (c) => {
+  const user = c.get('user');
+  const form = await c.req.formData();
+  const file = form.get('pdf') as File | null;
+  const courtId = String(form.get('court_id') || '').trim();
+  const docketNumber = String(form.get('docket_number') || '').trim() || undefined;
+  const dossierId = Number(form.get('dossier_id') || 0) || null;
+  if (!file || !courtId) return c.json({ error: 'pdf and court_id required' }, 400);
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const r2Key = `intel-opinions/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  try { await c.env.UPLOADS.put(r2Key, bytes, { customMetadata: { court_id: courtId, uploaded_by: String(user.id) } }); }
+  catch (e) { log.error('opinion R2 put failed', { r2Key }, e instanceof Error ? e : new Error(String(e))); return c.json({ error: 'storage failed' }, 502); }
+
+  const skeleton = pendingCentraliaResult(courtId, docketNumber);
+  const ins = await c.env.DB.prepare(
+    `INSERT INTO person_intel_opinions (dossier_id, court_id, docket_number, r2_key, status, extracted_by)
+     VALUES (?, ?, ?, ?, 'pending', ?)`,
+  ).bind(dossierId, courtId, docketNumber ?? null, r2Key, user.id).run();
+  const opinionId = ins.meta.last_row_id as number;
+  return c.json({ ok: true, opinionId, r2Key, status: skeleton.status, warnings: skeleton.warnings });
+});
+
+// POST /api/person-intel/opinions/:id/complete — accept a centralia-shaped
+// JSON result (from a client-side Pyodide centralia run or a sidecar),
+// normalize + persist it, and fold its `legal` data points into the dossier.
+app.post('/opinions/:id/complete', async (c) => {
+  const user = c.get('user');
+  const opinionId = Number(c.req.param('id'));
+  const body = await c.req.json<{ result: unknown; dossier_id?: number }>();
+  if (!body.result) return c.json({ error: 'result required' }, 400);
+  const result = normalizeCentraliaResult(body.result);
+  await execute(c.env.DB,
+    `UPDATE person_intel_opinions SET extracted=?, status=?, completed_at=datetime('now') WHERE id=?`,
+    JSON.stringify(result), result.status, opinionId);
+
+  // Fold extracted legal data points into the dossier (if linked).
+  const dossierId = body.dossier_id ?? null;
+  if (dossierId) {
+    const pts = centraliaToDataPoints(result);
+    for (const p of pts) {
+      await execute(c.env.DB,
+        `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence) VALUES (?,?,?,?,?,?)`,
+        dossierId, p.category, p.field, p.value, JSON.stringify([p.source]), 0.6);
+    }
+    // Capture a cross-ref for the opinion's docket.
+    if (result.cluster.docket_number || result.cluster.case_name) {
+      await execute(c.env.DB,
+        `INSERT INTO person_intel_cross_refs
+           (dossier_id, source, external_ref, external_url, label, matched_fields, confidence, is_criminal, risk_flags, captured_by)
+         VALUES (?, 'COURTLISTENER', ?, ?, ?, ?, ?, ?, '[]', ?)
+         ON CONFLICT(dossier_id, source, external_ref) DO UPDATE SET label=excluded.label`,
+        dossierId, result.cluster.docket_number || result.cluster.case_name || `opinion:${opinionId}`,
+        undefined, result.cluster.case_name || result.cluster.docket_number || 'Court opinion',
+        JSON.stringify([{ field: 'docket_number', value: result.cluster.docket_number || '' }]),
+        0.5, 0, user.id);
+    }
+  }
+  return c.json({ ok: true, status: result.status, cluster: result.cluster, opinionCount: result.opinions.length });
+});
+
+// GET /api/person-intel/opinions/:id — fetch a stored opinion's centralia result.
+app.get('/opinions/:id', async (c) => {
+  const opinionId = Number(c.req.param('id'));
+  const row = await c.env.DB.prepare(
+    `SELECT id, dossier_id, court_id, docket_number, r2_key, status, extracted, created_at, completed_at
+       FROM person_intel_opinions WHERE id=?`,
+  ).bind(opinionId).first<any>();
+  if (!row) return c.json({ error: 'not found' }, 404);
+  let extracted = null;
+  try { extracted = row.extracted ? JSON.parse(row.extracted) : null; } catch { /* leave null */ }
+  return c.json({ ...row, extracted });
 });
 
 export default app;
