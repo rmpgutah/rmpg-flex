@@ -15,7 +15,13 @@ ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
 # Skip when nothing to push (rebase/force-push flows, already-pushed branches).
-if [ "$(git rev-list --count HEAD ^origin/main 2>/dev/null || echo 0)" = "0" ]; then
+# Fail closed: if origin/main is missing (fresh worktree, fetch failure), run
+# the full gate rather than silently skipping — a broken ref and a legitimate
+# no-op are indistinguishable without the remote ref.
+AHEAD=$(git rev-list --count HEAD ^origin/main 2>/dev/null)
+if [ $? -ne 0 ]; then
+  echo "⚠ pre-push: origin/main not available locally — running full gate as safety fallback"
+elif [ "$AHEAD" = "0" ]; then
   echo "⤷ pre-push: no commits ahead of origin/main — skipping gate"
   exit 0
 fi

@@ -1210,14 +1210,9 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     }
 
     // ── Release assigned units on a terminal transition ──
-    // BUG: closing/clearing/cancelling a call left every assigned unit stuck
-    // showing 'dispatched' with current_call_id still pointing at the now-dead
-    // call — assign-unit sets that pair (units SET status='dispatched',
-    // current_call_id=?) but nothing here ever reversed it outside the
-    // explicit per-unit unassign-unit route. Units then read as permanently
-    // busy on a call that's already gone from every active view, and
-    // recommended-units/closest-unit kept skipping them as unavailable.
-    // Mirrors the SQL unassign-unit already uses per-unit.
+    // On close/clear/cancel, release all assigned units back to 'available'
+    // and clear their current_call_id. Without this, units stay permanently
+    // busy on a dead call, and recommended-units/closest-unit skip them.
     const TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived', 'merged', 'split']);
     if (TERMINAL_STATUSES.has(status)) {
       try {

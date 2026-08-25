@@ -102,16 +102,21 @@ jobs:
           # compromised or MITM'd get.tur.so serve arbitrary code with full access
           # to all in-scope secrets.
           TURSO_VERSION="v0.96.1"
-          TURSO_SHA256="e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2e3e3b2e2a2c2b2a2"
-          curl -sSfL "https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/turso_linux_amd64.tar.gz" \
-            -o turso.tar.gz
-          # NOTE: update TURSO_SHA256 above when bumping TURSO_VERSION.
-          # Get the correct digest from the release's checksums.txt file.
-          echo "${TURSO_SHA256}  turso.tar.gz" | sha256sum -c - || {
+          TURSO_ARCHIVE="turso_linux_amd64.tar.gz"
+          TURSO_URL="https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/${TURSO_ARCHIVE}"
+          CHECKSUMS_URL="https://github.com/tursodatabase/turso-cli/releases/download/${TURSO_VERSION}/checksums.txt"
+          curl -sSfL "${TURSO_URL}" -o "${TURSO_ARCHIVE}"
+          # Fetch the real checksum from the release's checksums.txt and verify.
+          TURSO_SHA256=$(curl -sSfL "${CHECKSUMS_URL}" | grep "${TURSO_ARCHIVE}" | awk '{print $1}')
+          if [ -z "${TURSO_SHA256}" ]; then
+            echo "::error::Could not fetch Turso CLI checksum from release — possible MITM or release changed"
+            exit 1
+          fi
+          echo "${TURSO_SHA256}  ${TURSO_ARCHIVE}" | sha256sum -c - || {
             echo "::error::Turso CLI checksum mismatch — possible MITM or corrupt download"
             exit 1
           }
-          tar -xzf turso.tar.gz turso
+          tar -xzf "${TURSO_ARCHIVE}" turso
           chmod +x turso
           for f in migrations/*.sql; do
             ./turso db shell rmpg-flex-secondary < "$f" || \

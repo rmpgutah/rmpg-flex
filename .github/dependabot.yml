@@ -35,23 +35,6 @@ updates:
       - dependency-name: "jsdom"
         update-types: ["version-update:semver-major"]
 
-  # Server (Express + SQLite)
-  - package-ecosystem: "npm"
-    directory: "/server"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "server"
-    ignore:
-      - dependency-name: "multer"
-        update-types: ["version-update:semver-major"]
-      # TypeScript 6.x — major version, needs planned migration
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-
   # Desktop (Electron)
   - package-ecosystem: "npm"
     directory: "/desktop"

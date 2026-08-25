@@ -864,6 +864,10 @@ async function createMainWindow() {
     await app.whenReady();
   }
 
+  // Reset WWAN state so the first comparison after window recreation
+  // doesn't produce a stale "changed" event from the previous session.
+  _lastWwanState = null;
+
   // Restore the window's last-saved position/size, if any is on record AND
   // it still lands on a currently-connected display (see
   // boundsIntersectSomeDisplay in windowManager.js — a bounds saved from a
@@ -1323,6 +1327,18 @@ async function createMainWindow() {
   });
 
   mainWindow.on('closed', () => {
+    // Kill any orphaned recon tool sessions when the renderer is destroyed.
+    // Without this, long-running tools (nmap, sqlmap, etc.) continue as
+    // detached OS processes consuming resources indefinitely.
+    for (const [sessionId, child] of toolSessions) {
+      try {
+        if (child && !child.killed) {
+          child.kill();
+          logSecurityAuditEvent('recon:tool-killed', 'cleanup', { sessionId });
+        }
+      } catch { /* process already exited */ }
+    }
+    toolSessions.clear();
     mainWindow = null;
   });
 
@@ -2140,12 +2156,9 @@ guardedHandle('device:set-auto-launch', (event, enabled) => {
 });
 
 /**
- * Runs `reg.exe add ... Shell ...` through an elevated (UAC-prompted)
- * PowerShell process via Start-Process -Verb RunAs. Returns { ok: true } on
- * a zero exit code, { ok: false, error } otherwise — including if the user
- * cancels the UAC prompt (Start-Process throws in that case).
- * [WINDOWS-UNVERIFIED] — the reg.exe/Start-Process invocation below has not
- * been run on real Windows; verify manually before shipping.
+ * Kills Windows 11 shell host processes that surface the Start Menu over
+ * fullscreen windows when FlexOS is the Winlogon shell. Uses taskkill /F
+ * (no elevation needed for same-session processes).
  */
 // ─── Windows shell process suppression ───────────────────────
 // When FlexOS is the Winlogon shell, explorer.exe is not running, but Windows
@@ -3691,10 +3704,10 @@ guardedHandle('recon:tool-install', async (event, { pkg } = {}) => {
     return { ok: false, error: 'Homebrew is not installed. Install from https://brew.sh' };
   }
   try {
+    const pathParts = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', process.env.PATH || ''].filter(Boolean);
     const child = spawn(brewPath, ['install', pkg], {
       env: {
-        ...process.env,
-        PATH: ['/opt/homebrew/bin', '/usr/local/bin', process.env.PATH || ''].filter(Boolean).join(':'),
+        ...buildSandboxedChildEnv(process.env, pathParts),
         HOMEBREW_NO_AUTO_UPDATE: '1',
         HOMEBREW_NO_INSTALL_CLEANUP: '1',
         HOMEBREW_NO_ENV_HINTS: '1',
@@ -4783,9 +4796,10 @@ guardedHandle('face:enrollment-status', (_event, { userId }) => {
 });
 
 // ── Face unlock success (from splash lock screen renderer) ──
-// Uses ipcMain.on (not guardedHandle) — this is a fire-and-forget send from the
-// trusted local file splash.html, not an invoke requiring a response.
-ipcMain.on('face:unlock-success', () => {
+// Uses guardedSplashOn (local-file guard) to verify the sender is the trusted
+// splash.html loaded via loadFile(), preventing a compromised renderer from
+// bypassing authentication by sending this IPC directly.
+guardedSplashOn('face:unlock-success', () => {
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
   }
@@ -4810,11 +4824,15 @@ guardedHandle('device:camera-scan-stop', () => {
 guardedHandle('system:get-battery', async () => {
   if (process.platform !== 'win32') return null;
   try {
-    const { execSync } = require('child_process');
-    const out = execSync(
-      'wmic path Win32_Battery get EstimatedChargeRemaining,BatteryStatus /format:csv',
-      { timeout: 3000, encoding: 'utf8', windowsHide: true }
-    );
+    const { execFile } = require('child_process');
+    const out = await new Promise((resolve, reject) => {
+      execFile(
+        'wmic',
+        ['path', 'Win32_Battery', 'get', 'EstimatedChargeRemaining,BatteryStatus', '/format:csv'],
+        { timeout: 3000, encoding: 'utf8', windowsHide: true },
+        (err, stdout) => err ? reject(err) : resolve(stdout)
+      );
+    });
     const lines = out.trim().split('\n').filter(l => l.trim() && !l.startsWith('Node'));
     if (!lines.length) return null;
     const parts = lines[0].trim().split(',');
@@ -5637,6 +5655,12 @@ app.whenReady().then(async () => {
     // Start connectivity monitor
     connectivityMonitor = new ConnectivityMonitor(REMOTE_SERVER_URL);
     connectivityMonitor.isOnline = isReachable; // Set initial state from startup check
+    // Guard against double-reload: the fast-reconnect callback fires on every
+    // positive check (~10s), while the debounced callback fires ~30s later.
+    // Both independently try to reload when on the offline page. Track the
+    // last reload time so the debounced path skips if fast-reconnect already
+    // handled it.
+    let _lastConnectivityReload = 0;
     connectivityMonitor.start(mainWindow, (nowOnline) => {
       console.log(`[APP] Connectivity transition → ${nowOnline ? 'ONLINE' : 'OFFLINE'}`);
       if (nowOnline) {
@@ -5647,7 +5671,8 @@ app.whenReady().then(async () => {
         try {
           if (mainWindow && !mainWindow.isDestroyed()) {
             const currentUrl = mainWindow.webContents.getURL();
-            if (currentUrl.startsWith('data:')) {
+            if (currentUrl.startsWith('data:') && Date.now() - _lastConnectivityReload > 5000) {
+              _lastConnectivityReload = Date.now();
               console.log('[APP] Connectivity restored (debounced) while on offline page — reloading');
               mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
                 console.warn('[APP] Auto-reload on reconnect failed:', err && err.message);
@@ -5677,7 +5702,8 @@ app.whenReady().then(async () => {
       try {
         if (mainWindow && !mainWindow.isDestroyed()) {
           const currentUrl = mainWindow.webContents.getURL();
-          if (currentUrl.startsWith('data:')) {
+          if (currentUrl.startsWith('data:') && Date.now() - _lastConnectivityReload > 5000) {
+            _lastConnectivityReload = Date.now();
             console.log('[APP] Fast reconnect: reachable while on offline page — reloading immediately');
             mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
               console.warn('[APP] Fast reconnect loadURL failed:', err && err.message);
