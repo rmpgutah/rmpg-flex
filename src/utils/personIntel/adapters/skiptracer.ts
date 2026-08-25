@@ -132,6 +132,7 @@ export async function querySkipTracer(db: D1Database, seed: IntelSeed): Promise<
 
         // Person link — the source profile URL for deeper verification
         const personLink = extractPersonLink(record);
+        const prev = extractPreviousAddresses(record);
         if (personLink) {
           pts.push({ category: 'online', field: 'person_link', value: personLink, source: SRC });
           crossRefs.push({
@@ -144,6 +145,7 @@ export async function querySkipTracer(db: D1Database, seed: IntelSeed): Promise<
             confidence: 0.5,
             isCriminal: false,
             riskFlags: [],
+            meta: buildSkipTraceMeta(record),
           });
         }
       }
@@ -179,6 +181,7 @@ function normalizeResponse(data: any): any[] {
 }
 
 function extractProfileName(record: any): { first?: string; last?: string; age?: string; born?: string } {
+  if (!record || typeof record !== 'object') return {};
   const get = (k: string) => {
     const v = record[k];
     return typeof v === 'string' ? v.trim() : (v == null ? '' : String(v).trim());
@@ -239,6 +242,7 @@ function extractAddresses(record: any): Array<{ street?: string; city?: string; 
 
 function extractPhones(record: any): Array<{ number: string; type?: string; provider?: string }> {
   const phones: Array<{ number: string; type?: string; provider?: string }> = [];
+  if (!record || typeof record !== 'object') return phones;
 
   const fields = ['phones', 'phone_numbers', 'phone_list', 'telephone'];
   for (const field of fields) {
@@ -341,4 +345,28 @@ function extractAssociates(record: any): Array<{ name: string; age?: string }> {
 function extractPersonLink(record: any): string | undefined {
   const v = record.personLink || record.person_link || record.profile_url || record.url || record.source_url;
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+/**
+ * Full WebOlivia/skip-trace profile as a structured payload for the
+ * cross-ref's meta_json — keeps the shape the flat RawDataPoints lose
+ * (phone↔type/provider pairing, address↔timespan pairing, relative ages).
+ * Exported for unit tests.
+ */
+export function buildSkipTraceMeta(record: any): Record<string, unknown> {
+  if (!record || typeof record !== 'object') {
+    return { phones: [], previousAddresses: [], relatives: [], associates: [] };
+  }
+  const name = extractProfileName(record);
+  return {
+    firstName: name.first,
+    lastName: name.last,
+    age: name.age,
+    born: name.born,
+    phones: extractPhones(record),
+    previousAddresses: extractPreviousAddresses(record),
+    relatives: extractRelatives(record),
+    associates: extractAssociates(record),
+    personLink: extractPersonLink(record),
+  };
 }
