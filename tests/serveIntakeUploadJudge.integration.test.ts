@@ -17,14 +17,14 @@ describe('serve-intake integration — judge composes with defendant parse', () 
     const rawDocs = [{ name: 'doc.pdf', text: 'Defendant: Alice Smith' }];
     const judge = await judgeMerged(mkEnv('{}'), fields, rawDocs, ['info_page']);
     expect(judge.overall_status).toBe('clean');
-    expect(parseDefendants(fields.defendant.value).individuals).toHaveLength(1);
+    expect(parseDefendants(fields.defendant.value)).toHaveLength(1);
   });
 
   it("multi-defendant ';'-separated packet: parseDefendants returns N", async () => {
     const fields = { defendant: { value: 'Alice Smith; Bob Doe; Carol Roe', confidence: 0.95 } };
     const rawDocs = [{ name: 'doc.pdf', text: 'Defendant: Alice Smith; Bob Doe; Carol Roe' }];
     const judge = await judgeMerged(mkEnv('{}'), fields, rawDocs, ['court_filing']);
-    expect(parseDefendants(fields.defendant.value).individuals).toHaveLength(3);
+    expect(parseDefendants(fields.defendant.value)).toHaveLength(3);
     expect(judge.overall_status).toBe('clean');
   });
 
