@@ -4,17 +4,10 @@ import {
   clientServiceRuleText, firstAttemptDirective, diligenceCadenceText, allDaysAuthorized,
 } from '../src/utils/serveIntakeBriefing';
 import type { BriefingInput } from '../src/utils/serveIntakeBriefing';
+import type { QueueRow } from '../src/utils/serveIntakeExtract';
 import { computeScheduleImpossible } from '../src/utils/serveIntakeRecords';
 
-const baseRow: {
-  recipient_name: string; recipient_address: string;
-  recipient_city: string; recipient_state: string; recipient_zip: string;
-  document_type: string; case_number: string; court_name: string;
-  jurisdiction: string; client_name: string; attorney_name: null;
-  priority: 'rush' | 'normal' | 'stat'; deadline: string;
-  service_instructions: string | null; notes: string | null;
-  plaintiff: string; defendant: string; court_date: null; sm_job_id: null;
-} = {
+const baseRow: QueueRow = {
   recipient_name: 'DANA WHITFIELD', recipient_address: '1180 E VINE ST',
   recipient_city: 'SALT LAKE CITY', recipient_state: 'UT', recipient_zip: '84121',
   document_type: 'subpoena', case_number: '900904528', court_name: 'THIRD DISTRICT',
@@ -27,7 +20,7 @@ const baseRow: {
 // Builds a minimal BriefingInput around a queueRow override, and returns the
 // text of the INTAKE note (the structured briefing body) so fix-round-1
 // regression tests can assert on what the officer actually reads.
-function intakeNoteText(queueRowOverrides: Partial<typeof baseRow>): string {
+function intakeNoteText(queueRowOverrides: Partial<QueueRow>): string {
   const input: BriefingInput = {
     fields: {},
     queueRow: { ...baseRow, ...queueRowOverrides },
