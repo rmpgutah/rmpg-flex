@@ -344,7 +344,7 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                       {formatEnumValue(job.priority)}
                     </span>
                   )}
-                  {job.urgency_tier && job.urgency_tier !== 'normal' && (
+                  {job.urgency_tier && job.urgency_tier !== 'standard' && (
                     <AlertTriangle size={13} className={job.urgency_tier === 'critical' ? 'text-red-400' : 'text-amber-400'} />
                   )}
                 </div>
