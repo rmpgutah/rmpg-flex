@@ -6,12 +6,20 @@ import {
 import type { BriefingInput } from '../src/utils/serveIntakeBriefing';
 import { computeScheduleImpossible } from '../src/utils/serveIntakeRecords';
 
-const baseRow = {
+const baseRow: {
+  recipient_name: string; recipient_address: string;
+  recipient_city: string; recipient_state: string; recipient_zip: string;
+  document_type: string; case_number: string; court_name: string;
+  jurisdiction: string; client_name: string; attorney_name: null;
+  priority: 'rush' | 'normal' | 'stat'; deadline: string;
+  service_instructions: string | null; notes: string | null;
+  plaintiff: string; defendant: string; court_date: null; sm_job_id: null;
+} = {
   recipient_name: 'DANA WHITFIELD', recipient_address: '1180 E VINE ST',
   recipient_city: 'SALT LAKE CITY', recipient_state: 'UT', recipient_zip: '84121',
   document_type: 'subpoena', case_number: '900904528', court_name: 'THIRD DISTRICT',
   jurisdiction: 'UT', client_name: 'ICU', attorney_name: null,
-  priority: 'rush' as const, deadline: '2026-06-30', service_instructions: null,
+  priority: 'rush', deadline: '2026-06-30', service_instructions: null,
   notes: null, plaintiff: 'AVERY HOLT', defendant: 'NORTHGATE LOGISTICS, LLC',
   court_date: null, sm_job_id: null,
 };
