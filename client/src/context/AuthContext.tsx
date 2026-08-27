@@ -77,8 +77,12 @@ const LAST_USERNAME_KEY = 'rmpg_last_username';
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
-// Refresh access token 60 seconds before it expires
-const REFRESH_BUFFER_MS = 60 * 1000;
+// Refresh access token 120 seconds before it expires.
+// Field officers on cellular experience frequent network transitions (WiFi ↔
+// cellular, dead zones). A 60-second buffer was too tight — a single failed
+// refresh attempt with exponential backoff could leave the token expired before
+// the retry succeeded. 120 seconds gives two full retry cycles of margin.
+const REFRESH_BUFFER_MS = 120 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 // 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
@@ -350,7 +354,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const current = localStorage.getItem(TOKEN_KEY);
       if (current) {
         refreshFailCountRef.current++;
-        const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
+        // Exponential backoff capped at 60s. Field officers on cellular hit
+        // dead zones and WiFi↔cellular transitions that can take 30-45s to
+        // resolve. 30s cap was too tight — the token expired during backoff.
+        // 60s cap gives the network time to recover while still retrying
+        // frequently enough to catch the moment connectivity returns.
+        const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 60000);
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
           const ct = localStorage.getItem(TOKEN_KEY);
