@@ -148,7 +148,7 @@ function DispositionPrompt({
                   />
                   <div className="flex-1 min-w-0">
                     <span className="text-[10px] font-mono font-bold text-rmpg-100">{d.code}</span>
-                    <span className="text-[10px] text-rmpg-300 ml-1.5">{d.description}</span>
+                    <span className="text-[10px] text-fg-muted ml-1.5">{d.description}</span>
                   </div>
                 </label>
               ))}
