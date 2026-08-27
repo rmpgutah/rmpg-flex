@@ -18,7 +18,7 @@ interface DispositionCode {
 
 interface DispositionPromptProps {
   callNumber: string;
-  /** Grouped codes (preferred — renders as <optgroup> sections, e.g. the
+  /** Grouped codes (preferred — renders as grouped sections, e.g. the
    *  10-category PS/## library on process-service calls, or the general
    *  code groups on everything else). A flat DispositionCode[] is also
    *  accepted for back-compat and renders as a single ungrouped section. */
@@ -120,37 +120,69 @@ function DispositionPrompt({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        {/* 44: Focus ring on select input matching design system */}
-        <select id="ff-dispositionprompt-0"
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="flex-1 bg-surface-base border border-rmpg-600 text-rmpg-100 text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
-          aria-label="Disposition code"
-          autoFocus
-        >
-          <option value="">— Select Disposition Code —</option>
-          {filteredGroups.map((g) =>
-            g.codes.length > 0 ? (
-              <optgroup key={g.label} label={g.label}>
-                {g.codes.map((d) => (
-                  <option key={d.code} value={d.code}>
-                    {d.code} — {d.description}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null
-          )}
-          {filteredGroups.length === 0 && (
-            <option value="" disabled>No codes match "{filter}"</option>
-          )}
-        </select>
+      {/* Scrollable radio-button list — replaces native <select> which
+          truncated long descriptions like "PS/10.20 — Sub-Service to …" */}
+      <div className="max-h-48 overflow-y-auto scrollbar-dark border border-rmpg-600 bg-surface-base rounded-sm">
+        {filteredGroups.map((g) =>
+          g.codes.length > 0 ? (
+            <div key={g.label}>
+              <div className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-fg-muted bg-surface-deep border-b border-rmpg-700 sticky top-0">
+                {g.label}
+              </div>
+              {g.codes.map((d) => (
+                <label
+                  key={d.code}
+                  className={`flex items-start gap-2 px-2 py-1 cursor-pointer transition-colors border-b border-rmpg-700/50 last:border-b-0 ${
+                    selected === d.code
+                      ? 'bg-amber-900/20'
+                      : 'hover:bg-rmpg-700/30'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="disposition"
+                    value={d.code}
+                    checked={selected === d.code}
+                    onChange={() => setSelected(d.code)}
+                    className="mt-0.5 accent-amber-400"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[10px] font-mono font-bold text-rmpg-100">{d.code}</span>
+                    <span className="text-[10px] text-fg-muted ml-1.5">{d.description}</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+          ) : null
+        )}
+        {filteredGroups.length === 0 && (
+          <div className="px-2 py-3 text-[10px] text-fg-muted text-center italic">
+            No codes match "{filter}"
+          </div>
+        )}
+      </div>
+
+      {/* Confirm + Incident Report row */}
+      <div className="flex items-center justify-between mt-2 gap-2">
+        {/* Create Incident Report checkbox — Spillman Flex call promotion */}
+        <label className="flex items-center gap-1.5 cursor-pointer group flex-1 min-w-0">
+          <input id="ff-dispositionprompt-1"
+            type="checkbox"
+            checked={createIncident}
+            onChange={(e) => setCreateIncident(e.target.checked)}
+            className="w-3 h-3 accent-brand-500"
+          />
+          <FileText style={{ width: 10, height: 10, color: createIncident ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-fg-muted group-hover:text-rmpg-300'}`}>
+            Create Incident Report
+          </span>
+        </label>
 
         {/* 42: Hover/active states on confirm button; 43: Transition on background color */}
         <button type="button"
           onClick={() => selected && onConfirm(selected, createIncident)}
           disabled={!selected}
-          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150"
+          className="flex items-center gap-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 shrink-0"
           style={{
             background: selected ? 'var(--sev-ok)' : 'var(--border-subtle)',
             color: selected ? '#fff' : 'var(--text-muted)',
@@ -160,23 +192,9 @@ function DispositionPrompt({
           }}
         >
           <Check style={{ width: 10, height: 10 }} />
-          Confirm Clear
+          Confirm
         </button>
       </div>
-
-      {/* Create Incident Report checkbox — Spillman Flex call promotion */}
-      <label className="flex items-center gap-1.5 mt-2 cursor-pointer group">
-        <input id="ff-dispositionprompt-1"
-          type="checkbox"
-          checked={createIncident}
-          onChange={(e) => setCreateIncident(e.target.checked)}
-          className="w-3 h-3 accent-brand-500"
-        />
-        <FileText style={{ width: 10, height: 10, color: createIncident ? 'var(--text-secondary)' : 'var(--text-muted)' }} />
-        <span className={`text-[10px] font-bold uppercase tracking-wider ${createIncident ? 'text-brand-400' : 'text-fg-muted group-hover:text-rmpg-300'}`}>
-          Create Incident Report from this call
-        </span>
-      </label>
     </div>
   );
 }

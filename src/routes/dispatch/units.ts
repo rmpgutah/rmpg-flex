@@ -5,6 +5,7 @@ import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 import { log } from '../../utils/logger';
 import { denverNowDateExpr } from '../../utils/denverTime';
+import { haversineM } from '../../utils/tripTelemetry';
 
 const units = new Hono<Env>();
 
@@ -426,6 +427,151 @@ units.get('/my-assignment', async (c) => {
   } catch (err) {
     log.error('GET /dispatch/units/my-assignment failed', {}, err);
     return c.json({ call_sign: null, radio_channel: null, channel: null });
+  }
+});
+
+// ── GET /dispatch/units/:id/eta — estimated travel time to a call ─
+// Computes haversine distance from unit's last GPS → call location,
+// then divides by default urban speed (35 mph). The gps.ts ETA route
+// mirrors this but is mounted under /api/dispatch/gps (different prefix);
+// THIS route is the canonical /api/dispatch/units/:id/eta endpoint.
+const ETA_READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+units.get('/:id/eta', requireRole(...ETA_READ_ROLES), async (c) => {
+  const unitId = c.req.param('id');
+  const callId = c.req.query('call_id');
+  if (!callId) return c.json({ error: 'call_id query param required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const unit = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM units WHERE id = ? LIMIT 1', unitId,
+    );
+    if (!unit || unit.latitude == null || unit.longitude == null) {
+      return c.json({ error: 'Unit GPS location unavailable' }, 404);
+    }
+    const call = await queryFirst<{ latitude: number | null; longitude: number | null }>(
+      db, 'SELECT latitude, longitude FROM calls_for_service WHERE id = ? LIMIT 1', callId,
+    );
+    if (!call || call.latitude == null || call.longitude == null) {
+      return c.json({ error: 'Call location unavailable' }, 404);
+    }
+    const distM = haversineM(unit.latitude, unit.longitude, call.latitude, call.longitude);
+    const distMiles = distM / 1609.344;
+    const speedMph = 35;
+    const etaMin = (distMiles / speedMph) * 60;
+    return c.json({
+      eta_minutes: Math.round(etaMin * 10) / 10,
+      distance_miles: Math.round(distMiles * 100) / 100,
+      unit_lat: unit.latitude,
+      unit_lng: unit.longitude,
+      call_lat: call.latitude,
+      call_lng: call.longitude,
+    });
+  } catch (err) {
+    log.error('[units] GET /:id/eta failed', { unitId, callId }, err);
+    return c.json({ error: 'ETA calculation failed' }, 500);
+  }
+});
+
+// GET /dispatch/units/workload
+// Returns each unit with: active_call_count, queued_call_count,
+// avg_response_time_today, utilization_pct. Used by dispatch board to show
+// which units are overloaded.
+units.get('/workload', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    // All non-off-duty units
+    const unitRows = await query<{
+      id: number;
+      call_sign: string;
+      status: string;
+      clock_in: string | null;
+    }>(db, `
+      SELECT u.id, u.call_sign, u.status,
+        te.clock_in
+      FROM units u
+      LEFT JOIN time_entries te ON te.officer_id = u.officer_id
+        AND te.clock_out IS NULL
+      WHERE u.status != 'off_duty'
+      ORDER BY u.call_sign ASC
+    `);
+
+    const now = Date.now();
+
+    // For each unit count active/queued calls and avg response time today
+    const results = await Promise.all(unitRows.map(async (u) => {
+      // Active call count: calls this unit is currently assigned to
+      let active_call_count = 0;
+      let queued_call_count = 0;
+      try {
+        const counts = await queryFirst<{ active: number; queued: number }>(db, `
+          SELECT
+            SUM(CASE WHEN c.status IN ('dispatched','enroute','onscene') THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN c.status = 'pending' THEN 1 ELSE 0 END) as queued
+          FROM calls_for_service c
+          WHERE (
+            instr(',' || c.assigned_unit_ids || ',', ',' || ? || ',') > 0
+          )
+          AND c.status IN ('dispatched','enroute','onscene','pending')
+        `, String(u.id));
+        active_call_count = counts?.active ?? 0;
+        queued_call_count = counts?.queued ?? 0;
+      } catch { /* best-effort */ }
+
+      // Avg response time today from call_response_times
+      let avg_response_time_today: number | null = null;
+      try {
+        const rt = await queryFirst<{ avg_rt: number | null }>(db, `
+          SELECT AVG(response_seconds) as avg_rt
+          FROM call_response_times
+          WHERE unit_id = ? AND onscene_at >= date('now')
+        `, u.id);
+        avg_response_time_today = rt?.avg_rt != null ? Math.round(rt.avg_rt) : null;
+      } catch { /* table may not exist yet */ }
+
+      // Utilization: active_minutes / shift_minutes
+      let utilization_pct: number | null = null;
+      if (u.clock_in) {
+        try {
+          const shiftMs = now - new Date(u.clock_in.includes('T') ? u.clock_in : u.clock_in.replace(' ', 'T') + 'Z').getTime();
+          const shiftMinutes = shiftMs / 60000;
+          if (shiftMinutes > 0) {
+            // Estimate active minutes from calls with response times
+            const activeResult = await queryFirst<{ active_secs: number | null }>(db, `
+              SELECT SUM(
+                CASE
+                  WHEN c.status IN ('dispatched','enroute','onscene')
+                    AND c.dispatched_at IS NOT NULL
+                  THEN CAST((julianday('now') - julianday(c.dispatched_at)) * 86400 AS INTEGER)
+                  ELSE 0
+                END
+              ) as active_secs
+              FROM calls_for_service c
+              WHERE instr(',' || c.assigned_unit_ids || ',', ',' || ? || ',') > 0
+                AND c.status IN ('dispatched','enroute','onscene')
+            `, String(u.id));
+            const activeMinutes = (activeResult?.active_secs ?? 0) / 60;
+            utilization_pct = Math.min(100, Math.round((activeMinutes / shiftMinutes) * 100));
+          }
+        } catch { /* best-effort */ }
+      }
+
+      return {
+        unit_id: u.id,
+        call_sign: u.call_sign,
+        status: u.status,
+        active_call_count,
+        queued_call_count,
+        avg_response_time_today,
+        utilization_pct,
+        shift_start: u.clock_in ?? null,
+      };
+    }));
+
+    return c.json(results);
+  } catch (err) {
+    log.error('GET /dispatch/units/workload failed', {}, err as Error);
+    return c.json({ error: 'Failed to get unit workload' }, 500);
   }
 });
 

@@ -6,9 +6,19 @@ PROJECT="project.yml"
 ARCHIVE_PATH="./build/RMPGFlexConnect.xcarchive"
 EXPORT_PATH="./build/export"
 IPA_PATH="$EXPORT_PATH/RMPGFlexConnect.ipa"
-OTA_BASE="https://rmpgutah.us/ios/ota"
+# Served by the Worker's /api/ios-ota route (src/routes/iosOta.ts) reading
+# from R2 bucket DOWNLOADS under the ios-ota/ prefix — NOT the Pages static
+# site, which can't stream a binary from R2. Must have a WAF managed-challenge
+# skip rule (same as /api/health) or itms-services 403s on the device.
+OTA_BASE="https://api.rmpgutah.us/api/ios-ota"
 TEAM_ID="${APPLE_TEAM_ID:-}"
 BUNDLE_ID="com.rmpg.flex.connect"
+# "ad-hoc" needs an Apple Distribution cert (paid Developer Program, generated
+# in the Apple Developer portal). No such cert exists on this Mac's keychains
+# as of 2026-08-22 — only "Apple Development" identities. Default to
+# "development" so OTA install works today for UDID-registered devices; flip
+# EXPORT_METHOD=ad-hoc once a distribution cert + provisioning profile exist.
+EXPORT_METHOD="${EXPORT_METHOD:-development}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -58,7 +68,7 @@ xcodebuild -exportArchive \
 <plist version="1.0">
 <dict>
     <key>method</key>
-    <string>ad-hoc</string>
+    <string>${EXPORT_METHOD}</string>
     <key>teamID</key>
     <string>${TEAM_ID}</string>
     <key>compileBitcode</key>
@@ -101,15 +111,27 @@ sed \
     OTA/manifest.plist > "$EXPORT_PATH/manifest.plist"
 cp OTA/index.html "$EXPORT_PATH/index.html"
 
+if command -v npx &>/dev/null && [ "${SKIP_R2_UPLOAD:-0}" != "1" ]; then
+    log "Uploading OTA package to R2 (DOWNLOADS bucket, ios-ota/ prefix)..."
+    for f in RMPGFlexConnect.ipa manifest.plist index.html icon-57.png icon-512.png; do
+        if [ -f "$EXPORT_PATH/$f" ]; then
+            npx wrangler r2 object put "rmpg-flex-downloads/ios-ota/$f" \
+                --file "$EXPORT_PATH/$f" --remote 2>&1 | tail -5
+        else
+            warn "Skipping upload of $f — not found in $EXPORT_PATH"
+        fi
+    done
+else
+    warn "Skipping R2 upload (SKIP_R2_UPLOAD=1 or npx unavailable) — upload $EXPORT_PATH/* to R2 bucket rmpg-flex-downloads under ios-ota/ manually."
+fi
+
 log ""
 log "Wireless OTA install URL:"
 log "  itms-services://?action=download-manifest&url=$OTA_BASE/manifest.plist"
 log ""
-log "OTA package ready at $EXPORT_PATH/ — upload its contents as-is to your web server:"
-log "  $EXPORT_PATH/RMPGFlexConnect.ipa → $OTA_BASE/RMPGFlexConnect.ipa"
-log "  $EXPORT_PATH/manifest.plist     → $OTA_BASE/manifest.plist"
-log "  $EXPORT_PATH/index.html        → $OTA_BASE/index.html"
-log "  $EXPORT_PATH/icon-57.png       → $OTA_BASE/icon-57.png"
-log "  $EXPORT_PATH/icon-512.png      → $OTA_BASE/icon-512.png"
+log "Test the install page: $OTA_BASE/index.html"
 log ""
-log "Test the install page: https://rmpgutah.us/ios/ota/"
+log "⚠️  This link 403s until a Cloudflare WAF managed-challenge SKIP rule exists"
+log "    for path eq \"/api/ios-ota\" (or a prefix match), mirroring the existing"
+log "    /api/health skip rule documented in CLAUDE.md. That rule lives in the"
+log "    Cloudflare dashboard, not in this repo — set it up once per zone."

@@ -766,6 +766,70 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [sendBatch]);
 
+  // ─── Automation rule evaluation for an accepted fix ───────
+  // Extracted so BOTH accepted-fix paths run automation identically instead
+  // of drifting the way they did before this fix: ingestPosition (the
+  // Toughbook internal-GPS path) called this inline, but the
+  // navigator.geolocation.watchPosition callback below — what every phone,
+  // tablet, and non-Toughbook desktop actually uses — built its own queued
+  // point and never evaluated automation rules at all. A speed/no-movement/
+  // call-proximity rule configured with evaluate_client: 1 silently never
+  // fired for the majority of devices in the fleet.
+  const runAutomationForPoint = useCallback((point: QueuedPoint) => {
+    import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
+      const fix = {
+        ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
+        lat: point.lat,
+        lng: point.lng,
+        accuracy: point.accuracy,
+        heading: point.heading,
+        speed: point.speed,
+        source: point.source,
+      };
+      updateMovementState(fix, evaluatorStateRef.current);
+      const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
+      for (const action of actions) {
+        if (action.localAction?.type === 'notify_officer') {
+          if (action.localAction.confirmCallback === 'mark_on_scene') {
+            addToastRef.current?.(
+              `${action.localAction.message} — tap to mark on scene`,
+              'info',
+              8000,
+            );
+          } else {
+            addToastRef.current?.(
+              action.localAction.message,
+              action.localAction.severity === 'critical' ? 'error' : 'info',
+            );
+          }
+        }
+        // Queue for offline replay on reconnect — but ONLY for rules the
+        // server never independently evaluates (evaluate_server !== 1). This
+        // uploaded fix also reaches the server (queueRef feeds sendBatch),
+        // and the server runs its OWN evaluateServerRules pass over every
+        // evaluate_server:1 rule against that same fix — including
+        // 'notify_officer'-typed rules, which the server's fireAction()
+        // treats identically to notify_dispatch/notify_supervisor. A rule
+        // configured with both evaluate_client:1 and evaluate_server:1
+        // previously got reported here AND independently fired server-side,
+        // inserting two automation_rule_firings rows and emitting the
+        // 'automation_alert' notification twice for one real-world trigger.
+        if (action.rule.evaluate_server !== 1) {
+          queueClientFiring({
+            rule_id: action.rule.id,
+            rule_name: action.rule.name,
+            trigger_type: action.rule.trigger_type,
+            action_type: action.rule.action_type,
+            trigger_lat: fix.lat,
+            trigger_lng: fix.lng,
+            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
+            context: { speed: fix.speed, accuracy: fix.accuracy },
+          }).catch(() => {}); // fire-and-forget, never blocks eval
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   // ─── Shared position ingestion ───────────────────────────
   // Used by BOTH navigator.geolocation.watchPosition (browser path) AND
   // the Electron internal-GPS IPC stream (Toughbook path). Keeps a single
@@ -862,46 +926,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       }).catch(() => { /* non-fatal */ });
 
       // Evaluate automation rules (lazy import keeps initial bundle small).
-      import('../utils/automationEngine').then(({ evaluateRules, updateMovementState }) => {
-        const fix = {
-          ts: new Date(point.timestamp).getTime(), // new-date-ok — point.timestamp is epoch ms from IDB
-          lat: point.lat,
-          lng: point.lng,
-          accuracy: point.accuracy,
-          heading: point.heading,
-          speed: point.speed,
-          source: point.source,
-        };
-        updateMovementState(fix, evaluatorStateRef.current);
-        const actions = evaluateRules(fix, automationRulesRef.current, evaluatorStateRef.current, []);
-        for (const action of actions) {
-          if (action.localAction?.type === 'notify_officer') {
-            if (action.localAction.confirmCallback === 'mark_on_scene') {
-              addToastRef.current?.(
-                `${action.localAction.message} — tap to mark on scene`,
-                'info',
-                8000,
-              );
-            } else {
-              addToastRef.current?.(
-                action.localAction.message,
-                action.localAction.severity === 'critical' ? 'error' : 'info',
-              );
-            }
-          }
-          // Queue every firing (local or server) for offline replay on reconnect
-          queueClientFiring({
-            rule_id: action.rule.id,
-            rule_name: action.rule.name,
-            trigger_type: action.rule.trigger_type,
-            action_type: action.rule.action_type,
-            trigger_lat: fix.lat,
-            trigger_lng: fix.lng,
-            fired_at: new Date(fix.ts).toISOString(), // new-date-ok — fix.ts is epoch ms from IDB
-            context: { speed: fix.speed, accuracy: fix.accuracy },
-          }).catch(() => {}); // fire-and-forget, never blocks eval
-        }
-      }).catch(() => {});
+      runAutomationForPoint(point);
 
       // Opt-in exportable session track (separate from the upload queue, which
       // gets drained on every batch send).
@@ -933,7 +958,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       connectionType: connType,
       positionSource: source,
     }));
-  }, [shouldAcceptPoint, sendImmediate]);
+  }, [shouldAcceptPoint, sendImmediate, runAutomationForPoint]);
 
   // ─── Toughbook internal GPS subscription ─────────────────
   // Detect on mount; if it's a Toughbook with a live COM port, start the
@@ -1170,6 +1195,12 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           speed: point.speed,
           source: point.source,
         }).catch(() => { /* non-fatal */ });
+
+        // Evaluate automation rules — see runAutomationForPoint's own comment
+        // for why this call (previously missing entirely from this path) matters:
+        // without it, every non-Toughbook device silently never ran
+        // client-side automation (speed/no-movement/call-proximity rules).
+        runAutomationForPoint(point);
 
         // ── Exportable session track (PARITY FIX) ──
         // `capturedCount` drives the HUD's "Track N pts" readout and the
@@ -1431,7 +1462,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }, HEARTBEAT_INTERVAL);
 
     setIsTracking(true);
-  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking]);
+  }, [batchIntervalMs, highAccuracy, sendBatch, sendImmediate, shouldAcceptPoint, startIpFallbackPoller, cleanupTracking, runAutomationForPoint]);
 
   // Stop tracking (internal use only — users cannot call this)
   const stopTracking = useCallback(() => {

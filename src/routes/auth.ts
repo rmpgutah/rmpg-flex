@@ -266,10 +266,21 @@ async function recordLoginAttempt(
 }
 
 auth.post('/login', async (c) => {
+  // Parse body early so we can reference username in error handlers
+  let username: string | undefined;
   try {
-    const { username, password, deviceFingerprint } = await c.req.json();
+    const body = await c.req.json();
+    username = body.username;
+    const { password, deviceFingerprint } = body;
     if (!username || !password) {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
+    }
+
+    // Guard: JWT_SECRET must be configured. Without it every token-signing
+    // call throws "key must be a string" → 500 on every login attempt.
+    if (!c.env.JWT_SECRET) {
+      log.error('[login] JWT_SECRET is not configured — all logins will fail');
+      return c.json({ error: 'Server configuration error', code: 'SERVER_MISCONFIGURED' }, 500);
     }
 
     // Brute-force throttle: per-username only. A per-IP bucket was tried but
@@ -296,14 +307,21 @@ auth.post('/login', async (c) => {
     const db = getDb(c.env);
     await ensureAccountLockoutColumns(db);
     const securityPolicy = await getSecurityPolicy(db).catch(() => DEFAULT_SECURITY_POLICY);
-    const user = await queryFirst<any>(
-      db,
-      `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
-              (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
-              CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
-       FROM users WHERE username = ?`,
-      username
-    );
+
+    let user: any;
+    try {
+      user = await queryFirst<any>(
+        db,
+        `SELECT ${USER_SELECT}, password_hash, failed_login_count, locked_until,
+                (locked_until IS NOT NULL AND locked_until > datetime('now')) AS is_locked,
+                CAST(max(0, (julianday(locked_until) - julianday('now')) * 86400) AS INTEGER) AS lock_retry_seconds
+         FROM users WHERE username = ?`,
+        username
+      );
+    } catch (dbErr) {
+      log.error('[login] D1 user lookup failed', { uname }, dbErr instanceof Error ? dbErr : new Error(String(dbErr)));
+      return c.json({ error: 'Server temporarily unavailable. Please try again.', code: 'DB_ERROR' }, 503);
+    }
 
     if (!user) {
       await recordLoginAttempt(c, db, username, ip, false, 'user_not_found');
@@ -326,12 +344,21 @@ auth.post('/login', async (c) => {
     }
 
     if (!user.password_hash || !user.password_hash.startsWith('$2')) {
-      console.error(`[auth] User "${username}" has an invalid password_hash (not a bcrypt hash). Use /api/auth/recover-all to reset.`);
+      log.error('[login] User has invalid password_hash (not bcrypt)', { uname: username });
       await recordLoginAttempt(c, db, username, ip, false, 'invalid_hash');
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
-    if (!compareSync(password, user.password_hash)) {
+    let passwordMatch = false;
+    try {
+      passwordMatch = compareSync(password, user.password_hash);
+    } catch (bcryptErr) {
+      log.error('[login] bcrypt compareSync threw — hash may be corrupted', { uname: username }, bcryptErr instanceof Error ? bcryptErr : new Error(String(bcryptErr)));
+      await recordLoginAttempt(c, db, username, ip, false, 'corrupted_hash');
+      return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
+    }
+
+    if (!passwordMatch) {
       // Atomic increment (avoids a lost-update race under concurrent
       // wrong-password requests for the same account). Reached here only
       // when is_locked was already false, so any locked_until still on the
@@ -449,8 +476,9 @@ auth.post('/login', async (c) => {
     });
   } catch (err: any) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('Login error:', msg);
-    return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR' }, 500);
+    const stack = err instanceof Error ? err.stack : undefined;
+    log.error('[login] Unhandled login error', { message: msg, uname: String(username ?? '').slice(0, 64) }, err instanceof Error ? err : new Error(msg));
+    return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR', detail: msg }, 500);
   }
 });
 
@@ -639,7 +667,9 @@ auth.post('/refresh', async (c) => {
     });
   } catch (err) {
     console.error('Refresh error:', err);
-    return c.json({ error: 'Refresh failed' }, 500);
+    // D1 outage or transient failure — return 401 so the client can re-login
+    // instead of 500 which triggers infinite retry loops.
+    return c.json({ error: 'Refresh failed', code: 'REFRESH_FAILED' }, 401);
   }
 });
 

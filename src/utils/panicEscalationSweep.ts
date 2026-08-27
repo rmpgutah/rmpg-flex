@@ -23,6 +23,8 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, execute } from './db';
 import { sendToUser } from '../routes/ws';
+import { emitAlert } from './alertHub';
+import { parseD1TimestampMs } from './fleetio/sync';
 
 const MAX_ESCALATION_LEVEL = 10;
 
@@ -34,7 +36,10 @@ interface ActivePanicRow {
   created_at: string;
 }
 
-export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated: number }> {
+export async function sweepPanicEscalation(
+  db: D1Database,
+  env?: { ALERT_HUB?: DurableObjectNamespace },
+): Promise<{ escalated: number }> {
   const rows = await query<ActivePanicRow>(db,
     `SELECT id, user_id, location_address, escalation_level, created_at
      FROM panic_alerts WHERE status = 'active'`);
@@ -47,14 +52,18 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
   let escalated = 0;
   for (const row of rows) {
     if (row.escalation_level >= MAX_ESCALATION_LEVEL) continue;
-    const minutesUnacked = Math.floor((Date.now() - Date.parse(row.created_at)) / 60000);
+    // created_at is a zone-less D1 datetime('now') (UTC); Date.parse reads it
+    // as LOCAL time, skewing the age on any non-UTC host — use parseD1TimestampMs.
+    const createdMs = parseD1TimestampMs(row.created_at);
+    if (createdMs == null) continue;
+    const minutesUnacked = Math.floor((Date.now() - createdMs) / 60000);
     // Level N corresponds to N minutes unacknowledged — only escalate once
     // a full additional minute has elapsed since the last level bump.
     if (minutesUnacked <= row.escalation_level) continue;
 
     const nextLevel = row.escalation_level + 1;
     await execute(db,
-      `UPDATE panic_alerts SET escalation_level = ?, updated_at = datetime('now') WHERE id = ? AND status = 'active'`,
+      `UPDATE panic_alerts SET escalation_level = MAX(escalation_level, ?), updated_at = datetime('now') WHERE id = ? AND status = 'active'`,
       nextLevel, row.id);
 
     const payload = {
@@ -65,6 +74,10 @@ export async function sweepPanicEscalation(db: D1Database): Promise<{ escalated:
       location_address: row.location_address,
     };
     for (const t of targets) sendToUser(t.id, 'panic_alert', payload);
+    // sendToUser only reaches sockets in THIS isolate — a cron isolate has
+    // none, so the re-alert was invisible. AlertHubDO is the cross-isolate
+    // fan-out every connected console/MDT actually hears.
+    if (env) await emitAlert(env, 'panic_alert', payload);
     escalated++;
   }
   return { escalated };

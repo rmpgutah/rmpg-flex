@@ -28,7 +28,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { escapeLike, codedLike } from '../utils/searchText';
+import { cappedLikePattern, codedLike } from '../utils/searchText';
 import { mergeTimeline } from '../utils/intelDossier';
 import { parseNodeRefs, buildTimelineEvent } from '../utils/connectionsTimeline';
 import { recordAudit } from '../utils/auditLog';
@@ -93,6 +93,19 @@ async function audit(
 // ── Node loading (label + metadata in one query) ─────────────
 // Returns the full metadata row AND a human-readable label derived from
 // it — one SELECT per node instead of two.
+
+// Each traversal query is independent — a missing/legacy table (or any single
+// failure) must not blind the WHOLE node. A rejected Promise.all here used to
+// drop every edge of that type when just one junction table was absent.
+// Tuple-preserving so each batch element keeps its own row type.
+async function allSettledRows<T extends readonly Promise<unknown[]>[]>(
+  qs: T,
+): Promise<{ -readonly [K in keyof T]: T[K] extends Promise<infer R> ? R : never }> {
+  const settled = await Promise.allSettled(qs);
+  return settled.map((s) => (s.status === 'fulfilled'
+    ? s.value
+    : ([] as unknown))) as { -readonly [K in keyof T]: T[K] extends Promise<infer R> ? R : never };
+}
 
 async function loadNode(
   db: D1Database,
@@ -267,33 +280,36 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
     console.error('[Connections] forensic_case_entity_links error:', (err as Error)?.message);
   }
 
-  // 2. Type-specific junction / FK traversal
+  // 2. Type-specific junction / FK traversal — parallelized for performance.
+  // D1 subrequests are async network calls; running them concurrently cuts
+  // the wall-clock time from ~12 sequential round-trips to ~1 for most nodes.
   try {
     switch (type) {
       case 'person': {
-        for (const r of await query<any>(db, 'SELECT incident_id, role FROM incident_persons WHERE person_id = ?', id))
-          add('incident', r.incident_id, r.role || 'involved', 'incident_persons');
-        // person → call (direct CFS involvement)
-        for (const r of await query<any>(db, 'SELECT call_id, role FROM call_persons WHERE person_id = ?', id))
-          if (r.call_id) add('call', r.call_id, r.role || 'subject', 'call_persons');
-        for (const r of await query<any>(db, 'SELECT id FROM vehicles_records WHERE owner_person_id = ?', id))
-          add('vehicle', r.id, 'owner', 'vehicles_records');
-        for (const r of await query<any>(db, 'SELECT case_id FROM case_person_links WHERE person_id = ?', id))
-          add('case', r.case_id, 'linked', 'case_person_links');
-        for (const r of await query<any>(db, 'SELECT cp.relationship, p.id AS property_id FROM client_persons cp JOIN properties p ON p.client_id = cp.client_id WHERE cp.person_id = ? LIMIT 1000', id))
-          add('property', r.property_id, r.relationship || 'client', 'client_persons');
-        for (const r of await query<any>(db, 'SELECT id, status FROM warrants WHERE subject_person_id = ?', id))
-          add('warrant', r.id, `warrant_${(r.status || '').toLowerCase()}`, 'warrants');
-        for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE person_id = ?', id))
-          add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
-        for (const r of await query<any>(db, "SELECT arrest_record_id FROM arrest_cross_links WHERE linked_type = 'person' AND linked_id = ?", id))
-          add('arrest', r.arrest_record_id, 'arrested', 'arrest_cross_links');
-        for (const r of await query<any>(db, 'SELECT id FROM field_interviews WHERE person_id = ?', id))
-          add('field_interview', r.id, 'fi_contact', 'field_interviews');
-        for (const r of await query<any>(db, 'SELECT id FROM trespass_orders WHERE person_id = ?', id))
-          add('trespass_order', r.id, 'trespassed_from', 'trespass_orders');
-        for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE recipient_person_id = ?', id))
-          add('serve_job', r.id, 'serve_recipient', 'serve_queue');
+        const personQueries = await allSettledRows([
+          query<any>(db, 'SELECT incident_id, role FROM incident_persons WHERE person_id = ?', id),
+          query<any>(db, 'SELECT call_id, role FROM call_persons WHERE person_id = ?', id),
+          query<any>(db, 'SELECT id FROM vehicles_records WHERE owner_person_id = ?', id),
+          query<any>(db, 'SELECT case_id FROM case_person_links WHERE person_id = ?', id),
+          query<any>(db, 'SELECT cp.relationship, p.id AS property_id FROM client_persons cp JOIN properties p ON p.client_id = cp.client_id WHERE cp.person_id = ? LIMIT 1000', id),
+          query<any>(db, 'SELECT id, status FROM warrants WHERE subject_person_id = ?', id),
+          query<any>(db, 'SELECT id, status FROM citations WHERE person_id = ?', id),
+          query<any>(db, "SELECT arrest_record_id FROM arrest_cross_links WHERE linked_type = 'person' AND linked_id = ?", id),
+          query<any>(db, 'SELECT id FROM field_interviews WHERE person_id = ?', id),
+          query<any>(db, 'SELECT id FROM trespass_orders WHERE person_id = ?', id),
+          query<any>(db, 'SELECT id FROM serve_queue WHERE recipient_person_id = ?', id),
+        ]);
+        for (const r of personQueries[0]) add('incident', r.incident_id, r.role || 'involved', 'incident_persons');
+        for (const r of personQueries[1]) if (r.call_id) add('call', r.call_id, r.role || 'subject', 'call_persons');
+        for (const r of personQueries[2]) add('vehicle', r.id, 'owner', 'vehicles_records');
+        for (const r of personQueries[3]) add('case', r.case_id, 'linked', 'case_person_links');
+        for (const r of personQueries[4]) add('property', r.property_id, r.relationship || 'client', 'client_persons');
+        for (const r of personQueries[5]) add('warrant', r.id, `warrant_${(r.status || '').toLowerCase()}`, 'warrants');
+        for (const r of personQueries[6]) add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
+        for (const r of personQueries[7]) add('arrest', r.arrest_record_id, 'arrested', 'arrest_cross_links');
+        for (const r of personQueries[8]) add('field_interview', r.id, 'fi_contact', 'field_interviews');
+        for (const r of personQueries[9]) add('trespass_order', r.id, 'trespassed_from', 'trespass_orders');
+        for (const r of personQueries[10]) add('serve_job', r.id, 'serve_recipient', 'serve_queue');
 
         // ── Derived person↔person edges (Palantir Phase 3) ──
         // Labeled semantic links so analysts see WHY two people connect
@@ -334,30 +350,15 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
       }
 
       case 'vehicle': {
-        for (const r of await query<any>(db, 'SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?', id))
-          add('incident', r.incident_id, r.role || 'involved', 'incident_vehicles');
-        for (const r of await query<any>(db, 'SELECT call_id, role FROM call_vehicles WHERE vehicle_id = ?', id))
-          if (r.call_id) add('call', r.call_id, r.role || 'involved', 'call_vehicles');
-        const v = await queryFirst<any>(db, 'SELECT owner_person_id FROM vehicles_records WHERE id = ?', id);
-        if (v?.owner_person_id) add('person', v.owner_person_id, 'owner', 'vehicles_records');
-        for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE vehicle_id = ?', id))
-          add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
-        for (const r of await query<any>(db, 'SELECT id FROM field_interviews WHERE vehicle_id = ?', id))
-          add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
-        for (const r of await query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id))
-          add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
-        // ALPR sightings for this vehicle — capped at 20 most recent so a
-        // frequently-scanned plate can't flood this node's edge count the
-        // way MAX_NODES caps the graph overall.
-        try {
-          // vehicle_record_ids is a JSON.stringify'd number array with no
-          // spaces (e.g. "[1,23]" — see src/routes/alpr.ts finalizeCapture).
-          // A bare substring match on the id would also hit "[15]"/"[21]"/
-          // "[123]" for id=1, so anchor to element boundaries: the id must
-          // be the whole array ("[1]"), the first element ("[1,%"), the
-          // last element ("%,1]"), or a middle element ("%,1,%").
-          const idStr = String(id);
-          for (const r of await query<any>(db,
+        const idStr = String(id);
+        const vehicleQueries = await allSettledRows([
+          query<any>(db, 'SELECT incident_id, role FROM incident_vehicles WHERE vehicle_id = ?', id),
+          query<any>(db, 'SELECT call_id, role FROM call_vehicles WHERE vehicle_id = ?', id),
+          queryFirst<any>(db, 'SELECT owner_person_id FROM vehicles_records WHERE id = ?', id),
+          query<any>(db, 'SELECT id, status FROM citations WHERE vehicle_id = ?', id),
+          query<any>(db, 'SELECT id FROM field_interviews WHERE vehicle_id = ?', id),
+          query<any>(db, 'SELECT business_id, relationship FROM business_vehicles WHERE vehicle_id = ?', id),
+          query<any>(db,
             `SELECT id FROM alpr_captures WHERE (
                vehicle_record_ids = '[' || ? || ']'
                OR vehicle_record_ids LIKE '[' || ? || ',%'
@@ -365,70 +366,72 @@ async function findConnections(db: D1Database, type: string, id: number): Promis
                OR vehicle_record_ids LIKE '%,' || ? || ',%'
              ) ORDER BY created_at DESC LIMIT 20`,
             idStr, idStr, idStr, idStr,
-          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
-        } catch (err: any) { console.error('[Connections] alpr_captures (vehicle) edges error:', err?.message); }
-        try {
-          // Negate the id — see loadNode's case 'alpr_sighting' for why
-          // vehicle_sightings rows must not share the alpr_captures id space.
-          for (const r of await query<any>(db,
-            `SELECT id FROM vehicle_sightings WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20`, id,
-          )) add('alpr_sighting', -r.id, 'alpr_capture', 'vehicle_sightings');
-        } catch (err: any) { console.error('[Connections] vehicle_sightings edges error:', err?.message); }
+          ),
+          query<any>(db, 'SELECT id FROM vehicle_sightings WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20', id),
+        ]);
+        for (const r of vehicleQueries[0]) add('incident', r.incident_id, r.role || 'involved', 'incident_vehicles');
+        for (const r of vehicleQueries[1]) if (r.call_id) add('call', r.call_id, r.role || 'involved', 'call_vehicles');
+        const v = vehicleQueries[2];
+        if (v?.owner_person_id) add('person', v.owner_person_id, 'owner', 'vehicles_records');
+        for (const r of vehicleQueries[3]) add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
+        for (const r of vehicleQueries[4]) add('field_interview', r.id, 'fi_vehicle', 'field_interviews');
+        for (const r of vehicleQueries[5]) add('business', r.business_id, r.relationship || 'business_vehicle', 'business_vehicles');
+        for (const r of vehicleQueries[6]) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
+        for (const r of vehicleQueries[7]) add('alpr_sighting', -r.id, 'alpr_capture', 'vehicle_sightings');
         break;
       }
 
       case 'incident': {
-        for (const r of await query<any>(db, 'SELECT person_id, role FROM incident_persons WHERE incident_id = ?', id))
-          add('person', r.person_id, r.role || 'involved', 'incident_persons');
-        for (const r of await query<any>(db, 'SELECT vehicle_id, role FROM incident_vehicles WHERE incident_id = ?', id))
-          add('vehicle', r.vehicle_id, r.role || 'involved', 'incident_vehicles');
-        for (const r of await query<any>(db, 'SELECT id FROM evidence WHERE incident_id = ?', id))
-          add('evidence', r.id, 'collected_from', 'evidence');
-        const inc = await queryFirst<any>(db, 'SELECT property_id, call_id FROM incidents WHERE id = ?', id);
+        const incidentQueries = await allSettledRows([
+          query<any>(db, 'SELECT person_id, role FROM incident_persons WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT vehicle_id, role FROM incident_vehicles WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT id FROM evidence WHERE incident_id = ?', id),
+          queryFirst<any>(db, 'SELECT property_id, call_id FROM incidents WHERE id = ?', id),
+          query<any>(db, 'SELECT case_id FROM case_incident_links WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT id, report_type FROM supplemental_reports WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT id, status FROM citations WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id),
+          query<any>(db, 'SELECT id FROM alpr_captures WHERE incident_id = ? ORDER BY created_at DESC LIMIT 20', id),
+        ]);
+        for (const r of incidentQueries[0]) add('person', r.person_id, r.role || 'involved', 'incident_persons');
+        for (const r of incidentQueries[1]) add('vehicle', r.vehicle_id, r.role || 'involved', 'incident_vehicles');
+        for (const r of incidentQueries[2]) add('evidence', r.id, 'collected_from', 'evidence');
+        const inc = incidentQueries[3];
         if (inc?.property_id) add('property', inc.property_id, 'location', 'incidents');
         if (inc?.call_id) add('call', inc.call_id, 'originating_call', 'incidents');
-        for (const r of await query<any>(db, 'SELECT case_id FROM case_incident_links WHERE incident_id = ?', id))
-          add('case', r.case_id, 'linked', 'case_incident_links');
-        for (const r of await query<any>(db, 'SELECT id, report_type FROM supplemental_reports WHERE incident_id = ?', id))
-          add('report', r.id, r.report_type || 'supplemental', 'supplemental_reports');
-        for (const r of await query<any>(db, 'SELECT id, status FROM citations WHERE incident_id = ?', id))
-          add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
-        // incident_links: manual cross-references added via IncidentsPage "Link Record" form
-        for (const r of await query<any>(db, 'SELECT linked_type, linked_id FROM incident_links WHERE incident_id = ?', id))
-          if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
-        try {
-          for (const r of await query<any>(db,
-            `SELECT id FROM alpr_captures WHERE incident_id = ? ORDER BY created_at DESC LIMIT 20`, id,
-          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
-        } catch (err: any) { console.error('[Connections] alpr_captures (incident) edges error:', err?.message); }
+        for (const r of incidentQueries[4]) add('case', r.case_id, 'linked', 'case_incident_links');
+        for (const r of incidentQueries[5]) add('report', r.id, r.report_type || 'supplemental', 'supplemental_reports');
+        for (const r of incidentQueries[6]) add('citation', r.id, `citation_${(r.status || '').toLowerCase()}`, 'citations');
+        for (const r of incidentQueries[7]) if (r.linked_type && r.linked_id) add(r.linked_type, Number(r.linked_id), 'linked', 'incident_links');
+        for (const r of incidentQueries[8]) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
         break;
       }
 
       case 'call': {
-        for (const r of await query<any>(db, 'SELECT person_id, role FROM call_persons WHERE call_id = ?', id))
-          add('person', r.person_id, r.role || 'subject', 'call_persons');
-        for (const r of await query<any>(db, 'SELECT vehicle_id, role FROM call_vehicles WHERE call_id = ?', id))
-          add('vehicle', r.vehicle_id, r.role || 'involved', 'call_vehicles');
-        for (const r of await query<any>(db, 'SELECT id FROM incidents WHERE call_id = ?', id))
-          add('incident', r.id, 'incident_from_call', 'incidents');
-        const cf = await queryFirst<any>(db, 'SELECT property_id, case_id FROM calls_for_service WHERE id = ?', id);
+        const callQueries = await allSettledRows([
+          query<any>(db, 'SELECT person_id, role FROM call_persons WHERE call_id = ?', id),
+          query<any>(db, 'SELECT vehicle_id, role FROM call_vehicles WHERE call_id = ?', id),
+          query<any>(db, 'SELECT id FROM incidents WHERE call_id = ?', id),
+          queryFirst<any>(db, 'SELECT property_id, case_id FROM calls_for_service WHERE id = ?', id),
+          query<any>(db, 'SELECT id FROM citations WHERE call_id = ?', id),
+          query<any>(db, 'SELECT id FROM field_interviews WHERE associated_call_id = ?', id),
+          query<any>(db, 'SELECT id FROM trespass_orders WHERE originating_call_id = ?', id),
+          query<any>(db, 'SELECT id FROM serve_queue WHERE call_id = ?', id),
+          query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id),
+          query<any>(db, 'SELECT id FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT 20', id),
+        ]);
+        for (const r of callQueries[0]) add('person', r.person_id, r.role || 'subject', 'call_persons');
+        for (const r of callQueries[1]) add('vehicle', r.vehicle_id, r.role || 'involved', 'call_vehicles');
+        for (const r of callQueries[2]) add('incident', r.id, 'incident_from_call', 'incidents');
+        const cf = callQueries[3];
         if (cf?.property_id) add('property', cf.property_id, 'location', 'calls_for_service');
         if (cf?.case_id) add('case', cf.case_id, 'linked', 'calls_for_service');
-        for (const r of await query<any>(db, 'SELECT id FROM citations WHERE call_id = ?', id))
-          add('citation', r.id, 'cited_on_call', 'citations');
-        for (const r of await query<any>(db, 'SELECT id FROM field_interviews WHERE associated_call_id = ?', id))
-          add('field_interview', r.id, 'fi_on_call', 'field_interviews');
-        for (const r of await query<any>(db, 'SELECT id FROM trespass_orders WHERE originating_call_id = ?', id))
-          add('trespass_order', r.id, 'order_from_call', 'trespass_orders');
-        for (const r of await query<any>(db, 'SELECT id FROM serve_queue WHERE call_id = ?', id))
-          add('serve_job', r.id, 'serve_from_call', 'serve_queue');
-        for (const r of await query<any>(db, 'SELECT business_id, role FROM call_businesses WHERE call_id = ?', id))
-          add('business', r.business_id, r.role || 'involved', 'call_businesses');
-        try {
-          for (const r of await query<any>(db,
-            `SELECT id FROM alpr_captures WHERE call_id = ? ORDER BY created_at DESC LIMIT 20`, id,
-          )) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
-        } catch (err: any) { console.error('[Connections] alpr_captures (call) edges error:', err?.message); }
+        for (const r of callQueries[4]) add('citation', r.id, 'cited_on_call', 'citations');
+        for (const r of callQueries[5]) add('field_interview', r.id, 'fi_on_call', 'field_interviews');
+        for (const r of callQueries[6]) add('trespass_order', r.id, 'order_from_call', 'trespass_orders');
+        for (const r of callQueries[7]) add('serve_job', r.id, 'serve_from_call', 'serve_queue');
+        for (const r of callQueries[8]) add('business', r.business_id, r.role || 'involved', 'call_businesses');
+        for (const r of callQueries[9]) add('alpr_sighting', r.id, 'alpr_capture', 'alpr_captures');
         break;
       }
 
@@ -942,8 +945,10 @@ connections.get('/search', operational, async (c) => {
   if (!q || q.trim().length < 2) return c.json([]);
 
   const db = getDb(c.env);
-  const raw = q.trim();
-  const term = `%${escapeLike(raw)}%`;
+  // D1 LIKE cap: pattern >50 chars fails. escapeLike LENGTHENS the string, so
+  // cappedLikePattern truncates the ESCAPED term to keep '%'+escaped+'%' <=50.
+  const raw = q.trim().slice(0, 40);
+  const term = cappedLikePattern(raw);
   const incidentTypeMatch = codedLike('incident_type', raw);
   const results: Array<{ id: number; type: string; label: string }> = [];
 

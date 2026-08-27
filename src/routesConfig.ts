@@ -55,6 +55,7 @@ import auth from './routes/auth';
 import ssoAuth from './routes/ssoAuth';
 import health from './routes/health';
 import mapData from './routes/mapData';
+import iosOta from './routes/iosOta';
 import tiles from './routes/tiles';
 import osmOverrides from './routes/osmOverrides';
 import geo from './routes/geo';
@@ -122,6 +123,7 @@ import alpr from './routes/alpr';
 import analytics from './routes/analytics';
 import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
+import vehicleEnrichment from './routes/vehicleEnrichment';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -219,7 +221,16 @@ import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import { linkOptions as linkOptionsRead, linkOptionsAdmin } from './routes/linkOptions';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
+import dispatchActivityFeed from './routes/dispatch/activityFeed';
+import dispatchShiftStats from './routes/dispatch/shiftStats';
+import dispatchCallTemplates from './routes/dispatch/callTemplates';
 import dispatchDataCapture from './routes/dispatch/dataCapture';
+import notificationSubscriptions from './routes/dispatch/notificationSubscriptions';
+import dispatchWeather from './routes/dispatch/dispatchWeather';
+import shiftSchedule from './routes/dispatch/shiftSchedule';
+import unitMessages from './routes/dispatch/unitMessages';
+import analyticsDispatch from './routes/dispatch/analyticsDispatch';
+import callExtras from './routes/dispatch/callExtras';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -315,6 +326,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/osm-overrides', router: osmOverrides, auth: 'required',
     note: "RMPG's internal edit layer over the OSM overlays, keyed by OSM element id. Auth REQUIRED — unlike /api/tiles (public reference data), these are internal corrections attributable to a named user." },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+  { prefix: '/api/ios-ota', router: iosOta, auth: 'public',
+    note: 'Wireless install package (manifest.plist/ipa/icons) for ios2/RMPGFlexConnect, served from R2 DOWNLOADS under ios-ota/. Public — itms-services on the device fetches these unauthenticated. Needs the same WAF managed-challenge skip as /api/health or the install link 403s (see docs/superpowers/specs/2026-08-22-ios-ota-wireless-install-design.md).' },
 
   // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
   // token IS the credential — no JWT required because the page is meant for
@@ -364,8 +377,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/calls', router: callActions, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /:id/{revert-status,le-notification,transfer,broadcast-note,notes/:noteId,generate-incident}' },
   { prefix: '/api/dispatch/calls', router: callWarnings, auth: 'required' },
+  // callExtras: BEFORE dispatchCalls — handles /:id/suggest-unit and /:id/notes/export
+  { prefix: '/api/dispatch/calls', router: callExtras, auth: 'required' },
   { prefix: '/api/dispatch/units', router: audioMode, auth: 'required' },
   { prefix: '/api/dispatch/units', router: unitStatus, auth: 'required' },
+  // unitMessages: BEFORE dispatchUnits — handles /:id/messages
+  { prefix: '/api/dispatch/units', router: unitMessages, auth: 'required' },
   { prefix: '/api/dispatch/premise-alerts', router: premiseAlerts, auth: 'required' },
   { prefix: '/api/dispatch/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/dispatch/welfare', router: welfareActive, auth: 'required' },
@@ -378,6 +395,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/routing', router: dispatchRouting, auth: 'required',
     note: 'CFS Route Builder backend (optimize/save/unit/:id/complete-stop) — the /route-builder page 404d on all four since it shipped; never mounted before.' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
+  { prefix: '/api/dispatch/analytics', router: analyticsDispatch, auth: 'required',
+    note: 'Dispatch analytics: availability timeline (hourly staffing breakdown) + incident-type breakdown' },
+  { prefix: '/api/dispatch/activity', router: dispatchActivityFeed, auth: 'required',
+    note: 'Dispatch activity feed: recent call/unit/panic events from audit_log, polled every 10s by dispatch board sidebar' },
   // NOTE: dispatchAggregates' internal routes are bare ('/call-volume',
   // '/by-zone', '/integration-dashboard', no '/aggregates' segment) — the
   // client was fixed to match this mount (2026-07-02, PR #2530) rather than
@@ -484,6 +505,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
     note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
+  { prefix: '/api/vehicle-enrichment', router: vehicleEnrichment, auth: 'required',
+    note: 'Vehicle enrichment chain: plate→VIN→specs via PLATE_TO_VIN / VIN_DECODER / PLATE_DECODER APIs. POST /enrich/:vehicleId (client_viewer excluded), GET /cache/:plate, GET /health. 200 {ok:false,code:\'not_configured\'} when all three keys are unset.' },
   { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
     note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
@@ -784,7 +807,13 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/dispatch/shift-stats', router: dispatchShiftStats, auth: 'required' },
+  { prefix: '/api/dispatch/call-templates', router: dispatchCallTemplates, auth: 'required' },
   { prefix: '/api/dispatch/capture', router: dispatchDataCapture, auth: 'required' },
+  // Backend-C additions
+  { prefix: '/api/dispatch/notifications', router: notificationSubscriptions, auth: 'required' },
+  { prefix: '/api/dispatch', router: dispatchWeather, auth: 'required' },
+  { prefix: '/api/dispatch', router: shiftSchedule, auth: 'required' },
   { prefix: '/api/clearpathgps', router: clearpathgps, auth: 'required' },
   { prefix: '/api/traccar', router: traccar, auth: 'required' },
   { prefix: '/api/microbilt', router: microbilt, auth: 'required',

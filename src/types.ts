@@ -116,6 +116,9 @@ export type Bindings = {
   NUMVERIFY_API_KEY?: string;
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
+  PLATE_TO_VIN_API_KEY?: string;
+  VIN_DECODER_API_KEY?: string;
+  PLATE_DECODER_API_KEY?: string;
   RESEND_API_KEY?: string;
   IPED_API_KEY?: string;
   EMAIL_FIELD_ENCRYPTION_KEK?: string;

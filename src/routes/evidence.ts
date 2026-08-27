@@ -417,12 +417,18 @@ evidence.get('/verify/:sha256', async (c): Promise<Response> => {
   const db = getDb(c.env);
   await ensureTable(db);
   const sha = c.req.param('sha256');
+  // D1 caps LIKE patterns at 50 chars — a full 64-char SHA-256 plus '%' would
+  // throw and the catch would report {verified:false} for genuinely-filed
+  // evidence. Full hashes match exactly; the LIKE prefix path is only for the
+  // short (16-char) prefix form.
   const match = await queryFirst<Record<string, unknown>>(
     db,
-    `SELECT id, evidence_number, sha256, classification, captured_at
-       FROM evidence_manifests WHERE sha256 = ? OR sha256 LIKE ? ORDER BY id DESC LIMIT 1`,
-    sha,
-    `${sha}%`,
+    sha.length > 48
+      ? `SELECT id, evidence_number, sha256, classification, captured_at
+           FROM evidence_manifests WHERE sha256 = ? ORDER BY id DESC LIMIT 1`
+      : `SELECT id, evidence_number, sha256, classification, captured_at
+           FROM evidence_manifests WHERE sha256 = ? OR sha256 LIKE ? ORDER BY id DESC LIMIT 1`,
+    ...(sha.length > 48 ? [sha] : [sha, `${sha}%`]),
   ).catch(() => null);
   return c.json({ verified: !!match, match: match ?? null });
 });

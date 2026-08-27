@@ -9,6 +9,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { queryFirst, execute } from './db';
+import { log } from './logger';
 import { fetchRecentJobs, extractJobAttempts, getStoredKey, type SmJob } from './serveManagerClient';
 import { broadcastAll } from '../routes/ws';
 import { recordAuditCore } from './auditLog';
@@ -377,9 +378,13 @@ export async function pollServeManagerJobs(env: Bindings): Promise<{ synced: num
 
       if (autoCreate !== 'true') { synced++; continue; }
 
-      await createDispatchCallForJob(env, job);
+      try {
+        await createDispatchCallForJob(env, job);
+        callsCreated++;
+      } catch (callErr) {
+        log.error('createDispatchCallForJob failed for job', { jobId: job.id }, callErr as Error);
+      }
       synced++;
-      callsCreated++;
     }
 
     // Update last poll timestamp. system_config has a UNIQUE(config_key,

@@ -1321,6 +1321,18 @@ hr.put('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
   }
 });
 
+hr.delete('/payroll/overtime/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM overtime_requests WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /payroll/overtime/:id', err);
+    return c.json({ error: 'Failed to delete OT request', code: 'HR_OT_DELETE_ERR' }, 500);
+  }
+});
+
 // ─── Payroll CSV Export ──────────────────────────────────────
 
 hr.get('/payroll/export/csv', requireRole(...MANAGER_ROLES), async (c) => {
@@ -1373,13 +1385,13 @@ hr.post('/grievances', requireRole(...ALL_ROLES), async (c) => {
     const db = getDb(c.env);
     const user = c.get('user') as { id: number };
     const body = await c.req.json();
-    const { type, subject, description, priority, assigned_to } = body ?? {};
+    const { type, grievance_type, subject, description, priority, assigned_to, against_user_id } = body ?? {};
     if (!subject || !description) return c.json({ error: 'subject and description are required' }, 400);
     const now = nowIso();
     const res = await execute(db,
-      `INSERT INTO hr_grievances (officer_id, type, subject, description, status, priority, assigned_to, filed_at, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 'filed', ?, ?, ?, ?, ?)`,
-      user.id, type || 'general', subject, description, priority || 'normal', assigned_to || null, now, now, now
+      `INSERT INTO hr_grievances (officer_id, type, subject, description, status, priority, assigned_to, against_user_id, filed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'filed', ?, ?, ?, ?, ?, ?)`,
+      user.id, type || grievance_type || 'general', subject, description, priority || 'normal', assigned_to || null, against_user_id || null, now, now, now
     );
     return c.json({ success: true, id: res.meta.last_row_id }, 201);
   } catch (err) {
@@ -1393,7 +1405,9 @@ hr.put('/grievances/:id', requireRole(...MANAGER_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
     const body = await c.req.json();
-    const fields = ['type', 'subject', 'description', 'priority', 'assigned_to', 'resolution'];
+    const fields = ['type', 'subject', 'description', 'priority', 'assigned_to', 'against_user_id', 'resolution'];
+    // alias grievance_type → type (client sent the wrong key historically)
+    if ('grievance_type' in body && !('type' in body)) body.type = body.grievance_type;
     const sets: string[] = []; const params: unknown[] = [];
     for (const f of fields) {
       if (f in body) { sets.push(`${f} = ?`); params.push(body[f]); }
@@ -1589,6 +1603,39 @@ hr.post('/attendance', requireRole(...MANAGER_ROLES), async (c) => {
   } catch (err) {
     console.error('[hr] POST /attendance', err);
     return c.json({ error: 'Failed to create attendance record', code: 'HR_ATTEND_CREATE_ERR' }, 500);
+  }
+});
+
+hr.put('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json();
+    const ALLOWED = new Set(['type', 'date', 'minutes_late', 'reason', 'excused', 'documented_by']);
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, v] of Object.entries(body ?? {})) {
+      if (ALLOWED.has(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    }
+    if (sets.length === 0) return c.json({ error: 'No updatable fields provided' }, 400);
+    vals.push(id);
+    await execute(db, `UPDATE hr_attendance SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] PUT /attendance/:id', err);
+    return c.json({ error: 'Failed to update attendance record', code: 'HR_ATTEND_UPDATE_ERR' }, 500);
+  }
+});
+
+hr.delete('/attendance/:id', requireRole(...MANAGER_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    await execute(db, 'DELETE FROM hr_attendance WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[hr] DELETE /attendance/:id', err);
+    return c.json({ error: 'Failed to delete attendance record', code: 'HR_ATTEND_DELETE_ERR' }, 500);
   }
 });
 

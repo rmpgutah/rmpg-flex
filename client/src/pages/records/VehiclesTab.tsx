@@ -45,6 +45,9 @@ function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
 }
 import type { VehicleFormData } from '../../components/VehicleFormModal';
 import type { VehiclePdfData } from '../../utils/recordPdfGenerator';
+import { downloadRecordPdf } from '../../utils/recordPdfGenerator';
+import { downloadExport } from '../../components/ExportButton';
+import VehicleDossier from '../../components/VehicleDossier';
 import { toDisplayLabel } from '../../utils/formatters';
 import {
   titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
@@ -351,7 +354,11 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
     setVehicleSubmitting(true);
     setVehicleSubmitError(null);
     try {
-      const payload = { ...data, year: data.year ? parseInt(data.year, 10) : null };
+      const payload = {
+        ...data,
+        year: data.year ? parseInt(data.year, 10) : null,
+        flags: Array.isArray(data.flags) ? JSON.stringify(data.flags) : data.flags,
+      };
       if (editingVehicle) {
         await apiFetch(`/records/vehicles/${editingVehicle.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       } else {
@@ -666,7 +673,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
           <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
           {(['plate', 'make', 'newest'] as const).map(s => (
             <button key={s} type="button" onClick={() => setSortBy(s)}
-              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-fg-muted hover:text-fg-secondary'}`}>
               {s === 'plate' ? 'Plate' : s === 'make' ? 'Make' : 'Newest'}
             </button>
           ))}
@@ -829,6 +836,8 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
   // ── Feature 41: Vehicle History Report ──
   const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
   const [pdfHistory, setPdfHistory] = React.useState<any>(null);
+  const [pdfGenerating, setPdfGenerating] = React.useState(false);
+  const [dossierPlate, setDossierPlate] = React.useState<string | null>(null);
 
   const fetchVehicleHistory = React.useCallback(async (vId: string) => {
     const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
@@ -894,14 +903,48 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         <div className="px-4 pb-2">
         {vehicleAlerts.length > 0 && <AlertBanner alerts={vehicleAlerts} />}
         {/* Feature 41+44 Action Buttons */}
-        <div className="flex gap-1 mt-1">
-          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-rmpg-400 hover:bg-surface-sunken/50">
+        <div className="flex gap-1 mt-1 flex-wrap">
+          <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
           <button type="button" onClick={handleStolenCheck} className="text-[9px] px-2 py-0.5 bg-red-900/30 border border-red-700/50 text-red-400 hover:bg-red-900/50">
             <Shield style={{ width: 10, height: 10, display: 'inline' }} /> Stolen Check
           </button>
+          <button
+            type="button"
+            disabled={pdfGenerating}
+            onClick={async () => {
+              if (!selectedVehicle) return;
+              setPdfGenerating(true);
+              try {
+                const pdfData = buildVehiclePdfData(selectedVehicle, pdfHistory);
+                await downloadRecordPdf('vehicle', pdfData, selectedVehicle.license_plate);
+              } catch { /* ignore */ } finally {
+                setPdfGenerating(false);
+              }
+            }}
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50 disabled:opacity-50"
+          >
+            <FileText style={{ width: 10, height: 10, display: 'inline' }} /> Print Record
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadExport(`/records/vehicles/export?format=csv&archived=false`, `vehicle-${selectedVehicle.license_plate}.csv`).catch(() => {})}
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50"
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            onClick={() => setDossierPlate(selectedVehicle.license_plate)}
+            className="text-[9px] px-2 py-0.5 bg-surface-sunken/30 border border-border-default/50 text-fg-muted hover:bg-surface-sunken/50"
+          >
+            <Shield style={{ width: 10, height: 10, display: 'inline' }} /> ALPR Sightings
+          </button>
         </div>
+        {dossierPlate && (
+          <VehicleDossier plate={dossierPlate} onClose={() => setDossierPlate(null)} />
+        )}
         {/* Feature 44: Stolen Check Result */}
         {stolenCheckResult && (() => {
           // Handler returns { checked, stolen: boolean, source, ... }.
@@ -974,6 +1017,13 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             }
             if (ev.registration === 'expired') chips.push({ label: 'REG EXPIRED', tone: 'red' });
             else if (ev.registration === 'expiring') chips.push({ label: 'REG EXPIRING', tone: 'gold' });
+            if (selectedVehicle.insurance_expiry) {
+              const insExp = new Date(selectedVehicle.insurance_expiry);
+              const now = new Date();
+              const soon = new Date(); soon.setDate(soon.getDate() + 30);
+              if (insExp < now) chips.push({ label: 'INSURANCE EXPIRED', tone: 'red' });
+              else if (insExp <= soon) chips.push({ label: 'INSURANCE EXPIRING', tone: 'gold' });
+            }
             if (ev.classic) chips.push({ label: 'CLASSIC 25YR+', tone: 'gray' });
             if (ev.category && ev.category !== 'passenger') chips.push({ label: ev.category.toUpperCase(), tone: 'gray' });
             if (chips.length === 0) return null;

@@ -131,6 +131,58 @@ export function clientWindowText(queueRow: QueueRow): string | null {
   return null;
 }
 
+// ── Dynamic instruction extraction (hardening pass) ──────────
+// service_instructions routinely carries explicit MANNER-of-service rules,
+// first-attempt timing directives, diligence cadences, and day authorizations.
+// These detectors pull the governing SENTENCES out so each notation can quote
+// exactly what the client wrote next to the relevant doctrine, instead of the
+// officer finding it buried in the verbatim block at the bottom of the feed.
+// All are sentence-scoped, deterministic, and return null/false when nothing
+// matches — a detector that cannot find evidence must stay silent, never
+// paraphrase into an instruction the client did not give (same discipline as
+// the R1/R3 fixes below).
+function instructionSentences(queueRow: QueueRow): string[] {
+  return (queueRow.service_instructions || '')
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// Sentences stating HOW to serve: personal-first hierarchies, abode
+// subservice rules, employment-only constraints.
+const MANNER_KW = ['personal', 'abode', 'subserv', 'employment'];
+
+export function clientServiceRuleText(queueRow: QueueRow): string | null {
+  const hits = instructionSentences(queueRow).filter((s) => {
+    const l = s.toLowerCase();
+    return MANNER_KW.some((k) => l.includes(k));
+  });
+  return hits.length ? hits.join(' ') : null;
+}
+
+export function firstAttemptDirective(queueRow: QueueRow): string | null {
+  for (const s of instructionSentences(queueRow)) {
+    if (/\b(?:start|begin|commence)\s+(?:the\s+)?(?:attempts?|service|trying)\b/i.test(s)) return s;
+  }
+  return null;
+}
+
+// A client-stated diligence cadence only counts when the sentence carries a
+// genuine clock range — otherwise it is prose, and quoting it under a
+// "cadence" label would imply structure that was never parsed.
+export function diligenceCadenceText(queueRow: QueueRow): string | null {
+  for (const s of instructionSentences(queueRow)) {
+    if (/\bdiligence\b/i.test(s) && hasClockTimeRange(s)) return s;
+  }
+  return null;
+}
+
+// Positive day-scope authorization ("7 days/week"). Deliberately narrow so
+// "5 days/week" does NOT read as all-week authorization.
+export function allDaysAuthorized(queueRow: QueueRow): boolean {
+  return /\b(?:7|seven)\s*days\s*(?:\/|per\s+)?a?\s*week/i.test(queueRow.service_instructions || '');
+}
+
 // ── The decision point ───────────────────────────────────────
 // Maps the document into an officer-safety posture. This is policy for
 // a law-enforcement system — kept as one auditable function so the
@@ -547,6 +599,14 @@ function buildIntakeNote(input: BriefingInput, nowIso: string): string {
 
   lines.push('**■ SERVICE AUTHORITY**');
   for (const l of serviceAuthorityLines(isBusiness, hint, input.addressClass || 'unknown')) lines.push(`• ${l}`);
+  const clientRule = clientServiceRuleText(queueRow);
+  if (clientRule) {
+    lines.push(`• __CLIENT SERVICE RULE (verbatim):__ ${clientRule}`);
+    lines.push('• The client rule above governs the manner of service where it is stricter than standard practice — follow it exactly and quote it in the affidavit.');
+  }
+  if (allDaysAuthorized(queueRow)) {
+    lines.push('• Client authorizes attempts ALL 7 DAYS — weekend attempts are permitted on this job.');
+  }
 
   if (input.locationNote) {
     const note = input.locationNote;
@@ -632,6 +692,18 @@ function buildPlanNote(input: BriefingInput): string {
     for (const w of input.attemptPlan) {
       lines.push(`• Attempt ${w.attempt}: ${w.weekday} ${w.date}, ${w.window}  (${w.focus}) [${w.authority}]`);
     }
+    const directive = firstAttemptDirective(queueRow);
+    if (directive) {
+      lines.push(`• __FIRST-ATTEMPT DIRECTIVE (verbatim):__ ${directive}`);
+      lines.push('• Honor this start-by timing — re-sequence the windows above to satisfy it and record the first attempt timestamp against it.');
+    }
+    const cadence = diligenceCadenceText(queueRow);
+    if (cadence) {
+      const applied = new Set((input.attemptPlan ?? []).map((x) => x.authority)).has('client-specified');
+      lines.push(applied
+        ? `• Client-stated diligence cadence (verbatim): ${cadence} — reflected in the [client-specified] windows above.`
+        : `• __Client-stated diligence cadence found in the packet (verbatim):__ ${cadence} — NOT parsed into structured bands; verify with the hiring party before treating it as the authorized schedule.`);
+    }
     lines.push('• Adjust to client-specified windows and field conditions; following the plan satisfies the time-variance diligence standard.');
     // Finding 3 FIX: only blame "the client's own attempt schedule" when the
     // client actually dictated one — otherwise the plan's band count comes
@@ -642,6 +714,12 @@ function buildPlanNote(input: BriefingInput): string {
         ? '__WARNING: the client\'s own attempt schedule requires more distinct days than remain before the deadline.__ Notify the hiring party — either the deadline moves or the schedule does. Do not silently attempt fewer times.'
         : '__WARNING: the standard diligence sequence cannot fit within the days remaining before the deadline.__ Notify the hiring party — either the deadline moves or fewer attempts must be made. Do not silently attempt fewer times.');
     }
+  } else {
+    // No plan was generated (typically: no service address resolved). A
+    // missing section must explain itself — silence reads as "planner
+    // forgot" and the officer departs with no authorized-hours guidance.
+    lines.push('**■ RECOMMENDED ATTEMPT PLAN**');
+    lines.push('• __No attempt plan could be generated — confirm the service address before departing.__ Standard diligence windows below apply once an address is confirmed.');
   }
 
   // ── SERVICE WINDOWS — always present so the officer knows the answer ──
@@ -764,6 +842,15 @@ function buildContactsNote(input: BriefingInput): string {
     if (f('job_number')) lines.push(`Client job #: ${f('job_number')}${f('client_reference') ? `  ·  Ref: ${f('client_reference')}` : ''}${f('server_name') ? `  ·  Assigned server: ${f('server_name')}` : ''}`);
     if (f('fee_amount')) lines.push(`Service fee: ${f('fee_amount')}`);
     lines.push('All recipient questions about the case → refer to the issuing court or the hiring attorney. Servers do not interpret documents.');
+  } else {
+    // No hiring party extracted — say so and give the officer the field
+    // contacts that DO exist rather than an empty header-only note.
+    lines.push('**■ CONTACTS**');
+    lines.push('__No hiring party on file — confirm the client before departing.__');
+    if (queueRow.recipient_name || f('recipient_phone')) {
+      lines.push(`Recipient contact on file: ${queueRow.recipient_name || '(name unknown)'}${f('recipient_phone') ? `  ·  ${f('recipient_phone')}` : ''} — for logistics only (access, timing); never discuss the case.`);
+    }
+    lines.push('All recipient questions about the case → refer to the issuing court. Servers do not interpret documents.');
   }
 
   return lines.join('\n');

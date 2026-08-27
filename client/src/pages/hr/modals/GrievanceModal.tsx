@@ -19,7 +19,7 @@ interface UserOption {
 interface Grievance {
   id?: number;
   against_user_id: string | null;
-  grievance_type: string;
+  type: string;
   subject: string;
   description: string;
   priority: string;
@@ -50,7 +50,7 @@ const PRIORITY_LEVELS = [
 
 const EMPTY_FORM = {
   against_user_id: '' as string,
-  grievance_type: 'workplace' as string,
+  type: 'workplace' as string,
   subject: '' as string,
   description: '' as string,
   priority: 'normal' as string,
@@ -78,7 +78,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     if (grievance) {
       setForm({
         against_user_id: grievance.against_user_id || '',
-        grievance_type: grievance.grievance_type || 'workplace',
+        type: grievance.type || 'workplace',
         subject: grievance.subject || '',
         description: grievance.description || '',
         priority: grievance.priority || 'normal',
@@ -111,7 +111,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
     try {
       const payload = {
         against_user_id: form.against_user_id || null,
-        grievance_type: form.grievance_type,
+        type: form.type,
         subject: form.subject.trim(),
         description: form.description.trim(),
         priority: form.priority,
@@ -191,7 +191,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="ff-grievancemodal-1" className={labelClass}>Type *</label>
-              <select id="ff-grievancemodal-1" value={form.grievance_type} onChange={e => setForm(f => ({ ...f, grievance_type: e.target.value }))} className={inputClass}>
+              <select id="ff-grievancemodal-1" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={inputClass}>
                 {GRIEVANCE_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}

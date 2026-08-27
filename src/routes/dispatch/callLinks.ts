@@ -165,7 +165,35 @@ links.post('/calls/:id/persons', requireRole('officer', 'dispatcher', 'superviso
       });
     }
   }
-  return c.json(created, 201);
+  // Return warrant hits in the response so the client can surface them
+  // without a second fetch. We query here (separate from the officer-safety
+  // alert path above) so the hits are always returned regardless of role.
+  let warrant_hits: Array<{
+    warrant_id: number;
+    charge: string | null;
+    status: string;
+    issued_date: string | null;
+  }> = [];
+  try {
+    warrant_hits = await query<{
+      warrant_id: number;
+      charge: string | null;
+      status: string;
+      issued_date: string | null;
+    }>(
+      db,
+      `SELECT id AS warrant_id,
+              COALESCE(charge_description, offense_description, offense) AS charge,
+              status, issued_date
+       FROM warrants
+       WHERE subject_person_id = ? AND LOWER(COALESCE(status,'')) IN ('active','outstanding')
+       ORDER BY issued_date DESC LIMIT 20`,
+      body.person_id,
+    );
+  } catch (err) {
+    log.warn('warrant_hits fetch failed (non-fatal)', { err });
+  }
+  return c.json({ ...created, warrant_hits }, 201);
 });
 
 // DELETE /dispatch/calls/:id/persons/:linkId  (linkId = call_persons.id)
@@ -934,6 +962,99 @@ links.patch('/calls/:id/narrative', requireRole('dispatcher', 'officer', 'superv
     log.error('PATCH narrative failed', { callId: id }, err as Error);
     return c.json({ error: 'Failed to save narrative' }, 500);
   }
+});
+
+// ── BOLO ↔ Call links ──────────────────────────────────────────
+// Stores in call_bolos (call_id, bolo_id, linked_at, linked_by).
+// Boot reconciler creates the table if it doesn't exist (matches
+// the pattern used by alpr.ts, callLinks.ts column reconciler, etc.).
+async function ensureCallBolosTable(db: ReturnType<typeof getDb>): Promise<void> {
+  await execute(
+    db,
+    `CREATE TABLE IF NOT EXISTS call_bolos (
+       id          INTEGER PRIMARY KEY AUTOINCREMENT,
+       call_id     INTEGER NOT NULL,
+       bolo_id     INTEGER NOT NULL,
+       linked_at   TEXT NOT NULL DEFAULT (datetime('now')),
+       linked_by   INTEGER,
+       UNIQUE(call_id, bolo_id)
+     )`,
+  );
+}
+
+// POST /dispatch/calls/:id/bolos  body { bolo_id }
+links.post('/calls/:id/bolos', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id') || '';
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{ bolo_id: number }>();
+  if (!body.bolo_id) return c.json({ error: 'bolo_id required' }, 400);
+
+  await ensureCallBolosTable(db);
+
+  // Confirm the BOLO exists
+  const bolo = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM bolos WHERE id = ? LIMIT 1', body.bolo_id,
+  );
+  if (!bolo) return c.json({ error: 'BOLO not found' }, 404);
+
+  await execute(
+    db,
+    `INSERT OR IGNORE INTO call_bolos (call_id, bolo_id, linked_at, linked_by)
+     VALUES (?, ?, datetime('now'), ?)`,
+    callId, body.bolo_id, userId,
+  );
+
+  await emitAlert(c.env, 'dispatch_update', {
+    action: 'call_bolo_linked',
+    call_id: Number(callId),
+    bolo_id: body.bolo_id,
+  });
+
+  return c.json({ success: true, call_id: Number(callId), bolo_id: body.bolo_id }, 201);
+});
+
+// GET /dispatch/calls/:id/bolos — linked BOLOs with full bolo details
+links.get('/calls/:id/bolos', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id') || '';
+
+  await ensureCallBolosTable(db);
+
+  try {
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT cb.id AS link_id, cb.linked_at, cb.linked_by,
+              b.id, b.id AS bolo_id, b.bolo_number, b.type, b.title,
+              b.description, b.subject_description, b.vehicle_description,
+              b.status, b.priority, b.expires_at
+       FROM call_bolos cb
+       JOIN bolos b ON b.id = cb.bolo_id
+       WHERE cb.call_id = ?
+       ORDER BY cb.linked_at DESC`,
+      callId,
+    );
+    return c.json(rows);
+  } catch (err) {
+    log.error('[callLinks] GET /calls/:id/bolos failed', { callId }, err);
+    return c.json({ error: 'Failed to fetch linked BOLOs' }, 500);
+  }
+});
+
+// DELETE /dispatch/calls/:id/bolos/:boloId
+links.delete('/calls/:id/bolos/:boloId', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id') || '';
+  const boloId = c.req.param('boloId');
+
+  await ensureCallBolosTable(db);
+  await execute(db, 'DELETE FROM call_bolos WHERE call_id = ? AND bolo_id = ?', callId, boloId);
+  await emitAlert(c.env, 'dispatch_update', {
+    action: 'call_bolo_unlinked',
+    call_id: Number(callId),
+    bolo_id: Number(boloId),
+  });
+  return c.json({ success: true });
 });
 
 export default links;

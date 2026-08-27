@@ -541,6 +541,15 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
     if (status) { where += ' AND b.status = ?'; params.push(status); }
     else { where += " AND b.status = 'active'"; }
     if (type) { where += ' AND b.type = ?'; params.push(type); }
+    // Search filter for the dispatch "Link BOLO" typeahead. instr() rather
+    // than LIKE so a long pasted description can't trip D1's 50-char LIKE cap.
+    const q = (c.req.query('q') ?? '').trim().toLowerCase();
+    if (q) {
+      where += ` AND instr(LOWER(COALESCE(b.title,'') || ' ' || COALESCE(b.description,'') || ' '
+        || COALESCE(b.subject_description,'') || ' ' || COALESCE(b.vehicle_description,'') || ' '
+        || COALESCE(b.bolo_number,'')), ?) > 0`;
+      params.push(q);
+    }
     const rows = await query<Record<string, unknown>>(db, `
       SELECT b.*, u.full_name AS issued_by_name
       FROM bolos b LEFT JOIN users u ON u.id = b.issued_by

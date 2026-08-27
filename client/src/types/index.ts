@@ -3385,7 +3385,7 @@ export interface ServeJob {
   call_id: number | null;
   // Automation columns (migrations 0140, 0153, 0154)
   closed_at?: string | null;
-  urgency_tier?: 'normal' | 'high' | 'critical' | null;
+  urgency_tier?: 'standard' | 'tight' | 'critical' | null;
   auto_assigned?: number | null;
   intake_screened_at?: string | null;
   attempts?: ServeAttempt[];

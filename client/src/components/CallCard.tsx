@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert, Star } from 'lucide-react';
+import { useCallAge } from '../hooks/useCallAge';
 import type { CallForService } from '../types';
 import type { DispatchCode } from '../hooks/useDispatchCodes';
 import StatusBadge from './StatusBadge';
@@ -41,7 +42,10 @@ function formatCallDuration(createdAt: string, status?: string, archivedAt?: str
   // isActiveStatus already treats cleared as inactive; without it a cleared
   // call's duration ticked up forever.
   if (status && ['archived', 'closed', 'cancelled', 'cleared'].includes(status)) {
-    const endTime = archivedAt || createdAt;
+    // No terminal timestamp at all (e.g. a cancelled call that was never
+    // archived/cleared/closed) — showing "0:00" would misreport the lifespan.
+    if (!archivedAt) return '—';
+    const endTime = archivedAt;
     const start = parseTimestamp(createdAt).getTime();
     const end = parseTimestamp(endTime).getTime();
     const elapsed = end - start;
@@ -117,6 +121,11 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
   // Feature 6: Quick note inline input
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [quickNoteText, setQuickNoteText] = useState('');
+  // Feature: Live call age timer badge
+  const callAge = useCallAge(
+    isActiveStatus(call.status) ? call.created_at : null,
+    call.priority,
+  );
 
   // Status-aware timer — updates every second via direct DOM manipulation
   useEffect(() => {
@@ -428,6 +437,16 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           >
             HOLD 0m
           </span>
+          {/* Live call age timer badge */}
+          {isActiveStatus(call.status) && callAge.elapsed && (
+            <span
+              className={`text-[8px] font-bold font-mono tabular-nums px-1 py-0 flex items-center gap-0.5 ${callAge.colorClass}`}
+              title={`Call age: ${callAge.elapsed}`}
+            >
+              <Clock style={{ width: 8, height: 8 }} aria-hidden="true" />
+              {callAge.elapsed}
+            </span>
+          )}
         </div>
       </div>
 

@@ -22,7 +22,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { jsonBodyGuard } from './middleware/jsonBodyGuard';
 import { apiRateLimit } from './middleware/rateLimit';
-import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { handleWebSocket, sendToUser } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -36,6 +36,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 import { log, logErrorToDb } from './utils/logger';
+import { emitAlert } from './utils/alertHub';
 import { initTursoSingleton } from './utils/tursoClient';
 
 // Export Durable Object classes so wrangler can find them at build time.
@@ -186,7 +187,18 @@ app.post('/api/errors', authMiddleware, async (c) => {
 // Lives outside ROUTE_REGISTRY because it's an internal callback,
 // not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  // Constant-time comparison to prevent timing attacks on the secret.
+  // JS string comparison short-circuits on the first differing character,
+  // leaking the mismatch position via response time. Compare SHA-256 hashes
+  // instead — same length, constant-time comparison via timingSafeEqual.
+  const incoming = c.req.header('X-DO-Secret') ?? '';
+  const expected = c.env.JWT_SECRET ?? '';
+  if (incoming.length !== expected.length) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const incomingHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(incoming));
+  const expectedHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected));
+  if (!crypto.subtle.timingSafeEqual(incomingHash, expectedHash)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
@@ -199,9 +211,31 @@ app.post('/__welfare-fire', async (c) => {
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // broadcastAll only reaches sockets held by THIS isolate's in-memory map —
+    // the live /api/ws client connects to a different (legacy) worker, so that
+    // map is always empty here. And even if delivery worked, the client hooks
+    // (useDispatchVoiceAlerts.ts, useDispatchVoice.ts) subscribe to the
+    // DISCRETE alert type 'welfare_alert', not to 'dispatch_update' with an
+    // action field — so this Stage-2 escalation reached no dispatcher at all.
+    // emitAlert delivers via AlertHubDO under the exact type the client
+    // filters on, matching the already-correct pattern in routes/welfare.ts.
+    await emitAlert(c.env, 'welfare_alert', {
+      action: 'welfare_alert',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    await emitAlert(c.env, 'welfare_emergency', {
+      action: 'welfare_emergency',
+      user_id: watch.user_id,
+      call_sign: watch.call_sign,
+      call_id: watch.call_id,
+      call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
@@ -535,7 +569,7 @@ export default {
       // nothing ever advanced it or re-broadcast an unacknowledged alert.
       ctx.waitUntil(
         import('./utils/panicEscalationSweep').then((m) =>
-          m.sweepPanicEscalation(env.DB).then((r) => {
+          m.sweepPanicEscalation(env.DB, env).then((r) => {
             if (r.escalated > 0) log.info(`[panic-escalation] escalated ${r.escalated}`);
           }).catch((err) => log.error('Panic escalation sweep failed:', {}, err)),
         ).catch(() => {}),
@@ -552,9 +586,12 @@ export default {
         ).catch(() => {}),
       );
       // [12] Serve priority auto-escalation — jobs with a deadline ≤ 3 days
-      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'.
+      // that are still 'normal' priority are bumped to 'rush'; ≤ 1 day → 'urgent'
+      // (including jobs already escalated to 'rush' — the old NOT IN filter
+      // excluded them, so a rush job could never make the final bump).
       // Runs every minute so a crossing detected mid-day gets caught quickly
-      // (capped at 100 rows per sweep to stay within cron budget).
+      // (capped at 100 rows per sweep via the id-subquery — a bare
+      // UPDATE … LIMIT needs a SQLite compile flag D1 doesn't guarantee).
       ctx.waitUntil(
         env.DB.prepare(`
           UPDATE serve_queue
@@ -563,11 +600,17 @@ export default {
                                 ELSE 'rush'
                               END,
                  updated_at = datetime('now')
-           WHERE status NOT IN ('served','failed','cancelled')
-             AND deadline IS NOT NULL
-             AND julianday(deadline) - julianday('now') <= 3
-             AND priority NOT IN ('urgent','rush')
-           LIMIT 100
+           WHERE id IN (
+             SELECT id FROM serve_queue
+              WHERE status NOT IN ('served','failed','cancelled')
+                AND deadline IS NOT NULL
+                AND julianday(deadline) - julianday('now') <= 3
+                AND (
+                  priority NOT IN ('urgent','rush')
+                  OR (priority = 'rush' AND julianday(deadline) - julianday('now') <= 1)
+                )
+              LIMIT 100
+           )
         `).run()
           .then((r) => { if (r.meta.changes > 0) log.info(`[serve-escalation] auto-escalated ${r.meta.changes} job(s)`); })
           .catch((err) => log.error('Serve priority auto-escalation failed:', {}, err)),
@@ -719,8 +762,13 @@ export default {
 
           for (const job of jobs) {
             try {
-              // Timeout jobs that have been pending/processing for more than 10 minutes
-              const ageMs = Date.now() - new Date(job.created_at).getTime();
+              // Timeout jobs that have been pending/processing for more than 10
+              // minutes. created_at is a zone-less D1 datetime('now') string —
+              // parse via parseD1TimestampMs, not new Date(), which reads it as
+              // host-local and skews the timeout by hours off a UTC host.
+              const { parseD1TimestampMs } = await import('./utils/fleetio/sync');
+              const createdMs = parseD1TimestampMs(job.created_at);
+              const ageMs = createdMs === null ? 0 : Date.now() - createdMs;
               if (ageMs > 10 * 60 * 1000) {
                 await db
                   .prepare(

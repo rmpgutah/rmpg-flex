@@ -252,10 +252,11 @@ def iter_literals(src: str):
 
 # A quoted string inside an interpolation that looks like a SQL fragment rather
 # than JS: bare/qualified identifiers, commas, dots, parens, AS/NULL/DESC etc.
+# Single character-class avoids alternation ambiguity (ReDoS) while matching the
+# same set of SQL-like characters as the previous multi-branch pattern.
 SQL_FRAGMENT = re.compile(
-    r'^[\s(]*(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_]*'
-    r'(?:[\s,().*=<>!|+\-]|\b(?:AS|NULL|ASC|DESC|AND|OR|IS|NOT|IN|LIKE|ON|END)\b'
-    r'|[A-Za-z_][A-Za-z0-9_]*)*$', re.I)
+    r'^[\s(]*(?:[A-Za-z_][A-Za-z0-9_]*\.)?[A-Za-z_][A-Za-z0-9_\s,().*=<>!|+\-]*$',
+    re.I)
 
 
 def strip_interpolations(s: str) -> str:

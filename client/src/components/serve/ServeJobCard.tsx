@@ -177,7 +177,7 @@ export default React.memo(function ServeJobCard({
   // supposed to mean "act now".
   // Carries the tier rather than a boolean so the JSX below narrows without a
   // non-null assertion.
-  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'normal'
+  const shownUrgency = isOpenJob && job.urgency_tier && job.urgency_tier !== 'standard'
     ? job.urgency_tier
     : null;
   const isCritical = isOpenJob && job.urgency_tier === 'critical';

@@ -149,6 +149,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
 
   // ── Sync ──
   const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ jobs: number; attempts: number } | null>(null);
   const [syncLog, setSyncLog] = useState<SMSyncLogEntry[]>([]);
 
   // ── Jobs browser ──
@@ -400,8 +401,10 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
 
   const handleSync = async (type: 'full' | 'incremental') => {
     setSyncing(true);
+    setSyncResult(null);
     try {
-      await apiFetch<SMSyncResult>('/servemanager/sync', { method: 'POST', body: JSON.stringify({ type }) });
+      const res = await apiFetch<SMSyncResult>('/servemanager/sync', { method: 'POST', body: JSON.stringify({ type }) });
+      setSyncResult({ jobs: (res as any)?.jobs_synced ?? 0, attempts: (res as any)?.attempts_synced ?? 0 });
       await fetchStatus();
       await fetchSyncLog();
       await fetchJobs();
@@ -639,6 +642,12 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError, 
               </button>
             </div>
           </div>
+
+          {syncResult && (
+            <div className="text-[10px] text-green-400 bg-green-900/20 border border-green-800/30 rounded-[2px] px-2 py-1">
+              Sync complete — {syncResult.jobs} job{syncResult.jobs !== 1 ? 's' : ''}, {syncResult.attempts} attempt{syncResult.attempts !== 1 ? 's' : ''} synced
+            </div>
+          )}
 
           {/* Stats row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

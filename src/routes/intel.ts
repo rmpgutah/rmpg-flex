@@ -15,7 +15,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute, queryInChunks } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sniffIdentifiers, toFtsQuery, isRealValue } from '../utils/intelMatch';
-import { containsClause, containsAnyClause } from '../utils/searchText';
+import { containsClause, containsAnyClause, cappedLikePattern } from '../utils/searchText';
 import { rebuildIntelIndex, computeResolutionSuggestions, INTEL_TYPES } from '../utils/intelIndexer';
 import { mergeTimeline, rankAssociates, screeningHitsToTimeline, type TimelineEvent, type CoOccurrence } from '../utils/intelDossier';
 import { screenPerson, screenVehicle } from '../utils/intelScreen';
@@ -114,7 +114,9 @@ intel.get('/search', operational, async (c) => {
     } catch (err: any) {
       console.error('[intel] FTS failed, falling back to LIKE:', err?.message);
       // 3) LIKE fallback — degraded but alive if intel_index is missing on live.
-      const term = `%${q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      // D1 LIKE cap: pattern >50 chars fails — cappedLikePattern escapes and
+      // truncates so '%' + escaped + '%' stays <=50.
+      const term = cappedLikePattern(q);
       try {
         for (const p of await query<any>(db,
           `SELECT id, first_name, last_name FROM persons

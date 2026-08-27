@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, FileSignature, ChevronDown, ChevronLeft, ChevronRight, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash, Wrench, Route, Activity, ScanSearch,
 } from 'lucide-react';
 import { openClearedSummaryPdf, todayMtWindow, filterClearedInWindow } from '../../utils/clearedSummaryPdf';
 import type { CallForService, Unit, CallStatus } from '../../types';
@@ -50,6 +50,7 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import { Combobox } from '../../components/Combobox';
 import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
+import IncidentTypeChart from '../../components/dispatch/IncidentTypeChart';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -110,9 +111,13 @@ import PersonFormModal, { type PersonFormData } from '../../components/PersonFor
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import CallFilterBar, { type QuickFilter } from '../../components/dispatch/CallFilterBar';
+import ShiftStatsBar from '../../components/dispatch/ShiftStatsBar';
+import ActivityFeed from '../../components/dispatch/ActivityFeed';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import PsoWorkloadPanel from '../../components/dispatch/PsoWorkloadPanel';
+import PlateScanModal from '../../components/PlateScanModal';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import { withAlpha } from '../../utils/withAlpha';
@@ -509,6 +514,7 @@ export default function DispatchPage() {
     });
   };
   const [showNewCallModal, setShowNewCallModal] = useState(false);
+  const [showPlateScanModal, setShowPlateScanModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [reportingIssue, setReportingIssue] = useState(false);
 
@@ -622,6 +628,9 @@ export default function DispatchPage() {
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; callNumber?: string; callId?: string } | null>(null);
 
   // Queue sort mode. Persisted via two layers:
   //   1. localStorage (fast first-render hint — used while the /user/preferences
@@ -771,6 +780,12 @@ export default function DispatchPage() {
   // ── Linked Persons / Vehicles on call ──
   const [callPersons, setCallPersons] = useState<any[]>([]);
   const [callVehicles, setCallVehicles] = useState<any[]>([]);
+  // ── BOLOs linked to the selected call ──
+  const [callBolos, setCallBolos] = useState<any[]>([]);
+  const [bolosLoading, setBolosLoading] = useState(false);
+  const [showBoloSearch, setShowBoloSearch] = useState(false);
+  const [boloSearchQ, setBoloSearchQ] = useState('');
+  const [boloSearchResults, setBoloSearchResults] = useState<any[]>([]);
   const [linkPersonRole, setLinkPersonRole] = useState('involved');
   const [linkVehicleRole, setLinkVehicleRole] = useState('involved');
   const [callBusinesses, setCallBusinesses] = useState<any[]>([]);
@@ -1048,6 +1063,12 @@ export default function DispatchPage() {
       fetchInvolvedPersons(cid);
       fetchInvolvedVehicles(cid);
       fetchCallNarrative(cid);
+      // Fetch linked BOLOs for the selected call
+      setBolosLoading(true);
+      apiFetch<any[]>(`/dispatch/calls/${cid}/bolos`)
+        .then((data) => setCallBolos(Array.isArray(data) ? data : []))
+        .catch(() => setCallBolos([]))
+        .finally(() => setBolosLoading(false));
     } else {
       setCallPersons([]);
       setCallVehicles([]);
@@ -1055,7 +1076,10 @@ export default function DispatchPage() {
       setInvolvedPersons([]);
       setInvolvedVehicles([]);
       setCallNarrative('');
+      setCallBolos([]);
+      setShowBoloSearch(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles, fetchCallBusinesses, fetchInvolvedPersons, fetchInvolvedVehicles, fetchCallNarrative]);
 
   // Auto-save unsaved call edits on component unmount (SPA navigation).
@@ -1119,10 +1143,49 @@ export default function DispatchPage() {
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
   const [routeInfo, setRouteInfo] = useState<{ unitCallSign: string; callNumber: string; eta: string; distance: string } | null>(null);
+  // Per-unit ETA for enroute units (keyed by unitId string)
+  const [unitEtas, setUnitEtas] = useState<Record<string, number>>({});
   // Clients list for client selector
   const [clientsList, setClientsList] = useState<{ id: string; name: string; contact_name: string; contact_phone: string; address: string }[]>([]);
   // Properties list for property selector (non-archived)
   const [propertiesList, setPropertiesList] = useState<{ id: string; name: string }[]>([]);
+
+  // ── Unit ETA fetch for enroute units (every 30s) ──────────────────────────
+  // Read units through a ref: the effect deliberately doesn't re-run on the
+  // units poll (deps below), so a closure over `units` froze the snapshot from
+  // when the call was selected — a unit going enroute AFTER selection never
+  // matched the filter and its ETA badge never appeared.
+  const unitsRefForEta = useRef(units);
+  unitsRefForEta.current = units;
+  useEffect(() => {
+    if (!selectedCall?.id) { setUnitEtas({}); return; }
+    const callId = selectedCall.id;
+    let cancelled = false;
+
+    const fetchEtas = async () => {
+      const enrouteUnits = (selectedCall.assigned_units || []).filter((uid: string) => {
+        const u = unitsRefForEta.current.find((u) => String(u.id) === String(uid));
+        return u?.status === 'enroute';
+      });
+      if (!enrouteUnits.length) { if (!cancelled) setUnitEtas({}); return; }
+      const etaMap: Record<string, number> = {};
+      await Promise.allSettled(
+        enrouteUnits.map(async (uid: string) => {
+          try {
+            const data = await apiFetch<{ eta_seconds?: number; eta_minutes?: number }>(`/dispatch/units/${uid}/eta?call_id=${callId}`);
+            const mins = data?.eta_minutes ?? (data?.eta_seconds != null ? Math.ceil(data.eta_seconds / 60) : null);
+            if (mins != null && !cancelled) etaMap[String(uid)] = mins;
+          } catch { /* best-effort */ }
+        }),
+      );
+      if (!cancelled) setUnitEtas(etaMap);
+    };
+
+    void fetchEtas();
+    const iv = setInterval(() => { void fetchEtas(); }, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCall?.id, selectedCall?.assigned_units, selectedCall?.status]);
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -1954,6 +2017,16 @@ export default function DispatchPage() {
     if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
     if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
     return true;
+  }).filter((call) => {
+    // Quick filter bar — client-side status/priority chips
+    if (quickFilter === 'all') return true;
+    if (quickFilter === 'P1') return call.priority === 'P1';
+    if (quickFilter === 'P2') return call.priority === 'P2';
+    if (quickFilter === 'pending') return call.status === 'pending';
+    if (quickFilter === 'dispatched') return call.status === 'dispatched';
+    if (quickFilter === 'onscene') return call.status === 'onscene';
+    if (quickFilter === 'mybeat') return !!(user as any)?.beat_id && String(call.beat_id ?? '') === String((user as any).beat_id);
+    return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
     if (filterTab === 'archived') {
@@ -1997,7 +2070,7 @@ export default function DispatchPage() {
     const pDiff = (PRIORITY_ORDER[a.priority] ?? 3) - (PRIORITY_ORDER[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, serveRouteSortMap, quickFilter, (user as any)?.beat_id]);
 
   // The "Search calls" box lives in the shared toolbar above both the CAD
   // board and the classic list, but was only ever wired into filteredCalls
@@ -2220,6 +2293,22 @@ export default function DispatchPage() {
     setShowNewCallModal(true);
   };
 
+  // Feature: Quick unit status change from unit board — PATCH /api/dispatch/units/:id/status
+  const handleQuickUnitStatus = useCallback(async (unitId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/dispatch/units/${unitId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      setUnits((prev) =>
+        prev.map((u) => (String(u.id) === String(unitId) ? { ...u, status: newStatus as any } : u)),
+      );
+      addToast('Saved', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to update unit status', 'error');
+    }
+  }, [setUnits, addToast]);
+
   const handleNewCall = async (callData: Partial<CallForService> & Record<string, any>) => {
     setIsSaving(true);
     try {
@@ -2305,6 +2394,14 @@ export default function DispatchPage() {
         ...(callData.closed_at ? { closed_at: callData.closed_at } : {}),
       };
       const result = await apiFetch<any>('/dispatch/calls', { method: 'POST', body: JSON.stringify(body) });
+      // Surface duplicate warning if backend detected a nearby active call
+      if (result?.duplicate_warning) {
+        setDuplicateWarning({
+          message: result.duplicate_warning.message || 'Similar call already active nearby.',
+          callNumber: result.duplicate_warning.call_number,
+          callId: result.duplicate_warning.call_id ? String(result.duplicate_warning.call_id) : undefined,
+        });
+      }
       const newCall = mapDbCall(result);
       // Mark as recently-created so WebSocket handler skips the duplicate
       rememberRecentId(newCall.id);
@@ -3596,6 +3693,36 @@ export default function DispatchPage() {
           <Shield style={{ width: 20, height: 20 }} />
         </button>
 
+        {/* Duplicate call warning banner — shown when POST /dispatch/calls returns duplicate_warning */}
+        {duplicateWarning && (
+          <div
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[300] flex items-start gap-2 px-3 py-2 max-w-sm w-[90%] text-[11px] font-bold"
+            style={{ background: 'rgb(var(--sev-warn-rgb) / 0.18)', border: '1px solid rgb(var(--sev-warn-rgb) / 0.5)', color: 'var(--sev-warn)', borderRadius: 2, boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}
+            role="alert"
+          >
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span>&#9888; {duplicateWarning.message}</span>
+              {duplicateWarning.callNumber && duplicateWarning.callId && (
+                <button
+                  type="button"
+                  className="ml-2 underline hover:no-underline"
+                  onClick={() => {
+                    const c = calls.find((x) => String(x.id) === duplicateWarning.callId);
+                    if (c) setSelectedCall(c);
+                    setDuplicateWarning(null);
+                  }}
+                >
+                  View #{duplicateWarning.callNumber}
+                </button>
+              )}
+            </div>
+            <button type="button" aria-label="Dismiss duplicate warning" onClick={() => setDuplicateWarning(null)} className="text-yellow-300 hover:text-yellow-100 ml-1">
+              <X style={{ width: 12, height: 12 }} />
+            </button>
+          </div>
+        )}
+
         {/* New Call Modal (shared with desktop) */}
         <NewCallModal
           isOpen={showNewCallModal}
@@ -3661,6 +3788,15 @@ export default function DispatchPage() {
             <Hash style={{ width: 10, height: 10 }} />
             Codes
           </button>
+          {/* Activity Feed toggle */}
+          <button type="button"
+            onClick={() => setShowActivityFeed(prev => !prev)}
+            className={`toolbar-btn ${showActivityFeed ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showActivityFeed ? 'Close activity feed' : 'Open activity feed'}
+          >
+            <Activity style={{ width: 10, height: 10 }} />
+            Activity
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {/* Cleared-tab supervisor: one-click end-of-shift PDF summary.
@@ -3722,6 +3858,10 @@ export default function DispatchPage() {
           <button type="button" onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }} className="toolbar-btn toolbar-btn-primary">
             <Plus style={{ width: 10, height: 10 }} />
             New Call
+          </button>
+          <button type="button" onClick={() => setShowPlateScanModal(true)} className="toolbar-btn" title="Plate Scan — scan a license plate or create a vehicle record">
+            <ScanSearch style={{ width: 10, height: 10 }} />
+            Plate Scan
           </button>
           {/* Quick Dispatch dropdown */}
           <div className="relative" ref={templateDropdownRef} style={{ display: 'inline-block' }}>
@@ -4002,6 +4142,21 @@ export default function DispatchPage() {
         {/* Dispatch Analytics Strip — 7-day call volume, zone breakdown, repeat addresses */}
         <DispatchAnalyticsStrip />
 
+        {/* Shift Stats Bar — calls/incidents/active units this shift, polls every 60s */}
+        <ShiftStatsBar activeUnits={units.filter((u) => u.status !== 'off_duty').length} />
+
+        {/* Quick filter bar — chips for All / P1 / P2 / status / my beat */}
+        <CallFilterBar
+          active={quickFilter}
+          onChange={setQuickFilter}
+          myBeat={(user as any)?.beat_id ?? null}
+        />
+
+        {/* Incident Type Analytics Chart */}
+        <div className="px-3 py-2 border-b border-[var(--spm-border)] flex-shrink-0">
+          <IncidentTypeChart />
+        </div>
+
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[var(--spm-border)] flex items-center gap-2 flex-shrink-0" style={{ background: 'rgba(var(--surface-base-rgb), 0.5)' }}>
@@ -4164,6 +4319,7 @@ export default function DispatchPage() {
       {/* ============================================================ */}
       {/* RIGHT PANEL - Call Detail + Map (top), USB (bottom shorter) */}
       {/* ============================================================ */}
+      <div className="flex-1 flex min-w-0">
       <div className="flex-1 flex flex-col min-w-0">
         {/* ------------------------------------------------------------ */}
         {/* TOP - Call Detail (left) + Map (right) — ~65% height */}
@@ -5359,6 +5515,11 @@ export default function DispatchPage() {
                                 {displayName}
                                 {unitObj?.badge_number && <span style={{ fontSize: '8px', opacity: 0.7 }}>#{unitObj.badge_number}</span>}
                                 {statusLabel && <span style={{ fontSize: '8px', opacity: 0.8 }}>{statusLabel}</span>}
+                                {unitObj?.status === 'enroute' && unitEtas[String(unitIdStr)] != null && (
+                                  <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>
+                                    ETA ~{unitEtas[String(unitIdStr)]} min
+                                  </span>
+                                )}
                                 {!isEditing && unitObj && !TERMINAL_STATUSES.has(selectedCall.status) && (
                                   <button type="button"
                                     onClick={() => handleUnassignUnit(unitObj.id)}
@@ -5803,7 +5964,12 @@ export default function DispatchPage() {
                               <div key={cp.id} className="flex items-center gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px]">
                                 <span className="text-[color:var(--field-label-color)] uppercase text-[7px] font-black px-1 py-px bg-rmpg-700 rounded-sm">{toDisplayLabel(cp.role || '')}</span>
                                 <span className="text-rmpg-100 font-semibold">{cp.last_name}, {cp.first_name}</span>
-                                <WarrantBadge flags={cp.flags} size="sm" />
+                                <WarrantBadge flags={cp.flags ?? cp.warrant_hits ?? []} size="sm" />
+                                {(!cp.flags && cp.warrant_hits && Array.isArray(cp.warrant_hits) && cp.warrant_hits.length > 0) && (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-100 bg-red-700 px-1.5 py-px rounded-sm">
+                                    WARRANT ({cp.warrant_hits.length})
+                                  </span>
+                                )}
                                 {cp.dob && <span className="text-rmpg-400">DOB: {cp.dob}</span>}
                                 {cp.race && <span className="text-rmpg-500">{toDisplayLabel(cp.race)}</span>}
                                 {cp.sex && <span className="text-rmpg-500">{toDisplayLabel(cp.sex)}</span>}
@@ -5825,6 +5991,80 @@ export default function DispatchPage() {
                             ))}
                           </div>
                         )}
+                        {/* ── Linked BOLOs ── */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[9px] text-[color:var(--field-label-color)] font-semibold uppercase">
+                              Linked BOLOs{callBolos.length > 0 ? ` (${callBolos.length})` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-[9px] px-1.5 py-0.5 border border-[var(--spm-border)] text-fg-secondary hover:text-rmpg-100 hover:border-rmpg-400"
+                              onClick={() => setShowBoloSearch((v) => !v)}
+                            >
+                              {showBoloSearch ? 'Cancel' : 'Link BOLO'}
+                            </button>
+                          </div>
+                          {bolosLoading && <span className="text-[9px] text-fg-muted italic">Loading…</span>}
+                          {callBolos.map((bolo: any) => (
+                            <div key={bolo.id} className="flex items-start gap-2 px-2 py-1 bg-rmpg-800/60 border border-rmpg-700 rounded-sm text-[10px] mb-1">
+                              <span className="text-amber-400 font-bold uppercase text-[8px]">BOLO</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-rmpg-100">{bolo.title || bolo.description || '—'}</span>
+                                {bolo.vehicle_description && <span className="ml-1 text-brand-400">{bolo.vehicle_description}</span>}
+                                {bolo.subject_description && <span className="ml-1 text-fg-secondary">{bolo.subject_description}</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {showBoloSearch && (
+                            <div className="mt-1 space-y-1">
+                              <input
+                                type="text"
+                                className="input-dark text-xs w-full"
+                                placeholder="Search BOLO by title, subject, or vehicle…"
+                                value={boloSearchQ}
+                                onChange={(e) => {
+                                  setBoloSearchQ(e.target.value);
+                                  if (e.target.value.length >= 2) {
+                                    apiFetch<any[]>(`/dispatch/bolos?q=${encodeURIComponent(e.target.value)}`)
+                                      .then((r) => setBoloSearchResults(Array.isArray(r) ? r : []))
+                                      .catch(() => setBoloSearchResults([]));
+                                  } else {
+                                    setBoloSearchResults([]);
+                                  }
+                                }}
+                              />
+                              {boloSearchResults.length > 0 && (
+                                <div className="bg-rmpg-800 border border-rmpg-600 max-h-32 overflow-y-auto">
+                                  {boloSearchResults.map((bolo: any) => (
+                                    <button
+                                      key={bolo.id}
+                                      type="button"
+                                      className="w-full text-left px-2 py-1 text-[10px] text-rmpg-200 hover:bg-brand-500/20 border-b border-rmpg-700 last:border-0"
+                                      onClick={async () => {
+                                        try {
+                                          await apiFetch(`/dispatch/calls/${selectedCall.id}/bolos`, {
+                                            method: 'POST',
+                                            body: JSON.stringify({ bolo_id: bolo.id }),
+                                          });
+                                          setCallBolos((prev) => [...prev, bolo]);
+                                          setShowBoloSearch(false);
+                                          setBoloSearchQ('');
+                                          setBoloSearchResults([]);
+                                        } catch { /* best-effort */ }
+                                      }}
+                                    >
+                                      <span className="font-semibold text-amber-400">BOLO</span>
+                                      {' '}{bolo.title || bolo.description || '—'}
+                                      {bolo.vehicle_description && <span className="ml-1 text-brand-400 text-[9px]">{bolo.vehicle_description}</span>}
+                                      {bolo.subject_description && <span className="ml-1 text-fg-muted text-[9px]">{bolo.subject_description}</span>}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -7009,9 +7249,13 @@ export default function DispatchPage() {
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               unitWorkload={unitWorkload}
               onAssignUnit={selectedCall && !TERMINAL_STATUSES.has(selectedCall.status) ? handleAssignUnit : undefined}
+              onStatusChange={handleQuickUnitStatus}
             />
           </div>
         </div>
+      </div>
+      {/* Activity Feed collapsible sidebar */}
+      <ActivityFeed isOpen={showActivityFeed} onClose={() => setShowActivityFeed(false)} />
       </div>
 
       {/* Keyboard-shortcut cheat sheet (toggle with "?") */}
@@ -7288,6 +7532,12 @@ export default function DispatchPage() {
         onSubmit={handleNewCall}
         onExpandToFullForm={handlePsoExpandToFullForm}
       />
+
+      {showPlateScanModal && (
+        <PlateScanModal
+          onClose={() => setShowPlateScanModal(false)}
+        />
+      )}
 
       {/* Create / Edit Unit Modal */}
       {showCreateUnitModal && (
