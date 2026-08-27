@@ -1028,11 +1028,10 @@ calls.post('/:id/merge', requireRole('dispatcher', 'supervisor', 'manager', 'adm
          WHERE id = ?`, (await queryFirst<{ call_number: string }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id))?.call_number || String(id), mergeId);
       await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', mergeId);
       await execute(db, 'UPDATE calls_for_service_ext SET parent_call_id = ? WHERE id = ?', id, mergeId);
-      if (userId) {
-        await execute(db,
-          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details) VALUES (?, 'merge_call', 'call', ?, ?)`,
-          userId, mergeId, JSON.stringify({ merged_into: id }));
-      }
+      await recordAudit(c, {
+        action: 'merge_call', entityType: 'call', entityId: mergeId,
+        details: { merged_into: id },
+      });
       merged++;
     }
     return c.json({ success: true, merged, master_call_id: id });
@@ -2016,9 +2015,9 @@ calls.delete('/templates/:id', requireRole('officer', 'dispatcher', 'supervisor'
 // in the Cloudflare cutover, so the client's fully-built "Return Visit" /
 // "Undo Visit" / Visit History UI (DispatchPage.tsx) 404'd on every call.
 calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const id = c.req.param('id');
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
     const parent = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!parent) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
     const parentExt = (await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id)) || {};
@@ -2223,7 +2222,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
               newCallId, ...cols.map((col) => r[col] ?? null));
           } catch { /* skip duplicates */ }
         }
-      } catch (err) { console.error(`[redispatch] copy ${table} failed:`, err); }
+      } catch (err) { log.error(`[redispatch] copy ${table} failed`, { callId: id, table }, err as Error); }
     }
 
     // Back-link note + notes update on the parent.
@@ -2250,7 +2249,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
 
     return c.json(merged, 201);
   } catch (err) {
-    console.error('POST /dispatch/calls/:id/redispatch failed:', err);
+    log.error('POST /dispatch/calls/:id/redispatch failed', { callId: id }, err as Error);
     return dbErrorResponse(c, err, 'Failed to re-dispatch call');
   }
 });
@@ -2260,9 +2259,9 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
 // past 'pending' — once dispatched, undoing would strand assigned units and
 // destroy real dispatch activity, not just an accidental click).
 calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'manager', 'admin'), async (c) => {
+  const id = c.req.param('id');
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
     const child = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!child) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
     const childExt = (await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id)) || {};
@@ -2301,7 +2300,7 @@ calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'mana
 
     return c.json({ parent });
   } catch (err) {
-    console.error('POST /dispatch/calls/:id/undo-redispatch failed:', err);
+    log.error('POST /dispatch/calls/:id/undo-redispatch failed', { callId: id }, err as Error);
     return dbErrorResponse(c, err, 'Failed to undo re-dispatch');
   }
 });

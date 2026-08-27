@@ -121,7 +121,7 @@ ai.put('/config', requireRole('admin', 'manager'), async (c) => {
     }
     return c.json({ success: true, config: { ...nextTop, providers: body.providers || {} } });
   } catch (err) {
-    console.error('[AI] PUT /config failed:', err);
+    log.error('PUT /config failed', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to save AI config' }, 500);
   }
 });
@@ -299,7 +299,7 @@ ai.post('/prompt-test', requireRole('admin', 'manager', 'supervisor'), async (c)
     } as never)) as { response?: string };
     return c.json({ content: res?.response || '', latencyMs: Date.now() - start });
   } catch (err) {
-    console.error('[AI] prompt-test failed:', err);
+    log.error('[AI] prompt-test failed', { src: 'ai.ts' }, err as Error);
     return c.json({ error: err instanceof Error ? err.message : 'Prompt test failed' }, 500);
   }
 });
@@ -354,7 +354,7 @@ ai.get('/health', async (c) => {
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[AI] health check failed:', err);
+    log.error('[AI] health check failed', { src: 'ai.ts' }, err as Error);
     return c.json({ ok: false, status: 'error', issues: ['Health check failed'], timestamp: new Date().toISOString() });
   }
 });
@@ -526,7 +526,7 @@ ai.post('/suggest-units', requireRole(...READ_ROLES), async (c) => {
       candidates,
     });
   } catch (err) {
-    console.error('[ai] suggest-units error', err);
+    log.error('[ai] suggest-units error', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to suggest units', code: 'SUGGEST_ERR' }, 500);
   }
 });
@@ -560,7 +560,7 @@ ai.post('/analyze', requireRole(...READ_ROLES), async (c) => {
     const analysis = await analyzeCall(c.env.AI, call);
     return c.json(analysis);
   } catch (err) {
-    console.error('[ai] analyze error', err);
+    log.error('[ai] analyze error', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to analyze call', code: 'ANALYZE_ERR' }, 500);
   }
 });
@@ -587,7 +587,7 @@ ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
       fallback: result.fallback,
     });
   } catch (err) {
-    console.error('[ai] narrative error', err);
+    log.error('[ai] narrative error', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to generate narrative', code: 'NARR_ERR' }, 500);
   }
 });
@@ -614,7 +614,7 @@ ai.post('/smart-search', requireRole(...READ_ROLES), async (c) => {
       fallback: result.fallback,
     });
   } catch (err) {
-    console.error('[ai] smart-search error', err);
+    log.error('[ai] smart-search error', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to parse search query', code: 'SEARCH_ERR' }, 500);
   }
 });
@@ -669,7 +669,7 @@ ai.post('/refine', requireRole(...READ_ROLES), async (c) => {
     if (!result) return c.json({ error: 'AI returned empty response', code: 'REFINE_EMPTY' }, 500);
     return c.json({ result, action });
   } catch (err) {
-    console.error('[ai] refine error', err);
+    log.error('[ai] refine error', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Failed to refine text', code: 'REFINE_ERR' }, 500);
   }
 });
@@ -715,7 +715,7 @@ Return ONLY valid JSON with these keys (use null for missing fields):
     const cleaned = result.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     return c.json({ result: JSON.parse(cleaned), source: 'ai' });
   } catch (err) {
-    console.error('[ai] extract-fields error', err);
+    log.error('[ai] extract-fields error', { src: 'ai.ts' }, err as Error);
     return c.json({ result: null, error: 'Extraction failed' }, 500);
   }
 });
@@ -768,7 +768,7 @@ ai.get('/cleanup/scan', requireRole('admin', 'manager', 'supervisor'), async (c)
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[AI] cleanup/scan failed:', err);
+    log.error('[AI] cleanup/scan failed', { src: 'ai.ts' }, err as Error);
     return c.json({ totalIssues: 0, staleCalls: { count: 0, items: [] }, orphanedUnits: { count: 0, items: [] }, incompleteRecords: { count: 0, items: [] }, timestamp: new Date().toISOString() });
   }
 });
@@ -798,7 +798,7 @@ ai.post('/cleanup/fix', requireRole('admin', 'manager', 'supervisor'), async (c)
     }
     return c.json({ success: true });
   } catch (err) {
-    console.error('[AI] cleanup/fix failed:', err);
+    log.error('[AI] cleanup/fix failed', { src: 'ai.ts' }, err as Error);
     return c.json({ error: 'Fix failed' }, 500);
   }
 });

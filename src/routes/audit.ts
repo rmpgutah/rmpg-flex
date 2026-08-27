@@ -151,17 +151,19 @@ audit.get('/count', async (c) => {
     return c.json({ error: 'Missing or invalid `action` query param' }, 400);
   }
   const since = c.req.query('since') ?? '24h';
-  let cutoffSql: string;
-  if (/^\d+h$/.test(since))      cutoffSql = `datetime('now', '-${parseInt(since)} hours')`;
-  else if (/^\d+d$/.test(since)) cutoffSql = `datetime('now', '-${parseInt(since)} days')`;
-  else if (/^\d{4}-\d{2}-\d{2}/.test(since)) cutoffSql = `'${since.slice(0,19).replace(/'/g,"")}'`;
-  else                            cutoffSql = `datetime('now', '-24 hours')`;
+  // Use bind parameters for ALL values — never interpolate user input into SQL.
+  let cutoffExpr: string;
+  let cutoffBinds: unknown[] = [];
+  if (/^\d+h$/.test(since))      { cutoffExpr = `datetime('now', '-' || ? || ' hours')`; cutoffBinds = [parseInt(since)]; }
+  else if (/^\d+d$/.test(since)) { cutoffExpr = `datetime('now', '-' || ? || ' days')`; cutoffBinds = [parseInt(since)]; }
+  else if (/^\d{4}-\d{2}-\d{2}/.test(since)) { cutoffExpr = `?`; cutoffBinds = [since.slice(0, 10)]; }
+  else                            { cutoffExpr = `datetime('now', '-24 hours')`; }
   try {
     const db = getDb(c.env);
     const row = await queryFirst<{ count: number }>(
       db,
-      `SELECT COUNT(*) as count FROM audit_log WHERE action = ? AND created_at >= ${cutoffSql}`,
-      action,
+      `SELECT COUNT(*) as count FROM audit_log WHERE action = ? AND created_at >= ${cutoffExpr}`,
+      action, ...cutoffBinds,
     );
     c.header('Cache-Control', 'private, max-age=30');
     return c.json({ action, since, count: row?.count ?? 0 });

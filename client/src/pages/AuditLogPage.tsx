@@ -449,21 +449,29 @@ const AuditLogPage: React.FC = () => {
 
   // Export to CSV
   const exportToCSV = () => {
+    // RFC 4180: wrap every cell in double-quotes, escape internal quotes by
+    // doubling them.  This correctly handles details text containing commas,
+    // newlines, and quoted incident numbers — critical for court discovery.
+    const csvEscape = (v: unknown): string => {
+      if (v === null || v === undefined) return '""';
+      const s = String(v);
+      return `"${s.replace(/"/g, '""')}"`;
+    };
     const headers = ['Timestamp', 'User', 'Badge', 'Action', 'Entity Type', 'Entity ID', 'Details', 'IP Address'];
     const csvData = logs.map(log => [
-      formatTimestamp(log.created_at),
-      log.user_name || 'System',
-      log.badge_number || 'N/A',
-      log.action,
-      log.entity_type,
-      log.entity_id,
-      log.details,
-      log.ip_address || 'N/A'
+      csvEscape(formatTimestamp(log.created_at)),
+      csvEscape(log.user_name || 'System'),
+      csvEscape(log.badge_number || 'N/A'),
+      csvEscape(log.action),
+      csvEscape(log.entity_type),
+      csvEscape(log.entity_id),
+      csvEscape(log.details),
+      csvEscape(log.ip_address || 'N/A')
     ]);
 
     const csvContent = [
-      headers.join(','),
-      ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))
+      headers.map(csvEscape).join(','),
+      ...csvData.map(row => row.join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });

@@ -84,12 +84,25 @@ export default function DesktopIncidentTimeline({ callId: propCallId, onClose: _
     try {
       const callData = await apiFetch<CallInfo>(`/dispatch/calls/${id}`);
       setCall(callData);
-      // Try updates endpoint, fall back to building from call data
+      // Prefer the audit-trail endpoint — it returns the full chronological
+      // event log (status changes, notes, unit assignments, merges, etc.)
+      // rather than the limited /updates endpoint.
       let evts: TimelineEvent[] = [];
       try {
-        const updates = await apiFetch<TimelineEvent[]>(`/dispatch/calls/${id}/updates?limit=100`);
-        evts = Array.isArray(updates) ? updates : [];
+        const trail = await apiFetch<{ events: Array<{ id: number; action: string; details: string | null; user_name: string | null; created_at: string }> }>(
+          `/dispatch/calls/${id}/audit-trail`,
+        );
+        if (Array.isArray(trail?.events) && trail.events.length > 0) {
+          evts = trail.events.map((e) => ({
+            id: e.id,
+            type: e.action,
+            timestamp: e.created_at,
+            label: e.action.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            detail: e.user_name ?? undefined,
+          }));
+        }
       } catch {
+        // Fall back to building from call data
         evts = buildTimelineFromCall(callData);
       }
       if (evts.length === 0) evts = buildTimelineFromCall(callData);
