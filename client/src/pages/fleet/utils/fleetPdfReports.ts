@@ -360,7 +360,7 @@ export function buildFleetComplianceReport(data: {
     const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), v.plate_number ?? '', v.status ?? '', v.insurance_expiry?.slice(0, 10) ?? '', v.registration_expiry?.slice(0, 10) ?? '', v.last_service_date?.slice(0, 10) ?? '', v.next_service_due?.slice(0, 10) ?? ''];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => {
-      const expiredDate = (i === 4 || i === 5 || i === 7) && val ? parseTimestamp(val) : null;
+      const expiredDate = (i === 4 || i === 5 || i === 7) && val ? new Date(val) : null;
       const expired = !!expiredDate && !isNaN(expiredDate.getTime()) && expiredDate < new Date();
       if (expired) doc.setTextColor('#ef4444');
       doc.text(val, cx + 3, y + 12);

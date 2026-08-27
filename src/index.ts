@@ -187,7 +187,18 @@ app.post('/api/errors', authMiddleware, async (c) => {
 // Lives outside ROUTE_REGISTRY because it's an internal callback,
 // not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  // Constant-time comparison to prevent timing attacks on the secret.
+  // JS string comparison short-circuits on the first differing character,
+  // leaking the mismatch position via response time. Compare SHA-256 hashes
+  // instead — same length, constant-time comparison via timingSafeEqual.
+  const incoming = c.req.header('X-DO-Secret') ?? '';
+  const expected = c.env.JWT_SECRET ?? '';
+  if (incoming.length !== expected.length) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const incomingHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(incoming));
+  const expectedHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected));
+  if (!crypto.subtle.timingSafeEqual(incomingHash, expectedHash)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();

@@ -799,7 +799,7 @@ warrants.post('/national-search', async (c) => {
   // than return unrelated records.
   const local = localWhere.length
     ? (await query<Record<string, unknown>>(
-        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')}`, ...localParams,
+        db, `SELECT * FROM warrants WHERE ${localWhere.join(' AND ')} LIMIT 500`, ...localParams,
       ))
         .filter((row) => matchesDobOrAge(queryDob, { dob: (row.subject_dob as string) ?? null, age: null }))
         .map(mapLocalWarrantRow)
@@ -1041,7 +1041,7 @@ warrants.get('/dashboard/stats', async (c) => {
 warrants.get('/dashboard/priority', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active'`);
+    const rows = await query<Record<string, any>>(db, `SELECT * FROM warrants WHERE status = 'active' LIMIT 500`);
     const ranked = rows
       .map((row) => ({ ...row, priority_score: computePriorityScore(row) }))
       .sort((a, b) => b.priority_score - a.priority_score)

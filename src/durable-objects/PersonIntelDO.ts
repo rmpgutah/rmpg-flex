@@ -7,15 +7,17 @@ import { execute, query } from '../utils/db';
 import type { IntelSeed, RiskFlag } from '../utils/personIntel/types';
 import { queryPhase1 } from '../utils/personIntel/phase1';
 import { runPhase2 as executePhase2 } from '../utils/personIntel/phase2';
+import { runLegalPhase as executeLegalPhase } from '../utils/personIntel/phaseLegal';
 import { runPhase3 as executePhase3 } from '../utils/personIntel/phase3';
 import { mergeDataPoints, deriveConfidence } from '../utils/personIntel/confidence';
 import { computeRiskScore } from '../utils/personIntel/riskScore';
+import { persistCrossRefs } from '../utils/personIntel/crossReference';
 
 import { log } from '../utils/logger';
 interface DOState {
   dossierId: number;
   seed: IntelSeed;
-  stage: 'phase1' | 'phase2' | 'phase3' | 'done' | 'error';
+  stage: 'phase1' | 'phase2' | 'phaseLegal' | 'phase3' | 'done' | 'error';
   phase1Points?: any[];
   phase2Points?: any[];
   phase2Connections?: any[];
@@ -67,6 +69,7 @@ export class PersonIntelDO {
     try {
       if (st.stage === 'phase1') await this.runPhase1(st);
       else if (st.stage === 'phase2') await this.runPhase2(st);
+      else if (st.stage === 'phaseLegal') await this.runLegalPhase(st);
       else if (st.stage === 'phase3') await this.runPhase3(st);
     } catch (e: any) {
       log.error('handler failed', { src: 'src/durable-objects/PersonIntelDO.ts' }, e);
@@ -101,6 +104,28 @@ export class PersonIntelDO {
     st.riskFlags = riskFlags;
     await execute(this.env.DB, `UPDATE person_intelligence SET phase=2, phase2_completed_at=datetime('now'), sources_queried=sources_queried+?, sources_succeeded=sources_succeeded+? WHERE id=?`,
       sourceResults.length, sourceResults.filter(r => r.status === 'success').length, st.dossierId);
+    st.stage = 'phaseLegal';
+    await this.state.storage.put('s', st);
+  }
+
+  private async runLegalPhase(st: DOState) {
+    // Cross-reference capture: CourtListener/juriscraper, FBI Wanted,
+    // criminal-DB, skip-trace. Persists structured cross-refs into
+    // person_intel_cross_refs for officer verification.
+    const { sourceResults, mergedPoints, connections, riskFlags: legalFlags, crossRefs } = await executeLegalPhase(this.env.DB, st.seed);
+    for (const r of sourceResults) await persistSourceResult(this.env.DB, st.dossierId, r);
+    await persistDataPoints(this.env.DB, st.dossierId, mergedPoints);
+    await persistConnections(this.env.DB, st.dossierId, connections);
+
+    const capturedBy = await this.env.DB.prepare(`SELECT created_by FROM person_intelligence WHERE id=?`).bind(st.dossierId).first<{ created_by: number }>().catch(() => null);
+    const captured = await persistCrossRefs(this.env.DB, st.dossierId, crossRefs, capturedBy?.created_by);
+
+    // Merge the legal/criminal risk flags into the dossier set.
+    const mergedFlags: RiskFlag[] = [...(st.riskFlags ?? []), ...legalFlags];
+    st.riskFlags = mergedFlags;
+    await execute(this.env.DB,
+      `UPDATE person_intelligence SET sources_queried=sources_queried+?, sources_succeeded=sources_succeeded+?, cross_refs_found=? WHERE id=?`,
+      sourceResults.length, sourceResults.filter(r => r.status === 'success').length, captured, st.dossierId);
     st.stage = 'phase3';
     await this.state.storage.put('s', st);
   }

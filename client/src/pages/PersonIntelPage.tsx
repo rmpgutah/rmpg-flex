@@ -28,6 +28,7 @@ interface Dossier {
   risk_flags: string | null;
   linked_person_id: number | null;
   data_points_found: number;
+  cross_refs_found?: number;
   created_at: string;
   completed_at: string | null;
 }
@@ -348,6 +349,9 @@ export default function PersonIntelPage() {
                         </span>
                       )}
                       <span className="text-[10px] text-rmpg-500">{d.data_points_found} data points</span>
+                      {!!d.cross_refs_found && (
+                        <span className="text-[10px] text-brand-400">{d.cross_refs_found} xrefs</span>
+                      )}
                       {flags.slice(0, 3).map(f => (
                         <span key={f} className="text-[10px] text-red-400">{f.toUpperCase()}</span>
                       ))}

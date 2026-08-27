@@ -8,6 +8,12 @@
 #
 # Scoped to desktop/** via path filters (unlike pr-tests.yml's jobs, which
 # always run) since this suite only exercises code under desktop/.
+#
+# Runs on windows-latest because the desktop app is a Windows-first Electron
+# app — native modules (serialport, node-hid, usb-detection) and
+# platform-specific IPC handlers (WMI, PowerShell, reg.exe) only exercise
+# their real code paths on Windows. ubuntu runners skip all Windows-gated
+# code paths, giving zero coverage of the actual deployment target.
 name: Desktop Tests
 
 on:
@@ -29,9 +35,9 @@ permissions:
 
 jobs:
   desktop-tests:
-    name: Desktop tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    name: Desktop tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -46,7 +52,5 @@ jobs:
       # for Electron's ABI. The DB-backed tests run under plain `node --test`
       # (Node's ABI), so without this they fail with a NODE_MODULE_VERSION
       # mismatch — mirrors the same rebuild .husky/pre-push does locally.
-      # No need to rebuild back to the Electron ABI afterward: this is a
-      # throwaway CI runner, not a dev environment that later runs `npm start`.
       - run: cd desktop && npm rebuild better-sqlite3
       - run: cd desktop && npm test
