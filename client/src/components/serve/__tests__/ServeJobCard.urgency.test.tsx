@@ -93,17 +93,17 @@ describe('ServeJobCard urgency chrome', () => {
   });
 
   it('keeps a non-critical tier visible while open, and drops it when closed', () => {
-    const { unmount } = renderCard(makeJob({ status: 'pending', urgency_tier: 'high' }));
-    expect(screen.getByText('HIGH')).toBeTruthy();
+    const { unmount } = renderCard(makeJob({ status: 'pending', urgency_tier: 'tight' }));
+    expect(screen.getByText('TIGHT')).toBeTruthy();
     unmount();
 
-    renderCard(makeJob({ status: 'served', urgency_tier: 'high' }));
-    expect(screen.queryByText('HIGH')).toBeNull();
+    renderCard(makeJob({ status: 'served', urgency_tier: 'tight' }));
+    expect(screen.queryByText('TIGHT')).toBeNull();
   });
 
-  it('never renders a tier chip for the normal tier', () => {
-    renderCard(makeJob({ status: 'pending', urgency_tier: 'normal' }));
-    expect(screen.queryByText('NORMAL')).toBeNull();
+  it('never renders a tier chip for the standard tier', () => {
+    renderCard(makeJob({ status: 'pending', urgency_tier: 'standard' }));
+    expect(screen.queryByText('STANDARD')).toBeNull();
   });
 });
 

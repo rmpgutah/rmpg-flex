@@ -22,10 +22,14 @@ app.route('/api/connections', connections);
 beforeAll(async () => {
   const db = (env as unknown as { DB: D1Database }).DB;
   await execute(db, `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT, role TEXT)`);
-  await execute(db, `CREATE TABLE IF NOT EXISTS persons (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT, last_name TEXT)`);
+  await execute(db, `CREATE TABLE IF NOT EXISTS persons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT, last_name TEXT,
+    dob TEXT, address TEXT, city TEXT, state TEXT, phone TEXT, flags TEXT
+  )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT, incident_number TEXT, incident_type TEXT,
-    occurred_date TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), status TEXT
+    occurred_date TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), status TEXT,
+    priority TEXT, location_address TEXT, call_id INTEGER
   )`);
   await execute(db, `CREATE TABLE IF NOT EXISTS incident_persons (id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id INTEGER, person_id INTEGER, role TEXT)`);
   await execute(db, `INSERT INTO users (id, full_name, role) VALUES (1, 'Test Analyst', 'admin')`);

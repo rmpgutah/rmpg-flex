@@ -574,10 +574,16 @@ alpr.post('/capture', operational, async (c) => {
     callId, incidentId, fieldPhotoId, plate ? 1 : 0, JSON.stringify([]));
   const captureRowId = Number(ins.meta.last_row_id);
 
+  // Hono throws when accessing executionCtx outside a real worker fetch
+  // (route-level tests drive this handler via app.request(), which has no
+  // ExecutionContext). Degrade to undefined — finalizeCapture already
+  // treats enrichment waitUntil as optional.
+  let execCtx: { waitUntil(p: Promise<unknown>): void } | undefined;
+  try { execCtx = c.executionCtx; } catch { /* no execution context in this runtime */ }
   const fin = await finalizeCapture(c.env, db, {
     captureRowId, read, callId, incidentId, lat, lng, locationText, userId,
     derivedTrust,
-  }, c.executionCtx);
+  }, execCtx);
 
   const hits = Array.from(new Map(fin.hits.map((h) => [h.detail, h])).values());
   const fieldPhotoLinked = fieldPhotoId !== null;

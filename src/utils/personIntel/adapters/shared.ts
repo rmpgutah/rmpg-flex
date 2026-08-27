@@ -1,4 +1,4 @@
-import type { SourceResult, RawDataPoint, IntelConnection } from '../types';
+import type { SourceResult, RawDataPoint, IntelConnection, CapturedCrossRef } from '../types';
 
 export function makeSourceResult(
   sourceName: string,
@@ -8,8 +8,9 @@ export function makeSourceResult(
   connections: IntelConnection[],
   responseTimeMs: number,
   errorMessage?: string,
+  crossRefs?: CapturedCrossRef[],
 ): SourceResult {
-  return { sourceName, phase, status, dataPoints, connections, responseTimeMs, errorMessage };
+  return { sourceName, phase, status, dataPoints, connections, responseTimeMs, errorMessage, crossRefs };
 }
 
 export async function getKey(db: D1Database, key: string): Promise<string | null> {
