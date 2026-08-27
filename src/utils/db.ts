@@ -491,7 +491,7 @@ export async function ensureAccountLockoutColumns(db: D1Database): Promise<void>
       // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
     }
   }
-  _accountLockoutColumnsEnsured = await columnExists(db, 'users', 'failed_login_count');
+  _accountLockoutColumnsEnsured = await columnExists(db, 'users', 'failed_login_count').catch(() => false);
 }
 
 // ── Jurisdiction override + photo/layout reconciler ────────

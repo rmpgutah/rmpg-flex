@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
-    "@cloudflare/puppeteer": "^1.3.0",
+    "@cloudflare/puppeteer": "^1.4.0",
     "@hono/zod-validator": "^0.9.0",
     "@libsql/client": "^0.17.4",
     "@mapbox/vector-tile": "^3.0.0",
@@ -33,7 +33,7 @@
     "bcryptjs": "^3.0.3",
     "fflate": "^0.8.3",
     "hono": "^4.13.2",
-    "jose": "^6.2.8",
+    "jose": "^6.2.10",
     "mp4box": "^2.4.1",
     "pbf": "^5.1.2",
     "pdf-lib": "^1.17.1",
@@ -43,7 +43,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
+    "@anthropic-ai/sdk": "^0.120.0",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260822.1",
     "@types/bcryptjs": "^2.4.6",
@@ -54,7 +54,7 @@
     "sharp": "^0.35.3",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11",
-    "wrangler": "^4.120.0"
+    "wrangler": "^4.125.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"

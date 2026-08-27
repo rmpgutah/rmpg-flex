@@ -1227,6 +1227,10 @@ sv.put('/:id', async (c) => {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
     if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
+    // Don't overwrite a computed urgency_tier with an empty string — the
+    // frontend sends urgency_tier: '' as the "Auto" default on every save,
+    // which silently erases the tier the planner computed.
+    if (k === 'urgency_tier' && body[k] === '') continue;
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
     sets.push(`${k} = ?`);

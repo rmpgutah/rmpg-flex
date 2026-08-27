@@ -90,6 +90,31 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply rmpg-flex --remote
 
+      # D1 backup — export the database before deploying new code.
+      # This is a point-in-time snapshot that can be restored if a migration
+      # or code change corrupts data. Runs only on push to main (not PRs).
+      - name: D1 backup
+        if: github.event_name == 'push'
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          BACKUP_DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          BACKUP_FILE="rmpg-flex-backup-${BACKUP_DATE}.sql"
+          npx wrangler d1 export rmpg-flex --remote --output "${BACKUP_FILE}" || {
+            echo "::warning::D1 backup failed (non-blocking)"
+            exit 0
+          }
+          # Upload to R2 for持久 storage
+          npx wrangler r2 object put "d1-backups/${BACKUP_FILE}" --file="${BACKUP_FILE}" --remote || {
+            echo "::warning::R2 backup upload failed (non-blocking)"
+          }
+          rm -f "${BACKUP_FILE}"
+          echo "D1 backup completed: ${BACKUP_FILE}"
+
       - name: Apply migrations to Turso secondary
         continue-on-error: true
         timeout-minutes: 3
