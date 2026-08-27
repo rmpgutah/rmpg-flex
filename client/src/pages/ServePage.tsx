@@ -210,7 +210,7 @@ const EMPTY_FORM = {
   time_window: 'anytime' as ServeJob['time_window'],
   deadline: '',
   max_attempts: 3,
-  urgency_tier: '' as '' | 'normal' | 'high' | 'critical',
+  urgency_tier: '' as '' | 'standard' | 'tight' | 'critical',
   // ── Billing (feature 11-13) ─────────────────────────────────────────────
   serve_fee: '' as string | number,
   rush_fee: '' as string | number,
@@ -1207,7 +1207,7 @@ export default function ServePage() {
       time_window: job.time_window,
       deadline: job.deadline || '',
       max_attempts: job.max_attempts,
-      urgency_tier: (job.urgency_tier as '' | 'normal' | 'high' | 'critical') || '',
+      urgency_tier: (job.urgency_tier as '' | 'standard' | 'tight' | 'critical') || '',
       service_instructions: job.service_instructions || '',
       notes: job.notes || '',
       next_attempt_note: job.next_attempt_note || '',
@@ -3932,8 +3932,8 @@ export default function ServePage() {
                       className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                     >
                       <option value="">— Auto —</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
+                      <option value="standard">Standard</option>
+                      <option value="tight">Tight</option>
                       <option value="critical">Critical</option>
                     </select>
                   </div>

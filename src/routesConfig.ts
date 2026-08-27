@@ -123,6 +123,7 @@ import alpr from './routes/alpr';
 import analytics from './routes/analytics';
 import automationRules from './routes/automationRules';
 import carxe from './routes/carxe';
+import vehicleEnrichment from './routes/vehicleEnrichment';
 import redactionsRouter from './routes/redactions';
 import citations from './routes/citations';
 import clearpathgps from './routes/clearpathgps';
@@ -504,6 +505,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Fleet.io integration: /test-connection (any authed user), /sync-status (admin), /seed (admin). 503 when FLEETIO_API_KEY is unset.' },
   { prefix: '/api/carxe', router: carxe, auth: 'required',
     note: 'CarsXE vehicle-data lookups: plate decode, VIN specs, lien/theft, history. Manual/officer-triggered only, cached in carxe_lookups (24h TTL). 200 {ok:false,code:\'not_configured\'} when CARXE_API_KEY is unset.' },
+  { prefix: '/api/vehicle-enrichment', router: vehicleEnrichment, auth: 'required',
+    note: 'Vehicle enrichment chain: plate→VIN→specs via PLATE_TO_VIN / VIN_DECODER / PLATE_DECODER APIs. POST /enrich/:vehicleId (client_viewer excluded), GET /cache/:plate, GET /health. 200 {ok:false,code:\'not_configured\'} when all three keys are unset.' },
   { prefix: '/api/legal-data-hunter', router: legalDataHunter, auth: 'required',
     note: 'Legal Data Hunter integration: manual, officer-initiated warrant-charge validation only. POST /validate (any authed non-client_viewer user), GET /usage (admin/manager). 200 {ok:false,code:\'not_configured\'} when LEGAL_DATA_HUNTER_API_KEY is unset.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',

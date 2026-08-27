@@ -1000,7 +1000,18 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         timestamp: nowIso,
       });
     }
-    const description = briefing.descriptionPrefix + input.documentSummary;
+    // SERVICE INSTRUCTIONS copied verbatim into the call's Description (the
+    // dispatch "Call Details" field) so the PSO/dispatcher sees the client's
+    // exact service requirements (rush timing, sub-service rules, diligence
+    // windows) on the CFS without opening the serve queue row. Appended after
+    // the structured summary so the one-line queue picture stays intact.
+    const instructions = (queueRow.service_instructions || '').trim();
+    const summaryText = briefing.descriptionPrefix + input.documentSummary;
+    // Dedupe guard: if the summary ever embeds the instructions itself,
+    // appending again would print the client's rule twice on one call.
+    const description = instructions && !summaryText.includes(instructions)
+      ? `${summaryText}\n\nSERVICE INSTRUCTIONS: ${instructions}`
+      : summaryText;
 
     try {
       // call_number is UNIQUE — re-mint + retry on a collision so a concurrent

@@ -639,7 +639,9 @@ auth.post('/refresh', async (c) => {
     });
   } catch (err) {
     console.error('Refresh error:', err);
-    return c.json({ error: 'Refresh failed' }, 500);
+    // D1 outage or transient failure — return 401 so the client can re-login
+    // instead of 500 which triggers infinite retry loops.
+    return c.json({ error: 'Refresh failed', code: 'REFRESH_FAILED' }, 401);
   }
 });
 

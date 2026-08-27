@@ -6,6 +6,8 @@ const FLAG_WEIGHTS: Record<RiskFlag, number> = {
   ofac: 40,
   hibp_breach: 10,
   arrest_mention: 15,
+  fugitive: 35,
+  court_criminal: 20,
 };
 
 export function computeRiskScore(flags: RiskFlag[]): number {
