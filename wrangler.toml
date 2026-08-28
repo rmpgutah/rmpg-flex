@@ -479,3 +479,10 @@ crons = ["0 */4 * * *", "* * * * *", "*/30 * * * *", "0 3 1 * *", "0 9 * * *"]
 # in a deployed Worker. See docs/superpowers/specs/2026-07-22-web-company-browser-phase1-design.md.
 [browser]
 binding = "BROWSER"
+
+# Same-Worker service binding: DO alarms call back into this script
+# without leaving the Cloudflare network (no managed-challenge hop).
+[[services]]
+binding = "SELF"
+service = "rmpg-flex-api"
+

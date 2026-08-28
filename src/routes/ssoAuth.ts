@@ -17,6 +17,7 @@ import type { Env } from '../types';
 import { getDb, queryFirst } from '../utils/db';
 import { issueLoginTokens } from './auth';
 import { readDialerOidcEndpoints, generateCodeVerifier, codeChallengeS256 } from '../utils/sso';
+import { dialerOidcRedirectUri, exchangeAuthorizationCode, oauthRedirectCandidates } from '../utils/appOrigin';
 import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 
@@ -65,7 +66,7 @@ ssoAuth.get('/check', async (c) => {
 // GET /api/oidc/dialer/login -- start the PKCE authorization-code flow.
 ssoAuth.get('/login', async (c) => {
   const clientId = c.env.DIALER_OIDC_CLIENT_ID;
-  const redirectUri = c.env.DIALER_OIDC_REDIRECT_URI;
+  const redirectUri = dialerOidcRedirectUri(c.env, c.req.url);
   if (!clientId || !redirectUri) {
     return c.json({ error: 'Dial Connect SSO is not configured' }, 503);
   }
@@ -80,7 +81,7 @@ ssoAuth.get('/login', async (c) => {
   const state = crypto.randomUUID();
   const nonce = crypto.randomUUID();
 
-  setCookie(c, PKCE_COOKIE, JSON.stringify({ verifier, state, nonce }), {
+  setCookie(c, PKCE_COOKIE, JSON.stringify({ verifier, state, nonce, redirectUri }), {
     httpOnly: true,
     secure: true,
     sameSite: 'Lax',
@@ -109,7 +110,7 @@ ssoAuth.get('/callback', async (c) => {
     const pkceCookie = getCookie(c, PKCE_COOKIE);
     if (!code || !state || !pkceCookie) return loginFailedRedirect(c);
 
-    let pkce: { verifier: string; state: string; nonce: string };
+    let pkce: { verifier: string; state: string; nonce: string; redirectUri?: string };
     try {
       pkce = JSON.parse(pkceCookie);
     } catch {
@@ -119,29 +120,32 @@ ssoAuth.get('/callback', async (c) => {
 
     const clientId = c.env.DIALER_OIDC_CLIENT_ID;
     const clientSecret = c.env.DIALER_OIDC_CLIENT_SECRET;
-    const redirectUri = c.env.DIALER_OIDC_REDIRECT_URI;
-    if (!clientId || !clientSecret || !redirectUri) return loginFailedRedirect(c);
+    if (!clientId || !clientSecret) return loginFailedRedirect(c);
 
     const endpoints = await readDialerOidcEndpoints(c.env);
     if (!endpoints) return loginFailedRedirect(c);
 
-    const tokenRes = await fetch(endpoints.tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+    const exchanged = await exchangeAuthorizationCode({
+      tokenUrl: endpoints.tokenEndpoint,
+      params: {
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri,
         client_id: clientId,
         client_secret: clientSecret,
         code_verifier: pkce.verifier,
-      }),
+      },
+      redirectUris: oauthRedirectCandidates(
+        c.env,
+        '/api/oidc/dialer/callback',
+        c.req.url,
+        pkce.redirectUri || c.env.DIALER_OIDC_REDIRECT_URI,
+      ),
     });
-    if (!tokenRes.ok) {
-      log.error('[SSO] token exchange failed', { status: tokenRes.status, body: await tokenRes.text() });
+    if (!exchanged.ok) {
+      log.error('[SSO] token exchange failed', { status: exchanged.status, body: exchanged.body });
       return loginFailedRedirect(c);
     }
-    const tok = await tokenRes.json<{ id_token?: string }>();
+    const tok = JSON.parse(exchanged.body) as { id_token?: string };
     if (!tok.id_token) return loginFailedRedirect(c);
 
     const jwks = createRemoteJWKSet(new URL(endpoints.jwksUri));

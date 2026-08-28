@@ -43,6 +43,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { getDb, queryFirst, execute, ensureDialerOidcColumns } from '../utils/db';
 import { mintLoginTokens, USER_SELECT } from './auth';
 import { log } from '../utils/logger';
+import { dialerOidcRedirectUri, exchangeAuthorizationCode, oauthRedirectCandidates } from '../utils/appOrigin';
 
 const oidc = new Hono<Env>();
 
@@ -156,7 +157,7 @@ oidc.get('/dialer/login', async (c) => {
   const env = c.env as Env['Bindings'];
   const appOrigin = env.APP_ORIGIN || new URL(c.req.url).origin;
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
-  const redirectUri = env.DIALER_OIDC_REDIRECT_URI as string | undefined;
+  const redirectUri = dialerOidcRedirectUri(env, c.req.url);
   if (!clientId || !redirectUri || !env.DIALER_OIDC_ISSUER) {
     return backToLogin(appOrigin, 'error', 'Dialer SSO is not configured');
   }
@@ -177,7 +178,7 @@ oidc.get('/dialer/login', async (c) => {
   // request (prevents id_token replay).
   const state = crypto.randomUUID();
   const nonce = crypto.randomUUID();
-  await env.KV.put(`oidc:dialer:state:${state}`, JSON.stringify({ nonce }), { expirationTtl: STATE_TTL_SECONDS });
+  await env.KV.put(`oidc:dialer:state:${state}`, JSON.stringify({ nonce, redirectUri }), { expirationTtl: STATE_TTL_SECONDS });
 
   const authUrl = new URL(discovery.authorization_endpoint);
   authUrl.searchParams.set('client_id', clientId);
@@ -203,15 +204,17 @@ oidc.get('/dialer/callback', async (c) => {
   if (!stateValid) return backToLogin(appOrigin, 'error', 'Sign-in session expired — please try again');
   await env.KV.delete(stateKey); // single-use
   let expectedNonce: string | undefined;
+  let storedRedirect: string | undefined;
   try {
-    expectedNonce = (JSON.parse(stateValid) as { nonce?: string }).nonce;
+    const parsed = JSON.parse(stateValid) as { nonce?: string; redirectUri?: string };
+    expectedNonce = parsed.nonce;
+    storedRedirect = parsed.redirectUri;
   } catch { /* legacy state entries without a nonce fail closed below */ }
   if (!expectedNonce) return backToLogin(appOrigin, 'error', 'Sign-in session expired — please try again');
 
   const clientId = env.DIALER_OIDC_CLIENT_ID as string | undefined;
   const clientSecret = env.DIALER_OIDC_CLIENT_SECRET as string | undefined;
-  const redirectUri = env.DIALER_OIDC_REDIRECT_URI as string | undefined;
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     return backToLogin(appOrigin, 'error', 'Dialer SSO is not configured');
   }
 
@@ -225,22 +228,26 @@ oidc.get('/dialer/callback', async (c) => {
 
   let idToken: string;
   try {
-    const tokenRes = await fetch(discovery.token_endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+    const exchanged = await exchangeAuthorizationCode({
+      tokenUrl: discovery.token_endpoint,
+      params: {
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri,
         client_id: clientId,
         client_secret: clientSecret,
-      }),
+      },
+      redirectUris: oauthRedirectCandidates(
+        env,
+        '/api/oidc/dialer/callback',
+        c.req.url,
+        storedRedirect || env.DIALER_OIDC_REDIRECT_URI,
+      ),
     });
-    if (!tokenRes.ok) {
-      log.error('[oidc] token exchange failed', { traceId: c.get('traceId'), status: tokenRes.status });
+    if (!exchanged.ok) {
+      log.error('[oidc] token exchange failed', { traceId: c.get('traceId'), status: exchanged.status });
       return backToLogin(appOrigin, 'error', 'Token exchange failed');
     }
-    const tok = await tokenRes.json<{ id_token?: string }>();
+    const tok = JSON.parse(exchanged.body) as { id_token?: string };
     if (!tok.id_token) return backToLogin(appOrigin, 'error', 'No id_token returned by dialer');
     idToken = tok.id_token;
   } catch (err) {

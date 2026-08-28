@@ -154,6 +154,9 @@ export type Bindings = {
   // puppeteer.launch(). Fetcher is the correct binding type here (same
   // shape as a service binding); puppeteer.launch() accepts it structurally.
   BROWSER: Fetcher;
+  // Self service-binding so Durable Objects (WelfareWatchDO) can POST
+  // /__welfare-fire without traversing the public WAF hostname.
+  SELF?: Fetcher;
 };
 
 export type Variables = {

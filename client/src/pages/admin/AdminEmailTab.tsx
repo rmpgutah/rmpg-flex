@@ -226,8 +226,10 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             target="_blank" rel="noopener" className="text-brand-400 hover:underline">
             Azure Portal <ExternalLink className="w-2.5 h-2.5 inline" />
           </a>
-          {' '}with this redirect URI (each user connects their own mailbox from the Email page):{' '}
+          {' '}with these redirect URIs (add both — older Azure apps still list the API hostname):{' '}
           <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://rmpgutah.us/api/email/connect/callback</code>
+          {' '}and{' '}
+          <code className="text-rmpg-300 bg-surface-sunken px-1 rounded-sm">https://api.rmpgutah.us/api/email/connect/callback</code>
         </p>
 
         <div className="grid grid-cols-1 gap-2">

@@ -42,7 +42,7 @@ import { saveUserGraphToken, getUserGraphToken, deleteUserGraphToken, listConnec
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
 import { rateLimitAllow } from '../utils/rateLimit';
-import { emailConnectRedirectUri } from '../utils/appOrigin';
+import { emailConnectRedirectUri, exchangeAuthorizationCode, oauthRedirectCandidates, workerAppOrigin } from '../utils/appOrigin';
 
 import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -196,12 +196,12 @@ email.get('/connect/authorize', async (c) => {
   const stateBytes = crypto.getRandomValues(new Uint8Array(32));
   let state = '';
   for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
-  await setCfg(c.env.DB, `email_connect_state_${state}`, String(userId));
+  const redirectUri = emailConnectRedirectUri(c.env, c.req.url);
+  await setCfg(c.env.DB, `email_connect_state_${state}`, JSON.stringify({ userId, redirectUri }));
 
   // Same-origin on the SPA host so the Azure redirect rides rmpg-api-proxy
   // (WAF cookie already set) instead of api.rmpgutah.us (challenge host).
-  // Azure must list this URI — Admin Email tab documents it.
-  const redirectUri = emailConnectRedirectUri(c.env);
+  // Token exchange retries api.rmpgutah.us if this tenant still has the old URI.
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
@@ -219,6 +219,8 @@ email.get('/connect/authorize', async (c) => {
 // resolves the owning userId from the per-request state row instead of a
 // singleton, and writes to user_graph_tokens instead of system_config.
 email.get('/connect/callback', async (c) => {
+  const spa = workerAppOrigin(c.env);
+  const toEmail = (query: string) => c.redirect(`${spa}/email?${query}`);
   const url = new URL(c.req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
@@ -229,9 +231,9 @@ email.get('/connect/callback', async (c) => {
       'unsupported_response_type', 'invalid_scope', 'server_error', 'temporarily_unavailable',
     ]);
     const safeErr = KNOWN_OAUTH_ERRORS.has(oauthErr) ? oauthErr : 'oauth_error';
-    return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(safeErr)}`);
+    return toEmail(`connect_status=error&message=${encodeURIComponent(safeErr)}`);
   }
-  if (!code || !state) return c.redirect('/email?connect_status=error&message=Missing+code+or+state');
+  if (!code || !state) return toEmail('connect_status=error&message=Missing+code+or+state');
 
   const stateKey = `email_connect_state_${state}`;
   const row = await queryFirst<{ config_value: string }>(
@@ -239,47 +241,62 @@ email.get('/connect/callback', async (c) => {
     "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1",
     stateKey,
   );
-  if (!row) return c.redirect('/email?connect_status=error&message=Invalid+or+expired+state');
+  if (!row) return toEmail('connect_status=error&message=Invalid+or+expired+state');
   const consumed = await execute(
     c.env.DB,
     "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'",
     stateKey,
   );
   if (((consumed?.meta?.changes as number | undefined) ?? 0) === 0) {
-    return c.redirect('/email?connect_status=error&message=Invalid+state');
+    return toEmail('connect_status=error&message=Invalid+state');
   }
-  const userId = parseInt(row.config_value, 10);
-  if (!userId) return c.redirect('/email?connect_status=error&message=Invalid+state');
+  let userId = 0;
+  let storedRedirect: string | undefined;
+  try {
+    const parsed = JSON.parse(row.config_value) as { userId?: unknown; redirectUri?: unknown };
+    if (typeof parsed.userId === 'number') {
+      userId = parsed.userId;
+      if (typeof parsed.redirectUri === 'string') storedRedirect = parsed.redirectUri;
+    }
+  } catch { /* legacy: raw user id */ }
+  if (!userId) userId = parseInt(row.config_value, 10);
+  if (!userId) return toEmail('connect_status=error&message=Invalid+state');
 
   const clientId = await getCfgDecrypted(c.env, K.clientId);
   const clientSecret = await getCfgDecrypted(c.env, K.clientSecret);
   const tenantId = await getCfgDecrypted(c.env, K.tenantId);
   if (!clientId || !clientSecret || !tenantId) {
-    return c.redirect('/email?connect_status=error&message=Credentials+missing');
+    return toEmail('connect_status=error&message=Credentials+missing');
   }
 
-  const redirectUri = emailConnectRedirectUri(c.env);
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    code,
-    redirect_uri: redirectUri,
-    grant_type: 'authorization_code',
-    scope: GRAPH_SCOPES.join(' '),
-  });
+  const redirectUris = oauthRedirectCandidates(
+    c.env,
+    '/api/email/connect/callback',
+    c.req.url,
+    storedRedirect,
+  );
 
   try {
-    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-      signal: AbortSignal.timeout(15_000),
+    const exchanged = await exchangeAuthorizationCode({
+      tokenUrl: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+      params: {
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        scope: GRAPH_SCOPES.join(' '),
+      },
+      redirectUris,
     });
-    const data = await res.json() as Record<string, unknown>;
-    if (!res.ok) {
-      const msg = String(data.error_description || data.error || 'Token exchange failed');
-      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(msg)}`);
+    if (!exchanged.ok) {
+      let msg = 'Token exchange failed';
+      try {
+        const data = JSON.parse(exchanged.body) as Record<string, unknown>;
+        msg = String(data.error_description || data.error || msg);
+      } catch { /* raw body */ }
+      return toEmail(`connect_status=error&message=${encodeURIComponent(msg)}`);
     }
+    const data = JSON.parse(exchanged.body) as Record<string, unknown>;
 
     let mailbox: string | undefined;
     try {
@@ -306,7 +323,7 @@ email.get('/connect/callback', async (c) => {
         attempted: mailbox,
         assigned: assignedEmail,
       });
-      return c.redirect(`/email?connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
+      return toEmail(`connect_status=error&message=${encodeURIComponent('That Microsoft account does not match your assigned email address')}`);
     }
 
     const expiresIn = Number(data.expires_in) || 3600;
@@ -317,10 +334,10 @@ email.get('/connect/callback', async (c) => {
       mailbox,
     });
 
-    return c.redirect('/email?connect_status=connected');
+    return toEmail('connect_status=connected');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Token exchange failed';
-    return c.redirect(`/email?connect_status=error&message=${encodeURIComponent(msg)}`);
+    return toEmail(`connect_status=error&message=${encodeURIComponent(msg)}`);
   }
 });
 

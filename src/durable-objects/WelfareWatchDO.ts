@@ -44,7 +44,7 @@ const MAX_PROMPT_AFTER_MS = 4 * 60 * 60 * 1000;
 
 export class WelfareWatchDO {
   state: DurableObjectState;
-  env: { JWT_SECRET: string; KV: KVNamespace };
+  env: { JWT_SECRET: string; KV: KVNamespace; SELF?: Fetcher };
 
   constructor(state: DurableObjectState, env: any) {
     this.state = state;
@@ -232,14 +232,25 @@ export class WelfareWatchDO {
   // ('[WelfareWatchDO]') instead of silent dispatch failures.
   private async notifyWorker(stage: 'prompt' | 'alert' | 'emergency', s: WatchState): Promise<void> {
     try {
-      const res = await fetch('https://api.rmpgutah.us/__welfare-fire', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-DO-Secret': await doCallbackToken(this.env.JWT_SECRET),
-        },
-        body: JSON.stringify({ stage, watch: s }),
-      });
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-DO-Secret': await doCallbackToken(this.env.JWT_SECRET),
+      };
+      const body = JSON.stringify({ stage, watch: s });
+      // Prefer the self service binding so this never hits the public
+      // managed-challenge hostname. Fall back to the Worker custom domain
+      // if a preview isolate is missing the binding.
+      const res = this.env.SELF
+        ? await this.env.SELF.fetch(new Request('https://rmpg-flex-api/__welfare-fire', {
+          method: 'POST',
+          headers,
+          body,
+        }))
+        : await fetch('https://api.rmpgutah.us/__welfare-fire', {
+          method: 'POST',
+          headers,
+          body,
+        });
       if (!res.ok) {
         console.error('[WelfareWatchDO] notifyWorker non-2xx (escalation may be lost)', {
           stage, officerId: s.user_id, status: res.status,
