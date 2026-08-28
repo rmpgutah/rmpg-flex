@@ -29,6 +29,7 @@ import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { apiHttpBase } from '../utils/apiOrigin';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -422,7 +423,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
     setError(null);
     try {
       const token = localStorage.getItem('rmpg_token') ?? '';
-      const base = (window as any).__RMPG_API_BASE__ ?? 'https://api.rmpgutah.us';
+      const base = (window as any).__RMPG_API_BASE__ ?? apiHttpBase();
       for (const file of files) {
         const fd = new FormData();
         fd.append('file', file);

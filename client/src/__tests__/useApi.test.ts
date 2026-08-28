@@ -57,6 +57,10 @@ describe('resolveUploadsUrl', () => {
     expect(resolveUploadsUrl({ isDev: false, hostname: 'www.rmpgutah.us' })).toBe('/api/uploads');
   });
 
+  it('uses a relative path on Cloudflare Pages previews', () => {
+    expect(resolveUploadsUrl({ isDev: false, hostname: 'rmpg-flex.pages.dev' })).toBe('/api/uploads');
+  });
+
   it('does not send the SPA to api.rmpgutah.us (managed-challenge host)', () => {
     const url = resolveUploadsUrl({ isDev: false, hostname: 'rmpgutah.us' });
     expect(url).not.toContain('api.rmpgutah.us');

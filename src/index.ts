@@ -58,9 +58,8 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', logger());
-// Default CORP is `same-origin`. This Worker is fetched cross-origin from the
-// Pages SPA (rmpgutah.us → api.rmpgutah.us) for multipart uploads and a few
-// `directWorker` escape hatches. CORP same-origin makes Chrome discard the
+// Default CORP is `same-origin`. Electron / off-origin clients still POST
+// cross-origin to this Worker (api.rmpgutah.us). CORP same-origin makes Chrome discard the
 // response as a network error — Dispatch's Files tab then shows "Upload failed"
 // with no HTTP status. `cross-origin` is the correct policy for a public API.
 app.use('*', secureHeaders({

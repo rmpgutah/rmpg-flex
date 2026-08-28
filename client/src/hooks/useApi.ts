@@ -3,6 +3,7 @@ import { uploadWithProgress, putFileDirect } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
 import { chimeForApiSuccess, nackForApiFailure } from '../utils/actionChimes';
+import { isAppHostname, WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -414,16 +415,10 @@ function maybeRedirectToCfWorker(url: string): string {
   return url;
 }
 
-// ─── TEMPORARY: direct-to-rewrite escape hatch ──────────────────────────
-// The rmpgutah.us strangler dispatcher (rmpg-api-proxy) currently mis-routes
-// some methods: POST /api/records/businesses 404s because the dispatcher sends
-// it to the legacy Worker (no handler) instead of the rewrite, while the
-// rewrite at api.rmpgutah.us serves it correctly (verified: proxy POST → 404,
-// direct POST → 400). `directWorker: true` bypasses the dispatcher for the
-// affected calls. Safe: the rewrite has permissive CORS for rmpgutah.us and
-// uses Bearer auth (no cookies), and a live probe confirmed connect-src allows
-// this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
-const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
+// Kept for downloadUrl() (absolute Worker origin) and the unused
+// `directWorker` flag. Authenticated SPA traffic must NOT use this host:
+// the managed-challenge skip is /api/health only. Prefer same-origin /api/*.
+const CF_WORKER_DIRECT_BASE = WORKER_HTTP_ORIGIN;
 
 /**
  * Where POST /api/uploads should go.
@@ -446,14 +441,7 @@ const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
 export function resolveUploadsUrl(opts: { isDev: boolean; hostname?: string }): string {
   if (opts.isDev) return '/api/uploads';
   const host = (opts.hostname || '').toLowerCase();
-  if (
-    host === 'rmpgutah.us' ||
-    host === 'www.rmpgutah.us' ||
-    (host.endsWith('.rmpgutah.us') && host !== 'api.rmpgutah.us') ||
-    host.endsWith('.pages.dev')
-  ) {
-    return '/api/uploads';
-  }
+  if (isAppHostname(host)) return '/api/uploads';
   return `${CF_WORKER_DIRECT_BASE}/api/uploads`;
 }
 

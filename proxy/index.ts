@@ -77,38 +77,10 @@ const STUBS: StubRule[] = [
   // Body Cameras page to always render empty regardless of actual data.
   // Routed to env.API below (already unconditional, no GET-only restriction
   // needed since real POST/PUT/DELETE/:id handlers exist too).
-  // ── Audit log surfaces ────────────────────────────────────────
-  // AuditLogPage opens on /audit/logs?page=1&limit=100 (paginated list) +
-  // /audit/stats (totals + top users/actions) on mount, then optionally
-  // /audit/compliance-report and /audit/index-stats. Legacy implements
-  // /audit/logs at deployed-source line 16641 — but it returns 404 in
-  // production (likely a route-registration / auth bug on legacy). Until
-  // the real handlers come back, stub all four so the page renders.
-  {
-    match: /^\/api\/audit\/logs(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 100 } },
-    reason: 'legacy /audit/logs 404s; new worker has no audit router',
-  },
-  {
-    match: /^\/api\/audit\/stats$/,
-    methods: ['GET'],
-    // Matches the AuditStats interface in client/src/pages/AuditLogPage.tsx.
-    body: { totalEntries: 0, entriesToday: 0, topActions: [], topUsers: [] },
-    reason: 'no audit/stats handler',
-  },
-  {
-    match: /^\/api\/audit\/compliance-report(\?.*)?$/,
-    methods: ['GET'],
-    body: { compliant: true, gaps: [], generated_at: null },
-    reason: 'no compliance engine yet',
-  },
-  {
-    match: /^\/api\/audit\/index-stats$/,
-    methods: ['GET'],
-    body: { total_entries: 0, estimated_size_mb: 0 },
-    reason: 'no index-stats handler',
-  },
+  // (removed 2026-08-28) /api/audit/{logs,stats,compliance-report,index-stats}
+  // stubs — src/routes/audit.ts implements all four; the stubs ran BEFORE
+  // API_ROUTES and served empty 200s, so AuditLogPage had to opt into
+  // cross-origin api.rmpgutah.us (which now dies at the managed challenge).
   // ── Fleet surfaces ────────────────────────────────────────────
   // Bare /api/fleet, /api/fleet/analytics, and /api/fleet/dashcam-videos
   // are now real handlers in src/routes/fleet.ts (fleet.get('/'),
@@ -142,21 +114,9 @@ const STUBS: StubRule[] = [
   // these (skiptracer.ts, iped.ts, personnel.ts, reports.ts) and were
   // being shadowed. Routed to env.API below.
   //
-  // /api/reports/schedules and /api/reports/templates below are left
-  // stubbed even though real handlers exist — those handlers currently
-  // just `c.json([])`, so the stub is functionally identical, not a bug.
-  {
-    match: /^\/api\/reports\/schedules(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /schedules in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/templates(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /templates in stubs router',
-  },
+  // /api/reports/schedules and /api/reports/templates — real handlers in
+  // src/routes/reports.ts (currently `c.json([])`). Stub removed 2026-08-28
+  // so a later real implementation is not shadowed.
   // (removed 2026-07-12) /api/reports/statute-analytics, /api/personnel/training,
   // /api/personnel/training-requirements, /api/personnel/training-completion,
   // /api/personnel/duty-hours, and ALL /api/crm/* stubs (dashboard,
@@ -167,15 +127,8 @@ const STUBS: StubRule[] = [
   // crm_leads/crm_tasks/crm_lead_activity/crm_proposals tables now) and
   // were being shadowed, most notably CrmPage silently showing fake
   // empty data on rmpgutah.us. Routed to env.API below.
-  // /records/reports/approval-queue — ReportsPage opens this on mount.
-  // Was previously routed to env.API via the proxy (line ~152) but no
-  // handler exists in /src/routes/records.ts for /reports/approval-queue.
-  {
-    match: /^\/api\/records\/reports\/approval-queue(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no approval-queue handler in /src/',
-  },
+  // (removed 2026-08-28) /api/records/reports/approval-queue stub —
+  // records.ts .get('/reports/approval-queue') is the live handler.
   //
   // ── 2026-05-27 batch — silence broken pages until real handlers land ──
   // Each of the entries below was sourced from a single prod console log
@@ -222,17 +175,9 @@ const STUBS: StubRule[] = [
   // (removed 2026-05-29) /api/warrants/scraped/status stub — the rewrite
   // now serves a real status handler (src/routes/warrants.ts). Routed to
   // env.API below.
-  // ── HR sub-modules with no backing tables on live D1 yet ─────────────
-  // /api/hr/leave* now has a real handler in src/routes/hr.ts (uses the
-  // leave_requests table). The remaining sub-paths still 500 on legacy
-  // because their tables don't exist. Stub them empty until the schema
-  // patches land.
-  {
-    match: /^\/api\/hr\/(payroll\/(periods|rates|entries|overtime)|grievances|documents|attendance|pips|benefits)/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no backing tables yet; HrPage tabs render empty until schema lands',
-  },
+  // (removed 2026-08-28) /api/hr/(payroll|grievances|documents|attendance|pips|benefits)
+  // stub — hr.ts implements all of those GETs; the stub was shadowing live
+  // payroll/benefits data the same way the audit stubs hid AuditLogPage.
   // (removed 2026-07-12) duplicate /api/crm/* stubs — already removed
   // above; the offenderRegistry router is mounted at BOTH
   // /api/offender-registry and /api/sex-offender-registry
@@ -312,13 +257,8 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no dispatch_messages table; namespace appears to be never-shipped legacy feature',
   },
-  // ── Statutes top-charged analytics (page opens on stats tab) ────────
-  {
-    match: /^\/api\/statutes\/analytics\/top-charged(\?.*)?$/,
-    methods: ['GET'],
-    body: { top: [], total: 0 },
-    reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
-  },
+  // (removed 2026-08-28) /api/statutes/analytics/top-charged stub —
+  // statutes.ts .get('/analytics/top-charged') is live.
   // (removed 2026-07-12) /api/auth/webauthn/(credentials|status) stub —
   // real handlers exist (auth.ts .get('/webauthn/status'|'/credentials'),
   // auth-required) and were being shadowed.
@@ -363,17 +303,8 @@ const STUBS: StubRule[] = [
   // being shadowed.
   // (removed 2026-08-28) skiptracer-v2 status/stats stub — real handler in
   // src/routes/skiptracerV2.ts; proxy now routes /api/skiptracer-v2/* to env.API.
-  // ── Dispatch GPS zone-speed-stats (MapPage analytics) ───────────────
-  // Different path from /speed-zones (which was stubbed above). This one
-  // is the analytics aggregation — likely 500s because the underlying
-  // table reference is broken. Stub empty stats; MapPage tolerates this.
-  {
-    match: /^\/api\/dispatch\/gps\/zone-speed-stats(\?.*)?$/,
-    methods: ['GET'],
-    body: { zones: [], total_violations: 0, period_hours: 8 },
-    reason: 'no zone speed analytics handler; MapPage tolerates empty zones array',
-  },
-
+  // (removed 2026-08-28) /api/dispatch/gps/zone-speed-stats stub —
+  // gps.ts .get('/zone-speed-stats') is live.
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -704,15 +635,25 @@ const API_ROUTES: RouteRule[] = [
   // challenge host. Must be on env.API; the rewrite owns putEncrypted().
   { kind: 'prefix', value: '/api/uploads' },
 
+  // Same-origin WebSocket upgrades (CAD hub, AlertHubDO, VoiceHubDO,
+  // WebBrowserSessionDO). Explicit so they never depend on fallthrough.
+  { kind: 'prefix', value: '/api/ws' },
+  { kind: 'prefix', value: '/api/alerts-ws' },
+  { kind: 'prefix', value: '/api/voice-ws' },
+  { kind: 'prefix', value: '/api/web-browser-ws' },
+
+  { kind: 'prefix', value: '/api/assessor' },
+  { kind: 'prefix', value: '/api/evidence' },
+  { kind: 'prefix', value: '/api/field-photos' },
+  { kind: 'prefix', value: '/api/user' },
+  { kind: 'prefix', value: '/api/web-browser' },
+  { kind: 'prefix', value: '/api/browser-search' },
+  { kind: 'prefix', value: '/api/statutes' },
+  { kind: 'prefix', value: '/api/dispatch/gps' },
+
   // ── HR module ──
-  // New Worker owns the four ported sub-paths (/leave, /disciplinary,
-  // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*
-  // (payroll, grievances, attendance, documents, pips, exit
-  // interviews, workers' comp, handbook acks, etc.) will 404 from
-  // the new Worker — that's intentional. The legacy handlers for
-  // those depended on tables the live D1 doesn't have, so they
-  // were silently returning empty data anyway. A 404 is a more
-  // honest signal until those tabs get real ports.
+  // Whole namespace on the rewrite (leave, disciplinary, reviews, benefits,
+  // payroll, grievances, attendance, documents, PIPs).
   { kind: 'prefix', value: '/api/hr' },
 ];
 
