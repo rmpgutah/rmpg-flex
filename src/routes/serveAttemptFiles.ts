@@ -127,6 +127,7 @@ files.get('/:id/attempts/:attemptId/files', async (c) => {
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+  await ensureServeAttemptFilesTable(db);
   const attempt = await loadAttempt(db, queueId, attemptId);
   if (!attempt) return c.json({ error: 'Attempt not found for this job' }, 404);
   await backfillAttemptPhotos(db, queueId, attemptId, attempt.photo_ids);
@@ -202,7 +203,7 @@ files.post('/:id/attempts/:attemptId/files', async (c) => {
       const fileId = crypto.randomUUID();
       const ext = extFor(file.name, mime);
       const r2Key = serveAttemptR2Key(queueId, attempt.attempt_number, fileId, ext);
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, await file.arrayBuffer(), {
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, await file.arrayBuffer(), {
         httpMetadata: { contentType: mime },
       });
       const kind = isServeFileKind(kindOverride) ? kindOverride : inferServeFileKind(mime, file.name);

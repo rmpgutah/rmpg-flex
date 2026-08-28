@@ -6,6 +6,9 @@
 // v1106: Login navigations must not become an empty 503 Offline when the
 //        document URL has a query string (`/login?return=%2F`) that missed
 //        the precached `/` shell. Match ignoreSearch and always stash `/`.
+// v1106: Route Planner Mapbox 422 (stale depart_at) + serve-attempt upload
+//        KEK fallback. SW skips chrome-extension / blob / /cdn-cgi so those
+//        fetches are not "Uncaught (in promise) TypeError: Failed to fetch".
 // v1105: Field-console offline sweep. Do not take ownership of
 //        static.cloudflareinsights.com (FetchEvent rejection + SRI). Strip
 //        more beacon <script> shapes from HTML. Same-origin API cache warm
@@ -518,6 +521,19 @@ self.addEventListener('fetch', (event) => {
   // the blocked beacon; the navigation handler strips the <script> tag
   // so subsequent loads never request it.
   if (url.hostname === 'static.cloudflareinsights.com') {
+    return;
+  }
+
+  // Never intercept opaque/extension/CDN-CGI traffic. Taking ownership of a
+  // request we cannot complete rejects the FetchEvent ("Uncaught TypeError:
+  // Failed to fetch" at sw.js:2) even when the page itself would have been fine.
+  if (
+    url.protocol === 'chrome-extension:' ||
+    url.protocol === 'moz-extension:' ||
+    url.protocol === 'blob:' ||
+    url.protocol === 'data:' ||
+    url.pathname.startsWith('/cdn-cgi/')
+  ) {
     return;
   }
 
