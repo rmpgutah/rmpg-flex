@@ -54,7 +54,7 @@ function denverHour(iso: string): number | null {
     timeZone: 'America/Denver',
     hour: 'numeric',
     hourCycle: 'h23',
-  }).format(new Date(ms)));
+  }).format(new Date(ms))); // new-date-ok — Date.parse epoch, not a D1 naive UTC string
   return Number.isFinite(hour) ? hour : null;
 }
 
@@ -66,7 +66,7 @@ function denverYmd(iso: string): string | null {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date(ms));
+  }).format(new Date(ms)); // new-date-ok — Date.parse epoch, not a D1 naive UTC string
 }
 
 export function nextBandAfterAttempt(attemptAtIso: string, routeDate: string): { start: string; end: string } | null {
