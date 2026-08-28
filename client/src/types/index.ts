@@ -356,6 +356,7 @@ export interface CallForService {
   process_service_result?: string;
   court_name?: string;
   attorney_name?: string;
+  plaintiff_name?: string;
   jurisdiction?: string;
   deadline?: string;
   time_window?: string;
@@ -3345,6 +3346,9 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  attorney_phone?: string | null;
+  attorney_email?: string | null;
+  attorney_bar_number?: string | null;
   plaintiff_name: string | null;
   defendant_name: string | null;
   // Service classification (migration 0237)

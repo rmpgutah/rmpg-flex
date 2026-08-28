@@ -15,6 +15,10 @@ const baseRow: QueueRow = {
   priority: 'rush', deadline: '2026-06-30', service_instructions: null,
   notes: null, plaintiff: 'AVERY HOLT', defendant: 'NORTHGATE LOGISTICS, LLC',
   court_date: null, sm_job_id: null,
+  recipient_phone: null, recipient_dob: null, recipient_type: null,
+  business_name: null, registered_agent_name: null, registered_office_address: null,
+  attorney_phone: null, attorney_email: null, attorney_bar_number: null,
+  serve_type: null, serve_fee: null, time_window: null,
 };
 
 // Builds a minimal BriefingInput around a queueRow override, and returns the

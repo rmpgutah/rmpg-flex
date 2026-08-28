@@ -963,6 +963,10 @@ sv.post('/', async (c) => {
       body.registered_office_address ?? null,
     );
   }
+  if (await columnExists(dbPost, 'serve_queue', 'attorney_phone')) {
+    insertCols.push('attorney_phone', 'attorney_email', 'attorney_bar_number');
+    insertVals.push(body.attorney_phone ?? null, body.attorney_email ?? null, body.attorney_bar_number ?? null);
+  }
   if (geocodeSource && await columnExists(dbPost, 'serve_queue', 'geocode_source')) {
     insertCols.push('geocode_source');
     insertVals.push(geocodeSource);
@@ -1194,7 +1198,8 @@ sv.put('/:id', async (c) => {
     'recipient_phone', 'recipient_email', 'recipient_dob',
     'recipient_employer', 'recipient_employer_address',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
-    'client_name', 'attorney_name', 'plaintiff_name', 'defendant_name',
+    'client_name', 'attorney_name', 'attorney_phone', 'attorney_email', 'attorney_bar_number',
+    'plaintiff_name', 'defendant_name',
     'serve_type', 'case_type', 'return_date', 'co_defendants', 'relationship',
     'priority', 'time_window', 'deadline',
     'max_attempts', 'service_instructions', 'notes', 'status', 'sort_order', 'contract_id',
@@ -1223,6 +1228,10 @@ sv.put('/:id', async (c) => {
     'business_sos_filing', 'business_state_of_inc', 'registered_agent_name',
     'registered_agent_title', 'registered_office_address',
   ]);
+  const hasAttorneyContactCol = (
+    'attorney_phone' in body || 'attorney_email' in body || 'attorney_bar_number' in body
+  ) ? await columnExists(db, 'serve_queue', 'attorney_phone') : true;
+  const ATTORNEY_CONTACT_COLS = new Set(['attorney_phone', 'attorney_email', 'attorney_bar_number']);
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
@@ -1233,6 +1242,7 @@ sv.put('/:id', async (c) => {
     if (k === 'urgency_tier' && body[k] === '') continue;
     if (k === 'next_attempt_note' && !hasNextAttemptCol) continue;
     if (RECIPIENT_TYPE_COLS.has(k) && !hasRecipientTypeCol) continue;
+    if (ATTORNEY_CONTACT_COLS.has(k) && !hasAttorneyContactCol) continue;
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }

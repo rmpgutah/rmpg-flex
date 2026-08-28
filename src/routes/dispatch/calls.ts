@@ -846,6 +846,8 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // bucket in the PUT handler below and was never written — the field
   // "failed to save on reopening" because it was never persisted at all)
   'court_name',
+  'attorney_name', 'jurisdiction', 'deadline', 'time_window',
+  'service_instructions', 'plaintiff_name',
   // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
   // the 100-column D1 cap. New tactical flags should land here too.
   'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',

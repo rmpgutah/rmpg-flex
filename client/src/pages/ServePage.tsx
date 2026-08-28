@@ -196,6 +196,9 @@ const EMPTY_FORM = {
   defendant_name: '',
   client_name: '',
   attorney_name: '',
+  attorney_phone: '',
+  attorney_email: '',
+  attorney_bar_number: '',
   // ── Service details (feature 6-10) ─────────────────────────────────────
   serve_type: 'personal' as ServeJob['serve_type'],
   case_type: '' as ServeJob['case_type'] | '',
@@ -1200,6 +1203,9 @@ export default function ServePage() {
       defendant_name: job.defendant_name || '',
       client_name: job.client_name || '',
       attorney_name: job.attorney_name || '',
+      attorney_phone: job.attorney_phone || '',
+      attorney_email: job.attorney_email || '',
+      attorney_bar_number: job.attorney_bar_number || '',
       officer_id: job.officer_id ?? null,
       serve_date: job.serve_date || '',
       status: job.status,
@@ -1302,6 +1308,9 @@ export default function ServePage() {
           defendant_name: source.defendant_name,
           client_name: source.client_name,
           attorney_name: source.attorney_name,
+          attorney_phone: source.attorney_phone,
+          attorney_email: source.attorney_email,
+          attorney_bar_number: source.attorney_bar_number,
           serve_type: source.serve_type,
           case_type: source.case_type,
           co_defendants: source.co_defendants,
@@ -3704,6 +3713,32 @@ export default function ServePage() {
                   placeholder="Counsel of record"
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label htmlFor="ff-servepage-atty-phone" className="block text-[11px] text-fg-muted mb-1">Attorney Phone</label>
+                  <input id="ff-servepage-atty-phone" type="tel"
+                    value={formData.attorney_phone}
+                    onChange={e => handleFormChange('attorney_phone', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-email" className="block text-[11px] text-fg-muted mb-1">Attorney Email</label>
+                  <input id="ff-servepage-atty-email" type="email"
+                    value={formData.attorney_email}
+                    onChange={e => handleFormChange('attorney_email', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-bar" className="block text-[11px] text-fg-muted mb-1">Bar #</label>
+                  <input id="ff-servepage-atty-bar" type="text"
+                    value={formData.attorney_bar_number}
+                    onChange={e => handleFormChange('attorney_bar_number', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
               </div>
             </div>
           </div>

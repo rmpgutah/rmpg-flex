@@ -598,6 +598,33 @@ export default React.memo(function ServeJobCard({
                 <span>{job.attorney_name}</span>
               </div>
             )}
+            {job.attorney_phone && (
+              <div className="flex items-center gap-1">
+                <Phone className="w-3 h-3 text-rmpg-400" />
+                <span className="text-rmpg-400">Atty phone:</span>
+                <a href={`tel:${job.attorney_phone}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline">{job.attorney_phone}</a>
+              </div>
+            )}
+            {job.attorney_email && (
+              <div className="flex items-center gap-1">
+                <Mail className="w-3 h-3 text-rmpg-400" />
+                <span className="text-rmpg-400">Atty email:</span>
+                <a href={`mailto:${job.attorney_email}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline truncate max-w-[160px]">{job.attorney_email}</a>
+              </div>
+            )}
+            {job.attorney_bar_number && (
+              <div className="flex items-center gap-1">
+                <span className="text-rmpg-400">Bar #:</span>
+                <span className="font-mono tabular-nums">{job.attorney_bar_number}</span>
+              </div>
+            )}
+            {job.registered_agent_name && (
+              <div className="flex items-center gap-1 col-span-2">
+                <User className="w-3 h-3 text-rmpg-400" />
+                <span className="text-rmpg-400">Registered agent:</span>
+                <span>{job.registered_agent_name}</span>
+              </div>
+            )}
             {job.deadline && (
               <div className="flex items-center gap-1">
                 <Calendar className="w-3 h-3 text-rmpg-400" />

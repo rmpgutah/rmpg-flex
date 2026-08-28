@@ -213,6 +213,12 @@ export function mapDbCall(row: any): CallForService {
     process_served_at: row.process_served_at || undefined,
     process_service_result: row.process_service_result || undefined,
     court_name: row.court_name || undefined,
+    attorney_name: row.attorney_name || undefined,
+    plaintiff_name: row.plaintiff_name || undefined,
+    jurisdiction: row.jurisdiction || undefined,
+    deadline: row.deadline || undefined,
+    time_window: row.time_window || undefined,
+    service_instructions: row.service_instructions || undefined,
     // Damage
     damage_estimate: row.damage_estimate ?? undefined,
     damage_description: row.damage_description || undefined,
