@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatStampTimestamp, formatGeoLine, formatOfficerLine, contextLabelForEntity, buildStampLines,
+  buildEvidenceOverlayLines,
 } from '../photoStamp';
 
 describe('photoStamp — stamp lines', () => {
@@ -31,6 +32,19 @@ describe('photoStamp — stamp lines', () => {
     expect(contextLabelForEntity('property')).toBe('PROPERTIES RECORD');
     expect(contextLabelForEntity('fleet_inspection')).toBe('VEHICLE INSPECTION');
     expect(contextLabelForEntity('widget')).toBe('WIDGET RECORD');
+  });
+
+  it('builds Files-tab overlay lines in Mountain Time for stored attachment metadata', () => {
+    const lines = buildEvidenceOverlayLines({
+      takenAt: '2026-08-12T08:42:12.000Z',
+      lat: 40.71348,
+      lon: -111.83359,
+      officerName: 'Christopher Zamora',
+      referenceNotes: 'Reference',
+    });
+    expect(lines[0]).toMatch(/^08-12-2026 at 02:42:12 \(M[DS]T\)$/);
+    expect(lines[1]).toBe('GEO  40.713480, -111.833590');
+    expect(lines[2]).toBe('FI. CHRISTOPHER ZAMORA  —  REFERENCE');
   });
 
   it('builds the full 3-line stamp set', () => {
