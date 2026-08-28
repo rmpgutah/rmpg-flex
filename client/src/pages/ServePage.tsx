@@ -12,7 +12,7 @@ import {
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
   FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
-  ChevronDown, Settings,
+  Settings,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
@@ -64,10 +64,26 @@ import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const PRIMARY_TABS = ['Queue', 'My Run', 'Route', 'Map'] as const;
-const MORE_TABS = ['Stats', 'Assign', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
-const TABS = [...PRIMARY_TABS, ...MORE_TABS] as const;
+const FIELD_TABS = ['Queue', 'My Run', 'Route', 'Map'] as const;
+const RECORDS_TABS = ['Subject File', 'Stats', 'Assign', 'Performance', 'Analytics', 'Collections'] as const;
+const TABS = [...FIELD_TABS, ...RECORDS_TABS] as const;
 type Tab = typeof TABS[number];
+
+function serveTabVisible(tab: Tab, role: string): boolean {
+  if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
+  if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+  if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
+  if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
+  return true;
+}
+
+function serveTabClass(active: boolean): string {
+  return `flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors border-b-2 whitespace-nowrap ${
+    active
+      ? 'text-text-primary border-accent-silver-400 bg-surface-raised'
+      : 'text-text-secondary border-transparent hover:text-text-primary hover:bg-surface-hover'
+  }`;
+}
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
@@ -292,8 +308,6 @@ export default function ServePage() {
     : 'all';
   const [selectedDate, setSelectedDate] = useState(() => initialDateParam || formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>(validTab);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(validStatus);
   // Pending deep-link target — resolved once jobs hydrate.
   // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
@@ -864,15 +878,6 @@ export default function ServePage() {
   useEffect(() => {
     refreshJobs();
   }, [refreshJobs]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setMoreOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [moreOpen]);
 
   // ── WebSocket live updates ─────────────────────────────────────────
   useLiveSync('process-server', refreshJobs);
@@ -2243,11 +2248,14 @@ export default function ServePage() {
         </div>
       )}
       {/* ─── Header Bar ────────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken flex-wrap" role="toolbar" aria-label="Process Server controls">
-        <div className="flex items-center gap-1.5">
-          <Briefcase size={16} className="text-brand-gold-500" />
-          {!isMobile && <span className="text-sm font-semibold text-rmpg-100 tracking-wider">PROCESS SERVER</span>}
-          {!isMobile && <span className="block h-px w-full bg-brand-400/30 mt-0.5" />}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle bg-surface-raised flex-wrap" role="toolbar" aria-label="Process Server controls">
+        <div className="flex items-center gap-2">
+          <Briefcase size={16} style={{ color: 'var(--panel-header-color)' }} />
+          {!isMobile && (
+            <span className="text-sm font-semibold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>
+              PROCESS SERVER
+            </span>
+          )}
         </div>
 
         {/* Date picker + route stats */}
@@ -2273,7 +2281,7 @@ export default function ServePage() {
             const mins = savedRoute.total_time_minutes;
             if (stopCount === 0) return null;
             return (
-              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px] text-brand-gold-500" style={{ background: "rgb(var(--brand-gold-rgb)/0.06)", border: "1px solid rgb(var(--brand-gold-rgb)/0.15)" }}>
+              <span className="font-mono tabular-nums text-[10px] ml-1.5 px-1.5 py-0.5 rounded-[2px] text-accent-silver-400 border border-border-subtle bg-surface-sunken">
                 {stopCount} stops
                 {dist ? ` / ${Number(dist).toFixed(0)} mi` : ''}
                 {mins ? ` / ~${Math.floor(mins / 60)}h ${Math.round(mins % 60)}m` : ''}
@@ -2330,81 +2338,66 @@ export default function ServePage() {
       </div>
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken" role="tablist" aria-label="Process Server views">
-        {PRIMARY_TABS.map(tab => {
-          const Icon =
-            tab === 'Queue' ? List :
-            tab === 'Route' ? Route :
-            tab === 'Map' ? MapIcon :
-            Route; // My Run
-          return (
-            <button type="button"
-              key={tab}
-              role="tab"
-              aria-selected={activeTab === tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
-                activeTab === tab
-                  ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
-                  : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
-              }`}
-            >
-              <Icon size={14} />
-              {tab}
-              {tab === 'Queue' && overdueCount > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-full">
-                  {overdueCount}
-                </span>
-              )}
-            </button>
-          );
-        })}
-        {(() => {
-          const role = user?.role ?? '';
-          const moreTabs = MORE_TABS.filter(tab => {
-            if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
-            if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
-            if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
-            if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
-            return true;
-          });
-          const moreActive = (MORE_TABS as readonly string[]).includes(activeTab);
-          return (
-            <div className="relative" ref={moreMenuRef}>
+      <div className="border-b border-border-subtle bg-surface-sunken">
+        <div className="flex items-center gap-1 px-2 overflow-x-auto tab-scroll" role="tablist" aria-label="Field views">
+          {!isMobile && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-2 shrink-0" style={{ color: 'var(--field-label-color)' }}>
+              Field
+            </span>
+          )}
+          {FIELD_TABS.map(tab => {
+            const Icon =
+              tab === 'Queue' ? List :
+              tab === 'My Run' ? Users :
+              tab === 'Route' ? Route :
+              MapIcon;
+            return (
               <button type="button"
+                key={tab}
                 role="tab"
-                aria-selected={moreActive}
-                aria-expanded={moreOpen}
-                onClick={() => setMoreOpen(o => !o)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
-                  moreActive
-                    ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
-                    : 'text-fg-muted border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
-                }`}
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={serveTabClass(activeTab === tab)}
               >
-                More
-                <ChevronDown size={12} className={moreOpen ? 'rotate-180' : ''} />
-                {moreActive && <span className="text-[10px] font-normal text-fg-muted">{activeTab}</span>}
+                <Icon size={13} />
+                {tab}
+                {tab === 'Queue' && overdueCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-[2px]">
+                    {overdueCount}
+                  </span>
+                )}
               </button>
-              {moreOpen && (
-                <div className="absolute left-0 top-full z-30 min-w-[160px] py-1 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-xl">
-                  {moreTabs.map(tab => (
-                    <button type="button"
-                      key={tab}
-                      role="menuitem"
-                      onClick={() => { setActiveTab(tab); setMoreOpen(false); }}
-                      className={`block w-full text-left px-3 py-1.5 text-[11px] ${
-                        activeTab === tab ? 'text-brand-gold-500 bg-brand-gold-500/5' : 'text-fg-secondary hover:bg-white/[0.04] hover:text-rmpg-100'
-                      }`}
-                    >
-                      {tab}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-1 px-2 border-t border-border-subtle overflow-x-auto tab-scroll" role="tablist" aria-label="Records views">
+          {!isMobile && (
+            <span className="text-[9px] font-semibold uppercase tracking-wider px-2 shrink-0" style={{ color: 'var(--field-label-color)' }}>
+              Records
+            </span>
+          )}
+          {RECORDS_TABS.filter(tab => serveTabVisible(tab, user?.role ?? '')).map(tab => {
+            const Icon =
+              tab === 'Subject File' ? FolderOpen :
+              tab === 'Stats' ? BarChart3 :
+              tab === 'Assign' ? ClipboardCheck :
+              tab === 'Performance' ? Gauge :
+              tab === 'Analytics' ? LineChart :
+              DollarSign;
+            return (
+              <button type="button"
+                key={tab}
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => setActiveTab(tab)}
+                className={serveTabClass(activeTab === tab)}
+              >
+                <Icon size={13} />
+                {tab}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ─── Tab Content ───────────────────────────────────────────── */}
@@ -2413,7 +2406,7 @@ export default function ServePage() {
         {activeTab === 'Queue' && (
           <div className="h-full flex flex-col">
             {/* Filter buttons */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700 overflow-x-auto tab-scroll">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-border-subtle bg-surface-raised overflow-x-auto tab-scroll">
               {/* Search box. The filter it drives (recipient / case # / client /
                   address, see filteredJobs) was fully implemented but had NO
                   input bound to it anywhere — searchQuery could only ever be
@@ -3200,7 +3193,7 @@ export default function ServePage() {
             {/* Mileage / efficiency */}
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Mileage Today</div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">Mileage Today</div>
                 {/* Falls back to the PLANNED distance stored on serve_routes for
                     the day. Previously this only read `routeData` — ephemeral
                     state set after using the Route Planner in this session — so
@@ -3228,7 +3221,7 @@ export default function ServePage() {
                 )}
               </div>
               <div className="px-4 py-3 bg-surface-raised border border-rmpg-700 rounded-[2px] transition-colors hover:border-rmpg-400/30">
-                <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">Route Efficiency</div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">Route Efficiency</div>
                 {/* Efficiency is planned ÷ actual, so it genuinely cannot be
                     computed without DRIVEN miles — and nothing on serve_routes
                     or serve_attempts records an odometer, so `stats.mileage` is
@@ -3252,7 +3245,7 @@ export default function ServePage() {
 
             {/* Feature 5: Cost Calculator */}
             <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px]">
-              <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
+              <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
                 <select id="ff-servepage-1"
                   value={costJobId || ''}
@@ -3299,7 +3292,7 @@ export default function ServePage() {
             {deadlines && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Deadline Tracker ({deadlines.total} active)</div>
+                  <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)]">Deadline Tracker ({deadlines.total} active)</div>
                   <button type="button" onClick={() => setDeadlines(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close deadline tracker">Close</button>
                 </div>
                 {deadlines.overdue?.length > 0 && (
@@ -3333,7 +3326,7 @@ export default function ServePage() {
             {successRates && (
               <div className="p-3 bg-surface-raised border border-rmpg-700 rounded-[2px] space-y-2">
                 <div className="flex justify-between items-center">
-                  <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider">Success Rates ({successRates.period_days}d)</div>
+                  <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)]">Success Rates ({successRates.period_days}d)</div>
                   <button type="button" onClick={() => setSuccessRates(null)} className="text-rmpg-500 hover:text-rmpg-300 text-xs transition-colors" aria-label="Close success rates">Close</button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
@@ -3384,7 +3377,9 @@ export default function ServePage() {
         {activeTab === 'Performance' && ['admin','manager','supervisor','officer'].includes(user?.role ?? '') && <PerformanceTab />}
         {activeTab === 'Analytics' && ['admin','manager','supervisor'].includes(user?.role ?? '') && <AnalyticsTab />}
         {activeTab === 'Subject File' && (
-          <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+          <div className="h-full min-h-0">
+            <SubjectFileTab jobs={jobs} selectedJobId={expandedJobId ?? undefined} />
+          </div>
         )}
         {activeTab === 'Collections' && ['admin','manager','supervisor'].includes(user?.role ?? '') && (
           <CollectionDatabaseTab />
@@ -4286,7 +4281,7 @@ function StatCard({
 }) {
   return (
     <div className={`px-4 py-3 rounded-[2px] border ${bg} ${border} transition-all duration-150 hover:shadow-md hover:scale-[1.01]`}>
-      <div className="text-[10px] text-brand-gold-500 uppercase font-semibold tracking-wider mb-1">{label}</div>
+      <div className="text-[10px] uppercase font-semibold tracking-wider text-[color:var(--panel-header-color)] mb-1">{label}</div>
       <div className={`text-2xl font-bold font-mono tabular-nums ${color}`} style={{ textShadow: '0 0 4px currentColor' }}>{value}</div>
     </div>
   );

@@ -14,6 +14,7 @@ import {
   type ServeFileKind,
 } from '../../utils/serveAttemptFileMeta';
 import ConfirmDialog from '../ConfirmDialog';
+import InlineAudioPlayer from './InlineAudioPlayer';
 
 export interface ServeAttemptFileRecord {
   id: number;
@@ -144,7 +145,9 @@ function FileRow({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <a href={href} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:text-brand-300 px-1">Open</a>
+          {!isAudio && (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-[9px] text-brand-400 hover:text-brand-300 px-1">Open</a>
+          )}
           {!readOnly && (
             <>
               <button type="button" aria-label="Edit details" onClick={() => setEditing((v) => !v)} className="p-1 text-text-secondary hover:text-text-primary">
@@ -160,7 +163,7 @@ function FileRow({
         </div>
       </div>
       {isAudio && (
-        <audio controls src={href} className="w-full h-8" preload="none" />
+        <InlineAudioPlayer src={href} title={file.title || file.original_name || 'Recording'} />
       )}
       {editing && (
         <div className="grid grid-cols-2 gap-2">
