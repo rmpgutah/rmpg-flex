@@ -22,8 +22,8 @@ function makeDb(opts: {
       },
       run: async () => {
         if (/INSERT INTO tesseract_box_annotations/.test(sql)) {
-          const [docId, x0, y0, x1, y1, correctedText, createdBy] = boundArgs;
-          const row = { id: nextId++, serve_intake_document_id: docId, x0, y0, x1, y1, corrected_text: correctedText, created_at: 'now' };
+          const [docId, x0, y0, x1, y1, correctedText, createdBy, pageNumber] = boundArgs;
+          const row = { id: nextId++, serve_intake_document_id: docId, x0, y0, x1, y1, corrected_text: correctedText, created_by: createdBy, page_number: pageNumber ?? 1, created_at: 'now' };
           boxes.push(row);
           return { meta: { changes: 1, last_row_id: row.id } };
         }
@@ -88,6 +88,18 @@ describe('tesseract box annotations', () => {
     const body = await res.json() as any;
     expect(body.success).toBe(true);
     expect(typeof body.id).toBe('number');
+  });
+
+  test('POST /documents/:id/boxes stores page_number when provided', async () => {
+    const app = makeApp('admin');
+    const db = makeDb();
+    const res = await app.request('/documents/5/boxes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x0: 1, y0: 2, x1: 3, y1: 4, corrected_text: 'Page two', page_number: 2 }),
+    }, { DB: db });
+    expect(res.status).toBe(200);
+    expect((db as any)._boxes[0].page_number).toBe(2);
   });
 
   test('POST /documents/:id/boxes rejects a missing corrected_text', async () => {

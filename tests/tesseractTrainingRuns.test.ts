@@ -46,7 +46,11 @@ function makeDb(opts: {
 }
 
 function makeR2(opts: {
-  objectsByDoc?: Record<number, { imageBytes: Uint8Array; groundTruth: string }>;
+  objectsByDoc?: Record<number, {
+    imageBytes: Uint8Array;
+    groundTruth: string;
+    pages?: Array<{ n: number; bytes: Uint8Array }>;
+  }>;
   savedZip?: { key: string; bytes: Uint8Array };
 } = {}) {
   const objectsByDoc = opts.objectsByDoc ?? {};
@@ -56,17 +60,29 @@ function makeR2(opts: {
     list: async ({ prefix }: { prefix: string }) => {
       const m = prefix.match(/^training-corpus\/(\d+)\//);
       const docId = m ? Number(m[1]) : -1;
-      if (!(docId in objectsByDoc)) return { objects: [] };
-      return {
-        objects: [
-          { key: `training-corpus/${docId}/image.png` },
-          { key: `training-corpus/${docId}/ground-truth.txt` },
-        ],
-      };
+      const entry = objectsByDoc[docId];
+      if (!entry) return { objects: [] };
+      const objects: Array<{ key: string }> = [{ key: `training-corpus/${docId}/ground-truth.txt` }];
+      if (entry.pages?.length) {
+        for (const p of entry.pages) {
+          objects.push({ key: `training-corpus/${docId}/page-${String(p.n).padStart(3, '0')}.jpg` });
+        }
+      } else {
+        objects.push({ key: `training-corpus/${docId}/image.png` });
+      }
+      return { objects };
     },
     get: async (key: string) => {
       if (savedZip && key === savedZip.key) {
         const bytes = savedZip.bytes;
+        return { arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+      }
+      const pageM = key.match(/^training-corpus\/(\d+)\/page-(\d+)\.jpg$/);
+      if (pageM) {
+        const entry = objectsByDoc[Number(pageM[1])];
+        const page = entry?.pages?.find((p) => p.n === Number(pageM[2]));
+        if (!page) return null;
+        const bytes = page.bytes;
         return { arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
       }
       const m = key.match(/^training-corpus\/(\d+)\/(image\.png|ground-truth\.txt)$/);
@@ -145,6 +161,33 @@ describe('tesseract training runs — POST /runs', () => {
     expect(db._inserts[0].count).toBe(2);
     expect(db._inserts[0].ids.sort()).toEqual([12, 34]);
     expect(db._inserts[0].r2Key).toBe(r2._puts[0].key);
+  });
+
+  test('packages rasterized PDF pages as per-page tesstrain pairs', async () => {
+    const app = makeApp('admin');
+    const db = makeDb({ approvedDocIds: [12] });
+    const r2 = makeR2({
+      objectsByDoc: {
+        12: {
+          imageBytes: new Uint8Array([9]),
+          groundTruth: 'Complaint caption',
+          pages: [
+            { n: 1, bytes: new Uint8Array([1]) },
+            { n: 2, bytes: new Uint8Array([2]) },
+          ],
+        },
+      },
+    });
+    const res = await app.request('/documents/runs', { method: 'POST' }, { DB: db, TESSERACT_TRAINING: r2 });
+    expect(res.status).toBe(200);
+    const unzipped = unzipSync(r2._puts[0].bytes);
+    expect(Object.keys(unzipped).sort()).toEqual([
+      'README.md',
+      'rmpg-ground-truth/12_p1.gt.txt',
+      'rmpg-ground-truth/12_p1.jpg',
+      'rmpg-ground-truth/12_p2.gt.txt',
+      'rmpg-ground-truth/12_p2.jpg',
+    ]);
   });
 });
 

@@ -134,6 +134,41 @@ describe('auth middleware — media-path query-auth passthrough', () => {
     );
     expect(res.status).toBe(401);
   });
+
+  it('treats the tesseract training image route as a media path (query token is attempted)', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/tesseract-training/documents/:id/image', (c) => c.json({ ok: true }));
+
+    const missing = await app.request(
+      '/api/tesseract-training/documents/1/image',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(missing.status).toBe(401);
+    expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+    const bogus = await app.request(
+      '/api/tesseract-training/documents/1/image?token=not-a-jwt',
+      {},
+      { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' },
+    );
+    expect(bogus.status).toBe(401);
+    expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+  });
+
+  it('does not treat the tesseract image route as self-verifying HMAC media', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/tesseract-training/documents/:id/image', (c) => c.json({ ok: true }));
+
+    const res = await app.request(
+      '/api/tesseract-training/documents/1/image?sig=deadbeef&exp=9999999999',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(res.status).toBe(401);
+  });
 });
 
 describe('POST /login — account lockout', () => {

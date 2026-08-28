@@ -104,7 +104,10 @@ function isMediaPath(pathname: string): boolean {
     || pathname.endsWith('/audio')
     || pathname.endsWith('/thumbnail')  // bodycam-video <img> tags (Task 4, storage-architecture phase)
     || pathname === '/api/email/image-proxy'  // email remote-image proxy (<img> in blob: iframe)
-    || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname);  // email inline CID images
+    || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname)  // email inline CID images
+    // Training portal <img>/<a download> tags cannot send Authorization.
+    || /\/api\/tesseract-training\/documents\/\d+\/image$/.test(pathname)
+    || /\/api\/tesseract-training\/documents\/runs\/\d+\/download$/.test(pathname);
 }
 
 export async function authMiddleware(c: Context, next: Next) {
