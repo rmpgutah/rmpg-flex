@@ -743,14 +743,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Unable to connect to the server. Check your network connection and try again.');
       }
       let res = await fetchWithTimeout('/api/auth/login', loginInit);
-      // Worker/CF 502–504 during a reconnect blip — retry once before
-      // showing the login form a generic failure (field: POST /login 503
-      // immediately after a 503 Offline navigation).
-      if (res.status === 502 || res.status === 503 || res.status === 504) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (typeof navigator === 'undefined' || navigator.onLine) {
-          res = await fetchWithTimeout('/api/auth/login', loginInit);
-        }
+      // Worker/CF 502–504 (D1 busy during export, deploy blip). Retry a few
+      // times before showing the form a failure — POST /login 503 used to
+      // coincide with a SW 503 Offline navigation of /login?return=…
+      for (let attempt = 0; attempt < 3 && (res.status === 502 || res.status === 503 || res.status === 504); attempt++) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
+        res = await fetchWithTimeout('/api/auth/login', loginInit);
       }
 
       if (res.ok) {

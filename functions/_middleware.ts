@@ -79,7 +79,12 @@ const ALLOWED_CONNECT = [
   // Mapillary street-level imagery lookup (client/src/utils/locationImagery.ts)
   // — same silent-block pattern as the RainViewer tile host above.
   'https://graph.mapillary.com',
-  'https://static.cloudflareinsights.com',
+  // Cloudflare Web Analytics (beacon.min.js) is omitted on purpose.
+  // Operator networks (and this workstation) refuse
+  // static.cloudflareinsights.com — allowing it in CSP lets CF inject the
+  // tag and the browser then logs net::ERR_CONNECTION_REFUSED on every
+  // login document. Strip the tag (HTMLRewriter + SW) and keep the host
+  // out of script-src/connect-src so a leftover tag cannot fetch.
   'https://challenges.cloudflare.com',
   // TensorFlow.js COCO-SSD (forensic dashcam AI vehicle tracking): the ESM
   // module CDN + the model-weights origin.
@@ -102,7 +107,7 @@ const ALLOWED_CONNECT = [
 
 const FULL_CSP = [
   `default-src 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://challenges.cloudflare.com https://esm.sh https://cdn.esm.sh https://unpkg.com`,
   `style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com`,
   `img-src 'self' data: blob: https: http:`,
   `font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com`,
@@ -154,6 +159,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const ct = out.headers.get('Content-Type') ?? '';
   if (ct.includes('text/html')) {
     out.headers.set('Cache-Control', 'no-store, max-age=0');
+    // CF Web Analytics injects <script src="…/beacon.min.js/…"> into HTML.
+    // Drop it here when the tag is already in the origin document. Edge
+    // injection that happens AFTER this middleware is still blocked by CSP
+    // (host not in script-src) and stripped again by the service worker.
+    return new HTMLRewriter()
+      .on('script[src*="cloudflareinsights"]', { element(el) { el.remove(); } })
+      .on('script[src*="beacon.min.js"]', { element(el) { el.remove(); } })
+      .on('script[data-cf-beacon]', { element(el) { el.remove(); } })
+      .transform(out);
   }
 
   return out;
