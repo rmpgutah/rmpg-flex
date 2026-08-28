@@ -430,7 +430,10 @@ FLEETIO_API_BASE = "https://secure.fleetio.com/api/v1"
 # `npx wrangler secret put DIALER_OIDC_CLIENT_SECRET` — never in this file.
 DIALER_OIDC_ISSUER = "https://dialer.rmpgutah.us/api/oidc/.well-known/openid-configuration"
 DIALER_OIDC_CLIENT_ID = "flex-ceb1d9a685995b45"
-DIALER_OIDC_REDIRECT_URI = "https://api.rmpgutah.us/api/oidc/dialer/callback"
+# Browser callbacks must hit rmpgutah.us/api/* (zone proxy + WAF cookie).
+# api.rmpgutah.us is the managed-challenge host except /api/health.
+# Re-register this URI on the Dial Connect OIDC client if it still lists the API hostname.
+DIALER_OIDC_REDIRECT_URI = "https://rmpgutah.us/api/oidc/dialer/callback"
 # The SPA origin the /login and /oidc-callback redirects in src/routes/oidc.ts
 # land on. Without this, oidc.ts falls back to the Worker's own request URL
 # (api.rmpgutah.us), which has no /login route -> 404.

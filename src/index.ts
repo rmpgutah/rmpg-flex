@@ -58,7 +58,13 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', logger());
-app.use('*', secureHeaders());
+// Default CORP is `same-origin`. Electron / off-origin clients still POST
+// cross-origin to this Worker (api.rmpgutah.us). CORP same-origin makes Chrome discard the
+// response as a network error — Dispatch's Files tab then shows "Upload failed"
+// with no HTTP status. `cross-origin` is the correct policy for a public API.
+app.use('*', secureHeaders({
+  crossOriginResourcePolicy: 'cross-origin',
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
@@ -72,6 +78,13 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
+  // Explicit allow-list so the preflight for multipart uploads
+  // (Authorization + X-Requested-With + Content-Type) is answered even when
+  // a Cloudflare WAF challenge stripped Access-Control-Request-Headers.
+  allowHeaders: ['Authorization', 'Content-Type', 'X-Requested-With', 'Accept'],
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['X-Trace-Id', 'X-Request-Id'],
+  maxAge: 86400,
 }));
 
 // Root probe — useful for "is the Worker even reachable" smoke checks

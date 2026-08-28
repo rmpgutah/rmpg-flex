@@ -18,13 +18,15 @@
 // ============================================================
 
 // ── Fetch helpers (isolated from auth-coupled apiFetch) ────
-const API_BASE = (() => {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const hostname = window.location.hostname;
-  if (hostname === 'localhost') return 'http://localhost:8787';
-  if (hostname.includes('pages.dev')) return 'https://api.rmpgutah.us';
-  return 'https://api.rmpgutah.us';
-})();
+import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from './apiOrigin';
+
+function apiBase(): string {
+  if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
+  return resolveApiHttpBase({
+    isDev: Boolean(import.meta.env?.DEV),
+    hostname: window.location.hostname,
+  });
+}
 
 function getAuthToken(): string | null {
   try {
@@ -48,7 +50,7 @@ async function fetchEntityAttachments(
   entityType: string,
   entityId: string | number,
 ): Promise<any[]> {
-  const url = `${API_BASE}/api/documents/${entityType}/${entityId}/attachments`;
+  const url = `${apiBase()}/api/documents/${entityType}/${entityId}/attachments`;
   const res = await fetchWithTimeout(url, 7000);
   if (!res || !res.ok) return [];
   try { return await res.json(); } catch { return []; }

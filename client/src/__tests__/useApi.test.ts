@@ -38,3 +38,38 @@ describe('resolveFallbackUrl', () => {
     expect(resolveFallbackUrl('/api/test')).toBeNull();
   });
 });
+
+describe('resolveUploadsUrl', () => {
+  let resolveUploadsUrl: (opts: { isDev: boolean; hostname?: string }) => string;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const mod = await import('../hooks/useApi');
+    resolveUploadsUrl = mod.resolveUploadsUrl;
+  });
+
+  it('uses a relative path in Vite dev (proxied to the local Worker)', () => {
+    expect(resolveUploadsUrl({ isDev: true, hostname: 'localhost' })).toBe('/api/uploads');
+  });
+
+  it('uses a relative path on the live SPA so the zone proxy carries the WAF cookie', () => {
+    expect(resolveUploadsUrl({ isDev: false, hostname: 'rmpgutah.us' })).toBe('/api/uploads');
+    expect(resolveUploadsUrl({ isDev: false, hostname: 'www.rmpgutah.us' })).toBe('/api/uploads');
+  });
+
+  it('uses a relative path on Cloudflare Pages previews', () => {
+    expect(resolveUploadsUrl({ isDev: false, hostname: 'rmpg-flex.pages.dev' })).toBe('/api/uploads');
+  });
+
+  it('does not send the SPA to api.rmpgutah.us (managed-challenge host)', () => {
+    const url = resolveUploadsUrl({ isDev: false, hostname: 'rmpgutah.us' });
+    expect(url).not.toContain('api.rmpgutah.us');
+  });
+
+  it('falls back to the Worker hostname off the app origin', () => {
+    expect(resolveUploadsUrl({ isDev: false, hostname: 'localhost' }))
+      .toBe('https://api.rmpgutah.us/api/uploads');
+    expect(resolveUploadsUrl({ isDev: false, hostname: '' }))
+      .toBe('https://api.rmpgutah.us/api/uploads');
+  });
+});

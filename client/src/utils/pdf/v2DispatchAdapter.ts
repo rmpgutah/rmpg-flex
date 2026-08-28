@@ -20,6 +20,7 @@
 
 import { importWithRetry } from '../importWithRetry';
 import type { PdfSignatureBundle } from '../pdfIntegrity';
+import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from '../apiOrigin';
 
 // Isolated fetch — mirrors the getAuthToken + fetch pattern from
 // pdfImageHelpers.ts & pdfIntegrity.ts, but inlined here to keep
@@ -45,12 +46,13 @@ async function isolatedFetch<T>(url: string, opts: RequestInit = {}): Promise<T 
   finally { clearTimeout(timer); }
 }
 
-const API_BASE = (() => {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const h = window.location.hostname;
-  if (h === 'localhost') return 'http://localhost:8787';
-  return 'https://api.rmpgutah.us';
-})();
+function apiBase(): string {
+  if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
+  return resolveApiHttpBase({
+    isDev: Boolean(import.meta.env?.DEV),
+    hostname: window.location.hostname,
+  });
+}
 
 export interface V2DispatchOptions {
   recordType: string;
@@ -68,7 +70,7 @@ async function signPayload(
   formKey: string, caseNumber: string, payloadHash: string,
 ): Promise<PdfSignatureBundle | null> {
   try {
-    const res = await isolatedFetch<PdfSignatureBundle>(`${API_BASE}/api/pdf-tools/sign-payload`, {
+    const res = await isolatedFetch<PdfSignatureBundle>(`${apiBase()}/api/pdf-tools/sign-payload`, {
       method: 'POST',
       body: JSON.stringify({ formKey, caseNumber, payloadHash }),
     });
@@ -116,7 +118,7 @@ async function prepareCitationDispatch(opts: V2DispatchOptions) {
   let data = opts.recordData ?? {};
   if (data.id != null) {
     try {
-      const full = await isolatedFetch<any>(`${API_BASE}/api/citations/${data.id}/full`);
+      const full = await isolatedFetch<any>(`${apiBase()}/api/citations/${data.id}/full`);
       data = { ...full, ...data };
       data.violations = mapServerViolations(full.violations);
     } catch { /* fall through to back-compat flat fields */ }

@@ -796,3 +796,31 @@ export async function ensureHrTables(db: D1Database): Promise<void> {
   }
   _hrTablesEnsured = true;
 }
+
+// ── attachments evidence-metadata reconciler (mig 0260) ────
+// FileAttachments always POSTs taken_at (and optional lat/lon). The INSERT
+// lists those columns. deploy.yml applies migrations continue-on-error, so
+// live D1 can still be missing them — every Dispatch Files upload then 500s
+// with the generic `{ error: "Upload failed" }` banner.
+let _attachmentEvidenceColumnsEnsured = false;
+
+const ATTACHMENT_EVIDENCE_COLUMNS: Array<[string, string]> = [
+  ['latitude', 'REAL'],
+  ['longitude', 'REAL'],
+  ['taken_at', 'TEXT'],
+  ['reference_notes', 'TEXT'],
+];
+
+export async function ensureAttachmentEvidenceColumns(db: D1Database): Promise<void> {
+  if (_attachmentEvidenceColumnsEnsured) return;
+  for (const [col, type] of ATTACHMENT_EVIDENCE_COLUMNS) {
+    try {
+      if (!(await columnExists(db, 'attachments', col))) {
+        await db.prepare(`ALTER TABLE attachments ADD COLUMN ${col} ${type}`).run();
+      }
+    } catch {
+      // Race or pre-existing column — tolerated by design (CLAUDE.md rule #5).
+    }
+  }
+  _attachmentEvidenceColumnsEnsured = await columnExists(db, 'attachments', 'taken_at').catch(() => false);
+}

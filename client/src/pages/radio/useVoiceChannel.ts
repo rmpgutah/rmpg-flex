@@ -1,7 +1,7 @@
 // useVoiceChannel — live radio voice for the console.
 //
-// Opens a DEDICATED WebSocket straight to the rewrite worker's voice
-// hub (wss://api.rmpgutah.us/api/voice-ws), separate from the app's
+// Opens a DEDICATED WebSocket to VoiceHubDO via voiceWsUrl() (same-origin
+// on rmpgutah.us through the zone proxy; wrangler :8787 in local dev).
 // main /api/ws alert socket. The server side is a Durable Object
 // (src/durable-objects/VoiceHubDO.ts) — one instance per channel —
 // that relays PTT audio to everyone on the channel and records each

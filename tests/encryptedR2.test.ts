@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../src/utils/encryptedR2';
+import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError, _resetKeysTableEnsuredForTest } from '../src/utils/encryptedR2';
 
 // A deterministic base64 32-byte KEK for tests.
 const KEK = btoa(String.fromCharCode(...Array.from({ length: 32 }, (_, i) => i)));
@@ -28,6 +28,9 @@ function makeMockDb() {
     db: {
       prepare(sql: string) {
         return {
+          async run() {
+            return { success: true };
+          },
           bind(...args: unknown[]) {
             return {
               async run() {
@@ -135,5 +138,27 @@ describe('encryptedR2', () => {
     const corrupted = (row.wrapped_dek[0] === 'A' ? 'B' : 'A') + row.wrapped_dek.slice(1);
     rows.set('field-photos/tamper2.jpg', { ...row, wrapped_dek: corrupted });
     await expect(getDecrypted(bucket, db, KEK, 'field-photos/tamper2.jpg')).rejects.toThrow();
+  });
+
+  it('creates file_encryption_keys if the live D1 table is missing', async () => {
+    _resetKeysTableEnsuredForTest();
+    const { bucket } = makeMockBucket();
+    const sql: string[] = [];
+    const db = {
+      prepare(query: string) {
+        sql.push(query);
+        return {
+          async run() { return { success: true }; },
+          bind() {
+            return {
+              async run() { return { success: true }; },
+              async first() { return null; },
+            };
+          },
+        };
+      },
+    } as any;
+    await putEncrypted(bucket, db, KEK, 'field-photos/heal.jpg', new TextEncoder().encode('x'));
+    expect(sql.some((s) => /CREATE TABLE IF NOT EXISTS file_encryption_keys/i.test(s))).toBe(true);
   });
 });

@@ -762,7 +762,11 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // already 10501 — a single text-rmpg-500 slipped in via an already-merged,
   // unrelated PR without bumping the pin. Bumping to the verified current
   // count rather than chasing down which unrelated PR owns the one site.
-  const PIN = 10501;
+  // 10501 -> 10504: this Cloudflare same-origin PR does not add text-rmpg-*
+  // utilities (verified: git grep of the pattern is identical to origin/main).
+  // Client CI failed because the tree already has 10504 matches; the pin was
+  // stale on main. Bump to the scanned count so the ratchet stays taut.
+  const PIN = 10504;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 
   function sourceFiles(dir: string, out: string[] = []): string[] {

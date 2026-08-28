@@ -8,11 +8,14 @@
 // The SW intercepts each fetch, stores the successful response, and serves it
 // on subsequent offline requests. No IDB or apiFetch changes needed.
 
+import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from './apiOrigin';
+
 function getApiBase(): string {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const h = window.location.hostname;
-  if (h === 'localhost') return 'http://localhost:8787';
-  return 'https://api.rmpgutah.us';
+  if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
+  return resolveApiHttpBase({
+    isDev: Boolean(import.meta.env?.DEV),
+    hostname: window.location.hostname,
+  });
 }
 
 // Endpoints to pre-cache. Mirrors the PULL_TABLES list in src/routes/offline.ts

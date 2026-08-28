@@ -8,6 +8,7 @@ import React, {
   useCallback, useEffect, useReducer, useRef, useState,
 } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { apiHttpBase, apiWsBase } from '../utils/apiOrigin';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,7 @@ function uid(): string {
 }
 
 function resolveWsBase(): string {
-  const h = window.location.hostname;
-  return (h === 'localhost' || h === '127.0.0.1') ? `ws://${h}:8787` : 'wss://api.rmpgutah.us';
+  return apiWsBase();
 }
 
 // Feature 10/11: normalize address bar input
@@ -69,10 +69,7 @@ function normalize(raw: string): string {
   if (!t) return 'about:blank';
   if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return t;
   if (/\s/.test(t) || !/^[^.\s]+\.[^.\s]/.test(t)) {
-    const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-      ? 'http://localhost:8787'
-      : 'https://api.rmpgutah.us';
-    return `${base}/api/browser-search?q=${encodeURIComponent(t)}`;
+    return `${apiHttpBase()}/api/browser-search?q=${encodeURIComponent(t)}`;
   }
   return `https://${t}`;
 }

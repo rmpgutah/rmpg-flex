@@ -30,6 +30,31 @@ export class FileEncryptionError extends Error {
 
 const ALGORITHM_VERSION = 'file-enc-v1';
 
+const FILE_ENCRYPTION_KEYS_DDL = `CREATE TABLE IF NOT EXISTS file_encryption_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  r2_key TEXT NOT NULL UNIQUE,
+  wrapped_dek TEXT NOT NULL,
+  dek_iv TEXT NOT NULL,
+  file_iv TEXT NOT NULL,
+  algorithm_version TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)`;
+
+let _keysTableEnsured = false;
+
+/** Idempotent CREATE TABLE — deploy.yml applies migrations continue-on-error,
+ *  so 0194 can be missing on live D1 while the Worker still encrypts. */
+async function ensureKeysTable(db: D1Database): Promise<void> {
+  if (_keysTableEnsured) return;
+  await db.prepare(FILE_ENCRYPTION_KEYS_DDL).run();
+  _keysTableEnsured = true;
+}
+
+/** @internal — test-only reset of the per-isolate CREATE TABLE cache. */
+export function _resetKeysTableEnsuredForTest(): void {
+  _keysTableEnsured = false;
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
@@ -76,6 +101,7 @@ export async function putEncrypted(
   opts?: { httpMetadata?: R2HTTPMetadata },
 ): Promise<void> {
   const kek = await importKek(kekB64);
+  await ensureKeysTable(db);
 
   const dekRaw = crypto.getRandomValues(new Uint8Array(32));
   const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, false, ['encrypt']);
