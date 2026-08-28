@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
+import ServeAttemptFileFolders from '../../components/serve/ServeAttemptFileFolders';
 import type { ServeJob, ServeAttempt, ServeSkipTrace } from '../../types';
 import { formatEnumValue } from '../../utils/formatters';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -475,6 +476,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                 </div>
               )}
             </div>
+
+            <ServeAttemptFileFolders queueId={job.id} />
 
             {/* Open-Source Intelligence — enrichment */}
             <div className="border border-border-subtle rounded bg-surface-raised overflow-hidden">

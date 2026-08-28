@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
-  Loader2, Navigation, Trash2, Clock,
+  Loader2, Navigation, Trash2, Clock, Volume2, Upload,
 } from 'lucide-react';
 import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
@@ -14,6 +14,12 @@ import {
   type PsoCategory,
 } from '../../constants/processServiceCodes';
 import { toDisplayLabel } from '../../utils/formatters';
+import {
+  inferServeFileKind,
+  SERVE_ATTEMPT_FILE_ACCEPT,
+  SERVE_DOCUMENT_TYPE_LABELS,
+  SERVE_DOCUMENT_TYPES,
+} from '../../utils/serveAttemptFileMeta';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -214,6 +220,16 @@ export default function ServeAttemptModal({
 
   // Step 3 — Documentation
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [packetFiles, setPacketFiles] = useState<Array<{
+    id: string;
+    name: string;
+    kind: 'document' | 'photo' | 'audio';
+    title: string;
+    document_type: string;
+    description: string;
+    copies: string;
+    mime_type: string;
+  }>>([]);
   const [uploading, setUploading] = useState(false);
 
   // Step 4 — Signature & Submit
@@ -267,6 +283,7 @@ export default function ServeAttemptModal({
       setStep(0);
       setPickerCategory(null);
       setPhotos([]);
+      setPacketFiles([]);
       setSignature(null);
       setSubmitting(false);
       setSubmitResult(null);
@@ -349,6 +366,38 @@ export default function ServeAttemptModal({
     setPhotos(prev => prev.filter(p => p.id !== id));
   };
 
+  const handlePacketCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files).slice(0, 20)) {
+        const formData = new FormData();
+        formData.append('files', file);
+        const rows = await apiPostForm<{ file_id: string; mime_type?: string }[]>('/uploads', formData);
+        const row = Array.isArray(rows) ? rows[0] : (rows as { file_id: string; mime_type?: string });
+        if (row?.file_id) {
+          const kind = inferServeFileKind(row.mime_type || file.type, file.name);
+          setPacketFiles(prev => [...prev, {
+            id: row.file_id,
+            name: file.name,
+            kind,
+            title: file.name.replace(/\.[^.]+$/, ''),
+            document_type: kind === 'audio' ? 'voice_memo' : kind === 'photo' ? 'door_photo' : '',
+            description: '',
+            copies: '1',
+            mime_type: row.mime_type || file.type,
+          }]);
+        }
+      }
+    } catch {
+      // upload failed — user can retry
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
   // ─── Build Description String ──────────────────────────────────────
 
   const buildDescription = (): string => {
@@ -389,6 +438,16 @@ export default function ServeAttemptModal({
         gps_accuracy: gps.accuracy ?? undefined,
         address_verified: !showDistanceWarning,
         photo_ids: photos.map(p => p.id),
+        evidence_files: packetFiles.map((f) => ({
+          file_id: f.id,
+          kind: f.kind,
+          title: f.title,
+          description: f.description || undefined,
+          document_type: f.document_type || undefined,
+          copies: f.copies ? Number(f.copies) : undefined,
+          original_name: f.name,
+          mime_type: f.mime_type,
+        })),
         // Failed attempts are unsworn — the wizard skips signature capture
         // entirely for them, so don't force an empty signature payload.
         signature_data: attemptType === 'failed' ? undefined : (signature ?? undefined),
@@ -813,6 +872,67 @@ export default function ServeAttemptModal({
               )}
             </div>
 
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase">Documents &amp; MP3 ({packetFiles.length})</label>
+              <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-sm border-2 border-dashed cursor-pointer transition-colors ${
+                uploading ? 'border-rmpg-700 text-rmpg-600' : 'border-rmpg-500 text-rmpg-300 hover:border-brand-500 hover:text-brand-300'
+              }`}>
+                {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                <span className="text-sm font-semibold">{uploading ? 'Uploading...' : 'Add PDF, papers, or MP3'}</span>
+                <input
+                  type="file"
+                  accept={SERVE_ATTEMPT_FILE_ACCEPT}
+                  multiple
+                  disabled={uploading}
+                  onChange={handlePacketCapture}
+                  className="hidden"
+                />
+              </label>
+              {packetFiles.map((f) => (
+                <div key={f.id} className="border border-rmpg-700 p-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    {f.kind === 'audio' ? <Volume2 className="w-3.5 h-3.5 text-rmpg-400" /> : <FileText className="w-3.5 h-3.5 text-rmpg-400" />}
+                    <span className="text-[11px] text-rmpg-100 truncate flex-1">{f.name}</span>
+                    <button type="button" aria-label="Remove file" onClick={() => setPacketFiles((prev) => prev.filter((x) => x.id !== f.id))} className="text-red-400">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <input
+                    value={f.title}
+                    onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, title: e.target.value } : x))}
+                    placeholder="Title"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={f.document_type}
+                      onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, document_type: e.target.value } : x))}
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                    >
+                      <option value="">Type…</option>
+                      {SERVE_DOCUMENT_TYPES.map((t) => <option key={t} value={t}>{SERVE_DOCUMENT_TYPE_LABELS[t]}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={f.copies}
+                      onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, copies: e.target.value } : x))}
+                      className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                      placeholder="Copies"
+                    />
+                  </div>
+                  <textarea
+                    value={f.description}
+                    onChange={(e) => setPacketFiles((prev) => prev.map((x) => x.id === f.id ? { ...x, description: e.target.value } : x))}
+                    rows={2}
+                    placeholder="Details — who received it, where posted, what the recording covers"
+                    className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1 text-[11px] text-rmpg-100"
+                  />
+                </div>
+              ))}
+            </div>
+
             {/* Physical description for personal/substitute */}
             {(attemptType === 'personal' || attemptType === 'substitute') && (
               <fieldset className="space-y-3 border border-rmpg-700 rounded-[2px] p-3">
@@ -1046,6 +1166,12 @@ export default function ServeAttemptModal({
                       <span className="text-rmpg-100">{photos.length} attached</span>
                     </div>
                   )}
+                  {packetFiles.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-rmpg-400">Documents / audio</span>
+                      <span className="text-rmpg-100">{packetFiles.length} attached</span>
+                    </div>
+                  )}
                   {attemptType === 'substitute' && personServedName && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">Served to</span>
@@ -1112,6 +1238,24 @@ export default function ServeAttemptModal({
                           ))}
                         </div>
                       )}
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs font-semibold text-rmpg-300 uppercase">
+                        Documents &amp; MP3 ({packetFiles.length}) <span className="text-fg-muted normal-case">(optional)</span>
+                      </label>
+                      <label className="flex items-center justify-center gap-2 px-3 py-2 rounded-sm border-2 border-dashed cursor-pointer border-rmpg-500 text-rmpg-300 hover:border-brand-500">
+                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        <span className="text-xs font-semibold">{uploading ? 'Uploading…' : 'Add PDF or MP3'}</span>
+                        <input type="file" accept={SERVE_ATTEMPT_FILE_ACCEPT} multiple disabled={uploading} onChange={handlePacketCapture} className="hidden" />
+                      </label>
+                      {packetFiles.map((f) => (
+                        <div key={f.id} className="flex items-center gap-2 text-[11px] text-rmpg-100">
+                          <span className="truncate flex-1">{f.title || f.name}</span>
+                          <button type="button" aria-label="Remove file" onClick={() => setPacketFiles((prev) => prev.filter((x) => x.id !== f.id))}>
+                            <Trash2 className="w-3 h-3 text-red-400" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </>
                 )}
