@@ -1,16 +1,19 @@
 import { Hono } from 'hono';
 import { jwtVerify } from 'jose';
 import type { Env } from '../types';
-import { getDb, query, queryFirst, execute } from '../utils/db';
+import { getDb, query, queryFirst, execute, ensureAttachmentEvidenceColumns } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
 import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
 import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
+import { resolveUploadMime } from '../utils/uploadMime';
+import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
 
 const uploads = new Hono<Env>();
 
 const ALLOWED_MIME = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
+  'image/heic', 'image/heif',
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -314,6 +317,8 @@ uploads.post('/', async (c) => {
       return c.json({ error: 'Uploads storage is not bound', code: 'UPLOADS_NOT_BOUND' }, 503);
     }
 
+    await ensureAttachmentEvidenceColumns(db);
+
     const formData = await c.req.formData();
     const rawFiles = formData.getAll('files');
     const files: File[] = [];
@@ -328,7 +333,8 @@ uploads.post('/', async (c) => {
 
     const entityType = formData.get('entity_type') ? String(formData.get('entity_type')) : null;
     const entityIdRaw = formData.get('entity_id') ? String(formData.get('entity_id')) : null;
-    const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
+    // D1 rejects NaN (D1_TYPE_ERROR) — a CFS number string used to 500 the whole upload.
+    const entityId = entityIdRaw && /^\d+$/.test(entityIdRaw) ? parseInt(entityIdRaw, 10) : null;
 
     // Evidence metadata supplied by the client at upload time.
     const geoLat = formData.get('latitude') ? parseFloat(String(formData.get('latitude'))) : null;
@@ -364,20 +370,21 @@ uploads.post('/', async (c) => {
     const results: any[] = [];
 
     for (const file of files) {
-      if (!ALLOWED_MIME.has(file.type)) {
-        return c.json({ error: `File type ${file.type} is not allowed` }, 400);
+      const mime = resolveUploadMime(file.name, file.type);
+      if (!ALLOWED_MIME.has(mime)) {
+        return c.json({ error: `File type ${mime || file.type || 'unknown'} is not allowed` }, 400);
       }
       if (file.size > MAX_FILE_SIZE) {
         return c.json({ error: `File too large — max ${MAX_FILE_SIZE / 1024 / 1024} MB`, code: 'FILE_TOO_LARGE' }, 400);
       }
 
       const fileId = crypto.randomUUID();
-      const ext = extFor(file.name, file.type);
+      const ext = extFor(file.name, mime);
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
 
       await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
-        httpMetadata: { contentType: file.type || 'application/octet-stream' },
+        httpMetadata: { contentType: mime },
       });
 
       await execute(
@@ -388,13 +395,13 @@ uploads.post('/', async (c) => {
         file.name,
         `${fileId}${ext}`,
         r2Key,
-        file.type,
+        mime,
         file.size,
         entityType,
         entityId,
         userId,
-        geoLat ?? null,
-        geoLon ?? null,
+        Number.isFinite(geoLat) ? geoLat : null,
+        Number.isFinite(geoLon) ? geoLon : null,
         takenAt ?? null,
         referenceNotes ?? null,
       );
@@ -413,16 +420,20 @@ uploads.post('/', async (c) => {
       if (row) results.push(row);
     }
 
-    await execute(
-      db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-       VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
-      userId,
-      entityType || 'attachment',
-      entityId,
-      `Uploaded ${files.length} file(s): ${files.map((f) => f.name).join(', ')}`,
-      c.req.header('CF-Connecting-IP') || 'unknown',
-    );
+    try {
+      await execute(
+        db,
+        `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'file_uploaded', ?, ?, ?, ?)`,
+        userId,
+        entityType || 'attachment',
+        entityId,
+        `Uploaded ${files.length} file(s): ${files.map((f) => f.name).join(', ')}`,
+        c.req.header('CF-Connecting-IP') || 'unknown',
+      );
+    } catch (logErr) {
+      log.error('activity_log file_uploaded insert failed', {}, logErr as Error);
+    }
 
     return c.json(results, 201);
   } catch (err) {
@@ -430,7 +441,7 @@ uploads.post('/', async (c) => {
     if (err instanceof FileEncryptionError) {
       return c.json({ error: err.message, code: 'ENCRYPTION_FAILED' }, 503);
     }
-    return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
+    return dbErrorResponse(c, err, 'Upload failed');
   }
 });
 
@@ -747,6 +758,7 @@ uploads.patch('/:fileId/metadata', async (c) => {
   const fileId = c.req.param('fileId');
   const db = c.env.DB;
   try {
+    await ensureAttachmentEvidenceColumns(db);
     const body = await c.req.json<{
       latitude?: number | null;
       longitude?: number | null;

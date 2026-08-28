@@ -89,7 +89,9 @@ export function uploadWithProgress(
         let message = `Upload failed with status ${xhr.status}`;
         try {
           const errData = JSON.parse(xhr.responseText);
-          message = errData.error || errData.message || message;
+          const base = errData.error || errData.message || message;
+          const diag = errData.details || errData.detail;
+          message = diag ? `${base}: ${diag}` : base;
         } catch { /* use default message */ }
         reject(new Error(message));
       }

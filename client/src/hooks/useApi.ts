@@ -768,9 +768,9 @@ async function apiUploadFilesMultipart(
         return res.json();
       }
       const errData = await res.json().catch(() => ({}));
-      const err = new Error(
-        errData.error || errData.message || `Upload failed with status ${res.status}`,
-      ) as Error & { status?: number };
+      const base = errData.error || errData.message || `Upload failed with status ${res.status}`;
+      const diag = errData.details || errData.detail;
+      const err = new Error(diag ? `${base}: ${diag}` : base) as Error & { status?: number };
       err.status = res.status;
       throw err;
     } catch (err) {
