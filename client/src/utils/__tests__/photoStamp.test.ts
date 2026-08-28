@@ -20,6 +20,7 @@ describe('photoStamp — stamp lines', () => {
 
   it('formats geo line with 6-decimal coords, or UNAVAILABLE', () => {
     expect(formatGeoLine(40.76078, -111.891045)).toBe('GEO  40.760780, -111.891045');
+    expect(formatGeoLine(40.66879, 111.94449)).toBe('GEO  40.668790, -111.944490');
     expect(formatGeoLine(undefined, undefined)).toBe('GEO  UNAVAILABLE');
     expect(formatGeoLine(NaN, 5)).toBe('GEO  UNAVAILABLE');
   });

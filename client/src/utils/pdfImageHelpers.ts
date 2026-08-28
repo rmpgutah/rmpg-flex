@@ -143,7 +143,7 @@ export async function fetchImageAsBase64(
     const outType = isTransparent ? 'image/png' : 'image/jpeg';
     format = isTransparent ? 'PNG' : 'JPEG';
 
-    const stampOpts = { minFontPx: 36, widthDivisor: 14 };
+    const stampOpts = { minFontPx: 14, widthDivisor: 36, heightDivisor: 28 };
 
     if (typeof OffscreenCanvas !== 'undefined') {
       const canvas = new OffscreenCanvas(w, h);
