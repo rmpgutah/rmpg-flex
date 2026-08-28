@@ -375,6 +375,18 @@ export function cadPriority(p: ServePriority): 'P1' | 'P2' | 'P3' | 'P4' {
   }
 }
 
+const SERVE_QUEUE_INTAKE_COPY_COLS = new Set([
+  'recipient_phone', 'recipient_dob', 'recipient_type',
+  'business_name', 'registered_agent_name', 'registered_office_address',
+  'serve_type', 'serve_fee', 'time_window',
+  'attorney_phone', 'attorney_email', 'attorney_bar_number',
+]);
+
+const CFS_INTAKE_COPY_COLS = new Set([
+  'attorney_name', 'jurisdiction', 'deadline', 'time_window',
+  'service_instructions', 'plaintiff_name',
+]);
+
 /** Copy intake fields onto dedicated serve_queue columns Process Server reads. */
 async function patchServeQueueIntakeCopy(
   db: D1Database,
@@ -398,6 +410,7 @@ async function patchServeQueueIntakeCopy(
   const sets: string[] = [];
   const args: unknown[] = [];
   for (const [col, val] of pairs) {
+    if (!SERVE_QUEUE_INTAKE_COPY_COLS.has(col)) continue;
     if (val == null || val === '') continue;
     try {
       if (!(await columnExists(db, 'serve_queue', col))) continue;
@@ -412,7 +425,7 @@ async function patchServeQueueIntakeCopy(
     args.push(queueId);
     await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
   } catch (err) {
-    console.warn('[commitOneIntake] serve_queue copy patch skipped (non-fatal):', err);
+    log.warn('serve_queue copy patch skipped', { queueId }, err);
   }
 }
 
@@ -424,6 +437,7 @@ async function patchCfsExtIntakeCopy(
   const sets: string[] = [];
   const args: unknown[] = [];
   for (const [col, val] of Object.entries(fields)) {
+    if (!CFS_INTAKE_COPY_COLS.has(col)) continue;
     if (val == null || val === '') continue;
     try {
       if (!(await columnExists(db, 'calls_for_service_ext', col))) continue;
@@ -438,7 +452,7 @@ async function patchCfsExtIntakeCopy(
     args.push(callId);
     await execute(db, `UPDATE calls_for_service_ext SET ${sets.join(', ')} WHERE id = ?`, ...args);
   } catch (err) {
-    console.warn('[commitOneIntake] CFS ext copy patch skipped (non-fatal):', err);
+    log.warn('CFS ext copy patch skipped', { callId }, err);
   }
 }
 
@@ -887,9 +901,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
         first_name: parts.first,
         middle_name: parts.middle,
         last_name: parts.last,
-        dob: recipientDob || null,
         address: addr || null,
-        phone: recipientPhone || null,
       });
       // For the queue's recipient_person_id, point at the agent —
       // that's who the officer needs to find on the door.
