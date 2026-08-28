@@ -102,13 +102,51 @@ function serviceDuration(priority: string | null | undefined): number {
   return 10 * 60;
 }
 
+function normalizeServeTimeWindow(window: string | null | undefined): string | null {
+  if (!window) return null;
+  switch (window) {
+    case 'morning': return '06:00-12:00';
+    case 'afternoon': return '12:00-17:00';
+    case 'evening': return '17:00-21:00';
+    case 'anytime': return null;
+    default: return /^\d{2}:\d{2}-\d{2}:\d{2}$/.test(window) ? window : null;
+  }
+}
+
+function denverYmdFromIso(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso.slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms));
+}
+
 function parseTimeWindow(
   window: string,
-  date: string,
+  shiftStartIso: string,
 ): { earliest: string; latest: string } | null {
-  const m = window.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+  const normalized = normalizeServeTimeWindow(window);
+  if (!normalized) return null;
+  const m = normalized.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
   if (!m) return null;
-  return { earliest: `${date}T${m[1]}:00`, latest: `${date}T${m[2]}:00` };
+  const day = denverYmdFromIso(shiftStartIso);
+  return { earliest: `${day}T${m[1]}:00-06:00`, latest: `${day}T${m[2]}:00-06:00` };
+}
+
+/** Worker-side token for Optimization V2. sk.* is allowed here — this never
+ *  leaves the Worker. Public pk tokens without V2 scope 401; the secret
+ *  token is what production actually has configured. */
+export function resolveOptimizationV2Token(env: {
+  MAPBOX_SECRET_TOKEN?: string;
+  MAPBOX_ACCESS_TOKEN?: string;
+}): string | null {
+  const secret = (env.MAPBOX_SECRET_TOKEN || '').trim();
+  if (secret) return secret;
+  const access = (env.MAPBOX_ACCESS_TOKEN || '').trim();
+  return access || null;
 }
 
 // ─── Problem builders ─────────────────────────────────────────────────────────
@@ -118,8 +156,8 @@ export function buildServeRunProblem(
   officer: UnitRow,
   shiftStart: string,
   shiftEnd: string,
+  options: { circular?: boolean } = {},
 ): V2ProblemDocument {
-  const date = shiftStart.split('T')[0];
   const depotName = `officer-${officer.id}-depot`;
 
   const locations: V2Location[] = [
@@ -131,13 +169,15 @@ export function buildServeRunProblem(
   ];
 
   const vehicle: V2Vehicle = {
-    name: officer.call_sign,
+    name: officer.call_sign || `officer-${officer.id}`,
     routing_profile: 'mapbox/driving-traffic',
     start_location: depotName,
-    end_location: depotName,
     earliest_start: shiftStart,
     latest_end: shiftEnd,
   };
+  if (options.circular !== false) {
+    vehicle.end_location = depotName;
+  }
 
   const services: V2Service[] = items.map((s) => {
     const svc: V2Service = {
@@ -146,9 +186,10 @@ export function buildServeRunProblem(
       duration: serviceDuration(s.priority),
     };
     if (s.time_window) {
-      const tw = parseTimeWindow(s.time_window, date);
+      const tw = parseTimeWindow(s.time_window, shiftStart);
       if (tw) svc.service_times = [{ ...tw, type: 'soft' }];
-    } else if (s.deadline) {
+    }
+    if (!svc.service_times && s.deadline) {
       svc.service_times = [{ earliest: shiftStart, latest: s.deadline, type: 'soft_end' }];
     }
     return svc;

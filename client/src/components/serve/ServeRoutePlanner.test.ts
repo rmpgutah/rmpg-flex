@@ -180,7 +180,7 @@ describe('reorderList', () => {
 describe('plannedStartToMs / formatEtaDenver', () => {
   it('interprets the date picker as America/Denver wall clock, not the browser zone', () => {
     const ms = plannedStartToMs('2026-08-28', '14:30');
-    expect(new Date(ms).toISOString()).toBe('2026-08-28T20:30:00.000Z');
+    expect(new Date(ms).toISOString()).toBe('2026-08-28T20:30:00.000Z'); // new-date-ok — epoch ms from plannedStartToMs
   });
 
   it('labels a next-day arrival so 11:45 AM is not mistaken for the same afternoon', () => {
