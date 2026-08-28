@@ -3,10 +3,10 @@
  * (HTTP 422). Shift start is often 08:00; optimizing at 17:00 must send "now".
  */
 export function clampDepartAtForMapbox(departAt: string, nowMs: number = Date.now()): string {
-  const t = new Date(departAt).getTime();
-  if (!Number.isFinite(t)) return new Date(nowMs).toISOString();
-  if (nowMs - t > 25 * 60_000) return new Date(nowMs).toISOString();
-  return new Date(t).toISOString();
+  const t = new Date(departAt).getTime(); // new-date-ok — ISO / epoch from planner, not a D1 naive stamp
+  if (!Number.isFinite(t)) return new Date(nowMs).toISOString(); // new-date-ok — epoch ms
+  if (nowMs - t > 25 * 60_000) return new Date(nowMs).toISOString(); // new-date-ok — epoch ms
+  return new Date(t).toISOString(); // new-date-ok — epoch ms
 }
 
 export interface MapboxDirectionsRoute {
