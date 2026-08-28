@@ -256,6 +256,8 @@ export function mapDbCall(row: any): CallForService {
     pso_72hr_notified: row.pso_72hr_notified || undefined,
     case_id: row.case_id ?? undefined,
     parent_call_id: row.parent_call_id ?? undefined,
+    parent_call: row.parent_call || undefined,
+    child_calls: row.child_calls || undefined,
   };
 }
 

@@ -3601,7 +3601,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -3613,7 +3613,7 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
@@ -3645,7 +3645,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -4702,7 +4702,7 @@ export default function DispatchPage() {
                           const ordinal = formatOrdinal(attempt);
                           setPendingConfirm({
                             title: 'Schedule Return Visit',
-                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                            message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                             confirmLabel: 'Schedule Visit',
                             run: async () => {
                               try {
@@ -4714,13 +4714,13 @@ export default function DispatchPage() {
                                   const mapped = mapDbCall(result);
                                   setCalls(prev => [mapped, ...prev]);
                                   setSelectedCall(mapped);
-                                  addToast(`Re-dispatched → ${mapped.call_number}`, 'success');
+                                  addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                 }
                               } catch (err: any) { addToast(`Re-dispatch failed: ${err?.message || 'Unknown error'}`, 'error'); }
                             },
                           });
                         }}
-                        title="Schedule a return visit — creates a new linked call"
+                        title="Schedule a return visit — new CFS, same Process Server job"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
                       </button>
@@ -4746,7 +4746,7 @@ export default function DispatchPage() {
                         onClick={() => {
                           setPendingConfirm({
                             title: 'Undo Return Visit',
-                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call.`,
+                            message: `Undo this return visit? This will delete ${selectedCall.call_number} and restore the parent call. The Process Server job stays on the original matter.`,
                             confirmLabel: 'Undo Visit',
                             run: async () => {
                               try {
@@ -6442,7 +6442,7 @@ export default function DispatchPage() {
                             const ordinal = formatOrdinal(attempt);
                             setPendingConfirm({
                               title: 'Schedule Return Visit',
-                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}?`,
+                              message: `Schedule ${ordinal} return visit for ${selectedCall.call_number}? This opens a new CFS on the same Process Server job — it will not create a second job.`,
                               confirmLabel: 'Schedule Visit',
                               run: async () => {
                                 try {
@@ -6453,14 +6453,16 @@ export default function DispatchPage() {
                                   if (result) {
                                     const mapped = mapDbCall(result);
                                     setSelectedCall(mapped);
-                                    setCalls(prev => prev.map(c => c.id === mapped.id ? mapped : c));
-                                    addToast(`Re-dispatched — ${ordinal} visit`, 'success');
+                                    setCalls(prev => prev.some(c => c.id === mapped.id)
+                                      ? prev.map(c => c.id === mapped.id ? mapped : c)
+                                      : [mapped, ...prev]);
+                                    addToast(`Return visit ${mapped.call_number} — same Process Server job`, 'success');
                                   }
                                 } catch (err: any) { addToast(`Failed to re-dispatch: ${err?.message || 'Unknown error'}`, 'error'); }
                               },
                             });
                           }}
-                          title="Re-dispatch this PSO call with a new visit number"
+                          title="Schedule a return visit — new CFS, same Process Server job"
                         >
                           <RotateCcw style={{ width: 9, height: 9, display: 'inline', marginRight: 3 }} />
                           Schedule Return Visit

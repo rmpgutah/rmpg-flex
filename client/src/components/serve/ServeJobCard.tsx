@@ -32,6 +32,7 @@ import {
   ClipboardList,
   Scale,
   Building2,
+  Link2,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall, ServeAttempt } from '../../types';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils';
@@ -262,6 +263,16 @@ export default React.memo(function ServeJobCard({
             {/* Status LED */}
             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusCfg.bg} ${statusCfg.glow}`} aria-label={`Status: ${job.status}`} />
             <span className="text-sm font-bold text-rmpg-100 truncate">{job.recipient_name}</span>
+            {((Number(job.linked_attempt_number) || Number(linkedCall?.pso_attempt_number) || 0) > 1
+              || !!job.linked_parent_call_id || !!linkedCall?.parent_call_id) && (
+              <span
+                title="Return visits stay on this same Process Server job"
+                className="flex-shrink-0 text-[8px] font-bold font-mono px-1 py-0 rounded-[2px] border"
+                style={{ color: 'var(--panel-header-color)', borderColor: 'rgb(var(--brand-gold-rgb)/0.35)', background: 'rgb(var(--brand-gold-rgb)/0.08)' }}
+              >
+                VISIT {job.linked_attempt_number || linkedCall?.pso_attempt_number || 1}
+              </span>
+            )}
             {/* Intake-screened shield — warrant check completed */}
             {job.intake_screened_at && (
               <span
@@ -483,6 +494,12 @@ export default React.memo(function ServeJobCard({
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-rmpg-300">
                 <div><span className="text-rmpg-400">Status:</span> <span className="font-mono">{linkedCall.status?.toUpperCase()}</span></div>
                 <div><span className="text-rmpg-400">Priority:</span> <span className="font-mono">{linkedCall.priority?.toUpperCase()}</span></div>
+                {(linkedCall.pso_attempt_number || job.linked_attempt_number) && (
+                  <div><span className="text-rmpg-400">Visit:</span> <span className="font-mono">{linkedCall.pso_attempt_number || job.linked_attempt_number}</span></div>
+                )}
+                {job.id != null && (
+                  <div className="flex items-center gap-1"><Link2 className="w-3 h-3 text-rmpg-400" /><span className="text-rmpg-400">Job ID:</span> <span className="font-mono">{job.id}</span></div>
+                )}
                 {linkedCall.pso_requestor_name && (
                   <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
                 )}
@@ -490,6 +507,22 @@ export default React.memo(function ServeJobCard({
                   <div><span className="text-rmpg-400">Contract:</span> <span className="font-mono text-rmpg-400">{linkedCall.contract_id}</span></div>
                 )}
               </div>
+              {(linkedCall.parent_call || linkedCall.parentCall || (linkedCall.child_calls?.length ?? linkedCall.childCalls?.length ?? 0) > 0) && (
+                <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/40 space-y-0.5">
+                  <div className="text-[9px] text-rmpg-400">Return visits share this job — they do not create a new queue entry.</div>
+                  {(linkedCall.parent_call || linkedCall.parentCall) && (
+                    <div className="text-[10px] text-rmpg-300">
+                      Original:{' '}
+                      <span className="font-mono">{(linkedCall.parent_call || linkedCall.parentCall)?.call_number}</span>
+                    </div>
+                  )}
+                  {(linkedCall.child_calls || linkedCall.childCalls || []).map((c) => (
+                    <div key={c.id} className="text-[10px] text-rmpg-300">
+                      Visit {c.pso_attempt_number ?? '—'} · <span className="font-mono">{c.call_number}</span> · {c.status}
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* PSO Compliance mini-indicator */}
               {linkedCall.pso_service_windows && (() => {
                 try {

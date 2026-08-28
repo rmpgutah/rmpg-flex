@@ -15,6 +15,13 @@ import { emitFleetioEvent } from '../../utils/fleetio/events';
 import { dbErrorResponse } from '../../utils/dbErrors';
 import { ACTIVE_CALL_WHERE } from '../../utils/callStatus';
 import { assignStackGroup, leaveStackGroup, reassignStackGroup, syncToStack, type SyncFields } from '../../utils/stackSync';
+import {
+  collectCallChainIds,
+  findServeJobForCall,
+  findRestoreCallIdForUndoRedispatch,
+  relinkServeJobForRedispatch,
+  restoreServeJobAfterUndoRedispatch,
+} from '../../utils/psoServeCrosslink';
 const calls = new Hono<Env>();
 
 // ── Atomic call-number sequence (C2) ──────────────────────────────────────
@@ -745,28 +752,39 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
       'SELECT al.*, u.full_name as user_name FROM audit_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
       'call', id);
 
-    // Prior visits (PSO/process-service redispatch chain) — attached here so
-    // dispatchMappers.ts's `visit_history: row.visit_history` mapping has
-    // something to read; the client already renders this (DispatchPage.tsx
-    // ~line 5961) but it was always empty since nothing populated it.
-    // History rows are stored against the PARENT call id (the completed visit).
-    // A child call (re-dispatch) shows them by looking up its own parent_call_id;
-    // a root call has no parent so the subquery returns NULL and yields 0 rows.
+    // Visit snapshots are stored against the ROOT call id. Collect the whole
+    // return-visit family so the root (no parent_call_id) still returns history,
+    // and a child still sees every prior visit.
+    const chainIds = await collectCallChainIds(db, Number(id)).catch(() => [Number(id)]);
+    const historyIds = chainIds.length ? chainIds : [Number(id)];
+    const historyPh = historyIds.map(() => '?').join(',');
     const visitHistory = await query<Record<string, unknown>>(db,
       `SELECT cvh.*, fv.vehicle_number AS responding_vehicle_number
        FROM call_visit_history cvh
        LEFT JOIN fleet_vehicles fv ON fv.id = cvh.responding_vehicle_id
-       WHERE cvh.call_id = (SELECT parent_call_id FROM calls_for_service_ext WHERE id = ?)
-       ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, id);
+       WHERE cvh.call_id IN (${historyPh})
+       ORDER BY cvh.visit_number ASC, cvh.id ASC LIMIT 200`, ...historyIds);
 
-    // Linked serve job. CallPdfData declares `serve_queue_id` and the call
-    // report's QR gate reads it (recordPdfGenerator.ts) — but nothing ever
-    // populated it, so the recipient "scan to sign" badge never rendered on
-    // a printed run sheet. serve_queue.call_id is the link; newest job wins
-    // when a call has been redispatched.
-    const serveJob = await queryFirst<{ id: number }>(db,
-      'SELECT id FROM serve_queue WHERE call_id = ? ORDER BY id DESC LIMIT 1', id)
-      .catch(() => null);
+    const serveJob = await findServeJobForCall(db, Number(id)).catch(() => null);
+
+    const parentCallId = ext?.parent_call_id != null ? Number(ext.parent_call_id) : null;
+    const parentCall = parentCallId
+      ? await queryFirst<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
+        db,
+        'SELECT id, call_number, status, pso_attempt_number FROM calls_for_service WHERE id = ?',
+        parentCallId,
+      ).catch(() => null)
+      : null;
+    const siblingIds = historyIds.filter((cid) => cid !== Number(id));
+    const childCalls = siblingIds.length
+      ? await query<{ id: number; call_number: string; status: string; pso_attempt_number: number | null }>(
+        db,
+        `SELECT id, call_number, status, pso_attempt_number FROM calls_for_service
+         WHERE id IN (${siblingIds.map(() => '?').join(',')})
+         ORDER BY COALESCE(pso_attempt_number, 0) ASC, id ASC`,
+        ...siblingIds,
+      ).catch(() => [])
+      : [];
 
     return c.json({
       ...call,
@@ -777,6 +795,8 @@ calls.get('/:id', requireRole('officer', 'dispatcher', 'supervisor', 'manager', 
       related_incidents: incidents,
       activity,
       visit_history: visitHistory,
+      parent_call: parentCall,
+      child_calls: childCalls,
     });
   } catch (err) {
     log.error('GET /dispatch/calls/:id failed', { id: c.req.param('id') }, err as Error);
@@ -2168,46 +2188,42 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       await execute(db, `UPDATE calls_for_service_ext SET ${extCols.map((c2) => `"${c2}" = ?`).join(', ')} WHERE id = ?`, ...extValues, newCallId);
     }
 
-    // Link the new call into the Process Server queue. Without this, a
-    // re-dispatched PSO call has NO serve_queue row until it's later
-    // closed (crossLinkPsoCloseToServe only seeds one on a terminal-status
-    // transition) — so GET /process-server (what officers actually work
-    // from) never shows it while it's active. Confirmed live 2026-08-10:
-    // two real re-dispatched jobs (CFS26-00145, CFS26-00153) sat pending
-    // with real deadlines and were invisible to the Process Server module
-    // the entire time, flagged only by GET /process-server/cross-reference/
-    // dispatch — the same gap #3368 closed for the ServeManager auto-poller,
-    // just on this creation path instead. Field mapping mirrors
-    // psoServeCrosslink.ts's on-close seed, reading from the new call's own
-    // PSO/ext columns (already carried forward by the schema-driven copy
-    // above) rather than the parent's serve_queue row, since serve_queue is
-    // dedup'd per call_id — each visit in the chain gets its own row.
+    // Same Process Server job for every return visit: move serve_queue.call_id
+    // onto the new CFS. Insert only when the chain has no job yet (PSO-only
+    // with no intake), never a second job for the same matter.
+    let serveQueueId: number | null = null;
     try {
-      // C5: idempotency guard — never double-insert a serve_queue row for the same call.
-      const existingServeRow = await queryFirst<{ id: number }>(
-        db, "SELECT id FROM serve_queue WHERE call_id = ? AND status IN ('pending','assigned','in_progress') LIMIT 1", newCallId,
-      );
-      if (existingServeRow) {
-        log.info('[redispatch] serve_queue row already exists for call (idempotent skip)', { callId: newCallId, queueId: existingServeRow.id });
-      } else {
-        const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
-        const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
-        await execute(db,
-          `INSERT INTO serve_queue (
-             call_id, officer_id, recipient_name, recipient_address,
-             recipient_lat, recipient_lng, document_type, case_number, client_name,
-             priority, status, deadline, service_instructions
-           ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
-          newCallId, userId,
-          mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
-          mergedNew.process_served_address || mergedNew.location_address || null,
-          mergedNew.latitude ?? null, mergedNew.longitude ?? null,
-          mergedNew.process_service_type || mergedNew.pso_service_type || null,
-          mergedNew.case_number || null, mergedNew.client_name || null,
-          mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+      const relink = await relinkServeJobForRedispatch(db, Number(id), newCallId, newCallNumber);
+      serveQueueId = relink.queueId;
+      if (relink.relinked) {
+        log.info('[redispatch] relinked serve_queue to return visit', { callId: newCallId, queueId: relink.queueId, fromCallId: Number(id) });
+      } else if (!relink.queueId) {
+        const existingOnNew = await queryFirst<{ id: number }>(
+          db, 'SELECT id FROM serve_queue WHERE call_id = ? LIMIT 1', newCallId,
         );
+        if (existingOnNew) {
+          serveQueueId = existingOnNew.id;
+        } else {
+          const newCallExtRow = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', newCallId);
+          const mergedNew = { ...(await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', newCallId) || {}), ...(newCallExtRow || {}) } as Record<string, any>;
+          const ins = await execute(db,
+            `INSERT INTO serve_queue (
+               call_id, officer_id, recipient_name, recipient_address,
+               recipient_lat, recipient_lng, document_type, case_number, client_name,
+               priority, status, deadline, service_instructions
+             ) VALUES (?,?,?,?, ?,?,?,?,?, 'normal','pending',?,?)`,
+            newCallId, userId,
+            mergedNew.process_served_to || mergedNew.pso_requestor_name || null,
+            mergedNew.process_served_address || mergedNew.location_address || null,
+            mergedNew.latitude ?? null, mergedNew.longitude ?? null,
+            mergedNew.process_service_type || mergedNew.pso_service_type || null,
+            mergedNew.case_number || null, mergedNew.client_name || null,
+            mergedNew.pso_72hr_deadline || null, mergedNew.post_orders || null,
+          );
+          serveQueueId = Number(ins.meta.last_row_id) || null;
+        }
       }
-    } catch (err) { log.error('[redispatch] serve_queue link failed', { callId: newCallId }, err as Error); }
+    } catch (err) { log.error('[redispatch] serve_queue relink failed', { callId: newCallId }, err as Error); }
 
     // Copy linked persons/vehicles/businesses from the parent call.
     const linkTables: Array<[string, readonly string[]]> = [
@@ -2249,7 +2265,7 @@ calls.post('/:id/redispatch', requireRole('dispatcher', 'supervisor', 'manager',
       broadcastAll('dispatch_update', { action: 'call_updated', call: { id: Number(id), notes: parentNotes } });
     } catch { /* best-effort */ }
 
-    return c.json(merged, 201);
+    return c.json({ ...merged, serve_queue_id: serveQueueId }, 201);
   } catch (err) {
     log.error('POST /dispatch/calls/:id/redispatch failed', { callId: id }, err as Error);
     return dbErrorResponse(c, err, 'Failed to re-dispatch call');
@@ -2283,9 +2299,14 @@ calls.post('/:id/undo-redispatch', requireRole('dispatcher', 'supervisor', 'mana
     await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM call_businesses WHERE call_id = ?', id);
-    // Orphaned serve_queue rows stay in 'pending' forever without this delete
-    // — the Process Server module keeps showing the undone visit as an active job.
-    await execute(db, 'DELETE FROM serve_queue WHERE call_id = ?', id);
+    // Move the Process Server job back onto the remaining CFS. Do not DELETE
+    // by child call_id — after relink that row *is* the original job.
+    const restoreCallId = await findRestoreCallIdForUndoRedispatch(db, Number(id), Number(parentCallId));
+    try {
+      await restoreServeJobAfterUndoRedispatch(db, Number(id), restoreCallId);
+    } catch (err) {
+      log.error('[undo-redispatch] serve_queue restore failed', { callId: id, restoreCallId }, err as Error);
+    }
     await execute(db, 'DELETE FROM calls_for_service_ext WHERE id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
 

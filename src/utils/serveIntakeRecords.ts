@@ -425,7 +425,7 @@ async function patchServeQueueIntakeCopy(
     args.push(queueId);
     await execute(db, `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);
   } catch (err) {
-    log.warn('serve_queue copy patch skipped', { queueId }, err);
+    log.warn('serve_queue copy patch skipped', { queueId, error: String(err) });
   }
 }
 
@@ -452,7 +452,7 @@ async function patchCfsExtIntakeCopy(
     args.push(callId);
     await execute(db, `UPDATE calls_for_service_ext SET ${sets.join(', ')} WHERE id = ?`, ...args);
   } catch (err) {
-    log.warn('CFS ext copy patch skipped', { callId }, err);
+    log.warn('CFS ext copy patch skipped', { callId, error: String(err) });
   }
 }
 

@@ -823,10 +823,14 @@ sv.get('/', async (c) => {
   const sql = `SELECT q.*, u.full_name AS officer_name,
       CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id,
       CASE WHEN p.id IS NULL THEN NULL ELSE q.recipient_person_id END AS recipient_person_id,
-      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id
+      CASE WHEN prop.id IS NULL THEN NULL ELSE q.property_id END AS property_id,
+      cfs.call_number AS linked_call_number,
+      cfs.pso_attempt_number AS linked_attempt_number,
+      cfs_ext.parent_call_id AS linked_parent_call_id
     FROM serve_queue q
     LEFT JOIN users u ON u.id = q.officer_id
     LEFT JOIN calls_for_service cfs ON cfs.id = q.call_id
+    LEFT JOIN calls_for_service_ext cfs_ext ON cfs_ext.id = q.call_id
     LEFT JOIN persons p ON p.id = q.recipient_person_id
     LEFT JOIN properties prop ON prop.id = q.property_id
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
