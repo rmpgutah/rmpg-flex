@@ -3,6 +3,9 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1106: Login navigations must not become an empty 503 Offline when the
+//        document URL has a query string (`/login?return=%2F`) that missed
+//        the precached `/` shell. Match ignoreSearch and always stash `/`.
 // v1105: Field-console offline sweep. Do not take ownership of
 //        static.cloudflareinsights.com (FetchEvent rejection + SRI). Strip
 //        more beacon <script> shapes from HTML. Same-origin API cache warm
@@ -245,8 +248,8 @@ const RETRY_DELAY_MS = 300;
 //
 // Treating a rejected read as a miss is right in every branch here: a miss
 // falls through to the network, which is exactly what an unusable cache wants.
-function cacheMatch(request) {
-  return caches.match(request).catch(() => undefined);
+function cacheMatch(request, matchOpts) {
+  return caches.match(request, matchOpts).catch(() => undefined);
 }
 
 function fetchWithRetry(request, opts) {
@@ -590,13 +593,18 @@ self.addEventListener('fetch', (event) => {
                 var stripped = html
                   .replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '')
                   .replace(/<script\b[^>]*static\.cloudflareinsights\.com[^>]*>[\s\S]*?<\/script>/gi, '')
-                  .replace(/<script\b[^>]*data-cf-beacon[^>]*>[\s\S]*?<\/script>/gi, '');
+                  .replace(/<script\b[^>]*data-cf-beacon[^>]*>[\s\S]*?<\/script>/gi, '')
+                  .replace(/<script\b[^>]*beacon\.min\.js[^>]*>[\s\S]*?<\/script>/gi, '');
                 var headers = {};
                 response.headers.forEach(function(v, k) {
                   if (k.toLowerCase() !== 'content-length') headers[k] = v;
                 });
                 var clean = new Response(stripped, { status: response.status, statusText: response.statusText, headers: headers });
                 cachePut(CACHE_NAME, event.request, clean.clone());
+                // Precache key is `/`. Login and other SPA routes are the same
+                // document; without this, `/login?return=%2F` misses on the
+                // next navigation and the SW synthesizes 503 Offline.
+                cachePut(CACHE_NAME, new URL('/', self.location.origin).href, clean.clone());
                 return clean;
               });
             }
@@ -605,7 +613,7 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() =>
-          cacheMatch(event.request)
+          cacheMatch(event.request, { ignoreSearch: true })
             .then((cached) => cached || cacheMatch(new URL('/', self.location.origin).href) || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
               '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:monospace;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',

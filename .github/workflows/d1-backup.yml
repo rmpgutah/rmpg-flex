@@ -1,0 +1,45 @@
+name: D1 backup
+
+# Full-database export takes an exclusive lock on live D1. Do NOT run this on
+# the deploy job — officers cannot log in while `wrangler d1 export` is running.
+# Schedule is 10:00 UTC (04:00 America/Denver during MDT).
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: rmpg-flex-d1-export
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Export D1 and upload to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          BACKUP_DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          BACKUP_FILE="rmpg-flex-backup-${BACKUP_DATE}.sql"
+          npx wrangler d1 export rmpg-flex --remote --output "${BACKUP_FILE}"
+          npx wrangler r2 object put "d1-backups/${BACKUP_FILE}" --file="${BACKUP_FILE}" --remote
+          rm -f "${BACKUP_FILE}"
+          echo "D1 backup completed: ${BACKUP_FILE}"

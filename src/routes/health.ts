@@ -1,19 +1,23 @@
 import { Hono } from 'hono';
-import { getDb } from '../utils/db';
+import { getDb, withD1Retry } from '../utils/db';
 import { log } from '../utils/logger';
 import type { Bindings, Variables } from '../types';
 
 const health = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-async function checkD1(db: D1Database): Promise<{ connected: boolean; version: string; users: number; latencyMs?: number }> {
+async function checkD1(db: D1Database): Promise<{ connected: boolean; version: string; users: number; latencyMs?: number; code?: string }> {
   const start = Date.now();
   try {
     let dbVersion = 'unknown';
     try {
-      const result = await db.prepare('SELECT config_value AS value FROM system_config WHERE config_key = ?').bind('db_version').first<{ value: string }>();
+      const result = await withD1Retry(() =>
+        db.prepare('SELECT config_value AS value FROM system_config WHERE config_key = ?').bind('db_version').first<{ value: string }>(),
+      );
       dbVersion = result?.value ?? 'unknown';
     } catch { /* non-essential */ }
-    const userCount = await db.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>();
+    const userCount = await withD1Retry(() =>
+      db.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>(),
+    );
     return {
       connected: true,
       version: dbVersion,
@@ -21,7 +25,10 @@ async function checkD1(db: D1Database): Promise<{ connected: boolean; version: s
       latencyMs: Date.now() - start,
     };
   } catch (err) {
-    return { connected: false, version: 'error', users: 0, latencyMs: Date.now() - start };
+    log.warn('Health D1 probe failed', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { connected: false, version: 'error', users: 0, latencyMs: Date.now() - start, code: 'query_failed' };
   }
 }
 

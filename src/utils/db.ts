@@ -11,14 +11,44 @@ export function getDb(env: { DB: D1Database }) {
   return env.DB;
 }
 
+/** Transient D1 failures (export lock, SQLITE_BUSY, platform blips). Do not retry schema errors. */
+export function isRetryableD1Error(err: unknown): boolean {
+  const msg = (err instanceof Error ? `${err.name} ${err.message}` : String(err)).toLowerCase();
+  if (/no such (table|column)|unique constraint|foreign key|syntax error|datatype mismatch/.test(msg)) {
+    return false;
+  }
+  return /busy|locked|sqlite_busy|sqlite_locked|d1_error|network|timeout|too many|internal error|503|429/.test(msg);
+}
+
+const D1_READ_RETRY_ATTEMPTS = 5;
+
+export async function withD1Retry<T>(fn: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < D1_READ_RETRY_ATTEMPTS; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (!isRetryableD1Error(err) || i === D1_READ_RETRY_ATTEMPTS - 1) throw err;
+      const delayMs = Math.min(1000, 80 * 2 ** i);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw last;
+}
+
 export async function query<T = unknown>(
   db: D1Database,
   sql: string,
   ...bindings: unknown[]
 ): Promise<T[]> {
-  const stmt = db.prepare(sql);
   try {
-    const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).all<T>();
+    // Re-prepare on every attempt — a bound D1 statement cannot be reused
+    // after a failed run, and bind() is not idempotent.
+    const result = await withD1Retry(() => {
+      const stmt = db.prepare(sql);
+      return (bindings.length > 0 ? stmt.bind(...bindings) : stmt).all<T>();
+    });
     return result.results ?? [];
   } catch (err) {
     const turso = getTursoClient();
@@ -34,9 +64,11 @@ export async function queryFirst<T = unknown>(
   sql: string,
   ...bindings: unknown[]
 ): Promise<T | null> {
-  const stmt = db.prepare(sql);
   try {
-    const result = await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).first<T>();
+    const result = await withD1Retry(() => {
+      const stmt = db.prepare(sql);
+      return (bindings.length > 0 ? stmt.bind(...bindings) : stmt).first<T>();
+    });
     return result ?? null;
   } catch (err) {
     const turso = getTursoClient();
@@ -169,9 +201,11 @@ export async function executeInChunks(
 }
 
 export async function columnExists(db: D1Database, table: string, column: string): Promise<boolean> {
-  const row = await db.prepare(
-    `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`
-  ).bind(table, column).first();
+  const row = await withD1Retry(() =>
+    db.prepare(
+      `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`
+    ).bind(table, column).first(),
+  );
   return row !== null;
 }
 
