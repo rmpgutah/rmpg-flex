@@ -208,12 +208,19 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
             </button>
           </div>
         ) : (
+          // Stays mounted while collapsed so Dial Connect's EventSource can
+          // postMessage ringing/duress/heartbeat. CSP-Report-Only noise on
+          // dialer-embed (script-src without 'self', connect-src 'none',
+          // beacon.min.js, cdn-cgi/challenge-platform) is headers on
+          // dialer.rmpgutah.us — see functions/_middleware.ts. Flex cannot
+          // override that origin's CSP.
           <iframe
             key={iframeKey}
             title="Dial Connect"
             src={`${DIALER_ORIGIN}/dialer-embed`}
             className="w-full border-0"
             style={{ height: 'calc(100% - 28px)' }}
+            allow="microphone; autoplay"
             onLoad={handleIframeLoad}
           />
         )}

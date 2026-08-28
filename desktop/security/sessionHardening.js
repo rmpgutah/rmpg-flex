@@ -23,24 +23,61 @@ const path = require('path');
 function buildCspHeaderValue() {
   const directives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.mapbox.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.mapbox.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
     "style-src 'self' 'unsafe-inline' https://*.mapbox.com https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://*.mapbox.com https://*.rmpgutah.us",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://*.rmpgutah.us https://api.rmpgutah.us wss://api.rmpgutah.us https://*.mapbox.com https://events.mapbox.com",
+    "connect-src 'self' https://*.rmpgutah.us https://api.rmpgutah.us wss://api.rmpgutah.us wss://*.rmpgutah.us https://*.mapbox.com https://events.mapbox.com https://static.cloudflareinsights.com https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
-    "frame-src 'self'",
+    // DialerPanel embeds Dial Connect. Stamping frame-src 'self' onto every
+    // response (including that iframe) made Chromium log report-only violations
+    // for https://dialer.rmpgutah.us/dialer-embed on every Dispatch load.
+    "frame-src 'self' https://dialer.rmpgutah.us",
   ];
   return directives.join('; ') + ';';
 }
 
 /**
- * Applies buildCspHeaderValue() as a Report-Only header on every response
- * the given session's webRequest sees. Report-Only never blocks a
- * request — it only makes the renderer log violations to its console.
+ * The desktop CSP-Report-Only header is for the CAD document only.
+ * Applying it to every subresource — especially the cross-origin Dial
+ * Connect iframe — intersects with Cloudflare Observatory's starter
+ * report-only policy (script-src without 'self', connect-src 'none') and
+ * floods the console with violations for /_next chunks, the Insights
+ * beacon, and cdn-cgi/challenge-platform scripts. Those documents already
+ * ship their own CSP (frame-ancestors on dialer.rmpgutah.us).
+ */
+function shouldAttachDesktopCspReportOnly(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase();
+  return (
+    host === 'rmpgutah.us' ||
+    host === 'www.rmpgutah.us' ||
+    host.endsWith('.rmpg-flex.pages.dev') ||
+    host === 'localhost' ||
+    host === '127.0.0.1'
+  );
+}
+
+/**
+ * Applies buildCspHeaderValue() as a Report-Only header on CAD navigations.
+ * Report-Only never blocks a request — it only makes the renderer log
+ * violations to its console. Cross-origin frames (Dial Connect) are left
+ * with whatever headers their own origin sent.
  */
 function installContentSecurityPolicy(session) {
   session.webRequest.onHeadersReceived((details, callback) => {
+    if (!shouldAttachDesktopCspReportOnly(details.url)) {
+      callback({ responseHeaders: details.responseHeaders });
+      return;
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -242,6 +279,7 @@ function resolveTrustedPreloadPath(requestedPath, allowedPath) {
 
 module.exports = {
   buildCspHeaderValue,
+  shouldAttachDesktopCspReportOnly,
   installContentSecurityPolicy,
   isPermissionAllowed,
   shouldAllowNavigation,
