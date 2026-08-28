@@ -26,6 +26,10 @@ function buildApp() {
   });
   app.onError((err, c) => c.json({ error: err instanceof Error ? err.message : String(err) }, 500));
   app.route('/api/nsopw', nsopw);
+  app.onError((err, c) => {
+    const message = err instanceof Error ? err.message : String(err);
+    return c.json({ error: message }, 500);
+  });
   return app;
 }
 

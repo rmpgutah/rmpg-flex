@@ -28,12 +28,11 @@ app.use('*', async (c, next) => {
   c.set('userId', 1);
   await next();
 });
-// Isolated test app is not src/index.ts — without onError, FileEncryptionError
-// from a malformed test KEK leaks as an unhandled workerd exception after the
-// route returns (CI: Worker integration tests).
+// Mirror src/index.ts: convert uncaught handler throws into 500 responses so
+// workerd/vitest does not treat them as process-killing unhandled rejections.
 app.onError((err, c) => {
-  const detail = err instanceof Error ? err.message : String(err);
-  return c.json({ error: 'Internal server error', detail }, 500);
+  const message = err instanceof Error ? err.message : String(err);
+  return c.json({ error: message }, 500);
 });
 app.route('/api/alpr', alpr);
 app.route('/api/redactions', redactions);
