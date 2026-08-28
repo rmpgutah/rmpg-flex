@@ -84,6 +84,17 @@ export function gpsDmsToDecimal(
   return dec;
 }
 
+/**
+ * Cameras (notably iPhone) often omit GPSLongitudeRef and leave west
+ * longitude unsigned (111.94 instead of -111.94). If the pair sits in
+ * the CONUS/Utah box with a positive lon, restore the west sign.
+ */
+export function signedWgs84(lat: number, lon: number): { lat: number; lon: number } {
+  if (lat >= 24 && lat <= 50 && lon >= 65 && lon <= 180) return { lat, lon: -lon };
+  if (lat <= -24 && lat >= -50 && lon >= 65 && lon <= 180) return { lat, lon: -lon };
+  return { lat, lon };
+}
+
 class TiffView {
   constructor(
     readonly buf: Uint8Array,
@@ -150,9 +161,18 @@ function readIfd(view: TiffView, ifdOffset: number): IfdMap {
   return map;
 }
 
+function readHemisphere(view: TiffView, entry: IfdMap[number] | undefined): string {
+  if (!entry) return '';
+  const raw = asciiAt(view.buf, view.base + entry.valueOff, Math.max(entry.count, 4));
+  const ch = (raw[0] || String.fromCharCode(view.buf[view.base + entry.valueOff] || 0)).toUpperCase();
+  return 'NSEW'.includes(ch) ? ch : '';
+}
+
 function readAscii(view: TiffView, entry: IfdMap[number] | undefined): string | undefined {
-  if (!entry || entry.type !== 2 || entry.count < 1) return undefined;
-  return asciiAt(view.buf, view.base + entry.valueOff, entry.count);
+  if (!entry || entry.count < 1) return undefined;
+  if (entry.type !== 2 && entry.type !== 7 && entry.type !== 1) return undefined;
+  const s = asciiAt(view.buf, view.base + entry.valueOff, entry.count);
+  return s || undefined;
 }
 
 function readRationals(view: TiffView, entry: IfdMap[number] | undefined, n: number): number[] | undefined {
@@ -210,14 +230,15 @@ export function parseImageExif(bytes: Uint8Array | ArrayBuffer): ImageExif | nul
 
   const latDms = readRationals(view, gps[0x0002], 3);
   const lonDms = readRationals(view, gps[0x0004], 3);
-  const latRef = readAscii(view, gps[0x0001]) || '';
-  const lonRef = readAscii(view, gps[0x0003]) || '';
+  const latRef = readHemisphere(view, gps[0x0001]);
+  const lonRef = readHemisphere(view, gps[0x0003]);
   if (latDms && lonDms) {
     const lat = gpsDmsToDecimal(latDms as [number, number, number], latRef);
     const lon = gpsDmsToDecimal(lonDms as [number, number, number], lonRef);
     if (lat != null && lon != null) {
-      out.latitude = lat;
-      out.longitude = lon;
+      const signed = signedWgs84(lat, lon);
+      out.latitude = signed.lat;
+      out.longitude = signed.lon;
     }
   }
 
@@ -257,6 +278,14 @@ export function mergeExif(
     ? Number(existing.longitude)
     : exif?.longitude;
   const taken = existing.taken_at || exif?.takenAtIso;
+  if (lat != null && lon != null) {
+    const signed = signedWgs84(lat, lon);
+    return {
+      latitude: signed.lat,
+      longitude: signed.lon,
+      ...(taken ? { taken_at: taken } : {}),
+    };
+  }
   return {
     ...(lat != null ? { latitude: lat } : {}),
     ...(lon != null ? { longitude: lon } : {}),

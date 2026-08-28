@@ -1,5 +1,6 @@
 import { toDisplayLabel } from './formatters';
 import { parseTimestamp } from './dateUtils';
+import { signedWgs84 } from './imageExif';
 // ============================================================
 // RMPG Flex — Photo data stamp (forensic metadata burn-in)
 // ============================================================
@@ -76,12 +77,10 @@ export function buildEvidenceOverlayLines(input: EvidenceOverlayInput): string[]
 type StampCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 export interface StampOverlayOpts {
-  /** Floor for banner type. PDF embeds shrink the raster; use ~36 so the
-   *  stamp stays court-readable at the 55mm attachment grid size. */
   minFontPx?: number;
-  /** `width / divisor` feeds font size. Default 48 (on-screen thumbs).
-   *  PDF prep uses ~14 so the banner survives downscale. */
   widthDivisor?: number;
+  /** Cap font so the banner stays a small strip, not half the photo. */
+  heightDivisor?: number;
 }
 
 /** Burn the banner + RMPG watermark onto an already-drawn canvas. */
@@ -95,14 +94,30 @@ export function drawStampOverlay(
 ): void {
   if (width < 8 || height < 8) return;
   const W = width, H = height;
-  const fontPx = Math.max(opts?.minFontPx ?? 13, Math.round(W / (opts?.widthDivisor ?? 48)));
-  const pad = Math.round(fontPx * 0.6);
-  const lineH = Math.round(fontPx * 1.35);
-  const bannerH = Math.max(lineH + pad * 2, lines.length * lineH + pad * 2);
+  let fontPx = Math.min(
+    Math.max(opts?.minFontPx ?? 13, Math.round(W / (opts?.widthDivisor ?? 48))),
+    Math.max(10, Math.round(H / (opts?.heightDivisor ?? 22))),
+  );
+  const measure = (px: number) => {
+    ctx.font = `bold ${px}px monospace`;
+    return Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
+  };
+  while (fontPx > 10 && measure(fontPx) > W - Math.round(fontPx * 1.2)) fontPx -= 1;
 
-  // Comma-form rgba — canvas 2d does not reliably parse CSS Color 4
-  // `rgba(0 0 0 / 0.58)`, which left the banner (and gold text) invisible
-  // on printed PDFs.
+  const pad = Math.round(fontPx * 0.55);
+  const lineH = Math.round(fontPx * 1.28);
+  let bannerH = Math.max(lineH + pad * 2, lines.length * lineH + pad * 2);
+  const maxBanner = Math.round(H * 0.18);
+  while (bannerH > maxBanner && fontPx > 10) {
+    fontPx -= 1;
+    bannerH = Math.max(
+      Math.round(fontPx * 1.28) + Math.round(fontPx * 0.55) * 2,
+      lines.length * Math.round(fontPx * 1.28) + Math.round(fontPx * 0.55) * 2,
+    );
+  }
+  const pad2 = Math.round(fontPx * 0.55);
+  const lineH2 = Math.round(fontPx * 1.28);
+
   ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
   ctx.fillRect(0, H - bannerH, W, bannerH);
   ctx.fillStyle = '#d4a017';
@@ -111,14 +126,14 @@ export function drawStampOverlay(
   ctx.font = `bold ${fontPx}px monospace`;
   ctx.textBaseline = 'top';
   ctx.textAlign = 'left';
-  let y = H - bannerH + pad;
+  let y = H - bannerH + pad2;
   for (let i = 0; i < lines.length; i++) {
     ctx.fillStyle = i === 0 ? '#ffd34d' : '#f4f4f4';
     ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
     ctx.shadowBlur = Math.round(fontPx / 6);
-    ctx.fillText(lines[i], pad, y);
+    ctx.fillText(lines[i], pad2, y);
     ctx.shadowBlur = 0;
-    y += lineH;
+    y += lineH2;
   }
   const label = (agency || 'RMPG').toUpperCase();
   ctx.font = `bold ${Math.round(fontPx * 0.9)}px monospace`;
@@ -126,7 +141,7 @@ export function drawStampOverlay(
   ctx.textAlign = 'right';
   ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
   ctx.shadowBlur = Math.round(fontPx / 5);
-  ctx.fillText(label, W - pad, pad);
+  ctx.fillText(label, W - pad2, pad2);
   ctx.shadowBlur = 0;
   ctx.textAlign = 'left';
 }
@@ -138,7 +153,8 @@ export function formatStampTimestamp(d: Date = new Date()): string {
 /** Format the geo line, or '' when no fix. */
 export function formatGeoLine(lat?: number, lon?: number): string {
   if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return 'GEO  UNAVAILABLE';
-  return `GEO  ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  const signed = signedWgs84(lat, lon);
+  return `GEO  ${signed.lat.toFixed(6)}, ${signed.lon.toFixed(6)}`;
 }
 
 /** Officer + context line ("FI. ZAMORA #D-101 — VEHICLE INSPECTION"). */

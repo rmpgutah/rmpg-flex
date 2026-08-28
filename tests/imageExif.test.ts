@@ -5,6 +5,7 @@ import {
   mountainWallClockToUtcIso,
   gpsDmsToDecimal,
   mergeExif,
+  signedWgs84,
 } from '../src/utils/imageExif';
 
 function le16(n: number): number[] { return [n & 0xff, (n >> 8) & 0xff]; }
@@ -135,6 +136,11 @@ describe('gpsDmsToDecimal', () => {
     const lat = gpsDmsToDecimal([40, 40, 7.644], 'N');
     expect(lat).toBeCloseTo(40.66879, 5);
   });
+
+  it('restores a missing minus on CONUS west longitude', () => {
+    expect(signedWgs84(40.66879, 111.94449).lon).toBeCloseTo(-111.94449, 5);
+    expect(signedWgs84(40.66879, -111.94449).lon).toBeCloseTo(-111.94449, 5);
+  });
 });
 
 describe('parseImageExif', () => {
@@ -154,6 +160,18 @@ describe('parseImageExif', () => {
     });
     const parsed = parseImageExif(jpeg);
     expect(parsed?.latitude).toBeCloseTo(40.66879, 4);
+    expect(parsed?.longitude).toBeCloseTo(-111.94449, 4);
+  });
+
+  it('signs west longitude when GPSLongitudeRef is omitted', () => {
+    const jpeg = jpegWithExif({
+      dateTime: '2026:08:27 07:40:45',
+      lat: [40, 40, 7.644],
+      lon: [111, 56, 40.164],
+      latRef: 'N',
+      lonRef: '',
+    });
+    const parsed = parseImageExif(jpeg);
     expect(parsed?.longitude).toBeCloseTo(-111.94449, 4);
   });
 
