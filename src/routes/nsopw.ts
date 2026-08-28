@@ -24,7 +24,7 @@ import {
   runNsopwScreening, screenPersonForSor, ensureNsopwColumns,
 } from '../utils/nsopw';
 import { isConfigured } from '../utils/nsopw/client';
-import { getDecrypted } from '../utils/encryptedR2';
+import { getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { listRecentQueries, vacuumCache } from '../utils/nsopw/cache';
 import { recordAudit } from '../utils/auditLog';
 import { enrichPendingOffenders } from '../utils/sorEnrichment/runner';
@@ -202,7 +202,15 @@ nsopw.get('/photo/:offenderRowId', requireRole(...READ_ROLES), async (c) => {
   ).catch(() => null);
   if (!row?.local_photo_key) return c.json({ error: 'no local photo' }, 404);
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, row.local_photo_key);
+  let decrypted;
+  try {
+    decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, row.local_photo_key);
+  } catch (err) {
+    if (err instanceof FileEncryptionError) {
+      return c.json({ error: 'Photo decrypt failed' }, 500);
+    }
+    throw err;
+  }
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
