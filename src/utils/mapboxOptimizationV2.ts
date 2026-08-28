@@ -1,5 +1,7 @@
 // ─── Shared V2 problem / solution types ──────────────────────────────────────
 
+import { clampDwellSeconds } from './serveStopTiming';
+
 export interface V2Location {
   name: string;
   coordinates: [number, number]; // [lng, lat]
@@ -63,9 +65,11 @@ export interface ServeStop {
   recipient_address: string;
   recipient_lat: number;
   recipient_lng: number;
-  time_window?: string | null; // "HH:MM-HH:MM"
-  deadline?: string | null;    // ISO datetime
-  priority?: string | null;    // '1' | '2' | '3' | 'high' | 'normal' | 'low'
+  time_window?: string | null;
+  deadline?: string | null;
+  priority?: string | null;
+  business_id?: number | null;
+  recipient_type?: string | null;
 }
 
 export interface UnitRow {
@@ -95,6 +99,15 @@ export interface CallRow {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function serveOnsiteDuration(stop: ServeStop): number {
+  const type = stop.business_id || (stop.recipient_type || '').toLowerCase() === 'business'
+    ? 'business'
+    : /\b(apt|apartment|unit|ste|suite)\b/i.test(stop.recipient_address || '')
+      ? 'apartment'
+      : 'individual';
+  return clampDwellSeconds(type);
+}
 
 function serviceDuration(priority: string | null | undefined): number {
   if (priority === '1' || priority === 'high')   return 30 * 60;
@@ -183,7 +196,7 @@ export function buildServeRunProblem(
     const svc: V2Service = {
       name: String(s.id),
       location: String(s.id),
-      duration: serviceDuration(s.priority),
+      duration: serveOnsiteDuration(s),
     };
     if (s.time_window) {
       const tw = parseTimeWindow(s.time_window, shiftStart);
