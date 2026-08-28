@@ -86,8 +86,9 @@ function WebhookConfigPanel() {
         Webhook — Real-Time Push
       </div>
       <p className="text-[10px] text-rmpg-400 leading-relaxed">
-        Paste this URL into ServeManager → Settings → Webhooks so SM notifies RMPG immediately when a job or attempt changes.
-        The shared secret is used to verify that the request came from ServeManager.
+        Paste this URL into ServeManager → My Account → Settings → Manage Webhooks (Endpoint field).
+        Copy the webhook&apos;s Secret from that same page into the field below — ServeManager signs each POST with HMAC-SHA-256 in the <span className="font-mono">X-SM-HMAC-SHA256</span> header.
+        Disable any leftover webhook pointing at <span className="font-mono">rmpgutahps.us</span>: that zone sits behind Cloudflare&apos;s managed challenge and ServeManager cannot complete it (HTTP 403).
       </p>
 
       {/* Webhook URL copy row */}
