@@ -55,6 +55,14 @@ jobs:
           FILENAME: ${{ github.event.inputs.filename || '0270_tesseract_box_page_number.sql' }}
         run: |
           set -euo pipefail
+          case "$FILENAME" in
+            *.sql) ;;
+            *) echo "::error::filename must end in .sql"; exit 65 ;;
+          esac
+          if ! [[ "$FILENAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::filename contains illegal characters"
+            exit 65
+          fi
           FILE="migrations/${FILENAME}"
           if [ ! -f "$FILE" ]; then
             echo "::error::$FILE does not exist"
