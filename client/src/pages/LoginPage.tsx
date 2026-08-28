@@ -83,6 +83,7 @@ export default function LoginPage() {
     setLoginStep,
     pendingBackupCodes,
     requiresPasswordChange,
+    twoFactorMethods,
   } = useAuth();
 
   const [loginUsername, setLoginUsername] = useState('');
@@ -96,12 +97,6 @@ export default function LoginPage() {
   const [useBackupCode, setUseBackupCode] = useState(false);
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
-  // NOTE: `twoFactorMethods` is currently never written (AuthContext owns the
-  // real source of truth) — leaving the local read so the UI doesn't crash if
-  // a future wiring pass adds the method-list to the context. Today both keys
-  // are undefined, which makes `getEffectiveMode()` fall through to 'totp'.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [twoFactorMethods, _setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
 
   // Forgot Password flow state
   type ForgotPwStep = 'username' | 'questions' | 'reset' | 'success';
@@ -942,6 +937,7 @@ export default function LoginPage() {
                     Back
                   </button>
                   <div className="flex items-center gap-3">
+                    {twoFactorMethods.webauthn && (
                     <button
                       type="button"
                       onClick={() => { clearError(); handleSecurityKeyAuth(); }}
@@ -954,6 +950,7 @@ export default function LoginPage() {
                       <Usb className="w-3 h-3" aria-hidden="true" />
                       YubiKey
                     </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => { setTwoFactorMode('backup'); setUseBackupCode(true); clearError(); }}

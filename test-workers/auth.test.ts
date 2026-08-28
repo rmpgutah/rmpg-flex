@@ -283,6 +283,16 @@ describe('POST /login — account lockout', () => {
     expect(row?.locked_until).toBeNull();
   });
 
+  it('accepts a case-variant of the stored username', async () => {
+    const db = getDb(env as unknown as { DB: D1Database });
+    await seedUser(db, 'lockout-user-case');
+    const res = await post('Lockout-User-Case', TEST_PASSWORD, '10.1.0.7');
+    expect(res.status).toBe(200);
+    const body = await res.json() as { token?: string; user?: { username: string } };
+    expect(typeof body.token).toBe('string');
+    expect(body.user?.username).toBe('lockout-user-case');
+  });
+
   it('resets to a fresh window (not an immediate re-lock) after an expired lock', async () => {
     const db = getDb(env as unknown as { DB: D1Database });
     const userId = await seedUser(db, 'lockout-user-5');

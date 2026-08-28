@@ -542,8 +542,30 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/backup-status' },
   { kind: 'prefix', value: '/api/admin/maintenance-mode' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
-  // Auth security history
-  { kind: 'prefix', value: '/api/auth/security/login-history' },
+  // ── Auth login family ──────────────────────────────────────────
+  // The rewrite's auth.ts matches live D1 (must_change_password /
+  // totp_enabled / sessions.session_id + refresh_token_hash). Legacy
+  // login still INSERTs token/refresh_token columns and SELECTs
+  // force_password_change — those columns are not on live D1, so
+  // POST /api/auth/login 500'd in the field. Route the whole login
+  // contract here. /api/auth/reset-password (email-token page) is
+  // NOT listed — that path is still legacy-only.
+  { kind: 'prefix', value: '/api/auth/login' },
+  { kind: 'prefix', value: '/api/auth/refresh' },
+  { kind: 'prefix', value: '/api/auth/logout' },
+  { kind: 'prefix', value: '/api/auth/me' },
+  { kind: 'prefix', value: '/api/auth/forgot-password' },
+  { kind: 'prefix', value: '/api/auth/2fa' },
+  { kind: 'prefix', value: '/api/auth/totp' },
+  { kind: 'prefix', value: '/api/auth/webauthn' },
+  { kind: 'prefix', value: '/api/auth/session' },
+  { kind: 'prefix', value: '/api/auth/sessions' },
+  { kind: 'prefix', value: '/api/auth/security' },
+  { kind: 'prefix', value: '/api/auth/profile' },
+  { kind: 'prefix', value: '/api/auth/password' },
+  { kind: 'prefix', value: '/api/auth/change-password' },
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
+  { kind: 'prefix', value: '/api/auth/security-questions' },
   // OIDC / SSO — entire namespace lives on the rewrite
   // (ssoAuth.ts + oidc.ts, mounted in routesConfig.ts). Legacy never
   // implemented any of these, so requests were 404ing from the legacy
