@@ -33,10 +33,69 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+export type ServeManagerSecretSource = string | {
+  JWT_SECRET?: string;
+  JWT_SECRET_PREVIOUS?: string;
+  FILE_ENCRYPTION_KEK?: string;
+  FILE_ENCRYPTION_KEK_PREVIOUS?: string;
+};
+
+function primaryJwtSecret(source: ServeManagerSecretSource): string {
+  return typeof source === 'string' ? source : (source.JWT_SECRET ?? '');
+}
+
+function dedicatedKekRaw(b64: string | undefined): Uint8Array | null {
+  if (!b64?.trim()) return null;
+  try {
+    const bin = atob(b64.trim());
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out.length === 32 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+async function importAesKey(raw: BufferSource): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
 async function deriveKey(jwtSecret: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const raw = await crypto.subtle.digest('SHA-256', enc.encode(jwtSecret));
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return importAesKey(raw);
+}
+
+async function cryptoKeysForSource(source: ServeManagerSecretSource): Promise<CryptoKey[]> {
+  const keys: CryptoKey[] = [];
+  const seen = new Set<string>();
+  const addJwt = async (secret?: string) => {
+    const s = secret?.trim();
+    if (!s || seen.has(`jwt:${s}`)) return;
+    seen.add(`jwt:${s}`);
+    keys.push(await deriveKey(s));
+  };
+  const addDedicated = async (b64?: string) => {
+    const raw = dedicatedKekRaw(b64);
+    if (!raw || seen.has(`ded:${b64!.trim()}`)) return;
+    seen.add(`ded:${b64!.trim()}`);
+    keys.push(await importAesKey(raw));
+  };
+  if (typeof source === 'string') {
+    await addJwt(source);
+  } else {
+    await addJwt(source.JWT_SECRET);
+    await addJwt(source.JWT_SECRET_PREVIOUS);
+    await addDedicated(source.FILE_ENCRYPTION_KEK);
+    await addDedicated(source.FILE_ENCRYPTION_KEK_PREVIOUS);
+  }
+  return keys;
+}
+
+function looksEncryptedApiKey(stored: string): boolean {
+  const parts = stored.split(':');
+  if (parts.length !== 3) return false;
+  return parts.every((p) => p.length > 0 && /^[0-9a-f]+$/i.test(p));
 }
 
 async function encryptApiKey(plaintext: string, jwtSecret: string): Promise<string> {
@@ -52,8 +111,7 @@ async function encryptApiKey(plaintext: string, jwtSecret: string): Promise<stri
   return `${bytesToHex(iv)}:${bytesToHex(authTag)}:${bytesToHex(ct)}`;
 }
 
-async function decryptApiKey(stored: string, jwtSecret: string): Promise<string> {
-  const key = await deriveKey(jwtSecret);
+async function decryptApiKeyWithKey(stored: string, key: CryptoKey): Promise<string> {
   const parts = stored.split(':');
   if (parts.length !== 3) throw new Error('Invalid encrypted API key format');
   const iv = hexToBytes(parts[0]);
@@ -62,25 +120,57 @@ async function decryptApiKey(stored: string, jwtSecret: string): Promise<string>
   const combined = new Uint8Array(ct.length + 16);
   combined.set(ct, 0);
   combined.set(authTag, ct.length);
-  try {
-    const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
-    return new TextDecoder().decode(dec);
-  } catch { throw new Error('Decryption failed — key may have changed or data is corrupted'); }
+  const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
+  return new TextDecoder().decode(dec);
+}
+
+async function decryptApiKey(stored: string, source: ServeManagerSecretSource): Promise<string> {
+  if (!looksEncryptedApiKey(stored)) return stored;
+  const keys = await cryptoKeysForSource(source);
+  if (keys.length === 0) throw new Error('Decryption failed — key may have changed or data is corrupted');
+  for (const key of keys) {
+    try {
+      return await decryptApiKeyWithKey(stored, key);
+    } catch {
+      // Try the next historical wrapping key.
+    }
+  }
+  throw new Error('Decryption failed — key may have changed or data is corrupted');
 }
 
 // ── Key storage ───────────────────────────────────────────────
 
-async function getStoredKey(db: D1Database, jwtSecret: string): Promise<string | null> {
+async function persistRewrappedApiKey(db: D1Database, jwtSecret: string, plaintext: string): Promise<void> {
+  if (!jwtSecret) return;
+  const encrypted = await encryptApiKey(plaintext, jwtSecret);
+  await execute(
+    db,
+    "UPDATE system_config SET config_value = ?, updated_at = datetime('now') WHERE config_key = 'servemanager_api_key' AND category = 'integrations'",
+    encrypted,
+  );
+}
+
+async function getStoredKey(db: D1Database, source: ServeManagerSecretSource): Promise<string | null> {
   try {
     const row = await queryFirst<{ config_value: string }>(
       db,
       "SELECT config_value FROM system_config WHERE config_key = 'servemanager_api_key' AND category = 'integrations' AND is_active = 1 LIMIT 1",
     );
-    if (row?.config_value) return decryptApiKey(row.config_value, jwtSecret);
+    if (!row?.config_value) return null;
+    const plaintext = await decryptApiKey(row.config_value, source);
+    const primary = primaryJwtSecret(source);
+    if (primary && looksEncryptedApiKey(row.config_value)) {
+      try {
+        await decryptApiKeyWithKey(row.config_value, await deriveKey(primary));
+      } catch {
+        await persistRewrappedApiKey(db, primary, plaintext).catch(() => undefined);
+      }
+    }
+    return plaintext;
   } catch (err) {
     console.error('[sm-client] Failed to decrypt API key:', (err as Error).message);
+    throw new Error((err as Error).message || 'Decryption failed — key may have changed or data is corrupted');
   }
-  return null;
 }
 
 export async function setApiKey(db: D1Database, jwtSecret: string, plaintext: string): Promise<void> {
@@ -123,9 +213,14 @@ async function smGet(path: string, apiKey: string, params?: Record<string, strin
 // the client 401s. This proxies the binary through the Worker with the
 // same Basic-Auth pattern smGet() uses for JSON.
 export async function fetchDocumentBinary(
-  db: D1Database, jwtSecret: string, documentId: number | string,
+  db: D1Database, source: ServeManagerSecretSource, documentId: number | string,
 ): Promise<{ ok: true; contentType: string; body: ArrayBuffer } | { ok: false; status: number; error: string }> {
-  const key = await getStoredKey(db, jwtSecret);
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    return { ok: false, status: 503, error: (err as Error).message };
+  }
   if (!key) return { ok: false, status: 503, error: 'API key not configured' };
   try {
     const res = await fetch(`${SM_BASE_URL}/documents/${documentId}/download`, {
@@ -140,8 +235,13 @@ export async function fetchDocumentBinary(
 
 // ── Status check ──────────────────────────────────────────────
 
-export async function testConnection(db: D1Database, jwtSecret: string): Promise<{ success: boolean; account?: any; error?: string }> {
-  const key = await getStoredKey(db, jwtSecret);
+export async function testConnection(db: D1Database, source: ServeManagerSecretSource): Promise<{ success: boolean; account?: any; error?: string }> {
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    return { success: false, error: (err as Error).message };
+  }
   if (!key) return { success: false, error: 'API key not configured' };
   try {
     const account = await smGet('/account', key);
@@ -237,8 +337,14 @@ export interface SmJob {
 // SM API returns paginated results via `links.next` cursor. The original code
 // fetched exactly one page of 50 and silently dropped jobs beyond that on every
 // poll cycle. This iterates through all pages, deduplicating by job id.
-export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?: string): Promise<SmJob[]> {
-  const key = await getStoredKey(db, jwtSecret);
+export async function fetchRecentJobs(db: D1Database, source: ServeManagerSecretSource, since?: string): Promise<SmJob[]> {
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    console.error('[sm-client] Job fetch failed:', (err as Error).message);
+    return [];
+  }
   if (!key) return [];
   try {
     const allJobs: SmJob[] = [];
@@ -294,8 +400,14 @@ export async function fetchRecentJobs(db: D1Database, jwtSecret: string, since?:
 // resources use the same `{ data: {...} }` envelope confirmed on /account
 // and every job's own `links.self` (a `/jobs/{id}` URL), just not wrapped
 // in an array.
-export async function fetchJobById(db: D1Database, jwtSecret: string, jobId: number | string): Promise<SmJob | null> {
-  const key = await getStoredKey(db, jwtSecret);
+export async function fetchJobById(db: D1Database, source: ServeManagerSecretSource, jobId: number | string): Promise<SmJob | null> {
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    console.error('[sm-client] Job-by-id fetch failed for', jobId, (err as Error).message);
+    return null;
+  }
   if (!key) return null;
   try {
     const result = await smGet(`/jobs/${jobId}`, key);
@@ -323,7 +435,7 @@ export function extractJobAttempts(job: SmJob): NonNullable<SmJob['attempts']> {
 // RMPG attempt already exists; SM is authoritative only for their timeline).
 export async function pushAttemptToJob(
   db: D1Database,
-  jwtSecret: string,
+  source: ServeManagerSecretSource,
   smJobId: number | string,
   attempt: {
     description?: string;
@@ -335,7 +447,12 @@ export async function pushAttemptToJob(
     server_name?: string;
   },
 ): Promise<{ ok: true; id: number | string } | { ok: false; error: string }> {
-  const key = await getStoredKey(db, jwtSecret);
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
   if (!key) return { ok: false, error: 'API key not configured' };
   try {
     const url = new URL(`${SM_BASE_URL}/jobs/${smJobId}/attempts`);
@@ -379,13 +496,18 @@ export async function pushAttemptToJob(
 // documentName should include the extension (e.g. "affidavit_signed.pdf").
 export async function uploadDocumentToJob(
   db: D1Database,
-  jwtSecret: string,
+  source: ServeManagerSecretSource,
   smJobId: number | string,
   documentName: string,
   documentBuffer: ArrayBuffer,
   contentType = 'application/pdf',
 ): Promise<{ ok: true; id: number | string } | { ok: false; error: string }> {
-  const key = await getStoredKey(db, jwtSecret);
+  let key: string | null;
+  try {
+    key = await getStoredKey(db, source);
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
   if (!key) return { ok: false, error: 'API key not configured' };
   try {
     const url = new URL(`${SM_BASE_URL}/jobs/${smJobId}/documents`);

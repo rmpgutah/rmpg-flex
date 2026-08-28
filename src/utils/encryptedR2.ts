@@ -21,7 +21,9 @@
 //
 // Fails CLOSED when neither secret is usable: FileEncryptionError rather
 // than storing/serving plaintext. Pass the Worker env object (not just the
-// KEK string) so the JWT fallback can run.
+// KEK string) so the JWT fallback can run. Reads try every usable historical
+// KEK (dedicated, previous dedicated, JWT-derived, previous JWT) and re-wrap
+// only the D1 DEK row — R2 file bytes are never rewritten.
 //
 // See docs/superpowers/specs/2026-07-18-file-encryption-at-rest-design.md.
 // ============================================================
@@ -76,7 +78,11 @@ function base64ToBytes(b64: string): Uint8Array {
 /** Worker env (or a subset) so put/get can fall back to JWT_SECRET. */
 export type FileKekEnv = {
   FILE_ENCRYPTION_KEK?: string;
+  /** Previous dedicated KEK — decrypt/unwrap only; never used to wrap new files. */
+  FILE_ENCRYPTION_KEK_PREVIOUS?: string;
   JWT_SECRET?: string;
+  /** Previous JWT — decrypt/unwrap of JWT-derived envelopes only. */
+  JWT_SECRET_PREVIOUS?: string;
 };
 
 export type FileKekSource = string | undefined | FileKekEnv;
@@ -87,10 +93,50 @@ function snapshotKekSource(source: FileKekSource): FileKekSource {
   if (source && typeof source === 'object') {
     return {
       FILE_ENCRYPTION_KEK: source.FILE_ENCRYPTION_KEK,
+      FILE_ENCRYPTION_KEK_PREVIOUS: source.FILE_ENCRYPTION_KEK_PREVIOUS,
       JWT_SECRET: source.JWT_SECRET,
+      JWT_SECRET_PREVIOUS: source.JWT_SECRET_PREVIOUS,
     };
   }
   return source;
+}
+
+async function jwtDerivedKekB64(jwt: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${FILE_KEK_DERIVE_PREFIX}${jwt}`),
+  );
+  return bytesToBase64(new Uint8Array(digest));
+}
+
+function dedicatedKekB64OrNull(kekB64: string | undefined): string | null {
+  if (!kekB64?.trim()) return null;
+  try {
+    decodeDedicatedKekBytes(kekB64);
+    return kekB64.trim();
+  } catch {
+    return null;
+  }
+}
+
+/** KEKs that may unwrap an existing DEK. Order: current dedicated, previous
+ *  dedicated, JWT-derived, previous-JWT-derived. Malformed dedicated values
+ *  are skipped so JWT-wrapped files stay readable. */
+async function unwrapKekB64Candidates(source: FileKekSource): Promise<string[]> {
+  const snap = snapshotKekSource(source);
+  const out: string[] = [];
+  const add = (v: string | null | undefined) => {
+    if (v && !out.includes(v)) out.push(v);
+  };
+  if (snap && typeof snap === 'object') {
+    add(dedicatedKekB64OrNull(snap.FILE_ENCRYPTION_KEK));
+    add(dedicatedKekB64OrNull(snap.FILE_ENCRYPTION_KEK_PREVIOUS));
+    if (snap.JWT_SECRET?.trim()) add(await jwtDerivedKekB64(snap.JWT_SECRET.trim()));
+    if (snap.JWT_SECRET_PREVIOUS?.trim()) add(await jwtDerivedKekB64(snap.JWT_SECRET_PREVIOUS.trim()));
+  } else if (typeof snap === 'string') {
+    add(dedicatedKekB64OrNull(snap));
+  }
+  return out;
 }
 
 async function importKekBytes(raw: BufferSource): Promise<CryptoKey> {
@@ -123,13 +169,7 @@ async function kekB64FromSource(source: FileKekSource): Promise<string> {
     const dedicated = snap.FILE_ENCRYPTION_KEK?.trim();
     if (dedicated) return dedicated;
     const jwt = snap.JWT_SECRET?.trim();
-    if (jwt) {
-      const digest = await crypto.subtle.digest(
-        'SHA-256',
-        new TextEncoder().encode(`${FILE_KEK_DERIVE_PREFIX}${jwt}`),
-      );
-      return bytesToBase64(new Uint8Array(digest));
-    }
+    if (jwt) return jwtDerivedKekB64(jwt);
     throw new FileEncryptionError('File encryption is not configured');
   }
   if (!snap) throw new FileEncryptionError('File encryption is not configured');
@@ -209,14 +249,18 @@ function assertDedicatedKekIfPresent(source: FileKekSource): void {
 
 /** Fetch and decrypt a file. Returns null if the R2 object doesn't exist,
  *  or if it exists but has no file_encryption_keys row (e.g. already
- *  crypto-shredded) — either way, there's nothing decryptable to return. */
+ *  crypto-shredded) — either way, there's nothing decryptable to return.
+ *
+ *  Unwrap tries every usable KEK (dedicated, previous dedicated, JWT-derived,
+ *  previous JWT). R2 ciphertext is never rewritten. If unwrap succeeds with a
+ *  non-preferred KEK, only the D1 wrapped_dek row is re-wrapped to the current
+ *  preferred KEK so later reads don't need the old secret. */
 export async function getDecrypted(
   bucket: R2Bucket,
   db: D1Database,
   kek: FileKekSource,
   key: string,
 ): Promise<{ bytes: Uint8Array; httpMetadata?: R2HTTPMetadata } | null> {
-  assertDedicatedKekIfPresent(kek);
   const obj = await bucket.get(key);
   if (!obj) return null;
 
@@ -235,16 +279,54 @@ export async function getDecrypted(
   }
   if (!row) return null;
 
-  const kekKey = await importKek(await kekB64FromSource(kek));
-  const dekRaw = new Uint8Array(await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kekKey, base64ToBytes(row.wrapped_dek),
-  ));
+  const candidates = await unwrapKekB64Candidates(kek);
+  if (candidates.length === 0) {
+    assertDedicatedKekIfPresent(kek);
+    throw new FileEncryptionError('File encryption is not configured');
+  }
+
+  let dekRaw: Uint8Array | null = null;
+  let usedKekB64: string | null = null;
+  for (const kekB64 of candidates) {
+    try {
+      const kekKey = await importKek(kekB64);
+      dekRaw = new Uint8Array(await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kekKey, base64ToBytes(row.wrapped_dek),
+      ));
+      usedKekB64 = kekB64;
+      break;
+    } catch {
+      // Wrong KEK — try the next historical wrapping key.
+    }
+  }
+  if (!dekRaw || !usedKekB64) {
+    throw new FileEncryptionError('Decryption failed — key may have changed');
+  }
+
   const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, false, ['decrypt']);
 
   const ciphertext = await obj.arrayBuffer();
   const plainBuf = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: base64ToBytes(row.file_iv) }, dek, ciphertext,
   );
+
+  try {
+    const preferred = await kekB64FromSource(kek);
+    if (preferred !== usedKekB64) {
+      const wrapKey = await importKek(preferred);
+      const newDekIv = crypto.getRandomValues(new Uint8Array(12));
+      const newWrapped = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: newDekIv }, wrapKey, dekRaw);
+      await db.prepare(
+        'UPDATE file_encryption_keys SET wrapped_dek = ?, dek_iv = ? WHERE r2_key = ?',
+      ).bind(
+        bytesToBase64(new Uint8Array(newWrapped)),
+        bytesToBase64(newDekIv),
+        key,
+      ).run();
+    }
+  } catch {
+    // Read succeeded. Never fail the officer-facing GET because re-wrap did not.
+  }
 
   return { bytes: new Uint8Array(plainBuf), httpMetadata: obj.httpMetadata };
 }

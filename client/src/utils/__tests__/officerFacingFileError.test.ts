@@ -9,6 +9,8 @@ describe('officerFacingFileError', () => {
     )).toBe('File storage is temporarily unavailable. Contact a supervisor.');
     expect(officerFacingFileError(new Error('ENCRYPTION_FAILED'), 'Upload failed'))
       .toBe('File storage is temporarily unavailable. Contact a supervisor.');
+    expect(officerFacingFileError(new Error('Decryption failed — key may have changed'), 'Upload failed'))
+      .toBe('File storage is temporarily unavailable. Contact a supervisor.');
   });
 
   it('passes through ordinary upload errors', () => {
