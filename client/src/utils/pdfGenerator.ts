@@ -2615,6 +2615,7 @@ export interface PdfImage {
   height: number;
   format: 'JPEG' | 'PNG';
   name: string;
+  stampLines?: string[];
 }
 
 /** Embed a single image into the PDF with aspect-ratio preservation. */
@@ -2705,13 +2706,14 @@ export function addImageGrid(
   const gap = SPACING.MD;
   const imgMaxW = (cw - 2 * SPACING.CONTENT_INSET - gap) / 2;
   const imgMaxH = 55;
-  const captionH = 4;
+  const captionH = 12;
 
   let y = startY;
 
   for (let i = 0; i < images.length; i += 2) {
     const rowImages = images.slice(i, i + 2);
-    y = checkPageBreak(doc, y, imgMaxH + captionH + SPACING.SM, priority);
+    const extraCaption = Math.max(0, ...rowImages.map((im) => (im.stampLines?.length ?? 0))) * 3.2;
+    y = checkPageBreak(doc, y, imgMaxH + captionH + extraCaption + SPACING.SM, priority);
 
     let maxRowH = 0;
     for (let j = 0; j < rowImages.length; j++) {
@@ -2725,11 +2727,17 @@ export function addImageGrid(
 
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-      doc.setTextColor(...COLOR.TEXT_TERTIARY);
-      const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      const lines = (img.stampLines && img.stampLines.length > 0)
+        ? img.stampLines
+        : [img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name];
+      let cy = y + h + 3;
+      for (const line of lines) {
+        doc.text(fitPdfText(doc, line, imgMaxW), x, cy);
+        cy += 3.2;
+      }
 
-      maxRowH = Math.max(maxRowH, h);
+      maxRowH = Math.max(maxRowH, h + (lines.length * 3.2));
     }
 
     y += maxRowH + captionH + SPACING.LG;

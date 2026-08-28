@@ -274,7 +274,7 @@ export function formatRelativeTime(dateStr: string | null | undefined): string {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDays = Math.floor(diffHr / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: displayTimeZone() });
 }
 
 // ============================================================

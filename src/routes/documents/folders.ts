@@ -14,7 +14,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, ensureAttachmentEvidenceColumns } from '../../utils/db';
 
 import { dbErrorResponse } from '../../utils/dbErrors';
 const folders = new Hono<Env>();
@@ -354,6 +354,7 @@ async function signAttachment(fileId: string, secret: string, ttlSeconds = 31536
 folders.get('/:entityType/:entityId/attachments', async (c) => {
   try {
     const db = getDb(c.env);
+    await ensureAttachmentEvidenceColumns(db);
     const entityType = c.req.param('entityType');
     const entityId = parseInt(c.req.param('entityId'), 10);
     if (!entityType || Number.isNaN(entityId)) {

@@ -20,6 +20,7 @@
 // ── Fetch helpers (isolated from auth-coupled apiFetch) ────
 import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from './apiOrigin';
 import { buildEvidenceOverlayLines, drawStampOverlay, type EvidenceOverlayInput } from './photoStamp';
+import { mergeExif, parseImageExif } from './imageExif';
 
 function apiBase(): string {
   if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
@@ -67,6 +68,8 @@ export interface ResolvedImage {
   height: number;
   format: 'JPEG' | 'PNG';
   name: string;
+  /** Court-facing stamp lines (timestamp, GPS, officer) printed under the photo. */
+  stampLines?: string[];
 }
 
 // ── Constants ────────────────────────────────────────────────
@@ -74,13 +77,12 @@ export interface ResolvedImage {
 const MAX_IMAGE_DIMENSION = 800;
 const JPEG_QUALITY = 0.85;
 const FETCH_TIMEOUT_MS = 10000;
-const TOKEN_KEY = 'rmpg_token';
 
 // ── Image Fetching ───────────────────────────────────────────
 
 /**
  * Fetch a single image by file_id, downscale to max 800px,
- * and return as a base64 data URL ready for jsPDF embedding.
+ * burn a readable evidence banner, and return as a base64 data URL.
  * Returns null on any failure (graceful degradation).
  */
 export async function fetchImageAsBase64(
@@ -106,7 +108,26 @@ export async function fetchImageAsBase64(
     const blob = await res.blob();
     if (!blob.type.startsWith('image/')) return null;
 
-    const bmp = await createImageBitmap(blob);
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    const fromFile = parseImageExif(buf);
+    const merged = mergeExif(
+      {
+        latitude: overlay?.lat as number | null | undefined,
+        longitude: overlay?.lon as number | null | undefined,
+        taken_at: overlay?.takenAt ?? overlay?.createdAt ?? null,
+      },
+      fromFile,
+    );
+    const overlayForStamp: EvidenceOverlayInput = {
+      ...(overlay ?? {}),
+      takenAt: merged.taken_at ?? overlay?.takenAt,
+      createdAt: overlay?.createdAt,
+      lat: merged.latitude ?? overlay?.lat,
+      lon: merged.longitude ?? overlay?.lon,
+    };
+    const stampLines = buildEvidenceOverlayLines(overlayForStamp);
+
+    const bmp = await createImageBitmap(new Blob([buf], { type: blob.type }));
 
     let w = bmp.width;
     let h = bmp.height;
@@ -116,35 +137,51 @@ export async function fetchImageAsBase64(
       h = Math.round(h * scale);
     }
 
-    const canvas = new OffscreenCanvas(w, h);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) { bmp.close(); return null; }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(bmp, 0, 0, w, h);
-    bmp.close();
-
-    if (overlay) {
-      drawStampOverlay(ctx, w, h, buildEvidenceOverlayLines(overlay), overlay.agency);
-    }
-
+    let dataUrl: string;
+    let format: 'JPEG' | 'PNG';
     const isTransparent = blob.type === 'image/png' || blob.type === 'image/webp';
     const outType = isTransparent ? 'image/png' : 'image/jpeg';
-    const format: 'JPEG' | 'PNG' = isTransparent ? 'PNG' : 'JPEG';
+    format = isTransparent ? 'PNG' : 'JPEG';
 
-    const outBlob = await canvas.convertToBlob({ type: outType, quality: JPEG_QUALITY });
-    const reader = new FileReader();
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(outBlob);
-    });
+    const stampOpts = { minFontPx: 36, widthDivisor: 14 };
 
-    return { dataUrl, width: w, height: h, format, name: fileName };
+    if (typeof OffscreenCanvas !== 'undefined') {
+      const canvas = new OffscreenCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); return null; }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(bmp, 0, 0, w, h);
+      drawStampOverlay(ctx, w, h, stampLines, overlayForStamp.agency, stampOpts);
+      const outBlob = await canvas.convertToBlob({ type: outType, quality: JPEG_QUALITY });
+      dataUrl = await blobToDataUrl(outBlob);
+    } else {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); return null; }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(bmp, 0, 0, w, h);
+      drawStampOverlay(ctx, w, h, stampLines, overlayForStamp.agency, stampOpts);
+      dataUrl = canvas.toDataURL(outType, JPEG_QUALITY);
+    }
+    bmp.close();
+
+    return { dataUrl, width: w, height: h, format, name: fileName, stampLines };
   } catch {
     return null;
   }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**

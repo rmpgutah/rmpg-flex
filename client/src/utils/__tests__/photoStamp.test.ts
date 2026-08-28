@@ -5,11 +5,17 @@ import {
 } from '../photoStamp';
 
 describe('photoStamp — stamp lines', () => {
-  const D = new Date(2026, 5, 11, 14, 7, 3); // 2026-06-11 14:07:03 local
+  // 2026-06-11 20:07:03Z = 14:07:03 MDT
+  const D = new Date('2026-06-11T20:07:03.000Z');
 
   it('formats the timestamp MM-DD-YYYY at HH:MM:SS (TMZ)', () => {
     const s = formatStampTimestamp(D);
-    expect(s).toMatch(/^06-11-2026 at 14:07:03( \([A-Z]{2,5}\))?$/);
+    expect(s).toMatch(/^06-11-2026 at 14:07:03 \(M[DS]T\)$/);
+  });
+
+  it('never formats capture time in the device zone (UTC would be 20:07)', () => {
+    const s = formatStampTimestamp(D);
+    expect(s).not.toContain('20:07');
   });
 
   it('formats geo line with 6-decimal coords, or UNAVAILABLE', () => {
@@ -50,7 +56,7 @@ describe('photoStamp — stamp lines', () => {
   it('builds the full 3-line stamp set', () => {
     const lines = buildStampLines({ officerLast: 'Zamora', badge: 'D-101', context: 'Evidence - Case No. 25-0142', lat: 40.76, lon: -111.89, date: D });
     expect(lines.length).toBe(3);
-    expect(lines[0]).toMatch(/^06-11-2026 at 14:07:03/);
+    expect(lines[0]).toMatch(/^06-11-2026 at 14:07:03 \(M[DS]T\)$/);
     expect(lines[1]).toMatch(/^GEO  40\.760000, -111\.890000$/);
     expect(lines[2]).toBe('FI. ZAMORA #D-101  —  EVIDENCE - CASE NO. 25-0142');
   });

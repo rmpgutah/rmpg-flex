@@ -8,6 +8,7 @@ import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } 
 import { resolveUploadMime } from '../utils/uploadMime';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { mergeExif, parseImageExif } from '../utils/imageExif';
 import { isInlineAudio, parseBytesRange, playbackContentType } from '../utils/inlineMedia';
 
 const uploads = new Hono<Env>();
@@ -153,6 +154,7 @@ uploads.get('/entity/:type/:id', async (c) => {
     const auth = await resolveAuth(c);
     if (!auth) return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
+    await ensureAttachmentEvidenceColumns(db);
     const type = c.req.param('type');
     const id = parseInt(c.req.param('id'), 10);
     const rows = await query<any>(
@@ -401,6 +403,13 @@ uploads.post('/', async (c) => {
       const ext = extFor(file.name, mime);
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
+      const fromExif = mime.startsWith('image/')
+        ? parseImageExif(new Uint8Array(buffer))
+        : null;
+      const evidence = mergeExif(
+        { latitude: geoLat, longitude: geoLon, taken_at: takenAt },
+        fromExif,
+      );
 
       await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, buffer, {
         httpMetadata: { contentType: mime },
@@ -419,9 +428,9 @@ uploads.post('/', async (c) => {
         entityType,
         entityId,
         userId,
-        Number.isFinite(geoLat) ? geoLat : null,
-        Number.isFinite(geoLon) ? geoLon : null,
-        takenAt ?? null,
+        evidence.latitude ?? null,
+        evidence.longitude ?? null,
+        evidence.taken_at ?? null,
         referenceNotes ?? null,
       );
 

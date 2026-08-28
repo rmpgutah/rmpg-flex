@@ -75,6 +75,15 @@ export function buildEvidenceOverlayLines(input: EvidenceOverlayInput): string[]
 
 type StampCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
+export interface StampOverlayOpts {
+  /** Floor for banner type. PDF embeds shrink the raster; use ~36 so the
+   *  stamp stays court-readable at the 55mm attachment grid size. */
+  minFontPx?: number;
+  /** `width / divisor` feeds font size. Default 48 (on-screen thumbs).
+   *  PDF prep uses ~14 so the banner survives downscale. */
+  widthDivisor?: number;
+}
+
 /** Burn the banner + RMPG watermark onto an already-drawn canvas. */
 export function drawStampOverlay(
   ctx: StampCtx,
@@ -82,15 +91,19 @@ export function drawStampOverlay(
   height: number,
   lines: string[],
   agency = 'RMPG',
+  opts?: StampOverlayOpts,
 ): void {
   if (width < 8 || height < 8) return;
   const W = width, H = height;
-  const fontPx = Math.max(13, Math.round(W / 48));
+  const fontPx = Math.max(opts?.minFontPx ?? 13, Math.round(W / (opts?.widthDivisor ?? 48)));
   const pad = Math.round(fontPx * 0.6);
   const lineH = Math.round(fontPx * 1.35);
   const bannerH = Math.max(lineH + pad * 2, lines.length * lineH + pad * 2);
 
-  ctx.fillStyle = 'rgba(0 0 0 / 0.58)';
+  // Comma-form rgba — canvas 2d does not reliably parse CSS Color 4
+  // `rgba(0 0 0 / 0.58)`, which left the banner (and gold text) invisible
+  // on printed PDFs.
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
   ctx.fillRect(0, H - bannerH, W, bannerH);
   ctx.fillStyle = '#d4a017';
   ctx.fillRect(0, H - bannerH, W, Math.max(2, Math.round(fontPx / 8)));
@@ -101,7 +114,7 @@ export function drawStampOverlay(
   let y = H - bannerH + pad;
   for (let i = 0; i < lines.length; i++) {
     ctx.fillStyle = i === 0 ? '#ffd34d' : '#f4f4f4';
-    ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
     ctx.shadowBlur = Math.round(fontPx / 6);
     ctx.fillText(lines[i], pad, y);
     ctx.shadowBlur = 0;
@@ -109,19 +122,17 @@ export function drawStampOverlay(
   }
   const label = (agency || 'RMPG').toUpperCase();
   ctx.font = `bold ${Math.round(fontPx * 0.9)}px monospace`;
-  ctx.fillStyle = 'rgba(212,160,23,0.85)';
+  ctx.fillStyle = 'rgba(212, 160, 23, 0.85)';
   ctx.textAlign = 'right';
-  ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
   ctx.shadowBlur = Math.round(fontPx / 5);
   ctx.fillText(label, W - pad, pad);
   ctx.shadowBlur = 0;
   ctx.textAlign = 'left';
 }
-/** Format the timestamp line exactly as the capture-time stamp shows it (device local). */
+/** Timestamp line in America/Denver — never the device zone (UTC hosts print 6h off). */
 export function formatStampTimestamp(d: Date = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  const tz = localTimeZoneAbbr(d);
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())}-${d.getFullYear()} at ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${tz ? ` (${tz})` : ''}`;
+  return formatStampTimestampMountain(d);
 }
 
 /** Format the geo line, or '' when no fix. */
