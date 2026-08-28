@@ -63,7 +63,7 @@ echo "  [3/5] Client TypeScript..."
 }
 
 echo "  [4/5] Client vitest..."
-(cd "$ROOT/client" && npx vitest run --reporter=dot) || {
+(cd "$ROOT/client" && NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=8192}" npx vitest run --reporter=dot) || {
   echo "✗ pre-push: client tests failed — run 'cd client && npx vitest run' to see failures"
   echo "           (use 'git push --no-verify' to bypass in an emergency; CI will still gate the PR)"
   exit 1

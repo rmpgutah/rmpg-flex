@@ -24,6 +24,7 @@ function buildApp() {
     c.set('userId', 1);
     await next();
   });
+  app.onError((err, c) => c.json({ error: err instanceof Error ? err.message : String(err) }, 500));
   app.route('/api/nsopw', nsopw);
   app.onError((err, c) => {
     const message = err instanceof Error ? err.message : String(err);

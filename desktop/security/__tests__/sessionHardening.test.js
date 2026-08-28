@@ -11,6 +11,22 @@ test('buildCspHeaderValue: returns a policy scoped to self plus known integratio
   assert.match(policy, /connect-src[^;]*https:\/\/api\.rmpgutah\.us/);
   assert.match(policy, /img-src[^;]*\*\.mapbox\.com/);
   assert.match(policy, /script-src[^;]*\*\.mapbox\.com/);
+  assert.match(policy, /frame-src[^;]*https:\/\/dialer\.rmpgutah\.us/);
+  assert.match(policy, /script-src[^;]*static\.cloudflareinsights\.com/);
+  assert.doesNotMatch(policy, /connect-src 'none'/);
+  assert.match(policy, /script-src[^;]*'self'/);
+});
+
+const { shouldAttachDesktopCspReportOnly } = require('../sessionHardening');
+
+test('shouldAttachDesktopCspReportOnly: CAD hosts only, never Dial Connect', () => {
+  assert.equal(shouldAttachDesktopCspReportOnly('https://rmpgutah.us/dispatch'), true);
+  assert.equal(shouldAttachDesktopCspReportOnly('https://www.rmpgutah.us/'), true);
+  assert.equal(shouldAttachDesktopCspReportOnly('https://c6dd3fb2.rmpg-flex.pages.dev/'), true);
+  assert.equal(shouldAttachDesktopCspReportOnly('http://localhost:5173/'), true);
+  assert.equal(shouldAttachDesktopCspReportOnly('https://dialer.rmpgutah.us/dialer-embed'), false);
+  assert.equal(shouldAttachDesktopCspReportOnly('https://static.cloudflareinsights.com/beacon.min.js'), false);
+  assert.equal(shouldAttachDesktopCspReportOnly('https://api.rmpgutah.us/api/health'), false);
 });
 
 test('buildCspHeaderValue: does not include a wildcard default-src', () => {
@@ -30,6 +46,11 @@ test('isPermissionAllowed: allows a known permission from the trusted host', () 
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'geolocation'), true);
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'notifications'), true);
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'media'), true);
+});
+
+test('isPermissionAllowed: allows media from Dial Connect so Twilio Voice works in the embed', () => {
+  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'media'), true);
+  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'geolocation'), false);
 });
 
 test('isPermissionAllowed: rejects a matching permission from an untrusted host', () => {
