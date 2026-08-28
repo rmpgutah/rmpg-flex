@@ -12,6 +12,7 @@ import { runPhase3 as executePhase3 } from '../utils/personIntel/phase3';
 import { mergeDataPoints } from '../utils/personIntel/confidence';
 import { computeRiskScore } from '../utils/personIntel/riskScore';
 import { persistCrossRefs } from '../utils/personIntel/crossReference';
+import { ensurePersonIntelSchema } from '../utils/personIntel/schema';
 import { confirmIdentity, parsePersonName } from '../utils/identityConfirm';
 import { applyVerifiedPointsToPerson, autoPromote, shouldPersistPoint } from '../utils/personIntel/applyVerifiedToPerson';
 
@@ -72,6 +73,7 @@ export class PersonIntelDO {
     if (!st) return;
 
     try {
+      await ensurePersonIntelSchema(this.env.DB);
       if (st.stage === 'phase1') await this.runPhase1(st);
       else if (st.stage === 'phase2') await this.runPhase2(st);
       else if (st.stage === 'phaseLegal') await this.runLegalPhase(st);

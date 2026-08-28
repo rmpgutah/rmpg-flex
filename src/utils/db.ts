@@ -794,6 +794,13 @@ export async function ensureHrTables(db: D1Database): Promise<void> {
   for (const sql of ddl) {
     try { await db.prepare(sql).run(); } catch { /* race or pre-existing — tolerated */ }
   }
+  try {
+    if (!(await columnExists(db, 'hr_grievances', 'against_user_id'))) {
+      await db.prepare(
+        'ALTER TABLE hr_grievances ADD COLUMN against_user_id INTEGER REFERENCES users(id)',
+      ).run();
+    }
+  } catch { /* duplicate column — tolerated */ }
   _hrTablesEnsured = true;
 }
 

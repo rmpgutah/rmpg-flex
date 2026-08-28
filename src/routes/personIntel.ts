@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { execute, query } from '../utils/db';
+import { ensurePersonIntelSchema } from '../utils/personIntel/schema';
 import type { IntelSeed, VerificationMethod } from '../utils/personIntel/types';
 import { fetchCrossRefs, persistCrossRefs } from '../utils/personIntel/crossReference';
 import { computeVerdict, persistVerification, fetchVerifications, effectiveConfidence } from '../utils/personIntel/verification';
@@ -14,6 +15,11 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { log } from '../utils/logger';
 
 const app = new Hono<Env>();
+
+app.use('*', async (c, next) => {
+  await ensurePersonIntelSchema(c.env.DB);
+  return next();
+});
 
 // A dossier is scoped to its creator (or org). The list endpoint enforces
 // `WHERE created_by = ? OR org_id = ?`, but the detail / annotate / delete
@@ -69,12 +75,24 @@ app.post('/', async (c) => {
 app.get('/', async (c) => {
   const user = c.get('user');
   const orgId: string | null = (user as any).org_id ?? null;
-  const rows = await c.env.DB.prepare(
-    `SELECT id, subject_name, subject_dob, status, phase, risk_score, risk_flags, linked_person_id, data_points_found, cross_refs_found, created_at, completed_at
-     FROM person_intelligence WHERE created_by = ? OR org_id = ?
-     ORDER BY created_at DESC LIMIT 50`
-  ).bind(user.id, orgId ?? '').all();
-  return c.json(rows.results);
+  try {
+    const rows = await c.env.DB.prepare(
+      `SELECT id, subject_name, subject_dob, status, phase, risk_score, risk_flags, linked_person_id, data_points_found, cross_refs_found, created_at, completed_at
+       FROM person_intelligence WHERE created_by = ? OR org_id = ?
+       ORDER BY created_at DESC LIMIT 50`
+    ).bind(user.id, orgId ?? '').all();
+    return c.json(rows.results);
+  } catch (err) {
+    log.warn('person-intel list falling back without cross_refs_found', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    const rows = await c.env.DB.prepare(
+      `SELECT id, subject_name, subject_dob, status, phase, risk_score, risk_flags, linked_person_id, data_points_found, created_at, completed_at
+       FROM person_intelligence WHERE created_by = ? OR org_id = ?
+       ORDER BY created_at DESC LIMIT 50`
+    ).bind(user.id, orgId ?? '').all();
+    return c.json((rows.results ?? []).map((r) => ({ ...r, cross_refs_found: 0 })));
+  }
 });
 
 // GET /api/person-intel/:id — get dossier with data points

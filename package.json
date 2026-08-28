@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "test:worker": "vitest run -c vitest.workers.config.mts",
     "migrate:local": "wrangler d1 execute rmpg-flex --local --file migrations/baseline/schema.sql && wrangler d1 migrations apply rmpg-flex --local",
-    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote",
+    "migrate:prod": "node --experimental-strip-types scripts/d1PendingMigrations.ts --remote",
     "baseline:build": "node scripts/build-baseline.mjs",
     "postinstall": "patch-package",
     "prepare": "husky"

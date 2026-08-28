@@ -66,29 +66,25 @@ jobs:
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #
-      # `continue-on-error: true` — kept because some migrations contain bare
-      # `ALTER TABLE ADD COLUMN` (D1 has no IF NOT EXISTS for ADD COLUMN), so
-      # they fail harmlessly on re-apply if the column already exists.
+      # Do NOT use a single `wrangler d1 migrations apply`: it stops the whole
+      # pending batch on the first error. Live already has
+      # time_entries.starting_mileage, so 0227 fails with "duplicate column"
+      # and every later file (0265 person-intel tables, 0269 skiptracer v2,
+      # 0270 tesseract page_number, …) never runs — Worker+Pages still ship,
+      # so the features look deployed while they 500 on missing schema.
+      # scripts/d1PendingMigrations.ts applies one statement at a time,
+      # ignores duplicate-column / already-exists, and never executes
+      # remote-unsafe table rebuilds (DROP TABLE calls_for_service).
       #
-      # History: through 2026-06-17, `d1_migrations` only tracked up to
-      # 0078_company_documents.sql. Wrangler aborted at 0079_missing_tables.sql
-      # (bare ALTER TABLE persons ADD COLUMN fi_count that was already present)
-      # on every deploy, so migrations 0079-0126 were silently never recorded —
-      # even though their DDL had been applied directly to live D1. Fixed
-      # 2026-06-17: all 0079-0127 bulk-inserted into d1_migrations via the D1
-      # API; 0127 DDL also applied directly. Future deploys start from 0128.
-      #
-      # Rule going forward: always verify a new migration landed by querying
-      #   pragma_table_info('<table>')
-      # on live D1 after deploy — don't trust the migration log alone
-      # (continue-on-error means a failure here never fails the build).
+      # continue-on-error: true remains so a genuine later-file failure cannot
+      # block Worker + Pages. Always verify with pragma_table_info after merge.
       - name: Apply D1 migrations (remote)
         continue-on-error: true
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply rmpg-flex --remote
+        timeout-minutes: 8
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote
 
       # D1 backup — export the database before deploying new code.
       # This is a point-in-time snapshot that can be restored if a migration
