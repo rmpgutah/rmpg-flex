@@ -12,7 +12,8 @@ test('buildCspHeaderValue: returns a policy scoped to self plus known integratio
   assert.match(policy, /img-src[^;]*\*\.mapbox\.com/);
   assert.match(policy, /script-src[^;]*\*\.mapbox\.com/);
   assert.match(policy, /frame-src[^;]*https:\/\/dialer\.rmpgutah\.us/);
-  assert.match(policy, /script-src[^;]*static\.cloudflareinsights\.com/);
+  assert.match(policy, /script-src[^;]*challenges\.cloudflare\.com/);
+  assert.doesNotMatch(policy, /static\.cloudflareinsights\.com/);
   assert.doesNotMatch(policy, /connect-src 'none'/);
   assert.match(policy, /script-src[^;]*'self'/);
 });

@@ -593,7 +593,8 @@ self.addEventListener('fetch', (event) => {
                 var stripped = html
                   .replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '')
                   .replace(/<script\b[^>]*static\.cloudflareinsights\.com[^>]*>[\s\S]*?<\/script>/gi, '')
-                  .replace(/<script\b[^>]*data-cf-beacon[^>]*>[\s\S]*?<\/script>/gi, '');
+                  .replace(/<script\b[^>]*data-cf-beacon[^>]*>[\s\S]*?<\/script>/gi, '')
+                  .replace(/<script\b[^>]*beacon\.min\.js[^>]*>[\s\S]*?<\/script>/gi, '');
                 var headers = {};
                 response.headers.forEach(function(v, k) {
                   if (k.toLowerCase() !== 'content-length') headers[k] = v;

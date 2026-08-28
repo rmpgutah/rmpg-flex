@@ -147,6 +147,24 @@ describe('service worker fetch handler — transient failure vs. genuine offline
     expect(await response?.text()).toContain('login shell');
   });
 
+  it('strips Cloudflare Insights beacon tags from navigated HTML', async () => {
+    vi.useFakeTimers();
+    const html = '<!doctype html><html><body>ok<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925"></script></body></html>';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(html, {
+      status: 200,
+      headers: { 'Content-Type': 'text/html' },
+    }));
+    const { listeners } = loadServiceWorker(fetchMock);
+    const response = await dispatchAndSettle(
+      listeners,
+      makeFetchEvent(`${ORIGIN}/login?return=%2F`, { mode: 'navigate' }),
+    );
+    const body = await response?.text();
+    expect(body).toContain('ok');
+    expect(body).not.toContain('cloudflareinsights');
+    expect(body).not.toContain('beacon.min.js');
+  });
+
   it('falls back to the Connection Lost card when a navigation is truly offline', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
