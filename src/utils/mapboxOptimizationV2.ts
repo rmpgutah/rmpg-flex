@@ -1,6 +1,7 @@
 // ─── Shared V2 problem / solution types ──────────────────────────────────────
 
 import { clampDwellSeconds } from './serveStopTiming';
+import { denverWallClockToUtcMs } from './serveRouteOptimizer';
 
 export interface V2Location {
   name: string;
@@ -190,6 +191,23 @@ export function buildServeRunProblem(
   };
   if (options.circular !== false) {
     vehicle.end_location = depotName;
+  }
+  const shiftMs = Date.parse(shiftStart);
+  if (Number.isFinite(shiftMs)) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(new Date(shiftMs)); // new-date-ok — ISO shift start
+    const year = Number(parts.find((p) => p.type === 'year')?.value);
+    const month = Number(parts.find((p) => p.type === 'month')?.value) - 1;
+    const day = Number(parts.find((p) => p.type === 'day')?.value);
+    if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)) {
+      vehicle.breaks = [{
+        earliest_start: new Date(denverWallClockToUtcMs(year, month, day, 12, 0)).toISOString(),
+        latest_end: new Date(denverWallClockToUtcMs(year, month, day, 13, 0)).toISOString(),
+        duration: 1800,
+      }];
+    }
   }
 
   const services: V2Service[] = items.map((s) => {

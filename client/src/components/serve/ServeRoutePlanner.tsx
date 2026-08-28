@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
   Loader2, Navigation, Clock, DollarSign, Gauge, User, GripVertical,
-  Printer, RotateCcw, CalendarDays, AlertTriangle,
+  Printer, RotateCcw, CalendarDays, AlertTriangle, Pin, Coffee, ExternalLink,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
@@ -22,6 +22,18 @@ import {
 import { exportServeMapSheet } from '../../utils/serveMapExport';
 import { runServeOptimizationV2, v2EtasToArrivalMs } from '../../utils/mapboxOptimizationV2';
 import { clampDwellSeconds, formatWindowLabel, resolveServeWindow } from '../../utils/serveStopTiming';
+import {
+  applyLunchBreak,
+  denverHourFromMs,
+  dwellTypeShort,
+  formatRunBreakdown,
+  gallonsForMiles,
+  googleMapsNavUrl,
+  hasEveningWindow,
+  hoursUntilDeadline,
+  mergeLockedVisitOrder,
+  splitIdsByShiftMinutes,
+} from '../../utils/routePlannerEngine';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -82,6 +94,20 @@ interface StopItem {
   job: ServeJob;
   selected: boolean;
   order: number;
+}
+
+function clientGeocodeWarnings(items: StopItem[]): GeocodeWarning[] {
+  return items
+    .filter((s) => {
+      const src = s.job.geocode_source;
+      return !src || src === 'centroid';
+    })
+    .map((s) => ({
+      jobId: s.job.id,
+      defendant: s.job.recipient_name ?? '',
+      address: s.job.recipient_address ?? '',
+      quality: 'low' as const,
+    }));
 }
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
@@ -268,7 +294,7 @@ function clampArrivalToServeWindow(arrivalMs: number, serveStart: string, serveE
   let windowEnd = denverWallClockToUtcMs(y, mo - 1, d, eh || 0, em || 0);
   if (windowEnd <= windowStart) windowEnd += 86_400_000;
   if (arrivalMs < windowStart) return windowStart;
-  if (arrivalMs > windowEnd) return windowStart + 86_400_000;
+  if (arrivalMs > windowEnd) return arrivalMs;
   return arrivalMs;
 }
 
@@ -516,7 +542,7 @@ async function hashAddress(address: string): Promise<string> {
     .join('');
 }
 
-export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteStopPayload[]> {
+export async function buildRouteStopsFromJobs(stops: StopItem[], routeDate?: string): Promise<RouteStopPayload[]> {
   const filtered = stops.filter(
     s => s.selected && s.job.recipient_lat != null && s.job.recipient_lng != null,
   );
@@ -532,7 +558,7 @@ export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteS
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
       locationNote: (() => {
-        const win = serveWindowForJob(s.job, s.job.serve_date || '');
+        const win = serveWindowForJob(s.job, routeDate || s.job.serve_date || '');
         return win ? { serveStart: win.start, serveEnd: win.end } : timeWindowToServeWindow(s.job.time_window);
       })(),
     })),
@@ -544,7 +570,7 @@ export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteS
 // user's CURRENT stop ordering rather than re-sorting by nearest-neighbor.
 // nearestNeighborOrder stays for the "Optimize Route" action; this is the
 // lighter pass that just walks the list as-is.
-function computeArrivalsInOrder(
+export function computeArrivalsInOrder(
   selected: StopItem[],
   origin: { lat: number; lng: number } | null,
   startTimeMs: number,
@@ -553,20 +579,33 @@ function computeArrivalsInOrder(
   totalDistanceMiles: number;
   totalDurationMinutes: number;
   missedDeadlineJobIds: number[];
+  totalDwellMinutes: number;
+  totalWaitMinutes: number;
+  lunchMinutes: number;
 } {
   let cursor = origin;
   let elapsedMs = startTimeMs;
   let totalDistanceMiles = 0;
+  let totalDwellMs = 0;
+  let totalWaitMs = 0;
+  let lunchMs = 0;
   const arrivals = new Map<number, number>();
   const missedDeadlineJobIds: number[] = [];
+  let lunchTaken = denverHourFromMs(startTimeMs) >= 12;
 
   for (const stop of selected) {
     const distanceMiles = cursor
       ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
       : 0;
     let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+    const lunch = applyLunchBreak(arrivalMs, lunchTaken, 30);
+    lunchTaken = lunch.lunchTaken;
+    lunchMs += lunch.addedMs;
+    arrivalMs = lunch.elapsedMs;
     const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    const beforeWindow = arrivalMs;
     if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end);
+    totalWaitMs += Math.max(0, arrivalMs - beforeWindow);
     arrivals.set(stop.job.id, arrivalMs);
 
     const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
@@ -577,6 +616,7 @@ function computeArrivalsInOrder(
     if (cursor) totalDistanceMiles += distanceMiles;
     cursor = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
     const dwell = dwellMsForJob(stop.job);
+    totalDwellMs += dwell;
     elapsedMs = arrivalMs + dwell;
   }
 
@@ -585,6 +625,9 @@ function computeArrivalsInOrder(
     totalDistanceMiles,
     totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
     missedDeadlineJobIds,
+    totalDwellMinutes: totalDwellMs / 60_000,
+    totalWaitMinutes: totalWaitMs / 60_000,
+    lunchMinutes: lunchMs / 60_000,
   };
 }
 
@@ -597,16 +640,29 @@ export function computeArrivalsFromLegDurations(
   arrivals: Map<number, number>;
   totalDurationMinutes: number;
   missedDeadlineJobIds: number[];
+  totalDwellMinutes: number;
+  totalWaitMinutes: number;
+  lunchMinutes: number;
 } {
   let elapsedMs = startTimeMs;
   const arrivals = new Map<number, number>();
   const missedDeadlineJobIds: number[] = [];
+  let lunchTaken = denverHourFromMs(startTimeMs) >= 12;
+  let totalDwellMs = 0;
+  let totalWaitMs = 0;
+  let lunchMs = 0;
 
   for (let i = 0; i < selected.length; i++) {
     const stop = selected[i];
     elapsedMs += (legDurationsSeconds[i] ?? 0) * 1000;
+    const lunch = applyLunchBreak(elapsedMs, lunchTaken, 30);
+    lunchTaken = lunch.lunchTaken;
+    lunchMs += lunch.addedMs;
+    elapsedMs = lunch.elapsedMs;
     const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    const beforeWindow = elapsedMs;
     if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.start, win.end);
+    totalWaitMs += Math.max(0, elapsedMs - beforeWindow);
     arrivals.set(stop.job.id, elapsedMs);
 
     const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
@@ -615,6 +671,7 @@ export function computeArrivalsFromLegDurations(
     }
 
     const dwell = dwellMsForJob(stop.job);
+    totalDwellMs += dwell;
     elapsedMs += dwell;
   }
 
@@ -622,6 +679,23 @@ export function computeArrivalsFromLegDurations(
     arrivals,
     totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
     missedDeadlineJobIds,
+    totalDwellMinutes: totalDwellMs / 60_000,
+    totalWaitMinutes: totalWaitMs / 60_000,
+    lunchMinutes: lunchMs / 60_000,
+  };
+}
+
+function clockBreakdown(a: {
+  totalDurationMinutes: number;
+  totalDwellMinutes: number;
+  totalWaitMinutes: number;
+  lunchMinutes: number;
+}): { drive: number; dwell: number; wait: number; lunch: number } {
+  return {
+    drive: Math.max(0, a.totalDurationMinutes - a.totalDwellMinutes - a.totalWaitMinutes - a.lunchMinutes),
+    dwell: a.totalDwellMinutes,
+    wait: a.totalWaitMinutes,
+    lunch: a.lunchMinutes,
   };
 }
 
@@ -716,6 +790,8 @@ export default function ServeRoutePlanner({
   const [routeAccepted, setRouteAccepted] = useState(false);
   // true = stats came from haversine estimate; false = from Mapbox Directions
   const [statsIsEstimate, setStatsIsEstimate] = useState(true);
+  const [lockedIds, setLockedIds] = useState<Set<number>>(() => new Set());
+  const [runBreakdown, setRunBreakdown] = useState({ drive: 0, dwell: 0, wait: 0, lunch: 0 });
 
   // Reset derived stats when planner opens; sync date to the page's current date.
   // Re-anchor the start time to now so ETAs always start from the current moment
@@ -907,10 +983,12 @@ export default function ServeRoutePlanner({
       setTotalDuration(0);
       setReturnLegMiles(0);
       setStopArrivalTimes(new Map());
+      setRunBreakdown({ drive: 0, dwell: 0, wait: 0, lunch: 0 });
       return;
     }
-    const { arrivals, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } =
-      computeArrivalsInOrder(selected, routeOrigin, plannedStartMs);
+    const estimated = computeArrivalsInOrder(selected, routeOrigin, plannedStartMs);
+    const { arrivals, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds } = estimated;
+    setRunBreakdown(clockBreakdown(estimated));
     let returnMi = 0;
     if (returnToStart && routeOrigin && selected.length > 0) {
       const last = selected[selected.length - 1];
@@ -1143,8 +1221,20 @@ export default function ServeRoutePlanner({
     clearRouteFromMap();
   }, [clearRouteFromMap]);
 
-  const optimizeRoute = useCallback(async () => {
-    const selected = stops.filter(s => s.selected);
+  const deferStop = useCallback((idx: number) => {
+    setStops(prev => {
+      const next = [...prev];
+      const [item] = next.splice(idx, 1);
+      if (!item) return prev;
+      next.push({ ...item, selected: false });
+      return next.map((s, i) => ({ ...s, order: i }));
+    });
+    lastDirectionsOrderKeyRef.current = '';
+    clearRouteFromMap();
+  }, [clearRouteFromMap]);
+
+  const optimizeRoute = useCallback(async (opts?: { remainingOnly?: boolean }) => {
+    const selected = stops.filter(s => s.selected && (!opts?.remainingOnly || !TERMINAL_STATUSES.has(s.job.status)));
     if (selected.length < 2) {
       setError('Select at least 2 stops to optimize');
       return;
@@ -1197,7 +1287,7 @@ export default function ServeRoutePlanner({
         }>('/serve-queue/optimize-route', {
           method: 'POST',
           body: JSON.stringify({
-            stops: await buildRouteStopsFromJobs(stops),
+            stops: await buildRouteStopsFromJobs(stops, routeDate),
             departAt: shiftStartIso,
             origin: routeOrigin,
             circular: returnToStart,
@@ -1212,6 +1302,7 @@ export default function ServeRoutePlanner({
       const nn = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate);
       const ordered = v2Ordered ?? serverOrdered ?? nn.ordered;
       const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs);
+      setRunBreakdown(clockBreakdown(estimated));
       const arrivals = v2Arrivals.size > 0 ? v2Arrivals : estimated.arrivals;
       const missedDeadlineJobIds = estimated.missedDeadlineJobIds;
       const totalDurationMinutes = v2Arrivals.size > 0 && plannedStartMs
@@ -1244,7 +1335,7 @@ export default function ServeRoutePlanner({
       setMissedDeadlineIds(missedDeadlineJobIds);
       lastBakedStartMsRef.current = plannedStartMs;
       if (v2Ordered) {
-        setGeocodeWarnings([]);
+        setGeocodeWarnings(clientGeocodeWarnings(selected));
         setMatrixFallback(false);
         setMatrixFallbackReason(undefined);
         setServerEtas([]);
@@ -1281,7 +1372,7 @@ export default function ServeRoutePlanner({
       let selectedOrdered: StopItem[];
       if (v2Ordered) {
         selectedOrdered = v2Ordered;
-        setGeocodeWarnings([]);
+        setGeocodeWarnings(clientGeocodeWarnings(selected));
         setMatrixFallback(false);
         setMatrixFallbackReason(undefined);
       } else if (serverResult?.orderedStops?.length) {
@@ -1293,6 +1384,12 @@ export default function ServeRoutePlanner({
         if (newFallback) setMatrixFallbackDismissed(false);
       } else {
         selectedOrdered = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate).ordered;
+      }
+      if (lockedIds.size > 0) {
+        selectedOrdered = orderStopsByJobIds(
+          selected,
+          mergeLockedVisitOrder(selected.map(s => s.job.id), selectedOrdered.map(s => s.job.id), lockedIds),
+        );
       }
       setServerEtas([]);
       setServerEtaJobIds([]);
@@ -1372,7 +1469,9 @@ export default function ServeRoutePlanner({
 
         allOrderedStops.push(...cluster);
         runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
-        runningElapsedMs = nn.finalElapsedMs;
+        const clusterLegs = allLegDurationsS.slice(-cluster.length);
+        runningElapsedMs = clusterStartElapsedMs
+          + computeArrivalsFromLegDurations(cluster, clusterStartElapsedMs, clusterLegs).totalDurationMinutes * 60_000;
       }
 
       const baked = computeArrivalsFromLegDurations(allOrderedStops, plannedStartMs, allLegDurationsS);
@@ -1455,6 +1554,7 @@ export default function ServeRoutePlanner({
       setReturnLegMiles(returnLegM * 0.000621371);
       setTotalDistance(distMiles);
       setTotalDuration(durMinutes);
+      setRunBreakdown(clockBreakdown(baked));
       setStatsIsEstimate(degradedClusters > 0);
       setShowSplitBanner(durMinutes > 480);
       setMissedDeadlineIds([...new Set(allMissedDeadlineJobIds)]);
@@ -1484,7 +1584,7 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap, plannedStartMs, selectedOfficerId, currentUserId, routeDate]);
+  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap, plannedStartMs, selectedOfficerId, currentUserId, routeDate, lockedIds]);
 
   // Mid-shift traffic polling — 10-min interval while route is active
   useEffect(() => {
@@ -1501,7 +1601,7 @@ export default function ServeRoutePlanner({
           navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
         );
         const remainingItems = selectedStops.filter(s => !TERMINAL.has(s.job.status));
-        const remainingStops = await buildRouteStopsFromJobs(remainingItems);
+        const remainingStops = await buildRouteStopsFromJobs(remainingItems, routeDate);
         const currentOrder = remainingStops.map((_, i) => i);
         const originalEtas = remainingItems.map(s => {
           const ms = stopArrivalTimes.get(s.job.id);
@@ -1565,9 +1665,18 @@ export default function ServeRoutePlanner({
   const saveSplitRoute = useCallback(async () => {
     const selected = stops.filter(s => s.selected);
     if (selected.length < 2) return;
-    const mid = Math.ceil(selected.length / 2);
-    const day1 = selected.slice(0, mid);
-    const day2 = selected.slice(mid);
+    const ids = selected.map(s => s.job.id);
+    const start = plannedStartMs;
+    const cumul: number[] = [];
+    let last = start;
+    for (const s of selected) {
+      const arr = stopArrivalTimes.get(s.job.id) ?? last;
+      cumul.push((arr - start) / 60_000 + dwellMsForJob(s.job) / 60_000);
+      last = arr;
+    }
+    const { day1, day2 } = splitIdsByShiftMinutes(ids, cumul, 480);
+    const day1Stops = day1.map(id => selected.find(s => s.job.id === id)!).filter(Boolean);
+    const day2Stops = day2.map(id => selected.find(s => s.job.id === id)!).filter(Boolean);
     const officerId = selectedOfficerId || currentUserId;
     if (!officerId) return;
     setSplitSaving(true);
@@ -1581,24 +1690,24 @@ export default function ServeRoutePlanner({
       try {
         await apiFetch('/process-server/routes', {
           method: 'POST',
-          body: JSON.stringify({ officer_id: officerId, route_date: routeDate, optimized_order_json: JSON.stringify(day1.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
+          body: JSON.stringify({ officer_id: officerId, route_date: routeDate, optimized_order_json: JSON.stringify(day1Stops.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance * (day1Stops.length / Math.max(1, selected.length)), total_time_minutes: totalDuration * (day1Stops.length / Math.max(1, selected.length)) }),
         });
         day1Saved = true;
         await apiFetch('/process-server/routes', {
           method: 'POST',
-          body: JSON.stringify({ officer_id: officerId, route_date: tomorrowStr, optimized_order_json: JSON.stringify(day2.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance / 2, total_time_minutes: totalDuration / 2 }),
+          body: JSON.stringify({ officer_id: officerId, route_date: tomorrowStr, optimized_order_json: JSON.stringify(day2Stops.map(s => s.job.id)), waypoints_json: JSON.stringify([]), total_distance_miles: totalDistance * (day2Stops.length / Math.max(1, selected.length)), total_time_minutes: totalDuration * (day2Stops.length / Math.max(1, selected.length)) }),
         });
         setShowSplitBanner(false);
-        setError(`Split: ${day1.length} stops saved for today, ${day2.length} for tomorrow (${tomorrowStr}).`);
+        setError(`Split: ${day1Stops.length} stops saved for today, ${day2Stops.length} for tomorrow (${tomorrowStr}).`);
       } catch {
         setError(day1Saved
-          ? `Today's ${day1.length} stops saved, but tomorrow's ${day2.length} stops failed to save — try again.`
+          ? `Today's ${day1Stops.length} stops saved, but tomorrow's ${day2Stops.length} stops failed to save — try again.`
           : 'Failed to save split route.');
       }
     } finally {
       setSplitSaving(false);
     }
-  }, [stops, selectedOfficerId, currentUserId, routeDate, totalDistance, totalDuration]);
+  }, [stops, selectedOfficerId, currentUserId, routeDate, totalDistance, totalDuration, stopArrivalTimes, plannedStartMs]);
 
   const handleApplyAndClose = useCallback(async () => {
     // F5: gate on deadline confirmation when missed deadlines exist
@@ -1655,7 +1764,7 @@ export default function ServeRoutePlanner({
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-rmpg-700 bg-surface-sunken">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-accent-silver-400" />
-            <h2 className="text-sm font-semibold text-rmpg-100 tracking-wider">ROUTE PLANNER</h2>
+            <h2 className="text-sm font-semibold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>ROUTE PLANNER</h2>
             <span className="text-[11px] text-fg-muted ml-2">
               {selectedCount} of {stops.filter(s => s.job.recipient_lat != null && s.job.recipient_lng != null).length} routable
               {stops.some(s => s.job.recipient_lat == null || s.job.recipient_lng == null) && (
@@ -1747,12 +1856,30 @@ export default function ServeRoutePlanner({
           {/* Left: Stop list */}
           <div className="w-[380px] border-r border-rmpg-700 flex flex-col bg-surface-sunken">
             <div className="flex items-center gap-1.5 px-3 py-2 border-b border-rmpg-700">
-              <button type="button" onClick={optimizeRoute} disabled={optimizing || selectedCount < 2}
-                className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 flex-1 justify-center">
-                {optimizing ? <><Loader2 className="w-3 h-3 animate-spin" /> Optimizing...</> : <><Route className="w-3 h-3" /> Optimize Route</>}
-              </button>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <span className="text-[9px] font-semibold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>FIELD TOOLS</span>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => optimizeRoute()} disabled={optimizing || selectedCount < 2}
+                    className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 flex-1 justify-center">
+                    {optimizing ? <><Loader2 className="w-3 h-3 animate-spin" /> Optimizing...</> : <><Route className="w-3 h-3" /> Optimize Route</>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => optimizeRoute({ remainingOnly: true })}
+                    disabled={optimizing || stops.filter(s => s.selected && !TERMINAL_STATUSES.has(s.job.status)).length < 2}
+                    className="toolbar-btn text-xs px-2 py-1.5 disabled:opacity-40"
+                    title="Re-optimize only unserved stops"
+                  >
+                    Remaining
+                  </button>
+                </div>
+              </div>
             </div>
-            {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
+            {stops.filter(s => s.selected).some(s => hasEveningWindow(s.job.time_window, s.job.next_attempt_window)) && (
+              <div className="px-3 py-1.5 bg-purple-900/25 border-b border-purple-700/40 text-purple-300 text-[10px] leading-snug">
+                Evening-window stops (17:00–21:00) are on this run — plan lighting, access hours, and a last-knock before 21:00.
+              </div>
+            )}
             {/* F4: multi-day split banner */}
             {showSplitBanner && (
               <div className="px-3 py-1.5 bg-amber-900/25 border-b border-amber-700/40 text-amber-300 text-[10px] flex items-center gap-2">
@@ -1898,7 +2025,7 @@ export default function ServeRoutePlanner({
                     </div>
                   </div>
                   {firstLegMiles != null && (
-                    <span className="text-[10px] font-mono text-fg-secondary flex-shrink-0" title="Straight-line distance from the start to the first stop">
+                    <span className="text-[10px] font-mono text-fg-secondary flex-shrink-0" title="Estimated distance to the first stop until Directions returns">
                       {firstLegMiles.toFixed(1)} mi →
                     </span>
                   )}
@@ -1948,7 +2075,7 @@ export default function ServeRoutePlanner({
                     {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-fg-muted" />}
                   </button>
                   <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 border-l border-accent-silver-400/30 pl-2">
                     <div className="text-xs font-medium text-rmpg-100 truncate">{stop.job.recipient_name}</div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</span>
@@ -1966,8 +2093,66 @@ export default function ServeRoutePlanner({
                         );
                       })()}
                     </div>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-[8px] font-mono uppercase text-fg-muted">
+                        {dwellTypeShort(inferDefendantType(stop.job.recipient_address, stop.job.business_id, stop.job.recipient_type))}
+                        {' · '}{Math.round(dwellMsForJob(stop.job) / 60_000)}m dwell
+                      </span>
+                      {(() => {
+                        const hrs = hoursUntilDeadline(stop.job.deadline);
+                        if (hrs == null) return null;
+                        const late = hrs < 0;
+                        return (
+                          <span className={`text-[8px] font-mono ${late || missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : hrs < 8 ? 'text-amber-400' : 'text-fg-muted'}`}>
+                            {late ? `${Math.abs(Math.round(hrs))}h past court` : `${hrs < 10 ? hrs.toFixed(1) : Math.round(hrs)}h to deadline`}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    {(stop.job.building_access_notes || stop.job.contact_restrictions) && (
+                      <div className="text-[8px] text-amber-300/90 truncate mt-0.5" title={[stop.job.contact_restrictions, stop.job.building_access_notes].filter(Boolean).join(' · ')}>
+                        {stop.job.contact_restrictions ? `Restrict: ${stop.job.contact_restrictions}` : stop.job.building_access_notes}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {hasCoords && (
+                      <button
+                        type="button"
+                        onClick={() => setLockedIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(stop.job.id)) next.delete(stop.job.id);
+                          else next.add(stop.job.id);
+                          return next;
+                        })}
+                        className={lockedIds.has(stop.job.id) ? 'text-brand-400' : 'text-fg-muted hover:text-rmpg-100'}
+                        aria-label={lockedIds.has(stop.job.id) ? 'Unpin stop' : 'Pin stop so Optimize keeps this slot'}
+                        title={lockedIds.has(stop.job.id) ? 'Pinned — Optimize will not move this stop' : 'Pin this stop'}
+                      >
+                        <Pin size={11} />
+                      </button>
+                    )}
+                    {hasCoords && stop.selected && (
+                      <button
+                        type="button"
+                        onClick={() => deferStop(idx)}
+                        className="text-[8px] font-mono uppercase text-fg-muted hover:text-amber-300"
+                        title="Defer — drop off today's run"
+                      >
+                        Defer
+                      </button>
+                    )}
+                    {hasCoords && stop.job.recipient_lat != null && stop.job.recipient_lng != null && (
+                      <a
+                        href={googleMapsNavUrl(stop.job.recipient_lat, stop.job.recipient_lng)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-fg-muted hover:text-emerald-400"
+                        aria-label={`Open maps for ${stop.job.recipient_name}`}
+                      >
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
                     {stop.job.status === 'served' && (
                       <span className="text-[9px] font-semibold px-1 py-0.5 rounded-[2px] bg-green-900/40 text-green-400 border border-green-700/40 leading-none">SERVED</span>
                     )}
@@ -2006,6 +2191,7 @@ export default function ServeRoutePlanner({
             </div>
 
             <div className="px-4 py-3 border-t border-rmpg-700 bg-surface-sunken space-y-2">
+              <span className="text-[9px] font-semibold tracking-wider" style={{ color: 'var(--panel-header-color)' }}>RUN SUMMARY</span>
               {/* Start / anchor provenance, stated in the summary an operator
                   reads before committing the route — not just in the header. */}
               <div className="flex justify-between text-xs">
@@ -2017,7 +2203,10 @@ export default function ServeRoutePlanner({
               {firstLegMiles != null && (
                 <div className="flex justify-between text-xs">
                   <span className="text-fg-muted flex items-center gap-1.5"><MapPin size={12} /> First leg:</span>
-                  <span className="text-rmpg-100 font-mono">{firstLegMiles.toFixed(1)} mi</span>
+                  <span className="text-rmpg-100 font-mono">
+                    {firstLegMiles.toFixed(1)} mi
+                    {statsIsEstimate && <span className="text-rmpg-600 text-[9px] ml-1">(est. until Directions)</span>}
+                  </span>
                 </div>
               )}
               {returnLegMiles > 0 && (
@@ -2035,19 +2224,31 @@ export default function ServeRoutePlanner({
                 </span>
               </div>
               <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-rmpg-100 font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
+              {(runBreakdown.drive > 0 || runBreakdown.dwell > 0) && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Drive / dwell / wait:</span>
+                  <span className="text-rmpg-100 font-mono text-[10px]">{formatRunBreakdown(runBreakdown)}</span>
+                </div>
+              )}
+              {runBreakdown.lunch >= 1 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-fg-muted flex items-center gap-1.5"><Coffee size={12} /> Lunch:</span>
+                  <span className="text-rmpg-100 font-mono">{Math.round(runBreakdown.lunch)} min (unpaid, noon Denver)</span>
+                </div>
+              )}
               {/* Planned start + projected end time */}
               <div className="flex justify-between text-xs">
-                <span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Start \u2192 End:</span>
+                <span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Start → End:</span>
                 <span className="text-rmpg-100 font-mono text-[10px]">
                   {formatEtaDenver(plannedStartMs, routeDate)}
-                  {' \u2192 '}
+                  {' → '}
                   {totalDuration > 0
                     ? formatEtaDenver(plannedStartMs + totalDuration * 60_000, routeDate)
                     : '--'}
                 </span>
               </div>
-              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}</span></div>
-              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-rmpg-100 font-mono">${fuelCost.toFixed(2)}{gallonsForMiles(totalDistance) > 0 ? ` · ${gallonsForMiles(totalDistance).toFixed(1)} gal @ 18 mpg` : ''}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-fg-muted flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-rmpg-100 font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '—'}</span></div>
 
               {/* F5: deadline miss warning */}
               {showDeadlineConfirm && (
@@ -2069,8 +2270,11 @@ export default function ServeRoutePlanner({
                 </div>
               )}
               <div className="flex gap-2 pt-1">
-                <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">
-                  <Navigation size={14} /> Apply Route
+                <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center flex-col gap-0.5">
+                  <span className="flex items-center gap-1.5"><Navigation size={14} /> Apply Route</span>
+                  {(runBreakdown.drive > 0 || runBreakdown.dwell > 0) && (
+                    <span className="text-[8px] font-normal text-rmpg-200/80">{formatRunBreakdown(runBreakdown)}</span>
+                  )}
                 </button>
                 <button type="button" onClick={onClose} className="toolbar-btn text-xs px-4 py-2">Cancel</button>
               </div>

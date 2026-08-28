@@ -15,7 +15,7 @@ import {
   Settings,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
-import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
+import { computeArrivalsInOrder } from '../components/serve/ServeRoutePlanner';
 import ConfirmDialog from '../components/ConfirmDialog';
 import PdfPreviewModal from '../components/PdfPreviewModal';
 import { useToast } from '../components/ToastProvider';
@@ -61,6 +61,13 @@ import { clusterByGrid, type ClusterableItem, type ClusterPositionCache } from '
 import { urgencyTierForDeadline, isRiskFlagged, matchesDeadlineFilter, type DeadlineFilter } from '../utils/serveMapOverlays';
 import { fetchMapboxRoute } from '../utils/mapboxRouting';
 import { exportServeMapSheet } from '../utils/serveMapExport';
+import {
+  gallonsForMiles,
+  googleMapsNavUrl,
+  hasEveningWindow,
+  hoursUntilDeadline,
+  nextUnservedJob,
+} from '../utils/routePlannerEngine';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -1359,16 +1366,54 @@ export default function ServePage() {
   // ── Navigate to next unserved stop ─────────────────────────────────
 
   const handleNavigateToNext = useCallback(() => {
-    const unserved = routeData
-      ? routeData.orderedIds
-          .map(id => jobs.find(j => j.id === id))
-          .filter((j): j is ServeJob => !!j && j.status !== 'served' && j.status !== 'failed')
-      : jobs.filter(j => j.status === 'pending' || j.status === 'in_progress');
+    const orderIds: number[] = (() => {
+      if (savedRoute?.optimized_order_json) {
+        try {
+          const parsed = typeof savedRoute.optimized_order_json === 'string'
+            ? JSON.parse(savedRoute.optimized_order_json)
+            : savedRoute.optimized_order_json;
+          if (Array.isArray(parsed)) return parsed;
+        } catch { /* fall through */ }
+      }
+      return routeData?.orderedIds ?? [];
+    })();
+    const ordered = (orderIds.length
+      ? orderIds.map((id) => jobs.find((j) => j.id === id)).filter((j): j is ServeJob => !!j)
+      : jobs.filter((j) => j.status === 'pending' || j.status === 'in_progress'));
+    const next = nextUnservedJob(ordered);
+    if (next) handleNavigate(next.id);
+  }, [jobs, routeData, savedRoute, handleNavigate]);
 
-    if (unserved.length > 0) {
-      handleNavigate(unserved[0].id);
+  const handleMarkArrived = useCallback(async (jobId: number) => {
+    if (!savedRoute?.id) {
+      addToast('Apply a route in the planner first', 'error');
+      return;
     }
-  }, [jobs, routeData, handleNavigate]);
+    const orderIds: number[] = (() => {
+      try {
+        const parsed = typeof savedRoute.optimized_order_json === 'string'
+          ? JSON.parse(savedRoute.optimized_order_json)
+          : savedRoute.optimized_order_json;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    })();
+    const visited = [
+      ...jobs.filter((j) => orderIds.includes(j.id) && (j.status === 'served' || j.status === 'failed')).map((j) => j.id),
+      jobId,
+    ];
+    try {
+      await apiFetch('/serve-queue/route-progress', {
+        method: 'POST',
+        body: JSON.stringify({
+          route_id: savedRoute.id,
+          visited_queue_ids: [...new Set(visited)],
+        }),
+      });
+      addToast('Arrived — stop marked on today’s route', 'success');
+    } catch {
+      addToast('Could not save arrival progress', 'error');
+    }
+  }, [savedRoute, jobs, addToast]);
 
   // ══════════════════════════════════════════════════════════════════════
   // Filtered Jobs
@@ -2737,13 +2782,7 @@ export default function ServePage() {
               const totalStops = routeJobs.length;
               const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
 
-              // Per-stop ETA estimates: run haversine nearest-neighbor on the
-              // ordered job list so the Route tab shows arrival times without
-              // another API call. Plain IIFE (not useMemo) because this runs
-              // inside a conditional render expression where hooks are banned.
-              // Anchor ETAs to the saved planned start time when available so
-              // the Route tab shows future wall-clock times rather than
-              // "from now". Parse as local time (same logic as ServeRoutePlanner).
+              // Per-stop ETAs walk the saved visit order (not nearest-neighbor).
               const routeStartMs = (() => {
                 const t = savedRoute?.planned_start_time;
                 const d = savedRoute?.route_date;
@@ -2759,11 +2798,12 @@ export default function ServePage() {
                 const geocoded = routeJobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
                 if (geocoded.length < 1) return new Map<number, number>();
                 const stopItems = geocoded.map((j, i) => ({ job: j, selected: true, order: i }));
-                const { ordered, perStopArrivalMs } = nearestNeighborOrder(stopItems, null, routeStartMs);
-                const map = new Map<number, number>();
-                ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) map.set(s.job.id, perStopArrivalMs[i]); });
-                return map;
+                const origin = savedRoute?.start_lat != null && savedRoute?.start_lng != null
+                  ? { lat: Number(savedRoute.start_lat), lng: Number(savedRoute.start_lng) }
+                  : null;
+                return computeArrivalsInOrder(stopItems, origin, routeStartMs).arrivals;
               })();
+              const eveningOnRun = routeJobs.some(j => hasEveningWindow(j.time_window, j.next_attempt_window));
 
               return (
                 <>
@@ -2802,6 +2842,15 @@ export default function ServePage() {
                               <span className="text-fg-muted text-[9px]">fuel</span>
                             </div>
                           )}
+                          {distMiles != null && !isNaN(Number(distMiles)) && gallonsForMiles(Number(distMiles)) > 0 && (
+                            <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
+                              <span className="text-fg-muted text-[9px]">est.</span>
+                              <span className="font-mono tabular-nums text-rmpg-100">
+                                {gallonsForMiles(Number(distMiles)).toFixed(1)} gal
+                              </span>
+                              <span className="text-fg-muted text-[9px]">@ 18 mpg</span>
+                            </div>
+                          )}
                           {distMiles != null && !isNaN(Number(distMiles)) && Number(distMiles) > 0 && totalStops > 0 && (
                             <div className="flex items-center gap-1.5 text-fg-secondary text-xs">
                               <Gauge size={11} className="text-fg-muted" />
@@ -2820,6 +2869,12 @@ export default function ServePage() {
                       </span>
                     </div>
                   </div>
+
+                  {eveningOnRun && (
+                    <div className="px-3 py-2 text-[10px] text-purple-300 bg-purple-900/20 border border-purple-700/40 rounded-[2px]">
+                      Evening-window stops (17:00–21:00) are on this run — plan lighting, gated access, and a last knock before 21:00.
+                    </div>
+                  )}
 
                   {/* Progress bar */}
                   <div className="w-full h-1.5 bg-surface-overlay rounded-full overflow-hidden">
@@ -2933,6 +2988,16 @@ export default function ServePage() {
                             {deadlineDate && (
                               <div className={`text-[9px] font-mono mt-0.5 ${isOverdue ? 'text-red-400' : 'text-fg-muted'}`}>
                                 {isOverdue ? '⚠ ' : ''}Deadline: {deadlineDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} {/* new-date-ok — from DB */}
+                                {(() => {
+                                  const hrs = hoursUntilDeadline(job.deadline);
+                                  if (hrs == null) return null;
+                                  return <span className="ml-1">({hrs < 0 ? `${Math.abs(Math.round(hrs))}h past` : `${hrs < 10 ? hrs.toFixed(1) : Math.round(hrs)}h left`})</span>;
+                                })()}
+                              </div>
+                            )}
+                            {(job.building_access_notes || job.contact_restrictions) && (
+                              <div className="text-[9px] text-amber-300/90 truncate mt-0.5" title={[job.contact_restrictions, job.building_access_notes].filter(Boolean).join(' · ')}>
+                                {job.contact_restrictions ? `Restrict: ${job.contact_restrictions}` : job.building_access_notes}
                               </div>
                             )}
                             {(job as any).case_number && (
@@ -2965,6 +3030,16 @@ export default function ServePage() {
                                 <Navigation size={9} /> Nav
                               </button>
                             )}
+                            {!isCompleted && !isFailed && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkArrived(job.id)}
+                                className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono text-rmpg-200 bg-surface-sunken border border-rmpg-700 rounded-[2px] hover:border-rmpg-500"
+                                aria-label={`Mark arrived at ${job.recipient_name}`}
+                              >
+                                Arrived
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2994,7 +3069,7 @@ export default function ServePage() {
                           Optimizing… {Math.round(optimization.elapsedMs / 1000)}s
                         </>
                       ) : (
-                        'Optimize Route'
+                        'Re-optimize remaining'
                       )}
                     </button>
                     {optimization.status === 'error' && (
@@ -3006,19 +3081,19 @@ export default function ServePage() {
                     )}
                     <button type="button"
                       onClick={() => {
-                        // Build navigation URL with all waypoints
-                        const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
-                        if (geocoded.length === 0) return;
-                        const dest = geocoded[geocoded.length - 1];
-                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lng},${j.recipient_lat}`).join(';');
-                        const url = `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&via=${encodeURIComponent(waypoints)}` : ''}`;
-                        window.open(url, '_blank', 'noopener,noreferrer');
+                        const next = nextUnservedJob(routeJobs);
+                        if (!next) return;
+                        if (next.recipient_lat != null && next.recipient_lng != null) {
+                          window.open(googleMapsNavUrl(next.recipient_lat, next.recipient_lng), '_blank', 'noopener,noreferrer');
+                          return;
+                        }
+                        handleNavigate(next.id);
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
-                      aria-label="Start Navigation"
+                      aria-label="Navigate to next unserved stop"
                     >
                       <Navigation size={12} />
-                      Start Navigation
+                      Nav next stop
                     </button>
                   </div>
                 </>
@@ -3427,6 +3502,7 @@ export default function ServePage() {
         // open job". Empty selectedJobIds falls back to the planner's own
         // default (every non-served/failed geocoded job).
         preselectedJobIds={selectedJobIds}
+        onVerifyAddress={openEdit}
         mileageRate={serveMileageRate}
         initialDate={selectedDate}
       />

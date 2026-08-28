@@ -763,7 +763,7 @@ export function clampArrivalToServeWindow(
     : windowStart + 24 * 3600_000;
   if (windowEnd <= windowStart) windowEnd += 86_400_000;
   if (arrivalMs < windowStart) return windowStart;
-  if (arrivalMs > windowEnd) return windowStart + 86_400_000;
+  if (arrivalMs > windowEnd) return arrivalMs;
   return arrivalMs;
 }
 
@@ -921,10 +921,10 @@ export function optimizeRoute(
 }
 
 export function geocodeQualityScore(stop: RouteStop): 'high' | 'low' | 'none' {
+  if (stop.lat == null || stop.lng == null) return 'none';
   if (stop.geocodeSource === 'point') return 'high';
   if (stop.geocodeSource === 'centroid') return 'low';
-  if (stop.geocodeSource === null) return 'high'; // null = benefit of the doubt; don't warn on pre-existing jobs
-  if (stop.lat == null || stop.lng == null) return 'none';
+  if (stop.geocodeSource === null) return 'low';
   return 'high';
 }
 
