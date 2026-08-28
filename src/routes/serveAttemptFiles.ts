@@ -237,7 +237,10 @@ files.post('/:id/attempts/:attemptId/files', async (c) => {
   } catch (err) {
     log.error('Serve attempt file upload failed', { queueId, attemptId }, err as Error);
     if (err instanceof FileEncryptionError) {
-      return c.json({ error: err.message, code: 'ENCRYPTION_FAILED' }, 503);
+      return c.json({
+        error: 'File storage is temporarily unavailable. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
     }
     return dbErrorResponse(c, err, 'Upload failed');
   }

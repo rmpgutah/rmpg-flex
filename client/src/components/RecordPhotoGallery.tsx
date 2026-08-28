@@ -4,6 +4,7 @@
 
 import { useRef, useState } from 'react';
 import { useRecordPhotos, type RecordPhoto } from '../hooks/useRecordPhotos';
+import { authedImageUrl } from '../hooks/useApi';
 
 interface Props {
   recordType: 'business' | 'property';
@@ -16,7 +17,7 @@ const PROPERTY_CATEGORIES = ['exterior', 'interior', 'access', 'hazard', 'other'
 function Thumbnail({ photo, onDelete }: { photo: RecordPhoto; onDelete: (id: number) => void }) {
   return (
     <div className="relative w-20 h-20 border border-surface-raised">
-      <img src={photo.url} alt={photo.caption ?? photo.kind} className="w-full h-full object-cover" />
+      <img src={authedImageUrl(photo.url)} alt={photo.caption ?? photo.kind} className="w-full h-full object-cover" />
       <button
         type="button"
         aria-label={`Delete ${photo.kind}`}

@@ -14,6 +14,7 @@ interface FieldPhoto {
   latitude?: number;
   longitude?: number;
   url?: string;
+  r2_key?: string;
   signed_url?: string;
   thumbnail_url?: string;
 }
@@ -35,13 +36,8 @@ export default function DesktopEvidencePhotoViewer({ callId: propCallId, onClose
   const resolvePhotoUrl = useCallback(async (photo: FieldPhoto): Promise<string> => {
     if (photo.signed_url) return photo.signed_url;
     if (photo.url) return authedImageUrl(photo.url);
-    // Try to get a signed URL
-    try {
-      const r = await apiFetch<{ url: string }>(`/field-photos/${photo.id}/url`);
-      return r.url;
-    } catch {
-      return authedImageUrl(`/api/field-photos/${photo.id}/image`);
-    }
+    if (photo.r2_key) return authedImageUrl(`/api/field-photos/file/${photo.r2_key}`);
+    return '';
   }, []);
 
   const load = useCallback(async (id: string) => {

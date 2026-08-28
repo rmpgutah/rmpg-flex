@@ -609,6 +609,15 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/serve-receipt' },
   { kind: 'prefix', value: '/api/serve-receipts' },
   { kind: 'prefix', value: '/api/serve-intake' },
+  // Serve queue + attempt file folders. Do NOT use a bare `/api/serve`
+  // prefix: pathname.startsWith('/api/serve') also matches
+  // `/api/servemanager`. Trailing-slash + exact `/api/serve` plus the
+  // `/api/process-server` alias the SPA actually calls.
+  { kind: 'prefix', value: '/api/process-server' },
+  { kind: 'prefix', value: '/api/serve/' },
+  { kind: 'regex', value: /^\/api\/serve$/ },
+  { kind: 'prefix', value: '/api/serve-dashboard' },
+  { kind: 'prefix', value: '/api/serve-queue' },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as
@@ -637,6 +646,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/assessor' },
   { kind: 'prefix', value: '/api/evidence' },
   { kind: 'prefix', value: '/api/field-photos' },
+  { kind: 'prefix', value: '/api/property-photos' },
+  { kind: 'prefix', value: '/api/business-photos' },
+  { kind: 'prefix', value: '/api/redactions' },
+  { kind: 'prefix', value: '/api/tesseract-training' },
+  { kind: 'prefix', value: '/api/tesseract-ocr' },
+  { kind: 'prefix', value: '/api/mapbox' },
   { kind: 'prefix', value: '/api/user' },
   { kind: 'prefix', value: '/api/web-browser' },
   { kind: 'prefix', value: '/api/browser-search' },

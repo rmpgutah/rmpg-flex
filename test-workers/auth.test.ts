@@ -179,6 +179,29 @@ describe('auth middleware — media-path query-auth passthrough', () => {
     expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
   });
 
+  it('treats digital evidence, property photos, and redaction downloads as media paths', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/evidence/digital/:id/file', (c) => c.json({ ok: true }));
+    app.get('/api/property-photos/file/:key{.+}', (c) => c.json({ ok: true }));
+    app.get('/api/redactions/:id/download', (c) => c.json({ ok: true }));
+    const jwtEnv = { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' };
+
+    for (const path of [
+      '/api/evidence/digital/12/file',
+      '/api/property-photos/file/property-photos/abc.jpg',
+      '/api/redactions/9/download',
+    ]) {
+      const missing = await app.request(path, {}, jwtEnv);
+      expect(missing.status).toBe(401);
+      expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+      const bogus = await app.request(`${path}?token=not-a-jwt`, {}, jwtEnv);
+      expect(bogus.status).toBe(401);
+      expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+    }
+  });
+
   it('does not treat the tesseract image route as self-verifying HMAC media', async () => {
     const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
     app.use('*', authMiddleware);

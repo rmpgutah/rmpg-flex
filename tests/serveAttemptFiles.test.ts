@@ -48,5 +48,6 @@ describe('serveAttemptFiles upload encryption source', () => {
     const src = readFileSync(join(__dirname, '../src/routes/serveAttemptFiles.ts'), 'utf8');
     expect(src).toContain('putEncrypted(c.env.UPLOADS, db, c.env,');
     expect(src).not.toMatch(/putEncrypted\([^)]*FILE_ENCRYPTION_KEK/);
+    expect(src).toContain('File storage is temporarily unavailable. Contact a supervisor.');
   });
 });

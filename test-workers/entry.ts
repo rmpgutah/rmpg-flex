@@ -17,6 +17,7 @@ import businessPhotos from '../src/routes/business/photos';
 import propertyPhotos from '../src/routes/property/photos';
 import workOrders from '../src/routes/workOrders';
 import serveIntake from '../src/routes/serveIntake';
+import evidence from '../src/routes/evidence';
 import records from '../src/routes/records';
 import reports from '../src/routes/reports';
 import { authMiddleware } from '../src/middleware/auth';
@@ -47,6 +48,7 @@ app.route('/api/business-photos', businessPhotos);
 app.route('/api/property-photos', propertyPhotos);
 app.route('/api/work-orders', workOrders);
 app.route('/api/serve-intake', serveIntake);
+app.route('/api/evidence', evidence);
 app.route('/api/records', records);
 
 // /api/reports is mounted with the REAL authMiddleware (not the fake-user

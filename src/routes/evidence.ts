@@ -13,10 +13,51 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { emitAnalytics, flexEvent } from '../utils/analytics';
 import { normalizeClassification, validateManifest, evidenceNumber, shortHash } from '../utils/evidence';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
+
+const OFFICER_STORAGE_UNAVAILABLE = 'File storage is temporarily unavailable. Contact a supervisor.';
+
+function isDigitalEvidenceKey(key: string): boolean {
+  return key.startsWith('digital-evidence/') && !key.includes('..');
+}
+
+async function streamDigitalEvidenceFile(
+  c: Context<Env>,
+  r2Key: string,
+  mime?: string | null,
+  filename?: string | null,
+): Promise<Response> {
+  if (!isDigitalEvidenceKey(r2Key)) return c.json({ error: 'Invalid key' }, 400);
+  try {
+    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, r2Key);
+    if (decrypted) {
+      const headers: Record<string, string> = {
+        'Content-Type': decrypted.httpMetadata?.contentType || mime || 'application/octet-stream',
+        'Cache-Control': 'private, max-age=300',
+      };
+      if (filename) headers['Content-Disposition'] = `inline; filename="${filename.replace(/"/g, '')}"`;
+      return new Response(decrypted.bytes, { headers });
+    }
+  } catch (err) {
+    if (err instanceof FileEncryptionError) {
+      return c.json({ error: OFFICER_STORAGE_UNAVAILABLE, code: 'ENCRYPTION_FAILED' }, 503);
+    }
+    throw err;
+  }
+  const legacy = await c.env.UPLOADS?.get(r2Key);
+  if (!legacy) return c.json({ error: 'Not found' }, 404);
+  const headers = new Headers();
+  legacy.writeHttpMetadata(headers);
+  headers.set('Cache-Control', 'private, max-age=300');
+  if (filename) headers.set('Content-Disposition', `inline; filename="${filename.replace(/"/g, '')}"`);
+  if (mime && !headers.has('Content-Type')) headers.set('Content-Type', mime);
+  return new Response(legacy.body, { headers });
+}
 
 const evidence = new Hono<Env>();
 
@@ -253,12 +294,17 @@ evidence.post('/digital', async (c): Promise<Response> => {
   const r2Key = `digital-evidence/${crypto.randomUUID()}.${ext}`;
 
   if (fileBytes && c.env.UPLOADS) {
-    await c.env.UPLOADS.put(r2Key, fileBytes, {
-      httpMetadata: { contentType: mimeType },
-    }).catch(() => {});
+    try {
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, fileBytes, {
+        httpMetadata: { contentType: mimeType },
+      });
+    } catch (err) {
+      if (err instanceof FileEncryptionError) {
+        return c.json({ error: OFFICER_STORAGE_UNAVAILABLE, code: 'ENCRYPTION_FAILED' }, 503);
+      }
+      throw err;
+    }
   }
-
-  const fileUrl = `/api/evidence/digital/file/${encodeURIComponent(r2Key)}`;
 
   const res = await execute(
     db,
@@ -279,11 +325,13 @@ evidence.post('/digital', async (c): Promise<Response> => {
     userId,
     userName,
     r2Key,
-    fileUrl,
+    '',
     description,
   );
 
   const newId = Number(res.meta?.last_row_id) || Date.now();
+  const fileUrl = `/api/evidence/digital/${newId}/file`;
+  await execute(db, `UPDATE digital_evidence SET url = ? WHERE id = ?`, fileUrl, newId);
 
   await execute(
     db,
@@ -318,26 +366,29 @@ evidence.post('/digital', async (c): Promise<Response> => {
   });
 });
 
-// GET /digital/:id/file — stream evidence media file
-evidence.get('/digital/:id/file/*', async (c): Promise<Response> => {
-  const param = c.req.param('id');
-  const fullPath = c.req.path;
-  const keyMatch = fullPath.match(/\/digital\/file\/(digital-evidence\/.+)$/);
-  const r2Key = keyMatch ? keyMatch[1] : `digital-evidence/${param}`;
+// GET /digital/file/* — stream by R2 key (legacy stored URLs)
+evidence.get('/digital/file/*', async (c): Promise<Response> => {
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+  const r2Key = decodeURIComponent(c.req.path.replace(/^.*\/file\//, ''));
+  return streamDigitalEvidenceFile(c, r2Key);
+});
 
-  if (c.env.UPLOADS) {
-    const object = await c.env.UPLOADS.get(r2Key);
-    if (object) {
-      const headers = new Headers();
-      object.writeHttpMetadata(headers);
-      headers.set('etag', object.httpEtag);
-      return new Response(object.body, { headers });
-    }
-  }
-
-  return c.text('File content placeholder', 200, {
-    'Content-Type': 'text/plain',
-  });
+// GET /digital/:id/file — stream evidence media file by row id
+evidence.get('/digital/:id/file', async (c): Promise<Response> => {
+  const user = c.get('user') as { id?: number } | undefined;
+  if (!user) return c.json({ error: 'Authentication required' }, 401);
+  const id = parseInt(c.req.param('id'), 10);
+  if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  await ensureDigitalEvidenceTables(db);
+  const row = await queryFirst<{ r2_key: string | null; mime_type: string | null; filename: string | null; original_filename: string | null }>(
+    db,
+    `SELECT r2_key, mime_type, filename, original_filename FROM digital_evidence WHERE id = ?`,
+    id,
+  );
+  if (!row?.r2_key) return c.json({ error: 'Not found' }, 404);
+  return streamDigitalEvidenceFile(c, row.r2_key, row.mime_type, row.original_filename || row.filename);
 });
 
 // GET /digital/:id/custody — get chain of custody log entries
