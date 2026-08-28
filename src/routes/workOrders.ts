@@ -621,7 +621,7 @@ wo.post('/:id{[0-9]+}/attachments', requireRole(...WRITE_ROLES), async (c) => {
 
     const buf = await file.arrayBuffer();
     const r2Key = `work-order-attachments/${id}/${Date.now()}_${filename}`;
-    await putEncrypted(uploads, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buf, {
+    await putEncrypted(uploads, db, c.env, r2Key, buf, {
       httpMetadata: { contentType: mime },
     });
 

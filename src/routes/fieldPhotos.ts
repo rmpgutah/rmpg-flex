@@ -83,7 +83,7 @@ fieldPhotos.post('/', async (c) => {
   const key = `field-photos/${crypto.randomUUID()}${ext}`;
 
   const db = getDb(c.env);
-  await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
+  await putEncrypted(c.env.UPLOADS, db, c.env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type },
   });
 
@@ -147,7 +147,7 @@ fieldPhotos.get('/file/*', async (c) => {
   if (!key.startsWith('field-photos/') || key.includes('..')) {
     return c.json({ error: 'Invalid key' }, 400);
   }
-  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  const result = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
   if (result) {
     return new Response(result.bytes, {
       headers: {

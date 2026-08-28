@@ -7,16 +7,21 @@
 //
 // Envelope model: each file gets a fresh random 256-bit Data Encryption Key
 // (DEK). The DEK is itself AES-GCM-wrapped by a master Key-Encryption-Key
-// (env.FILE_ENCRYPTION_KEK, a Worker secret) and stored in the
-// file_encryption_keys D1 table alongside the file's R2 key — never in R2
-// object metadata. Deleting that D1 row ("crypto-shredding") permanently
-// destroys access to that one file without touching any other file or the
-// R2 object itself.
+// and stored in the file_encryption_keys D1 table alongside the file's R2
+// key — never in R2 object metadata. Deleting that D1 row ("crypto-shredding")
+// permanently destroys access to that one file without touching any other
+// file or the R2 object itself.
 //
-// Fails CLOSED: a missing/malformed KEK throws FileEncryptionError rather
-// than silently storing/serving plaintext — unlike src/utils/pdfSign.ts's
-// graceful JWT_SECRET fallback, silently skipping encryption here would
-// defeat the whole feature without anyone noticing.
+// KEK resolution (always encrypts — never plaintext):
+//   1. Dedicated env.FILE_ENCRYPTION_KEK (base64 32 bytes) when set.
+//   2. Else SHA-256("rmpg-flex-file-kek-v1:" + JWT_SECRET) — same pattern as
+//      pdfSign.ts. Uploads keep working when the dedicated secret was never
+//      provisioned. A malformed dedicated KEK does NOT fall back (would
+//      silently mint a second wrapping key and brick existing ciphertext).
+//
+// Fails CLOSED when neither secret is usable: FileEncryptionError rather
+// than storing/serving plaintext. Pass the Worker env object (not just the
+// KEK string) so the JWT fallback can run.
 //
 // See docs/superpowers/specs/2026-07-18-file-encryption-at-rest-design.md.
 // ============================================================
@@ -68,9 +73,23 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+/** Worker env (or a subset) so put/get can fall back to JWT_SECRET. */
+export type FileKekEnv = {
+  FILE_ENCRYPTION_KEK?: string;
+  JWT_SECRET?: string;
+};
+
+export type FileKekSource = string | undefined | FileKekEnv;
+
+const FILE_KEK_DERIVE_PREFIX = 'rmpg-flex-file-kek-v1:';
+
+async function importKekBytes(raw: BufferSource): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
 async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
   if (!kekB64) {
-    throw new FileEncryptionError('FILE_ENCRYPTION_KEK is not set (wrangler secret put FILE_ENCRYPTION_KEK)');
+    throw new FileEncryptionError('File encryption is not configured');
   }
   let raw: Uint8Array;
   try {
@@ -81,7 +100,26 @@ async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
   if (raw.length !== 32) {
     throw new FileEncryptionError(`FILE_ENCRYPTION_KEK must decode to 32 bytes (got ${raw.length})`);
   }
-  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  return importKekBytes(raw);
+}
+
+async function importKekFromJwt(jwtSecret: string): Promise<CryptoKey> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${FILE_KEK_DERIVE_PREFIX}${jwtSecret}`),
+  );
+  return importKekBytes(digest);
+}
+
+async function resolveKek(source: FileKekSource): Promise<CryptoKey> {
+  if (source && typeof source === 'object') {
+    const dedicated = source.FILE_ENCRYPTION_KEK?.trim();
+    if (dedicated) return importKek(dedicated);
+    const jwt = source.JWT_SECRET?.trim();
+    if (jwt) return importKekFromJwt(jwt);
+    throw new FileEncryptionError('File encryption is not configured');
+  }
+  return importKek(source);
 }
 
 interface EncryptionKeyRow {
@@ -95,12 +133,12 @@ interface EncryptionKeyRow {
 export async function putEncrypted(
   bucket: R2Bucket,
   db: D1Database,
-  kekB64: string | undefined,
+  kek: FileKekSource,
   key: string,
   bytes: ArrayBuffer | Uint8Array,
   opts?: { httpMetadata?: R2HTTPMetadata },
 ): Promise<void> {
-  const kek = await importKek(kekB64);
+  const kekKey = await resolveKek(kek);
   await ensureKeysTable(db);
 
   const dekRaw = crypto.getRandomValues(new Uint8Array(32));
@@ -111,7 +149,7 @@ export async function putEncrypted(
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: fileIv }, dek, plainBytes);
 
   const dekIv = crypto.getRandomValues(new Uint8Array(12));
-  const wrappedDek = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: dekIv }, kek, dekRaw);
+  const wrappedDek = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: dekIv }, kekKey, dekRaw);
 
   // Write the D1 row before the R2 object: if the INSERT fails (transient
   // error or an unexpected r2_key collision), nothing lands in R2 and the
@@ -144,7 +182,7 @@ export async function putEncrypted(
 export async function getDecrypted(
   bucket: R2Bucket,
   db: D1Database,
-  kekB64: string | undefined,
+  kek: FileKekSource,
   key: string,
 ): Promise<{ bytes: Uint8Array; httpMetadata?: R2HTTPMetadata } | null> {
   const obj = await bucket.get(key);
@@ -165,9 +203,9 @@ export async function getDecrypted(
   }
   if (!row) return null;
 
-  const kek = await importKek(kekB64);
+  const kekKey = await resolveKek(kek);
   const dekRaw = new Uint8Array(await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kek, base64ToBytes(row.wrapped_dek),
+    { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kekKey, base64ToBytes(row.wrapped_dek),
   ));
   const dek = await crypto.subtle.importKey('raw', dekRaw, { name: 'AES-GCM' }, false, ['decrypt']);
 

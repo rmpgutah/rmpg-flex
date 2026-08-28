@@ -521,7 +521,7 @@ alpr.post('/capture', operational, async (c) => {
   // run the read + persist the row (image_url just resolves to a missing object).
   let imageStored = true;
   try {
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, imageKey, bytes, { httpMetadata: { contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env, imageKey, bytes, { httpMetadata: { contentType } });
   } catch (err: any) {
     if (err instanceof FileEncryptionError) throw err; // misconfiguration -- fail loudly, not best-effort
     imageStored = false;
@@ -994,7 +994,7 @@ alpr.get('/capture/:id/history', operational, async (c) => {
 alpr.get('/image/*', operational, async (c) => {
   const key = c.req.path.replace(/^.*\/image\//, '');
   if (!key.startsWith(ALPR_PREFIX) || key.includes('..')) return c.json({ error: 'Invalid key' }, 400);
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
@@ -1038,7 +1038,7 @@ alpr.post('/capture/:photoRowId/photos', operational, async (c) => {
       ? (entry as File) : null;
     if (file) {
       const key = `alpr/vehicles/${id}/${field}.jpg`;
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
+      await putEncrypted(c.env.UPLOADS, db, c.env, key, await file.arrayBuffer(), { httpMetadata: { contentType: 'image/jpeg' } });
       out[`${field}_r2_key`] = key;
     }
   }

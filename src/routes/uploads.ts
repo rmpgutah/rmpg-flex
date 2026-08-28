@@ -206,7 +206,7 @@ uploads.get('/:fileId/thumbnail', async (c) => {
       return c.json({ error: 'Not an image', code: 'NOT_AN_IMAGE' }, 400);
     }
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -246,7 +246,7 @@ uploads.get('/:fileId/download', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -280,7 +280,7 @@ uploads.get('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, att.file_path);
     let data: Uint8Array<ArrayBuffer>;
     if (decrypted) {
       // getDecrypted() always builds .bytes via `new Uint8Array(arrayBufferResult)`
@@ -383,7 +383,7 @@ uploads.post('/', async (c) => {
       const r2Key = `attachments/${fileId}${ext}`;
       const buffer = await file.arrayBuffer();
 
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, buffer, {
         httpMetadata: { contentType: mime },
       });
 
@@ -439,7 +439,10 @@ uploads.post('/', async (c) => {
   } catch (err) {
     log.error('Upload failed', {}, err as Error);
     if (err instanceof FileEncryptionError) {
-      return c.json({ error: err.message, code: 'ENCRYPTION_FAILED' }, 503);
+      return c.json({
+        error: 'File storage is temporarily unavailable. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
     }
     return dbErrorResponse(c, err, 'Upload failed');
   }
@@ -591,7 +594,7 @@ uploads.post('/create', async (c) => {
     const ext = extFor(name, mimeType);
     const r2Key = `attachments/${fileId}${ext}`;
 
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, new Uint8Array(0), {
+    await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, new Uint8Array(0), {
       httpMetadata: { contentType: mimeType },
     });
 
@@ -657,7 +660,7 @@ uploads.put('/:fileId/content', async (c) => {
 
     const text = await c.req.text();
     const encoded = new TextEncoder().encode(text);
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, encoded, {
+    await putEncrypted(c.env.UPLOADS, db, c.env, att.file_path, encoded, {
       httpMetadata: { contentType: att.mime_type || 'text/plain' },
     });
     await execute(db, 'UPDATE attachments SET file_size = ? WHERE file_id = ?', encoded.byteLength, fileId);
@@ -806,7 +809,7 @@ uploads.put('/:fileId/replace', async (c) => {
     if (!blob || blob.size === 0) return c.json({ error: 'No body', code: 'NO_BODY' }, 400);
 
     const buffer = new Uint8Array(await blob.arrayBuffer());
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, att.file_path, buffer, {
+    await putEncrypted(c.env.UPLOADS, db, c.env, att.file_path, buffer, {
       httpMetadata: { contentType: att.mime_type },
     });
 

@@ -202,7 +202,7 @@ nsopw.get('/photo/:offenderRowId', requireRole(...READ_ROLES), async (c) => {
   ).catch(() => null);
   if (!row?.local_photo_key) return c.json({ error: 'no local photo' }, 404);
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, row.local_photo_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, row.local_photo_key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {

@@ -43,7 +43,7 @@ propertyPhotos.get('/file/:key{.+}', async (c) => {
     if (!key.startsWith('property-photos/')) {
       return c.json({ error: 'Invalid key', code: 'INVALID_KEY' }, 400);
     }
-    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
     if (decrypted) {
       return new Response(decrypted.bytes, {
         headers: {
@@ -154,7 +154,7 @@ propertyPhotos.post('/', async (c) => {
 
     const r2Key = `property-photos/${crypto.randomUUID()}${extFor(photo)}`;
     const buffer = await photo.arrayBuffer();
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, buffer, {
+    await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, buffer, {
       httpMetadata: { contentType: photo.type || 'application/octet-stream' },
     });
 
