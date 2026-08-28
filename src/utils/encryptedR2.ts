@@ -97,10 +97,7 @@ async function importKekBytes(raw: BufferSource): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
-async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
-  if (!kekB64) {
-    throw new FileEncryptionError('File encryption is not configured');
-  }
+function decodeDedicatedKekBytes(kekB64: string): Uint8Array {
   let raw: Uint8Array;
   try {
     raw = base64ToBytes(kekB64.trim());
@@ -110,7 +107,14 @@ async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
   if (raw.length !== 32) {
     throw new FileEncryptionError(`FILE_ENCRYPTION_KEK must decode to 32 bytes (got ${raw.length})`);
   }
-  return importKekBytes(raw);
+  return raw;
+}
+
+async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
+  if (!kekB64) {
+    throw new FileEncryptionError('File encryption is not configured');
+  }
+  return importKekBytes(decodeDedicatedKekBytes(kekB64));
 }
 
 async function kekB64FromSource(source: FileKekSource): Promise<string> {
@@ -186,6 +190,23 @@ export async function putEncrypted(
   await bucket.put(key, ciphertext, opts);
 }
 
+/**
+ * Fail closed on a dedicated FILE_ENCRYPTION_KEK that is present but unusable,
+ * before any R2/D1 await. A throw after native I/O is reported by workerd as
+ * an unhandled rejection even when the caller awaits and catches it (see
+ * test-workers nsopw/intel malformed-KEK cases). JWT-only configs skip this
+ * and still resolve in resolveKek().
+ */
+function assertDedicatedKekIfPresent(source: FileKekSource): void {
+  const dedicated = source && typeof source === 'object'
+    ? source.FILE_ENCRYPTION_KEK?.trim()
+    : typeof source === 'string'
+      ? source.trim()
+      : undefined;
+  if (!dedicated) return;
+  decodeDedicatedKekBytes(dedicated);
+}
+
 /** Fetch and decrypt a file. Returns null if the R2 object doesn't exist,
  *  or if it exists but has no file_encryption_keys row (e.g. already
  *  crypto-shredded) — either way, there's nothing decryptable to return. */
@@ -195,7 +216,7 @@ export async function getDecrypted(
   kek: FileKekSource,
   key: string,
 ): Promise<{ bytes: Uint8Array; httpMetadata?: R2HTTPMetadata } | null> {
-  const kekSnap = snapshotKekSource(kek);
+  assertDedicatedKekIfPresent(kek);
   const obj = await bucket.get(key);
   if (!obj) return null;
 
