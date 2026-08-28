@@ -298,8 +298,8 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
       state:      job.recipient_state ?? undefined,
       phone:      job.recipient_phone ?? undefined,
     };
-    enrichSearch(seed);
-  }, [job, enrichSearch]);
+    enrichSearch(seed, { refresh: Boolean(enrichResult) });
+  }, [job, enrichSearch, enrichResult]);
 
   const priorityColor: Record<string, string> = {
     urgent: 'text-red-400', rush: 'text-orange-400', normal: 'text-amber-400', routine: 'text-text-secondary',
@@ -502,7 +502,9 @@ export default function SubjectFileTab({ jobs, selectedJobId }: Props) {
                     {enrichResult.sources.map((s: SourceResult) => {
                       const label = s.source.replace(/_/g, ' ').toUpperCase();
                       const status = !s.ok
-                        ? <span className="text-red-400">(error)</span>
+                        ? s.error === 'not_configured'
+                          ? <span className="text-text-secondary">(not configured)</span>
+                          : <span className="text-red-400">(error)</span>
                         : s.records.length === 0
                         ? <span className="text-text-secondary">(0 hits)</span>
                         : <span className="text-green-400">({s.records.length} hit{s.records.length !== 1 ? 's' : ''})</span>;

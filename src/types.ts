@@ -113,6 +113,7 @@ export type Bindings = {
   ROBOFLOW_API_URL?: string;
   USPS_USER_ID?: string;
   OPENCORPORATES_API_KEY?: string;
+  OPENSANCTIONS_API_KEY?: string;
   NUMVERIFY_API_KEY?: string;
   CARXE_API_KEY?: string;
   CARXE_API_BASE?: string;
