@@ -52,6 +52,12 @@ async function getJsonConfig<T>(db: D1Database, key: string, fallback: T): Promi
   try { return { ...fallback, ...JSON.parse(raw) }; } catch { return fallback; }
 }
 
+// Shared Workers-AI model — single source of truth for all endpoints in this
+// file.  Aligns with dispatchAi.ts LLM_MODEL.  When the admin panel stores a
+// custom model in ai.config, callers can read it; these two hard-coded sites
+// are the fallback for endpoints that predate the config system.
+const WORKERS_AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
 const DEFAULT_FEATURES = {
   callAnalysis: true, narrativeAssist: true, smartSearch: true,
   unitSuggestions: true, safetyBriefings: true, dataCleanup: false, systemMonitoring: false,
@@ -659,7 +665,7 @@ ai.post('/refine', requireRole(...READ_ROLES), async (c) => {
   }
 
   try {
-    const response = await (c.env.AI as Ai).run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
+    const response = await (c.env.AI as Ai).run(WORKERS_AI_MODEL, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text },
@@ -686,6 +692,9 @@ ai.post('/extract-fields', requireRole(...READ_ROLES), async (c) => {
     if (!text || text.length < 20) {
       return c.json({ error: 'Text must be at least 20 characters', code: 'TEXT_TOO_SHORT' }, 400);
     }
+    if (text.length > 10000) {
+      return c.json({ error: 'Text must be at most 10,000 characters', code: 'TEXT_TOO_LONG' }, 400);
+    }
     const systemPrompt = `You are a police CAD field extractor. From the narrative text, extract structured fields.
 Return ONLY valid JSON with these keys (use null for missing fields):
 {
@@ -701,7 +710,7 @@ Return ONLY valid JSON with these keys (use null for missing fields):
 }`;
     const ai = c.env.AI as any;
     if (!ai) return c.json({ result: null, error: 'AI not configured' }, 503);
-    const res = await ai.run('@cf/meta/llama-3.3-70b-instruct', {
+    const res = await ai.run(WORKERS_AI_MODEL, {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: text.slice(0, 3000) },

@@ -1228,7 +1228,7 @@ export async function synthesizeDispatcherVoice(
     const bytes = base64ToBytes(b64);
     return bytes.byteLength > 0 ? bytes : null;
   } catch (err) {
-    console.error('[aiDispatcher] TTS failed (both voices):', (err as Error)?.message);
+    log.error('[aiDispatcher] TTS failed (both voices)', {}, err as Error);
     return null;
   }
 }
