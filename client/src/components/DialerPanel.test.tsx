@@ -1,6 +1,11 @@
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
-import DialerPanel, { DIALER_ORIGIN } from './DialerPanel';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import DialerPanel, {
+  DIALER_ORIGIN,
+  DIALER_PLACE_CALL_EVENT,
+  DIALER_IFRAME_ALLOW,
+  normalizeDialTarget,
+} from './DialerPanel';
 
 function postDialConnectMessage(data: unknown, origin: string = DIALER_ORIGIN) {
   window.dispatchEvent(new MessageEvent('message', { data, origin }));
@@ -11,10 +16,29 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('normalizeDialTarget', () => {
+  test('prefixes 10-digit US numbers', () => {
+    expect(normalizeDialTarget('(801) 555-1234')).toBe('+18015551234');
+  });
+  test('keeps explicit plus', () => {
+    expect(normalizeDialTarget('+18015551234')).toBe('+18015551234');
+  });
+});
+
 describe('DialerPanel', () => {
   test('renders collapsed by default, disconnected', () => {
     render(<DialerPanel />);
     expect(screen.getByLabelText('Open dialer (disconnected)')).toBeInTheDocument();
+  });
+
+  test('keeps the Dial Connect iframe mounted even without a heartbeat', () => {
+    vi.useFakeTimers();
+    render(<DialerPanel />);
+    expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
+    expect(screen.getByTitle('Dial Connect')).toHaveAttribute('allow', DIALER_IFRAME_ALLOW);
+    vi.advanceTimersByTime(20_000);
+    expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
+    expect(screen.queryByText(/Dialer unavailable/i)).not.toBeInTheDocument();
   });
 
   test('ignores messages from a non-Dial-Connect origin', () => {
@@ -85,5 +109,35 @@ describe('DialerPanel', () => {
 
     vi.advanceTimersByTime(46_000);
     expect(screen.getByLabelText('Open dialer (disconnected)')).toBeInTheDocument();
+  });
+
+  test('tel: clicks expand the panel and post place_call to Dial Connect', () => {
+    render(<DialerPanel />);
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
+
+    const link = document.createElement('a');
+    link.href = 'tel:8015550100';
+    document.body.appendChild(link);
+    fireEvent.click(link);
+    expect(screen.getByLabelText('Collapse dialer panel')).toBeInTheDocument();
+    expect(postMessage).toHaveBeenCalledWith(
+      { source: 'rmpg-flex', type: 'place_call', to: '+18015550100' },
+      DIALER_ORIGIN,
+    );
+    link.remove();
+  });
+
+  test('rmpg-flex:place-call window event posts to the iframe', () => {
+    render(<DialerPanel />);
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage }, configurable: true });
+    window.dispatchEvent(new CustomEvent(DIALER_PLACE_CALL_EVENT, { detail: { to: '+18015559999' } }));
+    expect(postMessage).toHaveBeenCalledWith(
+      { source: 'rmpg-flex', type: 'place_call', to: '+18015559999' },
+      DIALER_ORIGIN,
+    );
   });
 });

@@ -48,6 +48,11 @@ test('isPermissionAllowed: allows a known permission from the trusted host', () 
   assert.equal(isPermissionAllowed('rmpgutah.us', 'rmpgutah.us', 'media'), true);
 });
 
+test('isPermissionAllowed: allows media from Dial Connect so Twilio Voice works in the embed', () => {
+  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'media'), true);
+  assert.equal(isPermissionAllowed('dialer.rmpgutah.us', 'rmpgutah.us', 'geolocation'), false);
+});
+
 test('isPermissionAllowed: rejects a matching permission from an untrusted host', () => {
   assert.equal(isPermissionAllowed('evil.example', 'rmpgutah.us', 'geolocation'), false);
 });

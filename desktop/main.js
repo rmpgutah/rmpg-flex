@@ -1025,10 +1025,11 @@ async function createMainWindow() {
   // Electron denies geolocation by default. For RMPG Flex, GPS
   // tracking is mandatory for all logged-in users — auto-grant it.
   mainWindow.webContents.session.setPermissionRequestHandler(
-    (webContents, permission, callback) => {
+    (webContents, permission, callback, details) => {
       let requestingHost;
       try {
-        requestingHost = new URL(webContents.getURL()).host;
+        const raw = details?.requestingUrl || details?.securityOrigin || webContents.getURL();
+        requestingHost = new URL(raw).host;
       } catch {
         requestingHost = '';
       }
@@ -1038,10 +1039,10 @@ async function createMainWindow() {
 
   // Also handle the newer permission-check API (Electron 20+)
   mainWindow.webContents.session.setPermissionCheckHandler(
-    (webContents, permission) => {
+    (webContents, permission, requestingOrigin) => {
       let requestingHost;
       try {
-        requestingHost = new URL(webContents.getURL()).host;
+        requestingHost = new URL(requestingOrigin || webContents.getURL()).host;
       } catch {
         requestingHost = '';
       }

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { PhoneCall, RefreshCw, X } from 'lucide-react';
+import { PhoneCall, X } from 'lucide-react';
 import IconButton from './IconButton';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
+export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
+export const DIALER_IFRAME_ALLOW = 'microphone; autoplay; clipboard-write';
 
 const HEARTBEAT_TIMEOUT_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
@@ -23,6 +25,16 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
   );
 }
 
+/** Best-effort E.164 for US/NANP numbers Flex stores in person/job records. */
+export function normalizeDialTarget(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('+')) return trimmed.replace(/[^\d+]/g, '');
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  return digits ? `+${digits}` : '';
+}
+
 interface Toast {
   id: number;
   kind: 'ringing' | 'duress';
@@ -34,26 +46,29 @@ interface DialerPanelProps {
   onDuress?: (message: string) => void;
 }
 
-// How long after the iframe first loads to wait for an initial heartbeat before
-// declaring the dialer service unavailable. Must be longer than a round-trip
-// page load but short enough to feel responsive.
-const UNAVAILABLE_GRACE_MS = 12_000;
-
 let _toastId = 0;
 
 export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
   const [connected, setConnected] = useState(false);
-  const [unavailable, setUnavailable] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const lastSeenRef = useRef(0);
-  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const addToast = useCallback((kind: Toast['kind'], message: string) => {
     const id = ++_toastId;
     setToasts((prev) => [...prev, { id, kind, message }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_DURATION_MS);
+  }, []);
+
+  const placeOutboundCall = useCallback((raw: string) => {
+    const to = normalizeDialTarget(raw);
+    if (!to) return;
+    flushSync(() => setCollapsed(false));
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'rmpg-flex', type: 'place_call', to },
+      DIALER_ORIGIN,
+    );
   }, []);
 
   const handleMessage = useCallback(
@@ -100,45 +115,42 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
     const interval = setInterval(() => {
       if (lastSeenRef.current === 0) return;
       if (Date.now() - lastSeenRef.current >= HEARTBEAT_TIMEOUT_MS) {
-        // Same flushSync rationale as handleMessage above — this runs on a
-        // plain setInterval tick, outside React's batching, and tests advance
-        // fake timers then assert immediately.
         flushSync(() => setConnected(false));
       }
     }, HEARTBEAT_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
-  // Start the grace timer when the panel first opens (iframe loads for the
-  // first time). If no heartbeat arrives within UNAVAILABLE_GRACE_MS the
-  // dialer service is unreachable — show an error overlay instead of a blank
-  // iframe. Clear the timer whenever any heartbeat arrives.
-  const handleIframeLoad = useCallback(() => {
-    if (graceTimerRef.current) clearTimeout(graceTimerRef.current);
-    graceTimerRef.current = setTimeout(() => {
-      if (lastSeenRef.current === 0) setUnavailable(true);
-    }, UNAVAILABLE_GRACE_MS);
-  }, []);
-
-  // Any real message clears the unavailable state.
+  // tel: links in Records / Serve / Skip Tracer should place the call in
+  // Dial Connect instead of opening the OS phone handler. Dial Connect
+  // listens for {source:'rmpg-flex', type:'place_call', to} on the embed.
   useEffect(() => {
-    if (connected) {
-      setUnavailable(false);
-      if (graceTimerRef.current) { clearTimeout(graceTimerRef.current); graceTimerRef.current = null; }
-    }
-  }, [connected]);
+    const onClick = (event: MouseEvent) => {
+      const el = event.target;
+      if (!(el instanceof Element)) return;
+      const anchor = el.closest('a[href^="tel:"]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      placeOutboundCall(href.slice('tel:'.length));
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [placeOutboundCall]);
 
-  useEffect(() => () => { if (graceTimerRef.current) clearTimeout(graceTimerRef.current); }, []);
-
-  const retry = useCallback(() => {
-    setUnavailable(false);
-    lastSeenRef.current = 0;
-    setIframeKey((k) => k + 1);
-  }, []);
+  useEffect(() => {
+    const onPlace = (event: Event) => {
+      const to = (event as CustomEvent<{ to?: string }>).detail?.to;
+      if (typeof to === 'string') placeOutboundCall(to);
+    };
+    window.addEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
+    return () => window.removeEventListener(DIALER_PLACE_CALL_EVENT, onPlace);
+  }, [placeOutboundCall]);
 
   return (
     <div className="fixed bottom-4 left-4 z-[9998] flex flex-col items-start">
-      {/* Toast notification stack — appears above the chip, visible on any page */}
       {toasts.length > 0 && (
         <div className="mb-2 flex flex-col gap-1.5 items-start">
           {toasts.map((toast) => (
@@ -168,11 +180,6 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
 
       <div
         style={{
-          // Dial Connect is a full desktop app (its own nav, wide tables,
-          // multi-column call/keypad layout) -- a small box left its content
-          // cramped and forced horizontal scrolling. Sized close to its
-          // actual desktop layout instead, clamped so it never overflows a
-          // smaller viewport.
           width: collapsed ? 0 : 'min(900px, calc(100vw - 32px))',
           height: collapsed ? 0 : 'min(680px, calc(100vh - 96px))',
           overflow: 'hidden',
@@ -192,38 +199,14 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
             <X className="w-3.5 h-3.5" />
           </IconButton>
         </div>
-        {unavailable ? (
-          <div className="flex flex-col items-center justify-center h-[calc(100%-28px)] gap-3 p-6 text-center">
-            <PhoneCall className="w-8 h-8 text-fg-muted" />
-            <p className="text-[11px] font-semibold text-rmpg-100 uppercase tracking-wide">Dialer unavailable</p>
-            <p className="text-[11px] text-fg-secondary leading-relaxed max-w-[280px]">
-              Could not connect to dialer.rmpgutah.us. Check that the Dial Connect app is deployed and running.
-            </p>
-            <button
-              type="button"
-              onClick={retry}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide border border-border-subtle bg-surface-sunken hover:bg-surface-raised"
-            >
-              <RefreshCw className="w-3 h-3" /> Retry
-            </button>
-          </div>
-        ) : (
-          // Stays mounted while collapsed so Dial Connect's EventSource can
-          // postMessage ringing/duress/heartbeat. CSP-Report-Only noise on
-          // dialer-embed (script-src without 'self', connect-src 'none',
-          // beacon.min.js, cdn-cgi/challenge-platform) is headers on
-          // dialer.rmpgutah.us — see functions/_middleware.ts. Flex cannot
-          // override that origin's CSP.
-          <iframe
-            key={iframeKey}
-            title="Dial Connect"
-            src={`${DIALER_ORIGIN}/dialer-embed`}
-            className="w-full border-0"
-            style={{ height: 'calc(100% - 28px)' }}
-            allow="microphone; autoplay"
-            onLoad={handleIframeLoad}
-          />
-        )}
+        <iframe
+          ref={iframeRef}
+          title="Dial Connect"
+          src={`${DIALER_ORIGIN}/dialer-embed`}
+          className="w-full border-0"
+          style={{ height: 'calc(100% - 28px)' }}
+          allow={DIALER_IFRAME_ALLOW}
+        />
       </div>
       {collapsed && (
         <button

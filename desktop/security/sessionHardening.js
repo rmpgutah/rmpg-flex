@@ -94,8 +94,13 @@ const ALLOWED_PERMISSIONS = new Set(['geolocation', 'notifications', 'media']);
  * window ever loaded. This adds the missing origin check: only the
  * configured trusted host may receive them.
  */
+const DIALER_HOST = 'dialer.rmpgutah.us';
+
 function isPermissionAllowed(requestingHost, expectedHost, permission) {
-  return requestingHost === expectedHost && ALLOWED_PERMISSIONS.has(permission);
+  if (!ALLOWED_PERMISSIONS.has(permission)) return false;
+  if (requestingHost === expectedHost) return true;
+  // Twilio Voice runs in DialerPanel's https://dialer.rmpgutah.us iframe.
+  return requestingHost === DIALER_HOST && permission === 'media';
 }
 
 /**

@@ -135,6 +135,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // after deploy, remove the source in the Cloudflare Dashboard (see comment
   // at the top of this file for exact locations).
   out.headers.set('Content-Security-Policy-Report-Only', FULL_CSP);
+  // _headers also sets this; keep them in sync. microphone=(self) alone
+  // blocks Twilio Voice inside DialerPanel's cross-origin iframe.
+  out.headers.set(
+    'Permissions-Policy',
+    'camera=(self), microphone=(self "https://dialer.rmpgutah.us"), geolocation=(self), autoplay=(self "https://dialer.rmpgutah.us"), payment=()',
+  );
 
   // Prevent the browser (and Cloudflare edge) from caching HTML responses.
   // Without this, the zone-level 4h Browser Cache TTL applies to index.html
