@@ -3,6 +3,7 @@ import type { WSMessage, WSMessageType } from '../types';
 import { useAuth } from './AuthContext';
 import { devLog, devWarn } from '../utils/devLog';
 import { handleDispatchEvent, startBrainTimer } from '../utils/dispatcherBrain';
+import { apiWsBase } from '../utils/apiOrigin';
 import {
   announceGpsGap,
   announceGpsRecovered,
@@ -383,11 +384,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       alertsRef.current = null;
     }
     try {
-      const host = window.location.hostname;
-      const base = (host === 'localhost' || host === '127.0.0.1')
-        ? `ws://${host}:8787`
-        : 'wss://api.rmpgutah.us';
-      const ws = new WebSocket(`${base}/api/alerts-ws`);
+      const ws = new WebSocket(`${apiWsBase()}/api/alerts-ws`);
 
       ws.onopen = () => {
         alertsDelayRef.current = WS_RECONNECT_DELAY;

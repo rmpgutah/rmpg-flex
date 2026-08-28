@@ -201,11 +201,7 @@ const AuditLogPage: React.FC = () => {
       if (filters.endDate) queryParams.append('endDate', filters.endDate);
       if (filters.search) queryParams.append('search', filters.search);
 
-      // directWorker: true -- the rmpgutah.us proxy dispatcher (rmpg-api-proxy)
-      // serves stale/empty payloads for the whole /audit/* prefix (verified live:
-      // proxy GET /audit/index-stats returned total_entries:0, direct Worker
-      // returned 3349). Same class of bug as the Fleet dashboard fix.
-      const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`, { directWorker: true });
+      const data = await apiFetch<{ data: AuditLogEntry[]; pagination: { total: number; totalPages: number } }>(`/audit/logs?${queryParams.toString()}`);
 
       setLogs(data?.data || []);
       setTotalPages(data?.pagination?.totalPages || 1);
@@ -223,7 +219,7 @@ const AuditLogPage: React.FC = () => {
   // Fetch stats
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiFetch<AuditStats>('/audit/stats', { directWorker: true });
+      const data = await apiFetch<AuditStats>('/audit/stats');
       setStats(data);
     } catch (err) {
       console.error('Error fetching audit stats:', err);
@@ -236,8 +232,8 @@ const AuditLogPage: React.FC = () => {
   useEffect(() => {
     fetchLogs();
     fetchStats();
-    apiFetch<any>('/audit/compliance-report?days=30', { directWorker: true }).then(d => { if (d) setComplianceReport(d); }).catch(() => {});
-    apiFetch<any>('/audit/index-stats', { directWorker: true }).then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
+    apiFetch<any>('/audit/compliance-report?days=30').then(d => { if (d) setComplianceReport(d); }).catch(() => {});
+    apiFetch<any>('/audit/index-stats').then(d => { if (d) setIndexStats({ total_entries: d.total_entries, estimated_size_mb: d.estimated_size_mb }); }).catch(() => {});
   }, [fetchLogs, fetchStats]);
 
   // Strip the deep-link params from the URL after the initial render. We keep

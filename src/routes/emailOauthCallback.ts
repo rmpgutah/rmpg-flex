@@ -2,7 +2,9 @@
 // prefix is auth-required and the user's browser is mid-redirect from
 // microsoftonline.com with no Authorization header. Mounted at
 // /api/email-oauth (auth: 'public'). The Azure AD app must list the
-// redirect URI as exactly https://api.rmpgutah.us/api/email-oauth/callback.
+// redirect URI as exactly https://rmpgutah.us/api/email-oauth/callback
+// (APP_ORIGIN), so the browser callback rides the zone proxy instead of
+// the managed-challenge API hostname.
 //
 // Security note: this endpoint is unauthenticated by necessity. The
 // boundary is the auth code itself — issued by Microsoft, single-use,
@@ -12,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { emailOauthRedirectUri, workerAppOrigin } from '../utils/appOrigin';
 
 const oauth = new Hono<Env>();
 
@@ -23,8 +26,6 @@ const KEYS = {
   mailbox: 'email_mailbox',
   enabled: 'email_enabled',
 } as const;
-
-const REDIRECT_URI = 'https://api.rmpgutah.us/api/email-oauth/callback';
 
 async function readCfg(db: D1Database): Promise<Record<string, string>> {
   const keys = Object.values(KEYS);
@@ -65,7 +66,7 @@ oauth.get('/callback', async (c) => {
   const back = (status: 'authorized' | 'error', message?: string) => {
     const params = new URLSearchParams({ tab: 'email', status });
     if (message) params.set('message', message);
-    return c.redirect(`https://rmpgutah.us/admin?${params}`, 302);
+    return c.redirect(`${workerAppOrigin(c.env)}/admin?${params}`, 302);
   };
   if (errParam) return back('error', errDesc || errParam);
   if (!code) return back('error', 'Missing authorization code');
@@ -85,7 +86,7 @@ oauth.get('/callback', async (c) => {
           client_secret: cfg[KEYS.clientSecret],
           grant_type: 'authorization_code',
           code,
-          redirect_uri: REDIRECT_URI,
+          redirect_uri: emailOauthRedirectUri(c.env),
         }),
       },
     );

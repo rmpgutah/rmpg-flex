@@ -5,12 +5,14 @@
 // the cached responses from these background fetches let those pages render
 // with stale-but-correct data instead of going blank.
 //
-// Requests MUST be same-origin (`/api/...` on rmpgutah.us). Cloudflare Pages
-// proxies them to the Worker, the service worker can cache them, and the
-// browser does not CORS-preflight. Hitting https://api.rmpgutah.us directly
-// with a custom `X-Offline-Warm` header was blocked by Access-Control-Allow-
-// Headers (field console 2026-08-28) and never populated the SW cache at all
-// — a cross-origin fetch is invisible to this origin's service worker.
+// On rmpgutah.us / Vite, apiHttpBase() is '' so these are same-origin
+// `/api/...` (zone proxy + SW-cacheable, no CORS preflight). Electron and
+// other off-origin shells get the Worker origin. Never send a custom
+// X-Offline-Warm header — that failed Access-Control-Allow-Headers on
+// api.rmpgutah.us (field console 2026-08-28) and a cross-origin fetch is
+// invisible to this origin's service worker anyway.
+
+import { apiHttpBase } from './apiOrigin';
 
 // Endpoints to pre-cache. Mirrors the PULL_TABLES list in src/routes/offline.ts
 // so the same tables the server is willing to sync are the ones we warm locally.
@@ -59,14 +61,15 @@ export function warmOfflineCache(): void {
   warmedAt = now;
 
   let aborted = false;
+  const base = apiHttpBase();
   WARM_ENDPOINTS.forEach((path, i) => {
     setTimeout(() => {
       if (aborted || isOffline()) return;
       const current = typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null;
       if (!current) return;
-      fetch(path, {
+      fetch(`${base}${path}`, {
         method: 'GET',
-        credentials: 'same-origin',
+        credentials: 'include',
         headers: { Authorization: `Bearer ${current}` },
       }).then((res) => {
         // Session is dead — don't keep hammering 16 more endpoints (the

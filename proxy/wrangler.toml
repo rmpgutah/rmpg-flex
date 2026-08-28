@@ -10,6 +10,12 @@ compatibility_date = "2026-05-01"
 pattern = "rmpgutah.us/api/*"
 zone_name = "rmpgutah.us"
 
+# www is in CORS_ORIGINS; without this route a same-origin /api/uploads from
+# https://www.rmpgutah.us falls through to Pages and 200s the SPA shell.
+[[routes]]
+pattern = "www.rmpgutah.us/api/*"
+zone_name = "rmpgutah.us"
+
 # Service bindings — these let this Worker fetch() another Worker
 # directly inside the Cloudflare edge (no HTTP round-trip out, no
 # additional CORS dance, sub-ms latency).

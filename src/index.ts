@@ -58,7 +58,13 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', logger());
-app.use('*', secureHeaders());
+// Default CORP is `same-origin`. Electron / off-origin clients still POST
+// cross-origin to this Worker (api.rmpgutah.us). CORP same-origin makes Chrome discard the
+// response as a network error — Dispatch's Files tab then shows "Upload failed"
+// with no HTTP status. `cross-origin` is the correct policy for a public API.
+app.use('*', secureHeaders({
+  crossOriginResourcePolicy: 'cross-origin',
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
@@ -72,19 +78,22 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
-  // Explicit list: with credentials, some Hono/CF combinations do not
-  // reflect Access-Control-Request-Headers. A custom X-Offline-Warm
-  // header on cross-origin GETs to api.rmpgutah.us failed preflight
-  // (2026-08-28 field console). Keep the header allowed even though
-  // the warmer now uses same-origin /api so a stray direct-Worker
-  // caller cannot reproduce that storm.
+  // Explicit allow-list so preflight is answered even when a Cloudflare WAF
+  // challenge stripped Access-Control-Request-Headers (multipart uploads).
+  // X-Offline-Warm is kept allowed so a stray direct-Worker warmer cannot
+  // reproduce the 2026-08-28 CORS storm; the client warmer itself no longer
+  // sends that header.
   allowHeaders: [
     'Authorization',
     'Content-Type',
     'X-Requested-With',
+    'Accept',
     'X-Offline-Warm',
     'X-Trace-Id',
   ],
+  allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  exposeHeaders: ['X-Trace-Id', 'X-Request-Id'],
+  maxAge: 86400,
 }));
 
 // Root probe — useful for "is the Worker even reachable" smoke checks
