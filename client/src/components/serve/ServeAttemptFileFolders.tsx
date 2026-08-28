@@ -3,6 +3,7 @@ import {
   Camera, ChevronDown, ChevronRight, FileText, Folder, Loader2, Pencil, Trash2, Upload, Volume2,
 } from 'lucide-react';
 import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
+import { officerFacingFileError } from '../../utils/officerFacingFileError';
 import { formatEnumValue } from '../../utils/formatters';
 import { safeDateStr } from '../../utils/dateUtils';
 import {
@@ -241,7 +242,7 @@ function UploadForm({
       setDescription('');
       onUploaded();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Upload failed');
+      setErr(officerFacingFileError(e, 'Upload failed'));
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';

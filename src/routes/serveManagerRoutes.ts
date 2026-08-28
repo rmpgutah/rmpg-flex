@@ -217,7 +217,7 @@ sm.get('/jobs/:jobId', async (c) => {
 // authenticated API, not a public link, so it 401s without the stored key.
 sm.get('/documents/:documentId/download', async (c) => {
   const documentId = c.req.param('documentId');
-  const result = await fetchDocumentBinary(getDb(c.env), c.env.JWT_SECRET, documentId);
+  const result = await fetchDocumentBinary(getDb(c.env), c.env, documentId);
   if (!result.ok) {
     log.error('GET /documents/:documentId/download failed', { src: 'src/routes/serveManagerRoutes.ts', documentId, status: result.status });
     return c.json({ error: 'Download failed' }, result.status === 503 ? 503 : 502);
@@ -254,7 +254,7 @@ sm.post('/jobs/:jobId/create-dispatch', async (c) => {
       return c.json({ error: 'Job already has a linked dispatch call', code: 'ALREADY_LINKED', call_id: existing.linked_call_id }, 409);
     }
 
-    const job = await fetchJobById(db, c.env.JWT_SECRET, jobId);
+    const job = await fetchJobById(db, c.env, jobId);
     if (!job) return c.json({ error: 'Job not found in ServeManager (or API key not configured)' }, 404);
 
     const result = await createDispatchCallForJob(c.env, job);
@@ -339,7 +339,7 @@ sm.post('/poller/poll-now', async (c) => {
 });
 
 sm.post('/test-connection', async (c) => {
-  try { return c.json(await testConnection(getDb(c.env), c.env.JWT_SECRET)); }
+  try { return c.json(await testConnection(getDb(c.env), c.env)); }
   catch (err) {
     log.error('POST /test-connection failed', { src: 'src/routes/serveManagerRoutes.ts' }, err); return c.json({ success: false, error: 'Connection test failed' }, 500); }
 });
@@ -450,7 +450,7 @@ sm.post('/jobs/:jobId/push-attempt', async (c) => {
       serve_type?: string;
     }>();
     const body = { ...raw, success: raw.success ?? false };
-    const result = await pushAttemptToJob(db, c.env.JWT_SECRET, jobId, body);
+    const result = await pushAttemptToJob(db, c.env, jobId, body);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ success: true, attempt_id: result.id });
   } catch (err) {
@@ -473,7 +473,7 @@ sm.post('/jobs/:jobId/documents/upload', async (c) => {
     const title = (formData.get('title') as string | null) || (file as File).name || 'RMPG Document';
     const buffer = await (file as File).arrayBuffer();
     const contentType = (file as File).type || 'application/pdf';
-    const result = await uploadDocumentToJob(db, c.env.JWT_SECRET, jobId, title, buffer, contentType);
+    const result = await uploadDocumentToJob(db, c.env, jobId, title, buffer, contentType);
     if (!result.ok) return c.json({ error: result.error }, 502);
     return c.json({ success: true, document_id: result.id });
   } catch (err) {

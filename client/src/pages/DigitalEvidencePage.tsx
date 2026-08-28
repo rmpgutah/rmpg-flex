@@ -25,11 +25,11 @@ import {
   Play,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
-import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import { apiFetch, apiPostForm, authedImageUrl } from '../hooks/useApi';
+import { officerFacingFileError } from '../utils/officerFacingFileError';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
-import { apiHttpBase } from '../utils/apiOrigin';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -71,6 +71,12 @@ interface CustodyEntry {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
+
+function digitalEvidenceFilePath(item: Pick<DigitalEvidenceItem, 'id' | 'url'>): string {
+  return item.url && item.url.includes(`/digital/${item.id}/file`)
+    ? item.url
+    : `/api/evidence/digital/${item.id}/file`;
+}
 
 function formatBytes(bytes?: number): string {
   if (!bytes || bytes === 0) return '—';
@@ -185,7 +191,7 @@ function PreviewModal({
   onRelease,
 }: PreviewModalProps) {
   const type = detectType(item);
-  const mediaUrl = authedImageUrl(item.url ?? `/api/evidence/digital/${item.id}/file`);
+  const mediaUrl = authedImageUrl(digitalEvidenceFilePath(item));
 
   return (
     <div
@@ -422,8 +428,6 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
     setUploading(true);
     setError(null);
     try {
-      const token = localStorage.getItem('rmpg_token') ?? '';
-      const base = (window as any).__RMPG_API_BASE__ ?? apiHttpBase();
       for (const file of files) {
         const fd = new FormData();
         fd.append('file', file);
@@ -432,17 +436,12 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
         if (caseId.trim()) fd.append('case_id', caseId.trim());
         if (callId.trim()) fd.append('call_id', callId.trim());
         if (description.trim()) fd.append('description', description.trim());
-        const res = await fetch(`${base}/api/evidence/digital`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: fd,
-        });
-        if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+        await apiPostForm('/evidence/digital', fd);
       }
       onUploaded();
       onClose();
-    } catch (err: any) {
-      setError(err.message ?? 'Upload failed');
+    } catch (err: unknown) {
+      setError(officerFacingFileError(err, 'Upload failed'));
     } finally {
       setUploading(false);
     }
@@ -653,7 +652,7 @@ export default function DigitalEvidencePage() {
 
   const handleDownload = useCallback((item: DigitalEvidenceItem) => {
     const electron = (window as any).electron;
-    const fileUrl = item.url ?? `/api/evidence/digital/${item.id}/file`;
+    const fileUrl = digitalEvidenceFilePath(item);
     const authed = authedImageUrl(fileUrl);
     if (electron?.downloadFile) {
       electron.downloadFile(authed, item.original_filename ?? item.filename);
@@ -844,7 +843,7 @@ export default function DigitalEvidencePage() {
                 const thumbUrl = item.thumbnail_url
                   ? authedImageUrl(item.thumbnail_url)
                   : type === 'photo' || type === 'screenshot'
-                  ? authedImageUrl(item.url ?? `/api/evidence/digital/${item.id}/file`)
+                  ? authedImageUrl(digitalEvidenceFilePath(item))
                   : null;
 
                 return (

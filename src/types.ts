@@ -42,9 +42,14 @@ export type Bindings = {
   // 32 random bytes — provision via:
   //   node scripts/generate-quantum-key.mjs 32 | wrangler secret put FILE_ENCRYPTION_KEK
   // Optional: when unset, encryptedR2 derives a stable KEK from JWT_SECRET
-  // (same pattern as PDF_SIGNING_KEY). Do not later add a dedicated KEK
-  // without rotating/re-wrapping existing ciphertext.
+  // (same pattern as PDF_SIGNING_KEY). Reads also try JWT-derived and
+  // FILE_ENCRYPTION_KEK_PREVIOUS / JWT_SECRET_PREVIOUS so adding a dedicated
+  // KEK does not brick files already wrapped under JWT_SECRET. R2 bytes are
+  // never rewritten; only the D1 wrapped DEK is re-wrapped on a successful
+  // historical unwrap.
   FILE_ENCRYPTION_KEK?: string;
+  FILE_ENCRYPTION_KEK_PREVIOUS?: string;
+  JWT_SECRET_PREVIOUS?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // SPA origin used for OIDC/SSO redirects (src/routes/oidc.ts). Optional —

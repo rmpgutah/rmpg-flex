@@ -90,7 +90,7 @@ import { notifyServeCompletion } from '../utils/serveCompletionNotify';
 
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
-import { putEncrypted, getDecrypted } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, FileEncryptionError } from '../utils/encryptedR2';
 import { routeJsonColumn } from '../utils/serveRoutePayload';
 // ── Migration 0140 runtime reconciler ───────────────────────
 // D1 deploy apply is continue-on-error; columns may be absent on live.
@@ -1481,21 +1481,23 @@ si.get('/documents/:docId/file', async (c) => {
     docId,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  // getDecrypted() cleanly returns null when there's no file_encryption_keys
-  // row (the legacy pre-encryption case — this feature has been live, and
-  // production R2 already holds serve-intake/ objects written before this
-  // task shipped). A genuine decrypt failure (bad KEK, tampered ciphertext)
-  // THROWS instead and must propagate as a real error, not silently fall
-  // back to raw bytes — so this is deliberately NOT wrapped in .catch().
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
-  if (decrypted) {
-    return new Response(decrypted.bytes, {
-      headers: {
-        'Content-Type': doc.file_type || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
-        'Cache-Control': 'private, max-age=300',
-      },
-    });
+  try {
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
+    if (decrypted) {
+      return new Response(decrypted.bytes, {
+        headers: {
+          'Content-Type': doc.file_type || 'application/octet-stream',
+          'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
+          'Cache-Control': 'private, max-age=300',
+        },
+      });
+    }
+  } catch (err) {
+    if (err instanceof FileEncryptionError) {
+      log.error('Serve-intake document decrypt failed', { docId }, err);
+      return c.json({ error: 'File storage is temporarily unavailable. Contact a supervisor.', code: 'ENCRYPTION_FAILED' }, 503);
+    }
+    throw err;
   }
   const legacy = await c.env.UPLOADS.get(doc.r2_key);
   if (!legacy) return c.json({ error: 'File missing in R2' }, 404);

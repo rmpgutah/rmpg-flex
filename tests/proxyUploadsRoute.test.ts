@@ -32,6 +32,19 @@ describe('rmpg-api-proxy same-origin routing', () => {
     }
   });
 
+  it('routes serve attempt uploads, property photos, and redactions to env.API', () => {
+    for (const path of [
+      '/api/process-server', '/api/serve/', '/api/serve-dashboard', '/api/serve-queue',
+      '/api/property-photos', '/api/business-photos', '/api/redactions',
+      '/api/tesseract-training', '/api/tesseract-ocr', '/api/mapbox',
+    ]) {
+      expect(PROXY).toContain(`value: '${path}'`);
+    }
+    expect(PROXY).toContain('value: /^\\/api\\/serve$/');
+    // A bare `/api/serve` prefix would steal /api/servemanager.
+    expect(PROXY).not.toMatch(/kind:\s*'prefix',\s*value:\s*'\/api\/serve'/);
+  });
+
   it('routes integration namespaces to env.API', () => {
     for (const path of [
       '/api/integrations', '/api/geocode', '/api/email', '/api/email-oauth',

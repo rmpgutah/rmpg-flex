@@ -202,7 +202,7 @@ files.post('/:id/attempts/:attemptId/files', async (c) => {
       const fileId = crypto.randomUUID();
       const ext = extFor(file.name, mime);
       const r2Key = serveAttemptR2Key(queueId, attempt.attempt_number, fileId, ext);
-      await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, await file.arrayBuffer(), {
+      await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, await file.arrayBuffer(), {
         httpMetadata: { contentType: mime },
       });
       const kind = isServeFileKind(kindOverride) ? kindOverride : inferServeFileKind(mime, file.name);
@@ -237,7 +237,10 @@ files.post('/:id/attempts/:attemptId/files', async (c) => {
   } catch (err) {
     log.error('Serve attempt file upload failed', { queueId, attemptId }, err as Error);
     if (err instanceof FileEncryptionError) {
-      return c.json({ error: err.message, code: 'ENCRYPTION_FAILED' }, 503);
+      return c.json({
+        error: 'File storage is temporarily unavailable. Contact a supervisor.',
+        code: 'ENCRYPTION_FAILED',
+      }, 503);
     }
     return dbErrorResponse(c, err, 'Upload failed');
   }

@@ -107,7 +107,17 @@ function isMediaPath(pathname: string): boolean {
     || /\/email\/messages\/[^/]+\/attachments\/[^/]+$/.test(pathname)  // email inline CID images
     // Training portal <img>/<a download> tags cannot send Authorization.
     || /\/api\/tesseract-training\/documents\/\d+\/image$/.test(pathname)
-    || /\/api\/tesseract-training\/documents\/runs\/\d+\/download$/.test(pathname);
+    || /\/api\/tesseract-training\/documents\/runs\/\d+\/download$/.test(pathname)
+    // Serve intake packet <a href> / <img> cannot send Authorization.
+    || /\/api\/serve-intake\/documents\/\d+\/file$/.test(pathname)
+    // Digital evidence preview/download (<img>/<a> + authedImageUrl).
+    || /\/api\/evidence\/digital\/\d+\/file$/.test(pathname)
+    || pathname.includes('/evidence/digital/file/')
+    // Premise / property gallery <img src> (RecordPhotoGallery).
+    || pathname.includes('/property-photos/file/')
+    || pathname.includes('/business-photos/file/')
+    // Redacted video download links.
+    || /\/api\/redactions\/\d+\/download$/.test(pathname);
 }
 
 export async function authMiddleware(c: Context, next: Next) {
