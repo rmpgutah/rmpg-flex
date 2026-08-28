@@ -235,7 +235,7 @@ export async function getDecrypted(
   }
   if (!row) return null;
 
-  const kekKey = await importKek(await kekB64FromSource(kekSnap));
+  const kekKey = await importKek(await kekB64FromSource(kek));
   const dekRaw = new Uint8Array(await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kekKey, base64ToBytes(row.wrapped_dek),
   ));

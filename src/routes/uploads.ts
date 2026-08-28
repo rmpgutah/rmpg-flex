@@ -8,6 +8,7 @@ import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } 
 import { resolveUploadMime } from '../utils/uploadMime';
 import { dbErrorResponse } from '../utils/dbErrors';
 import { log } from '../utils/logger';
+import { isInlineAudio, parseBytesRange, playbackContentType } from '../utils/inlineMedia';
 
 const uploads = new Hono<Env>();
 
@@ -295,11 +296,29 @@ uploads.get('/:fileId', async (c) => {
       if (!legacy) return c.json({ error: 'File not found in storage', code: 'FILE_NOT_FOUND_ON' }, 404);
       data = new Uint8Array(await legacy.arrayBuffer());
     }
-    c.header('Content-Type', att.mime_type);
-    c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
+    const contentType = playbackContentType(att.mime_type, att.original_name);
+    const total = data.byteLength;
+    const range = parseBytesRange(c.req.header('Range'), total);
+
+    c.header('Content-Type', contentType);
+    c.header('Content-Disposition', `inline; filename="${String(att.original_name || 'file').replace(/"/g, '')}"`);
     c.header('Cache-Control', 'private, max-age=300');
     c.header('X-Content-Type-Options', 'nosniff');
-    c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+    c.header('Accept-Ranges', 'bytes');
+    if (!isInlineAudio(contentType, att.original_name)) {
+      c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
+    }
+
+    if (range === 'unsatisfiable') {
+      c.header('Content-Range', `bytes */${total}`);
+      return c.body(null, 416);
+    }
+    if (range) {
+      const slice = data.subarray(range.start, range.end + 1);
+      c.header('Content-Range', `bytes ${range.start}-${range.end}/${total}`);
+      c.header('Content-Length', String(slice.byteLength));
+      return c.body(slice, 206);
+    }
     return c.body(data);
   } catch (err) {
     log.error('File fetch failed', { fileId: c.req.param('fileId') }, err as Error);
