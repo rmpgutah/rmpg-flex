@@ -70,6 +70,9 @@ const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 export async function fetchWeather(lat?: number, lon?: number): Promise<WeatherData | null> {
   // Return cache if fresh
   if (cachedWeather && Date.now() < cacheExpiry) return cachedWeather;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return cachedWeather;
+  }
 
   // Get coordinates from params or browser geolocation
   let latitude = lat;

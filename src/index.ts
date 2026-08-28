@@ -78,10 +78,19 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
-  // Explicit allow-list so the preflight for multipart uploads
-  // (Authorization + X-Requested-With + Content-Type) is answered even when
-  // a Cloudflare WAF challenge stripped Access-Control-Request-Headers.
-  allowHeaders: ['Authorization', 'Content-Type', 'X-Requested-With', 'Accept'],
+  // Explicit allow-list so preflight is answered even when a Cloudflare WAF
+  // challenge stripped Access-Control-Request-Headers (multipart uploads).
+  // X-Offline-Warm is kept allowed so a stray direct-Worker warmer cannot
+  // reproduce the 2026-08-28 CORS storm; the client warmer itself no longer
+  // sends that header.
+  allowHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Requested-With',
+    'Accept',
+    'X-Offline-Warm',
+    'X-Trace-Id',
+  ],
   allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   exposeHeaders: ['X-Trace-Id', 'X-Request-Id'],
   maxAge: 86400,
