@@ -31,7 +31,7 @@ const ALLOWED_MIME = new Set([
   'text/javascript', 'application/javascript',
   'text/x-python', 'text/x-sh', 'text/x-yaml', 'application/x-yaml',
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
-  'audio/mpeg', 'audio/wav', 'audio/ogg',
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg',
 ]);
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024;

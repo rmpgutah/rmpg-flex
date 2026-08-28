@@ -3518,6 +3518,18 @@ export interface ServeAttemptData {
   person_served_relationship?: string;
   person_served_description?: string;
   photo_ids?: string[];
+  /** Documents / photos / MP3s cataloged into this attempt's folder. */
+  evidence_files?: Array<{
+    file_id: string;
+    kind?: 'document' | 'photo' | 'audio';
+    title?: string;
+    description?: string;
+    document_type?: string;
+    copies?: number;
+    original_name?: string;
+    mime_type?: string;
+    file_size?: number;
+  }>;
   signature_data?: string;
   notes?: string;
   // Optional operator-set message for the next attempt window — stored on the

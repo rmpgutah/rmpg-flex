@@ -59,8 +59,11 @@ import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
 import { hashAddress, shouldRecordDwell, dwellSeconds } from '../utils/serveRouteOptimizer';
 import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
+import { catalogServeAttemptFiles, type CatalogFileInput } from '../utils/serveAttemptFiles';
+import serveAttemptFiles from './serveAttemptFiles';
 
 const sv = new Hono<Env>();
+sv.route('/', serveAttemptFiles);
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -1453,6 +1456,42 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
         stampedAt,
       );
 
+  const loggedAttemptId = Number(ins.meta.last_row_id) || 0;
+  if (loggedAttemptId > 0) {
+    const catalogItems: CatalogFileInput[] = [];
+    const photoIds = Array.isArray(body.photo_ids)
+      ? body.photo_ids.filter((fid: unknown) => typeof fid === 'string' && fid.length > 0)
+      : [];
+    for (const fileId of photoIds) {
+      catalogItems.push({
+        file_id: fileId,
+        kind: 'photo',
+        document_type: 'door_photo',
+        uploaded_by: body.officer_id ?? user?.id ?? null,
+      });
+    }
+    if (Array.isArray(body.evidence_files)) {
+      for (const row of body.evidence_files) {
+        if (!row || typeof row.file_id !== 'string' || !row.file_id) continue;
+        catalogItems.push({
+          file_id: row.file_id,
+          kind: row.kind,
+          title: row.title,
+          description: row.description,
+          document_type: row.document_type,
+          copies: row.copies,
+          original_name: row.original_name,
+          mime_type: row.mime_type,
+          file_size: row.file_size,
+          uploaded_by: body.officer_id ?? user?.id ?? null,
+        });
+      }
+    }
+    await catalogServeAttemptFiles(db, id, loggedAttemptId, catalogItems).catch((err) => {
+      log.warn('catalogServeAttemptFiles after logAttempt failed', { queueId: id, loggedAttemptId, error: err instanceof Error ? err.message : String(err) });
+    });
+  }
+
   // Dwell-time learning — write path
   const arrivedAtRaw = body.arrivedAt as string | undefined;
   // Guard: arrivedAt must be a parseable ISO timestamp. An unvalidated string
@@ -1835,6 +1874,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   // Photo IDs — append new IDs to the existing array (never replace/delete).
   // Operators can attach additional field photos after the fact; the original
   // evidence set is preserved because we only ever grow photo_ids, never shrink.
+  let appendedPhotoIds: string[] = [];
   if ('photo_ids_append' in body && Array.isArray(body.photo_ids_append) && body.photo_ids_append.length > 0) {
     const existingRow = await queryFirst<{ photo_ids: string | null }>(
       db, 'SELECT photo_ids FROM serve_attempts WHERE id = ?', attemptId);
@@ -1845,6 +1885,7 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
       (id) => typeof id === 'string' && id.length > 0 && !current.includes(id),
     );
     if (newIds.length > 0) {
+      appendedPhotoIds = newIds;
       sets.push('photo_ids = ?');
       args.push(JSON.stringify([...current, ...newIds]));
     }
@@ -1898,6 +1939,22 @@ sv.put('/:queueId/attempt/:attemptId', async (c) => {
   if (!sets.length) return c.json({ error: 'No editable fields supplied' }, 400);
   args.push(attemptId);
   await execute(db, `UPDATE serve_attempts SET ${sets.join(', ')} WHERE id = ?`, ...args);
+
+  if (appendedPhotoIds.length > 0) {
+    await catalogServeAttemptFiles(
+      db,
+      queueId,
+      attemptId,
+      appendedPhotoIds.map((file_id) => ({
+        file_id,
+        kind: 'photo' as const,
+        document_type: 'door_photo',
+        uploaded_by: c.get('user')?.id ?? null,
+      })),
+    ).catch((err) => {
+      log.warn('catalogServeAttemptFiles after photo append failed', { queueId, attemptId, error: err instanceof Error ? err.message : String(err) });
+    });
+  }
 
   // ── Parent status recompute ───────────────────────────────
   // Only fire when result/disposition actually changed. We re-derive
