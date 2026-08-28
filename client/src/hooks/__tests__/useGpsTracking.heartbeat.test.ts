@@ -7,7 +7,7 @@ vi.mock('../useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue(null),
 }));
 
-import { useGpsTracking } from '../useGpsTracking';
+import { useGpsTracking, _resetGpsStaleWarnForTest } from '../useGpsTracking';
 
 // Flush the permissions.query().then() microtask chain that auto-starts tracking.
 async function flushMicrotasks() {
@@ -46,6 +46,7 @@ describe('useGpsTracking — stale-watch backoff (desktop console loop)', () => 
       configurable: true,
       value: { query: vi.fn().mockResolvedValue({ state: 'granted' }) },
     });
+    _resetGpsStaleWarnForTest();
   });
 
   afterEach(() => {

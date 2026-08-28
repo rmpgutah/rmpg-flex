@@ -177,6 +177,13 @@ async function runCoordinated(): Promise<string | null> {
 }
 
 async function performRefresh(): Promise<string | null> {
+  // Cellular drop: navigator.onLine is false, or a false-online blip is
+  // about to 401. Don't burn the single-use refresh token or log two
+  // consecutive POST /api/auth/refresh 401s while the radio is down.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return null;
+  }
+
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   const sessionId = localStorage.getItem(SESSION_ID_KEY);
 

@@ -5,15 +5,12 @@
 // the cached responses from these background fetches let those pages render
 // with stale-but-correct data instead of going blank.
 //
-// The SW intercepts each fetch, stores the successful response, and serves it
-// on subsequent offline requests. No IDB or apiFetch changes needed.
-
-function getApiBase(): string {
-  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
-  const h = window.location.hostname;
-  if (h === 'localhost') return 'http://localhost:8787';
-  return 'https://api.rmpgutah.us';
-}
+// Requests MUST be same-origin (`/api/...` on rmpgutah.us). Cloudflare Pages
+// proxies them to the Worker, the service worker can cache them, and the
+// browser does not CORS-preflight. Hitting https://api.rmpgutah.us directly
+// with a custom `X-Offline-Warm` header was blocked by Access-Control-Allow-
+// Headers (field console 2026-08-28) and never populated the SW cache at all
+// — a cross-origin fetch is invisible to this origin's service worker.
 
 // Endpoints to pre-cache. Mirrors the PULL_TABLES list in src/routes/offline.ts
 // so the same tables the server is willing to sync are the ones we warm locally.
@@ -43,27 +40,38 @@ const REWARM_INTERVAL_MS = 15 * 60 * 1000; // Re-warm at most once per 15 min
 // Stagger between requests to avoid a burst on login
 const STAGGER_MS = 150;
 
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
 /**
  * Fire background GET requests to pre-populate the SW API cache.
  * Safe to call multiple times — throttled to once per REWARM_INTERVAL_MS.
  * Never throws; all failures are silently swallowed.
  */
 export function warmOfflineCache(): void {
+  if (isOffline()) return;
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null;
+  if (!token) return;
+
   const now = Date.now();
   if (now - warmedAt < REWARM_INTERVAL_MS) return;
   warmedAt = now;
 
-  const base = getApiBase();
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null;
-  const headers: Record<string, string> = { 'X-Offline-Warm': '1' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
+  let aborted = false;
   WARM_ENDPOINTS.forEach((path, i) => {
     setTimeout(() => {
-      fetch(`${base}${path}`, {
+      if (aborted || isOffline()) return;
+      const current = typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null;
+      if (!current) return;
+      fetch(path, {
         method: 'GET',
-        credentials: 'include',
-        headers,
+        credentials: 'same-origin',
+        headers: { Authorization: `Bearer ${current}` },
+      }).then((res) => {
+        // Session is dead — don't keep hammering 16 more endpoints (the
+        // 401 storm in the field console after a cellular drop).
+        if (res.status === 401 || res.status === 403) aborted = true;
       }).catch(() => {});
     }, i * STAGGER_MS);
   });
@@ -72,4 +80,9 @@ export function warmOfflineCache(): void {
 /** Reset the throttle — for use in tests. */
 export function resetWarmThrottle(): void {
   warmedAt = 0;
+}
+
+/** @internal — endpoints the warmer will hit. Tests only. */
+export function _warmEndpointsForTest(): readonly string[] {
+  return WARM_ENDPOINTS;
 }

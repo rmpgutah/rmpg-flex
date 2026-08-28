@@ -216,15 +216,17 @@ async function fetchWithRetry(
   const dedupKey = isMutation ? `${method}:${url}` : '';
 
   const doFetch = async (): Promise<Response> => {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const maxAttempts = offline ? 0 : retries;
     let lastError: Error | null = null;
-    for (let attempt = 0; attempt <= retries; attempt++) {
+    for (let attempt = 0; attempt <= maxAttempts; attempt++) {
       try {
         // Per-attempt timeout (not cumulative across retries) — if a single
         // attempt hangs for `timeoutMs`, abort it and try again.
         const res = await fetchWithTimeout(url, init);
-        if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
+        if (RETRY_STATUS_CODES.includes(res.status) && attempt < maxAttempts) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${maxAttempts})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -232,9 +234,10 @@ async function fetchWithRetry(
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
         lastError = err instanceof Error ? err : new Error(String(err));
-        if (attempt < retries) {
+        const stillOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+        if (attempt < maxAttempts && !stillOffline) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
-          console.warn(`[API] ${init.method || 'GET'} ${url} → network error, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
+          console.warn(`[API] ${init.method || 'GET'} ${url} → network error, retrying in ${delay / 1000}s (${attempt + 1}/${maxAttempts})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }

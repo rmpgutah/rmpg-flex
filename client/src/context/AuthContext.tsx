@@ -152,7 +152,7 @@ export function fetchWithTimeout(url: string, options: RequestInit = {}, timeout
  * DOMException("signal is aborted without reason") on AbortController timeout.
  * Neither is helpful for a field officer staring at a login screen.
  */
-const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed'];
+const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed', 'offline', '503'];
 const TIMEOUT_ERROR_PATTERNS = ['abort', 'timed out', 'timeout'];
 
 function friendlyAuthError(err: unknown): string {
@@ -267,7 +267,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // refreshes automatically after an offline period.
   useEffect(() => {
     if (!user) return;
-    const handleOnline = () => warmOfflineCache();
+    const handleOnline = () => {
+      void (async () => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+        // Refresh first so the warmer doesn't fire 17 GETs with a dead JWT
+        // (the 401 storm after a cellular drop). If the session is genuinely
+        // gone, refreshAccessToken clears auth and we skip the warm.
+        await refreshAccessToken();
+        if (!localStorage.getItem(TOKEN_KEY)) return;
+        warmOfflineCache();
+      })();
+    };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [user]);
@@ -724,11 +734,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const deviceFingerprint = deviceFingerprintRef.current;
-      const res = await fetchWithTimeout('/api/auth/login', {
+      const loginInit: RequestInit = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
         body: JSON.stringify({ username, password, deviceFingerprint }),
-      });
+      };
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('Unable to connect to the server. Check your network connection and try again.');
+      }
+      let res = await fetchWithTimeout('/api/auth/login', loginInit);
+      // Worker/CF 502–504 during a reconnect blip — retry once before
+      // showing the login form a generic failure (field: POST /login 503
+      // immediately after a 503 Offline navigation).
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+          res = await fetchWithTimeout('/api/auth/login', loginInit);
+        }
+      }
 
       if (res.ok) {
         const data = await res.json();

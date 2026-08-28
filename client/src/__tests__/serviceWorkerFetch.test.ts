@@ -166,6 +166,7 @@ describe('service worker fetch handler — requests it must decline', () => {
   // refactor from quietly taking ownership of third-party requests.
   it.each([
     ['cross-origin telemetry', 'https://static.cloudflareinsights.com/beacon.min.js'],
+    ['cross-origin telemetry hashed', 'https://static.cloudflareinsights.com/beacon.min.js/v3d52b47920f24c319d37e2661827c42b1787588026925'],
     ['cross-origin dialer iframe', 'https://dialer.rmpgutah.us/dialer'],
   ])('does not respond to %s', async (_label, url) => {
     vi.useFakeTimers();

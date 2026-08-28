@@ -72,6 +72,19 @@ app.use('*', cors({
     return undefined;
   },
   credentials: true,
+  // Explicit list: with credentials, some Hono/CF combinations do not
+  // reflect Access-Control-Request-Headers. A custom X-Offline-Warm
+  // header on cross-origin GETs to api.rmpgutah.us failed preflight
+  // (2026-08-28 field console). Keep the header allowed even though
+  // the warmer now uses same-origin /api so a stray direct-Worker
+  // caller cannot reproduce that storm.
+  allowHeaders: [
+    'Authorization',
+    'Content-Type',
+    'X-Requested-With',
+    'X-Offline-Warm',
+    'X-Trace-Id',
+  ],
 }));
 
 // Root probe — useful for "is the Worker even reachable" smoke checks

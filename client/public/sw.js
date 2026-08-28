@@ -3,6 +3,10 @@
 // Provides offline caching for static assets and API GET responses.
 // API data is served stale from rmpg-api-data cache when offline.
 // Supports automatic updates with client notification.
+// v1105: Field-console offline sweep. Do not take ownership of
+//        static.cloudflareinsights.com (FetchEvent rejection + SRI). Strip
+//        more beacon <script> shapes from HTML. Same-origin API cache warm
+//        (no X-Offline-Warm CORS preflight).
 // v1103: Offline data layer. API GET responses are now cached in a stable
 //        'rmpg-api-data' cache (network-first, stale fallback). Pages load
 //        with last-seen data when offline instead of going blank. Auth,
@@ -497,7 +501,22 @@ async function flushClientFirings() {
 
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  var url;
+  try {
+    url = new URL(event.request.url);
+  } catch {
+    return;
+  }
+
+  // Cloudflare Web Analytics is injected with integrity="sha512-…". Taking
+  // ownership (204 or fetch()) either fails SRI or, when the network is
+  // down, rejects the FetchEvent ("the promise was rejected" +
+  // Uncaught TypeError: Failed to fetch in sw.js). Let the browser handle
+  // the blocked beacon; the navigation handler strips the <script> tag
+  // so subsequent loads never request it.
+  if (url.hostname === 'static.cloudflareinsights.com') {
+    return;
+  }
 
   if (TELEMETRY_HOSTS.includes(url.hostname)) {
     event.respondWith(new Response(null, { status: 204 }));
@@ -568,7 +587,10 @@ self.addEventListener('fetch', (event) => {
               // tag here means no element exists to CSP-check or fetch, so no
               // console error of any kind fires regardless of CSP policy.
               return response.text().then((html) => {
-                var stripped = html.replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '');
+                var stripped = html
+                  .replace(/<script\b[^>]*cloudflareinsights[^>]*>[\s\S]*?<\/script>/gi, '')
+                  .replace(/<script\b[^>]*static\.cloudflareinsights\.com[^>]*>[\s\S]*?<\/script>/gi, '')
+                  .replace(/<script\b[^>]*data-cf-beacon[^>]*>[\s\S]*?<\/script>/gi, '');
                 var headers = {};
                 response.headers.forEach(function(v, k) {
                   if (k.toLowerCase() !== 'content-length') headers[k] = v;
@@ -584,7 +606,7 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() =>
           cacheMatch(event.request)
-            .then((cached) => cached || cacheMatch('/'))
+            .then((cached) => cached || cacheMatch(new URL('/', self.location.origin).href) || cacheMatch('/'))
             .then((fallback) => fallback || new Response(
               '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#172a3f;color:#f0f4f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #2a4a6b;background:#1e3550;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#f0f4f9}p{margin:0 0 20px;color:#8fa3b8;font-size:13px;line-height:1.5}button{background:#2a4a6b;color:#f0f4f9;border:1px solid #3b6a9a;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#3b6a9a}.cd{font-size:10px;color:#8fa3b8;font-family:monospace;margin-top:12px}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection.</p><button onclick="window.location.reload()" type="button">Retry Connection</button><div class="cd" id="cd">Retrying in 5s...</div></div><script>var r=5,t=setInterval(function(){r--;if(r<=0){clearInterval(t);window.location.reload()}else{document.getElementById("cd").textContent="Retrying in "+r+"s..."}},1000)</script></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }

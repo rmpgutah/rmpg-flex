@@ -24,7 +24,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../useApi', () => ({ apiFetch: vi.fn().mockResolvedValue(null) }));
 
-import { useGpsTracking } from '../useGpsTracking';
+import { useGpsTracking, _resetGpsStaleWarnForTest } from '../useGpsTracking';
 
 async function flushMicrotasks() {
   await act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -68,6 +68,7 @@ describe('useGpsTracking — stale-warning throttle under intermittent GPS', () 
 
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    _resetGpsStaleWarnForTest();
   });
 
   afterEach(() => {
@@ -117,5 +118,20 @@ describe('useGpsTracking — stale-warning throttle under intermittent GPS', () 
 
     expect(staleWarns(warnSpy)).toBeGreaterThanOrEqual(1);
     unmount();
+  });
+
+  it('does not triple-warn when three hooks share one process', async () => {
+    const a = renderHook(() => useGpsTracking());
+    const b = renderHook(() => useGpsTracking());
+    const c = renderHook(() => useGpsTracking({ upload: false }));
+    await flushMicrotasks();
+
+    await act(async () => { lastSuccessCb?.(fix()); });
+    await act(async () => { vi.advanceTimersByTime(60 * 1000); });
+
+    expect(staleWarns(warnSpy)).toBe(1);
+    a.unmount();
+    b.unmount();
+    c.unmount();
   });
 });
