@@ -50,7 +50,6 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import { Combobox } from '../../components/Combobox';
 import DispatchAnalyticsStrip from '../../components/dispatch/DispatchAnalyticsStrip';
-import IncidentTypeChart from '../../components/dispatch/IncidentTypeChart';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
@@ -4151,11 +4150,6 @@ export default function DispatchPage() {
           onChange={setQuickFilter}
           myBeat={(user as any)?.beat_id ?? null}
         />
-
-        {/* Incident Type Analytics Chart */}
-        <div className="px-3 py-2 border-b border-[var(--spm-border)] flex-shrink-0">
-          <IncidentTypeChart />
-        </div>
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
