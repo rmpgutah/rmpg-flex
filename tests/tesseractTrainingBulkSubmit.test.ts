@@ -54,7 +54,7 @@ function makeEnv(db: ReturnType<typeof makeDb>) {
     DB: db,
     UPLOADS: { get: async () => makeLegacyR2Object() },
     TESSERACT_TRAINING: { put: async () => {} },
-    FILE_ENCRYPTION_KEK: 'unused',
+    JWT_SECRET: 'test-jwt-secret-for-file-kek-derivation',
   };
 }
 

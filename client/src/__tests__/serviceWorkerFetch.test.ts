@@ -128,6 +128,25 @@ describe('service worker fetch handler — transient failure vs. genuine offline
     expect(await response?.text()).not.toContain('Connection Lost');
   });
 
+  it('serves the cached SPA shell for /login?return= when the network fails', async () => {
+    // Precache key is `/`. A login URL with a query string used to miss and
+    // become 503 Offline even though the shell was already cached.
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const { listeners } = loadServiceWorker(
+      fetchMock,
+      new Response('<!doctype html>login shell', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    );
+
+    const response = await dispatchAndSettle(
+      listeners,
+      makeFetchEvent(`${ORIGIN}/login?return=%2F`, { mode: 'navigate' }),
+    );
+
+    expect(response?.status).toBe(200);
+    expect(await response?.text()).toContain('login shell');
+  });
+
   it('falls back to the Connection Lost card when a navigation is truly offline', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
