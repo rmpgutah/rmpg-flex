@@ -7,6 +7,7 @@
 
 import type { CallForService, CallPriority, CallStatus } from '../types';
 import { parseTimestamp } from './dateUtils';
+import { displayTimeZone } from './timeZoneMode';
 // All timestamp parsing goes through parseTimestamp (not raw `new Date()`)
 // so naive server strings are read as UTC, not browser-local. Raw
 // `new Date("2026-05-28 21:38:50")` parses as LOCAL in V8 — which made
@@ -215,7 +216,11 @@ export function getTimerState(call: CallForService): TimerState {
     const terminalTime = (call as any).archived_at || call.cleared_at || call.closed_at || call.created_at;
     const d = parseTimestamp(terminalTime);
     const formatted = !isNaN(d.getTime())
-      ? `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      ? d.toLocaleString('en-US', {
+          month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+          timeZone: displayTimeZone(),
+        })
       : '--';
     return {
       label,
