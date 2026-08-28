@@ -149,8 +149,8 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
     const r1b = addFieldPair(doc, 'Priority', PRIORITY_LABEL[data.priority] || (data.priority || 'N/A').toUpperCase(), lx + qw + SPACING.SM, y, qw);
     const r1c = addFieldPair(doc, 'Status', toDisplayLabel(data.status || 'N/A').toUpperCase(), rx, y, hfw);
     y = Math.max(r1a, r1b, r1c);
-    const r2a = addFieldPair(doc, 'Serve Date', data.serveDate || 'N/A', lx, y, hfw);
-    const r2b = addFieldPair(doc, 'Deadline', data.deadline || 'N/A', rx, y, hfw);
+    const r2a = addFieldPair(doc, 'Serve Date', data.serveDate || 'Not yet served', lx, y, hfw);
+    const r2b = addFieldPair(doc, 'Deadline', data.deadline || 'None', rx, y, hfw);
     y = Math.max(r2a, r2b);
     y = addFieldPair(doc, 'Preferred Time Window', TIME_WINDOW_LABEL[data.timeWindow] || (data.timeWindow || 'N/A').toUpperCase(), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -186,7 +186,7 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
   y = checkPageBreak(doc, y, 20);
   { const sec = openAutoSection(doc, '3. Document / Case Information', y); y = sec.contentY;
     y = addFieldPair(doc, 'Document Type', data.documentType, lx, y, ffw);
-    const r1a = addFieldPair(doc, 'Case Number', data.caseNumber || 'N/A', lx, y, hfw);
+    const r1a = addFieldPair(doc, 'Case Number', data.caseNumber || 'Not assigned', lx, y, hfw);
     const r1b = addFieldPair(doc, 'Jurisdiction', data.jurisdiction || 'N/A', rx, y, hfw);
     y = Math.max(r1a, r1b);
     y = addFieldPair(doc, 'Court Name', data.courtName || 'N/A', lx, y, ffw);
@@ -344,7 +344,11 @@ export async function generateServeJobSheet(data: ServeJobSheetData): Promise<js
 
   // Signature block
   y = checkPageBreak(doc, y, 30);
-  addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw);
+  addSignatureBlock(doc, 'Process Server Signature', lx, y, ffw, {
+    printedName: data.officerName,
+    badgeNumber: data.officerBadge,
+    date: '',
+  });
 
   // Add page footers
   const totalPages = doc.internal.pages.length - 1;

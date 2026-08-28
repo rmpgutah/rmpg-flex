@@ -1194,6 +1194,33 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
 }
 
 /**
+ * A field the subject (or officer) fills in by hand: label in the normal
+ * position, a writable rule where the value would be.
+ *
+ * addFieldPair() renders "N/A" for an empty value, which is right on a
+ * report of established fact and exactly wrong on a form someone is
+ * meant to complete — it reads as an instruction NOT to write there.
+ * Geometry matches addFieldPair (2.7mm label height, 0.8mm inner pad)
+ * so blank and printed fields sit on the same grid.
+ */
+export function addWritableFieldPair(
+  doc: jsPDF, label: string, x: number, y: number, width: number,
+): number {
+  const labelH = 2.7;
+  const innerPad = 0.8;
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(sanitizePdfText(label.toUpperCase()), x + innerPad, y + 1.8);
+
+  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+  doc.setLineWidth(BORDER.FIELD);
+  doc.line(x + innerPad, y + labelH + 1.6, x + width - innerPad, y + labelH + 1.6);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y + labelH + SPACING.FIELD_ROW_ADVANCE + 0.6;
+}
+
+/**
  * Alias for addFieldPair — used by recordPdfGenerator for narrative-style
  * long-text fields. Same signature: (doc, label, value, x, y, width).
  */
@@ -1673,7 +1700,7 @@ export function addSignatureBlock(
   doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
-  const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
+  const hasSigData = !!(sigData?.printedName || sigData?.badgeNumber || sigData?.date);
   if (hasSigData) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
@@ -1681,19 +1708,27 @@ export function addSignatureBlock(
     const valY = row2Y + infoRowH - 1.5;
     if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
     if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
-    const now = new Date();
-    // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
-    // Legal documents require the correct local timestamp — UTC drift corrupts records.
-    // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
-    // does not say which zone it means. Only the AUTO-generated value is
-    // stamped -- a caller-supplied sigData.date is left exactly as passed so
-    // it can never be double-labelled.
-    const dateStr = sigData!.date || `${now.toLocaleString('en-US', {
-      timeZone: 'America/Denver',
-      month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).replace(', ', ' ')} MT`;
-    doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    // Auto-stamp "now" only when the caller omitted `date` entirely.
+    // An explicit empty string means "leave the cell blank for wet ink" —
+    // stamping the moment of PRINTING as the moment of signature is a
+    // false fact on a form completed at the door (PS-314 leave-behind).
+    if (sigData!.date) {
+      doc.text(sanitizePdfText(sigData!.date), x + colW * 2 + SPACING.MD, valY);
+    } else if (sigData!.date === undefined) {
+      const now = new Date();
+      // Always render in America/Denver (MDT/MST) regardless of client OS timezone.
+      // Legal documents require the correct local timestamp — UTC drift corrupts records.
+      // Zone-labelled: this block is signed and filed, and a bare "14:35:21"
+      // does not say which zone it means. Only the AUTO-generated value is
+      // stamped -- a caller-supplied sigData.date is left exactly as passed so
+      // it can never be double-labelled.
+      const dateStr = `${now.toLocaleString('en-US', {
+        timeZone: 'America/Denver',
+        month: '2-digit', day: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).replace(', ', ' ')} MT`;
+      doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    }
   }
 
   // Outer border
