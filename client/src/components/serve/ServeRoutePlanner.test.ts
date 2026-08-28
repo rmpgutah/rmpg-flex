@@ -99,6 +99,22 @@ describe('nearestNeighborOrder', () => {
     const { missedDeadlineJobIds } = nearestNeighborOrder([alreadyLate], origin, start);
     expect(missedDeadlineJobIds).toEqual([1]);
   });
+
+  it('does not put an evening next-attempt stop first when the run starts at 14:30', () => {
+    const start = Date.parse('2026-08-28T20:30:00.000Z'); // 14:30 MDT
+    const origin = { lat: 40.6945, lng: -111.8817 };
+    const evening = stop(1, 40.695, -111.882);
+    evening.job.next_attempt_window = '18:00-21:00';
+    evening.job.next_attempt_date = '2026-08-28';
+    evening.job.time_window = 'anytime';
+    const business = stop(2, 40.72, -111.89);
+    business.job.recipient_type = 'business';
+    business.job.time_window = 'anytime';
+    const { ordered, perStopArrivalMs } = nearestNeighborOrder([evening, business], origin, start, '2026-08-28');
+    expect(ordered.map(s => s.job.id)).toEqual([2, 1]);
+    const eveningEta = perStopArrivalMs[ordered.findIndex(s => s.job.id === 1)];
+    expect(eveningEta).toBeGreaterThanOrEqual(Date.parse('2026-08-29T00:00:00.000Z')); // 18:00 MDT
+  });
 });
 
 describe('describeMissedDeadlines', () => {
@@ -200,8 +216,8 @@ describe('computeArrivalsFromLegDurations', () => {
       [600, 300], // 10 min then 5 min
     );
     expect(arrivals.get(1)).toBe(start + 600_000);
-    // 10 min drive + 7 min individual dwell + 5 min drive
-    expect(arrivals.get(2)).toBe(start + 600_000 + 7 * 60_000 + 300_000);
-    expect(totalDurationMinutes).toBeCloseTo(10 + 7 + 5 + 7, 5);
+    // 10 min drive + 12 min individual dwell + 5 min drive
+    expect(arrivals.get(2)).toBe(start + 600_000 + 12 * 60_000 + 300_000);
+    expect(totalDurationMinutes).toBeCloseTo(10 + 12 + 5 + 12, 5);
   });
 });

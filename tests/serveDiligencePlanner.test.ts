@@ -145,12 +145,20 @@ describe('replanAfterFailedAttempt', () => {
     expect(replanAfterFailedAttempt(failed, { ...baseQueue, attempt_count: 3 })).toBeNull();
   });
 
-  it('schedules the next attempt at least 24 h after the failed attempt', () => {
+  it('schedules the next attempt at least 24 h after an evening fail', () => {
     const failed = { attempt_at: '2026-06-11T18:00:00.000Z', result: 'no_answer', window: '17:00–20:30' };
     const next = replanAfterFailedAttempt(failed, baseQueue);
     expect(next).not.toBeNull();
-    // Denver MDT: 2026-06-11 18:00 UTC = 12:00 local. +24h = 2026-06-12 12:00 local.
+    // Denver MDT: 2026-06-11 18:00 UTC = 12:00 local. Evening fail → next day.
     expect(next!.date >= '2026-06-12').toBe(true);
+  });
+
+  it('schedules 18:00-21:00 the same date after an afternoon no-answer', () => {
+    const failed = { attempt_at: '2026-08-28T20:30:00.000Z', result: 'no_answer', window: '12:00-17:00' };
+    const next = replanAfterFailedAttempt(failed, baseQueue);
+    expect(next).not.toBeNull();
+    expect(next!.date).toBe('2026-08-28');
+    expect(next!.window.replace('–', '-')).toMatch(/17:00|18:00/);
   });
 
   it('picks a different time-of-day band than the failed attempt (evening fail → morning/midday next)', () => {

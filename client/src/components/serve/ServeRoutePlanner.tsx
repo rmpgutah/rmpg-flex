@@ -20,6 +20,7 @@ import {
 } from '../../utils/serveRouteOrigin';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
 import { runServeOptimizationV2, v2EtasToArrivalMs } from '../../utils/mapboxOptimizationV2';
+import { clampDwellSeconds, formatWindowLabel, resolveServeWindow } from '../../utils/serveStopTiming';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -95,15 +96,20 @@ function markerColor(status: ServeJob['status']): string {
 
 // ─── Time Window Sorting ────────────────────────────────────────────────
 
-function timeWindowPriority(tw: ServeJob['time_window']): number {
-  const hour = new Date().getHours();
-  const order: Record<string, ServeJob['time_window'][]> =
+function timeWindowPriority(tw: ServeJob['time_window'], plannedStartMs: number): number {
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  }).format(new Date(plannedStartMs))); // new-date-ok — epoch ms
+  const order: ServeJob['time_window'][] =
     hour < 12
-      ? { primary: ['morning', 'anytime', 'afternoon', 'evening'] }
+      ? ['morning', 'anytime', 'afternoon', 'evening']
       : hour < 17
-        ? { primary: ['afternoon', 'anytime', 'evening', 'morning'] }
-        : { primary: ['evening', 'anytime', 'morning', 'afternoon'] };
-  return order.primary.indexOf(tw);
+        ? ['afternoon', 'anytime', 'evening', 'morning']
+        : ['evening', 'anytime', 'morning', 'afternoon'];
+  const idx = order.indexOf(tw);
+  return idx < 0 ? order.length : idx;
 }
 
 function priorityWeight(p: ServeJob['priority']): number {
@@ -286,12 +292,24 @@ export function estimateDriveMinutes(distanceMiles: number): number {
 // reasonably-spaced deadlines and flag genuine infeasibility via
 // missedDeadlineJobIds, but it does not guarantee a globally optimal route.
 const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
-const DWELL_BY_TYPE_MS: Record<string, number> = {
-  individual: 7 * 60 * 1000,
-  apartment: 10 * 60 * 1000,
-  business: 13 * 60 * 1000,
-};
-const STOP_DWELL_MS = 7 * 60 * 1000; // fallback
+
+function dwellMsForJob(job: ServeJob): number {
+  const type = inferDefendantType(job.recipient_address, job.business_id, job.recipient_type);
+  return clampDwellSeconds(type) * 1000;
+}
+
+function serveWindowForJob(job: ServeJob, routeDate: string) {
+  const lastAttemptAt = job.attempts?.length
+    ? job.attempts[job.attempts.length - 1]?.attempt_at
+    : null;
+  return resolveServeWindow({
+    routeDate,
+    nextAttemptDate: job.next_attempt_date,
+    nextAttemptWindow: job.next_attempt_window,
+    timeWindow: job.time_window,
+    lastAttemptAt,
+  });
+}
 
 /** Greedy nearest-neighbor reorder from an optional origin, biased toward
  *  approaching deadlines. Returns the reordered stops, the total
@@ -311,6 +329,7 @@ export function nearestNeighborOrder(
   selected: StopItem[],
   origin: { lat: number; lng: number } | null,
   startTimeMs: number = Date.now(),
+  routeDate?: string,
 ): {
   ordered: StopItem[];
   totalDistanceMiles: number;
@@ -327,6 +346,7 @@ export function nearestNeighborOrder(
   let totalDistanceMiles = 0;
   let elapsedMs = startTimeMs;
   const missedDeadlineJobIds: number[] = [];
+  const routeYmd = routeDate || denverYmd(startTimeMs);
 
   while (remaining.length > 0) {
     const candidates = remaining.map((s, idx) => {
@@ -334,8 +354,8 @@ export function nearestNeighborOrder(
         ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
         : 0;
       let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
-      const win = timeWindowToServeWindow(s.job.time_window);
-      if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.serveStart, win.serveEnd);
+      const win = serveWindowForJob(s.job, routeYmd);
+      if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end);
       const deadlineMs = s.job.deadline ? parseTimestamp(s.job.deadline).getTime() : NaN;
       return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
     });
@@ -343,7 +363,11 @@ export function nearestNeighborOrder(
     const urgent = candidates.filter(c => c.deadlineMs != null && (c.deadlineMs - c.arrivalMs) <= DEADLINE_URGENCY_BUFFER_MS);
     const chosen = urgent.length > 0
       ? urgent.reduce((best, c) => c.deadlineMs! < best.deadlineMs! ? c : best)
-      : candidates.reduce((best, c) => c.distanceMiles < best.distanceMiles ? c : best);
+      : candidates.reduce((best, c) => (
+        c.arrivalMs < best.arrivalMs
+        || (c.arrivalMs === best.arrivalMs && c.distanceMiles < best.distanceMiles)
+          ? c : best
+      ));
 
     if (chosen.deadlineMs != null && chosen.arrivalMs > chosen.deadlineMs) {
       missedDeadlineJobIds.push(remaining[chosen.idx].job.id);
@@ -353,7 +377,7 @@ export function nearestNeighborOrder(
     if (cursor) totalDistanceMiles += chosen.distanceMiles;
     cursor = { lat: next.job.recipient_lat!, lng: next.job.recipient_lng! };
     perStopArrivalMs.push(chosen.arrivalMs);
-    const stopDwell = DWELL_BY_TYPE_MS[inferDefendantType(next.job.recipient_address, next.job.business_id)] ?? STOP_DWELL_MS;
+    const stopDwell = dwellMsForJob(next.job);
     elapsedMs = chosen.arrivalMs + stopDwell;
     ordered.push(next);
   }
@@ -420,14 +444,19 @@ export function describeMissedDeadlines(missedDeadlineJobIds: number[], stops: S
 
 // ─── Badge Components ───────────────────────────────────────────────────
 
-function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
-  const colors: Record<string, string> = {
-    morning: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-    afternoon: 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50',
-    evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-    anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
-  };
-  return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${colors[tw] || colors.anytime}`}>{tw}</span>;
+function TimeWindowBadge({ job, routeDate }: { job: ServeJob; routeDate: string }) {
+  const win = serveWindowForJob(job, routeDate);
+  const label = formatWindowLabel(win, job.time_window);
+  const evening = win ? win.start >= '17:00' : job.time_window === 'evening';
+  const morning = win ? win.end <= '12:00' : job.time_window === 'morning';
+  const colors = evening
+    ? 'bg-purple-900/40 text-purple-400 border-purple-700/50'
+    : morning
+      ? 'bg-amber-900/40 text-amber-400 border-amber-700/50'
+      : win
+        ? 'bg-surface-sunken/40 text-rmpg-400 border-border-default/50'
+        : 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50';
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${colors}`}>{label}</span>;
 }
 
 function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
@@ -452,8 +481,9 @@ const APARTMENT_RE = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:oor)?|#
 function inferDefendantType(
   address: string | null | undefined,
   businessId: number | null | undefined,
+  recipientType?: string | null,
 ): 'individual' | 'apartment' | 'business' {
-  if (businessId) return 'business';
+  if (businessId || recipientType === 'business') return 'business';
   if (address && APARTMENT_RE.test(address)) return 'apartment';
   return 'individual';
 }
@@ -488,11 +518,14 @@ export async function buildRouteStopsFromJobs(stops: StopItem[]): Promise<RouteS
       lng: s.job.recipient_lng!,
       geocodeSource: (s.job.geocode_source as 'point' | 'centroid' | null) ?? null,
       deadlineAt: s.job.deadline ?? null,
-      defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id),
+      defendantType: inferDefendantType(s.job.recipient_address, s.job.business_id, s.job.recipient_type),
       addressHash: await hashAddress(s.job.recipient_address ?? ''),
       defendant: s.job.recipient_name ?? '',
       address: s.job.recipient_address ?? '',
-      locationNote: timeWindowToServeWindow(s.job.time_window),
+      locationNote: (() => {
+        const win = serveWindowForJob(s.job, s.job.serve_date || '');
+        return win ? { serveStart: win.start, serveEnd: win.end } : timeWindowToServeWindow(s.job.time_window);
+      })(),
     })),
   );
 }
@@ -523,8 +556,8 @@ function computeArrivalsInOrder(
       ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
       : 0;
     let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
-    const win = timeWindowToServeWindow(stop.job.time_window);
-    if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.serveStart, win.serveEnd);
+    const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.start, win.end);
     arrivals.set(stop.job.id, arrivalMs);
 
     const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
@@ -534,7 +567,7 @@ function computeArrivalsInOrder(
 
     if (cursor) totalDistanceMiles += distanceMiles;
     cursor = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
-    const dwell = DWELL_BY_TYPE_MS[inferDefendantType(stop.job.recipient_address, stop.job.business_id)] ?? STOP_DWELL_MS;
+    const dwell = dwellMsForJob(stop.job);
     elapsedMs = arrivalMs + dwell;
   }
 
@@ -563,8 +596,8 @@ export function computeArrivalsFromLegDurations(
   for (let i = 0; i < selected.length; i++) {
     const stop = selected[i];
     elapsedMs += (legDurationsSeconds[i] ?? 0) * 1000;
-    const win = timeWindowToServeWindow(stop.job.time_window);
-    if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.serveStart, win.serveEnd);
+    const win = serveWindowForJob(stop.job, denverYmd(startTimeMs));
+    if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.start, win.end);
     arrivals.set(stop.job.id, elapsedMs);
 
     const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
@@ -572,7 +605,7 @@ export function computeArrivalsFromLegDurations(
       missedDeadlineJobIds.push(stop.job.id);
     }
 
-    const dwell = DWELL_BY_TYPE_MS[inferDefendantType(stop.job.recipient_address, stop.job.business_id)] ?? STOP_DWELL_MS;
+    const dwell = dwellMsForJob(stop.job);
     elapsedMs += dwell;
   }
 
@@ -723,7 +756,7 @@ export default function ServeRoutePlanner({
       order: i,
     }));
     items.sort((a, b) => {
-      const twDiff = timeWindowPriority(a.job.time_window) - timeWindowPriority(b.job.time_window);
+      const twDiff = timeWindowPriority(a.job.time_window, plannedStartMs) - timeWindowPriority(b.job.time_window, plannedStartMs);
       if (twDiff !== 0) return twDiff;
       return priorityWeight(a.job.priority) - priorityWeight(b.job.priority);
     });
@@ -1167,7 +1200,7 @@ export default function ServeRoutePlanner({
       const serverOrdered = serverResult?.orderedStops?.length
         ? orderStopsByJobIds(selected, serverResult.orderedStops.map(s => s.jobId))
         : null;
-      const nn = nearestNeighborOrder(selected, routeOrigin, plannedStartMs);
+      const nn = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate);
       const ordered = v2Ordered ?? serverOrdered ?? nn.ordered;
       const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs);
       const arrivals = v2Arrivals.size > 0 ? v2Arrivals : estimated.arrivals;
@@ -1250,7 +1283,7 @@ export default function ServeRoutePlanner({
         setMatrixFallbackReason(newFallback ? serverResult.fallbackReason : undefined);
         if (newFallback) setMatrixFallbackDismissed(false);
       } else {
-        selectedOrdered = nearestNeighborOrder(selected, routeOrigin, plannedStartMs).ordered;
+        selectedOrdered = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate).ordered;
       }
       setServerEtas([]);
       setServerEtaJobIds([]);
@@ -1271,7 +1304,7 @@ export default function ServeRoutePlanner({
 
       for (let ci = 0; ci < clusters.length; ci++) {
         const clusterStartElapsedMs = runningElapsedMs;
-        const nn = nearestNeighborOrder(clusters[ci], runningPosition, clusterStartElapsedMs);
+        const nn = nearestNeighborOrder(clusters[ci], runningPosition, clusterStartElapsedMs, routeDate);
         const cluster = preserveServerOrder ? clusters[ci] : nn.ordered;
         if (!preserveServerOrder) allMissedDeadlineJobIds.push(...nn.missedDeadlineJobIds);
 
@@ -1319,7 +1352,7 @@ export default function ServeRoutePlanner({
 
         if (!route) {
           degradedClusters++;
-          const est = nearestNeighborOrder(cluster, runningPosition, clusterStartElapsedMs);
+          const est = nearestNeighborOrder(cluster, runningPosition, clusterStartElapsedMs, routeDate);
           allMissedDeadlineJobIds.push(...est.missedDeadlineJobIds);
           totalDistM += est.totalDistanceMiles / 0.000621371;
           pushEstimatedLegs();
@@ -1456,7 +1489,7 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap, plannedStartMs, selectedOfficerId, currentUserId]);
+  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap, plannedStartMs, selectedOfficerId, currentUserId, routeDate]);
 
   // Mid-shift traffic polling — 10-min interval while route is active
   useEffect(() => {
@@ -1519,8 +1552,7 @@ export default function ServeRoutePlanner({
       const etaStr = arrivalMs
         ? formatEtaDenver(arrivalMs, routeDate)
         : null;
-      const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
-      const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
+      const dwellMin = Math.round(dwellMsForJob(stop.job) / 60_000);
       return {
         id: stop.job.id,
         recipient_name: stop.job.recipient_name,
@@ -1963,7 +1995,7 @@ export default function ServeRoutePlanner({
                       </button>
                     )}
                     {hasCoords && <PriorityBadge p={stop.job.priority} />}
-                    {hasCoords && <TimeWindowBadge tw={stop.job.time_window} />}
+                    {hasCoords && <TimeWindowBadge job={stop.job} routeDate={routeDate} />}
                     <div className="flex flex-col gap-0.5 ml-1">
                       <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-fg-muted hover:text-rmpg-100 disabled:opacity-30" aria-label="Move stop up">
                         <ChevronUp size={10} />
