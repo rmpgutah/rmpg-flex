@@ -4,7 +4,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { ensureDefaultDocumentsFolder } from './documents/folders';
 import { presignPutUrl, r2CredentialsConfigured } from '../utils/r2Presign';
-import { putEncrypted, getDecrypted, deleteEncryptionKey } from '../utils/encryptedR2';
+import { putEncrypted, getDecrypted, deleteEncryptionKey, FileEncryptionError } from '../utils/encryptedR2';
 import { log } from '../utils/logger';
 
 const uploads = new Hono<Env>();
@@ -310,6 +310,9 @@ uploads.post('/', async (c) => {
     const auth = await resolveAuth(c);
     if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
     const userId = auth.userId;
+    if (!c.env.UPLOADS) {
+      return c.json({ error: 'Uploads storage is not bound', code: 'UPLOADS_NOT_BOUND' }, 503);
+    }
 
     const formData = await c.req.formData();
     const rawFiles = formData.getAll('files');
@@ -424,6 +427,9 @@ uploads.post('/', async (c) => {
     return c.json(results, 201);
   } catch (err) {
     log.error('Upload failed', {}, err as Error);
+    if (err instanceof FileEncryptionError) {
+      return c.json({ error: err.message, code: 'ENCRYPTION_FAILED' }, 503);
+    }
     return c.json({ error: 'Upload failed', code: 'UPLOAD_FAILED' }, 500);
   }
 });

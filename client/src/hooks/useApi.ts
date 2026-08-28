@@ -425,16 +425,44 @@ function maybeRedirectToCfWorker(url: string): string {
 // this origin. REMOVE these opt-ins once the dispatcher binding is fixed.
 const CF_WORKER_DIRECT_BASE = 'https://api.rmpgutah.us';
 
-// Cloudflare Pages does NOT support 200-rewrites to another origin in
-// _redirects (it only honours redirect statuses). So a relative /api/uploads
-// from the Pages SPA (rmpgutah.us) resolves to the Pages domain, not the
-// Worker — which causes ERR_HTTP2_PROTOCOL_ERROR. All multipart upload POSTs
-// must go directly to the Worker in production.
-const UPLOADS_URL = import.meta.env.DEV ? '/api/uploads' : `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+/**
+ * Where POST /api/uploads should go.
+ *
+ * On the live SPA (rmpgutah.us / www) this MUST be same-origin. The zone
+ * Worker `rmpg-api-proxy` already intercepts `rmpgutah.us/api/*` (and www)
+ * and service-binds to rmpg-flex-api, so a relative path never hits Pages.
+ *
+ * The previous production value was an absolute `https://api.rmpgutah.us/...`
+ * URL. That was added to dodge a Pages 200-rewrite that produced
+ * ERR_HTTP2_PROTOCOL_ERROR — before the proxy existed. Cross-origin POSTs to
+ * the API hostname now fail at the Cloudflare edge: the managed-challenge
+ * skip is scoped to `/api/health` only, so the browser either gets challenge
+ * HTML (no CORS) or a CORP `same-origin` block. Dispatch Files then shows
+ * the generic "Upload failed" banner.
+ *
+ * Off the app origin (Electron file://, unknown hosts) we still target the
+ * Worker hostname directly.
+ */
+export function resolveUploadsUrl(opts: { isDev: boolean; hostname?: string }): string {
+  if (opts.isDev) return '/api/uploads';
+  const host = (opts.hostname || '').toLowerCase();
+  if (
+    host === 'rmpgutah.us' ||
+    host === 'www.rmpgutah.us' ||
+    (host.endsWith('.rmpgutah.us') && host !== 'api.rmpgutah.us') ||
+    host.endsWith('.pages.dev')
+  ) {
+    return '/api/uploads';
+  }
+  return `${CF_WORKER_DIRECT_BASE}/api/uploads`;
+}
 
-/** Absolute URL for POST /api/uploads in production; relative in dev (Vite proxies it). */
+/** URL for POST /api/uploads — relative on the app origin, Worker host otherwise. */
 export function uploadsUrl(): string {
-  return UPLOADS_URL;
+  return resolveUploadsUrl({
+    isDev: import.meta.env.DEV,
+    hostname: typeof window !== 'undefined' ? window.location.hostname : '',
+  });
 }
 
 /**
@@ -741,14 +769,14 @@ async function apiUploadFilesMultipart(
     if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     try {
-      const res = await fetchWithTimeout(UPLOADS_URL, {
+      const res = await fetchWithTimeout(uploadsUrl(), {
         method: 'POST',
         headers,
         body: formData,
         timeoutMs: opts?.timeoutMs,
       });
       if (res.ok) {
-        chimeForApiSuccess('POST', UPLOADS_URL);
+        chimeForApiSuccess('POST', uploadsUrl());
         return res.json();
       }
       const errData = await res.json().catch(() => ({}));
@@ -837,7 +865,7 @@ export async function apiUploadFilesWithProgress(
     if (evidenceMeta?.reference_notes) formData.append('reference_notes', evidenceMeta.reference_notes);
 
     const result = await uploadWithProgress(
-      UPLOADS_URL,
+      uploadsUrl(),
       formData,
       token,
       (progress) => onProgress(progress, i, files.length),

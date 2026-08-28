@@ -693,6 +693,17 @@ const API_ROUTES: RouteRule[] = [
   // so future OCR sub-paths come along automatically.
   { kind: 'prefix', value: '/api/ocr' },
 
+  // ── File attachments (Dispatch Files tab, documents, ID photos) ──
+  // The SPA used to POST these cross-origin to api.rmpgutah.us to dodge a
+  // Pages 200-rewrite that produced ERR_HTTP2_PROTOCOL_ERROR. That workaround
+  // now dies at the zone WAF: only /api/health skips the managed challenge, so
+  // a browser POST to the API hostname comes back as challenge HTML (or is
+  // discarded by CORP same-origin) and FileAttachments shows "Upload failed".
+  // Same-origin /api/uploads on rmpgutah.us hits THIS proxy (zone route
+  // rmpgutah.us/api/*) and service-binds to the rewrite — no CORS, no extra
+  // challenge host. Must be on env.API; the rewrite owns putEncrypted().
+  { kind: 'prefix', value: '/api/uploads' },
+
   // ── HR module ──
   // New Worker owns the four ported sub-paths (/leave, /disciplinary,
   // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*
