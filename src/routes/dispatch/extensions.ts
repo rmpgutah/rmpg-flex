@@ -107,7 +107,7 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
       recommended: ranked,
     });
   } catch (err) {
-    console.error('[dispatch] recommended-units error', err);
+    log.error('[dispatch] recommended-units error', {}, err);
     return c.json({ error: 'Failed to compute recommended units', code: 'RECOMMEND_ERR' }, 500);
   }
 });
@@ -130,7 +130,7 @@ audioMode.get('/mine/audio-mode', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ unit_id: null, call_sign: null, audio_mode: 'audible' });
     return c.json({ unit_id: row.id, call_sign: row.call_sign, audio_mode: row.audio_mode || 'audible' });
   } catch (err) {
-    console.error('[dispatch] mine/audio-mode error', err);
+    log.error('[dispatch] mine/audio-mode error', {}, err);
     return c.json({ error: 'Failed to fetch audio mode', code: 'AUDIO_MODE_GET_ERR' }, 500);
   }
 });
@@ -159,7 +159,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
     await execute(db, "UPDATE units SET audio_mode = ?, updated_at = datetime('now') WHERE id = ?", mode, unitId);
     return c.json({ success: true, unit_id: unitId, audio_mode: mode });
   } catch (err) {
-    console.error('[dispatch] PUT audio-mode error', err);
+    log.error('[dispatch] PUT audio-mode error', {}, err);
     return c.json({ error: 'Failed to update audio mode', code: 'AUDIO_MODE_SET_ERR' }, 500);
   }
 });
@@ -182,7 +182,7 @@ audioMode.put('/:id/mileage', requireRole(...WRITE_ROLES), async (c) => {
     await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
     return c.json({ success: true, unit_id: unitId, mileage });
   } catch (err) {
-    console.error('[dispatch] PUT mileage error', err);
+    log.error('[dispatch] PUT mileage error', {}, err);
     return c.json({ error: 'Failed to update mileage', code: 'MILEAGE_SET_ERR' }, 500);
   }
 });
@@ -207,7 +207,7 @@ premiseAlerts.get('/', requireRole(...READ_ROLES), async (c) => {
     `);
     return c.json(rows.map((r) => ({ ...r, flags: safeJson(r.flags as string, []) })));
   } catch (err) {
-    console.error('[dispatch] premise-alerts list error', err);
+    log.error('[dispatch] premise-alerts list error', {}, err);
     return c.json({ error: 'Failed to list premise alerts', code: 'PA_LIST_ERR' }, 500);
   }
 });
@@ -221,7 +221,7 @@ premiseAlerts.get('/:id', requireRole(...READ_ROLES), async (c) => {
     if (!row) return c.json({ error: 'Premise alert not found', code: 'PA_NOT_FOUND' }, 404);
     return c.json({ ...row, flags: safeJson(row.flags as string, []) });
   } catch (err) {
-    console.error('[dispatch] premise-alerts get error', err);
+    log.error('[dispatch] premise-alerts get error', {}, err);
     return c.json({ error: 'Failed to fetch premise alert', code: 'PA_GET_ERR' }, 500);
   }
 });
@@ -257,7 +257,7 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', result.meta.last_row_id);
     return c.json({ ...created, flags: safeJson(created?.flags as string, []) }, 201);
   } catch (err) {
-    console.error('[dispatch] premise-alerts create error', err);
+    log.error('[dispatch] premise-alerts create error', {}, err);
     return c.json({ error: 'Failed to create premise alert', code: 'PA_CREATE_ERR' }, 500);
   }
 });
@@ -295,7 +295,7 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const after = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM premise_alerts WHERE id = ?', id);
     return c.json({ ...after, flags: safeJson(after?.flags as string, []) });
   } catch (err) {
-    console.error('[dispatch] premise-alerts update error', err);
+    log.error('[dispatch] premise-alerts update error', {}, err);
     return c.json({ error: 'Failed to update premise alert', code: 'PA_UPDATE_ERR' }, 500);
   }
 });
@@ -310,7 +310,7 @@ premiseAlerts.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     await execute(db, 'DELETE FROM premise_alerts WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[dispatch] premise-alerts delete error', err);
+    log.error('[dispatch] premise-alerts delete error', {}, err);
     return c.json({ error: 'Failed to delete premise alert', code: 'PA_DELETE_ERR' }, 500);
   }
 });
@@ -340,7 +340,7 @@ premiseAlerts.get('/near/scan', requireRole(...READ_ROLES), async (c) => {
       .sort((a: any, b: any) => a.distance_meters - b.distance_meters);
     return c.json({ count: within.length, radius_meters: radius, alerts: within });
   } catch (err) {
-    console.error('[dispatch] premise-alerts/near error', err);
+    log.error('[dispatch] premise-alerts/near error', {}, err);
     return c.json({ error: 'Failed to scan premise alerts', code: 'PA_SCAN_ERR' }, 500);
   }
 });
@@ -470,7 +470,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 
     return c.json(warnings);
   } catch (err) {
-    console.error('[dispatch] warnings error', err);
+    log.error('[dispatch] warnings error', {}, err);
     return c.json({ error: 'Failed to compute warnings', code: 'WARN_ERR' }, 500);
   }
 });
@@ -514,7 +514,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] unit status error', err);
+    log.error('[dispatch] unit status error', {}, err);
     return c.json({ error: 'Failed to update unit status', code: 'UNIT_STATUS_ERR' }, 500);
   }
 });
@@ -557,7 +557,7 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
       ...params);
     return c.json(rows);
   } catch (err) {
-    console.error('[dispatch] bolos list error', err);
+    log.error('[dispatch] bolos list error', {}, err);
     return c.json({ error: 'Failed to list BOLOs', code: 'BOLO_LIST_ERR' }, 500);
   }
 });
@@ -711,7 +711,7 @@ bolos.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const created = await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
-    console.error('[dispatch] bolos create error', err);
+    log.error('[dispatch] bolos create error', {}, err);
     return c.json({ error: 'Failed to create BOLO', code: 'BOLO_CREATE_ERR' }, 500);
   }
 });
@@ -743,7 +743,7 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
       id);
     return c.json(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id));
   } catch (err) {
-    console.error('[dispatch] bolos update error', err);
+    log.error('[dispatch] bolos update error', {}, err);
     return c.json({ error: 'Failed to update BOLO', code: 'BOLO_UPDATE_ERR' }, 500);
   }
 });
@@ -868,7 +868,7 @@ welfareActive.get('/active', requireRole(...READ_ROLES), async (c) => {
 
     return c.json({ count: watches.length, watches });
   } catch (err) {
-    console.error('[dispatch] welfare/active error', err);
+    log.error('[dispatch] welfare/active error', {}, err);
     return c.json({ error: 'Failed to list active welfare watches', code: 'WELFARE_ACTIVE_ERR' }, 500);
   }
 });
@@ -998,7 +998,7 @@ closestUnit.get('/:id/closest-unit', requireRole(...READ_ROLES), async (c) => {
       alternatives: ranked.slice(1, 3),
     });
   } catch (err) {
-    console.error('[dispatch] closest-unit error', err);
+    log.error('[dispatch] closest-unit error', {}, err);
     return c.json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' }, 500);
   }
 });
@@ -1091,7 +1091,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       distance_miles: Math.round(minMiles * 100) / 100,
     });
   } catch (err) {
-    console.error('[dispatch] auto-assign error', err);
+    log.error('[dispatch] auto-assign error', {}, err);
     return c.json({ error: 'Failed to auto-assign', code: 'AUTOASSIGN_ERROR' }, 500);
   }
 });
@@ -1159,7 +1159,7 @@ callTimeline.post('/:id/timeline', requireRole(...WRITE_ROLES), async (c) => {
 
     return c.json(entry ?? { id: insertedId, action, details, created_at: timestamp }, 201);
   } catch (err) {
-    console.error('[dispatch] add timeline entry error', err);
+    log.error('[dispatch] add timeline entry error', {}, err);
     return c.json({ error: 'Failed to add timeline entry', code: 'TIMELINE_ADD_ERROR' }, 500);
   }
 });
@@ -1192,7 +1192,7 @@ callTimeline.put('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async (c
       'SELECT al.*, u.full_name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.id = ?', entryId);
     return c.json(updated ?? { id: entryId, details: body.details });
   } catch (err) {
-    console.error('[dispatch] edit timeline entry error', err);
+    log.error('[dispatch] edit timeline entry error', {}, err);
     return c.json({ error: 'Failed to update timeline entry', code: 'TIMELINE_UPDATE_ERROR' }, 500);
   }
 });
@@ -1215,7 +1215,7 @@ callTimeline.delete('/:id/timeline/:entryId', requireRole(...WRITE_ROLES), async
     await execute(db, 'DELETE FROM audit_log WHERE id = ?', entryId);
     return c.json({ success: true });
   } catch (err) {
-    console.error('[dispatch] delete timeline entry error', err);
+    log.error('[dispatch] delete timeline entry error', {}, err);
     return c.json({ error: 'Failed to delete timeline entry', code: 'TIMELINE_DELETE_ERROR' }, 500);
   }
 });
@@ -1321,7 +1321,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
               broadcastAll('data_changed', { module: 'process-server', entity: 'queue', action: 'reopened', queue_id: q.id, call_id: id });
             } catch { /* best-effort */ }
           }
-        } catch (err) { console.error('[pso-crosslink] revert reopen failed:', err); }
+        } catch (err) { log.error('[pso-crosslink] revert reopen failed:', {}, err); }
       }).catch(() => {});
     }
 
@@ -1334,7 +1334,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
     }
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] revert-status error', err);
+    log.error('[dispatch] revert-status error', {}, err);
     return c.json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' }, 500);
   }
 });
@@ -1380,7 +1380,7 @@ callActions.post('/:id/le-notification', requireRole(...WRITE_ROLES), async (c) 
     broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] le-notification error', err);
+    log.error('[dispatch] le-notification error', {}, err);
     return c.json({ error: 'Failed to record LE notification', code: 'LE_NOTIFICATION_ERROR' }, 500);
   }
 });
@@ -1510,7 +1510,7 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     }
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] transfer error', err);
+    log.error('[dispatch] transfer error', {}, err);
     return c.json({ error: 'Failed to transfer call', code: 'TRANSFER_CALL_ERROR' }, 500);
   }
 });
@@ -1546,7 +1546,7 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
     });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] broadcast-note error', err);
+    log.error('[dispatch] broadcast-note error', {}, err);
     return c.json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' }, 500);
   }
 });
@@ -1580,7 +1580,7 @@ callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
     broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] add note error', err);
+    log.error('[dispatch] add note error', {}, err);
     return c.json({ error: 'Failed to add note', code: 'ADD_NOTE_ERROR' }, 500);
   }
 });
@@ -1613,7 +1613,7 @@ callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => 
     broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] edit note error', err);
+    log.error('[dispatch] edit note error', {}, err);
     return c.json({ error: 'Failed to edit note', code: 'EDIT_NOTE_ERROR' }, 500);
   }
 });
@@ -1641,7 +1641,7 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
     broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
-    console.error('[dispatch] delete note error', err);
+    log.error('[dispatch] delete note error', {}, err);
     return c.json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' }, 500);
   }
 });
@@ -1781,7 +1781,7 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
       WHERE i.id = ?`, incidentId);
     return c.json(incident ?? { id: incidentId, incident_number: incidentNumber }, 201);
   } catch (err) {
-    console.error('[dispatch] generate-incident error', err);
+    log.error('[dispatch] generate-incident error', {}, err);
     return c.json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' }, 500);
   }
 }
@@ -1860,7 +1860,7 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE id = ?', result.meta.last_row_id);
     return c.json(created ?? { id: result.meta.last_row_id }, 201);
   } catch (err) {
-    console.error('[dispatch] send-to-serve error', err);
+    log.error('[dispatch] send-to-serve error', {}, err);
     return c.json({ error: 'Failed to send to serve queue', code: 'SEND_TO_SERVE_ERR' }, 500);
   }
 });
@@ -1886,7 +1886,7 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
     await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
     return c.json({ success: true, id, pinned: Boolean(pinned) });
   } catch (err) {
-    console.error('[dispatch] pin error', err);
+    log.error('[dispatch] pin error', {}, err);
     return c.json({ error: 'Failed to update pin status', code: 'PIN_ERROR' }, 500);
   }
 });
@@ -1928,7 +1928,7 @@ callActions.post('/:id/promote-to-case', requireRole('admin', 'manager', 'superv
 
     return c.json({ success: true, case_id: caseId, case_number: caseNumber, incident_id: incident.id }, 201);
   } catch (err) {
-    console.error('[dispatch] promote-to-case error', err);
+    log.error('[dispatch] promote-to-case error', {}, err);
     return c.json({ error: 'Failed to promote to case' }, 500);
   }
 });

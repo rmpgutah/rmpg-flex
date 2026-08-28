@@ -125,7 +125,15 @@ function extractJson(raw: string): any | null {
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) return null;
-  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1));
+    // Reject if the parsed result is not an object or array — guards against
+    // the LLM returning a bare string/number that happens to be inside {}.
+    if (parsed !== null && typeof parsed === 'object') return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── suggestUnits ───────────────────────────────────────────

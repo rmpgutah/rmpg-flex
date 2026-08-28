@@ -545,6 +545,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
+  // OIDC / SSO — entire namespace lives on the rewrite
+  // (ssoAuth.ts + oidc.ts, mounted in routesConfig.ts). Legacy never
+  // implemented any of these, so requests were 404ing from the legacy
+  // Worker fallback.
+  { kind: 'prefix', value: '/api/oidc' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
