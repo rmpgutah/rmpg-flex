@@ -14,6 +14,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { CrossReference, Verification, VerificationMethod, VerificationResult } from './types';
 import { execute, query } from '../db';
 import { safeParse } from './crossReference';
+import { normalizeDob } from '../normalizeDob';
 
 export interface VerifyInput {
   crossRefId: number;
@@ -33,10 +34,9 @@ const DIGITS = (s: string) => (s || '').replace(/\D/g, '');
 
 function compareDob(known: string, evidence: string): 'match' | 'partial' | 'mismatch' | 'none' {
   if (!known || !evidence) return 'none';
-  const k = known.trim();
-  const e = evidence.trim();
+  const k = normalizeDob(known) ?? known.trim();
+  const e = normalizeDob(evidence) ?? evidence.trim();
   if (k === e) return 'match';
-  // Partial = same year-month or same year.
   const kym = k.slice(0, 7);
   const eym = e.slice(0, 7);
   if (kym && eym && kym === eym) return 'partial';

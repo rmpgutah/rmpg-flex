@@ -14,6 +14,7 @@ import { query, queryFirst, execute } from './db';
 import { isRealValue } from './intelMatch';
 import { screenPerson } from './intelScreen';
 import type { JailBooking } from './jailSources/types';
+import { confirmIdentity } from './identityConfirm';
 
 // ── Pure parsing/normalization ───────────────────────────────
 
@@ -92,13 +93,14 @@ async function crossHit(db: D1Database, arrestId: number, b: JailBooking): Promi
   if (!isRealValue(b.last_name)) return { matched: false, alerted: false };
   let person: any = null;
   try {
-    person = b.dob
-      ? await queryFirst<any>(db,
-          'SELECT id FROM persons WHERE LOWER(last_name) = LOWER(?) AND LOWER(first_name) = LOWER(?) AND dob = ?',
-          b.last_name, b.first_name || '', b.dob)
-      : await queryFirst<any>(db,
-          'SELECT id FROM persons WHERE LOWER(last_name) = LOWER(?) AND LOWER(first_name) = LOWER(?)',
-          b.last_name, b.first_name || '');
+    const candidates = await query<any>(db,
+      'SELECT id, first_name, last_name, dob, city, state FROM persons WHERE LOWER(last_name) = LOWER(?) AND LOWER(first_name) = LOWER(?) LIMIT 25',
+      b.last_name, b.first_name || '');
+    const seed = { first: b.first_name, last: b.last_name, dob: b.dob };
+    const confirmed = (candidates ?? []).filter((p) => confirmIdentity(seed, {
+      first: p.first_name, last: p.last_name, dob: p.dob, city: p.city, state: p.state,
+    }).matched);
+    person = confirmed.length === 1 ? confirmed[0] : null;
   } catch (err: any) { console.error('[jail-ingest] person match failed:', err?.message); }
   if (!person) return { matched: false, alerted: false };
 

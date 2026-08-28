@@ -9,9 +9,11 @@ import { queryPhase1 } from '../utils/personIntel/phase1';
 import { runPhase2 as executePhase2 } from '../utils/personIntel/phase2';
 import { runLegalPhase as executeLegalPhase } from '../utils/personIntel/phaseLegal';
 import { runPhase3 as executePhase3 } from '../utils/personIntel/phase3';
-import { mergeDataPoints, deriveConfidence } from '../utils/personIntel/confidence';
+import { mergeDataPoints } from '../utils/personIntel/confidence';
 import { computeRiskScore } from '../utils/personIntel/riskScore';
 import { persistCrossRefs } from '../utils/personIntel/crossReference';
+import { confirmIdentity, parsePersonName } from '../utils/identityConfirm';
+import { applyVerifiedPointsToPerson, autoPromote, shouldPersistPoint } from '../utils/personIntel/applyVerifiedToPerson';
 
 import { log } from '../utils/logger';
 interface DOState {
@@ -33,8 +35,11 @@ async function persistSourceResult(db: D1Database, dossierId: number, r: any) {
 
 async function persistDataPoints(db: D1Database, dossierId: number, pts: any[]) {
   for (const p of pts) {
-    await execute(db, `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence) VALUES (?,?,?,?,?,?)`,
-      dossierId, p.category, p.field, p.value, JSON.stringify(p.sources), p.confidence);
+    if (!shouldPersistPoint(p.confidence ?? 0)) continue;
+    const sources = Array.isArray(p.sources) ? p.sources : [];
+    const promoted = autoPromote(p.confidence ?? 0, sources.length) ? 1 : 0;
+    await execute(db, `INSERT INTO person_intel_data_points (dossier_id,category,field,value,sources,confidence,verified_by,promoted) VALUES (?,?,?,?,?,?,?,?)`,
+      dossierId, p.category, p.field, p.value, JSON.stringify(sources), p.confidence, sources.length, promoted);
   }
 }
 
@@ -132,27 +137,29 @@ export class PersonIntelDO {
 
   private async runPhase3(st: DOState) {
     const knownValues = (st.phase1Points ?? []).concat(st.phase2Points ?? []).map((p: any) => p.value as string).filter(Boolean);
-    const { sourceResults, dataPoints, riskFlags: crawlFlags, crawlCorroboration } = await executePhase3(this.env, st.seed, knownValues);
+    const { sourceResults, dataPoints, riskFlags: crawlFlags } = await executePhase3(this.env, st.seed, knownValues);
     for (const r of sourceResults) await persistSourceResult(this.env.DB, st.dossierId, r);
 
     const merged = mergeDataPoints(dataPoints);
     const allRiskFlags: RiskFlag[] = [...(st.riskFlags ?? []), ...crawlFlags];
 
-    // Auto-link: check if persons table has a match
+    // Auto-link only when name + DOB/age confirm a single local person.
+    // A unique "John Doe" with no birthday is a lead, not a link.
     let linkedPersonId: number | null = null;
     if (st.seed.name) {
-      // Exact first+last match only. A substring LIKE on the first name token
-      // matched arbitrary persons ("Ann" hit "Joanne", "Brianna") and stamped
-      // their warrant/SOR flags onto the wrong dossier. Ambiguity (>1 match)
-      // is treated as no-link rather than picking an arbitrary row.
-      const parts = st.seed.name.trim().split(/\s+/);
-      if (parts.length >= 2) {
-        const first = parts[0];
-        const last = parts[parts.length - 1];
+      const { first, last } = parsePersonName(st.seed.name);
+      if (first && last) {
         const matches = await this.env.DB.prepare(
-          `SELECT id FROM persons WHERE UPPER(first_name)=UPPER(?) AND UPPER(last_name)=UPPER(?) LIMIT 2`,
-        ).bind(first, last).all<{ id: number }>();
-        if (matches.results?.length === 1) linkedPersonId = matches.results[0].id;
+          `SELECT id, first_name, last_name, dob, city, state FROM persons
+            WHERE UPPER(TRIM(first_name))=UPPER(?) AND UPPER(TRIM(last_name))=UPPER(?) LIMIT 25`,
+        ).bind(first, last).all<{ id: number; first_name: string; last_name: string; dob: string | null; city: string | null; state: string | null }>();
+        const seedId = {
+          first, last, dob: st.seed.dob, age: st.seed.age, city: st.seed.city, state: st.seed.state,
+        };
+        const confirmed = (matches.results ?? []).filter((p) => confirmIdentity(seedId, {
+          first: p.first_name, last: p.last_name, dob: p.dob, city: p.city, state: p.state,
+        }).matched);
+        if (confirmed.length === 1) linkedPersonId = confirmed[0].id;
       }
     }
 
@@ -169,6 +176,14 @@ export class PersonIntelDO {
     const dataPointsCount = await this.env.DB.prepare(`SELECT COUNT(*) as c FROM person_intel_data_points WHERE dossier_id=?`).bind(st.dossierId).first<{ c: number }>();
 
     await persistDataPoints(this.env.DB, st.dossierId, merged);
+    if (linkedPersonId) {
+      const allPts = (st.phase1Points ?? []).concat(st.phase2Points ?? []).concat(merged);
+      try {
+        await applyVerifiedPointsToPerson(this.env.DB, linkedPersonId, allPts);
+      } catch (err) {
+        log.error('verified fill onto person failed', { personId: linkedPersonId, dossierId: st.dossierId }, err instanceof Error ? err : undefined);
+      }
+    }
     await execute(this.env.DB, `UPDATE person_intelligence SET status='complete', phase=3, phase3_completed_at=datetime('now'), completed_at=datetime('now'), risk_score=?, risk_flags=?, linked_person_id=?, data_points_found=? WHERE id=?`,
       riskScore, JSON.stringify(uniqueFlags), linkedPersonId, (dataPointsCount?.c ?? 0), st.dossierId);
 

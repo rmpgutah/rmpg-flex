@@ -18,8 +18,8 @@ describe('matchesDobOrAge', () => {
     expect(matchesDobOrAge(null, { dob: '1990-01-01', age: null })).toBe(true);
   });
 
-  it('returns true when the record dob matches the query dob exactly', () => {
-    expect(matchesDobOrAge('1990-05-12', { dob: '1990-05-12', age: null })).toBe(true);
+  it('returns true when US-formatted query dob matches an ISO record dob', () => {
+    expect(matchesDobOrAge('10/11/2001', { dob: '2001-10-11', age: null })).toBe(true);
   });
 
   it('returns false when the record dob does not match the query dob', () => {

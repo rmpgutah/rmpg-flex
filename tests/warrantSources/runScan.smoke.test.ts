@@ -47,6 +47,9 @@ const sharedHit = (source_key: string): RawWarrantHit => ({
   warrant_id: 'SHARED-1',
   first_name: 'John',
   last_name: 'Smith',
+  // Identity gate requires name AND DOB/age on both sides; name-only hits
+  // are filtered out of reconcileHits and never promoted to warrants.
+  date_of_birth: person.dob,
   charge_description: 'AGGRAVATED ASSAULT',
   court_name: 'Ada County District Court',
   issue_date: '2026-01-15',
