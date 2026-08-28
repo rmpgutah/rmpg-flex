@@ -58,6 +58,8 @@ interface AuthContextType {
   setLoginUsername: (u: string) => void;
   pendingBackupCodes: string[] | null;
   requiresPasswordChange: boolean;
+  /** Which second factors the pending login may use. Defaults totp-only. */
+  twoFactorMethods: { totp: boolean; webauthn: boolean };
 }
 
 // Exported (v1047) so opt-in consumers like IntelProvider can read the
@@ -564,6 +566,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const cancel2FA = useCallback(() => {
     setPending2FA(false);
     setTempToken(null);
+    setTwoFactorMethods({ totp: false, webauthn: false });
     setError(null);
     setLoginStep('password');
   }, []);
@@ -734,6 +737,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data.requires2FA || data.step === 'verify_2fa') {
           setTempToken(data.tempToken);
           setPending2FA(true);
+          setTwoFactorMethods({
+            totp: data.methods?.totp !== false,
+            webauthn: !!data.methods?.webauthn,
+          });
           setRequiresPasswordChange(!!data.requiresPasswordChange);
           setLoginStep('verify_2fa');
           return { requires2FA: true, success: false };
@@ -1169,7 +1176,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoginUsername,
     pendingBackupCodes,
     requiresPasswordChange,
-  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange]);
+    twoFactorMethods,
+  }), [user, token, isLoading, loginBusy, login, verify2FA, verifyBackupCode, verifyWebAuthn, setup2FA, confirmSetup2FA, changePasswordDuringLogin, pending2FA, tempToken, cancel2FA, logout, signOut, refreshUser, error, clearError, loginStep, loginUsername, pendingBackupCodes, requiresPasswordChange, twoFactorMethods]);
 
   return (
     <AuthContext.Provider value={contextValue}>
