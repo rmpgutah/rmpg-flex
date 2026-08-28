@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateReceiptOfService, generateAffidavitOfService, serviceMomentFor,
-  RECEIPT_COPY_ORDER, RECEIPT_COPY_LABEL, type ReceiptOfServiceData } from '../servePdfGenerator';
+  RECEIPT_COPY_ORDER, RECEIPT_COPY_LABEL, agencyJobRef, type ReceiptOfServiceData } from '../servePdfGenerator';
 import { attestationsFor, receiptFormTitle, VARIANT_LABEL, type ReceiptVariant } from '../serveReceiptVariant';
 import { addConfidentialWatermark, setConfidentialWatermarkEnabled } from '../pdfGenerator';
 import jsPDF from 'jspdf';
@@ -519,6 +519,27 @@ describe('photographs carry when they were taken', () => {
 
   it('survives a photo with no metadata at all', async () => {
     const doc = await generateReceiptOfService(withMeta({ photos: [{ image: TEST_QR }] }));
+    expect(doc.getNumberOfPages()).toBe(1);
+  }, 30_000);
+});
+
+describe('agency job ref when the court has no case number', () => {
+  it('formats JOB-N and is a no-op when already prefixed', () => {
+    expect(agencyJobRef(158)).toBe('JOB-158');
+    expect(agencyJobRef('JOB-158')).toBe('JOB-158');
+    expect(agencyJobRef('')).toBe('');
+    expect(agencyJobRef(null)).toBe('');
+  });
+
+  it('keeps a one-page blank even with no court case number', async () => {
+    const doc = await generateReceiptOfService(build('individual', 'Walter S Price', CASES[0].extra, {
+      blank: true,
+      printTarget: 'mobile',
+      recipientName: '',
+      caseNumber: '',
+      jobId: 158,
+      attestations: attestationsFor('individual', 'Walter S Price').map((a) => ({ id: a.id, text: a.text, accepted: false })),
+    }));
     expect(doc.getNumberOfPages()).toBe(1);
   }, 30_000);
 });

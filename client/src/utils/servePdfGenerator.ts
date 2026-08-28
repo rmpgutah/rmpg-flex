@@ -12,6 +12,7 @@ import {
   openAutoSection,
   closeAutoSection,
   addFieldPair,
+  addWritableFieldPair,
   addSignatureBlock,
   addTableWithShading,
   addWrappedText,
@@ -1633,6 +1634,12 @@ export interface ReceiptOfServiceData {
 
   courtName: string;
   caseNumber: string;
+  /**
+   * Agency serve-queue id. Printed in the header/caption when the court
+   * has not yet assigned a case number (pre-filing small claims, etc.).
+   * Without it those slots rendered a bare em-dash / empty cell.
+   */
+  jobId?: number | string;
   jurisdiction: string;
   plaintiffName: string;
   defendantName: string;
@@ -1882,10 +1889,18 @@ function drawCourtHeading(
  * recognizes without reading a word, and it is the cheapest possible
  * signal that this document belongs in a case file.
  */
+/** Agency job ref for captions/headers when no court case number exists. */
+export function agencyJobRef(jobId?: number | string | null): string {
+  if (jobId == null) return '';
+  const s = String(jobId).trim();
+  if (!s) return '';
+  return /^JOB-/i.test(s) ? s.toUpperCase() : `JOB-${s}`;
+}
+
 function drawPleadingCaption(
   doc: jsPDF,
   y: number,
-  opts: { plaintiff: string; defendant: string; caseNumber: string; instrumentTitle: string },
+  opts: { plaintiff: string; defendant: string; caseNumber: string; instrumentTitle: string; jobId?: number | string },
 ): number {
   const lx = getLeftX();
   const cw = getContentWidth(doc);
@@ -1942,7 +1957,12 @@ function drawPleadingCaption(
   let ry = y + lineH;
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.text(`Case No. ${sanitizePdfText(opts.caseNumber || '—')}`, rightX, ry);
+  const courtCase = (opts.caseNumber || '').trim();
+  const jobRef = agencyJobRef(opts.jobId);
+  const caseLine = courtCase
+    ? `Case No. ${sanitizePdfText(courtCase)}`
+    : (jobRef ? `Agency Job ${sanitizePdfText(jobRef)}` : 'Case No. pending');
+  doc.text(caseLine, rightX, ry);
   ry += lineH * 2;
 
   for (const l of tLines) { doc.text(l, rightX, ry); ry += lineH; }
@@ -2257,36 +2277,6 @@ const RECEIPT_FORM_KEY: Record<ReceiptVariantKey, string> = {
 };
 
 /**
- * A field the subject fills in by hand: label in the normal position, a
- * writable rule where the value would be.
- *
- * addFieldPair() renders "N/A" for an empty value, which is right on a
- * report of established fact and exactly wrong on a form someone is
- * meant to complete — it reads as an instruction NOT to write there.
- */
-function addWritableFieldPair(
-  doc: jsPDF, label: string, x: number, y: number, width: number,
-): number {
-  // NOT addFieldPair with a blank value: it substitutes "N/A" for an
-  // empty string, which on a form meant to be completed in ink reads as
-  // an instruction not to write there. Matches addFieldPair's geometry
-  // (2.7mm label height, 0.8mm inner pad) so blank and printed fields
-  // sit on the same grid.
-  const labelH = 2.7;
-  const innerPad = 0.8;
-  doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(sanitizePdfText(label.toUpperCase()), x + innerPad, y + 1.8);
-
-  doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
-  doc.setLineWidth(BORDER.FIELD);
-  doc.line(x + innerPad, y + labelH + 1.6, x + width - innerPad, y + labelH + 1.6);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + labelH + SPACING.FIELD_ROW_ADVANCE + 0.6;
-}
-
-/**
  * The moment of service, as printed.
  *
  * Empty on a BLANK form: when the officer prints one, the delivery has
@@ -2447,12 +2437,17 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
   // sole caller; do not rely on the tail assignment alone.
   tightLayout = true;
 
-  setActiveCaseNumber(data.caseNumber);
+  const courtCase = (data.caseNumber || '').trim();
+  const jobRef = agencyJobRef(data.jobId);
+  const headerCase = courtCase || jobRef;
+  setActiveCaseNumber(headerCase);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: (data.agency || 'ROCKY MOUNTAIN PROTECTIVE GROUP').toUpperCase(),
     formTitle: 'CIVIL PROCESS RECORD',
-    caseNumber: data.caseNumber,
+    formNumber: RECEIPT_FORM_KEY[data.variant] || 'ACK-SERVICE',
+    caseNumber: headerCase || undefined,
+    caseNumberLabel: courtCase ? 'CASE NUMBER' : 'AGENCY JOB #',
     // On a blank, the service date does not exist yet; leaving it empty
     // renders a labelled but blank header cell that reads as a defect.
     // The issue date is true, and tells an officer how stale a form in
@@ -2467,6 +2462,7 @@ async function renderReceiptOfService(data: ReceiptOfServiceData): Promise<jsPDF
     plaintiff: data.plaintiffName,
     defendant: data.defendantName,
     caseNumber: data.caseNumber,
+    jobId: data.jobId,
     instrumentTitle: data.formTitle,
   });
   y = drawInstrumentTitle(doc, y, data.formTitle);

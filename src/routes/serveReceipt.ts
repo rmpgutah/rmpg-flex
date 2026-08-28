@@ -1881,7 +1881,7 @@ serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES
 
   const job = await queryFirst<Record<string, any>>(
     db,
-    `SELECT case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
+    `SELECT id, case_number, court_name, jurisdiction, plaintiff_name, defendant_name,
             document_type, assigned_officer_id, officer_id
        FROM serve_queue WHERE id = ?`,
     r.serve_queue_id,
@@ -1917,6 +1917,7 @@ serveReceiptAdmin.get('/receipt/:id/document', requireRole(...RECEIPT_READ_ROLES
 
     courtName: job?.court_name ?? '',
     caseNumber: job?.case_number ?? '',
+    jobId: job?.id ?? r.serve_queue_id,
     jurisdiction: job?.jurisdiction ?? '',
     plaintiffName: job?.plaintiff_name ?? '',
     defendantName: job?.defendant_name ?? '',

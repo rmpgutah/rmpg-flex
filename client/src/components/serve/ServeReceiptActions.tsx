@@ -306,6 +306,7 @@ export default function ServeReceiptActions({
       variantLabel: VARIANT_LABEL[v],
       courtName: cap?.court_name ?? job.court_name ?? '',
       caseNumber: cap?.case_number ?? job.case_number ?? '',
+      jobId: job.id,
       jurisdiction: cap?.jurisdiction ?? job.jurisdiction ?? '',
       plaintiffName: cap?.plaintiff_name ?? job.plaintiff_name ?? '',
       defendantName: defendant ?? '',
