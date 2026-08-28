@@ -12,6 +12,7 @@ import {
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
   Search as SearchIcon, AlertTriangle, FileWarning, Users, Trash2, Zap, ArrowUpDown, X,
   FolderOpen, Layers, Printer, FileSignature, ScrollText, LineChart, Copy, Gauge, DollarSign,
+  ChevronDown, Settings,
 } from 'lucide-react';
 import ServeStatusFolder from '../components/serve/ServeStatusFolder';
 import { nearestNeighborOrder, haversineMiles } from '../components/serve/ServeRoutePlanner';
@@ -63,7 +64,9 @@ import { exportServeMapSheet } from '../utils/serveMapExport';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-const TABS = ['Queue', 'Route', 'Map', 'Stats', 'Assign', 'My Run', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
+const PRIMARY_TABS = ['Queue', 'My Run', 'Route', 'Map'] as const;
+const MORE_TABS = ['Stats', 'Assign', 'Performance', 'Analytics', 'Subject File', 'Collections'] as const;
+const TABS = [...PRIMARY_TABS, ...MORE_TABS] as const;
 type Tab = typeof TABS[number];
 type StatusFilter = 'all' | 'pending' | 'in_progress' | 'served' | 'failed';
 
@@ -196,6 +199,9 @@ const EMPTY_FORM = {
   defendant_name: '',
   client_name: '',
   attorney_name: '',
+  attorney_phone: '',
+  attorney_email: '',
+  attorney_bar_number: '',
   // ── Service details (feature 6-10) ─────────────────────────────────────
   serve_type: 'personal' as ServeJob['serve_type'],
   case_type: '' as ServeJob['case_type'] | '',
@@ -286,6 +292,8 @@ export default function ServePage() {
     : 'all';
   const [selectedDate, setSelectedDate] = useState(() => initialDateParam || formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>(validTab);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(validStatus);
   // Pending deep-link target — resolved once jobs hydrate.
   // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
@@ -857,6 +865,15 @@ export default function ServePage() {
     refreshJobs();
   }, [refreshJobs]);
 
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [moreOpen]);
+
   // ── WebSocket live updates ─────────────────────────────────────────
   useLiveSync('process-server', refreshJobs);
 
@@ -1200,6 +1217,9 @@ export default function ServePage() {
       defendant_name: job.defendant_name || '',
       client_name: job.client_name || '',
       attorney_name: job.attorney_name || '',
+      attorney_phone: job.attorney_phone || '',
+      attorney_email: job.attorney_email || '',
+      attorney_bar_number: job.attorney_bar_number || '',
       officer_id: job.officer_id ?? null,
       serve_date: job.serve_date || '',
       status: job.status,
@@ -1302,6 +1322,9 @@ export default function ServePage() {
           defendant_name: source.defendant_name,
           client_name: source.client_name,
           attorney_name: source.attorney_name,
+          attorney_phone: source.attorney_phone,
+          attorney_email: source.attorney_email,
+          attorney_bar_number: source.attorney_bar_number,
           serve_type: source.serve_type,
           case_type: source.case_type,
           co_defendants: source.co_defendants,
@@ -2292,30 +2315,27 @@ export default function ServePage() {
           </button>
           )}
           <ExportButton exportUrl="/api/process-server/export/csv" exportFilename="serve-jobs.csv" />
+          {['admin', 'manager'].includes(user?.role ?? '') && (
+            <button type="button"
+              onClick={() => routerNavigate('/admin?tab=servemanager')}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-fg-muted bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
+              title="Process Server & ServeManager setup"
+              aria-label="Process Server setup"
+            >
+              <Settings size={12} />
+              {!isMobile && 'Setup'}
+            </button>
+          )}
         </div>
       </div>
 
       {/* ─── Tab Bar ───────────────────────────────────────────────── */}
       <div className="flex items-center border-b border-rmpg-700 bg-surface-sunken" role="tablist" aria-label="Process Server views">
-        {TABS.filter(tab => {
-          const role = user?.role ?? '';
-          if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
-          if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
-          if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
-          if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
-          // Queue, Route, Map, Stats, My Run, Subject File — visible to all
-          return true;
-        }).map(tab => {
+        {PRIMARY_TABS.map(tab => {
           const Icon =
             tab === 'Queue' ? List :
             tab === 'Route' ? Route :
             tab === 'Map' ? MapIcon :
-            tab === 'Stats' ? BarChart3 :
-            tab === 'Assign' ? Users :
-            tab === 'Performance' ? BarChart3 :
-            tab === 'Analytics' ? LineChart :
-            tab === 'Subject File' ? ScrollText :
-            tab === 'Collections' ? DollarSign :
             Route; // My Run
           return (
             <button type="button"
@@ -2331,7 +2351,6 @@ export default function ServePage() {
             >
               <Icon size={14} />
               {tab}
-              {/* Feature 30: Overdue badge on Queue tab */}
               {tab === 'Queue' && overdueCount > 0 && (
                 <span className="ml-0.5 inline-flex items-center justify-center min-w-[14px] h-[14px] px-0.5 text-[8px] font-bold bg-red-600 text-white rounded-full">
                   {overdueCount}
@@ -2340,6 +2359,52 @@ export default function ServePage() {
             </button>
           );
         })}
+        {(() => {
+          const role = user?.role ?? '';
+          const moreTabs = MORE_TABS.filter(tab => {
+            if (tab === 'Assign') return ['admin', 'manager', 'supervisor'].includes(role);
+            if (tab === 'Performance') return ['admin', 'manager', 'supervisor', 'officer'].includes(role);
+            if (tab === 'Analytics') return ['admin', 'manager', 'supervisor'].includes(role);
+            if (tab === 'Collections') return ['admin', 'manager', 'supervisor'].includes(role);
+            return true;
+          });
+          const moreActive = (MORE_TABS as readonly string[]).includes(activeTab);
+          return (
+            <div className="relative" ref={moreMenuRef}>
+              <button type="button"
+                role="tab"
+                aria-selected={moreActive}
+                aria-expanded={moreOpen}
+                onClick={() => setMoreOpen(o => !o)}
+                className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
+                  moreActive
+                    ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
+                    : 'text-fg-muted border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
+                }`}
+              >
+                More
+                <ChevronDown size={12} className={moreOpen ? 'rotate-180' : ''} />
+                {moreActive && <span className="text-[10px] font-normal text-fg-muted">{activeTab}</span>}
+              </button>
+              {moreOpen && (
+                <div className="absolute left-0 top-full z-30 min-w-[160px] py-1 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-xl">
+                  {moreTabs.map(tab => (
+                    <button type="button"
+                      key={tab}
+                      role="menuitem"
+                      onClick={() => { setActiveTab(tab); setMoreOpen(false); }}
+                      className={`block w-full text-left px-3 py-1.5 text-[11px] ${
+                        activeTab === tab ? 'text-brand-gold-500 bg-brand-gold-500/5' : 'text-fg-secondary hover:bg-white/[0.04] hover:text-rmpg-100'
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ─── Tab Content ───────────────────────────────────────────── */}
@@ -3704,6 +3769,32 @@ export default function ServePage() {
                   placeholder="Counsel of record"
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                 />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label htmlFor="ff-servepage-atty-phone" className="block text-[11px] text-fg-muted mb-1">Attorney Phone</label>
+                  <input id="ff-servepage-atty-phone" type="tel"
+                    value={formData.attorney_phone}
+                    onChange={e => handleFormChange('attorney_phone', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-email" className="block text-[11px] text-fg-muted mb-1">Attorney Email</label>
+                  <input id="ff-servepage-atty-email" type="email"
+                    value={formData.attorney_email}
+                    onChange={e => handleFormChange('attorney_email', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ff-servepage-atty-bar" className="block text-[11px] text-fg-muted mb-1">Bar #</label>
+                  <input id="ff-servepage-atty-bar" type="text"
+                    value={formData.attorney_bar_number}
+                    onChange={e => handleFormChange('attorney_bar_number', e.target.value)}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                  />
+                </div>
               </div>
             </div>
           </div>

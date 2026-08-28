@@ -356,6 +356,7 @@ export interface CallForService {
   process_service_result?: string;
   court_name?: string;
   attorney_name?: string;
+  plaintiff_name?: string;
   jurisdiction?: string;
   deadline?: string;
   time_window?: string;
@@ -363,6 +364,8 @@ export interface CallForService {
   pso_72hr_deadline?: string;
   pso_72hr_notified?: number | boolean;
   parent_call_id?: number | string | null;
+  parent_call?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  child_calls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
   // Damage
   damage_estimate?: number;
   damage_description?: string;
@@ -3345,6 +3348,9 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  attorney_phone?: string | null;
+  attorney_email?: string | null;
+  attorney_bar_number?: string | null;
   plaintiff_name: string | null;
   defendant_name: string | null;
   // Service classification (migration 0237)
@@ -3383,6 +3389,9 @@ export interface ServeJob {
   created_at: string;
   updated_at: string;
   call_id: number | null;
+  linked_call_number?: string | null;
+  linked_attempt_number?: number | null;
+  linked_parent_call_id?: number | null;
   // Automation columns (migrations 0140, 0153, 0154)
   closed_at?: string | null;
   urgency_tier?: 'standard' | 'tight' | 'critical' | null;
@@ -3463,6 +3472,10 @@ export interface ServeJobLinkedCall {
   pso_requestor_name: string | null;
   contract_id: string | null;
   pso_service_windows: string | null;
+  pso_attempt_number?: number | null;
+  parent_call_id?: number | null;
+  parent_call?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
+  child_calls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
   parentCall?: { id: number; call_number: string; status: string; pso_attempt_number?: number } | null;
   childCalls?: Array<{ id: number; call_number: string; status: string; pso_attempt_number?: number }>;
 }

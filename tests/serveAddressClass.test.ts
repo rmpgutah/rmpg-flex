@@ -12,13 +12,13 @@ import { describe, it, expect } from 'vitest';
 import { resolveAddressClass } from '../src/utils/serveAddressClass';
 
 describe('resolveAddressClass', () => {
-  it('an operator override wins over everything else', () => {
-    const r = resolveAddressClass({
-      operatorOverride: 'residential',
-      extracted: 'business',
-      propertyRecordClass: 'business',
+  it('maps commercial and gated aliases from the intake review dropdown', () => {
+    expect(resolveAddressClass({ operatorOverride: 'commercial' })).toEqual({
+      klass: 'business', confirmed: true, source: 'operator',
     });
-    expect(r).toEqual({ klass: 'residential', confirmed: true, source: 'operator' });
+    expect(resolveAddressClass({ operatorOverride: 'gated' })).toEqual({
+      klass: 'residential', confirmed: true, source: 'operator',
+    });
   });
 
   it('an existing property record outranks the extracted value', () => {

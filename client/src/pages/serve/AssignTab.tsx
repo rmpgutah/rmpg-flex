@@ -1,10 +1,12 @@
 // client/src/pages/serve/AssignTab.tsx
 import { useEffect, useState } from 'react';
-import { Users } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Users, Settings } from 'lucide-react';
 import { useServeAssignments, type BoardJob } from '../../hooks/useServeAssignments';
 import { toggleSelect, attentionSummary } from './serveAssignHelpers';
 
 export default function AssignTab() {
+  const navigate = useNavigate();
   const { board, loading, loadBoard, assign } = useServeAssignments();
   const [sel, setSel] = useState<number | 'unassigned' | null>('unassigned');
   const [picked, setPicked] = useState<number[]>([]);
@@ -40,6 +42,13 @@ export default function AssignTab() {
     // no scrollbar. The unassigned-pool table is the part that grows here.
     <div className="h-full overflow-y-auto p-4 grid grid-cols-[200px_1fr] gap-4 content-start scrollbar-dark">
       <div>
+        <button
+          type="button"
+          onClick={() => navigate('/admin?tab=servemanager')}
+          className="mb-2 flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-secondary"
+        >
+          <Settings size={11} /> ServeManager setup
+        </button>
         <div className="text-[9px] font-semibold text-fg-muted uppercase mb-1">Officers</div>
         {/* These rows carried no font-size class at all, so they inherited the
             page default and rendered at 16.8px against the app's 11px dense

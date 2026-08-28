@@ -63,6 +63,10 @@ const RESIDENTIAL_LANGUAGE = /\b(residence|residential address|abode|dwelling|ho
 function coerce(raw: string | undefined): AddressClass | null {
   const s = (raw || '').trim().toLowerCase();
   if (s === 'residential' || s === 'business') return s;
+  // Intake review dropdown aliases — commercial is a business location;
+  // gated/HOA is still a residence (evening/weekend windows).
+  if (s === 'commercial' || s === 'office') return 'business';
+  if (s === 'gated' || s === 'hoa' || s === 'gated / hoa') return 'residential';
   return null;
 }
 

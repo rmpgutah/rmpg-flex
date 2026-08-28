@@ -1474,6 +1474,7 @@ export default function ServeIntakePage() {
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
               {[
                 { key: 'plaintiff',         label: 'Plaintiff' },
+                { key: 'defendant',         label: 'Defendant' },
                 { key: 'court_name',        label: 'Court' },
                 { key: 'case_number',       label: 'Case #' },
                 { key: 'job_number',        label: 'Job #' },
@@ -1599,6 +1600,7 @@ export default function ServeIntakePage() {
                   >
                     <option value="">— unknown —</option>
                     <option value="residential">Residential</option>
+                    <option value="business">Business</option>
                     <option value="commercial">Commercial</option>
                     <option value="gated">Gated / HOA</option>
                     <option value="po_box">PO Box</option>
