@@ -9,7 +9,7 @@ See [docs/superpowers/specs/2026-06-22-rmpg-flex-connect-ios-design.md](../../do
 
 - `Packages/` — Local Swift packages (`CoreAPI`, `CoreAuth`, `DesignSystem`, `FeatureShell`).
 - `RMPGFlexConnect/` — App target source (`@main`, `ContentView`, `Assets.xcassets`).
-- `RMPGFlexConnect.xcodeproj` — Created locally by Xcode in M0/Task 6; **not committed**. CI builds Swift packages under `Packages/` (`swift test` + `xcodebuild -scheme CoreCarPlay` for the iOS Simulator). Do not point workflows at this `.xcodeproj`.
+- `RMPGFlexConnect.xcodeproj` — Created by Xcode in M0/Task 6.
 
 ## Install on your iPhone
 

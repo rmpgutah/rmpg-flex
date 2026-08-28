@@ -1,15 +1,11 @@
 name: ios2 tests (RMPG Flex Connect)
 
+# PARKED 2026-08-28: Flex Connect / iOS CI is on the back burner so it does
+# not gate CAD login/worker PRs. The ios2/ tree stays in the repo.
+# To resume: restore the pull_request + push:main triggers below, or run
+# this workflow manually from the Actions tab.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'ios2/**'
-      - '.github/workflows/ios2-tests.yml'
-  pull_request:
-    paths:
-      - 'ios2/**'
-      - '.github/workflows/ios2-tests.yml'
+  workflow_dispatch:
 
 # Least-privilege GITHUB_TOKEN (CWE-275). Swift test job needs only read access.
 permissions:
