@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   haversineMiles, estimateDriveMinutes, nearestNeighborOrder, isJobPreselected, reorderList,
-  describeMissedDeadlines,
+  describeMissedDeadlines, plannedStartToMs, formatEtaDenver, computeArrivalsFromLegDurations,
 } from './ServeRoutePlanner';
 
 function stop(id: number, lat: number, lng: number, deadline: string | null = null, recipient_name = `Recipient ${id}`) {
@@ -174,5 +174,34 @@ describe('reorderList', () => {
     const result = reorderList(list, 0, 2);
     expect(list).toEqual(['a', 'b', 'c']);
     expect(result).not.toBe(list);
+  });
+});
+
+describe('plannedStartToMs / formatEtaDenver', () => {
+  it('interprets the date picker as America/Denver wall clock, not the browser zone', () => {
+    const ms = plannedStartToMs('2026-08-28', '14:30');
+    expect(new Date(ms).toISOString()).toBe('2026-08-28T20:30:00.000Z');
+  });
+
+  it('labels a next-day arrival so 11:45 AM is not mistaken for the same afternoon', () => {
+    const nextMorning = Date.parse('2026-08-29T17:45:00.000Z'); // 11:45 AM MDT Aug 29
+    expect(formatEtaDenver(nextMorning, '2026-08-28')).toMatch(/11:45\sAM \(\+1d\)/);
+  });
+});
+
+describe('computeArrivalsFromLegDurations', () => {
+  it('walks driving seconds then dwell so the last ETA matches the footer clock', () => {
+    const a = stop(1, 40.76, -111.89);
+    const b = stop(2, 40.77, -111.88);
+    const start = Date.parse('2026-08-28T20:30:00.000Z');
+    const { arrivals, totalDurationMinutes } = computeArrivalsFromLegDurations(
+      [a, b],
+      start,
+      [600, 300], // 10 min then 5 min
+    );
+    expect(arrivals.get(1)).toBe(start + 600_000);
+    // 10 min drive + 7 min individual dwell + 5 min drive
+    expect(arrivals.get(2)).toBe(start + 600_000 + 7 * 60_000 + 300_000);
+    expect(totalDurationMinutes).toBeCloseTo(10 + 7 + 5 + 7, 5);
   });
 });
