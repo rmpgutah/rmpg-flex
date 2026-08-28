@@ -25,7 +25,7 @@ import type { UploadProgress, EvidenceMeta } from '../hooks/useApi';
 import UploadProgressBar from './ui/UploadProgressBar';
 import ConfirmDialog from './ConfirmDialog';
 import { useAuth } from '../context/AuthContext';
-import { getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
+import { getGeoFix, contextLabelForEntity, formatStampTimestampMountain } from '../utils/photoStamp';
 import { deStampOne } from '../utils/deStampImage';
 import { Eraser } from 'lucide-react';
 import { officerFacingFileError } from '../utils/officerFacingFileError';
@@ -112,16 +112,7 @@ function formatDate(dateStr: string): string {
 
 /** Format a timestamp as the evidence stamp line (MM-DD-YYYY at HH:MM:SS TZ) */
 function formatEvidenceDate(iso: string): string {
-  const d = parseTimestamp(iso);
-  const p = (n: number) => String(n).padStart(2, '0');
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Denver',
-    month: '2-digit', day: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false, timeZoneName: 'short',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
-  return `${get('month')}-${get('day')}-${get('year')} at ${get('hour')}:${get('minute')}:${get('second')} (${get('timeZoneName')})`;
+  return formatStampTimestampMountain(parseTimestamp(iso));
 }
 
 // ─── Evidence Overlay Strip ────────────────────────────────────────────────

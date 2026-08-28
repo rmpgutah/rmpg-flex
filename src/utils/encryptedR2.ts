@@ -83,6 +83,16 @@ export type FileKekSource = string | undefined | FileKekEnv;
 
 const FILE_KEK_DERIVE_PREFIX = 'rmpg-flex-file-kek-v1:';
 
+function snapshotKekSource(source: FileKekSource): FileKekSource {
+  if (source && typeof source === 'object') {
+    return {
+      FILE_ENCRYPTION_KEK: source.FILE_ENCRYPTION_KEK,
+      JWT_SECRET: source.JWT_SECRET,
+    };
+  }
+  return source;
+}
+
 async function importKekBytes(raw: BufferSource): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
@@ -107,23 +117,23 @@ async function importKek(kekB64: string | undefined): Promise<CryptoKey> {
   return importKekBytes(decodeDedicatedKekBytes(kekB64));
 }
 
-async function importKekFromJwt(jwtSecret: string): Promise<CryptoKey> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(`${FILE_KEK_DERIVE_PREFIX}${jwtSecret}`),
-  );
-  return importKekBytes(digest);
-}
-
-async function resolveKek(source: FileKekSource): Promise<CryptoKey> {
-  if (source && typeof source === 'object') {
-    const dedicated = source.FILE_ENCRYPTION_KEK?.trim();
-    if (dedicated) return importKek(dedicated);
-    const jwt = source.JWT_SECRET?.trim();
-    if (jwt) return importKekFromJwt(jwt);
+async function kekB64FromSource(source: FileKekSource): Promise<string> {
+  const snap = snapshotKekSource(source);
+  if (snap && typeof snap === 'object') {
+    const dedicated = snap.FILE_ENCRYPTION_KEK?.trim();
+    if (dedicated) return dedicated;
+    const jwt = snap.JWT_SECRET?.trim();
+    if (jwt) {
+      const digest = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(`${FILE_KEK_DERIVE_PREFIX}${jwt}`),
+      );
+      return bytesToBase64(new Uint8Array(digest));
+    }
     throw new FileEncryptionError('File encryption is not configured');
   }
-  return importKek(source);
+  if (!snap) throw new FileEncryptionError('File encryption is not configured');
+  return snap;
 }
 
 interface EncryptionKeyRow {
@@ -142,7 +152,7 @@ export async function putEncrypted(
   bytes: ArrayBuffer | Uint8Array,
   opts?: { httpMetadata?: R2HTTPMetadata },
 ): Promise<void> {
-  const kekKey = await resolveKek(kek);
+  const kekKey = await importKek(await kekB64FromSource(kek));
   await ensureKeysTable(db);
 
   const dekRaw = crypto.getRandomValues(new Uint8Array(32));
@@ -225,7 +235,7 @@ export async function getDecrypted(
   }
   if (!row) return null;
 
-  const kekKey = await resolveKek(kek);
+  const kekKey = await importKek(await kekB64FromSource(kekSnap));
   const dekRaw = new Uint8Array(await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: base64ToBytes(row.dek_iv) }, kekKey, base64ToBytes(row.wrapped_dek),
   ));

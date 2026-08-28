@@ -1,4 +1,5 @@
 import { toDisplayLabel } from './formatters';
+import { parseTimestamp } from './dateUtils';
 // ============================================================
 // RMPG Flex — Photo data stamp (forensic metadata burn-in)
 // ============================================================
@@ -31,7 +32,92 @@ export function localTimeZoneAbbr(d: Date = new Date()): string {
   } catch { return ''; }
 }
 
-/** Format the timestamp line exactly as the stamp shows it. */
+/** Timestamp line in America/Denver — matches FileAttachments evidence overlay. */
+export function formatStampTimestampMountain(d: Date): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver',
+    month: '2-digit', day: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false, timeZoneName: 'short',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '';
+  return `${get('month')}-${get('day')}-${get('year')} at ${get('hour')}:${get('minute')}:${get('second')} (${get('timeZoneName')})`;
+}
+
+export interface EvidenceOverlayInput {
+  takenAt?: string | null;
+  createdAt?: string | null;
+  lat?: number | string | null;
+  lon?: number | string | null;
+  officerName?: string | null;
+  referenceNotes?: string | null;
+  agency?: string;
+}
+
+function finiteCoord(v: number | string | null | undefined): number | undefined {
+  if (v == null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Stamp lines matching the on-screen Files-tab overlay (Mountain Time). */
+export function buildEvidenceOverlayLines(input: EvidenceOverlayInput): string[] {
+  const iso = input.takenAt || input.createdAt;
+  const lines: string[] = [];
+  if (iso) lines.push(formatStampTimestampMountain(parseTimestamp(String(iso))));
+  lines.push(formatGeoLine(finiteCoord(input.lat), finiteCoord(input.lon)));
+  const who = input.officerName ? `FI. ${String(input.officerName).trim().toUpperCase()}` : '';
+  const ctx = input.referenceNotes ? String(input.referenceNotes).trim().toUpperCase() : '';
+  const line3 = [who, ctx].filter(Boolean).join('  —  ');
+  if (line3) lines.push(line3);
+  return lines;
+}
+
+type StampCtx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+/** Burn the banner + RMPG watermark onto an already-drawn canvas. */
+export function drawStampOverlay(
+  ctx: StampCtx,
+  width: number,
+  height: number,
+  lines: string[],
+  agency = 'RMPG',
+): void {
+  if (width < 8 || height < 8) return;
+  const W = width, H = height;
+  const fontPx = Math.max(13, Math.round(W / 48));
+  const pad = Math.round(fontPx * 0.6);
+  const lineH = Math.round(fontPx * 1.35);
+  const bannerH = Math.max(lineH + pad * 2, lines.length * lineH + pad * 2);
+
+  ctx.fillStyle = 'rgba(0 0 0 / 0.58)';
+  ctx.fillRect(0, H - bannerH, W, bannerH);
+  ctx.fillStyle = '#d4a017';
+  ctx.fillRect(0, H - bannerH, W, Math.max(2, Math.round(fontPx / 8)));
+
+  ctx.font = `bold ${fontPx}px monospace`;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  let y = H - bannerH + pad;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillStyle = i === 0 ? '#ffd34d' : '#f4f4f4';
+    ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
+    ctx.shadowBlur = Math.round(fontPx / 6);
+    ctx.fillText(lines[i], pad, y);
+    ctx.shadowBlur = 0;
+    y += lineH;
+  }
+  const label = (agency || 'RMPG').toUpperCase();
+  ctx.font = `bold ${Math.round(fontPx * 0.9)}px monospace`;
+  ctx.fillStyle = 'rgba(212,160,23,0.85)';
+  ctx.textAlign = 'right';
+  ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
+  ctx.shadowBlur = Math.round(fontPx / 5);
+  ctx.fillText(label, W - pad, pad);
+  ctx.shadowBlur = 0;
+  ctx.textAlign = 'left';
+}
+/** Format the timestamp line exactly as the capture-time stamp shows it (device local). */
 export function formatStampTimestamp(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   const tz = localTimeZoneAbbr(d);
@@ -109,44 +195,7 @@ export async function stampPhoto(file: File, opts: PhotoStampOptions): Promise<F
     if (!ctx) return file;
 
     ctx.drawImage(bitmap, 0, 0);
-
-    const lines = buildStampLines(opts);
-    const W = canvas.width, H = canvas.height;
-    const fontPx = Math.max(13, Math.round(W / 48));
-    const pad = Math.round(fontPx * 0.6);
-    const lineH = Math.round(fontPx * 1.35);
-    const bannerH = lines.length * lineH + pad * 2;
-
-    // translucent bottom banner
-    ctx.fillStyle = 'rgba(0 0 0 / 0.58)';
-    ctx.fillRect(0, H - bannerH, W, bannerH);
-    // gold top rule (RMPG brand) without violating any UI rule — this is image content
-    ctx.fillStyle = '#d4a017';
-    ctx.fillRect(0, H - bannerH, W, Math.max(2, Math.round(fontPx / 8)));
-
-    ctx.font = `bold ${fontPx}px monospace`;
-    ctx.textBaseline = 'top';
-    let y = H - bannerH + pad;
-    for (let i = 0; i < lines.length; i++) {
-      // line 1 (timestamp) gold, rest white for legibility
-      ctx.fillStyle = i === 0 ? '#ffd34d' : '#f4f4f4';
-      // subtle shadow for contrast over bright photos
-      ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
-      ctx.shadowBlur = Math.round(fontPx / 6);
-      ctx.fillText(lines[i], pad, y);
-      ctx.shadowBlur = 0;
-      y += lineH;
-    }
-    // agency watermark, top-right
-    const agency = (opts.agency || 'RMPG').toUpperCase();
-    ctx.font = `bold ${Math.round(fontPx * 0.9)}px monospace`;
-    ctx.fillStyle = 'rgba(212,160,23,0.85)';
-    ctx.textAlign = 'right';
-    ctx.shadowColor = 'rgba(0 0 0 / 0.9)';
-    ctx.shadowBlur = Math.round(fontPx / 5);
-    ctx.fillText(agency, W - pad, pad);
-    ctx.shadowBlur = 0;
-    ctx.textAlign = 'left';
+    drawStampOverlay(ctx, canvas.width, canvas.height, buildStampLines(opts), opts.agency);
 
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', 0.9));
     if (!blob) return file;

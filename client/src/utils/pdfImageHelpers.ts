@@ -19,6 +19,7 @@
 
 // ── Fetch helpers (isolated from auth-coupled apiFetch) ────
 import { resolveApiHttpBase, WORKER_HTTP_ORIGIN } from './apiOrigin';
+import { buildEvidenceOverlayLines, drawStampOverlay, type EvidenceOverlayInput } from './photoStamp';
 
 function apiBase(): string {
   if (typeof window === 'undefined') return WORKER_HTTP_ORIGIN;
@@ -85,6 +86,7 @@ const TOKEN_KEY = 'rmpg_token';
 export async function fetchImageAsBase64(
   fileId: string,
   fileName = 'image',
+  overlay?: EvidenceOverlayInput | null,
 ): Promise<ResolvedImage | null> {
   try {
     const token = getAuthToken();
@@ -122,6 +124,10 @@ export async function fetchImageAsBase64(
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(bmp, 0, 0, w, h);
     bmp.close();
+
+    if (overlay) {
+      drawStampOverlay(ctx, w, h, buildEvidenceOverlayLines(overlay), overlay.agency);
+    }
 
     const isTransparent = blob.type === 'image/png' || blob.type === 'image/webp';
     const outType = isTransparent ? 'image/png' : 'image/jpeg';
@@ -218,7 +224,14 @@ export async function fetchEntityImages(
 
     const results = await Promise.allSettled(
       imageAttachments.map((a: any) =>
-        fetchImageAsBase64(a.file_id, a.original_name || 'attachment'),
+        fetchImageAsBase64(a.file_id, a.original_name || 'attachment', {
+          takenAt: a.taken_at ?? null,
+          createdAt: a.created_at ?? null,
+          lat: a.latitude,
+          lon: a.longitude,
+          officerName: a.uploader_name ?? null,
+          referenceNotes: a.reference_notes ?? null,
+        }),
       ),
     );
 
