@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RouteStop, OptimizeResult, TrafficCheckResult } from '../src/utils/serveRouteOptimizer';
-import { buildCostMatrix, haversineMatrix, haversineDurationSeconds, metresToDriveSeconds, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, checkTrafficDegradation, denverWallClockToUtcMs, clampArrivalToServeWindow, resolveMapboxDirectionsToken } from '../src/utils/serveRouteOptimizer';
+import { buildCostMatrix, haversineMatrix, haversineDurationSeconds, metresToDriveSeconds, deadlineCoefficient, applyTimeWindowPenalties, optimizeRoute, geocodeQualityScore, collectGeocodeWarnings, checkTrafficDegradation, denverWallClockToUtcMs, clampArrivalToServeWindow, resolveMapboxDirectionsToken, clampDepartAtForMapbox } from '../src/utils/serveRouteOptimizer';
 
 const STOPS_3: RouteStop[] = [
   { jobId: 1, lat: 40.760, lng: -111.890, geocodeSource: 'point', deadlineAt: null, defendantType: 'individual', addressHash: 'a', defendant: 'A', address: '1 A St', locationNote: null },
@@ -391,6 +391,13 @@ describe('resolveMapboxDirectionsToken', () => {
     expect(resolveMapboxDirectionsToken({ MAPBOX_SECRET_TOKEN: 'sk.a', MAPBOX_ACCESS_TOKEN: 'pk.b' })).toBe('sk.a');
     expect(resolveMapboxDirectionsToken({ MAPBOX_ACCESS_TOKEN: 'pk.b' })).toBe('pk.b');
     expect(resolveMapboxDirectionsToken({})).toBe('');
+  });
+});
+
+describe('clampDepartAtForMapbox', () => {
+  it('clamps a stale morning shift start to now', () => {
+    const now = Date.parse('2026-08-28T23:18:00.000Z');
+    expect(clampDepartAtForMapbox('2026-08-28T14:00:00.000Z', now)).toBe('2026-08-28T23:18:00.000Z');
   });
 });
 

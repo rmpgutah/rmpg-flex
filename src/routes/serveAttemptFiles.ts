@@ -127,6 +127,7 @@ files.get('/:id/attempts/:attemptId/files', async (c) => {
   const attemptId = parseInt(c.req.param('attemptId'), 10);
   if (isNaN(queueId) || isNaN(attemptId)) return c.json({ error: 'Invalid id' }, 400);
   const db = getDb(c.env);
+  await ensureServeAttemptFilesTable(db);
   const attempt = await loadAttempt(db, queueId, attemptId);
   if (!attempt) return c.json({ error: 'Attempt not found for this job' }, 404);
   await backfillAttemptPhotos(db, queueId, attemptId, attempt.photo_ids);

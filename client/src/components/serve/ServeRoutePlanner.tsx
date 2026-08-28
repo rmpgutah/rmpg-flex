@@ -7,6 +7,7 @@ import {
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
+import { fetchMapboxDrivingRoute } from '../../utils/mapboxDepartAt';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
@@ -110,6 +111,14 @@ function timeWindowPriority(tw: ServeJob['time_window'], plannedStartMs: number)
         : ['evening', 'anytime', 'morning', 'afternoon'];
   const idx = order.indexOf(tw);
   return idx < 0 ? order.length : idx;
+}
+
+function humanizeMatrixFallback(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  if (reason === 'no token configured') {
+    return 'Worker Mapbox directions token is unset — the map token still works for drawing the line';
+  }
+  return reason;
 }
 
 function priorityWeight(p: ServeJob['priority']): number {
@@ -1280,7 +1289,7 @@ export default function ServeRoutePlanner({
         setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
         const newFallback = serverResult.matrixFallback ?? false;
         setMatrixFallback(newFallback);
-        setMatrixFallbackReason(newFallback ? serverResult.fallbackReason : undefined);
+        setMatrixFallbackReason(newFallback ? humanizeMatrixFallback(serverResult.fallbackReason) : undefined);
         if (newFallback) setMatrixFallbackDismissed(false);
       } else {
         selectedOrdered = nearestNeighborOrder(selected, routeOrigin, plannedStartMs, routeDate).ordered;
@@ -1300,7 +1309,6 @@ export default function ServeRoutePlanner({
       let runningPosition: { lat: number; lng: number } | null = routeOrigin;
       let runningElapsedMs = plannedStartMs;
       const allMissedDeadlineJobIds: number[] = [];
-      const departAtForMapbox = new Date(plannedStartMs).toISOString(); // new-date-ok — epoch ms
 
       for (let ci = 0; ci < clusters.length; ci++) {
         const clusterStartElapsedMs = runningElapsedMs;
@@ -1325,19 +1333,9 @@ export default function ServeRoutePlanner({
         if (!token) throw new Error('No Mapbox token');
 
         const coordStr = allCoords.map(c => c.join(',')).join(';');
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full&depart_at=${encodeURIComponent(departAtForMapbox)}`;
-
-        let route: any = null;
-        if (allCoords.length >= 2) {
-          try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-            const data = await res.json();
-            route = data.routes?.[0] ?? null;
-          } catch {
-            route = null;
-          }
-        }
+        const route = allCoords.length >= 2
+          ? await fetchMapboxDrivingRoute(token, coordStr, new Date(runningElapsedMs).toISOString()) // new-date-ok — epoch ms
+          : null;
 
         const pushEstimatedLegs = () => {
           let cursor = runningPosition;
@@ -1391,35 +1389,32 @@ export default function ServeRoutePlanner({
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
         try {
           const token = await getMapboxAccessToken();
-          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full&depart_at=${encodeURIComponent(departAtForMapbox)}`;
-          const retRes = await fetch(retUrl);
-          if (retRes.ok) {
-            const retData = await retRes.json();
-            const retRoute = retData.routes?.[0];
-            if (retRoute) {
-              returnLegM = retRoute.distance || 0;
-              returnLegDurS = retRoute.duration || 0;
-              if (retRoute.geometry && mapRef.current) {
-                const retSrcId = `serve-route-return-${Date.now()}`;
-                returnRouteSourceIdRef.current = retSrcId;
-                const retCoords = retRoute.geometry.coordinates || [];
-                if (retCoords.length > 1) {
-                  whenStyleReady(mapRef.current, () => {
-                    if (!mapRef.current || hasSource(mapRef.current, retSrcId)) return;
-                    {
-                      mapRef.current!.addSource(retSrcId, {
-                        type: 'geojson',
-                        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: retCoords } },
-                      });
-                      mapRef.current!.addLayer({
-                        id: retSrcId,
-                        type: 'line',
-                        source: retSrcId,
-                        paint: { 'line-color': '#888888', 'line-width': 3, 'line-opacity': 0.5, 'line-dasharray': [4, 4] },
-                      });
-                    }
+          const retRoute = await fetchMapboxDrivingRoute(
+            token,
+            `${retStart.join(',')};${retEnd.join(',')}`,
+            new Date(runningElapsedMs).toISOString(), // new-date-ok — epoch ms
+          );
+          if (retRoute) {
+            returnLegM = retRoute.distance || 0;
+            returnLegDurS = retRoute.duration || 0;
+            if (retRoute.geometry && mapRef.current) {
+              const retSrcId = `serve-route-return-${Date.now()}`;
+              returnRouteSourceIdRef.current = retSrcId;
+              const retCoords = retRoute.geometry.coordinates || [];
+              if (retCoords.length > 1) {
+                whenStyleReady(mapRef.current, () => {
+                  if (!mapRef.current || hasSource(mapRef.current, retSrcId)) return;
+                  mapRef.current.addSource(retSrcId, {
+                    type: 'geojson',
+                    data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: retCoords } },
                   });
-                }
+                  mapRef.current.addLayer({
+                    id: retSrcId,
+                    type: 'line',
+                    source: retSrcId,
+                    paint: { 'line-color': '#888888', 'line-width': 3, 'line-opacity': 0.5, 'line-dasharray': [4, 4] },
+                  });
+                });
               }
             }
           }
