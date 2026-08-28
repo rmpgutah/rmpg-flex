@@ -8,7 +8,7 @@ import {
   isUnsafeRemoteRebuild,
   MIGRATIONS_DIR,
   splitSqlStatements,
-} from '../scripts/d1PendingMigrations.mjs';
+} from '../scripts/d1PendingMigrations';
 
 describe('isIgnorableD1Error', () => {
   it('treats duplicate column as ignorable so the rest of the batch can run', () => {

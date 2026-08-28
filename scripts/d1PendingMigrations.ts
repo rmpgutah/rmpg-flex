@@ -33,22 +33,33 @@ const IGNORABLE_ERROR = /duplicate column name|already exists|duplicate index/i;
 
 const UNSAFE_DROP = /\bDROP\s+TABLE\s+(IF\s+EXISTS\s+)?(calls_for_service|shift_swap_requests)\b/i;
 
-export function isIgnorableD1Error(message) {
+export type PendingAction = 'track-only' | 'apply';
+
+export type ExecuteResult = { ok: boolean; message?: string };
+
+export type PendingSummary = {
+  applied: string[];
+  trackedOnly: string[];
+  skippedAlready: string[];
+  failed: Array<{ filename: string; message?: string; stmt?: string }>;
+};
+
+export function isIgnorableD1Error(message: unknown): boolean {
   return IGNORABLE_ERROR.test(String(message || ''));
 }
 
-export function isLocalOnlyMigration(sql, filename = '') {
+export function isLocalOnlyMigration(sql: string, filename = ''): boolean {
   const head = String(sql).split('\n').slice(0, 5).join('\n');
   if (/local-only/i.test(head)) return true;
   return /^(0249_sync_queue|0250_sync_conflicts)\.sql$/.test(filename);
 }
 
-export function isUnsafeRemoteRebuild(sql) {
+export function isUnsafeRemoteRebuild(sql: string): boolean {
   return UNSAFE_DROP.test(String(sql || ''));
 }
 
 /** Split SQL into executable statements. Strips `--` line comments. */
-export function splitSqlStatements(sql) {
+export function splitSqlStatements(sql: string): string[] {
   const withoutBlock = String(sql).replace(/\/\*[\s\S]*?\*\//g, '');
   const lines = withoutBlock.split('\n').map((line) => {
     let inStr = false;
@@ -66,7 +77,7 @@ export function splitSqlStatements(sql) {
     return out;
   });
   const text = lines.join('\n');
-  const stmts = [];
+  const stmts: string[] = [];
   let cur = '';
   let inStr = false;
   for (let i = 0; i < text.length; i++) {
@@ -89,7 +100,7 @@ export function splitSqlStatements(sql) {
   return stmts;
 }
 
-export function classifyPendingFile(filename, sql) {
+export function classifyPendingFile(filename: string, sql: string): { action: PendingAction; reason: string } {
   if (isLocalOnlyMigration(sql, filename)) {
     return { action: 'track-only', reason: 'local-only (must not land on live D1)' };
   }
@@ -99,7 +110,7 @@ export function classifyPendingFile(filename, sql) {
   return { action: 'apply', reason: 'safe to apply statement-by-statement' };
 }
 
-function wranglerJson(args) {
+function wranglerJson(args: string[]): unknown {
   const raw = execFileSync('npx', ['wrangler', ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,39 +125,55 @@ function wranglerJson(args) {
   }
 }
 
-function resultsFromWrangler(payload) {
+function resultsFromWrangler(payload: unknown): Array<{ name?: string }> {
   if (Array.isArray(payload)) {
-    const first = payload[0];
+    const first = payload[0] as { results?: Array<{ name?: string }>; result?: Array<{ name?: string }> } | undefined;
     return first?.results ?? first?.result ?? [];
   }
-  return payload?.results ?? [];
+  if (payload && typeof payload === 'object' && 'results' in payload) {
+    const results = (payload as { results?: Array<{ name?: string }> }).results;
+    return results ?? [];
+  }
+  return [];
 }
 
-function listMigrationFiles() {
+function listMigrationFiles(): string[] {
   return fs.readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort();
 }
 
-function trackSql(filename) {
+function trackSql(filename: string): string {
   const escaped = filename.replace(/'/g, "''");
   return `INSERT OR IGNORE INTO d1_migrations (name, applied_at) VALUES ('${escaped}', datetime('now'))`;
 }
 
-function executeRemote(sql) {
+function errorText(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const e = err as { stderr?: unknown; stdout?: unknown; message?: unknown };
+    return [e.stderr, e.stdout, e.message].filter(Boolean).map(String).join('\n');
+  }
+  return String(err);
+}
+
+function executeRemote(sql: string): ExecuteResult {
   try {
     wranglerJson(['d1', 'execute', 'rmpg-flex', '--remote', '--json', '--command', sql]);
     return { ok: true };
   } catch (err) {
-    const message = [err.stderr, err.stdout, err.message].filter(Boolean).join('\n');
-    return { ok: false, message };
+    return { ok: false, message: errorText(err) };
   }
 }
 
-export async function applyPending({ executeSql, listAppliedNames, log = console }) {
+export async function applyPending(opts: {
+  executeSql: (sql: string) => Promise<ExecuteResult>;
+  listAppliedNames: () => Promise<Iterable<string>>;
+  log?: { info?: (m: string) => void; error?: (m: string) => void };
+}): Promise<PendingSummary> {
+  const { executeSql, listAppliedNames, log = console } = opts;
   const applied = new Set(await listAppliedNames());
   const files = listMigrationFiles();
-  const summary = { applied: [], trackedOnly: [], skippedAlready: [], failed: [] };
+  const summary: PendingSummary = { applied: [], trackedOnly: [], skippedAlready: [], failed: [] };
 
   for (const filename of files) {
     if (applied.has(filename)) {
@@ -191,11 +218,11 @@ export async function applyPending({ executeSql, listAppliedNames, log = console
   return summary;
 }
 
-async function main() {
+async function main(): Promise<void> {
   const remote = process.argv.includes('--remote');
   const dryRun = process.argv.includes('--dry-run');
   if (!remote && !dryRun) {
-    console.error('usage: node scripts/d1PendingMigrations.mjs --remote | --dry-run');
+    console.error('usage: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote | --dry-run');
     process.exit(64);
   }
 
@@ -213,7 +240,7 @@ async function main() {
     'd1', 'execute', 'rmpg-flex', '--remote', '--json',
     '--command', 'SELECT name FROM d1_migrations',
   ]);
-  const appliedNames = resultsFromWrangler(payload).map((r) => r.name);
+  const appliedNames = resultsFromWrangler(payload).map((r) => r.name).filter((n): n is string => !!n);
 
   const summary = await applyPending({
     listAppliedNames: async () => appliedNames,
@@ -233,9 +260,9 @@ async function main() {
   if (summary.failed.length) process.exit(1);
 }
 
-const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isCli = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
 if (isCli) {
-  main().catch((err) => {
+  main().catch((err: unknown) => {
     console.error(err);
     process.exit(1);
   });

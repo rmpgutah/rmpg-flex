@@ -4,5 +4,5 @@
     "types": ["node", "@cloudflare/workers-types"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.d.ts", "scripts/d1PendingMigrations.ts"]
 }

@@ -72,7 +72,7 @@ jobs:
       # and every later file (0265 person-intel tables, 0269 skiptracer v2,
       # 0270 tesseract page_number, …) never runs — Worker+Pages still ship,
       # so the features look deployed while they 500 on missing schema.
-      # scripts/d1PendingMigrations.mjs applies one statement at a time,
+      # scripts/d1PendingMigrations.ts applies one statement at a time,
       # ignores duplicate-column / already-exists, and never executes
       # remote-unsafe table rebuilds (DROP TABLE calls_for_service).
       #
@@ -84,7 +84,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN_2 }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: node scripts/d1PendingMigrations.mjs --remote
+        run: node --experimental-strip-types scripts/d1PendingMigrations.ts --remote
 
       # D1 backup — export the database before deploying new code.
       # This is a point-in-time snapshot that can be restored if a migration
