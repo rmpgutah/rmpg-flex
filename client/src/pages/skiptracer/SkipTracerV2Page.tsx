@@ -237,12 +237,20 @@ interface Stats {
 
 // ─── Input type detection ────────────────────────────────────
 
-type InputType = 'Name' | 'Phone' | 'Email' | 'Address';
+type InputType = 'Name' | 'Phone' | 'Email' | 'Address' | 'Vehicle';
+
+function isVin(value: string): boolean {
+  const v = value.replace(/\s/g, '').toUpperCase();
+  return v.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(v);
+}
 
 function detectInputType(q: string): InputType {
   const trimmed = q.trim();
   if (!trimmed) return 'Name';
-  if (trimmed.replace(/\D/g, '').length >= 10) return 'Phone';
+  if (isVin(trimmed)) return 'Vehicle';
+  if (/^[A-Z]{2}[\s-]+[A-Z0-9-]+$/i.test(trimmed)) return 'Vehicle';
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length >= 10 && !/[A-Za-z]/.test(trimmed)) return 'Phone';
   if (trimmed.includes('@')) return 'Email';
   if (/\d/.test(trimmed) && /\b(st|street|ave|avenue|blvd|boulevard|dr|drive|rd|road|ln|lane|ct|court|way|pl|place|cir|circle|pkwy|parkway|hwy|highway)\b/i.test(trimmed)) return 'Address';
   return 'Name';
@@ -409,7 +417,7 @@ export default function SkipTracerV2Page() {
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Search engine selection
-  const [searchEngine, setSearchEngine] = useState<'microbilt' | 'rapidapi' | 'all'>('microbilt');
+  const [searchEngine, setSearchEngine] = useState<'microbilt' | 'rapidapi' | 'all'>('all');
 
   // Load sources on mount
   useEffect(() => {
@@ -929,9 +937,9 @@ export default function SkipTracerV2Page() {
         <div className="flex items-center gap-1 mt-1">
           <span className="text-[8px] font-bold text-rmpg-500 uppercase tracking-wider mr-1">Engine:</span>
           {([
-            { id: 'microbilt' as const, label: 'MicroBilt', desc: 'Primary — Full background + SSN trace', color: ENGINE_COLORS.microbilt },
-            { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Secondary — Basic skip trace', color: ENGINE_COLORS.rapidapi },
-            { id: 'all' as const, label: 'All Sources', desc: 'Query all enabled engines', color: ENGINE_COLORS.all },
+            { id: 'all' as const, label: 'All Sources', desc: 'Local RMS + RapidAPI + open-source enrichment', color: ENGINE_COLORS.all },
+            { id: 'rapidapi' as const, label: 'RapidAPI', desc: 'Paid skip trace + vehicle enrichment APIs', color: ENGINE_COLORS.rapidapi },
+            { id: 'microbilt' as const, label: 'Local + OSINT', desc: 'Local RMS + open-source enrichment only', color: ENGINE_COLORS.microbilt },
           ]).map(eng => (
             <button
               key={eng.id}

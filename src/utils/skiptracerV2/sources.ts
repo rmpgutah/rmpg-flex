@@ -5,24 +5,23 @@ export interface SourceDefinition {
   displayName: string;
   category: 'people' | 'court' | 'property' | 'business' | 'registry' | 'osint';
   costPerLookup: number;
-  configKey: string | null;
-  envKey?: string;
+  openSource: boolean;
+  configKey?: string;
 }
 
+/** Skip Tracker 3.5 — local RMS + open-source enrichment + paid RapidAPI + vehicle APIs. */
 export const SKIPTRACER_V2_SOURCES: SourceDefinition[] = [
-  { name: 'local_rms', displayName: 'Local RMS', category: 'people', costPerLookup: 0, configKey: null },
-  { name: 'microbilt_cache', displayName: 'MicroBilt Cache', category: 'people', costPerLookup: 0, configKey: null },
-  { name: 'rapidapi_skiptrace', displayName: 'RapidAPI Skip Trace', category: 'people', costPerLookup: 0.05, configKey: 'skiptracer_rapidapi_key' },
-  { name: 'nsopw', displayName: 'NSOPW Registry', category: 'registry', costPerLookup: 0, configKey: null },
-  { name: 'sl_assessor', displayName: 'SL County Assessor', category: 'property', costPerLookup: 0, configKey: null },
-  { name: 'open_sanctions', displayName: 'OpenSanctions', category: 'registry', costPerLookup: 0, configKey: null },
-  { name: 'fbi_wanted', displayName: 'FBI Most Wanted', category: 'registry', costPerLookup: 0, configKey: null },
-  { name: 'bop_inmates', displayName: 'BOP Inmate Locator', category: 'registry', costPerLookup: 0, configKey: null },
-  { name: 'usps', displayName: 'USPS Web Tools', category: 'property', costPerLookup: 0, configKey: null, envKey: 'USPS_USER_ID' },
-  { name: 'open_corporates', displayName: 'OpenCorporates', category: 'business', costPerLookup: 0, configKey: null, envKey: 'OPENCORPORATES_API_KEY' },
-  { name: 'numverify', displayName: 'Numverify', category: 'osint', costPerLookup: 0, configKey: null, envKey: 'NUMVERIFY_API_KEY' },
-  { name: 'census_geocoder', displayName: 'Census Geocoder', category: 'property', costPerLookup: 0, configKey: null },
-  { name: 'ofac_sdn', displayName: 'OFAC SDN', category: 'registry', costPerLookup: 0, configKey: null },
+  { name: 'local_rms', displayName: 'Local RMS', category: 'people', costPerLookup: 0, openSource: true },
+  { name: 'rapidapi_skiptrace', displayName: 'RapidAPI Skip Trace', category: 'people', costPerLookup: 0.05, openSource: false, configKey: 'skiptracer_rapidapi_key' },
+  { name: 'vehicle_enrichment', displayName: 'Vehicle Enrichment (Plate→VIN)', category: 'osint', costPerLookup: 0.05, openSource: false },
+  { name: 'vehicle_vin_decoder', displayName: 'VIN Decoder', category: 'osint', costPerLookup: 0.03, openSource: false },
+  { name: 'nsopw', displayName: 'NSOPW Registry', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'sl_assessor', displayName: 'SL County Assessor', category: 'property', costPerLookup: 0, openSource: true },
+  { name: 'open_sanctions', displayName: 'OpenSanctions', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'fbi_wanted', displayName: 'FBI Most Wanted', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'bop_inmates', displayName: 'BOP Inmate Locator', category: 'registry', costPerLookup: 0, openSource: true },
+  { name: 'census_geocoder', displayName: 'Census Geocoder', category: 'property', costPerLookup: 0, openSource: true },
+  { name: 'ofac_sdn', displayName: 'OFAC SDN', category: 'registry', costPerLookup: 0, openSource: true },
 ];
 
 async function getConfigValue(db: D1Database, key: string): Promise<string | null> {
@@ -33,7 +32,7 @@ async function getConfigValue(db: D1Database, key: string): Promise<string | nul
 
 export async function listSourceInfo(
   db: D1Database,
-  env: Record<string, unknown>,
+  env?: Record<string, unknown>,
 ): Promise<Array<{
   name: string;
   displayName: string;
@@ -45,14 +44,22 @@ export async function listSourceInfo(
 }>> {
   const out = [];
   for (const src of SKIPTRACER_V2_SOURCES) {
-    let configured = true;
-    if (src.configKey) {
-      configured = Boolean((await getConfigValue(db, src.configKey))?.trim());
-    } else if (src.envKey) {
-      configured = Boolean(String(env[src.envKey] ?? '').trim());
-    }
     const enabledRaw = await getConfigValue(db, `skiptracer_v2_source_${src.name}_enabled`);
     const enabled = enabledRaw !== '0' && enabledRaw !== 'false';
+    let configured = src.configKey
+      ? Boolean((await getConfigValue(db, src.configKey))?.trim())
+      : true;
+
+    if (src.name === 'rapidapi_skiptrace' && !configured) {
+      configured = Boolean((await getConfigValue(db, 'plate_check_rapidapi_key'))?.trim());
+    }
+    if (src.name === 'vehicle_enrichment') {
+      configured = !!(env?.PLATE_TO_VIN_API_KEY || env?.VIN_DECODER_API_KEY || env?.PLATE_DECODER_API_KEY);
+    }
+    if (src.name === 'vehicle_vin_decoder') {
+      configured = !!env?.VIN_DECODER_API_KEY;
+    }
+
     out.push({
       name: src.name,
       displayName: src.displayName,

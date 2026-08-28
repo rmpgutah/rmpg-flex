@@ -2,9 +2,8 @@
 // RMPG Flex — Skip Tracker 3.5 (skiptracer-v2)
 // ============================================================
 // Replaces the stubs mount at /api/skiptracer-v2. Backs SkipTracerV2Page
-// (/microbilt) and AdminSkipTracerV2Tab. Post-VPS, external MicroBilt
-// round-trips are unavailable; this route serves local RMS + cache + optional
-// RapidAPI + open-source enrichment adapters with honest source labeling.
+// (/microbilt) and AdminSkipTracerV2Tab. Combines local RMS, open-source
+// enrichment adapters (shared with /api/enrichment), and optional RapidAPI.
 // ============================================================
 
 import { Hono } from 'hono';
@@ -19,34 +18,10 @@ import {
   parseSearchParams, runSkipTracerSearch, detectSearchTypeFromParams,
 } from '../utils/skiptracerV2/search';
 import { listSourceInfo, upsertSourceConfig } from '../utils/skiptracerV2/sources';
-import type { EnrichmentSeed } from '../utils/enrichment/types';
-import * as nsopwSrc from '../utils/enrichment/sources/nsopw';
-import * as assessorSrc from '../utils/enrichment/sources/assessor';
-import * as openSanctionsSrc from '../utils/enrichment/sources/openSanctions';
-import * as uspsSrc from '../utils/enrichment/sources/usps';
-import * as openCorporatesSrc from '../utils/enrichment/sources/openCorporates';
-import * as numverifySrc from '../utils/enrichment/sources/numverify';
-import * as fbiSrc from '../utils/enrichment/sources/fbi';
-import * as bopSrc from '../utils/enrichment/sources/bop';
-import * as censusGeoSrc from '../utils/enrichment/sources/censusGeocoder';
-import * as ofacSrc from '../utils/enrichment/sources/ofac';
 
 const skiptracerV2 = new Hono<Env>();
 
 const adminOnly = requireRole('admin');
-
-const ENRICHMENT_MODULES = [
-  { key: 'nsopw', mod: nsopwSrc },
-  { key: 'sl_assessor', mod: assessorSrc },
-  { key: 'open_sanctions', mod: openSanctionsSrc },
-  { key: 'fbi_wanted', mod: fbiSrc },
-  { key: 'bop_inmates', mod: bopSrc },
-  { key: 'usps', mod: uspsSrc },
-  { key: 'open_corporates', mod: openCorporatesSrc },
-  { key: 'numverify', mod: numverifySrc },
-  { key: 'census_geocoder', mod: censusGeoSrc },
-  { key: 'ofac_sdn', mod: ofacSrc },
-] as const;
 
 function actorId(c: { get: (k: 'user') => { id?: number; user_id?: number; userId?: number } | undefined }): number | null {
   const u = c.get('user');
@@ -153,7 +128,7 @@ skiptracerV2.get('/search', async (c) => {
       c.env.DB,
       c.env as Record<string, unknown>,
       params,
-      ENRICHMENT_MODULES as unknown as Array<{ key: string; mod: { search: (seed: EnrichmentSeed, env: Record<string, unknown>) => Promise<{ ok: boolean; records: import('../utils/enrichment/types').EnrichedRecord[]; error?: string }> } }>,
+      actorId(c),
     );
     const durationMs = Date.now() - t0;
     const queryParams = JSON.stringify({
@@ -194,6 +169,8 @@ skiptracerV2.get('/search', async (c) => {
       totalCost: outcome.totalCost,
       durationMs,
       searchId: String(ins.meta.last_row_id ?? ''),
+      matchTier: outcome.matchTier,
+      anchors: outcome.anchors,
     });
   } catch (err) {
     return dbErrorResponse(c, err, 'Search failed', 'SEARCH_ERROR');

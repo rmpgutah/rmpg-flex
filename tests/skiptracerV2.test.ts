@@ -4,6 +4,8 @@ import {
   enrichedRecordToProfile,
   parseSearchParams,
   buildEnrichmentSeed,
+  parseVehicleQuery,
+  detectSearchTypeFromParams,
 } from '../src/utils/skiptracerV2/search';
 
 describe('skiptracerV2 search helpers', () => {
@@ -41,6 +43,33 @@ describe('skiptracerV2 search helpers', () => {
     expect(params.lastName).toBe('Smith');
   });
 
+  it('defaults engine to all when not specified', () => {
+    const params = parseSearchParams(new URLSearchParams('q=John+Smith'));
+    expect(params.engine).toBe('all');
+  });
+
+  it('parses plate and VIN queries', () => {
+    expect(parseVehicleQuery('UT ABC123')).toEqual({ state: 'UT', plate: 'ABC123' });
+    expect(parseVehicleQuery('1HGCM82633A004352')).toEqual({ vin: '1HGCM82633A004352' });
+    expect(parseVehicleQuery('ABC123', 'UT')).toEqual({ plate: 'ABC123', state: 'UT' });
+  });
+
+  it('does not treat person names as vehicle plates', () => {
+    expect(parseVehicleQuery('Jane Doe')).toEqual({});
+    expect(detectSearchTypeFromParams(parseSearchParams(new URLSearchParams('q=Jane+Doe')))).toBe('name');
+  });
+
+  it('detects vehicle and address search types', () => {
+    expect(detectSearchTypeFromParams(parseSearchParams(new URLSearchParams('q=UT+ABC123')))).toBe('vehicle');
+    expect(detectSearchTypeFromParams(parseSearchParams(new URLSearchParams('q=123+Main+St+Salt+Lake+City')))).toBe('address');
+  });
+
+  it('builds an enrichment seed for address searches', () => {
+    const seed = buildEnrichmentSeed(parseSearchParams(new URLSearchParams('q=123+Main+St')));
+    expect(seed?.address).toBe('123 Main St');
+    expect(seed?.first_name).toBe('ADDRESS');
+  });
+
   it('builds an enrichment seed from name query params', () => {
     const seed = buildEnrichmentSeed(parseSearchParams(new URLSearchParams('q=John+Smith&dob=1990-05-12')));
     expect(seed).toEqual({
@@ -65,7 +94,7 @@ describe('skiptracerV2 search helpers', () => {
       emails: ['john@example.com'],
       watchlist_flags: ['OFAC'],
       source: 'nsopw',
-    }, 'nsopw');
+    }, 'nsopw', 'CONFIRMED');
     expect(profile.fullName).toBe('John Smith');
     expect(profile.sources).toEqual(['nsopw']);
     expect(profile.watchlistFlags?.[0]?.listName).toBe('OFAC');

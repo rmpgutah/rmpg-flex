@@ -1,5 +1,21 @@
-import type { EnrichmentSeed, EnrichedRecord } from '../enrichment/types';
+import type { EnrichmentSeed, EnrichedRecord, EnrichmentResponse } from '../enrichment/types';
+import { runEnrichmentSearch } from '../enrichment/runSearch';
+import { ENRICHMENT_SOURCE_CATEGORIES, OPEN_SOURCE_ENRICHMENT_SOURCES } from '../enrichment/catalog';
 import { query, queryFirst } from '../db';
+import { mapSkipTracerRecordsToProfiles, normalizeResponse } from '../personIntel/adapters/skiptracer';
+import { enrichVehicleRecord, type EnrichEnv } from '../vehicleEnrichment/enrichChain';
+import { decodeVin } from '../vehicleEnrichment/client';
+
+export interface VehicleRecord {
+  year?: string;
+  make?: string;
+  model?: string;
+  color?: string;
+  plate?: string;
+  plateState?: string;
+  vin?: string;
+  source: string;
+}
 
 export interface V2Profile {
   id: string;
@@ -12,6 +28,8 @@ export interface V2Profile {
   city?: string;
   state?: string;
   ssn_last4?: string;
+  confidenceScore?: number;
+  matchTier?: 'CONFIRMED' | 'UNCONFIRMED';
   sources: string[];
   addresses?: Array<{ address?: string; city?: string; state?: string; zip?: string; type?: string; source: string }>;
   phones?: Array<{ number: string; type?: string; source: string }>;
@@ -22,6 +40,7 @@ export interface V2Profile {
   sexOffenderRecords?: Array<{ registryState?: string; tier?: string; offenses?: string[]; source: string }>;
   propertyRecords?: Array<{ address?: string; city?: string; state?: string; ownerName?: string; source: string }>;
   businesses?: Array<{ name: string; role?: string; status?: string; source: string }>;
+  vehicles?: VehicleRecord[];
 }
 
 export interface V2SearchParams {
@@ -32,6 +51,7 @@ export interface V2SearchParams {
   ssn_last4?: string;
   city?: string;
   state?: string;
+  /** microbilt = local + open-source enrichment; rapidapi = RapidAPI; all = everything */
   engine: 'microbilt' | 'rapidapi' | 'all';
   categories: string[];
 }
@@ -82,6 +102,8 @@ export function personRowToProfile(p: PersonRow): V2Profile {
     city: p.city ?? undefined,
     state: p.state ?? undefined,
     ssn_last4: p.ssn_last4 ?? last4(p.ssn_full),
+    matchTier: 'CONFIRMED',
+    confidenceScore: 1,
     sources: ['local_rms'],
     phones: p.phone ? [{ number: p.phone, source: 'local_rms' }] : [],
     emails: p.email ? [{ email: p.email, source: 'local_rms' }] : [],
@@ -96,10 +118,15 @@ export function personRowToProfile(p: PersonRow): V2Profile {
   };
 }
 
-export function enrichedRecordToProfile(rec: EnrichedRecord, sourceKey: string): V2Profile {
+export function enrichedRecordToProfile(
+  rec: EnrichedRecord,
+  sourceKey: string,
+  matchTier: 'CONFIRMED' | 'UNCONFIRMED',
+): V2Profile {
   const parts = (rec.name ?? '').trim().split(/\s+/);
   const firstName = parts[0] || undefined;
   const lastName = parts.length > 1 ? parts.slice(1).join(' ') : undefined;
+  const confirmed = matchTier === 'CONFIRMED';
   return {
     id: `${sourceKey}-${crypto.randomUUID()}`,
     fullName: rec.name,
@@ -107,6 +134,8 @@ export function enrichedRecordToProfile(rec: EnrichedRecord, sourceKey: string):
     lastName,
     dob: rec.dob,
     ssn_last4: rec.ssn_last4,
+    matchTier,
+    confidenceScore: confirmed ? 0.95 : 0.45,
     sources: [sourceKey],
     addresses: rec.addresses.map(a => ({
       address: a.street,
@@ -119,14 +148,47 @@ export function enrichedRecordToProfile(rec: EnrichedRecord, sourceKey: string):
     emails: rec.emails.map(e => ({ email: e, source: sourceKey })),
     watchlistFlags: rec.watchlist_flags?.map(f => ({ listName: f, source: sourceKey })),
     businesses: rec.business_associations?.map(b => ({ name: b, source: sourceKey })),
+    sexOffenderRecords: sourceKey === 'nsopw' && rec.watchlist_flags?.length
+      ? [{ registryState: rec.addresses[0]?.state, offenses: rec.watchlist_flags, source: sourceKey }]
+      : undefined,
+    custodyRecords: sourceKey === 'bop_inmates' && rec.name
+      ? [{ facility: rec.raw && typeof rec.raw === 'object' ? String((rec.raw as any).facility ?? 'BOP') : 'BOP', source: sourceKey }]
+      : undefined,
   };
+}
+
+function isVin(value: string): boolean {
+  const v = value.replace(/\s/g, '').toUpperCase();
+  return v.length === 17 && /^[A-HJ-NPR-Z0-9]{17}$/.test(v);
+}
+
+export function parseVehicleQuery(q: string, stateParam?: string): { plate?: string; state?: string; vin?: string } {
+  const trimmed = q.trim();
+  if (isVin(trimmed)) return { vin: trimmed.replace(/\s/g, '').toUpperCase() };
+  const combined = trimmed.toUpperCase();
+  const statePlate = combined.match(/^([A-Z]{2})[\s-]+([A-Z0-9-]+)$/);
+  if (statePlate) return { state: statePlate[1], plate: statePlate[2].replace(/[^A-Z0-9]/g, '') };
+  // Multi-word queries are people or addresses, not plates.
+  if (/\s/.test(trimmed)) return {};
+  const plateOnly = combined.replace(/[^A-Z0-9]/g, '');
+  if (stateParam && plateOnly.length >= 2 && plateOnly.length <= 8) {
+    return { plate: plateOnly, state: stateParam.toUpperCase() };
+  }
+  if (/^[A-Z0-9]{2,8}$/.test(plateOnly) && !isVin(plateOnly)) return { plate: plateOnly };
+  return {};
 }
 
 function detectSearchType(q: string, params: V2SearchParams): string {
   const trimmed = q.trim();
   if (params.firstName || params.lastName) return 'name';
   if (!trimmed) return 'general';
-  if (trimmed.replace(/\D/g, '').length >= 10) return 'phone';
+  if (isVin(trimmed)) return 'vin';
+  const vehicle = parseVehicleQuery(trimmed, params.state);
+  if (vehicle.plate || vehicle.vin) return 'vehicle';
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length >= 10 && digits.length === trimmed.replace(/\D/g, '').length && !/[A-Za-z]/.test(trimmed)) {
+    return 'phone';
+  }
   if (trimmed.includes('@')) return 'email';
   if (/\d/.test(trimmed) && /\b(st|street|ave|avenue|blvd|boulevard|dr|drive|rd|road|ln|lane|ct|court|way|pl|place)\b/i.test(trimmed)) {
     return 'address';
@@ -145,6 +207,8 @@ function mergeProfiles(existing: V2Profile[], incoming: V2Profile[]): V2Profile[
       const base = out[idx];
       out[idx] = {
         ...base,
+        matchTier: base.matchTier === 'CONFIRMED' || p.matchTier === 'CONFIRMED' ? 'CONFIRMED' : 'UNCONFIRMED',
+        confidenceScore: Math.max(base.confidenceScore ?? 0, p.confidenceScore ?? 0),
         sources: [...new Set([...(base.sources ?? []), ...(p.sources ?? [])])],
         addresses: [...(base.addresses ?? []), ...(p.addresses ?? [])],
         phones: [...(base.phones ?? []), ...(p.phones ?? [])],
@@ -154,12 +218,22 @@ function mergeProfiles(existing: V2Profile[], incoming: V2Profile[]): V2Profile[
         sexOffenderRecords: [...(base.sexOffenderRecords ?? []), ...(p.sexOffenderRecords ?? [])],
         propertyRecords: [...(base.propertyRecords ?? []), ...(p.propertyRecords ?? [])],
         businesses: [...(base.businesses ?? []), ...(p.businesses ?? [])],
+        vehicles: [...(base.vehicles ?? []), ...(p.vehicles ?? [])],
       };
     } else {
       out.push(p);
     }
   }
   return out;
+}
+
+async function isSourceEnabled(db: D1Database, name: string): Promise<boolean> {
+  const row = await queryFirst<{ config_value: string }>(db,
+    'SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1',
+    `skiptracer_v2_source_${name}_enabled`,
+  );
+  const v = row?.config_value;
+  return v !== '0' && v !== 'false';
 }
 
 async function searchLocalPersons(db: D1Database, params: V2SearchParams): Promise<V2Profile[]> {
@@ -213,76 +287,185 @@ async function searchLocalPersons(db: D1Database, params: V2SearchParams): Promi
   return rows.map(personRowToProfile);
 }
 
-async function searchMicrobiltCache(db: D1Database, params: V2SearchParams): Promise<V2Profile[]> {
-  const q = params.q.trim();
-  if (!q) return [];
-  try {
-    const wild = `%${q.slice(0, 48)}%`;
-    const cacheRows = await query<{ response_data: string }>(db,
-      `SELECT response_data FROM microbilt_searches
-        WHERE search_input LIKE ? AND hit = 1
-        ORDER BY created_at DESC LIMIT 20`, wild);
-
-    const profiles: V2Profile[] = [];
-    for (const row of cacheRows) {
-      try {
-        const data = JSON.parse(row.response_data);
-        const people = data?.PeopleDetails ?? data?.people ?? data?.results ?? [];
-        if (!Array.isArray(people)) continue;
-        for (const entry of people.slice(0, 10)) {
-          if (!entry || typeof entry !== 'object') continue;
-          const name = String(entry.Name ?? entry.name ?? '').trim();
-          if (!name) continue;
-          const parts = name.split(/\s+/);
-          profiles.push({
-            id: `MICROBILT-CACHE-${profiles.length + 1}`,
-            fullName: name,
-            firstName: parts[0],
-            lastName: parts.slice(1).join(' ') || undefined,
-            age: typeof entry.Age === 'number' ? entry.Age : undefined,
-            city: String(entry['Lives in'] ?? entry.city ?? '').split(',')[0]?.trim() || undefined,
-            state: String(entry['Lives in'] ?? entry.state ?? '').split(',')[1]?.trim() || undefined,
-            sources: ['microbilt_cache'],
-            phones: Array.isArray(entry.phones) ? entry.phones.map((n: string) => ({ number: n, source: 'microbilt_cache' })) : [],
-            emails: Array.isArray(entry.emails) ? entry.emails.map((e: string) => ({ email: e, source: 'microbilt_cache' })) : [],
-          });
-        }
-      } catch { /* skip malformed cache row */ }
-    }
-    return profiles;
-  } catch {
-    return [];
-  }
-}
-
 async function getConfigValue(db: D1Database, key: string): Promise<string | null> {
   const row = await queryFirst<{ config_value: string }>(db,
     'SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1', key);
   return row?.config_value ?? null;
 }
 
-async function isSourceEnabled(db: D1Database, name: string): Promise<boolean> {
-  const v = await getConfigValue(db, `skiptracer_v2_source_${name}_enabled`);
-  return v !== '0' && v !== 'false';
+async function getRapidApiKey(db: D1Database): Promise<string | null> {
+  for (const key of ['skiptracer_rapidapi_key', 'plate_check_rapidapi_key']) {
+    const value = (await getConfigValue(db, key))?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+interface VehicleRow {
+  id: number;
+  plate_number: string | null;
+  state: string | null;
+  vin: string | null;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  color: string | null;
+}
+
+function vehicleDataToProfile(
+  data: { plate?: string; state?: string; vin?: string; make?: string | null; model?: string | null; year?: number | null; color?: string | null },
+  source: string,
+  idSuffix: string,
+): V2Profile {
+  const label = [data.year, data.make, data.model].filter(Boolean).join(' ').trim();
+  const vehicle: VehicleRecord = {
+    year: data.year != null ? String(data.year) : undefined,
+    make: data.make ?? undefined,
+    model: data.model ?? undefined,
+    color: data.color ?? undefined,
+    plate: data.plate,
+    plateState: data.state,
+    vin: data.vin,
+    source,
+  };
+  return {
+    id: idSuffix,
+    fullName: label || data.plate || data.vin || 'Vehicle',
+    matchTier: 'CONFIRMED',
+    confidenceScore: 1,
+    sources: [source],
+    vehicles: [vehicle],
+  };
+}
+
+async function searchLocalVehicles(db: D1Database, params: V2SearchParams): Promise<V2Profile[]> {
+  const parsed = parseVehicleQuery(params.q.trim(), params.state);
+  const limit = 25;
+  let rows: VehicleRow[] = [];
+
+  if (parsed.vin) {
+    rows = await query<VehicleRow>(db,
+      `SELECT id, plate_number, state, vin, make, model, year, color
+         FROM vehicles_records
+        WHERE UPPER(TRIM(vin)) = ?
+          AND vin IS NOT NULL AND TRIM(vin) != ''
+        ORDER BY id DESC LIMIT ?`,
+      parsed.vin, limit);
+  } else if (parsed.plate) {
+    const plate = parsed.plate.toUpperCase();
+    if (parsed.state) {
+      rows = await query<VehicleRow>(db,
+        `SELECT id, plate_number, state, vin, make, model, year, color
+           FROM vehicles_records
+          WHERE UPPER(TRIM(plate_number)) = ? AND UPPER(TRIM(state)) = ?
+          ORDER BY id DESC LIMIT ?`,
+        plate, parsed.state.toUpperCase(), limit);
+    } else {
+      rows = await query<VehicleRow>(db,
+        `SELECT id, plate_number, state, vin, make, model, year, color
+           FROM vehicles_records
+          WHERE UPPER(TRIM(plate_number)) = ?
+          ORDER BY id DESC LIMIT ?`,
+        plate, limit);
+    }
+  }
+
+  return rows.map(r => vehicleDataToProfile({
+    plate: r.plate_number ?? undefined,
+    state: r.state ?? undefined,
+    vin: r.vin ?? undefined,
+    make: r.make,
+    model: r.model,
+    year: r.year,
+    color: r.color,
+  }, 'local_rms', `LOCAL-VEH-${r.id}`));
+}
+
+async function searchVehicleEnrichment(
+  db: D1Database,
+  env: Record<string, unknown>,
+  params: V2SearchParams,
+): Promise<{ profiles: V2Profile[]; error?: string; sourcesResponded: string[]; sourcesFailed: Array<{ name: string; error: string }> }> {
+  const parsed = parseVehicleQuery(params.q.trim(), params.state);
+  const sourcesResponded: string[] = [];
+  const sourcesFailed: Array<{ name: string; error: string }> = [];
+  const enrichEnv = env as EnrichEnv;
+
+  if (parsed.plate && parsed.state) {
+    const hasAnyKey = enrichEnv.PLATE_TO_VIN_API_KEY || enrichEnv.VIN_DECODER_API_KEY || enrichEnv.PLATE_DECODER_API_KEY;
+    if (!hasAnyKey) {
+      return { profiles: [], error: 'not_configured', sourcesResponded, sourcesFailed: [{ name: 'vehicle_enrichment', error: 'not_configured' }] };
+    }
+    try {
+      const result = await enrichVehicleRecord(parsed.plate, parsed.state, db, enrichEnv);
+      if (result.stepsRun.length) sourcesResponded.push('vehicle_enrichment');
+      for (const [step, err] of Object.entries(result.stepErrors)) {
+        if (err && err !== 'config:no_key') sourcesFailed.push({ name: step, error: err });
+      }
+      const profile = vehicleDataToProfile({
+        plate: parsed.plate,
+        state: parsed.state,
+        vin: result.data.vin ?? undefined,
+        make: result.data.make,
+        model: result.data.model,
+        year: result.data.year,
+        color: result.data.color,
+      }, 'vehicle_enrichment', `VEH-${parsed.state}-${parsed.plate}`);
+      return { profiles: [profile], sourcesResponded, sourcesFailed };
+    } catch (e) {
+      return {
+        profiles: [],
+        error: e instanceof Error ? e.message : 'vehicle enrichment failed',
+        sourcesResponded,
+        sourcesFailed: [{ name: 'vehicle_enrichment', error: e instanceof Error ? e.message : 'failed' }],
+      };
+    }
+  }
+
+  if (parsed.vin && enrichEnv.VIN_DECODER_API_KEY) {
+    try {
+      const decoded = await decodeVin(parsed.vin, enrichEnv.VIN_DECODER_API_KEY);
+      sourcesResponded.push('vehicle_vin_decoder');
+      const profile = vehicleDataToProfile({
+        vin: parsed.vin,
+        make: decoded.make,
+        model: decoded.model,
+        year: decoded.year,
+        color: decoded.color,
+      }, 'vehicle_vin_decoder', `VIN-${parsed.vin}`);
+      return { profiles: [profile], sourcesResponded, sourcesFailed };
+    } catch (e) {
+      sourcesFailed.push({ name: 'vehicle_vin_decoder', error: e instanceof Error ? e.message : 'failed' });
+    }
+  }
+
+  if (parsed.vin || parsed.plate) {
+    return { profiles: [], error: parsed.plate && !parsed.state ? 'state_required' : 'not_configured', sourcesResponded, sourcesFailed };
+  }
+  return { profiles: [], sourcesResponded, sourcesFailed };
 }
 
 async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{ profiles: V2Profile[]; error?: string }> {
-  const apiKey = await getConfigValue(db, 'skiptracer_rapidapi_key');
+  const apiKey = await getRapidApiKey(db);
   if (!apiKey) return { profiles: [], error: 'not_configured' };
   if (!(await isSourceEnabled(db, 'rapidapi_skiptrace'))) return { profiles: [] };
 
   const host = (await getConfigValue(db, 'skiptracer_api_host'))
     ?? 'skip-tracing-api-people-search-lookup.p.rapidapi.com';
   const q = params.q.trim();
+  const searchType = detectSearchType(q, params);
   const urlParams = new URLSearchParams();
   let path = '/api/person/search';
 
-  if (q.replace(/\D/g, '').length >= 10) {
+  if (searchType === 'phone') {
     path = '/api/person/reverse';
     urlParams.set('phone', q.replace(/\D/g, ''));
-  } else if (q.includes('@')) {
+  } else if (searchType === 'email') {
     path = '/api/person/reverse';
     urlParams.set('email', q);
+  } else if (searchType === 'address') {
+    path = '/api/person/reverse';
+    urlParams.set('address', q);
   } else {
     const first = params.firstName || q.split(/\s+/)[0] || '';
     const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
@@ -302,34 +485,24 @@ async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{
     });
     clearTimeout(timer);
     if (!res.ok) return { profiles: [], error: `HTTP ${res.status}` };
-    const data = await res.json() as any;
-    const results = data?.data?.results ?? data?.results ?? data?.people ?? [];
-    const profiles: V2Profile[] = [];
-    for (const rec of (Array.isArray(results) ? results : [])) {
-      const first = rec.firstName ?? rec.first_name ?? '';
-      const last = rec.lastName ?? rec.last_name ?? '';
-      const fullName = [first, last].filter(Boolean).join(' ').trim();
-      if (!fullName) continue;
-      profiles.push({
-        id: `RAPIDAPI-${profiles.length + 1}`,
-        fullName,
-        firstName: first || undefined,
-        lastName: last || undefined,
-        dob: rec.born ?? rec.dob ?? undefined,
-        age: rec.age ? Number(rec.age) : undefined,
-        sources: ['rapidapi_skiptrace'],
-        addresses: rec.currentAddress ? [{ address: String(rec.currentAddress), source: 'rapidapi_skiptrace' }] : [],
-        phones: Array.isArray(rec.phones) ? rec.phones.map((p: any) => ({
-          number: String(p.number ?? p.phone ?? p),
-          source: 'rapidapi_skiptrace',
-        })) : [],
-        associates: Array.isArray(rec.relatives) ? rec.relatives.map((r: any) => ({
-          name: String(r.name ?? r.Name ?? r),
-          relationship: 'relative',
-          source: 'rapidapi_skiptrace',
-        })) : [],
-      });
-    }
+    const data = await res.json() as Record<string, unknown>;
+    const records = normalizeResponse(data);
+    const mapped = mapSkipTracerRecordsToProfiles(records);
+    const profiles: V2Profile[] = mapped.map((rec, i) => ({
+      id: `RAPIDAPI-${i + 1}`,
+      fullName: rec.fullName,
+      firstName: rec.firstName,
+      lastName: rec.lastName,
+      dob: rec.dob,
+      age: rec.age,
+      matchTier: 'UNCONFIRMED',
+      confidenceScore: 0.6,
+      sources: ['rapidapi_skiptrace'],
+      addresses: rec.addresses,
+      phones: rec.phones,
+      emails: rec.emails,
+      associates: rec.associates,
+    }));
     return { profiles };
   } catch (e) {
     return { profiles: [], error: e instanceof Error ? e.message : 'rapidapi failed' };
@@ -338,6 +511,20 @@ async function searchRapidApi(db: D1Database, params: V2SearchParams): Promise<{
 
 export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | null {
   const q = params.q.trim();
+  const searchType = detectSearchType(q, params);
+
+  if (searchType === 'vehicle' || searchType === 'vin') return null;
+
+  if (searchType === 'address') {
+    return {
+      first_name: params.firstName || 'ADDRESS',
+      last_name: params.lastName || 'LOOKUP',
+      city: params.city,
+      state: params.state,
+      address: q,
+    };
+  }
+
   const first = params.firstName || q.split(/\s+/)[0] || '';
   const last = params.lastName || q.split(/\s+/).slice(1).join(' ') || '';
   if (!first && !last) return null;
@@ -347,9 +534,8 @@ export function buildEnrichmentSeed(params: V2SearchParams): EnrichmentSeed | nu
     dob: params.dob,
     city: params.city,
     state: params.state,
-    phone: q.replace(/\D/g, '').length >= 10 ? q : undefined,
-    email: q.includes('@') ? q : undefined,
-    address: detectSearchType(q, params) === 'address' ? q : undefined,
+    phone: searchType === 'phone' ? q : undefined,
+    email: searchType === 'email' ? q : undefined,
     ssn_last4: params.ssn_last4,
   };
 }
@@ -360,48 +546,93 @@ export interface SearchOutcome {
   sourcesResponded: string[];
   sourcesFailed: Array<{ name: string; error: string }>;
   totalCost: number;
+  matchTier?: 'CONFIRMED' | 'UNCONFIRMED';
+  anchors?: string[];
 }
 
-const ENRICHMENT_SOURCE_CATEGORIES: Record<string, string> = {
-  nsopw: 'registry',
-  sl_assessor: 'property',
-  open_sanctions: 'registry',
-  fbi_wanted: 'registry',
-  bop_inmates: 'registry',
-  usps: 'property',
-  open_corporates: 'business',
-  numverify: 'osint',
-  census_geocoder: 'property',
-  ofac_sdn: 'registry',
-};
+function enrichmentProfiles(
+  enrichment: EnrichmentResponse,
+  categories: Set<string>,
+): { profiles: V2Profile[]; queried: string[]; responded: string[]; failed: Array<{ name: string; error: string }> } {
+  const profiles: V2Profile[] = [];
+  const queried: string[] = [];
+  const responded: string[] = [];
+  const failed: Array<{ name: string; error: string }> = [];
+
+  for (const src of enrichment.sources) {
+    const cat = ENRICHMENT_SOURCE_CATEGORIES[src.source] ?? 'osint';
+    if (categories.size > 0 && !categories.has(cat)) continue;
+    queried.push(src.source);
+    if (src.ok && src.records.length) {
+      responded.push(src.source);
+      for (const rec of src.records) {
+        const tier = enrichment.match_tier;
+        profiles.push(enrichedRecordToProfile(rec, src.source, tier));
+      }
+    } else if (!src.ok && src.error) {
+      failed.push({ name: src.source, error: src.error });
+    }
+  }
+  return { profiles, queried, responded, failed };
+}
 
 export async function runSkipTracerSearch(
   db: D1Database,
   env: Record<string, unknown>,
   params: V2SearchParams,
-  enrichmentModules: Array<{ key: string; mod: { search: (seed: EnrichmentSeed, env: Record<string, unknown>) => Promise<{ ok: boolean; records: EnrichedRecord[]; error?: string }> } }>,
+  searchedBy?: number | null,
 ): Promise<SearchOutcome> {
   const sourcesQueried: string[] = [];
   const sourcesResponded: string[] = [];
   const sourcesFailed: Array<{ name: string; error: string }> = [];
   let profiles: V2Profile[] = [];
   let totalCost = 0;
-
-  const wantLocal = params.engine === 'all' || params.engine === 'microbilt';
-  const wantRapid = params.engine === 'all' || params.engine === 'rapidapi';
   const categories = new Set(params.categories);
 
-  if (wantLocal) {
-    sourcesQueried.push('local_rms', 'microbilt_cache');
+  const searchType = detectSearchType(params.q, params);
+  const isVehicleSearch = searchType === 'vehicle' || searchType === 'vin';
+
+  const wantLocal = !isVehicleSearch && (params.engine === 'all' || params.engine === 'microbilt');
+  const wantRapid = !isVehicleSearch && (params.engine === 'all' || params.engine === 'rapidapi');
+  const wantEnrichment = !isVehicleSearch && (params.engine === 'all' || params.engine === 'microbilt');
+  const wantVehicle = isVehicleSearch && (params.engine === 'all' || params.engine === 'rapidapi' || params.engine === 'microbilt');
+
+  if (wantVehicle) {
     if (await isSourceEnabled(db, 'local_rms')) {
-      profiles = mergeProfiles(profiles, await searchLocalPersons(db, params));
-      if (profiles.length) sourcesResponded.push('local_rms');
+      sourcesQueried.push('local_rms');
+      const localVehicles = await searchLocalVehicles(db, params);
+      profiles = mergeProfiles(profiles, localVehicles);
+      if (localVehicles.length) sourcesResponded.push('local_rms');
     }
-    if (await isSourceEnabled(db, 'microbilt_cache')) {
-      const cached = await searchMicrobiltCache(db, params);
-      profiles = mergeProfiles(profiles, cached);
-      if (cached.length) sourcesResponded.push('microbilt_cache');
+    if (params.engine === 'all' || params.engine === 'rapidapi') {
+      sourcesQueried.push('vehicle_enrichment');
+      const vehicle = await searchVehicleEnrichment(db, env, params);
+      if (vehicle.error === 'not_configured') {
+        sourcesFailed.push({ name: 'vehicle_enrichment', error: 'not_configured' });
+      } else if (vehicle.error && vehicle.profiles.length === 0) {
+        sourcesFailed.push({ name: 'vehicle_enrichment', error: vehicle.error });
+      }
+      sourcesResponded.push(...vehicle.sourcesResponded);
+      sourcesFailed.push(...vehicle.sourcesFailed);
+      if (vehicle.profiles.length) {
+        profiles = mergeProfiles(profiles, vehicle.profiles);
+        totalCost += 0.05;
+      }
     }
+    return {
+      profiles,
+      sourcesQueried,
+      sourcesResponded,
+      sourcesFailed,
+      totalCost,
+    };
+  }
+
+  if (wantLocal && await isSourceEnabled(db, 'local_rms')) {
+    sourcesQueried.push('local_rms');
+    const local = await searchLocalPersons(db, params);
+    profiles = mergeProfiles(profiles, local);
+    if (local.length) sourcesResponded.push('local_rms');
   }
 
   if (wantRapid) {
@@ -419,31 +650,47 @@ export async function runSkipTracerSearch(
   }
 
   const seed = buildEnrichmentSeed(params);
-  if (seed) {
-    for (const src of enrichmentModules) {
-      const cat = ENRICHMENT_SOURCE_CATEGORIES[src.key] ?? 'osint';
-      if (categories.size > 0 && !categories.has(cat)) continue;
+  let matchTier: 'CONFIRMED' | 'UNCONFIRMED' | undefined;
+  let anchors: string[] | undefined;
+
+  if (wantEnrichment && seed) {
+    const activeSources = [];
+    for (const src of OPEN_SOURCE_ENRICHMENT_SOURCES) {
+      if (categories.size > 0 && !categories.has(src.category)) continue;
       if (!(await isSourceEnabled(db, src.key))) continue;
-      sourcesQueried.push(src.key);
-      try {
-        const result = await src.mod.search(seed, env);
-        if (result.ok && result.records.length) {
-          sourcesResponded.push(src.key);
-          profiles = mergeProfiles(profiles, result.records.map(r => enrichedRecordToProfile(r, src.key)));
-        } else if (!result.ok && result.error) {
-          sourcesFailed.push({ name: src.key, error: result.error });
-        }
-      } catch (e) {
-        sourcesFailed.push({ name: src.key, error: e instanceof Error ? e.message : 'failed' });
-      }
+      activeSources.push(src);
+    }
+
+    if (activeSources.length > 0) {
+      const enrichment = await runEnrichmentSearch(db, env, seed, {
+        sources: activeSources,
+        searchedBy,
+      });
+      matchTier = enrichment.match_tier;
+      anchors = enrichment.anchors;
+      const mapped = enrichmentProfiles(enrichment, categories);
+      sourcesQueried.push(...mapped.queried);
+      sourcesResponded.push(...mapped.responded);
+      sourcesFailed.push(...mapped.failed);
+      profiles = mergeProfiles(profiles, mapped.profiles);
     }
   }
 
-  return { profiles, sourcesQueried, sourcesResponded, sourcesFailed, totalCost };
+  return {
+    profiles,
+    sourcesQueried,
+    sourcesResponded,
+    sourcesFailed,
+    totalCost,
+    matchTier,
+    anchors,
+  };
 }
 
 export function parseSearchParams(searchParams: URLSearchParams): V2SearchParams {
   const categoriesRaw = searchParams.get('categories') ?? '';
+  const engineRaw = searchParams.get('engine');
+  const engine = engineRaw === 'microbilt' || engineRaw === 'rapidapi' ? engineRaw : 'all';
   return {
     q: searchParams.get('q') ?? '',
     firstName: searchParams.get('firstName') ?? undefined,
@@ -452,7 +699,7 @@ export function parseSearchParams(searchParams: URLSearchParams): V2SearchParams
     ssn_last4: searchParams.get('ssn_last4') ?? undefined,
     city: searchParams.get('city') ?? undefined,
     state: searchParams.get('state') ?? undefined,
-    engine: (searchParams.get('engine') as V2SearchParams['engine']) || 'microbilt',
+    engine,
     categories: categoriesRaw ? categoriesRaw.split(',').map(s => s.trim()).filter(Boolean) : [],
   };
 }

@@ -22,6 +22,20 @@ export async function ensureSkipTracerV2Schema(db: D1Database): Promise<void> {
   await execute(db, `CREATE INDEX IF NOT EXISTS idx_skip_tracer_searches_v_created
     ON skip_tracer_searches_v(created_at DESC)`);
 
+  await execute(db, `CREATE TABLE IF NOT EXISTS enrichment_cache (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    cache_key    TEXT NOT NULL UNIQUE,
+    seed_json    TEXT NOT NULL,
+    results_json TEXT NOT NULL,
+    match_tier   TEXT NOT NULL DEFAULT 'UNCONFIRMED',
+    anchors_json TEXT,
+    source_count INTEGER NOT NULL DEFAULT 0,
+    searched_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at   TEXT NOT NULL,
+    searched_by  INTEGER,
+    org_id       TEXT
+  )`);
+
   for (const col of ['profile_snapshot', 'tags', 'linked_incident_id', 'linked_case_id']) {
     if (!(await columnExists(db, 'skiptracer_dossiers', col))) {
       try {

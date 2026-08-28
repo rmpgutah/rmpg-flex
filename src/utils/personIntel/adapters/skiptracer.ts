@@ -159,7 +159,7 @@ export async function querySkipTracer(db: D1Database, seed: IntelSeed): Promise<
   }
 }
 
-function normalizeResponse(data: any): any[] {
+export function normalizeResponse(data: any): any[] {
   // Handle the actual API structure: { success: true, data: { results: [...] } }
   if (data.success && data.data && Array.isArray(data.data.results)) {
     return data.data.results;
@@ -345,6 +345,53 @@ function extractAssociates(record: any): Array<{ name: string; age?: string }> {
 function extractPersonLink(record: any): string | undefined {
   const v = record.personLink || record.person_link || record.profile_url || record.url || record.source_url;
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+/**
+ * Map normalized RapidAPI skip-trace records into dossier-ready profiles.
+ */
+export function mapSkipTracerRecordsToProfiles(records: unknown[]): Array<{
+  fullName: string;
+  firstName?: string;
+  lastName?: string;
+  dob?: string;
+  age?: number;
+  addresses: Array<{ address?: string; city?: string; state?: string; zip?: string; source: string }>;
+  phones: Array<{ number: string; type?: string; source: string }>;
+  emails: Array<{ email?: string; source: string }>;
+  associates: Array<{ name: string; relationship?: string; source: string }>;
+}> {
+  const profiles: ReturnType<typeof mapSkipTracerRecordsToProfiles> = [];
+  for (const rec of records) {
+    const name = extractProfileName(rec);
+    const fullName = [name.first, name.last].filter(Boolean).join(' ').trim();
+    if (!fullName) continue;
+    profiles.push({
+      fullName,
+      firstName: name.first || undefined,
+      lastName: name.last || undefined,
+      dob: name.born || undefined,
+      age: name.age ? Number(name.age) : undefined,
+      addresses: extractAddresses(rec).map(a => ({
+        address: [a.street, a.city, a.state, a.zip].filter(Boolean).join(', ') || a.street,
+        city: a.city,
+        state: a.state,
+        zip: a.zip,
+        source: 'rapidapi_skiptrace',
+      })),
+      phones: extractPhones(rec).map(p => ({
+        number: p.number,
+        type: p.type,
+        source: 'rapidapi_skiptrace',
+      })),
+      emails: extractEmails(rec).map(e => ({ email: e, source: 'rapidapi_skiptrace' })),
+      associates: [
+        ...extractRelatives(rec).map(r => ({ name: r.name, relationship: 'relative', source: 'rapidapi_skiptrace' })),
+        ...extractAssociates(rec).map(a => ({ name: a.name, relationship: 'associate', source: 'rapidapi_skiptrace' })),
+      ],
+    });
+  }
+  return profiles;
 }
 
 /**
