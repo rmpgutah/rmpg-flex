@@ -416,7 +416,7 @@ panic.get('/panic/:id/audio', requireRole('dispatcher', 'supervisor', 'manager',
   if (row.audio_file_id == null) return c.json({ error: 'No audio recorded for this alert' }, 404);
   const key = `panic-audio/${id}.webm`;
   try {
-    const result = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    const result = await getDecrypted(c.env.UPLOADS, db, c.env, key);
     if (!result) return c.json({ error: 'Audio not found in storage' }, 404);
     return new Response(result.bytes, {
       headers: { 'Content-Type': 'audio/webm', 'Cache-Control': 'no-store' },

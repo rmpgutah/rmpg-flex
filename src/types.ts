@@ -41,6 +41,9 @@ export type Bindings = {
   // Wraps a fresh random per-file Data Encryption Key for each protected upload. Base64 of
   // 32 random bytes — provision via:
   //   node scripts/generate-quantum-key.mjs 32 | wrangler secret put FILE_ENCRYPTION_KEK
+  // Optional: when unset, encryptedR2 derives a stable KEK from JWT_SECRET
+  // (same pattern as PDF_SIGNING_KEY). Do not later add a dedicated KEK
+  // without rotating/re-wrapping existing ciphertext.
   FILE_ENCRYPTION_KEK?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;

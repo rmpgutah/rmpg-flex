@@ -107,6 +107,29 @@ describe('encryptedR2', () => {
     const { db } = makeMockDb();
     await expect(putEncrypted(bucket, db, undefined, 'field-photos/e.jpg', new Uint8Array([1, 2, 3])))
       .rejects.toBeInstanceOf(FileEncryptionError);
+    await expect(putEncrypted(bucket, db, {}, 'field-photos/e2.jpg', new Uint8Array([1, 2, 3])))
+      .rejects.toBeInstanceOf(FileEncryptionError);
+  });
+
+  it('round-trips using a JWT_SECRET-derived KEK when FILE_ENCRYPTION_KEK is unset', async () => {
+    const { bucket } = makeMockBucket();
+    const { db } = makeMockDb();
+    const env = { JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' };
+    const original = new TextEncoder().encode('jwt-fallback ciphertext');
+    await putEncrypted(bucket, db, env, 'field-photos/jwt.jpg', original);
+    const result = await getDecrypted(bucket, db, env, 'field-photos/jwt.jpg');
+    expect(new TextDecoder().decode(result!.bytes)).toBe('jwt-fallback ciphertext');
+  });
+
+  it('does not fall back to JWT_SECRET when FILE_ENCRYPTION_KEK is present but malformed', async () => {
+    const { bucket } = makeMockBucket();
+    const { db } = makeMockDb();
+    await expect(putEncrypted(
+      bucket, db,
+      { FILE_ENCRYPTION_KEK: btoa('too-short'), JWT_SECRET: 'would-work-alone' },
+      'field-photos/no-fallback.jpg',
+      new Uint8Array([1, 2, 3]),
+    )).rejects.toBeInstanceOf(FileEncryptionError);
   });
 
   it('throws FileEncryptionError when the KEK is the wrong length', async () => {

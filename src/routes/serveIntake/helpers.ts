@@ -176,7 +176,7 @@ export async function storeToR2(env: Env['Bindings'], file: File, uploaderId: nu
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
   const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await putEncrypted(env.UPLOADS, getDb(env), env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
+  await putEncrypted(env.UPLOADS, getDb(env), env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
   });
   return key;

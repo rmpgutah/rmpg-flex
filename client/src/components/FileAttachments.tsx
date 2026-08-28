@@ -28,6 +28,7 @@ import { useAuth } from '../context/AuthContext';
 import { getGeoFix, contextLabelForEntity } from '../utils/photoStamp';
 import { deStampOne } from '../utils/deStampImage';
 import { Eraser } from 'lucide-react';
+import { officerFacingFileError } from '../utils/officerFacingFileError';
 
 interface Attachment {
   id: number;
@@ -497,7 +498,7 @@ export default function FileAttachments({
       const data = await apiFetchAttachments(entityType, entityId);
       setAttachments(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load attachments');
+      setError(officerFacingFileError(err, 'Failed to load attachments'));
     } finally {
       setLoading(false);
     }
@@ -545,7 +546,7 @@ export default function FileAttachments({
       setReferenceInput('');
       setShowRefInput(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+      setError(officerFacingFileError(err, 'Upload failed'));
     } finally {
       setUploading(false);
       setUploadProgress(null);

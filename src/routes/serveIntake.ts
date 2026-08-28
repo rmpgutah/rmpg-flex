@@ -328,7 +328,7 @@ async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | 
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
   const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
-  await putEncrypted(env.UPLOADS, getDb(env), env.FILE_ENCRYPTION_KEK, key, await file.arrayBuffer(), {
+  await putEncrypted(env.UPLOADS, getDb(env), env, key, await file.arrayBuffer(), {
     httpMetadata: { contentType: file.type || 'application/octet-stream' },
   });
   return key;
@@ -1487,7 +1487,7 @@ si.get('/documents/:docId/file', async (c) => {
   // task shipped). A genuine decrypt failure (bad KEK, tampered ciphertext)
   // THROWS instead and must propagate as a real error, not silently fall
   // back to raw bytes — so this is deliberately NOT wrapped in .catch().
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
@@ -1526,7 +1526,7 @@ async function reprocessDocument(
     // objects written before this task shipped); it THROWS for a genuine
     // decrypt failure, which is deliberately left uncaught here so it
     // propagates as a real error instead of masquerading as "no image".
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
     let bytes: Uint8Array | null = decrypted ? decrypted.bytes : null;
     if (!bytes) {
       const legacy = await c.env.UPLOADS.get(doc.r2_key);

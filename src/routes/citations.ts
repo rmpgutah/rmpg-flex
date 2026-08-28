@@ -609,7 +609,7 @@ citations.post('/:id/copies', async (c) => {
       }
       const key = `citations/${id}/${kind}.pdf`;
       try {
-        await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key, bytes, {
+        await putEncrypted(c.env.UPLOADS, db, c.env, key, bytes, {
           httpMetadata: { contentType: 'application/pdf' },
         });
         uploaded[kind] = key;
@@ -706,7 +706,7 @@ citations.get('/:id/copies/:kind', async (c) => {
       return c.json({ error: 'Invalid copy kind', code: 'INVALID_KIND' }, 400);
     }
     const key = `citations/${id}/${kind}.pdf`;
-    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, key);
+    const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, key);
     let body: BodyInit;
     let contentType = 'application/pdf';
     if (decrypted) {

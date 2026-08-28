@@ -257,7 +257,7 @@ tesseractTraining.get('/documents/:id/image', async (c) => {
     id,
   );
   if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
   if (decrypted) {
     return new Response(decrypted.bytes, {
       headers: {
@@ -310,7 +310,7 @@ async function submitDocumentToCorpus(
     return { success: false, error: 'Not found', code: 'NOT_FOUND', status: 404 };
   }
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, doc.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, doc.r2_key);
   let imageBytes: Uint8Array | ArrayBuffer;
   if (decrypted) {
     imageBytes = decrypted.bytes;

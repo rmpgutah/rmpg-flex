@@ -57,7 +57,7 @@ redactions.post('/', async (c): Promise<Response> => {
 
   const r2Key = `redactions/${crypto.randomUUID()}.${fmt.ext}`;
   try {
-    await putEncrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: fmt.contentType } });
+    await putEncrypted(c.env.UPLOADS, db, c.env, r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: fmt.contentType } });
   } catch (err: any) {
     return c.json({ error: `storage failed: ${err?.message ?? 'unknown'}` }, 502);
   }
@@ -119,7 +119,7 @@ redactions.get('/:id/download', async (c): Promise<Response> => {
   await ensureSchema(db);
   const row = await queryFirst<{ r2_key: string }>(db, `SELECT r2_key FROM video_redactions WHERE id = ?`, Number(c.req.param('id')));
   if (!row) return c.json({ error: 'Not found' }, 404);
-  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env.FILE_ENCRYPTION_KEK, row.r2_key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, db, c.env, row.r2_key);
   const ext = row.r2_key.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
   if (decrypted) {
     const contentType = decrypted.httpMetadata?.contentType || (ext === 'webm' ? 'video/webm' : 'video/mp4');

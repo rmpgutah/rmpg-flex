@@ -99,4 +99,27 @@ describe('attachments/ — envelope encryption', () => {
     const downloadedBytes = new Uint8Array(await downloadRes.arrayBuffer());
     expect(Array.from(downloadedBytes)).toEqual(Array.from(legacyBytes));
   });
+
+  it('encrypts via JWT_SECRET when FILE_ENCRYPTION_KEK is unset', async () => {
+    const testEnv = { ...(env as unknown as Record<string, unknown>), JWT_SECRET };
+    delete testEnv.FILE_ENCRYPTION_KEK;
+    const token = await mintToken();
+    const original = new Uint8Array([9, 8, 7, 6, 5]);
+    const form = new FormData();
+    form.append('files', new File([original], 'jwt-fallback.txt', { type: 'text/plain' }));
+    const uploadRes = await app.request('/api/uploads', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    }, testEnv);
+    expect(uploadRes.status).toBe(201);
+    const [row] = await uploadRes.json() as Array<{ file_id: string; file_path: string }>;
+    const raw = await (testEnv as any).UPLOADS.get(row.file_path);
+    expect(Array.from(new Uint8Array(await raw!.arrayBuffer()))).not.toEqual(Array.from(original));
+    const downloadRes = await app.request(`/api/uploads/${row.file_id}/download`, {
+      headers: { authorization: `Bearer ${token}` },
+    }, testEnv);
+    expect(downloadRes.status).toBe(200);
+    expect(Array.from(new Uint8Array(await downloadRes.arrayBuffer()))).toEqual(Array.from(original));
+  });
 });

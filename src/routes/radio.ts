@@ -246,7 +246,7 @@ rt.get('/transmissions/:id/audio', async (c) => {
     }
   }
 
-  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env.FILE_ENCRYPTION_KEK, key);
+  const decrypted = await getDecrypted(c.env.UPLOADS, getDb(c.env), c.env, key);
 
   // getDecrypted() returns null both for "object never existed" and for
   // "object exists, no file_encryption_keys row" — the latter is exactly
