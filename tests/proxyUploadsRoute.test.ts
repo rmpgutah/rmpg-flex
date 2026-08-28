@@ -32,7 +32,17 @@ describe('rmpg-api-proxy same-origin routing', () => {
     }
   });
 
-  it('does not stub live HR GETs that have handlers in src/routes/hr.ts', () => {
-    expect(PROXY).not.toMatch(/payroll\\\/\(periods\|rates\|entries\|overtime\)/);
+  it('routes integration namespaces to env.API', () => {
+    for (const path of [
+      '/api/integrations', '/api/geocode', '/api/email', '/api/email-oauth',
+      '/api/jail-roster', '/api/microbilt', '/api/clearpathgps', '/api/traccar',
+      '/api/servemanager', '/api/howen',
+    ]) {
+      expect(PROXY).toContain(`value: '${path}'`);
+    }
+  });
+
+  it('does not stub /api/arrests/status (Admin Arrests tile)', () => {
+    expect(PROXY).not.toMatch(/match:\s*\/\^\\\/api\\\/arrests\\\/status/);
   });
 });

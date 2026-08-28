@@ -7,8 +7,18 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
+import { apiHttpBase, WORKER_HTTP_ORIGIN } from '../utils/apiOrigin';
 
-const CLOUD_BASE = import.meta.env.VITE_API_BASE_URL ?? 'https://api.rmpgutah.us';
+function cloudApiBase(): string {
+  if (import.meta.env.VITE_API_BASE_URL) return import.meta.env.VITE_API_BASE_URL;
+  if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+    const relative = apiHttpBase();
+    return relative || window.location.origin;
+  }
+  return WORKER_HTTP_ORIGIN;
+}
+
+const CLOUD_BASE = cloudApiBase();
 const LOCAL_BASE: string | null = import.meta.env.VITE_LOCAL_SERVER_URL ?? null;
 const PROBE_TIMEOUT_MS = 500;
 const REPROBE_INTERVAL_MS = 30_000;

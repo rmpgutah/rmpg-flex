@@ -239,12 +239,8 @@ const STUBS: StubRule[] = [
     reason: 'no trespass_violations table; trespass detail tolerates empty list',
   },
   // ── Dashcam video link records (DashCamera detail) ──────────────────
-  {
-    match: /^\/api\/dashcam-videos\/[^/]+\/links(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no dashcam_video_links table; detail page tolerates empty link list',
-  },
+  // (removed 2026-08-28) /api/dashcam-videos/:id/links stub — the live
+  // client calls /api/fleet/dashcam-videos/:id/links (fleet.ts).
   // ── Dispatch messages namespace (entire mount dead — no table) ──────
   // Legacy has ~7 routes under /api/dispatch-messages/ all querying
   // `dispatch_messages` (and `dispatch_units` on some) which don't
@@ -282,13 +278,9 @@ const STUBS: StubRule[] = [
   //
   // (removed 2026-07-12) /api/reports/comparison stub — real handler
   // exists (reports.ts .get('/comparison')) and was being shadowed.
-  // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
-  {
-    match: /^\/api\/arrests\/status(\?.*)?$/,
-    methods: ['GET'],
-    body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
-    reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
-  },
+  // (removed 2026-08-28) /api/arrests/status stub — wrong shape vs
+  // AdminArrestsTab (configured/enabled/recordsCount). Real handler is
+  // arrests.get('/status').
   // (removed 2026-07-12) /api/iped/download/info stub — real handler
   // exists (iped.ts .get('/download/info')) and was being shadowed.
   // (removed 2026-07-20, PR #2905) /api/admin/database/integrity-check
@@ -650,6 +642,19 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/browser-search' },
   { kind: 'prefix', value: '/api/statutes' },
   { kind: 'prefix', value: '/api/dispatch/gps' },
+
+  // Integrations that the SPA talks to same-origin (Mapbox token, Graph
+  // mailbox connect, jail roster, GPS vendors, ServeManager).
+  { kind: 'prefix', value: '/api/integrations' },
+  { kind: 'prefix', value: '/api/geocode' },
+  { kind: 'prefix', value: '/api/email' },
+  { kind: 'prefix', value: '/api/email-oauth' },
+  { kind: 'prefix', value: '/api/jail-roster' },
+  { kind: 'prefix', value: '/api/microbilt' },
+  { kind: 'prefix', value: '/api/clearpathgps' },
+  { kind: 'prefix', value: '/api/traccar' },
+  { kind: 'prefix', value: '/api/servemanager' },
+  { kind: 'prefix', value: '/api/howen' },
 
   // ── HR module ──
   // Whole namespace on the rewrite (leave, disciplinary, reviews, benefits,

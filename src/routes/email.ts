@@ -42,6 +42,7 @@ import { saveUserGraphToken, getUserGraphToken, deleteUserGraphToken, listConnec
 import type { Bindings, Variables } from '../types';
 import type { MiddlewareHandler } from 'hono';
 import { rateLimitAllow } from '../utils/rateLimit';
+import { emailConnectRedirectUri } from '../utils/appOrigin';
 
 import { log } from '../utils/logger';
 const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -197,10 +198,10 @@ email.get('/connect/authorize', async (c) => {
   for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
   await setCfg(c.env.DB, `email_connect_state_${state}`, String(userId));
 
-  // Always use the canonical API domain for the redirect URI. Using
-  // c.req.url.host returns 'rmpgutah.us' when the request is proxied
-  // through the SPA origin, causing AADSTS50011 (redirect URI mismatch).
-  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
+  // Same-origin on the SPA host so the Azure redirect rides rmpg-api-proxy
+  // (WAF cookie already set) instead of api.rmpgutah.us (challenge host).
+  // Azure must list this URI — Admin Email tab documents it.
+  const redirectUri = emailConnectRedirectUri(c.env);
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
@@ -257,7 +258,7 @@ email.get('/connect/callback', async (c) => {
     return c.redirect('/email?connect_status=error&message=Credentials+missing');
   }
 
-  const redirectUri = 'https://api.rmpgutah.us/api/email/connect/callback';
+  const redirectUri = emailConnectRedirectUri(c.env);
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
