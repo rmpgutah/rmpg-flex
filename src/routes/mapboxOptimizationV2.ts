@@ -94,8 +94,25 @@ app.post('/submit', async (c) => {
       const stopRows = await queryInChunks<ServeStop>(
         db,
         serve_queue_ids,
-        (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
+        (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority, business_id, parsed_data->>'recipient_type' AS recipient_type FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
       );
+      try {
+        const slots = await queryInChunks<{ queue_id: number; window_start: string; window_end: string; scheduled_date: string }>(
+          db,
+          serve_queue_ids,
+          (ph) => `SELECT queue_id, window_start, window_end, scheduled_date FROM serve_attempt_schedules WHERE dismissed = 0 AND queue_id IN (${ph}) ORDER BY scheduled_date ASC, window_start ASC`,
+        );
+        const first = new Map<number, { window_start: string; window_end: string }>();
+        const shiftDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date(shift_start));
+        for (const slot of slots) {
+          if (slot.scheduled_date < shiftDay) continue;
+          if (!first.has(slot.queue_id)) first.set(slot.queue_id, slot);
+        }
+        for (const row of stopRows) {
+          const slot = first.get(row.id);
+          if (slot) row.time_window = `${slot.window_start}-${slot.window_end}`;
+        }
+      } catch { /* schedules table optional */ }
       let officer: UnitRow | null = null;
       if (officer_unit_id) {
         const officerRow = await db

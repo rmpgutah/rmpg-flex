@@ -58,6 +58,7 @@ import { routeJsonColumn } from '../utils/serveRoutePayload';
 import { parseD1TimestampMs } from '../utils/fleetio/sync';
 import { computeOfficerMileageForDay, computeOfficerMileageSegments } from '../utils/serveMileage';
 import { hashAddress, shouldRecordDwell, dwellSeconds } from '../utils/serveRouteOptimizer';
+import { scheduleNextServeAttempt } from '../utils/serveAutoReplan';
 
 const sv = new Hono<Env>();
 
@@ -876,6 +877,33 @@ sv.get('/', async (c) => {
       }
       for (const j of jobs) j.attempts = byQueue.get(j.id) ?? [];
 
+      try {
+        const slots = await queryInChunks<{
+          queue_id: number; scheduled_date: string; window_start: string; window_end: string;
+        }>(
+          db,
+          ids,
+          (placeholders) => `SELECT queue_id, scheduled_date, window_start, window_end
+             FROM serve_attempt_schedules
+            WHERE dismissed = 0 AND queue_id IN (${placeholders})
+            ORDER BY scheduled_date ASC, window_start ASC`,
+        );
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver' }).format(new Date());
+        const nextByQueue = new Map<number, { scheduled_date: string; window_start: string; window_end: string }>();
+        for (const slot of slots) {
+          if (slot.scheduled_date < today) continue;
+          if (!nextByQueue.has(slot.queue_id)) nextByQueue.set(slot.queue_id, slot);
+        }
+        for (const j of jobs) {
+          const slot = nextByQueue.get(j.id);
+          if (!slot) continue;
+          j.next_attempt_date = slot.scheduled_date;
+          j.next_attempt_window = `${slot.window_start}-${slot.window_end}`;
+        }
+      } catch {
+        // Table may be absent on some D1 installs.
+      }
+
       // ── Attach notice scans per job ─────────────────────────────
       // QR "Notice of Attempt to Serve" scan evidence (migration 0189).
       const scans = await queryInChunks<any>(
@@ -1627,6 +1655,29 @@ async function logAttempt(c: Context<Env>, defaultResult: string) {
         `⚠ ${streakCount} consecutive non-service attempts. Supervisor review recommended.`,
       ).catch(() => {});
     }
+  }
+
+  if (newStatus !== 'served' && newStatus !== 'failed') {
+    const attemptAtIso = stampedAt || new Date().toISOString();
+    c.executionCtx.waitUntil(
+      scheduleNextServeAttempt(
+        db,
+        id,
+        Number(ins.meta.last_row_id) || 0,
+        result,
+        attemptAtIso,
+        typeof body.window === 'string' ? body.window : null,
+      ).then((replan) => {
+        if (!replan) return;
+        broadcastAll('data_changed', {
+          module: 'serve-schedule',
+          entity: 'slot',
+          action: 'created',
+          slot_id: replan.slot_id,
+          queue_id: id,
+        });
+      }).catch(() => {}),
+    );
   }
 
   return c.json({

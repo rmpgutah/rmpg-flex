@@ -1,92 +1,117 @@
 // ============================================================
 // RMPG Flex — Auto re-plan attempt slot after failed attempt
 // ============================================================
-// When logAttempt() sets queue status to 'attempted' (i.e. a
-// non-terminal failure with attempts remaining), this helper
-// appends one new future attempt slot to serve_attempt_schedules
-// so the calendar doesn't go empty.
-//
-// A 24-hour cooling-off period is enforced: the new slot will
-// always be at least 24h from now. A slot is only added when no
-// un-notified future slot already exists for this job.
-//
-// Call fire-and-forget; failures are swallowed by the caller.
+// When logAttempt() sets queue status to 'attempted', append the next
+// diligence window to serve_attempt_schedules so the route planner can
+// honor it (e.g. 18:00–21:00 the same day after an afternoon no-answer).
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { queryFirst } from './db';
+import { execute, queryFirst } from './db';
 import { appendAttemptSlot } from './serveAttemptScheduler';
-import { planAttemptWindows } from './serveDiligencePlanner';
+import { applyUrgencyTier, replanAfterFailedAttempt } from './serveDiligencePlanner';
 import { loadPersistedPlanContext } from './servePlanContext';
+import { log } from './logger';
 
-const COOLING_HOURS = 24;
+const REPLAN_RESULTS = new Set(['no_answer', 'refused', 'bad_address', 'moved', 'wrong_address', 'other']);
 
-/**
- * Append one new attempt schedule slot after a non-terminal failure.
- * Returns true if a slot was added, false if already covered or
- * no plan could be generated.
- */
-export async function autoReplanAfterAttempt(
+export interface NextAttemptSlotSummary {
+  slot_id: number;
+  scheduled_date: string;
+  window: string;
+}
+
+export async function scheduleNextServeAttempt(
   db: D1Database,
   queueId: number,
-  nextAttemptNumber: number,
-  nowIso: string,
-): Promise<boolean> {
+  attemptId: number,
+  result: string,
+  attemptAtIso: string,
+  failedWindow: string | null,
+): Promise<NextAttemptSlotSummary | null> {
+  if (!REPLAN_RESULTS.has(result)) return null;
+
   try {
-    // Guard: serve_attempt_schedules may not be live on all D1 installs.
     const tableExists = await queryFirst<{ n: number }>(
       db,
       `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='serve_attempt_schedules'`,
     ).catch(() => null);
-    if (!tableExists?.n) return false;
-
-    // Don't add a slot when one already exists that hasn't fired yet.
-    const futureSlot = await queryFirst<{ id: number }>(
-      db,
-      `SELECT id FROM serve_attempt_schedules
-        WHERE queue_id = ? AND scheduled_date > date('now')
-          AND notified = 0 AND dismissed = 0
-       ORDER BY scheduled_date ASC LIMIT 1`,
-      queueId,
-    ).catch(() => null);
-    if (futureSlot) return false;
+    if (!tableExists?.n) return null;
 
     const job = await queryFirst<{
+      id: number;
       deadline: string | null;
       max_attempts: number;
       attempt_count: number;
       business_id: number | null;
-    }>(db, 'SELECT deadline, max_attempts, attempt_count, business_id FROM serve_queue WHERE id = ?', queueId);
-    if (!job) return false;
+      recipient_lat: number | null;
+      recipient_lng: number | null;
+      recipient_type: string | null;
+    }>(
+      db,
+      `SELECT id, deadline, max_attempts, attempt_count, business_id,
+              recipient_lat, recipient_lng,
+              parsed_data->>'recipient_type' AS recipient_type
+         FROM serve_queue WHERE id = ?`,
+      queueId,
+    );
+    if (!job) return null;
+    if (job.attempt_count >= (job.max_attempts ?? 3)) return null;
 
-    // Don't schedule beyond the remaining attempt budget.
-    if (nextAttemptNumber >= (job.max_attempts ?? 3)) return false;
-
-    // Plan from the cooling window forward. planAttemptWindows uses
-    // deadline + Denver timezone so DST is handled correctly.
-    const coolingStartIso = new Date(Date.parse(nowIso) + COOLING_HOURS * 3_600_000).toISOString();
-    const isBusiness = !!job.business_id;
-    // R6: read the address class AND the client's dictated hours/days/start
-    // bar that commitIntake persisted, instead of re-deriving an interim
-    // class from business_id and passing no client constraints at all.
     const ctx = await loadPersistedPlanContext(db, queueId);
-    const plan = planAttemptWindows(coolingStartIso, job.deadline, 'America/Denver', {
-      isBusiness,
-      addressClass: ctx.addressClass,
-      addressClassConfirmed: ctx.addressClassConfirmed,
-      clientBands: ctx.clientBands,
-      allowedDays: ctx.allowedDays,
-      startNotBefore: ctx.startNotBefore,
-      locationNote: null,
-    });
-    if (!plan.length) return false;
+    const next = replanAfterFailedAttempt(
+      { attempt_at: attemptAtIso, result, window: failedWindow },
+      {
+        deadline: job.deadline,
+        max_attempts: job.max_attempts ?? 3,
+        attempt_count: Math.max(0, (job.attempt_count ?? 1) - 1),
+        recipient_lat: job.recipient_lat,
+        recipient_lng: job.recipient_lng,
+        isBusiness: !!(job.business_id || (job.recipient_type || '').toLowerCase() === 'business'),
+        addressClass: ctx.addressClass,
+        addressClassConfirmed: ctx.addressClassConfirmed,
+        clientBands: ctx.clientBands,
+        allowedDays: ctx.allowedDays,
+        startNotBefore: ctx.startNotBefore,
+      },
+    );
+    if (!next) return null;
 
-    // Take only the first window; sequential re-planning keeps the
-    // calendar realistic rather than flooding it with speculative slots.
-    const nextSlot = { ...plan[0], attempt: nextAttemptNumber };
-    await appendAttemptSlot(db, queueId, nextSlot, nowIso);
-    return true;
-  } catch {
-    return false;
+    await appendAttemptSlot(db, queueId, next, attemptAtIso);
+
+    const slot = await queryFirst<{ id: number; scheduled_date: string; window_start: string; window_end: string }>(
+      db,
+      `SELECT id, scheduled_date, window_start, window_end
+         FROM serve_attempt_schedules
+        WHERE queue_id = ? AND scheduled_date = ?
+        ORDER BY id DESC LIMIT 1`,
+      queueId, next.date,
+    );
+    if (!slot) return null;
+
+    await execute(
+      db,
+      `UPDATE serve_attempt_schedules SET auto_replan_source = ? WHERE id = ?`,
+      attemptId, slot.id,
+    ).catch(() => null);
+
+    const tier = applyUrgencyTier(job.deadline, job.attempt_count, job.max_attempts ?? 3, attemptAtIso);
+    const priorityClause = tier === 'critical'
+      ? `, priority = CASE WHEN priority IN ('urgent') THEN priority ELSE 'rush' END`
+      : '';
+    await execute(
+      db,
+      `UPDATE serve_queue SET urgency_tier = ?, urgency_computed_at = datetime('now') ${priorityClause} WHERE id = ?`,
+      tier, queueId,
+    ).catch(() => null);
+
+    return {
+      slot_id: slot.id,
+      scheduled_date: slot.scheduled_date,
+      window: `${slot.window_start}-${slot.window_end}`,
+    };
+  } catch (err) {
+    log.warn('[serve] scheduleNextServeAttempt failed', { queueId, err: String(err) });
+    return null;
   }
 }

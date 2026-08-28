@@ -3386,6 +3386,9 @@ export interface ServeJob {
   // attempt — surfaced verbatim on the Notice of Attempt PDF. NULL means use
   // the generic boilerplate. Persisted via migration 0134_serve_queue_next_attempt.
   next_attempt_note: string | null;
+  /** Next serve_attempt_schedules slot (list endpoint). */
+  next_attempt_date?: string | null;
+  next_attempt_window?: string | null;
   created_at: string;
   updated_at: string;
   call_id: number | null;

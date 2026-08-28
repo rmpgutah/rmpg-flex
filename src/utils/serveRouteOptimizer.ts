@@ -11,6 +11,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { query, queryFirst, queryInChunks } from './db';
+import { clampDwellSeconds, type DefendantType } from './serveStopTiming';
 
 // ── Phase-1 route-planner types (added 2026-08-12) ─────────
 
@@ -19,8 +20,9 @@ const APARTMENT_PATTERNS = /\b(apt|apartment|unit|ste|suite|bldg|building|fl(?:o
 export function inferDefendantType(
   address: string | null | undefined,
   businessId: number | null | undefined,
+  recipientType?: string | null,
 ): 'individual' | 'apartment' | 'business' {
-  if (businessId) return 'business';
+  if (businessId || recipientType === 'business') return 'business';
   if (address && APARTMENT_PATTERNS.test(address)) return 'apartment';
   return 'individual';
 }
@@ -1003,16 +1005,9 @@ export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
 
 // ── Dwell-time read path + ETA computation ─────────────────
 
-const DEFAULT_DWELL: Record<RouteStop['defendantType'], number> = {
-  individual: 420,   // 7 minutes — house: knock, ID, serve, brief exchange
-  apartment: 600,    // 10 minutes — complex: navigate building/gate, find unit, wait for access
-  business: 780,     // 13 minutes — lobby/reception, wait for agent, verify authority
-};
-
 /**
  * Fetch per-stop average dwell times (seconds) from the serve_dwell_times table.
- * Falls back to DEFAULT_DWELL constants when no 90-day history exists for a stop.
- * Result array is parallel-indexed to `stops`.
+ * Learned values are clamped to the type range (house 10–15, apt 12–15, business 15–20).
  */
 export async function fetchDwellSeconds(
   db: D1Database,
@@ -1036,7 +1031,7 @@ export async function fetchDwellSeconds(
   ).catch(() => [] as { address_hash: string; avg_dwell: number }[]);
 
   const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
-  return stops.map(s => byHash.get(s.addressHash) ?? DEFAULT_DWELL[s.defendantType]);
+  return stops.map(s => clampDwellSeconds(s.defendantType as DefendantType, byHash.get(s.addressHash)));
 }
 
 /**
