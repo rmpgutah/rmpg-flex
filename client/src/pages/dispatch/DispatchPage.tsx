@@ -6706,12 +6706,12 @@ export default function DispatchPage() {
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.court_name && <span className="text-rmpg-200"><span className="text-fg-muted">Court:</span> {selectedCall.court_name}</span>}
                         {selectedCall.case_number && <span className="text-rmpg-200"><span className="text-fg-muted">Case #:</span> {selectedCall.case_number}</span>}
-                        {selectedCall.plaintiff_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Plaintiff:</span> {selectedCall.plaintiff_name}</span>}
-                        {selectedCall.attorney_name && <span className="text-rmpg-200"><span className="text-rmpg-400">Attorney:</span> {selectedCall.attorney_name}</span>}
-                        {selectedCall.jurisdiction && <span className="text-rmpg-200"><span className="text-rmpg-400">Jurisdiction:</span> {selectedCall.jurisdiction}</span>}
-                        {selectedCall.deadline && <span className="text-rmpg-200"><span className="text-rmpg-400">Due:</span> {selectedCall.deadline}</span>}
-                        {selectedCall.time_window && <span className="text-rmpg-200"><span className="text-rmpg-400">Window:</span> {selectedCall.time_window}</span>}
-                        {selectedCall.service_instructions && <span className="text-rmpg-200"><span className="text-rmpg-400">Instructions:</span> {selectedCall.service_instructions}</span>}
+                        {selectedCall.plaintiff_name && <span className="text-rmpg-200"><span className="text-fg-muted">Plaintiff:</span> {selectedCall.plaintiff_name}</span>}
+                        {selectedCall.attorney_name && <span className="text-rmpg-200"><span className="text-fg-muted">Attorney:</span> {selectedCall.attorney_name}</span>}
+                        {selectedCall.jurisdiction && <span className="text-rmpg-200"><span className="text-fg-muted">Jurisdiction:</span> {selectedCall.jurisdiction}</span>}
+                        {selectedCall.deadline && <span className="text-rmpg-200"><span className="text-fg-muted">Due:</span> {selectedCall.deadline}</span>}
+                        {selectedCall.time_window && <span className="text-rmpg-200"><span className="text-fg-muted">Window:</span> {selectedCall.time_window}</span>}
+                        {selectedCall.service_instructions && <span className="text-rmpg-200"><span className="text-fg-muted">Instructions:</span> {selectedCall.service_instructions}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {formatTime(selectedCall.process_served_at)}</span>}
                         {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>

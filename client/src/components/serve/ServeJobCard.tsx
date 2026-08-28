@@ -495,10 +495,10 @@ export default React.memo(function ServeJobCard({
                 <div><span className="text-rmpg-400">Status:</span> <span className="font-mono">{linkedCall.status?.toUpperCase()}</span></div>
                 <div><span className="text-rmpg-400">Priority:</span> <span className="font-mono">{linkedCall.priority?.toUpperCase()}</span></div>
                 {(linkedCall.pso_attempt_number || job.linked_attempt_number) && (
-                  <div><span className="text-rmpg-400">Visit:</span> <span className="font-mono">{linkedCall.pso_attempt_number || job.linked_attempt_number}</span></div>
+                  <div><span className="text-fg-muted">Visit:</span> <span className="font-mono">{linkedCall.pso_attempt_number || job.linked_attempt_number}</span></div>
                 )}
                 {job.id != null && (
-                  <div className="flex items-center gap-1"><Link2 className="w-3 h-3 text-rmpg-400" /><span className="text-rmpg-400">Job ID:</span> <span className="font-mono">{job.id}</span></div>
+                  <div className="flex items-center gap-1"><Link2 className="w-3 h-3 text-fg-muted" /><span className="text-fg-muted">Job ID:</span> <span className="font-mono">{job.id}</span></div>
                 )}
                 {linkedCall.pso_requestor_name && (
                   <div><span className="text-rmpg-400">Requestor:</span> {linkedCall.pso_requestor_name}</div>
@@ -509,15 +509,15 @@ export default React.memo(function ServeJobCard({
               </div>
               {(linkedCall.parent_call || linkedCall.parentCall || (linkedCall.child_calls?.length ?? linkedCall.childCalls?.length ?? 0) > 0) && (
                 <div className="mt-1.5 pt-1.5 border-t border-rmpg-700/40 space-y-0.5">
-                  <div className="text-[9px] text-rmpg-400">Return visits share this job — they do not create a new queue entry.</div>
+                  <div className="text-[9px] text-fg-muted">Return visits share this job — they do not create a new queue entry.</div>
                   {(linkedCall.parent_call || linkedCall.parentCall) && (
-                    <div className="text-[10px] text-rmpg-300">
+                    <div className="text-[10px] text-fg-secondary">
                       Original:{' '}
                       <span className="font-mono">{(linkedCall.parent_call || linkedCall.parentCall)?.call_number}</span>
                     </div>
                   )}
                   {(linkedCall.child_calls || linkedCall.childCalls || []).map((c) => (
-                    <div key={c.id} className="text-[10px] text-rmpg-300">
+                    <div key={c.id} className="text-[10px] text-fg-secondary">
                       Visit {c.pso_attempt_number ?? '—'} · <span className="font-mono">{c.call_number}</span> · {c.status}
                     </div>
                   ))}
@@ -633,28 +633,28 @@ export default React.memo(function ServeJobCard({
             )}
             {job.attorney_phone && (
               <div className="flex items-center gap-1">
-                <Phone className="w-3 h-3 text-rmpg-400" />
-                <span className="text-rmpg-400">Atty phone:</span>
+                <Phone className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Atty phone:</span>
                 <a href={`tel:${job.attorney_phone}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline">{job.attorney_phone}</a>
               </div>
             )}
             {job.attorney_email && (
               <div className="flex items-center gap-1">
-                <Mail className="w-3 h-3 text-rmpg-400" />
-                <span className="text-rmpg-400">Atty email:</span>
+                <Mail className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Atty email:</span>
                 <a href={`mailto:${job.attorney_email}`} onClick={e => e.stopPropagation()} className="text-blue-400 hover:text-blue-300 underline truncate max-w-[160px]">{job.attorney_email}</a>
               </div>
             )}
             {job.attorney_bar_number && (
               <div className="flex items-center gap-1">
-                <span className="text-rmpg-400">Bar #:</span>
+                <span className="text-fg-muted">Bar #:</span>
                 <span className="font-mono tabular-nums">{job.attorney_bar_number}</span>
               </div>
             )}
             {job.registered_agent_name && (
               <div className="flex items-center gap-1 col-span-2">
-                <User className="w-3 h-3 text-rmpg-400" />
-                <span className="text-rmpg-400">Registered agent:</span>
+                <User className="w-3 h-3 text-fg-muted" />
+                <span className="text-fg-muted">Registered agent:</span>
                 <span>{job.registered_agent_name}</span>
               </div>
             )}

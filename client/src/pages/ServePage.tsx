@@ -2318,7 +2318,7 @@ export default function ServePage() {
           {['admin', 'manager'].includes(user?.role ?? '') && (
             <button type="button"
               onClick={() => routerNavigate('/admin?tab=servemanager')}
-              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rmpg-400 bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-fg-muted bg-surface-sunken/20 hover:bg-surface-sunken/40 border border-border-default/40 rounded-[2px] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-rmpg-500/50"
               title="Process Server & ServeManager setup"
               aria-label="Process Server setup"
             >
@@ -2379,12 +2379,12 @@ export default function ServePage() {
                 className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-all duration-150 border-b-2 ${
                   moreActive
                     ? 'text-brand-gold-500 border-brand-gold-500 bg-brand-gold-500/5'
-                    : 'text-rmpg-400 border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
+                    : 'text-fg-muted border-transparent hover:text-rmpg-200 hover:border-rmpg-600 hover:bg-white/[0.02]'
                 }`}
               >
                 More
                 <ChevronDown size={12} className={moreOpen ? 'rotate-180' : ''} />
-                {moreActive && <span className="text-[10px] font-normal text-rmpg-400">{activeTab}</span>}
+                {moreActive && <span className="text-[10px] font-normal text-fg-muted">{activeTab}</span>}
               </button>
               {moreOpen && (
                 <div className="absolute left-0 top-full z-30 min-w-[160px] py-1 bg-surface-base border border-rmpg-700 rounded-[2px] shadow-xl">
@@ -2394,7 +2394,7 @@ export default function ServePage() {
                       role="menuitem"
                       onClick={() => { setActiveTab(tab); setMoreOpen(false); }}
                       className={`block w-full text-left px-3 py-1.5 text-[11px] ${
-                        activeTab === tab ? 'text-brand-gold-500 bg-brand-gold-500/5' : 'text-rmpg-300 hover:bg-white/[0.04] hover:text-rmpg-100'
+                        activeTab === tab ? 'text-brand-gold-500 bg-brand-gold-500/5' : 'text-fg-secondary hover:bg-white/[0.04] hover:text-rmpg-100'
                       }`}
                     >
                       {tab}

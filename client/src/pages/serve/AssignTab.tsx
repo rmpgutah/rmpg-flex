@@ -45,7 +45,7 @@ export default function AssignTab() {
         <button
           type="button"
           onClick={() => navigate('/admin?tab=servemanager')}
-          className="mb-2 flex items-center gap-1 text-[10px] text-rmpg-400 hover:text-rmpg-200"
+          className="mb-2 flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg-secondary"
         >
           <Settings size={11} /> ServeManager setup
         </button>
