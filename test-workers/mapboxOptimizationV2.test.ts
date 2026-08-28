@@ -41,9 +41,10 @@ function makeApp(
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe('POST /submit — token missing', () => {
-  it('returns not_configured when MAPBOX_ACCESS_TOKEN is unset', async () => {
+  it('returns not_configured when both Mapbox tokens are unset', async () => {
     const { app, mergedEnv } = makeApp({
       MAPBOX_ACCESS_TOKEN: undefined,
+      MAPBOX_SECRET_TOKEN: undefined,
       DB: makeDb(),
     });
     const res = await app.request(
@@ -84,6 +85,47 @@ describe('GET /:jobId — complete job', () => {
     const json = await res.json() as { status: string; solution: unknown };
     expect(json.status).toBe('complete');
     expect(json.solution).toBeDefined();
+  });
+});
+
+describe('POST /submit — serve_run as officer', () => {
+  it('does not require a supervisor role when origin is provided', async () => {
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('should not hit Mapbox without a token');
+    }) as typeof fetch;
+    try {
+      const { app, mergedEnv } = makeApp(
+        {
+          MAPBOX_ACCESS_TOKEN: undefined,
+          MAPBOX_SECRET_TOKEN: undefined,
+          DB: makeDb(),
+        },
+        { id: 9, role: 'officer' },
+      );
+      const res = await app.request(
+        '/submit',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job_type: 'serve_run',
+            serve_queue_ids: [10, 11],
+            shift_start: '2026-08-28T20:30:00.000Z',
+            shift_end: '2026-08-29T04:30:00.000Z',
+            origin: { lat: 40.7, lng: -111.8 },
+            circular: true,
+          }),
+        },
+        mergedEnv,
+      );
+      expect(res.status).toBe(200);
+      const json = await res.json() as { skipped?: boolean; error?: string };
+      expect(json.skipped).toBe(true);
+      expect(json.error).toBeUndefined();
+    } finally {
+      globalThis.fetch = origFetch;
+    }
   });
 });
 

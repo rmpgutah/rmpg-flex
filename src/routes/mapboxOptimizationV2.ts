@@ -15,6 +15,7 @@ import {
   buildServeRunProblem,
   buildPatrolBeatProblem,
   buildDispatchProblem,
+  resolveOptimizationV2Token,
   type ServeStop,
   type UnitRow,
   type BeatRow,
@@ -30,11 +31,8 @@ const POLL_TIMEOUT_MIN = 5;
 
 const SUPERVISOR_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
-function getToken(c: { env: { MAPBOX_ACCESS_TOKEN?: string } }): string | null {
-  const t = c.env?.MAPBOX_ACCESS_TOKEN || null;
-  if (!t) return null;
-  if (t.startsWith('sk.')) return null; // never proxy secret tokens
-  return t;
+function getToken(c: { env: { MAPBOX_SECRET_TOKEN?: string; MAPBOX_ACCESS_TOKEN?: string } }): string | null {
+  return resolveOptimizationV2Token(c.env);
 }
 
 async function mbFetch(url: string, init?: RequestInit): Promise<unknown> {
@@ -60,12 +58,10 @@ async function mbFetch(url: string, init?: RequestInit): Promise<unknown> {
 // ── POST /submit ─────────────────────────────────────────────────────────────
 app.post('/submit', async (c) => {
   const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
+  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN or MAPBOX_SECRET_TOKEN');
 
   const user = c.get('user') as { id: number; role: string } | undefined;
-  if (!user || !SUPERVISOR_ROLES.has(user.role)) {
-    return c.json({ error: 'Forbidden — supervisor role required' }, 403);
-  }
+  if (!user) return c.json({ error: 'Unauthorized' }, 401);
 
   const db = c.env.DB;
   let body: Record<string, unknown>;
@@ -83,29 +79,54 @@ app.post('/submit', async (c) => {
 
   try {
     if (job_type === 'serve_run') {
-      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id } = body as {
+      const { serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id, origin, circular } = body as {
         serve_queue_ids: number[];
-        officer_unit_id: number;
+        officer_unit_id?: number;
         shift_start: string;
         shift_end: string;
-        ref_id: number;
+        ref_id?: number | null;
+        origin?: { lat: number; lng: number } | null;
+        circular?: boolean;
       };
-      if (!serve_queue_ids?.length || !officer_unit_id || !shift_start || !shift_end || !ref_id) {
-        return c.json({ error: 'serve_run requires serve_queue_ids, officer_unit_id, shift_start, shift_end, ref_id' }, 400);
+      if (!serve_queue_ids?.length || !shift_start || !shift_end) {
+        return c.json({ error: 'serve_run requires serve_queue_ids, shift_start, shift_end' }, 400);
       }
       const stopRows = await queryInChunks<ServeStop>(
         db,
         serve_queue_ids,
         (ph) => `SELECT id, recipient_address, recipient_lat, recipient_lng, time_window, deadline, priority FROM serve_queue WHERE id IN (${ph}) AND recipient_lat IS NOT NULL AND recipient_lng IS NOT NULL`,
       );
-      const officerRow = await db
-        .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? LIMIT 1')
-        .bind(officer_unit_id)
-        .first();
-      if (!officerRow) return c.json({ error: 'officer unit not found' }, 404);
-      problem = buildServeRunProblem(stopRows, officerRow as unknown as UnitRow, shift_start, shift_end);
-      refId = ref_id;
-    } else if (job_type === 'patrol_beat') {
+      let officer: UnitRow | null = null;
+      if (officer_unit_id) {
+        const officerRow = await db
+          .prepare('SELECT id, call_sign, latitude, longitude FROM units WHERE id = ? LIMIT 1')
+          .bind(officer_unit_id)
+          .first();
+        if (officerRow) officer = officerRow as unknown as UnitRow;
+      }
+      if (!officer && origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+        officer = {
+          id: officer_unit_id || user.id,
+          call_sign: 'serve',
+          latitude: origin.lat,
+          longitude: origin.lng,
+        };
+      }
+      if (!officer) {
+        return c.json({ error: 'serve_run requires origin {lat,lng} or a valid officer_unit_id' }, 400);
+      }
+      if (origin && Number.isFinite(origin.lat) && Number.isFinite(origin.lng)) {
+        officer = { ...officer, latitude: origin.lat, longitude: origin.lng };
+      }
+      problem = buildServeRunProblem(stopRows, officer, shift_start, shift_end, {
+        circular: circular !== false,
+      });
+      refId = ref_id ?? null;
+    } else {
+      if (!SUPERVISOR_ROLES.has(user.role)) {
+        return c.json({ error: 'Forbidden — supervisor role required' }, 403);
+      }
+      if (job_type === 'patrol_beat') {
       const { beat_ids, unit_ids, shift_start, shift_end } = body as {
         beat_ids: number[];
         unit_ids: number[];
@@ -142,6 +163,7 @@ app.post('/submit', async (c) => {
         (ph) => `SELECT id, call_sign, latitude, longitude FROM units WHERE id IN (${ph}) AND status IN ('available','on_scene')`,
       );
       problem = buildDispatchProblem(callRows, unitRows);
+    }
     }
   } catch (err) {
     log.error('[optimization-v2] problem build failed', { job_type }, err as Error);
@@ -201,7 +223,7 @@ app.get('/:jobId', async (c) => {
 
   // Still in-flight — need the token to poll Mapbox
   const tk = getToken(c);
-  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN');
+  if (!tk) return notConfigured(c, 'Mapbox Optimization V2 requires MAPBOX_ACCESS_TOKEN or MAPBOX_SECRET_TOKEN');
 
   // Check timeout
   const updatedAt = new Date((row.updated_at as string) + 'Z').getTime();

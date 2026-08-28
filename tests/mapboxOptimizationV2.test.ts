@@ -7,6 +7,7 @@ import {
   type UnitRow,
   type BeatRow,
   type CallRow,
+  resolveOptimizationV2Token,
 } from '../src/utils/mapboxOptimizationV2';
 
 const SHIFT_START = '2026-08-17T08:00:00Z';
@@ -76,6 +77,54 @@ describe('buildServeRunProblem', () => {
   it('uses min-schedule-completion-time objective', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
     expect(doc.options?.objectives).toContain('min-schedule-completion-time');
+  });
+
+  it('maps named serve windows onto Denver wall-clock service_times', () => {
+    const morning: ServeStop = {
+      id: 20, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'morning',
+    };
+    const doc = buildServeRunProblem([morning], officer, '2026-08-28T20:30:00.000Z', SHIFT_END);
+    const tw = doc.services[0].service_times![0];
+    expect(tw.type).toBe('soft');
+    expect(tw.earliest).toBe('2026-08-28T06:00:00-06:00');
+    expect(tw.latest).toBe('2026-08-28T12:00:00-06:00');
+  });
+
+  it('omits anytime windows', () => {
+    const anytime: ServeStop = {
+      id: 21, recipient_address: '1 St', recipient_lat: 40.77, recipient_lng: -111.88,
+      time_window: 'anytime',
+    };
+    const doc = buildServeRunProblem([anytime], officer, SHIFT_START, SHIFT_END);
+    expect(doc.services[0].service_times).toBeUndefined();
+  });
+
+  it('locks a circular vehicle to the depot and leaves open-path end unset', () => {
+    const round = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END, { circular: true });
+    expect(round.vehicles[0].end_location).toBe(`officer-${officer.id}-depot`);
+    const open = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END, { circular: false });
+    expect(open.vehicles[0].end_location).toBeUndefined();
+  });
+});
+
+describe('resolveOptimizationV2Token', () => {
+  it('prefers MAPBOX_SECRET_TOKEN including sk. worker tokens', () => {
+    expect(resolveOptimizationV2Token({
+      MAPBOX_SECRET_TOKEN: 'sk.live-v2',
+      MAPBOX_ACCESS_TOKEN: 'pk.public',
+    })).toBe('sk.live-v2');
+  });
+
+  it('falls back to MAPBOX_ACCESS_TOKEN', () => {
+    expect(resolveOptimizationV2Token({
+      MAPBOX_ACCESS_TOKEN: 'pk.public',
+    })).toBe('pk.public');
+  });
+
+  it('returns null when neither token is set', () => {
+    expect(resolveOptimizationV2Token({})).toBeNull();
+    expect(resolveOptimizationV2Token({ MAPBOX_SECRET_TOKEN: '  ', MAPBOX_ACCESS_TOKEN: '' })).toBeNull();
   });
 });
 

@@ -19,6 +19,7 @@ import {
   type LastKnownFix,
 } from '../../utils/serveRouteOrigin';
 import { exportServeMapSheet } from '../../utils/serveMapExport';
+import { runServeOptimizationV2, v2EtasToArrivalMs } from '../../utils/mapboxOptimizationV2';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -170,6 +171,13 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
   return ordered.map(i => clusters[i]);
 }
 
+function chunkInOrder(stops: StopItem[], size: number): StopItem[][] {
+  if (stops.length === 0) return [];
+  const chunks: StopItem[][] = [];
+  for (let i = 0; i < stops.length; i += size) chunks.push(stops.slice(i, i + size));
+  return chunks;
+}
+
 // ─── Offline fallback: pure-geometry nearest-neighbor optimizer ─────────
 // Mirrors src/utils/serveRouteOptimizer.ts's haversine + nearest-neighbor
 // approach (can't import it directly — /src/ is the Worker build,
@@ -177,6 +185,78 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
 // external API, so it's used whenever Mapbox Directions is unavailable
 // (token fetch failed, network down, rate-limited, etc.) instead of
 // leaving the route planner entirely non-functional.
+export function denverWallClockToUtcMs(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+): number {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const want = `${year}-${pad(monthIndex + 1)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00`;
+  const fmt = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  const wallAt = (ms: number) => fmt.format(new Date(ms)).replace(' ', 'T'); // new-date-ok — epoch ms
+  let utc = Date.parse(want + 'Z');
+  for (let i = 0; i < 4; i++) {
+    const got = wallAt(utc);
+    utc += Date.parse(want + 'Z') - Date.parse(got + 'Z');
+  }
+  return utc;
+}
+
+export function plannedStartToMs(routeDate: string, plannedStartTime: string): number {
+  const [y, mo, d] = routeDate.split('-').map(Number);
+  const [h, m] = plannedStartTime.split(':').map(Number);
+  return denverWallClockToUtcMs(y || 1970, (mo || 1) - 1, d || 1, h || 0, m || 0);
+}
+
+export function denverYmd(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Denver',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms)); // new-date-ok — epoch ms
+}
+
+export function formatEtaDenver(ms: number, routeDateYmd: string): string {
+  const time = new Date(ms).toLocaleTimeString('en-US', { // new-date-ok — epoch ms
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/Denver',
+  });
+  const ymd = denverYmd(ms);
+  if (ymd === routeDateYmd) return time;
+  const [y1, m1, d1] = routeDateYmd.split('-').map(Number);
+  const [y2, m2, d2] = ymd.split('-').map(Number);
+  const days = Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86_400_000);
+  if (days === 1) return `${time} (+1d)`;
+  if (days > 1) return `${time} (+${days}d)`;
+  return time;
+}
+
+function clampArrivalToServeWindow(arrivalMs: number, serveStart: string, serveEnd: string): number {
+  const ymd = denverYmd(arrivalMs);
+  const [y, mo, d] = ymd.split('-').map(Number);
+  const [sh, sm] = serveStart.split(':').map(Number);
+  const [eh, em] = serveEnd.split(':').map(Number);
+  let windowStart = denverWallClockToUtcMs(y, mo - 1, d, sh || 0, sm || 0);
+  let windowEnd = denverWallClockToUtcMs(y, mo - 1, d, eh || 0, em || 0);
+  if (windowEnd <= windowStart) windowEnd += 86_400_000;
+  if (arrivalMs < windowStart) return windowStart;
+  if (arrivalMs > windowEnd) return windowStart + 86_400_000;
+  return arrivalMs;
+}
+
 const EARTH_RADIUS_MI = 3958.8;
 const ROAD_WINDING_FACTOR = 1.3;
 const URBAN_AVG_MPH = 25;
@@ -253,7 +333,9 @@ export function nearestNeighborOrder(
       const distanceMiles = cursor
         ? haversineMiles(cursor.lat, cursor.lng, s.job.recipient_lat!, s.job.recipient_lng!)
         : 0;
-      const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+      let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+      const win = timeWindowToServeWindow(s.job.time_window);
+      if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.serveStart, win.serveEnd);
       const deadlineMs = s.job.deadline ? parseTimestamp(s.job.deadline).getTime() : NaN;
       return { idx, distanceMiles, arrivalMs, deadlineMs: Number.isNaN(deadlineMs) ? null : deadlineMs };
     });
@@ -440,7 +522,9 @@ function computeArrivalsInOrder(
     const distanceMiles = cursor
       ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
       : 0;
-    const arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+    let arrivalMs = elapsedMs + estimateDriveMinutes(distanceMiles) * 60_000;
+    const win = timeWindowToServeWindow(stop.job.time_window);
+    if (win) arrivalMs = clampArrivalToServeWindow(arrivalMs, win.serveStart, win.serveEnd);
     arrivals.set(stop.job.id, arrivalMs);
 
     const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
@@ -460,6 +544,54 @@ function computeArrivalsInOrder(
     totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
     missedDeadlineJobIds,
   };
+}
+
+/** Walk a known visit order using per-leg driving seconds (Mapbox legs or estimates). */
+export function computeArrivalsFromLegDurations(
+  selected: StopItem[],
+  startTimeMs: number,
+  legDurationsSeconds: number[],
+): {
+  arrivals: Map<number, number>;
+  totalDurationMinutes: number;
+  missedDeadlineJobIds: number[];
+} {
+  let elapsedMs = startTimeMs;
+  const arrivals = new Map<number, number>();
+  const missedDeadlineJobIds: number[] = [];
+
+  for (let i = 0; i < selected.length; i++) {
+    const stop = selected[i];
+    elapsedMs += (legDurationsSeconds[i] ?? 0) * 1000;
+    const win = timeWindowToServeWindow(stop.job.time_window);
+    if (win) elapsedMs = clampArrivalToServeWindow(elapsedMs, win.serveStart, win.serveEnd);
+    arrivals.set(stop.job.id, elapsedMs);
+
+    const deadlineMs = stop.job.deadline ? parseTimestamp(stop.job.deadline).getTime() : NaN;
+    if (!Number.isNaN(deadlineMs) && elapsedMs > deadlineMs) {
+      missedDeadlineJobIds.push(stop.job.id);
+    }
+
+    const dwell = DWELL_BY_TYPE_MS[inferDefendantType(stop.job.recipient_address, stop.job.business_id)] ?? STOP_DWELL_MS;
+    elapsedMs += dwell;
+  }
+
+  return {
+    arrivals,
+    totalDurationMinutes: (elapsedMs - startTimeMs) / 60_000,
+    missedDeadlineJobIds,
+  };
+}
+
+function orderStopsByJobIds(selected: StopItem[], jobIds: number[]): StopItem[] {
+  const byId = new Map(selected.map(s => [s.job.id, s]));
+  const ordered: StopItem[] = [];
+  for (const id of jobIds) {
+    const s = byId.get(id);
+    if (s) { ordered.push(s); byId.delete(id); }
+  }
+  for (const s of byId.values()) ordered.push(s);
+  return ordered;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
@@ -505,6 +637,7 @@ export default function ServeRoutePlanner({
   // Auto-compute skips when this matches the current order to avoid
   // overwriting precise routed stats with haversine estimates.
   const lastDirectionsOrderKeyRef = useRef<string>('');
+  const lastBakedStartMsRef = useRef<number>(0);
   // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
   const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
   const [isRouteMapRecovering, setIsRouteMapRecovering] = useState(false);
@@ -684,12 +817,10 @@ export default function ServeRoutePlanner({
   });
   const routeOrigin = originResolution.origin;
 
-  const plannedStartMs = useMemo(() => {
-    const [h, m] = plannedStartTime.split(':').map(Number);
-    const d = new Date(routeDate + 'T00:00:00'); // new-date-ok — local-time parse intentional
-    d.setHours(h, m, 0, 0);
-    return d.getTime();
-  }, [routeDate, plannedStartTime]);
+  const plannedStartMs = useMemo(
+    () => plannedStartToMs(routeDate, plannedStartTime),
+    [routeDate, plannedStartTime],
+  );
 
   const plannedOfficerName = officers?.find(o => o.id === plannedOfficerId)?.name ?? null;
 
@@ -716,7 +847,19 @@ export default function ServeRoutePlanner({
     if (optimizing) return;
     const selected = stops.filter(s => s.selected);
     const currentKey = selected.map(s => s.job.id).join(',') + ':' + String(returnToStart);
-    if (currentKey === lastDirectionsOrderKeyRef.current) return;
+    if (currentKey === lastDirectionsOrderKeyRef.current) {
+      const delta = plannedStartMs - lastBakedStartMsRef.current;
+      if (delta !== 0 && lastBakedStartMsRef.current !== 0) {
+        setStopArrivalTimes(prev => {
+          if (prev.size === 0) return prev;
+          const next = new Map<number, number>();
+          for (const [id, ms] of prev) next.set(id, ms + delta);
+          return next;
+        });
+        lastBakedStartMsRef.current = plannedStartMs;
+      }
+      return;
+    }
     if (selected.length < 1) {
       setTotalDistance(0);
       setTotalDuration(0);
@@ -739,6 +882,7 @@ export default function ServeRoutePlanner({
     setStopArrivalTimes(arrivals);
     setMissedDeadlineIds(missedDeadlineJobIds);
     setShowSplitBanner(totalDur > 480);
+    lastBakedStartMsRef.current = plannedStartMs;
   }, [stops, routeOrigin, returnToStart, optimizing, plannedStartMs]);
 
   useEffect(() => {
@@ -975,38 +1119,65 @@ export default function ServeRoutePlanner({
     setMatrixFallbackDismissed(false);
     setGeocodeWarningDismissed(false);
 
-    // Fire server-side optimize in parallel — provides traffic-aware ETAs,
-    // geocode quality warnings, and a smarter (Matrix API + 2-opt) stop order.
-    // Non-fatal: if it fails we continue with the client-side Directions flow.
+    const shiftStartIso = new Date(plannedStartMs).toISOString(); // new-date-ok — epoch ms
+    const shiftEndIso = new Date(plannedStartMs + 12 * 3600_000).toISOString(); // new-date-ok — 12h shift window
+
+    const v2 = await runServeOptimizationV2({
+      serve_queue_ids: selected.map(s => s.job.id),
+      officer_unit_id: selectedOfficerId || currentUserId,
+      shift_start: shiftStartIso,
+      shift_end: shiftEndIso,
+      origin: routeOrigin,
+      circular: returnToStart,
+    });
+    const v2Ordered = v2?.orderedJobIds?.length
+      ? orderStopsByJobIds(selected, v2.orderedJobIds)
+      : null;
+    const v2Arrivals = v2 ? v2EtasToArrivalMs(v2.etaByJobId) : new Map<number, number>();
+    const droppedWarning = v2?.droppedJobIds?.length
+      ? `${v2.droppedJobIds.length} stop${v2.droppedJobIds.length === 1 ? '' : 's'} could not be fit into the optimized schedule.`
+      : null;
+
     const serverOptimizePromise: Promise<{
       orderedStops: { jobId: number }[];
       etaPerStop: string[];
       matrixFallback: boolean;
       fallbackReason?: string;
       geocodeWarnings: GeocodeWarning[];
-    } | null> = apiFetch<{
-      orderedStops: { jobId: number }[];
-      etaPerStop: string[];
-      matrixFallback: boolean;
-      fallbackReason?: string;
-      geocodeWarnings: GeocodeWarning[];
-    }>('/serve-queue/optimize-route', {
-      method: 'POST',
-      body: JSON.stringify({
-        stops: await buildRouteStopsFromJobs(stops),
-        departAt: new Date().toISOString(),
-      }),
-    }).catch(() => null);
+    } | null> = v2Ordered
+      ? Promise.resolve(null)
+      : apiFetch<{
+          orderedStops: { jobId: number }[];
+          etaPerStop: string[];
+          matrixFallback: boolean;
+          fallbackReason?: string;
+          geocodeWarnings: GeocodeWarning[];
+        }>('/serve-queue/optimize-route', {
+          method: 'POST',
+          body: JSON.stringify({
+            stops: await buildRouteStopsFromJobs(stops),
+            departAt: shiftStartIso,
+            origin: routeOrigin,
+            circular: returnToStart,
+          }),
+        }).catch(() => null);
 
-    // Mapbox unavailable (token fetch failed, network down, rate-limited)
-    // used to leave the ENTIRE route planner unusable — Optimize Route was
-    // gated on mapReady with no fallback, even though reordering stops by
-    // distance doesn't fundamentally require a live map or the Directions
-    // API. Fall back to a pure client-side nearest-neighbor estimate so
-    // officers still get a usable (if less precise) route order.
     if (!mapReady || !mapRef.current) {
-      const { ordered, totalDistanceMiles, totalDurationMinutes, missedDeadlineJobIds, perStopArrivalMs } = nearestNeighborOrder(selected, routeOrigin, plannedStartMs);
-      // Add return leg (last stop → origin) so total mileage is circular.
+      const serverResult = v2Ordered ? null : await serverOptimizePromise;
+      const serverOrdered = serverResult?.orderedStops?.length
+        ? orderStopsByJobIds(selected, serverResult.orderedStops.map(s => s.jobId))
+        : null;
+      const nn = nearestNeighborOrder(selected, routeOrigin, plannedStartMs);
+      const ordered = v2Ordered ?? serverOrdered ?? nn.ordered;
+      const estimated = computeArrivalsInOrder(ordered, routeOrigin, plannedStartMs);
+      const arrivals = v2Arrivals.size > 0 ? v2Arrivals : estimated.arrivals;
+      const missedDeadlineJobIds = estimated.missedDeadlineJobIds;
+      const totalDurationMinutes = v2Arrivals.size > 0 && plannedStartMs
+        ? Math.max(
+          estimated.totalDurationMinutes,
+          ([...v2Arrivals.values()].reduce((a, b) => Math.max(a, b), plannedStartMs) - plannedStartMs) / 60_000,
+        )
+        : estimated.totalDurationMinutes;
       let returnMi = 0;
       if (returnToStart && routeOrigin && ordered.length > 0) {
         const last = ordered[ordered.length - 1];
@@ -1016,126 +1187,142 @@ export default function ServeRoutePlanner({
         );
       }
       const totalDurMin = totalDurationMinutes + estimateDriveMinutes(returnMi);
-      setTotalDistance(totalDistanceMiles + returnMi);
+      setTotalDistance(
+        (v2Ordered || serverOrdered
+          ? ordered.reduce((sum, s, i) => {
+              const prev = i === 0 ? routeOrigin : { lat: ordered[i - 1].job.recipient_lat!, lng: ordered[i - 1].job.recipient_lng! };
+              return prev ? sum + haversineMiles(prev.lat, prev.lng, s.job.recipient_lat!, s.job.recipient_lng!) : sum;
+            }, 0)
+          : nn.totalDistanceMiles) + returnMi,
+      );
       setReturnLegMiles(returnMi);
       setTotalDuration(totalDurMin);
-      // F1: store per-stop arrival times
-      const arrivals = new Map<number, number>();
-      ordered.forEach((s, i) => { if (perStopArrivalMs[i] != null) arrivals.set(s.job.id, perStopArrivalMs[i]); });
       setStopArrivalTimes(arrivals);
-      // F4: suggest split when estimated run exceeds 8 h
       setShowSplitBanner(totalDurMin > 480);
-      // F5: store missed deadline ids for pre-confirm dialog
       setMissedDeadlineIds(missedDeadlineJobIds);
+      lastBakedStartMsRef.current = plannedStartMs;
+      if (v2Ordered) {
+        setGeocodeWarnings([]);
+        setMatrixFallback(false);
+        setMatrixFallbackReason(undefined);
+        setServerEtas([]);
+        setServerEtaJobIds([]);
+      } else if (serverResult) {
+        setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
+        setMatrixFallback(serverResult.matrixFallback ?? true);
+        setMatrixFallbackReason(serverResult.fallbackReason ?? 'no live map');
+        setServerEtas([]);
+        setServerEtaJobIds([]);
+      }
       const unselected = stops.filter(s => !s.selected);
-      const newStopsOffline = [
+      setStops([
         ...ordered.map((s, i) => ({ ...s, order: i })),
         ...unselected.map((s, i) => ({ ...s, order: ordered.length + i })),
-      ];
-      setStops(newStopsOffline);
+      ]);
       lastDirectionsOrderKeyRef.current = ordered.map(s => s.job.id).join(',') + ':' + String(returnToStart);
       const deadlineWarning = describeMissedDeadlines(missedDeadlineJobIds, selected);
       setError(
-        'Map unavailable — used straight-line distance estimate instead of driving directions.'
-        + (deadlineWarning ? ` ${deadlineWarning}` : ''),
+        [
+          v2Ordered
+            ? 'Map unavailable — stop order uses Mapbox Optimization V2; mileages are straight-line estimates.'
+            : 'Map unavailable — used straight-line distance estimate instead of driving directions.',
+          droppedWarning,
+          deadlineWarning,
+        ].filter(Boolean).join(' '),
       );
       setOptimizing(false);
       return;
     }
 
     try {
-      const clusters = chainClusters(clusterStops(selected));
+      const serverResult = v2Ordered ? null : await serverOptimizePromise;
+      let selectedOrdered: StopItem[];
+      if (v2Ordered) {
+        selectedOrdered = v2Ordered;
+        setGeocodeWarnings([]);
+        setMatrixFallback(false);
+        setMatrixFallbackReason(undefined);
+      } else if (serverResult?.orderedStops?.length) {
+        selectedOrdered = orderStopsByJobIds(selected, serverResult.orderedStops.map(s => s.jobId));
+        setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
+        const newFallback = serverResult.matrixFallback ?? false;
+        setMatrixFallback(newFallback);
+        setMatrixFallbackReason(newFallback ? serverResult.fallbackReason : undefined);
+        if (newFallback) setMatrixFallbackDismissed(false);
+      } else {
+        selectedOrdered = nearestNeighborOrder(selected, routeOrigin, plannedStartMs).ordered;
+      }
+      setServerEtas([]);
+      setServerEtaJobIds([]);
+      const preserveServerOrder = !!(v2Ordered || serverResult?.orderedStops?.length);
+
+      const clusters = preserveServerOrder
+        ? chunkInOrder(selectedOrdered, MAX_CLUSTER_STOPS)
+        : chainClusters(clusterStops(selectedOrdered));
       let allOrderedStops: StopItem[] = [];
       let totalDistM = 0;
-      let totalDurS = 0;
       let allGeometries: any[] = [];
-      // Clusters that fell back to a straight-line estimate (see below).
+      const allLegDurationsS: number[] = [];
       let degradedClusters = 0;
-      // Running position for nearest-neighbor ordering — carries from one
-      // cluster's last stop into the next, same as the offline fallback.
       let runningPosition: { lat: number; lng: number } | null = routeOrigin;
-      // Simulated clock, carried the same way as runningPosition. The
-      // Directions API doesn't give us a clean per-stop arrival timestamp to
-      // reconcile against (it returns aggregate leg distances/durations, not
-      // a timestamp per waypoint), so deadline risk is judged against this
-      // straight-line simulation throughout — even once a cluster's actual
-      // driving distance/duration is known from Directions. That's a known
-      // approximation, consistent with the fact that the ordering DECISION
-      // for each cluster already happens before Directions is ever called.
       let runningElapsedMs = plannedStartMs;
       const allMissedDeadlineJobIds: number[] = [];
+      const departAtForMapbox = new Date(plannedStartMs).toISOString(); // new-date-ok — epoch ms
 
       for (let ci = 0; ci < clusters.length; ci++) {
-        const isFirstCluster = ci === 0;
-        // The Directions API (unlike the Optimization/Trip API) only scores
-        // distance/duration for waypoints in the order given — it does NOT
-        // reorder them. Clusters were only geographic buckets with no
-        // in-cluster ordering, so without this, "Optimize Route" summed up
-        // new distance/time totals but left the stop sequence unchanged.
-        // Nearest-neighbor-order each cluster first (mirrors the offline
-        // fallback below) so the Directions call — and the resulting stop
-        // list — actually reflects an optimized route.
-        // Held apart from the outer `runningElapsedMs` (mirroring how
-        // `runningPosition` isn't reassigned until after this cluster's
-        // branch resolves below) — the degraded-fallback re-estimate a few
-        // lines down replays this SAME cluster from the SAME starting clock,
-        // and advancing the outer variable here first would double-count
-        // that cluster's elapsed time into it.
         const clusterStartElapsedMs = runningElapsedMs;
-        const { ordered: orderedCluster, missedDeadlineJobIds: clusterMissed, finalElapsedMs: primaryFinalElapsedMs } =
-          nearestNeighborOrder(clusters[ci], runningPosition, clusterStartElapsedMs);
-        const cluster = orderedCluster;
-        allMissedDeadlineJobIds.push(...clusterMissed);
+        const nn = nearestNeighborOrder(clusters[ci], runningPosition, clusterStartElapsedMs);
+        const cluster = preserveServerOrder ? clusters[ci] : nn.ordered;
+        if (!preserveServerOrder) allMissedDeadlineJobIds.push(...nn.missedDeadlineJobIds);
 
-        const origin = isFirstCluster && routeOrigin
-          ? [routeOrigin.lng, routeOrigin.lat] as [number, number]
+        const originCoord = runningPosition
+          ? [runningPosition.lng, runningPosition.lat] as [number, number]
           : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!] as [number, number];
 
-        // The destination is passed separately as `destCoord`, so it must NOT
-        // also appear in the waypoint list. Passing the whole cluster here
-        // repeated the final stop as two consecutive identical coordinates,
-        // producing a phantom zero-length leg — and, combined with the origin,
-        // pushed a full cluster to 27 coordinates against the Directions API's
-        // 25-coordinate ceiling, which fails the request outright.
-        const waypointStops = isFirstCluster && routeOrigin
+        const waypointStops = runningPosition
           ? cluster.slice(0, -1)
           : cluster.slice(1, -1);
-        const waypointCoords = waypointStops.map(s => [s.job.recipient_lng!, s.job.recipient_lat!] as [number, number]);
         const destStop = cluster[cluster.length - 1];
         const destCoord: [number, number] = [destStop.job.recipient_lng!, destStop.job.recipient_lat!];
 
-        // Build coordinates array with origin, waypoints, destination
-        const allCoords = [origin, ...waypointCoords, destCoord];
+        const allCoords = cluster.length === 1 && !runningPosition
+          ? [originCoord]
+          : [originCoord, ...waypointStops.map(s => [s.job.recipient_lng!, s.job.recipient_lat!] as [number, number]), destCoord];
         const token = await getMapboxAccessToken();
         if (!token) throw new Error('No Mapbox token');
 
         const coordStr = allCoords.map(c => c.join(',')).join(';');
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full&depart_at=${encodeURIComponent(departAtForMapbox)}`;
 
-        // A cluster that fails to route must NOT drop its stops. `newStops`
-        // below is built from allOrderedStops + the UNSELECTED stops, so any
-        // selected stop missing from allOrderedStops disappears from the
-        // planner altogether — the officer silently loses jobs from the run
-        // because a Directions call hiccuped. Degrade per-cluster instead:
-        // keep the nearest-neighbor order that was already computed for it,
-        // add the straight-line estimate, and tell the officer which part of
-        // the route is an estimate rather than driving directions.
         let route: any = null;
-        try {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
-          const data = await res.json();
-          route = data.routes?.[0] ?? null;
-        } catch (clusterErr: any) {
-          route = null;
+        if (allCoords.length >= 2) {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
+            const data = await res.json();
+            route = data.routes?.[0] ?? null;
+          } catch {
+            route = null;
+          }
         }
+
+        const pushEstimatedLegs = () => {
+          let cursor = runningPosition;
+          for (const stop of cluster) {
+            const mi = cursor
+              ? haversineMiles(cursor.lat, cursor.lng, stop.job.recipient_lat!, stop.job.recipient_lng!)
+              : 0;
+            allLegDurationsS.push(estimateDriveMinutes(mi) * 60);
+            cursor = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
+          }
+        };
 
         if (!route) {
           degradedClusters++;
           const est = nearestNeighborOrder(cluster, runningPosition, clusterStartElapsedMs);
           allMissedDeadlineJobIds.push(...est.missedDeadlineJobIds);
           totalDistM += est.totalDistanceMiles / 0.000621371;
-          totalDurS += est.totalDurationMinutes * 60;
+          pushEstimatedLegs();
           allOrderedStops.push(...cluster);
           runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
           runningElapsedMs = est.finalElapsedMs;
@@ -1143,25 +1330,24 @@ export default function ServeRoutePlanner({
         }
 
         if (route.geometry) allGeometries.push(route.geometry);
-        for (const leg of (route.legs || [])) {
-          totalDistM += leg.distance || 0;
-          totalDurS += leg.duration || 0;
+        const legs: Array<{ distance?: number; duration?: number }> = route.legs || [];
+        for (const leg of legs) totalDistM += leg.distance || 0;
+        if (runningPosition) {
+          for (let i = 0; i < cluster.length; i++) allLegDurationsS.push(legs[i]?.duration ?? 0);
+        } else {
+          allLegDurationsS.push(0);
+          for (let i = 0; i < cluster.length - 1; i++) allLegDurationsS.push(legs[i]?.duration ?? 0);
         }
 
         allOrderedStops.push(...cluster);
         runningPosition = { lat: destStop.job.recipient_lat!, lng: destStop.job.recipient_lng! };
-        runningElapsedMs = primaryFinalElapsedMs;
+        runningElapsedMs = nn.finalElapsedMs;
       }
 
-      // F1: build per-stop arrival map from NN simulation (best proxy we have
-      // after Directions gives only aggregate leg distances, not per-stop times)
-      const nnForArrivals = nearestNeighborOrder(allOrderedStops, routeOrigin, plannedStartMs);
-      const arrivals = new Map<number, number>();
-      allOrderedStops.forEach((s, i) => {
-        const t = nnForArrivals.perStopArrivalMs[i];
-        if (t != null) arrivals.set(s.job.id, t);
-      });
-      setStopArrivalTimes(arrivals);
+      const baked = computeArrivalsFromLegDurations(allOrderedStops, plannedStartMs, allLegDurationsS);
+      setStopArrivalTimes(baked.arrivals);
+      lastBakedStartMsRef.current = plannedStartMs;
+      allMissedDeadlineJobIds.push(...baked.missedDeadlineJobIds);
 
       // Return leg: last stop → origin, to make mileage circular.
       let returnLegM = 0;
@@ -1172,7 +1358,7 @@ export default function ServeRoutePlanner({
         const retEnd: [number, number] = [routeOrigin.lng, routeOrigin.lat];
         try {
           const token = await getMapboxAccessToken();
-          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+          const retUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${retStart.join(',')};${retEnd.join(',')}?access_token=${token}&geometries=geojson&steps=false&overview=full&depart_at=${encodeURIComponent(departAtForMapbox)}`;
           const retRes = await fetch(retUrl);
           if (retRes.ok) {
             const retData = await retRes.json();
@@ -1215,7 +1401,6 @@ export default function ServeRoutePlanner({
         }
       }
       totalDistM += returnLegM;
-      totalDurS += returnLegDurS;
 
       // Render forward route on map
       if (allGeometries.length > 0 && mapRef.current) {
@@ -1238,14 +1423,13 @@ export default function ServeRoutePlanner({
       }
 
       const distMiles = totalDistM * 0.000621371;
-      const durMinutes = totalDurS / 60;
+      const durMinutes = baked.totalDurationMinutes + returnLegDurS / 60;
       setReturnLegMiles(returnLegM * 0.000621371);
       setTotalDistance(distMiles);
       setTotalDuration(durMinutes);
-      // F4: suggest split when estimated run exceeds 8 h
+      setStatsIsEstimate(degradedClusters > 0);
       setShowSplitBanner(durMinutes > 480);
-      // F5: surface missed deadline ids for pre-confirm dialog
-      setMissedDeadlineIds(allMissedDeadlineJobIds);
+      setMissedDeadlineIds([...new Set(allMissedDeadlineJobIds)]);
 
       const unselected = stops.filter(s => !s.selected);
       const newStops: StopItem[] = [
@@ -1264,28 +1448,15 @@ export default function ServeRoutePlanner({
           + '— driving directions were unavailable for those stops.'
         : null;
       const deadlineWarning = describeMissedDeadlines(allMissedDeadlineJobIds, newStops);
-      if (degradedWarning || deadlineWarning) {
-        setError([degradedWarning, deadlineWarning].filter(Boolean).join(' '));
+      if (degradedWarning || deadlineWarning || droppedWarning) {
+        setError([degradedWarning, droppedWarning, deadlineWarning].filter(Boolean).join(' '));
       }
     } catch (err: any) {
       setError(err?.message || 'Route optimization failed');
     } finally {
       setOptimizing(false);
-      setStatsIsEstimate(false);
-      // Apply server optimizer results: ETAs, geocode warnings, matrixFallback.
-      // Runs after client-side stops are set so the ETA lookup array aligns.
-      const serverResult = await serverOptimizePromise;
-      if (serverResult) {
-        setServerEtas(serverResult.etaPerStop ?? []);
-        setServerEtaJobIds((serverResult.orderedStops ?? []).map((s: { jobId: number }) => s.jobId));
-        setGeocodeWarnings(serverResult.geocodeWarnings ?? []);
-        const newFallback = serverResult.matrixFallback ?? false;
-        setMatrixFallback(newFallback);
-        setMatrixFallbackReason(newFallback ? (serverResult.fallbackReason as string | undefined) : undefined);
-        if (newFallback) setMatrixFallbackDismissed(false);
-      }
     }
-  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap]);
+  }, [stops, mapReady, routeOrigin, returnToStart, clearRouteFromMap, plannedStartMs, selectedOfficerId, currentUserId]);
 
   // Mid-shift traffic polling — 10-min interval while route is active
   useEffect(() => {
@@ -1301,10 +1472,13 @@ export default function ServeRoutePlanner({
         const position = await new Promise<GeolocationPosition>((res, rej) =>
           navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 }),
         );
-        const remainingStops = await buildRouteStopsFromJobs(
-          selectedStops.filter(s => !TERMINAL.has(s.job.status)),
-        );
+        const remainingItems = selectedStops.filter(s => !TERMINAL.has(s.job.status));
+        const remainingStops = await buildRouteStopsFromJobs(remainingItems);
         const currentOrder = remainingStops.map((_, i) => i);
+        const originalEtas = remainingItems.map(s => {
+          const ms = stopArrivalTimes.get(s.job.id);
+          return ms != null ? new Date(ms).toISOString() : new Date().toISOString(); // new-date-ok — epoch ms / live clock
+        });
         const result = await apiFetch<{
           degraded: boolean;
           addedMinutes: number;
@@ -1317,8 +1491,8 @@ export default function ServeRoutePlanner({
             remainingStops,
             currentOrder,
             currentPosition: { lat: position.coords.latitude, lng: position.coords.longitude },
-            originalEtas: serverEtas,
-            departAt: new Date().toISOString(),
+            originalEtas,
+            departAt: new Date().toISOString(), // new-date-ok — live clock for mid-shift traffic check
           }),
         });
         if (result.degraded && !result.matrixFallback) {
@@ -1335,7 +1509,7 @@ export default function ServeRoutePlanner({
 
     const id = setInterval(check, 600_000);
     return () => clearInterval(id);
-  }, [routeAccepted, isOpen, stops, serverEtas]);
+  }, [routeAccepted, isOpen, stops, stopArrivalTimes]);
 
   // F3: print route sheet — delegates to the unified exportServeMapSheet
   const printRouteSheet = useCallback(() => {
@@ -1343,7 +1517,7 @@ export default function ServeRoutePlanner({
     exportServeMapSheet(selected.map((stop) => {
       const arrivalMs = stopArrivalTimes.get(stop.job.id);
       const etaStr = arrivalMs
-        ? new Date(arrivalMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) // new-date-ok — epoch ms computed locally
+        ? formatEtaDenver(arrivalMs, routeDate)
         : null;
       const dtype = inferDefendantType(stop.job.recipient_address, stop.job.business_id);
       const dwellMin = Math.round((DWELL_BY_TYPE_MS[dtype] ?? STOP_DWELL_MS) / 60_000);
@@ -1358,7 +1532,7 @@ export default function ServeRoutePlanner({
         bufferMinutes: dwellMin,
       };
     })).catch(() => { window.alert('Failed to export route sheet.'); });
-  }, [stops, stopArrivalTimes]);
+  }, [stops, stopArrivalTimes, routeDate]);
 
   // F4: split into two days
   const saveSplitRoute = useCallback(async () => {
@@ -1605,6 +1779,13 @@ export default function ServeRoutePlanner({
                         });
                         setServerEtas(trafficSuggestion.newEtas);
                         setServerEtaJobIds(trafficSuggestion.newOrderJobIds);
+                        const nextArrivals = new Map<number, number>();
+                        trafficSuggestion.newOrderJobIds.forEach((id, i) => {
+                          const iso = trafficSuggestion.newEtas[i];
+                          const ms = iso ? new Date(iso).getTime() : NaN; // new-date-ok — ISO from optimizer
+                          if (Number.isFinite(ms)) nextArrivals.set(id, ms);
+                        });
+                        setStopArrivalTimes(nextArrivals);
                       }
                       setTrafficSuggestion(null);
                     }}
@@ -1746,23 +1927,16 @@ export default function ServeRoutePlanner({
                       <span className="text-[10px] text-fg-muted truncate">{stop.job.recipient_address || 'No address'}</span>
                       {/* Server ETA (traffic-aware) takes priority; fall back to NN estimate */}
                       {(() => {
+                        const arrivalMs = stopArrivalTimes.get(stop.job.id);
                         const serverIdx = serverEtaJobIds.indexOf(stop.job.id);
                         const serverEta = serverIdx >= 0 ? serverEtas[serverIdx] : null;
-                        if (serverEta) {
-                          return (
+                        const ms = arrivalMs ?? (serverEta ? new Date(serverEta).getTime() : null); // new-date-ok — epoch or ISO
+                        if (ms == null || !Number.isFinite(ms)) return null;
+                        return (
                             <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
-                              ETA {new Date(serverEta).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' })} {/* new-date-ok — ISO from server */}
+                              ETA {formatEtaDenver(ms, routeDate)}
                             </span>
-                          );
-                        }
-                        if (stopArrivalTimes.has(stop.job.id)) {
-                          return (
-                            <span className={`text-[9px] font-mono flex-shrink-0 ${missedDeadlineIds.includes(stop.job.id) ? 'text-red-400' : 'text-fg-secondary'}`}>
-                              ETA {new Date(stopArrivalTimes.get(stop.job.id)!).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok — epoch ms computed locally */}
-                            </span>
-                          );
-                        }
-                        return null;
+                        );
                       })()}
                     </div>
                   </div>
@@ -1838,10 +2012,10 @@ export default function ServeRoutePlanner({
               <div className="flex justify-between text-xs">
                 <span className="text-fg-muted flex items-center gap-1.5"><Clock size={12} /> Start \u2192 End:</span>
                 <span className="text-rmpg-100 font-mono text-[10px]">
-                  {new Date(plannedStartMs).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} {/* new-date-ok \u2014 epoch ms from plannedStartMs */}
+                  {formatEtaDenver(plannedStartMs, routeDate)}
                   {' \u2192 '}
                   {totalDuration > 0
-                    ? new Date(plannedStartMs + totalDuration * 60_000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) /* new-date-ok */
+                    ? formatEtaDenver(plannedStartMs + totalDuration * 60_000, routeDate)
                     : '--'}
                 </span>
               </div>
