@@ -1,5 +1,6 @@
 import type { IntelSeed, RawDataPoint, SourceResult, CapturedCrossRef } from '../types';
 import { getKey, safeFetch, makeSourceResult } from './shared';
+import { confirmIdentity, parsePersonName } from '../../identityConfirm';
 
 const SRC = 'SkipTracerFlex';
 
@@ -81,8 +82,22 @@ export async function querySkipTracer(db: D1Database, seed: IntelSeed): Promise<
       const crossRefs: CapturedCrossRef[] = [];
 
       for (const record of records) {
-        // Identity (WebOlivia model: First/Last/Age/Born)
         const profileName = extractProfileName(record);
+        if (seed.name && (seed.dob || seed.age)) {
+          const parsed = parsePersonName(seed.name);
+          const addrs = extractAddresses(record);
+          const verdict = confirmIdentity(
+            { first: parsed.first, last: parsed.last, dob: seed.dob, age: seed.age, city: seed.city, state: seed.state },
+            {
+              first: profileName.first, last: profileName.last,
+              dob: profileName.born, age: profileName.age,
+              city: addrs[0]?.city, state: addrs[0]?.state,
+            },
+          );
+          if (!verdict.matched) continue;
+        }
+
+        // Identity (WebOlivia model: First/Last/Age/Born)
         if (profileName.first || profileName.last) {
           if (profileName.first) pts.push({ category: 'legal', field: 'first_name', value: profileName.first, source: SRC });
           if (profileName.last) pts.push({ category: 'legal', field: 'last_name', value: profileName.last, source: SRC });

@@ -1,10 +1,13 @@
 export interface IntelSeed {
   name?: string;
-  dob?: string;      // YYYY-MM-DD
+  dob?: string;      // YYYY-MM-DD or US MM/DD/YYYY
+  age?: number | string;
   phone?: string;
   email?: string;
   plate?: string;
   address?: string;
+  city?: string;
+  state?: string;
 }
 
 export type DataCategory = 'address' | 'phone' | 'email' | 'associate' | 'vehicle' | 'social' | 'business' | 'legal' | 'online';

@@ -6,6 +6,7 @@ import { execute, query } from '../utils/db';
 import type { IntelSeed, VerificationMethod } from '../utils/personIntel/types';
 import { fetchCrossRefs, persistCrossRefs } from '../utils/personIntel/crossReference';
 import { computeVerdict, persistVerification, fetchVerifications, effectiveConfidence } from '../utils/personIntel/verification';
+import { applyVerifiedPointsToPerson, loadDossierPoints } from '../utils/personIntel/applyVerifiedToPerson';
 import { runLegalPhase } from '../utils/personIntel/phaseLegal';
 import { pendingCentraliaResult, normalizeCentraliaResult, centraliaToDataPoints } from '../utils/personIntel/centraliaModel';
 import { extractOpinionWithAi } from '../utils/personIntel/centraliaExtractAi';
@@ -116,6 +117,29 @@ app.patch('/:id/data-point/:dpId', async (c) => {
   await execute(c.env.DB, `UPDATE person_intel_data_points SET officer_note=COALESCE(?,officer_note), officer_flagged=COALESCE(?,officer_flagged), promoted=COALESCE(?,promoted) WHERE id=? AND dossier_id=?`,
     [body.officer_note ?? null, body.officer_flagged != null ? (body.officer_flagged ? 1 : 0) : null, body.promoted != null ? (body.promoted ? 1 : 0) : null, dpId, dossierId]);
   return c.json({ ok: true });
+});
+
+// POST /api/person-intel/:id/apply-to-person — fill blank person fields from
+// aggregator-verified data points (confidence ≥ 0.60, 2+ sources). Never clobbers.
+app.post('/:id/apply-to-person', async (c) => {
+  const dossierId = Number(c.req.param('id'));
+  const denied = await authorizeDossier(c, dossierId);
+  if (denied) return denied;
+  const dossier = await c.env.DB.prepare(
+    'SELECT linked_person_id FROM person_intelligence WHERE id = ?',
+  ).bind(dossierId).first<{ linked_person_id: number | null }>();
+  if (!dossier) return c.json({ error: 'not found' }, 404);
+  const body = await c.req.json<{ person_id?: number }>().catch(() => ({} as { person_id?: number }));
+  const personId = Number(body.person_id ?? dossier.linked_person_id);
+  if (!Number.isFinite(personId) || personId <= 0) {
+    return c.json({ error: 'no identity-confirmed person to fill' }, 400);
+  }
+  const points = await loadDossierPoints(c.env.DB, dossierId);
+  const result = await applyVerifiedPointsToPerson(c.env.DB, personId, points);
+  if (!dossier.linked_person_id) {
+    await execute(c.env.DB, 'UPDATE person_intelligence SET linked_person_id=? WHERE id=?', personId, dossierId);
+  }
+  return c.json({ ok: true, ...result });
 });
 
 // DELETE /api/person-intel/:id — delete dossier

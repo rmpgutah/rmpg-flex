@@ -82,7 +82,14 @@ describe('identityMatch — dob/age gate', () => {
     expect(identityMatch(hit({ first_name: 'John', last_name: 'Smith', age: 35 }), person({ dob: '' }))).toBe(false);
   });
 
-  it('person has a dob but the hit carries no dob/age at all => true (absence is not disconfirming, name already matched)', () => {
-    expect(identityMatch(hit({ first_name: 'John', last_name: 'Smith' }), person({ dob: '1990-01-01' }))).toBe(true);
+  it('person has a dob but the hit carries no dob/age at all => false (no positive evidence on the hit)', () => {
+    expect(identityMatch(hit({ first_name: 'John', last_name: 'Smith' }), person({ dob: '1990-01-01' }))).toBe(false);
+  });
+
+  it('US MM/DD/YYYY dob matches ISO YYYY-MM-DD', () => {
+    expect(identityMatch(
+      hit({ first_name: 'John', last_name: 'Smith', date_of_birth: '10/11/2001' }),
+      person({ dob: '2001-10-11' }),
+    )).toBe(true);
   });
 });

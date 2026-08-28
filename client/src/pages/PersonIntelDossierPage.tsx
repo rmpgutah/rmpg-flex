@@ -307,6 +307,22 @@ export default function PersonIntelDossierPage() {
               <CheckCircle2 className="w-2.5 h-2.5" />Linked to Person #{dossier.linked_person_id}
             </span>
           )}
+          {dossier.linked_person_id && dossier.status === 'complete' && (
+            <button
+              type="button"
+              className="text-[10px] text-brand-400 hover:text-brand-300"
+              onClick={async () => {
+                try {
+                  const res = await apiFetch<{ filled: string[] }>(`/person-intel/${id}/apply-to-person`, { method: 'POST', body: JSON.stringify({}) });
+                  addToast(res.filled?.length ? `Filled ${res.filled.join(', ')}` : 'No verified aggregator fields to fill', 'success');
+                } catch (e: any) {
+                  addToast(e?.message ?? 'Fill failed', 'error');
+                }
+              }}
+            >
+              Fill verified details
+            </button>
+          )}
           <span className="ml-auto flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />{parseTimestamp(dossier.created_at).toLocaleString('en-US', { timeZone: 'America/Denver' })}
           </span>

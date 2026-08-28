@@ -51,6 +51,7 @@ import { isCircuitOpen } from './warrantSources/resilience';
 // skew this helper exists to normalize. Its own docblock argues for centralizing
 // it instead of keeping parallel copies.
 import { parseD1TimestampMs } from './fleetio/sync';
+import { confirmIdentity } from './identityConfirm';
 
 // Source key tying this poller to its warrant_scraper_config row + the
 // scraper_events WebSocket channel + the dispatcher-facing display name
@@ -121,7 +122,7 @@ interface PersonRow {
  * The search endpoint returns duplicate rows per personId (name-spelling
  * variants, multiple addresses on file) — callers must dedup by personId.
  */
-interface PersonStub {
+export interface PersonStub {
   personId: number;
   firstName: string;
   middleName?: string;
@@ -167,57 +168,28 @@ export interface WatchRunResult {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Whole-years age from an ISO-ish dob string, or null if unparseable. */
-function ageFromDob(dob: string | null): number | null {
-  if (!dob) return null;
-  const born = new Date(dob);
-  if (isNaN(born.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - born.getFullYear();
-  const m = now.getMonth() - born.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
-  return age >= 0 && age < 130 ? age : null;
-}
-
-// How many years the local DOB-derived age may differ from the upstream
-// `age` field and still count as the same person. ±1 absorbs the
-// birthday-timing gap between when the state computed `age` and now.
-const AGE_MATCH_TOLERANCE = 1;
-
 /**
- * Decide whether an upstream candidate is plausibly the SAME human as the
- * local person — the guard against attributing a namesake's warrant to the
- * wrong local file. "John Smith" returns 8 distinct people; without this
- * filter every one of their warrants lands on a single local person_id.
- *
- * Confident path: local DOB present → derive age, require the upstream
- * `age` to be within AGE_MATCH_TOLERANCE years. Middle-initial agreement
- * (when both sides have one) further confirms.
- *
- * Ambiguous path: local person has NO dob, so age can't disambiguate.
- * That branch is a deliberate policy decision — see TODO below.
+ * Decide whether an upstream candidate is the SAME human as the local person.
+ * "John Smith" returns many people; we require name + DOB/age confirmation
+ * (and reject a city conflict) before attributing any warrant. A local
+ * person with no DOB is never auto-linked to a namesake.
  */
 function isLikelyMatch(local: PersonRow, candidate: PersonStub): boolean {
-  const localAge = ageFromDob(local.dob);
-  const upstreamAge = candidate.age;
-
-  if (localAge != null && typeof upstreamAge === 'number' && Number.isFinite(upstreamAge)) {
-    if (Math.abs(localAge - upstreamAge) > AGE_MATCH_TOLERANCE) return false;
-    // Age agrees. If BOTH have a middle name, require first-initial match
-    // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
-    const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
-    const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
-    if (lm && um && lm !== um) return false;
-    return true;
-  }
-
-  // Policy (operator decision 2026-05-24): when the local record has no DOB,
-  // age-matching is impossible, so attribute the namesake rather than skip
-  // the person entirely. Age-from-DOB remains the PRIMARY matcher above —
-  // this branch only runs for DOB-less local records (≈25% of the roster).
-  // Tradeoff accepted: some namesake false-positives on DOB-less records,
-  // in exchange for never silently leaving a person unchecked. Backfilling
-  // DOBs on those records upgrades them to the confident path automatically.
+  const verdict = confirmIdentity(
+    { first: local.first_name, last: local.last_name, dob: local.dob },
+    {
+      first: candidate.firstName,
+      last: candidate.lastName,
+      age: candidate.age,
+      city: candidate.city,
+    },
+  );
+  if (!verdict.matched) return false;
+  // Age agrees. If BOTH have a middle name, require first-initial match
+  // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
+  const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
+  const um = candidate.middleName?.trim()?.[0]?.toUpperCase();
+  if (lm && um && lm !== um) return false;
   return true;
 }
 
@@ -241,10 +213,10 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * Earlier versions counted and discarded — see git blame for the count-only
  * implementation prior to migration 0035.
  */
-export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
+export async function searchUtahCandidates(firstName: string, lastName: string): Promise<PersonStub[]> {
   const params = new URLSearchParams();
-  params.set('firstName', person.first_name.toUpperCase());
-  params.set('lastName', person.last_name.toUpperCase());
+  params.set('firstName', firstName.toUpperCase());
+  params.set('lastName', lastName.toUpperCase());
 
   const searchRes = await fetchWithTimeout(`${API_BASE}/search?${params.toString()}`, {
     method: 'GET',
@@ -262,23 +234,17 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
   }
 
   const allCandidates = (await searchRes.json()) as PersonStub[];
-  if (allCandidates.length === 0) return [];
+  if (!Array.isArray(allCandidates) || allCandidates.length === 0) return [];
 
-  // Reject namesakes BEFORE fetching their warrants — saves rate budget and
-  // prevents attributing a stranger's warrant to this local person.
-  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
-  if (matched.length === 0) return [];
-
-  // The search endpoint returns duplicate rows per personId (name-spelling
-  // variants, multiple addresses on file) — dedup before hitting /detail so
-  // we don't re-fetch (and double-count) the same person's warrants.
   const seenPersonIds = new Set<number>();
-  const candidates = matched.filter((c) => {
-    if (seenPersonIds.has(c.personId)) return false;
+  return allCandidates.filter((c) => {
+    if (!c?.personId || seenPersonIds.has(c.personId)) return false;
     seenPersonIds.add(c.personId);
     return true;
   });
+}
 
+export async function fetchWarrantsForCandidates(candidates: PersonStub[]): Promise<FetchedWarrant[]> {
   const out: FetchedWarrant[] = [];
   for (const candidate of candidates) {
     const detailRes = await fetchWithTimeout(
@@ -291,9 +257,6 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
     for (const w of detail.warrant ?? []) {
       out.push({
         utah_person_id: String(candidate.personId),
-        // warrantNumber is the closest upstream analog to a stable warrant
-        // id; fall back to a composite key on the rare row missing it so we
-        // never insert a null/empty primary identifier.
         utah_warrant_id: w.warrantNumber || `${candidate.personId}:${w.courtCaseNumber ?? ''}:${w.issueDate ?? ''}`,
         first_name: candidate.firstName,
         middle_name: candidate.middleName ?? null,
@@ -308,6 +271,17 @@ export async function fetchWarrantsForPerson(person: PersonRow): Promise<Fetched
     }
   }
   return out;
+}
+
+export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
+  const allCandidates = await searchUtahCandidates(person.first_name, person.last_name);
+  if (allCandidates.length === 0) return [];
+
+  // Reject namesakes BEFORE fetching their warrants — saves rate budget and
+  // prevents attributing a stranger's warrant to this local person.
+  const matched = allCandidates.filter((c) => isLikelyMatch(person, c));
+  if (matched.length === 0) return [];
+  return fetchWarrantsForCandidates(matched);
 }
 
 /**
