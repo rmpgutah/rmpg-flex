@@ -168,6 +168,7 @@ import serveQueueEnhanced from './routes/serveQueueEnhanced';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
+import skiptracerV2 from './routes/skiptracerV2';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
@@ -822,7 +823,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // SM's unsigned POST reaches it without a JWT. The HMAC signature is the guard.
   { prefix: '/api/servemanager-webhook', router: serveManagerWebhookRouter, auth: 'public' },
   { prefix: '/api/servemanager', router: serveManagerRoutes, auth: 'required' },
-  { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+  { prefix: '/api/skiptracer-v2', router: skiptracerV2, auth: 'required',
+    note: 'Skip Tracker 3.5 — local RMS + MicroBilt cache + optional RapidAPI + enrichment adapters. Replaces stubs mount that returned empty sources/search.' },
 
   // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
   // Each of these is called by the client SPA but has no real handler on

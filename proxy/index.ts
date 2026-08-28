@@ -361,18 +361,8 @@ const STUBS: StubRule[] = [
   // (removed 2026-07-12) /api/auth/security/login-history stub — real
   // handler exists (auth.ts .get('/security/login-history')) and was
   // being shadowed.
-  // ── Skiptracer v2 (different mount from v1) ─────────────────────────
-  // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a
-  // separate legacy mount at /api/skiptracer-v2/* that queries `people_index`,
-  // `dossiers` (singular, not skiptracer_dossiers), and `skip_tracer_searches_v`
-  // — none of which exist on live D1. Stub GETs only; POST /search stays
-  // on legacy because v2 search is the active third-party round-trip path.
-  {
-    match: /^\/api\/skiptracer-v2\/(status|stats)(\?.*)?$/,
-    methods: ['GET'],
-    body: { enabled: false, total_searches: 0, recent_dossiers: [] },
-    reason: 'v2 mount queries people_index/dossiers/skip_tracer_searches_v — none exist on live D1',
-  },
+  // (removed 2026-08-28) skiptracer-v2 status/stats stub — real handler in
+  // src/routes/skiptracerV2.ts; proxy now routes /api/skiptracer-v2/* to env.API.
   // ── Dispatch GPS zone-speed-stats (MapPage analytics) ───────────────
   // Different path from /speed-zones (which was stubbed above). This one
   // is the analytics aggregation — likely 500s because the underlying
@@ -585,6 +575,8 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/skiptracer/status' },
   { kind: 'prefix', value: '/api/skiptracer/stats' },
   { kind: 'prefix', value: '/api/skiptracer/dossiers' },
+  // Skip Tracker 3.5 — full namespace on the rewrite (replaced stubs mount).
+  { kind: 'prefix', value: '/api/skiptracer-v2' },
   // IPED — real handlers in /src/routes/iped.ts: /status, /hash-sets[/:id],
   // /downloads (read-only over forensic_hash_sets + iped_imports). The
   // broad prefix is preserved — any other /api/iped/* path still hits
