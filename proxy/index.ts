@@ -12,7 +12,6 @@ import { DurableObject } from 'cloudflare:workers';
 export class AlertHubDO extends DurableObject {}
 export class WelfareWatchDO extends DurableObject {}
 export class VoiceHubDO extends DurableObject {}
-export class PdfToolsContainer extends DurableObject {}
 // Sits in front of rmpgutah.us/api/* at the zone level (see proxy/wrangler.toml).
 // Dispatches each request to one of two backends:
 //
