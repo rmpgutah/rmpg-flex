@@ -1,9 +1,14 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
 
-export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
+export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'open_sanctions';
+  const apiKey = env.OPENSANCTIONS_API_KEY?.trim();
+  if (!apiKey) {
+    return { source, ok: false, latency_ms: 0, records: [], error: 'not_configured' };
+  }
+
   try {
     const params = new URLSearchParams({
       q: `${seed.first_name} ${seed.last_name}`,
@@ -14,7 +19,10 @@ export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<Sour
     const timer = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(`https://api.opensanctions.org/entities/?${params}`, {
       signal: ctrl.signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        Authorization: `ApiKey ${apiKey}`,
+      },
     }).finally(() => clearTimeout(timer));
 
     if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };

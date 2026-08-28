@@ -14,12 +14,17 @@ function actorId(c: { get: (k: 'user') => { user_id?: number; userId?: number; i
 }
 
 enrichment.get('/sources', (c) => {
+  const env = c.env as Record<string, unknown>;
   return c.json(OPEN_SOURCE_ENRICHMENT_SOURCES.map(s => ({
     key: s.key,
     label: s.label,
     category: s.category,
-    open_source: true,
-    configured: true,
+    open_source: s.openSource,
+    configured: s.key === 'open_sanctions'
+      ? Boolean((env.OPENSANCTIONS_API_KEY as string | undefined)?.trim())
+      : s.key === 'nsopw'
+      ? (env.NSOPW_ENABLED === '1' || env.NSOPW_ENABLED === 'true')
+      : true,
   })));
 });
 
@@ -42,11 +47,12 @@ enrichment.post('/search', async (c) => {
     ssn_last4:  body.ssn_last4,
   };
 
+  const refresh = c.req.query('refresh') === '1' || c.req.query('refresh') === 'true';
   const response = await runEnrichmentSearch(
     c.env.DB,
     c.env as Record<string, unknown>,
     seed,
-    { searchedBy: actorId(c) },
+    { searchedBy: actorId(c), useCache: !refresh },
   );
 
   await recordAudit(c, {

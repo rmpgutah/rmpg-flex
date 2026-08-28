@@ -1,42 +1,50 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
+import { nsopwSearch, resolveClientConfig } from '../../nsopw/client';
+import { parseSearchResponse } from '../../nsopw/parse';
 
-export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
+export async function search(seed: EnrichmentSeed, env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'nsopw';
+  const config = resolveClientConfig(env);
+  if (!config.enabled) {
+    return { source, ok: false, latency_ms: 0, records: [], error: 'not_configured' };
+  }
+
   try {
-    const params = new URLSearchParams({
-      firstName: seed.first_name,
-      lastName:  seed.last_name,
-      ...(seed.state ? { stateFilter: seed.state } : {}),
-    });
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(
-      `https://www.nsopw.gov/api/Search/SearchPublicSite?${params}`,
-      { signal: ctrl.signal, headers: { Accept: 'application/json' } },
-    ).finally(() => clearTimeout(timer));
+    const { response } = await nsopwSearch(env, {
+      forename: seed.first_name,
+      surname: seed.last_name,
+      city: seed.city,
+      county: undefined,
+      zip: undefined,
+    }, config);
 
-    if (!res.ok) return { source, ok: false, latency_ms: Date.now() - start, records: [], error: `HTTP ${res.status}` };
-
-    const data = await res.json() as { Registrants?: Array<{
-      FirstName?: string; LastName?: string; DateOfBirth?: string;
-      ResidenceAddress?: { City?: string; State?: string; Zip?: string; };
-    }> };
-
-    const records: EnrichedRecord[] = (data.Registrants ?? []).map(r => ({
-      name: [r.FirstName, r.LastName].filter(Boolean).join(' '),
-      dob: r.DateOfBirth ?? undefined,
-      addresses: r.ResidenceAddress ? [{
-        city: r.ResidenceAddress.City,
-        state: r.ResidenceAddress.State,
-        zip: r.ResidenceAddress.Zip,
-        source,
-      }] : [],
-      phones: [], emails: [],
+    const parsed = parseSearchResponse(response);
+    const records: EnrichedRecord[] = parsed.offenders.map(o => ({
+      name: [o.firstName, o.middleName, o.lastName].filter(Boolean).join(' '),
+      dob: o.dateOfBirth ?? undefined,
+      addresses: o.locations.length > 0
+        ? o.locations.map(loc => ({
+            street: loc.streetAddress ?? undefined,
+            city: loc.city ?? undefined,
+            state: loc.state ?? undefined,
+            zip: loc.zipCode ?? undefined,
+            type: loc.type?.toLowerCase(),
+            source,
+          }))
+        : (o.address ? [{
+            street: o.address,
+            city: o.city ?? undefined,
+            state: o.state ?? undefined,
+            zip: o.zip ?? undefined,
+            source,
+          }] : []),
+      phones: [],
+      emails: [],
       watchlist_flags: ['sex_offender_registry'],
       source,
-      raw: r,
+      raw: o.raw,
     }));
 
     return { source, ok: true, latency_ms: Date.now() - start, records };
