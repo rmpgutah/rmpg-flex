@@ -8,6 +8,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { queryFirst, execute } from './db';
+import { timingSafeEqual } from './signedAccess';
 
 const SM_BASE_URL = 'https://www.servemanager.com/api';
 
@@ -15,6 +16,15 @@ const SM_BASE_URL = 'https://www.servemanager.com/api';
 
 function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -405,33 +415,96 @@ export async function uploadDocumentToJob(
 
 // ── Webhook signature verification ────────────────────────────
 
-// ServeManager signs webhook payloads with HMAC-SHA-256. The signature is
-// in the `X-ServeManager-Signature` header as `sha256=<hex>`. The secret
-// is stored in system_config as `servemanager_webhook_secret` (plaintext —
-// it's a shared secret supplied by SM, not a user credential, so it doesn't
-// need AES-GCM wrapping, matching the pattern used by the Fleet.io webhook).
+// ServeManager signs webhook POSTs per
+// https://www.servemanager.com/api  (Authenticating Requests):
+//
+//   1. Base64-encode the raw JSON body bytes  →  hashed_payload
+//   2. HMAC-SHA-256(secret_key, hashed_payload)
+//   3. Base64-encode the HMAC digest
+//
+// The digest arrives in `X-SM-HMAC-SHA256` (value is the Base64 HMAC, sometimes
+// shown as `x-sm-hmac-sha256=<b64>`). This is NOT GitHub-style
+// `X-Hub-Signature-256: sha256=<hex>` of the raw body — that was the previous
+// verifier, which 401'd every live SM delivery with `{"error":"Invalid signature"}`.
+//
+// Secret lives in system_config as `servemanager_webhook_secret` (plaintext —
+// it's a shared secret from SM's webhook overview, not a user credential).
+export function normalizeServeManagerSignature(signatureHeader: string | null | undefined): string | null {
+  if (!signatureHeader) return null;
+  const trimmed = signatureHeader.trim();
+  if (!trimmed) return null;
+  return trimmed
+    .replace(/^x-sm-hmac-sha256=/i, '')
+    .replace(/^sha256=/i, '')
+    .trim() || null;
+}
+
+export function readServeManagerSignatureHeader(getHeader: (name: string) => string | undefined): string | null {
+  return getHeader('X-SM-HMAC-SHA256')
+    || getHeader('x-sm-hmac-sha256')
+    || getHeader('X-ServeManager-Signature')
+    || null;
+}
+
+export async function computeServeManagerSignature(
+  payload: string,
+  secret: string,
+): Promise<string> {
+  const enc = new TextEncoder();
+  // Ruby's Base64.strict_encode64(request.raw_post) — UTF-8 bytes, no newlines.
+  const hashedPayload = bytesToBase64(enc.encode(payload));
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(hashedPayload));
+  return bytesToBase64(new Uint8Array(sig));
+}
+
 export async function verifyWebhookSignature(
   payload: string,
   signatureHeader: string | null,
   secret: string,
 ): Promise<boolean> {
-  if (!signatureHeader || !secret) return false;
+  const expected = normalizeServeManagerSignature(signatureHeader);
+  if (!expected || !secret) return false;
   try {
-    const expected = signatureHeader.replace(/^sha256=/, '');
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-    );
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
-    const computed = bytesToHex(new Uint8Array(sig));
-    // Constant-time comparison
-    if (computed.length !== expected.length) return false;
-    let diff = 0;
-    for (let i = 0; i < computed.length; i++) {
-      diff |= computed.charCodeAt(i) ^ expected.charCodeAt(i);
-    }
-    return diff === 0;
+    const computed = await computeServeManagerSignature(payload, secret);
+    return timingSafeEqual(computed, expected);
   } catch { return false; }
+}
+
+/** Pull ServeManager job ids out of the live webhook envelope (batched `data[]`). */
+export function extractServeManagerJobIds(payload: unknown): number[] {
+  const ids = new Set<number>();
+  const add = (value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) ids.add(value);
+    else if (typeof value === 'string' && /^\d+$/.test(value)) ids.add(Number(value));
+  };
+
+  if (!payload || typeof payload !== 'object') return [];
+  const body = payload as Record<string, unknown>;
+
+  // Legacy single-object shape (never observed from SM, kept for tests/admin echo).
+  const nested = body.data;
+  if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    const row = nested as Record<string, unknown>;
+    add(row.id);
+    const job = row.job;
+    if (job && typeof job === 'object') add((job as Record<string, unknown>).id);
+    add(row.job_id);
+  }
+
+  const rows = Array.isArray(nested) ? nested
+    : Array.isArray(body.jobs) ? body.jobs
+    : [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const rec = row as Record<string, unknown>;
+    if (rec.type === 'job') add(rec.id);
+    add(rec.job_id);
+  }
+
+  return [...ids];
 }
 
 export { getStoredKey };
