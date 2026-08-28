@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   clampCopies,
   inferServeFileKind,
@@ -38,5 +40,13 @@ describe('serveAttemptFiles helpers', () => {
     expect(isServeDocumentType('summons')).toBe(true);
     expect(isServeDocumentType('voice_memo')).toBe(true);
     expect(isServeDocumentType('not-a-type')).toBe(false);
+  });
+});
+
+describe('serveAttemptFiles upload encryption source', () => {
+  it('passes the Worker env into putEncrypted so JWT_SECRET can wrap files', () => {
+    const src = readFileSync(join(__dirname, '../src/routes/serveAttemptFiles.ts'), 'utf8');
+    expect(src).toContain('putEncrypted(c.env.UPLOADS, db, c.env,');
+    expect(src).not.toMatch(/putEncrypted\([^)]*FILE_ENCRYPTION_KEK/);
   });
 });

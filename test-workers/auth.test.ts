@@ -157,6 +157,28 @@ describe('auth middleware — media-path query-auth passthrough', () => {
     expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
   });
 
+  it('treats serve-intake document file as a media path (query token is attempted)', async () => {
+    const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
+    app.use('*', authMiddleware);
+    app.get('/api/serve-intake/documents/:docId/file', (c) => c.json({ ok: true }));
+
+    const missing = await app.request(
+      '/api/serve-intake/documents/343/file',
+      {},
+      env as unknown as Record<string, unknown>,
+    );
+    expect(missing.status).toBe(401);
+    expect((await missing.json() as { error: string }).error).toBe('Authentication required');
+
+    const bogus = await app.request(
+      '/api/serve-intake/documents/343/file?token=not-a-jwt',
+      {},
+      { ...(env as unknown as Record<string, unknown>), JWT_SECRET: 'test-jwt-secret-do-not-use-in-prod' },
+    );
+    expect(bogus.status).toBe(401);
+    expect((await bogus.json() as { error: string }).error).toBe('Invalid or expired token');
+  });
+
   it('does not treat the tesseract image route as self-verifying HMAC media', async () => {
     const app = new Hono<{ Bindings: Record<string, unknown>; Variables: any }>();
     app.use('*', authMiddleware);
