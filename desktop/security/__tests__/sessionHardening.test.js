@@ -130,6 +130,13 @@ test('shouldAllowNewWindow: routes a different http(s) host external', () => {
   assert.deepEqual(shouldAllowNewWindow('https://maps.google.com/?q=1', 'rmpgutah.us'), { action: 'external' });
 });
 
+test('shouldAllowNewWindow: Dial Connect opens in-app so Twilio Voice stays one Client', () => {
+  assert.deepEqual(
+    shouldAllowNewWindow('https://dialer.rmpgutah.us/dialer', 'rmpgutah.us'),
+    { action: 'allow' },
+  );
+});
+
 test('shouldAllowNewWindow: denies a javascript: URL', () => {
   assert.deepEqual(shouldAllowNewWindow('javascript:alert(1)', 'rmpgutah.us'), { action: 'deny' });
 });

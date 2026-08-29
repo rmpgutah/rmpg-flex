@@ -1893,8 +1893,8 @@ export default function Layout() {
         navTargets={paletteNavTargets}
       />
 
-      {/* Dialer — chip opens Dial Connect in a first-party window (not the
-          cookieless /dialer-embed iframe, which cannot answer inbound). */}
+      {/* Dialer — always-on /dialer iframe (authenticated Twilio Client).
+          Pop-out unloads the iframe and opens a named Dial Connect window. */}
       <DialerPanel />
 
     </div>
