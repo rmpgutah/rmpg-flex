@@ -18,7 +18,7 @@ import {
   Activity, AlertTriangle, Anchor, Boxes, Brush, Camera, CircleDot, Cloud, Compass,
   CloudLightning, Crosshair, DoorOpen, Footprints, Gauge, Globe, Grid3x3, Hexagon,
   History, Landmark, Layers, LineChart, Locate, MapPin, Mountain, Move3d, Navigation,
-  PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, Search, Shield, Siren,
+  PenTool, PlayCircle, Plug, Radar, Radio, Route, Ruler, ScanLine, Search, Shield, Siren,
   SquareDashed, Star, Sun, Timer, TrafficCone, Volume2, Waypoints, Wrench,
   Zap, type LucideIcon,
 } from 'lucide-react';
@@ -186,16 +186,25 @@ const OSM_GROUP_META: Record<string, { group: MapLayerGroup; icon: LucideIcon; c
 // (client/src/hooks/useVectorTileLayers.ts) so a new category can never leave
 // the registry stale. id matches the config id exactly — that id is also the
 // binding key used in MapboxMapPage's layerBindings.
+const OSM_CAT_REGISTRY: Record<string, { icon?: LucideIcon; colorVar?: string; pinned?: boolean }> = {
+  alpr: { icon: ScanLine, colorVar: 'var(--sev-info)', pinned: true },
+  camera: { icon: Camera, colorVar: 'var(--accent-silver-400)' },
+  camera_cone: { icon: Crosshair, colorVar: 'var(--sev-info)' },
+};
+
 const OSM_LAYERS: MapLayerDef[] = OSM_VECTOR_CONFIGS.map((cfg): MapLayerDef => {
   const groupName = cfg.name.replace(/^osm-/, '');
   const meta = OSM_GROUP_META[groupName] ?? { group: 'OSM Sites', icon: Layers, colorVar: 'var(--accent-silver-400)' };
+  const cat = cfg.categoryFilter ?? '';
+  const catMeta = OSM_CAT_REGISTRY[cat];
   return {
     id: cfg.id,
     label: cfg.label,
-    icon: meta.icon,
+    icon: catMeta?.icon ?? meta.icon,
     group: meta.group,
-    colorVar: meta.colorVar,
-    description: cfg.coverage ?? cfg.description,
+    colorVar: catMeta?.colorVar ?? meta.colorVar,
+    description: cfg.description || cfg.coverage || cfg.label,
+    pinned: catMeta?.pinned,
   };
 });
 

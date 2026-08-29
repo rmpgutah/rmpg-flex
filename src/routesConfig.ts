@@ -133,6 +133,7 @@ import cloudflare from './routes/cloudflare';
 import connections from './routes/connections';
 import crm from './routes/crm';
 import deepResearch from './routes/deepResearch';
+import dialConnectRecordings from './routes/dialConnectRecordings';
 import crisisResponse from './routes/crisisResponse';
 import featureFlags from './routes/featureFlags';
 import fieldInterviews from './routes/fieldInterviews';
@@ -201,6 +202,7 @@ import firecrawlTools from './routes/firecrawlTools';
 import webResearch from './routes/webResearch';
 import pdfEngine from './routes/pdfEngine';
 import dar from './routes/dar';
+import dialerConnect, { dialerConnectIngest } from './routes/dialerConnect';
 import formDrafts from './routes/formDrafts';
 import reanalysis from './routes/reanalysis';
 import evidence from './routes/evidence';
@@ -490,6 +492,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/crm', router: crm, auth: 'required',
     note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/deep-research', router: deepResearch, auth: 'required' },
+  { prefix: '/api/dial-connect-recordings', router: dialConnectRecordings, auth: 'required',
+    note: 'Dial Connect call recordings + transcripts: JWT list/detail/audio download and CAD iframe ingest. Machine ingest is POST /api/integrations/dial-connect-recordings.' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/cloudflare', router: cloudflare, auth: 'required',
@@ -835,6 +839,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
   { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: dar, auth: 'required' },
+  // Longer ingest prefix FIRST so Hono does not let the parent router steal POST /ingest.
+  { prefix: '/api/dialer-connect/ingest', router: dialerConnectIngest, auth: 'public',
+    note: 'Dial Connect server-to-server ingest. HMAC via DIAL_CONNECT_WEBHOOK_SECRET (Authorization or X-Dial-Connect-Secret).' },
+  { prefix: '/api/dialer-connect', router: dialerConnect, auth: 'required',
+    note: 'Dial Connect recordings, transcripts, voicemail, call history, speed dials, presence. Operational roles only.' },
   { prefix: '/api/form-drafts', router: formDrafts, auth: 'required' },
   { prefix: '/api/jail-roster', router: jailRoster, auth: 'required' },
   { prefix: '/api/evidence', router: evidence, auth: 'required' },

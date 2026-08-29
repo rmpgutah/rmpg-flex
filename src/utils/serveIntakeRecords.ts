@@ -44,6 +44,7 @@ import type { AttemptWindow } from './serveDiligencePlanner';
 import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';
+import { inferVenueKind, buildOutputTree } from './serveIntakeOutputTree';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
 import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
@@ -1011,6 +1012,12 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     });
   }
 
+  const venueKind = inferVenueKind(
+    fullLocation || addr,
+    queueRow.recipient_name || get('recipient_business_name') || queueRow.business_name,
+    queueRow.service_instructions,
+  );
+
   const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
     isBusiness,
     addressClass: addressClassResult.klass,
@@ -1019,6 +1026,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     allowedDays,
     startNotBefore,
     locationNote,
+    venueKind,
   });
 
   // Finding 3 FIX: `clientBands.length || 3` didn't match selectWindows'
@@ -1236,6 +1244,29 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           confirmed: addressClassResult.confirmed,
           source: addressClassResult.source,
         },
+        venue: venueKind,
+        output_tree: (() => {
+          const tree = buildOutputTree({
+            addressClass: addressClassResult.klass,
+            addressClassConfirmed: addressClassResult.confirmed,
+            isBusiness,
+            fields,
+            queueRow,
+            agentName: agentFullName,
+            fullLocation: fullLocation || addr,
+            docCount: input.docCount,
+            nowIso,
+            gateCode: propertyRecord?.gate_code,
+            hazardNotes: propertyRecord?.hazard_notes,
+          });
+          return {
+            venue: tree.venue,
+            venue_label: tree.venueLabel,
+            catalog_size: tree.catalogSize,
+            fired_ids: tree.firedIds,
+            fired_count: tree.features.length,
+          };
+        })(),
         attempt_plan: attemptPlan,
         conflicts: input.conflicts ?? [],
         validation_issues: input.validationIssues ?? [],

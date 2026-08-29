@@ -65,6 +65,7 @@ describe('PDF_REGISTRY', () => {
         'person-record',
         'vehicle-record',
         'field-interview-record',
+        'dial-connect-call',
       ].sort(),
     );
   });
@@ -133,7 +134,7 @@ describe('PDF_REGISTRY', () => {
   });
 
   it('has the expected total registry size', () => {
-    expect(PDF_REGISTRY.length).toBe(81);
+    expect(PDF_REGISTRY.length).toBe(82);
   });
 
   it('looks up by id', () => {

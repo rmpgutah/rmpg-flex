@@ -7,6 +7,7 @@ import type { PatrolTrackingReportData } from '../../../utils/patrolTrackingPdfG
 import type { NavBriefingArgs } from '../../../utils/navBriefingPdf';
 import type { NavTrip } from '../../../types';
 import type { MapSituationReportData } from '../../../utils/mapSituationReportPdf';
+import type { DialConnectCallPdfInput } from '../../../utils/dialConnectCallPdf';
 import type { ShiftPlan, AreaAssignment } from '../../../hooks/useShiftPlanning';
 import type { PdfFixture } from '../types';
 
@@ -791,6 +792,56 @@ export const mapSituationReportFixtures: PdfFixture<MapSituationReportData>[] = 
           order: i + 1, callNumber: `C-2026-${String(4417 + i).padStart(6, '0')}`, label: `Stop ${i + 1}`, legEta: '6 min',
         })),
       },
+    },
+  },
+];
+
+export const dialConnectCallFixtures: PdfFixture<DialConnectCallPdfInput>[] = [
+  {
+    variant: 'typical',
+    label: 'Inbound dispatch call with segmented transcription',
+    input: {
+      recordingSid: 'RE4417abcd1234',
+      callSid: 'CAab12cd34ef56',
+      fromNumber: '+18015550100',
+      toNumber: '+18015550999',
+      direction: 'inbound',
+      startedAt: '2026-08-12T15:04:00Z',
+      endedAt: '2026-08-12T15:07:22Z',
+      durationSeconds: 202,
+      dispatcherName: 'Dana Whitlock',
+      hasAudio: true,
+      exportedBy: 'Marcus Reyes',
+      segments: [
+        { speaker: 'Caller', start: 0, text: 'I need an officer at 1400 S State Street, someone is refusing to leave the store.' },
+        { speaker: 'Dispatcher', start: 18, text: 'Copy, I am starting a call for service now. Stay on the line.' },
+      ],
+    },
+  },
+  {
+    variant: 'empty',
+    label: 'Identifiers only, no transcription or audio',
+    input: {
+      recordingSid: 'REempty0001',
+      hasAudio: false,
+    },
+  },
+  {
+    variant: 'maximal',
+    label: 'Long transcription spanning pages',
+    input: {
+      recordingSid: 'REmaximal0001',
+      callSid: 'CAmaximal0001',
+      fromNumber: '+18015550100',
+      toNumber: '+18015550999',
+      direction: 'outbound',
+      startedAt: '2026-08-12T23:59:00Z',
+      endedAt: '2026-08-13T00:12:00Z',
+      durationSeconds: 780,
+      dispatcherName: MAXIMAL_NAME,
+      hasAudio: true,
+      exportedBy: MAXIMAL_NAME,
+      transcript: MAXIMAL_NARRATIVE,
     },
   },
 ];
