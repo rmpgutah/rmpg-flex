@@ -29,6 +29,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { darListToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50',
@@ -369,12 +370,19 @@ export default function DailyActivityReportsPage() {
         <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2 shadow-lg">
           <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
           <span className="flex-1">{fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300 text-[10px]">Dismiss</button>
+          <button type="button" onClick={() => void fetchDars()} className="ml-auto text-red-300 hover:text-red-100 text-[10px]">Retry</button>
         </div>
       )}
       {/* ── Left Panel ── */}
       <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
+          <button
+            type="button"
+            className="toolbar-btn print:hidden"
+            disabled={dars.length === 0}
+            onClick={() => downloadTextFile('daily-activity-reports.csv', darListToCsv(dars))}
+            title="CSV of report number, shift date, status — no narrative"
+          >CSV</button>
           <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
           <IconButton onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)" aria-label="Refresh">
             <RefreshCw style={{ width: 11, height: 11 }} />

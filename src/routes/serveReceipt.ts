@@ -36,31 +36,10 @@ import { rateLimitAllow } from '../utils/rateLimit';
 import { log } from '../utils/logger';
 import { clientIp } from '../utils/requestIp';
 import { upsertPersonFromAos, storeIdPhotos, linkReceiptToPerson } from '../utils/serveReceiptPersons';
+import { formatServiceAddress } from '../utils/formatServiceAddress';
 import { broadcastAll } from './ws';
 
 const PUBLIC_APP_URL = 'https://rmpgutah.us';
-
-/**
- * Address of service as a conventional two-line block:
- *
- *     1234 Wisconsin Street
- *     South Salt Lake, UT 85194
- *
- * Mirrors formatServiceAddress in client/src/utils/serveReceiptVariant.ts.
- * A comma-joined single string wrapped mid-city on the 2026-07-27 service
- * and put a comma between the state and the ZIP, which no postal or court
- * address block does.
- */
-function formatServiceAddress(p: {
-  address?: string | null; city?: string | null;
-  state?: string | null; zip?: string | null;
-}): string {
-  const street = (p.address ?? '').trim();
-  const locality = [(p.city ?? '').trim(),
-    [(p.state ?? '').trim(), (p.zip ?? '').trim()].filter(Boolean).join(' ')]
-    .filter(Boolean).join(', ');
-  return [street, locality].filter(Boolean).join('\n');
-}
 
 /** Default life of a printed QR. Printed sheets outlive their usefulness. */
 const DEFAULT_TOKEN_TTL_DAYS = 30;

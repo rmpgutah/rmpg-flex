@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
 import { resolveSourceKey } from '../utils/screeningSource';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { copyToClipboard } from '../utils/clipboard';
+import { screeningHitsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 function parseFields(raw: string | null | undefined): string[] {
   try { const v = JSON.parse(raw || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
@@ -37,6 +39,9 @@ export function ScreeningWorkspace() {
   const [hits, setHits] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
   const [hitsLoading, setHitsLoading] = useState(false);
+  const [sourcesLoadError, setSourcesLoadError] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [hitsError, setHitsError] = useState(false);
 
   // ConfirmDialog for hit review actions
   const [pendingReview, setPendingReview] = useState<{ id: number; action: 'confirm' | 'dismiss'; name: string } | null>(null);
@@ -45,7 +50,13 @@ export function ScreeningWorkspace() {
   // Ref for surname input — N shortcut focuses it
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { apiFetch<{ data: SourceInfo[] }>('/screening/sources').then((r) => setSources(r.data)).catch(() => {}); }, []);
+  const loadSources = useCallback(() => {
+    setSourcesLoadError(false);
+    apiFetch<{ data: SourceInfo[] }>('/screening/sources')
+      .then((r) => setSources(r.data))
+      .catch(() => setSourcesLoadError(true));
+  }, []);
+  useEffect(() => { loadSources(); }, [loadSources]);
 
   // ── ?screen_id= / ?person_id= deep-link ─────────────────────────────────
   // On mount: screen_id switches to the review tab; person_id pre-fills the
@@ -76,6 +87,7 @@ export function ScreeningWorkspace() {
     }
     setSourceError(null);
     setLoading(true);
+    setSearchFailed(false);
     try {
       const qs = new URLSearchParams({ source: resolved });
       if (name) qs.set('name', name);
@@ -85,7 +97,7 @@ export function ScreeningWorkspace() {
       setResults(r.data ?? []);
       setCoverage(r.coverage ?? null);
       setCoverages(r.coverages ?? []);
-    } catch { setResults([]); setCoverage(null); setCoverages([]); } finally { setSearched(true); setLoading(false); }
+    } catch { setResults([]); setCoverage(null); setCoverages([]); setSearchFailed(true); } finally { setSearched(true); setLoading(false); }
   }, [sourceText, sources, name, forename, nationality]);
 
   // Reset stale results/coverage when the operator changes the source entry.
@@ -93,9 +105,10 @@ export function ScreeningWorkspace() {
 
   const loadHits = useCallback(() => {
     setHitsLoading(true);
+    setHitsError(false);
     apiFetch<{ data: Hit[] }>('/screening/hits?status=pending')
       .then((r) => setHits(r.data ?? []))
-      .catch(() => setHits([]))
+      .catch(() => { setHits([]); setHitsError(true); })
       .finally(() => setHitsLoading(false));
   }, []);
   useEffect(() => { if (tab === 'review') loadHits(); }, [tab, loadHits]);
@@ -170,6 +183,18 @@ export function ScreeningWorkspace() {
             <button onClick={search} className="px-3 py-1 border border-brand-500 text-brand-400 text-[11px]">SEARCH</button>
           </div>
           {sourceError && <div className="text-red-400 text-[11px]">{sourceError}</div>}
+          {sourcesLoadError && (
+            <div className="text-red-400 text-[11px] flex items-center justify-between">
+              <span>Failed to load screening sources.</span>
+              <button type="button" className="px-2 py-[1px] border border-border-default" onClick={loadSources}>Retry</button>
+            </div>
+          )}
+          {searchFailed && (
+            <div className="text-red-400 text-[11px] flex items-center justify-between">
+              <span>Search failed.</span>
+              <button type="button" className="px-2 py-[1px] border border-border-default" onClick={() => void search()}>Retry</button>
+            </div>
+          )}
           {/* False-clear guard: an empty local registry must never read as
               "not an offender." Show WHY there are no records to match.
               Single-source search uses `coverage`; an all-sources fan-out
@@ -192,20 +217,23 @@ export function ScreeningWorkspace() {
             <div className="text-rmpg-500 text-[11px] py-4 text-center">Enter a name and press SEARCH or Enter to query the registries.</div>
           ) : (
             <div className="overflow-x-auto"><table className="w-full text-[11px]">
-              <thead><tr className="text-[9px] text-rmpg-400 font-semibold"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th></tr></thead>
+              <thead><tr className="text-[9px] text-rmpg-400 font-semibold"><th className="text-left py-[3px]">NAME</th><th className="text-left">SOURCE</th><th className="text-left">SUMMARY</th><th className="text-left">COUNTRY</th><th className="text-left">DOB</th><th /></tr></thead>
               <tbody>
                 {results.map((r) => (
                   <tr key={`${r.sourceKey}-${r.externalId}`} className="border-t border-border-subtle">
                     <td className="py-[2px] flex items-center gap-2">{r.photoUrl && <img src={r.photoUrl} alt="" className="w-6 h-6 object-cover" />}{r.displayName}</td>
-                    <td className="text-rmpg-400">{labelFor(r.sourceKey)}</td>
+                    <td>{labelFor(r.sourceKey)}</td>
                     <td>{r.summary}</td><td>{r.country ?? '—'}</td><td>{r.dob ?? '—'}</td>
+                    <td>
+                      <button type="button" className="px-2 py-[1px] border border-border-default" onClick={() => void copyToClipboard(r.externalId)}>Copy id</button>
+                    </td>
                   </tr>
                 ))}
-                {!results.length && (
-                  <tr><td colSpan={5} className="py-2">
+          {!results.length && (
+                  <tr><td colSpan={6} className="py-2">
                     {(coverage && !coverage.available) || coverages.length
                       ? <span className="text-brand-300">No records loaded for {coverages.length ? 'one or more registries' : 'this source'} — result is inconclusive, not a clearance.</span>
-                      : <span className="text-rmpg-400">No matches found.</span>}
+                      : <span>No matches found.</span>}
                   </td></tr>
                 )}
               </tbody>
@@ -216,6 +244,20 @@ export function ScreeningWorkspace() {
 
       {tab === 'review' && (
         <>
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              type="button"
+              className="px-2 py-[1px] border border-border-default text-[11px]"
+              disabled={hits.length === 0}
+              onClick={() => downloadTextFile('screening-hits.csv', screeningHitsToCsv(hits))}
+            >CSV</button>
+          </div>
+          {hitsError && (
+            <div className="text-red-400 text-[11px] flex items-center justify-between mb-2">
+              <span>Failed to load pending hits.</span>
+              <button type="button" className="px-2 py-[1px] border border-border-default" onClick={loadHits}>Retry</button>
+            </div>
+          )}
           {hitsLoading ? (
             <div className="text-rmpg-400 text-[11px] py-4 text-center">Loading pending hits…</div>
           ) : !hits.length ? (
@@ -266,16 +308,26 @@ export function ScreeningWorkspace() {
 function WatchlistTab() {
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const load = useCallback(() => {
     setLoading(true);
+    setError(false);
     apiFetch<{ data: Record<string, unknown>[] }>('/screening/watchlist')
       .then((r) => setRows(r.data ?? []))
-      .catch(() => setRows([]))
+      .catch(() => { setRows([]); setError(true); })
       .finally(() => setLoading(false));
   }, []);
   useEffect(load, [load]);
 
-  if (loading) return <div className="text-rmpg-400 text-[11px] py-4 text-center">Loading watchlist…</div>;
+  if (loading) return <div className="text-[11px] py-4 text-center">Loading watchlist…</div>;
+  if (error) {
+    return (
+      <div className="text-red-400 text-[11px] flex items-center justify-between">
+        <span>Failed to load watchlist.</span>
+        <button type="button" className="px-2 py-[1px] border border-border-default" onClick={load}>Retry</button>
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-x-auto"><table className="w-full text-[11px]">
@@ -296,6 +348,7 @@ function WatchlistTab() {
 function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: boolean }) {
   const [status, setStatus] = useState<{ state: Record<string, unknown>[]; pendingCount: number } | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [sorMsg, setSorMsg] = useState<string | null>(null);
 
@@ -308,9 +361,10 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
 
   const load = useCallback(() => {
     setStatusLoading(true);
+    setStatusError(false);
     apiFetch<{ state: Record<string, unknown>[]; pendingCount: number }>('/screening/status')
       .then(setStatus)
-      .catch(() => {})
+      .catch(() => setStatusError(true))
       .finally(() => setStatusLoading(false));
   }, []);
   useEffect(load, [load]);
@@ -363,7 +417,15 @@ function SourcesTab({ sources, canManage }: { sources: SourceInfo[]; canManage: 
     finally { setBusy(null); setTimeout(load, 300); }
   };
 
-  if (statusLoading) return <div className="text-rmpg-400 text-[11px] py-4 text-center">Loading source status…</div>;
+  if (statusLoading) return <div className="text-[11px] py-4 text-center">Loading source status…</div>;
+  if (statusError) {
+    return (
+      <div className="text-red-400 text-[11px] flex items-center justify-between">
+        <span>Failed to load source status.</span>
+        <button type="button" className="px-2 py-[1px] border border-border-default" onClick={load}>Retry</button>
+      </div>
+    );
+  }
 
   const sorMsgIsError = sorMsg && (sorMsg.toLowerCase().includes('fail') || sorMsg.toLowerCase().includes('not configured'));
 

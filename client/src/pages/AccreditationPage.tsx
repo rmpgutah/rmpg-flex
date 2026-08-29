@@ -11,6 +11,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2, Eye, Loader2 } from 'lucide-react';
 import { toDisplayLabel } from '../utils/formatters';
+import { accreditationStandardsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Standard {
   id: number;
@@ -57,6 +58,8 @@ export default function AccreditationPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Standard | null>(null);
@@ -119,12 +122,17 @@ export default function AccreditationPage() {
 
   // ── N shortcut: open New Standard when not in a form field ────
   useEffect(() => {
-    if (!canManage) return;
     const handler = (e: KeyboardEvent) => {
       if (formOpen || deleteId !== null) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (e.key === 'n' || e.key === 'N') {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if ((e.key === 'n' || e.key === 'N') && canManage) {
         e.preventDefault();
         openNew();
       }
@@ -219,17 +227,17 @@ export default function AccreditationPage() {
   };
 
   // ── Client-side search filter ──────────────────────────────────
-  const filteredStandards = search.trim()
-    ? standards.filter((s) => {
-        const q = search.toLowerCase();
-        return (
-          s.standard_number?.toLowerCase().includes(q) ||
-          s.standard_name?.toLowerCase().includes(q) ||
-          s.category?.toLowerCase().includes(q) ||
-          s.compliance_status?.toLowerCase().includes(q)
-        );
-      })
-    : standards;
+  const filteredStandards = standards.filter((s) => {
+    if (statusFilter !== 'ALL' && s.compliance_status !== statusFilter) return false;
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      s.standard_number?.toLowerCase().includes(q) ||
+      s.standard_name?.toLowerCase().includes(q) ||
+      s.category?.toLowerCase().includes(q) ||
+      s.compliance_status?.toLowerCase().includes(q)
+    );
+  });
 
   const columns = [
     { key: 'standard_number', label: 'Standard #' },
@@ -294,12 +302,19 @@ export default function AccreditationPage() {
   // ── Empty-state: loading / error / no-data / no-results ───────
   let emptyMessage = 'No accreditation standards on record';
   if (fetchError) emptyMessage = 'Failed to load standards — check connection';
-  else if (search.trim() && standards.length > 0)
-    emptyMessage = `No standards match "${search}"`;
+  else if ((search.trim() || statusFilter !== 'ALL') && standards.length > 0)
+    emptyMessage = `No standards match the current filter`;
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="ACCREDITATION" icon={Award}>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filteredStandards.length === 0}
+          onClick={() => downloadTextFile('accreditation-standards.csv', accreditationStandardsToCsv(filteredStandards))}
+        >CSV</button>
         {canManage && (
           <button
             onClick={openNew}
@@ -327,16 +342,37 @@ export default function AccreditationPage() {
         </div>
       )}
 
+      {fetchError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load accreditation standards.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void fetchData(); }}>Retry</button>
+        </div>
+      )}
+
       {/* Search / filter */}
       {!loading && (
-        <input
-          type="search"
-          placeholder="Filter standards…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input-dark w-full max-w-xs text-xs"
-          aria-label="Filter standards"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            ref={searchRef}
+            type="search"
+            placeholder="Filter standards… (/)"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-dark w-full max-w-xs text-xs"
+            aria-label="Filter standards"
+          />
+          <select
+            aria-label="Filter by compliance status"
+            className="select-dark text-xs h-7"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="compliant">Compliant</option>
+            <option value="non_compliant">Non-compliant</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
       )}
 
       <DataTable

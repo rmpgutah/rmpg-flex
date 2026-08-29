@@ -1608,7 +1608,33 @@ export default function ServeIntakePage() {
                     <option value="po_box">PO Box</option>
                   </select>
                   {judgeVerdicts['address_class'] && <JudgeFlagChip verdict={judgeVerdicts['address_class']} />}
-                  <p className="text-[8px] text-rmpg-500 mt-0.5">Venue (hospice, school, warehouse, hotel…) is inferred into the OPS playbook tree.</p>
+                  <p className="text-[8px] text-rmpg-500 mt-0.5">Venue overlay can be forced below; otherwise inferred into the OPS tree.</p>
+                </div>
+                <div>
+                  <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">Venue overlay</label>
+                  <select
+                    value={editOverrides['venue_kind'] ?? ''}
+                    onChange={e => overrideField('venue_kind', e.target.value)}
+                    className="w-full bg-surface-sunken border border-border-subtle rounded-sm px-2 py-1 text-xs text-rmpg-100 focus:outline-none focus:border-brand-500"
+                  >
+                    <option value="">Auto infer</option>
+                    <option value="none">None</option>
+                    <option value="medical_hospice">Medical / Hospice</option>
+                    <option value="hospital">Hospital</option>
+                    <option value="nursing_home">Nursing / Assisted Living</option>
+                    <option value="financial">Bank / Financial</option>
+                    <option value="law_office">Law Office</option>
+                    <option value="school">School / Campus</option>
+                    <option value="hotel">Hotel / Lodging</option>
+                    <option value="warehouse">Warehouse / Industrial</option>
+                    <option value="church">House of Worship</option>
+                    <option value="storage">Self-Storage</option>
+                    <option value="apartment_complex">Apartment Complex</option>
+                    <option value="high_rise">High-Rise / Office</option>
+                    <option value="military">Military / Restricted</option>
+                    <option value="construction">Construction Site</option>
+                    <option value="rural">Rural / Farm</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-[9px] text-[color:var(--field-label-color)] uppercase font-semibold block mb-0.5">

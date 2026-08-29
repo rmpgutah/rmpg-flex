@@ -229,21 +229,6 @@ const OSM_CAT_REGISTRY: Record<string, { icon?: LucideIcon; colorVar?: string; p
   cliff: { icon: Mountain, colorVar: 'var(--sev-warn)' },
   spring: { icon: Droplets, colorVar: 'var(--sev-info)' },
   extraction: { icon: Boxes, colorVar: 'var(--sev-high)' },
-  access_pt: { icon: MapPin, colorVar: 'var(--accent-silver-400)' },
-  alcohol: { icon: Landmark, colorVar: 'var(--sev-special)' },
-  bldg_height: { icon: Boxes, colorVar: 'var(--accent-silver-600)' },
-  cave: { icon: Mountain, colorVar: 'var(--accent-silver-600)' },
-  comms: { icon: Radio, colorVar: 'var(--sev-info)' },
-  control_pt: { icon: DoorOpen, colorVar: 'var(--sev-warn)' },
-  dam: { icon: Droplets, colorVar: 'var(--sev-info)' },
-  entrance: { icon: DoorOpen, colorVar: 'var(--accent-silver-400)' },
-  gen: { icon: Zap, colorVar: 'var(--sev-warn)' },
-  lodging: { icon: MapPin, colorVar: 'var(--accent-silver-500)' },
-  mine: { icon: AlertTriangle, colorVar: 'var(--sev-high)' },
-  regulated: { icon: Shield, colorVar: 'var(--sev-high)' },
-  social: { icon: Landmark, colorVar: 'var(--sev-ok)' },
-  water_infra: { icon: Droplets, colorVar: 'var(--sev-info)' },
-  water_works: { icon: Droplets, colorVar: 'var(--sev-info)' },
 };
 
 const UGRC_LAYERS: MapLayerDef[] = VECTOR_TILE_CONFIGS.map((cfg): MapLayerDef => ({

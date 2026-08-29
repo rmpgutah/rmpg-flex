@@ -13,6 +13,7 @@ import { Bell, AlertTriangle, ShieldCheck, DollarSign, Plus, Pencil, Trash2, Eye
 
 import { formatEnumValue } from '../utils/formatters';
 import ViewOnMapLink from '../components/ViewOnMapLink';
+import { alarmAccountsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface AlarmAccount {
   id: number;
@@ -76,6 +77,9 @@ export default function AlarmManagementPage() {
   });
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<AlarmAccount | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -92,12 +96,10 @@ export default function AlarmManagementPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [a, s] = await Promise.all([
-        apiFetch<AlarmAccount[]>('/alarms/accounts').catch(() => [] as AlarmAccount[]),
-        apiFetch<AlarmStats>('/alarms/stats').catch(
-          () => ({ totalAlarms: 0, falseAlarms: 0, permitsActive: 0, permitsExpired: 0, revenueCollected: 0 } as AlarmStats),
-        ),
-      ]);
+      const a = await apiFetch<AlarmAccount[]>('/alarms/accounts');
+      const s = await apiFetch<AlarmStats>('/alarms/stats').catch(
+        () => ({ totalAlarms: 0, falseAlarms: 0, permitsActive: 0, permitsExpired: 0, revenueCollected: 0 } as AlarmStats),
+      );
       setAccounts(a);
       setStats(s);
       setLoadState('ok');
@@ -154,6 +156,11 @@ export default function AlarmManagementPage() {
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if ((e.key === 'n' || e.key === 'N') && canWrite) {
         e.preventDefault();
         openNew();
@@ -214,14 +221,18 @@ export default function AlarmManagementPage() {
     }
   };
 
-  const filtered = search.trim()
-    ? accounts.filter(
-        (a) =>
-          a.account_name.toLowerCase().includes(search.toLowerCase()) ||
-          a.account_number.toLowerCase().includes(search.toLowerCase()) ||
-          a.address.toLowerCase().includes(search.toLowerCase()),
-      )
-    : accounts;
+  const q = search.trim().toLowerCase();
+  const filtered = accounts.filter((a) => {
+    if (typeFilter !== 'ALL' && a.alarm_type !== typeFilter) return false;
+    if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
+    if (!q) return true;
+    return (
+      a.account_name.toLowerCase().includes(q) ||
+      a.account_number.toLowerCase().includes(q) ||
+      a.address.toLowerCase().includes(q)
+    );
+  });
+  const hasFilter = !!q || typeFilter !== 'ALL' || statusFilter !== 'ALL';
 
   const columns = [
     { key: 'account_number', label: 'Account #' },
@@ -290,7 +301,7 @@ export default function AlarmManagementPage() {
   const emptyMessage =
     loadState === 'loading' ? 'Loading alarm accounts...' :
     loadState === 'error'   ? 'Failed to load alarm accounts' :
-    search.trim()           ? `No accounts match "${search}"` :
+    hasFilter               ? 'No accounts match the current filter' :
                               'No alarm accounts on file';
 
   return (
@@ -315,16 +326,56 @@ export default function AlarmManagementPage() {
         <StatsCard label="REVENUE"          value={`$${(stats.revenueCollected || 0).toLocaleString()}`} icon={DollarSign} />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <input
+          ref={searchRef}
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search accounts..."
+          placeholder="Search accounts…"
           className="input-dark text-xs w-64"
           style={{ height: 28 }}
+          aria-label="Search alarm accounts"
         />
+        <select
+          aria-label="Filter by alarm type"
+          className="select-dark text-xs h-7"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+        >
+          <option value="ALL">All types</option>
+          <option value="burglary">Burglary</option>
+          <option value="robbery">Robbery</option>
+          <option value="panic">Panic</option>
+          <option value="fire">Fire</option>
+          <option value="medical">Medical</option>
+          <option value="other">Other</option>
+        </select>
+        <select
+          aria-label="Filter by status"
+          className="select-dark text-xs h-7"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="ALL">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('alarm-accounts.csv', alarmAccountsToCsv(filtered))}
+        >CSV</button>
       </div>
+
+      {loadState === 'error' && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load alarm accounts.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoadState('loading'); void fetchData(); }}>Retry</button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
@@ -337,6 +388,7 @@ export default function AlarmManagementPage() {
           ...(canWrite  ? [m.action('Edit',   () => openEdit(row),        { icon: <Pencil size={12} /> })] : []),
           m.separator(),
           m.copyId(row.id),
+          m.copy('Copy account #', row.account_number),
           ...(canDelete ? [m.action('Delete', () => setDeleteTarget(row), { danger: true, icon: <Trash2 size={12} /> })] : []),
         ]}
       />

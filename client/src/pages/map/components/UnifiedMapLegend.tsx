@@ -100,7 +100,7 @@ function OsmIconKey({ visibleOsmConfigs, sub }: { visibleOsmConfigs: VectorTileL
             <div key={c.id} className="flex items-center gap-1.5">
               <span
                 className="inline-block shrink-0"
-                style={{ width: 14, height: 0, borderTop: `2px ${c.categoryFilter && /unpaved|fourwd|seasonal|restricted|restriction|pipeline|track|cliff|maxspeed|clearance|power|dam|bldg_height/.test(c.categoryFilter) ? 'dashed' : 'solid'} ${c.color}` }}
+                style={{ width: 14, height: 0, borderTop: `2px ${c.categoryFilter && /unpaved|fourwd|seasonal|restricted|restriction|pipeline|track|cliff/.test(c.categoryFilter) ? 'dashed' : 'solid'} ${c.color}` }}
               />
               <span style={{ fontSize: 8.5, color: sub }}>{c.label}</span>
             </div>

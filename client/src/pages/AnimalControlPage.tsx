@@ -15,6 +15,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { animalCasesToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 // ── Types ──
 interface AnimalControlCase {
@@ -278,6 +280,12 @@ export default function AnimalControlPage() {
           >
             {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          <button
+            type="button"
+            className="toolbar-btn text-[11px]"
+            disabled={cases.length === 0}
+            onClick={() => downloadTextFile('animal-control.csv', animalCasesToCsv(cases))}
+          >CSV</button>
         </div>
       </div>
 
@@ -285,7 +293,7 @@ export default function AnimalControlPage() {
       {error && (
         <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-400 text-xs flex items-center justify-between">
           <span>{error}</span>
-          <IconButton onClick={() => setError(null)} aria-label="Dismiss error" className="text-red-400 hover:text-red-200"><X style={{ width: 12, height: 12 }} /></IconButton>
+          <button type="button" className="text-[10px] border border-border-default px-2" onClick={() => void fetchCases()}>Retry</button>
         </div>
       )}
 
@@ -334,6 +342,7 @@ export default function AnimalControlPage() {
                   >
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[11px] font-bold font-mono text-brand-400">{ac.case_number}</span>
+                      <button type="button" className="text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(ac.case_number); }}>Copy</button>
                       <span className={`text-[8px] font-bold px-1.5 py-0 border rounded-sm ${STATUS_COLORS[ac.status] || STATUS_COLORS.open}`}>
                         {(ac.status || '').toUpperCase()}
                       </span>

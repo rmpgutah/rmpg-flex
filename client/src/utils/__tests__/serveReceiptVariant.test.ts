@@ -146,12 +146,23 @@ describe('isEntityName', () => {
 });
 
 describe('formatServiceAddress', () => {
-  // Circled "2 lines" on the 2026-07-27 service. A comma-joined single
-  // string wrapped mid-city and put a comma between the state and the ZIP.
-  it('renders the conventional two-line block', () => {
+  it('renders the conventional three-line block', () => {
     expect(formatServiceAddress({
       address: '1234 Wisconsin Street', city: 'South Salt Lake', state: 'UT', zip: '85194',
-    })).toBe('1234 Wisconsin Street\nSouth Salt Lake, UT 85194');
+      county: 'Salt Lake',
+    })).toBe('1234 Wisconsin Street\nSouth Salt Lake, UT 85194\nSalt Lake County, USA');
+  });
+
+  it('uses the caller-specified layout even from a jammed one-liner', () => {
+    expect(formatServiceAddress({
+      address: '123 Apple Cherry Lane, South Bend, Ampsterdam 84950, King County, USA',
+    })).toBe('123 Apple Cherry Lane\nSouth Bend, Ampsterdam 84950\nKing County, USA');
+  });
+
+  it('splits a comma-joined street/city/state/zip without a county', () => {
+    expect(formatServiceAddress({
+      address: '5264 South Rome Beauty Park, Murray, UT 84123',
+    })).toBe('5264 South Rome Beauty Park\nMurray, UT 84123\nUSA');
   });
 
   it('puts no comma between the state and the ZIP', () => {
@@ -169,9 +180,16 @@ describe('formatServiceAddress', () => {
     expect(street).toBe('1240 East 2100 South');
   });
 
+  it('is idempotent on its own output', () => {
+    const once = formatServiceAddress({
+      address: '1240 East 2100 South, Salt Lake City, UT, 84106',
+    });
+    expect(formatServiceAddress({ address: once })).toBe(once);
+  });
+
   it.each([
     [{ address: '5 Elm St', city: '', state: '', zip: '' }, '5 Elm St'],
-    [{ address: '', city: 'Provo', state: 'UT', zip: '84601' }, 'Provo, UT 84601'],
+    [{ address: '', city: 'Provo', state: 'UT', zip: '84601' }, 'Provo, UT 84601\nUSA'],
     [{ address: '5 Elm St', city: 'Provo', state: '', zip: '' }, '5 Elm St\nProvo'],
     [{ address: '', city: '', state: '', zip: '' }, ''],
   ])('drops missing parts without leaving stray punctuation', (parts, expected) => {
