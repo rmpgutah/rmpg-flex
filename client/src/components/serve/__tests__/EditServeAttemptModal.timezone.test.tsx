@@ -16,7 +16,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { ServeAttempt } from '../../../types';
 
-const apiFetchMock = vi.fn().mockResolvedValue({});
+const apiFetchMock = vi.fn(async (path: string) => {
+  if (typeof path === 'string' && path.includes('/file-folders')) {
+    return { queue_id: 88, intake: [], folders: [] };
+  }
+  return {};
+});
 vi.mock('../../../hooks/useApi', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
   authedImageUrl: (u: string) => u,
