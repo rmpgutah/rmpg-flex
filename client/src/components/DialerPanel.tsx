@@ -85,6 +85,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const lastSeenRef = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeSrcRef = useRef(`${DIALER_ORIGIN}/dialer-embed`);
 
   const addToast = useCallback((kind: Toast['kind'], message: string) => {
     const id = ++_toastId;
@@ -234,7 +235,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         <iframe
           ref={iframeRef}
           title="Dial Connect"
-          src={`${DIALER_ORIGIN}/dialer-embed`}
+          src={iframeSrcRef.current}
           className="w-full border-0"
           style={{ height: 'calc(100% - 28px)' }}
           allow={DIALER_IFRAME_ALLOW}
@@ -245,7 +246,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         <button
           type="button"
           onClick={() => setCollapsed(false)}
-          className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5"
+          className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 relative z-[9999]"
           aria-label={`Open dialer (${connected ? 'connected' : 'disconnected'})`}
         >
           <PhoneCall className="w-3.5 h-3.5" />
