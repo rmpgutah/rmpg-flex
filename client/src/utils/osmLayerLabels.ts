@@ -16,7 +16,13 @@
 import { OSM_GROUPS } from '../config/osmLayers.generated';
 
 /** Render suffixes appended by buildOsmLayerSpecs / the UGRC branches. */
-const LAYER_SUFFIXES = ['-circle', '-line', '-fill', '-label', '-symbol', '-outline', '-cone'];
+/** Render suffixes appended by buildOsmLayerSpecs / the UGRC branches.
+ *  Longest-first: `-outline-alpr` must beat `-outline` or Feature Inspector
+ *  drops a cone edge as an unknown layer. */
+const LAYER_SUFFIXES = [
+  '-outline-alpr', '-outline-camera',
+  '-circle', '-line', '-fill', '-label', '-symbol', '-halo', '-outline', '-cone',
+];
 
 /** configId -> "Group · Category", built once from the generated catalog. */
 const LABEL_BY_CONFIG_ID: Record<string, { group: string; category: string }> = (() => {
@@ -69,6 +75,19 @@ export function layerGroupLabel(layerId: string): string | null {
 /** True when this layer is one of ours (OSM overlay or UGRC vector tiles). */
 export function isOverlayLayer(layerId: string): boolean {
   return humanLayerLabel(layerId) !== null;
+}
+
+/**
+ * Split `osm_<group>_<cat>` (and Mapbox `vt-osm_…-circle` ids) into the
+ * catalog group + category. Group names have no underscore.
+ */
+export function osmGroupAndCatFromLayerId(layerId: string): { group: string; cat: string } | null {
+  const cfgId = configIdFromLayerId(layerId) ?? (layerId.startsWith('osm_') ? layerId : null);
+  if (!cfgId?.startsWith('osm_')) return null;
+  const rest = cfgId.slice(4);
+  const i = rest.indexOf('_');
+  if (i <= 0) return null;
+  return { group: rest.slice(0, i), cat: rest.slice(i + 1) };
 }
 
 // ── Unit helpers ────────────────────────────────────────────

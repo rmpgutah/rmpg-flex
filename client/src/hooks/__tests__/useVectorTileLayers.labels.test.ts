@@ -30,6 +30,14 @@ describe('on-map labels', () => {
     }
   });
 
+  it('labels hydrant colour, building floors, and jurisdiction names', () => {
+    expect(JSON.stringify(labelFor('osm_safety_hydrant')!.layout['text-field'])).toContain('colour');
+    expect(JSON.stringify(labelFor('osm_sites_bldg_height')!.layout['text-field'])).toContain('building:levels');
+    expect(labelFor('osm_jurisdiction_tribal')).toBeTruthy();
+    expect(labelFor('osm_jurisdiction_protected')).toBeTruthy();
+    expect(labelFor('osm_jurisdiction_military')).toBeTruthy();
+  });
+
   it('gates a label no earlier than its own geometry', () => {
     for (const cfg of OSM_VECTOR_CONFIGS) {
       const l = buildOsmLayerSpecs(cfg, false).find((s) => s.id.endsWith('-label'));

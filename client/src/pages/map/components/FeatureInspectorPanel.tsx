@@ -10,8 +10,9 @@ import { MapPin, X } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { describeOsmFeature } from '../../../utils/osmFeatureDescription';
 import { OSM_ICON_BY_CAT } from '../../../utils/osmIcons';
-import { configIdFromLayerId } from '../../../utils/osmLayerLabels';
+import { configIdFromLayerId, osmGroupAndCatFromLayerId } from '../../../utils/osmLayerLabels';
 import type { InspectedFeature, InspectionResult } from '../../../hooks/useMapFeatureInspect';
+import { mergeOverride, type OsmOverride } from '../../../hooks/useOsmOverrides';
 
 export interface FeatureInspectorPanelProps {
   result: InspectionResult;
@@ -19,6 +20,11 @@ export interface FeatureInspectorPanelProps {
   onSelect: (index: number) => void;
   onClose: () => void;
   onHoverFeature: (feature: InspectedFeature | null) => void;
+  osmOverrides?: Map<string, OsmOverride>;
+  onEditOsmFeature?: (info: {
+    osmId: string; group: string; cat: string | null;
+    categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
+  }) => void;
 }
 
 /** The catalog icon for a feature's category. OSM_ICON_BY_CAT holds raw SVG
@@ -37,12 +43,22 @@ function CategoryIcon({ layerId }: { layerId: string }) {
   return <span className="w-3.5 h-3.5 shrink-0" aria-hidden dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-function DetailRows({ feature }: { feature: InspectedFeature }) {
-  const d = describeOsmFeature(feature.properties, {
+function DetailRows({
+  feature, osmOverrides, onEditOsmFeature,
+}: {
+  feature: InspectedFeature;
+  osmOverrides?: Map<string, OsmOverride>;
+  onEditOsmFeature?: FeatureInspectorPanelProps['onEditOsmFeature'];
+}) {
+  const osmId = String(feature.properties.osm_id ?? '').trim();
+  const props = mergeOverride(feature.properties, osmOverrides?.get(osmId));
+  const d = describeOsmFeature(props, {
     categoryLabel: feature.categoryLabel,
     groupLabel: feature.groupLabel ?? undefined,
     coverage: feature.coverage,
   });
+  const parsed = osmGroupAndCatFromLayerId(feature.layerId);
+  const canEdit = Boolean(onEditOsmFeature) && osmId !== '' && parsed;
 
   return (
     <div className="px-2 py-2 space-y-2">
@@ -107,12 +123,29 @@ function DetailRows({ feature }: { feature: InspectedFeature }) {
           {d.osmLink.id} on openstreetmap.org ↗
         </a>
       )}
+      {canEdit && parsed && (
+        <button
+          type="button"
+          className="w-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide"
+          style={{ color: '#0a1422', background: '#c3ccd6', borderRadius: 2 }}
+          onClick={() => onEditOsmFeature?.({
+            osmId,
+            group: parsed.group,
+            cat: parsed.cat,
+            categoryLabel: feature.categoryLabel,
+            featureName: String(feature.properties.name ?? ''),
+            osmTags: feature.properties,
+          })}
+        >
+          Edit / Verify
+        </button>
+      )}
     </div>
   );
 }
 
 export default function FeatureInspectorPanel({
-  result, selectedIndex, onSelect, onClose, onHoverFeature,
+  result, selectedIndex, onSelect, onClose, onHoverFeature, osmOverrides, onEditOsmFeature,
 }: FeatureInspectorPanelProps) {
   const [lng, lat] = result.lngLat;
   const selected = result.features[selectedIndex];
@@ -166,7 +199,13 @@ export default function FeatureInspectorPanel({
           {result.features.length === 1 && result.features[0].awayLabel && (
             <div className="px-2 pt-1 text-[9px] text-fg-muted">{result.features[0].awayLabel}</div>
           )}
-          {selected && <DetailRows feature={selected} />}
+          {selected && (
+            <DetailRows
+              feature={selected}
+              osmOverrides={osmOverrides}
+              onEditOsmFeature={onEditOsmFeature}
+            />
+          )}
         </div>
       )}
     </div>

@@ -79,6 +79,27 @@ describe('FeatureInspectorPanel', () => {
     expect(document.body.textContent).not.toContain('vt-osm_');
   });
 
+  it('offers Edit / Verify when the feature has an OSM id', () => {
+    const onEditOsmFeature = vi.fn();
+    const withId = {
+      ...hydrant,
+      properties: { ...hydrant.properties, osm_id: 'n55' },
+    };
+    render(
+      <FeatureInspectorPanel
+        {...props}
+        result={{ ...base, features: [withId] }}
+        onEditOsmFeature={onEditOsmFeature}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /edit \/ verify/i }));
+    expect(onEditOsmFeature).toHaveBeenCalledWith(expect.objectContaining({
+      osmId: 'n55',
+      group: 'safety',
+      cat: 'hydrant',
+    }));
+  });
+
   it('falls back to a neutral marker glyph for UGRC layers with no icon category', () => {
     // configIdFromLayerId(...).split('_').slice(2) yields '' for utah_roads /
     // utah_addresses — OSM_ICON_BY_CAT[''] is undefined, so this must render

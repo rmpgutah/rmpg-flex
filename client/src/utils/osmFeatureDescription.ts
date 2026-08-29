@@ -67,6 +67,32 @@ export function formatBearing(raw: unknown): string | null {
   return formatCameraBearing(raw);
 }
 
+/** OSM fire_hydrant:diameter — bare number is millimetres. */
+export function formatHydrantDiameter(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  if (/in|inch|"/i.test(s)) return s;
+  const mm = Number(s.replace(/\s*mm$/i, ''));
+  if (!Number.isFinite(mm) || mm <= 0) return s;
+  const inches = mm / 25.4;
+  const shown = inches >= 10 ? inches.toFixed(0) : inches.toFixed(1);
+  return `${shown}" (${Math.round(mm)} mm)`;
+}
+
+/** OSM flow_rate — litres/second unless a unit is already present. NFPA talks GPM. */
+export function formatFlowRate(raw: unknown): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  if (/gpm|gal/i.test(s)) return s;
+  const n = Number(s.replace(/\s*l\/s$/i, '').replace(/\s*lps$/i, ''));
+  if (!Number.isFinite(n) || n <= 0) return s;
+  // A bare number on hydrants is almost always L/s in OSM. 1 L/s ≈ 15.85 GPM.
+  if (/l\/s|lps/i.test(s) || n < 200) {
+    return `${Math.round(n * 15.8503)} GPM (${n} L/s)`;
+  }
+  return `${Math.round(n)} GPM`;
+}
+
 /** Volts -> kV once it stops being readable in volts. */
 export function formatVoltage(raw: unknown): string | null {
   const v = Number(String(raw ?? '').trim().split(';')[0]);
@@ -132,8 +158,8 @@ const FIELDS: Array<[string, FieldDef]> = [
   ['fire_hydrant:type', { label: 'Hydrant type', format: humanValue }],
   ['colour', { label: 'Bonnet colour', format: humanValue }],
   ['couplings', { label: 'Couplings' }],
-  ['fire_hydrant:diameter', { label: 'Main diameter' }],
-  ['flow_rate', { label: 'Flow rate' }],
+  ['fire_hydrant:diameter', { label: 'Main diameter', format: formatHydrantDiameter }],
+  ['flow_rate', { label: 'Flow rate', format: formatFlowRate }],
   ['emergency', { label: 'Emergency type', format: humanValue }],
 
   // Traffic & drivability

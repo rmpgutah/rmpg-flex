@@ -280,6 +280,22 @@ const OSM_LABEL_RULES: Record<string, LabelRule> = {
     field: ['coalesce', ['get', 'operator'], ['get', 'name'], ''],
     minzoom: 17, placement: 'point', size: 9,
   },
+  hydrant: {
+    field: ['coalesce', ['get', 'colour'], ['get', 'color'], ''],
+    minzoom: 17, placement: 'point', size: 9,
+  },
+  bldg_height: {
+    field: [
+      'case',
+      ['has', 'building:levels'],
+      ['concat', ['to-string', ['get', 'building:levels']], ' fl'],
+      '',
+    ],
+    minzoom: 17, placement: 'line', size: 9,
+  },
+  protected: { field: ['coalesce', ['get', 'name'], ''], minzoom: 12, placement: 'point', size: 10 },
+  tribal: { field: ['coalesce', ['get', 'name'], ''], minzoom: 10, placement: 'point', size: 10 },
+  military: { field: ['coalesce', ['get', 'name'], ''], minzoom: 11, placement: 'point', size: 10 },
 };
 
 export function buildOsmLabelSpec(
@@ -485,6 +501,12 @@ interface UseVectorTileLayersOptions {
     osmId: string; group: string; cat: string | null;
     categoryLabel: string; featureName: string; osmTags: Record<string, unknown>;
   }) => void;
+  /**
+   * When true, feature-click popups are not opened (Identify / Feature
+   * Inspector already shows the same tags). Click handlers stay bound so
+   * cursor styling still works.
+   */
+  suppressPopup?: boolean;
 }
 
 function srcId(id: string) { return `vt-${id}`; }
@@ -503,7 +525,7 @@ function escapeHtml(s: string): string {
 
 export function useVectorTileLayers({
   map, popup, isLight = false, onUseLocation,
-  osmOverrides, osmHiddenIds, onEditOsmFeature,
+  osmOverrides, osmHiddenIds, onEditOsmFeature, suppressPopup = false,
 }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
@@ -525,6 +547,11 @@ export function useVectorTileLayers({
   useEffect(() => { isLightRef.current = isLight; }, [isLight]);
   const onUseLocationRef = useRef(onUseLocation);
   useEffect(() => { onUseLocationRef.current = onUseLocation; }, [onUseLocation]);
+  const suppressPopupRef = useRef(suppressPopup);
+  useEffect(() => { suppressPopupRef.current = suppressPopup; }, [suppressPopup]);
+  useEffect(() => {
+    if (suppressPopup) popupRef.current?.remove();
+  }, [suppressPopup]);
 
   // Guard against double-add when multiple effects race the style-ready gate.
   const addedRef = useRef<Set<string>>(new Set());
@@ -536,8 +563,10 @@ export function useVectorTileLayers({
 
   // Label paint that stays legible on both dark and light basemaps.
   const labelPaint = (light: boolean) => ({
-    text: light ? '#3a2e05' : '#e8d8a8',
-    halo: light ? '#ffffff' : '#000000',
+    // Near-white on dark / ink on light — gold is reserved for map arterials
+    // and field labels, not overlay annotation.
+    text: light ? '#1e293b' : '#f0f4f9',
+    halo: light ? '#ffffff' : '#0a1422',
   });
 
   const buildPopupHtml = useCallback((cfg: VectorTileLayerConfig, props: Record<string, any>): string => {
@@ -634,6 +663,7 @@ export function useVectorTileLayers({
             clickBoundRef.current.add(layerId);
             map.on('click', layerId, (e) => {
               const pop = popupRef.current;
+              if (suppressPopupRef.current) return;
               if (!pop || !e.features || e.features.length === 0) return;
               const rawProps = e.features[0].properties || {};
               const osmId = String(rawProps.osm_id ?? '').trim();
@@ -848,6 +878,7 @@ export function useVectorTileLayers({
           clickBoundRef.current.add(cfg.id);
           map.on('click', interactiveLayer, (e) => {
             const pop = popupRef.current;
+            if (suppressPopupRef.current) return;
             if (!pop || !e.features || e.features.length === 0) return;
             const props = e.features[0].properties || {};
             const titleRaw = props[cfg.labelProp];

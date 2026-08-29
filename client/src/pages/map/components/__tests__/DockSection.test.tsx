@@ -27,9 +27,24 @@ describe('DockSection', () => {
   it('renders as always-expanded with no toggle button when collapsible is false', () => {
     render(<DockSection title="Live Conditions" collapsible={false}><div>Traffic</div></DockSection>);
     expect(screen.getByText('Traffic')).toBeInTheDocument();
-    // No clickable header button — just static text, so clicking the title does nothing.
     fireEvent.click(screen.getByText('Live Conditions'));
     expect(screen.getByText('Traffic')).toBeInTheDocument();
+  });
+
+  it('All/None fire independently of the accordion', async () => {
+    const onEnableAll = vi.fn();
+    const onDisableAll = vi.fn();
+    render(
+      <DockSection title="OSM Fire & Safety" defaultOpen={false} onEnableAll={onEnableAll} onDisableAll={onDisableAll}>
+        <div>Hydrant</div>
+      </DockSection>,
+    );
+    expect(screen.queryByText('Hydrant')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(onEnableAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Hydrant')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'None' }));
+    expect(onDisableAll).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -96,4 +96,16 @@ describe('MAP_LAYER_REGISTRY', () => {
     expect(LAYER_BY_ID.get('geo-highway')?.colorVar).toBe('var(--sev-critical)');
     expect(LAYER_BY_ID.get('geo-beat')?.colorVar).toBe('var(--sev-ok)');
   });
+
+  it('puts UGRC roads and addresses in Administrative Boundaries', () => {
+    expect(LAYER_BY_ID.get('utah_roads')?.group).toBe('Administrative Boundaries');
+    expect(LAYER_BY_ID.get('utah_addresses')?.group).toBe('Administrative Boundaries');
+    expect(LAYER_BY_ID.get('utah_roads')?.label).toBe('Utah Roads');
+  });
+
+  it('pins safety-critical OSM overlays (ALPR, hydrants, rail crossings)', () => {
+    expect(LAYER_BY_ID.get('osm_surveillance_alpr')?.pinned).toBe(true);
+    expect(LAYER_BY_ID.get('osm_safety_hydrant')?.pinned).toBe(true);
+    expect(LAYER_BY_ID.get('osm_access_rail_x')?.pinned).toBe(true);
+  });
 });
