@@ -194,4 +194,13 @@ describe('MapboxMapPage binding coverage', () => {
       'vectorTiles.vectorConfigs spread is missing from layerBindings — every OSM overlay dock section would be missing its toggles',
     ).toContain('vectorTiles.vectorConfigs.map');
   });
+
+  it('does not wire Places Search to a category that is not in PLACE_CATEGORIES', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../MapboxMapPage.tsx'),
+      'utf8',
+    );
+    expect(src).not.toContain("searchCategory('restaurant')");
+    expect(src).toContain('PLACE_CATEGORIES');
+  });
 });

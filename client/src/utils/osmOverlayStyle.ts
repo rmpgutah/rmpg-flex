@@ -100,6 +100,11 @@ export const OSM_LINE_DASH: Record<string, number[]> = {
   pipeline: [5, 2.4],
   track: [1.2, 2],
   cliff: [2, 1.2],
+  maxspeed: [6, 3],
+  clearance: [2, 2, 6, 2],
+  power: [8, 3],
+  dam: [4, 3],
+  bldg_height: [1, 2.5],
 };
 
 export function osmLinePaint(cat: string, color: string, minzoom: number): Record<string, unknown> {

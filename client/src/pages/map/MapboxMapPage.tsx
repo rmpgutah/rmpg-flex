@@ -45,6 +45,7 @@ import {
   UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, priorityHex,
   MAP_STYLE_LABELS,
   type MapStyleId,
+  isLightMapStyle,
 } from './utils/mapConstants';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { formatEnumValue } from '../../utils/formatters';
@@ -1377,8 +1378,28 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     // ── Dispatch Tools ──
     directions: { active: directionsPanel.result !== null, onToggle: () => directionsPanel.result ? directionsPanel.clearDirections() : directionsPanel.setPickMode('origin') },
     'nav-overlay': { active: activeFloatingTool === 'nav-overlay', onToggle: () => setActiveFloatingTool((v) => v === 'nav-overlay' ? null : 'nav-overlay') },
-    identify: { active: identifyEnabled, onToggle: () => setIdentifyEnabled((v) => !v), loading: tilequery.loading },
-    places: { active: placesSearch.results.length > 0, onToggle: () => placesSearch.results.length > 0 ? placesSearch.clearResults() : placesSearch.searchCategory('restaurant') },
+    identify: {
+      active: identifyEnabled,
+      onToggle: () => {
+        setIdentifyEnabled((v) => {
+          const next = !v;
+          if (next && featureInspect.enabled) featureInspect.toggle();
+          return next;
+        });
+      },
+      loading: tilequery.loading,
+    },
+    places: {
+      active: showPlacesMenu || placesSearch.results.length > 0,
+      onToggle: () => {
+        if (placesSearch.results.length > 0) {
+          placesSearch.clearResults();
+          setShowPlacesMenu(false);
+          return;
+        }
+        setShowPlacesMenu((v) => !v);
+      },
+    },
     bookmarks: { active: mapBookmarks.dropMode, onToggle: () => mapBookmarks.setDropMode(!mapBookmarks.dropMode) },
     'gps-hud': { active: gpsHudOpen, onToggle: () => setGpsHudOpen((v) => !v) },
     optimize: { active: multiStopPanelOpen, onToggle: () => setMultiStopPanelOpen((v) => !v) },
@@ -1397,7 +1418,13 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     'speed-analytics': { active: speedAnalyticsPanelOpen, onToggle: () => setSpeedAnalyticsPanelOpen((v) => !v), loading: speedZoneStats.loading },
 
     // ── Diagnostics ──
-    inspect: { active: featureInspect.enabled, onToggle: featureInspect.toggle },
+    inspect: {
+      active: featureInspect.enabled,
+      onToggle: () => {
+        if (!featureInspect.enabled && identifyEnabled) setIdentifyEnabled(false);
+        featureInspect.toggle();
+      },
+    },
     mapmatch: { active: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting() },
     deck: {
       active: deckEnabled,
@@ -1427,7 +1454,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     safetyZonesEnabled, safetyZones.loading, safetyZones.error, isochroneEnabled, toggleIsochrone,
     terrainEnabled, setTerrainEnabled, buildings3dEnabled, setBuildings3dEnabled, daylight,
     projection, atmosphere, coordGrid, cameraAnimation, directionsPanel, activeFloatingTool,
-    setActiveFloatingTool, identifyEnabled, tilequery.loading, placesSearch, mapBookmarks,
+    setActiveFloatingTool, identifyEnabled, tilequery.loading, placesSearch, showPlacesMenu, mapBookmarks,
     gpsHudOpen, setGpsHudOpen, multiStopPanelOpen, measure.mode, setShowMeasureMenu, drawing.mode,
     setShowDrawMenu, glDraw, speedAnalyticsPanelOpen, speedZoneStats.loading, featureInspect,
     mapMatchTrace, deckEnabled, deckSupportsProjection, setDeckEnabled, diagnosticsOpen,
@@ -1680,6 +1707,37 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
       {/* Search Box v6 — React component overlay replacing the imperative geocoder plugin */}
       {mapboxToken && !mapLibreFallback && <MapSearchBox accessToken={mapboxToken} />}
+
+      {/* Places Search categories — dock toggle opens this menu. Must use
+          PLACE_CATEGORIES ids (hospital, police, …). There is no 'restaurant'. */}
+      {showPlacesMenu && (
+        <div className="absolute top-16 right-3 z-30 bg-surface-raised border border-border-default w-44 overflow-hidden" style={{ borderRadius: 2 }}>
+          {PLACE_CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => {
+                void placesSearch.searchCategory(cat.id);
+                setShowPlacesMenu(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                placesSearch.activeCategory === cat.id ? 'text-brand-gold-500 bg-surface-overlay' : 'text-rmpg-300 hover:bg-surface-overlay'
+              }`}
+            >
+              {cat.icon} {cat.label}
+            </button>
+          ))}
+          {placesSearch.results.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { placesSearch.clearResults(); setShowPlacesMenu(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-surface-overlay"
+            >
+              ✕ Clear places
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Measure / Draw dropdown bodies — their launcher buttons now live in the
           Right Dock's Analysis section (measure / draw items). The bodies mount here
@@ -2060,7 +2118,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           }}
           choro={activityChoropleth.choroLegend}
           categorical={[]}
-          isLight={false}
+          isLight={isLightMapStyle(mapStyle)}
           visibleOsmConfigs={vectorTiles.vectorConfigs.filter(
             (cfg) => cfg.source === 'osm' && vectorTiles.vectorLayerStates[cfg.id]?.visible,
           )}

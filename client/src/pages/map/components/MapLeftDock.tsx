@@ -5,6 +5,7 @@
 // of { title, items } sections — MapboxMapPage.tsx owns the data.
 // ============================================================
 
+import { useMemo, useState } from 'react';
 import DockSection, { DockToggleRow, type DockToggleItem } from './DockSection';
 
 export interface MapLeftDockSection {
@@ -23,12 +24,49 @@ export interface MapLeftDockProps {
 }
 
 export default function MapLeftDock({ sections }: MapLeftDockProps) {
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLowerCase();
+
+  const visible = useMemo(() => {
+    if (!needle) return sections;
+    return sections
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) => {
+          const hay = `${item.label} ${item.id} ${item.description ?? ''}`.toLowerCase();
+          return hay.includes(needle);
+        }),
+        collapsible: false,
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [needle, sections]);
+
+  const active = useMemo(
+    () => sections.flatMap((s) => s.items).filter((i) => i.active),
+    [sections],
+  );
+
   return (
     <div className="relative z-20 h-full w-[220px] bg-surface-raised/95 border-r border-border-default backdrop-blur-sm flex flex-col overflow-y-auto">
       <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-brand-gold-500 border-b border-border-default">
         LAYERS
       </div>
-      {sections.map((section) => (
+      <div className="px-2 py-1.5 border-b border-border-subtle">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Find layer…"
+          aria-label="Find layer"
+          className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[10px] text-rmpg-200 placeholder:text-rmpg-500"
+        />
+        {active.length > 0 && (
+          <div className="mt-1 text-[8px] uppercase tracking-wide text-rmpg-500">
+            {active.length} on
+          </div>
+        )}
+      </div>
+      {visible.map((section) => (
         <DockSection
           key={section.title}
           title={section.title}
@@ -42,6 +80,9 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
           ))}
         </DockSection>
       ))}
+      {needle && visible.length === 0 && (
+        <div className="px-3 py-2 text-[10px] text-rmpg-500">No layers match “{query.trim()}”.</div>
+      )}
     </div>
   );
 }
