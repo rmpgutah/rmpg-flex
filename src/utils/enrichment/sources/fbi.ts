@@ -1,13 +1,18 @@
 import type { EnrichmentSeed, SourceResult, EnrichedRecord } from '../types';
 import type { Bindings } from '../../../types';
-import { enrichmentHeaders } from './http';
+import { enrichmentHeaders, splitPersonName } from './http';
 
 export async function search(seed: EnrichmentSeed, _env: Bindings): Promise<SourceResult> {
   const start = Date.now();
   const source = 'fbi_wanted';
+  const { first, last } = splitPersonName(seed.first_name, seed.last_name);
+  const title = [first, last].filter(Boolean).join(' ') || last || first;
+  if (!title) {
+    return { source, ok: true, latency_ms: Date.now() - start, records: [] };
+  }
   try {
     const params = new URLSearchParams({
-      title: seed.last_name || seed.first_name,
+      title,
       pageSize: '20',
     });
     const ctrl = new AbortController();
