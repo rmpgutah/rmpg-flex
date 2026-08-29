@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Radio, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { mutualAidToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 interface CallUnit {
   unit_id?: string;
@@ -63,16 +64,20 @@ interface Props {
 export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
   const [calls, setCalls] = useState<ActiveCall[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [query, setQuery] = useState('');
+  const [agencyFilter, setAgencyFilter] = useState('ALL');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await apiFetch<ActiveCall[] | { results?: ActiveCall[] }>('/dispatch/calls?status=active&limit=50');
       setCalls(Array.isArray(data) ? data : (data.results ?? []));
       setLastRefreshed(new Date());
-    } catch {
-      // keep existing data on error
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load mutual aid');
     } finally {
       setLoading(false);
     }
@@ -87,6 +92,12 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
   const rows = buildMutualAidRows(calls);
   const mutualAidRows = rows.filter(r => r.assistingAgencies.length > 0);
   const uniqueAgencies = [...new Set(mutualAidRows.flatMap(r => r.assistingAgencies))];
+  const q = query.trim().toLowerCase();
+  const visibleAid = useMemo(() => mutualAidRows.filter((r) => {
+    if (agencyFilter !== 'ALL' && !r.assistingAgencies.includes(agencyFilter)) return false;
+    if (!q) return true;
+    return r.callNumber.toLowerCase().includes(q) || r.nature.toLowerCase().includes(q) || r.location.toLowerCase().includes(q);
+  }), [mutualAidRows, agencyFilter, q]);
 
   const th: React.CSSProperties = {
     textAlign: 'left', padding: '3px 8px', fontSize: 9, fontWeight: 700,
@@ -115,7 +126,39 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
         >
           <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} /> Refresh
         </button>
+        <button
+          type="button"
+          disabled={visibleAid.length === 0}
+          onClick={() => downloadTextFile('mutual-aid.csv', mutualAidToCsv(visibleAid))}
+          style={{ fontSize: 10, padding: '3px 10px', borderRadius: 2, border: '1px solid var(--border-default)', cursor: 'pointer', background: 'none', color: 'var(--text-primary)' }}
+        >
+          CSV
+        </button>
       </div>
+      <div style={{ display: 'flex', gap: 8, padding: '6px 12px', borderBottom: '1px solid var(--border-default)', flexShrink: 0 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search call / nature / location…"
+          aria-label="Search mutual aid"
+          style={{ flex: 1, fontSize: 11, padding: '3px 8px', borderRadius: 2, border: '1px solid var(--border-default)', background: 'var(--surface-sunken)', color: 'var(--text-primary)' }}
+        />
+        <select
+          aria-label="Filter by assisting agency"
+          value={agencyFilter}
+          onChange={(e) => setAgencyFilter(e.target.value)}
+          style={{ fontSize: 10, padding: '3px 6px', borderRadius: 2, border: '1px solid var(--border-default)', background: 'var(--surface-sunken)', color: 'var(--text-primary)' }}
+        >
+          <option value="ALL">All agencies</option>
+          {uniqueAgencies.map((ag) => <option key={ag} value={ag}>{ag}</option>)}
+        </select>
+      </div>
+      {loadError && (
+        <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--sev-critical)', display: 'flex', justifyContent: 'space-between' }}>
+          <span>{loadError}</span>
+          <button type="button" onClick={() => void load()} style={{ fontSize: 10, border: '1px solid var(--border-default)', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Retry</button>
+        </div>
+      )}
 
       {/* Summary stats */}
       {mutualAidRows.length > 0 && (
@@ -139,7 +182,7 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
 
       {/* Table / empty state */}
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {loading && mutualAidRows.length === 0 && (
+        {loading && visibleAid.length === 0 && (
           <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>Loading…</p>
         )}
         {!loading && mutualAidRows.length === 0 && (
@@ -149,7 +192,10 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
             {lastRefreshed && <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>Last checked {lastRefreshed.toLocaleTimeString()}</p>}
           </div>
         )}
-        {mutualAidRows.length > 0 && (
+        {!loading && mutualAidRows.length > 0 && visibleAid.length === 0 && (
+          <p style={{ textAlign: 'center', marginTop: 40, fontSize: 11, color: 'var(--text-secondary)' }}>No calls match the search or agency filter.</p>
+        )}
+        {visibleAid.length > 0 && (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -162,7 +208,7 @@ export default function DesktopMutualAidTracker({ onClose: _onClose }: Props) {
               </tr>
             </thead>
             <tbody>
-              {mutualAidRows.map(r => (
+              {visibleAid.map(r => (
                 <tr key={r.callId}>
                   <td style={{ ...td, fontFamily: 'monospace', fontSize: 10, fontWeight: 700 }}>{r.callNumber}</td>
                   <td style={td}>{r.nature}</td>

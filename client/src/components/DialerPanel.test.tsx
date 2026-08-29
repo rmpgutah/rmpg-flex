@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { describe, test, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
 import DialerPanel, {
   DIALER_ORIGIN,
@@ -11,11 +11,17 @@ import DialerPanel, {
   DIALER_PANEL_WIDTH,
   DIALER_PANEL_HEIGHT,
   dialerIframeHostStyle,
+  dialerIframeParkStyle,
   openDialerWindow,
   resetDialerWindowForTests,
   normalizeDialTarget,
 } from './DialerPanel';
 import { DIALER_CONNECT_PATH, DIALER_HOST_ID } from './dialerConnect';
+import { apiFetch } from '../hooks/useApi';
+
+vi.mock('../hooks/useApi', () => ({
+  apiFetch: vi.fn().mockResolvedValue({ ok: true, id: 1, created: true }),
+}));
 
 function LocationProbe() {
   const loc = useLocation();
@@ -42,6 +48,7 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   resetDialerWindowForTests();
+  vi.mocked(apiFetch).mockClear();
 });
 
 describe('normalizeDialTarget', () => {
@@ -63,6 +70,17 @@ describe('dialerIframeHostStyle', () => {
   });
 });
 
+describe('dialerIframeParkStyle', () => {
+  test('keeps a full box off-screen (never 0×0 / hidden)', () => {
+    const style = dialerIframeParkStyle();
+    expect(style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(style.position).toBe('fixed');
+    expect(Number(String(style.left).replace('px', ''))).toBeLessThan(0);
+    expect(style.opacity).toBeUndefined();
+  });
+});
+
 describe('DialerPanel', () => {
   test('mounts the authenticated /dialer iframe, not cookieless /dialer-embed', () => {
     renderPanel();
@@ -71,6 +89,22 @@ describe('DialerPanel', () => {
     expect(iframe.getAttribute('src')).not.toContain('dialer-embed');
     expect(iframe).toHaveAttribute('allow', DIALER_IFRAME_ALLOW);
     expect(iframe).toHaveAttribute('loading', 'eager');
+  });
+
+  test('Close hides the CAD window without unloading the iframe', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    renderPanel();
+    fireEvent.click(screen.getByLabelText('Close Dial Connect'));
+    expect(open).not.toHaveBeenCalled();
+    const iframe = screen.getByTitle('Dial Connect') as HTMLIFrameElement;
+    expect(iframe).toBeInTheDocument();
+    const host = screen.getByTestId('dialer-iframe-host');
+    expect(host.style.width).toBe(DIALER_PANEL_WIDTH);
+    expect(host.style.height).toBe(DIALER_PANEL_HEIGHT);
+    expect(Number(host.style.left.replace('px', ''))).toBeLessThan(0);
+    fireEvent.click(screen.getByLabelText('Show Dial Connect'));
+    expect(Number(screen.getByTestId('dialer-iframe-host').style.left.replace('px', '') || '16')).toBeGreaterThanOrEqual(0);
   });
 
   test('Pop out unloads the iframe and exposes a named-window link', () => {
@@ -218,5 +252,25 @@ describe('DialerPanel', () => {
     expect(host.style.width).not.toBe('1px');
     expect(host.style.opacity).toBe('');
     expect(screen.getByTitle('Dial Connect')).toBeInTheDocument();
+  });
+
+  test('recording_ready archives the call on Dialer Connect events', async () => {
+    renderPanel();
+    postDialConnectMessage({
+      source: 'dial-connect',
+      type: 'recording_ready',
+      callSid: 'CAabcd1234',
+      recordingUrl: 'https://dialer.rmpgutah.us/rec.mp3',
+    });
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/dialer-connect/events',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    const last = vi.mocked(apiFetch).mock.calls[vi.mocked(apiFetch).mock.calls.length - 1];
+    const body = JSON.parse((last?.[1] as { body: string }).body);
+    expect(body.callSid).toBe('CAabcd1234');
+    expect(body.recordingUrl).toBe('https://dialer.rmpgutah.us/rec.mp3');
   });
 });

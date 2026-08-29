@@ -10,6 +10,8 @@ import { useNavBadges, type NavBadges } from '../hooks/useNavBadges';
 import { isAppPinned, pinApp, unpinApp } from '../utils/taskbarPreferences';
 import ContextMenu from '../components/ContextMenu';
 import { isFeatureEnabled, useFeatureFlags } from '../utils/featureFlags';
+import { modulesToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 
 export default function ModuleDirectoryPage() {
@@ -28,6 +30,7 @@ export default function ModuleDirectoryPage() {
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [pinnedOnly, setPinnedOnly] = useState(false);
 
   const toggleBulkSelected = useCallback((path: string) => {
     setBulkSelected(prev => {
@@ -71,6 +74,7 @@ export default function ModuleDirectoryPage() {
         if (isClientViewer && CLIENT_VIEWER_BLOCKED.has(fn.path)) return false;
         if (isContractManager && CONTRACT_MANAGER_BLOCKED.has(fn.path)) return false;
         if (!isFeatureEnabled(fn.path)) return false;
+        if (pinnedOnly && !isAppPinned(fn.path) && !favorites.has(fn.path)) return false;
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
           return fn.label.toLowerCase().includes(q) ||
@@ -80,7 +84,7 @@ export default function ModuleDirectoryPage() {
         return true;
       }),
     })).filter(cat => cat.functions.length > 0);
-  }, [isAdmin, isClientViewer, isContractManager, searchQuery, flagsTick]);
+  }, [isAdmin, isClientViewer, isContractManager, searchQuery, flagsTick, pinnedOnly, favorites]);
 
   const allFunctions = useMemo(
     () => visibleCategories.flatMap(cat => cat.functions),
@@ -331,6 +335,18 @@ export default function ModuleDirectoryPage() {
             >
               <RefreshCw className="w-3 h-3" />
             </button>
+            <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              <input type="checkbox" checked={pinnedOnly} onChange={(e) => setPinnedOnly(e.target.checked)} aria-label="Pinned and favorites only" />
+              Pinned / favorites
+            </label>
+            <button
+              type="button"
+              className="px-2 py-2 text-[10px] border border-rmpg-700"
+              disabled={allFunctions.length === 0}
+              onClick={() => downloadTextFile('modules.csv', modulesToCsv(allFunctions))}
+            >
+              CSV
+            </button>
           </div>
 
           <div className="flex items-center gap-2 px-2">
@@ -456,6 +472,9 @@ export default function ModuleDirectoryPage() {
         items={[{
           label: isAppPinned(fn.path) ? 'Unpin from Taskbar' : 'Pin to Taskbar',
           onClick: () => { if (isAppPinned(fn.path)) unpinApp(fn.path); else pinApp(fn.path); forceRerender(n => n + 1); },
+        }, {
+          label: 'Copy path',
+          onClick: () => { void copyToClipboard(fn.path); },
         }]}
       >
       <div

@@ -85,7 +85,7 @@ describe('nearestNeighborOrder', () => {
 
   it('duration is drive time PLUS per-stop dwell time (18 min/individual stop)', () => {
     // Duration includes a per-stop dwell (knock/serve/paperwork) on top of
-    // drive time. Individual stops default to 18 minutes each (see DWELL_RANGE_S).
+    // drive time. Individual stops default to 18 minutes each.
     const stops = [stop(1, 40.5, -111.9), stop(2, 40.9, -111.9)];
     const r = nearestNeighborOrder(stops, null);
     expect(r.totalDurationMinutes).toBeCloseTo(estimateDriveMinutes(r.totalDistanceMiles) + 2 * 18, 6);

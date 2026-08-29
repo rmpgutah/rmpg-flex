@@ -57,7 +57,8 @@ function isPublicAuthBypass(pathname: string): boolean {
     // Dial Connect → calls_for_service push. External service, no human
     // JWT session — gated instead by requireApiKeyScope('service_request')
     // in src/routes/integrations.ts (integration_api_keys, migration 0006).
-    || pathname === '/api/integrations/calls-for-service';
+    || pathname === '/api/integrations/calls-for-service'
+    || pathname === '/api/dialer-connect/ingest';
 }
 
 // ── Audited self-verifying media routes ─────────────────────────
@@ -279,6 +280,7 @@ const READ_ONLY_DENIED_PREFIXES = [
   '/api/intel', '/api/invoices', '/api/jail', '/api/nsopw', '/api/person-intel',
   '/api/personnel', '/api/process-server', '/api/records', '/api/serve',
   '/api/sor-sources', '/api/use-of-force', '/api/warrants',
+  '/api/dialer-connect',
 ];
 
 export async function readOnlyRoleGuard(c: Context, next: Next) {

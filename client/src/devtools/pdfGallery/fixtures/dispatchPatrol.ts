@@ -7,6 +7,7 @@ import type { PatrolTrackingReportData } from '../../../utils/patrolTrackingPdfG
 import type { NavBriefingArgs } from '../../../utils/navBriefingPdf';
 import type { NavTrip } from '../../../types';
 import type { MapSituationReportData } from '../../../utils/mapSituationReportPdf';
+import type { DialerRecordPdfInput } from '../../../utils/dialerCallRecordPdf';
 import type { ShiftPlan, AreaAssignment } from '../../../hooks/useShiftPlanning';
 import type { PdfFixture } from '../types';
 
@@ -790,6 +791,59 @@ export const mapSituationReportFixtures: PdfFixture<MapSituationReportData>[] = 
         stops: Array.from({ length: 10 }, (_, i) => ({
           order: i + 1, callNumber: `C-2026-${String(4417 + i).padStart(6, '0')}`, label: `Stop ${i + 1}`, legEta: '6 min',
         })),
+      },
+    },
+  },
+];
+
+export const dialerCallRecordFixtures: PdfFixture<DialerRecordPdfInput>[] = [
+  {
+    variant: 'typical',
+    label: 'Inbound dispatch call with transcription and recording on file',
+    input: {
+      exportedBy: 'Marcus Reyes',
+      record: {
+        id: 4417,
+        kind: 'call',
+        call_sid: 'CAab12cd34ef56',
+        from_number: '+18015550100',
+        to_number: '+18015550999',
+        direction: 'inbound',
+        status: 'completed',
+        started_at: '2026-08-12T15:04:00Z',
+        ended_at: '2026-08-12T15:07:22Z',
+        duration_seconds: 202,
+        agent_name: 'Dana Whitlock',
+        transcript: 'Caller: I need an officer at 1400 S State Street.\nDispatcher: Copy, starting a call for service.',
+        recording_r2_key: 'dialer-connect/call/4417/1',
+      },
+    },
+  },
+  {
+    variant: 'empty',
+    label: 'Identifiers only, no transcription or audio',
+    input: {
+      record: { id: 1, kind: 'call' },
+    },
+  },
+  {
+    variant: 'maximal',
+    label: 'Long transcription spanning pages',
+    input: {
+      exportedBy: MAXIMAL_NAME,
+      record: {
+        id: 9001,
+        kind: 'call',
+        call_sid: 'CAmaximal0001',
+        from_number: '+18015550100',
+        to_number: '+18015550999',
+        direction: 'outbound',
+        started_at: '2026-08-12T23:59:00Z',
+        ended_at: '2026-08-13T00:12:00Z',
+        duration_seconds: 780,
+        agent_name: MAXIMAL_NAME,
+        transcript: MAXIMAL_NARRATIVE,
+        recording_r2_key: 'dialer-connect/call/9001/1',
       },
     },
   },

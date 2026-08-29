@@ -127,6 +127,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
+      { path: '/dialer-connect', icon: Smartphone, label: 'Dial Connect' },
       { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
       { path: '/alerts', icon: Bell, label: 'Alert Center' },

@@ -29,6 +29,7 @@
 import type { TimeBand } from './serveScheduleParse';
 import type { AddressClass } from './serveAddressClass';
 import { isSpecificOfficeClass } from './serveAddressClass';
+import type { VenueKind } from './serveIntakeOutputTree';
 
 export type WindowAuthority =
   | 'client-specified'
@@ -37,7 +38,8 @@ export type WindowAuthority =
   | 'business default'
   | 'corporate default'
   | 'small_business default'
-  | 'government default';
+  | 'government default'
+  | 'venue default';
 
 export interface WindowSpec {
   window: string;              // 'HH:MM-HH:MM'
@@ -57,6 +59,9 @@ export interface WindowInput {
     hours_end?: string | null;
     cutoff_time?: string | null;
   } | null;
+  /** Venue overlay windows (warehouse/school/hotel/medical) only apply
+   *  when office-hour timing already won. Never used to shrink a residence. */
+  venueKind?: VenueKind | null;
 }
 
 const RESIDENTIAL_DEFAULTS: WindowSpec[] = [
@@ -90,6 +95,35 @@ export const DEFAULT_BUSINESS_WINDOWS: readonly WindowSpec[] = BUSINESS_DEFAULTS
 export const DEFAULT_CORPORATE_WINDOWS: readonly WindowSpec[] = CORPORATE_DEFAULTS;
 export const DEFAULT_SMALL_BUSINESS_WINDOWS: readonly WindowSpec[] = SMALL_BUSINESS_DEFAULTS;
 export const DEFAULT_GOVERNMENT_WINDOWS: readonly WindowSpec[] = GOVERNMENT_DEFAULTS;
+
+const VENUE_WINDOWS: Partial<Record<VenueKind, WindowSpec[]>> = {
+  warehouse: [
+    { window: '06:30-09:00', focus: 'receiving / shift change — distribution sites', authority: 'venue default' },
+    { window: '14:00-16:00', focus: 'afternoon office before yard close', authority: 'venue default' },
+  ],
+  school: [
+    { window: '07:30-09:00', focus: 'before bell — main office staffed', authority: 'venue default' },
+    { window: '14:30-16:00', focus: 'after dismissal — office still open', authority: 'venue default' },
+  ],
+  hotel: [
+    { window: '08:00-11:00', focus: 'morning desk — catch before checkout', authority: 'venue default' },
+    { window: '16:00-20:00', focus: 'evening desk — catch returning guests', authority: 'venue default' },
+  ],
+  medical_hospice: [
+    { window: '09:30-11:30', focus: 'after clinical morning huddle / reception open', authority: 'venue default' },
+    { window: '13:30-16:00', focus: 'afternoon admin — avoid meal/med pass if possible', authority: 'venue default' },
+  ],
+  hospital: [
+    { window: '08:30-11:30', focus: 'administration hours', authority: 'venue default' },
+    { window: '13:00-16:00', focus: 'afternoon admin / risk management', authority: 'venue default' },
+  ],
+};
+
+export function venueWindowOverlay(venue: VenueKind | null | undefined): WindowSpec[] | null {
+  if (!venue) return null;
+  const rows = VENUE_WINDOWS[venue];
+  return rows ? rows.map((w) => ({ ...w })) : null;
+}
 
 export function windowsForAddressClass(klass: AddressClass): readonly WindowSpec[] {
   switch (klass) {
@@ -164,6 +198,8 @@ export function selectWindows(input: WindowInput): WindowSpec[] {
   }
 
   if (usesBusinessTiming(input.addressClass, input.addressClassConfirmed)) {
+    const venueWindows = input.venueKind ? venueWindowOverlay(input.venueKind) : null;
+    if (venueWindows?.length) return venueWindows;
     return windowsForAddressClass(input.addressClass).map((w) => ({ ...w }));
   }
   return RESIDENTIAL_DEFAULTS.map((w) => ({ ...w }));
