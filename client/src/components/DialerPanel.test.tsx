@@ -23,10 +23,6 @@ vi.mock('../hooks/useApi', () => ({
   apiFetch: vi.fn().mockResolvedValue({ ok: true, id: 1, created: true }),
 }));
 
-vi.mock('../hooks/useApi', () => ({
-  apiFetch: vi.fn().mockResolvedValue({}),
-}));
-
 function LocationProbe() {
   const loc = useLocation();
   return <div data-testid="loc">{loc.pathname}</div>;
