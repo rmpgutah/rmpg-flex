@@ -17,6 +17,8 @@ const EXAMPLES = [
   'Vehicles seen near recent thefts',
 ];
 
+interface HistoryItem { q: string; answer: string }
+
 function notConfigured(err: any): boolean {
   const s = `${err?.code ?? ''} ${err?.message ?? ''}`;
   return /NO_AI_KEY|not configured/i.test(s);
@@ -31,6 +33,7 @@ export default function IntelAiAnalyst() {
   const [summarizing, setSummarizing] = useState<number | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [testing, setTesting] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   // Cheap key-presence check on mount (no Claude call). The "Test" button runs
   // a tiny live call to confirm the key is valid + the account has credit.
@@ -53,6 +56,7 @@ export default function IntelAiAnalyst() {
     try {
       const res = await apiFetch<AskResult>('/intel/ai/ask', { method: 'POST', body: JSON.stringify({ question: text }) });
       setResult(res);
+      setHistory((h) => [{ q: text, answer: res.answer }, ...h].slice(0, 10));
     } catch (e: any) {
       setError(notConfigured(e)
         ? 'AI is not configured — set the Anthropic API key in Admin → API Integrations.'
@@ -141,6 +145,7 @@ export default function IntelAiAnalyst() {
           <div className="bg-surface-raised border border-rmpg-700/50 rounded-sm p-4">
             <div className="flex items-center gap-2 mb-1">
               <div className="text-[10px] uppercase tracking-wide text-brand-400">Answer</div>
+              <button type="button" className="text-[9px] text-fg-muted" onClick={() => navigator.clipboard.writeText(result.answer).catch(() => undefined)}>Copy</button>
               {result.engine === 'workers-ai' && (
                 <span
                   className="ml-auto flex items-center gap-1 text-[9px] font-semibold text-amber-400 bg-amber-900/20 border border-amber-700/40 rounded-sm px-1.5 py-0.5"
@@ -185,6 +190,22 @@ export default function IntelAiAnalyst() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-fg-muted">Session history</div>
+          {history.map((h, i) => (
+            <button
+              key={`${h.q}-${i}`}
+              type="button"
+              onClick={() => { setQuestion(h.q); setResult({ answer: h.answer, citations: [], sources: [] }); }}
+              className="block w-full text-left text-[10px] text-fg-muted truncate border border-border-subtle rounded-[2px] px-2 py-1"
+            >
+              {h.q}
+            </button>
+          ))}
         </div>
       )}
     </div>

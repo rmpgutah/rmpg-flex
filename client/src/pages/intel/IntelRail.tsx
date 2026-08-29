@@ -21,6 +21,7 @@ export default function IntelRail({ counts }: { counts: RailCounts }) {
     { title: 'Sources', items: [
       { to: '/intel/jail', label: 'Jail / Bookings', icon: '⛓' },
       { to: '/intel/plate-log', label: 'Plate Sightings', icon: '🚗' },
+      { to: '/intel/sources', label: 'CI Registry', icon: '§' },
       { to: '/intel/queues', label: 'Review Queues', icon: '⚐', badge: counts.queues },
     ]},
     { title: 'Intelligence', items: [

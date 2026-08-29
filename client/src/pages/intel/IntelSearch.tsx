@@ -33,6 +33,7 @@ import { stepIndex } from './search/stepIndex';
 import { useSavedSearches } from './useSavedSearches';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
+import { downloadTextFile, intelHitsToCsv, shareSearchUrl } from '../../utils/intelHitExport';
 
 export default function IntelSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -184,6 +185,26 @@ export default function IntelSearch() {
         </div>
       )}
       {error && <div className="text-[10px] text-red-400">Search error: {error}</div>}
+
+      {hasQuery && (
+        <div className="flex gap-2 items-center">
+          <button
+            type="button"
+            className="text-[9px] px-2 py-0.5 border border-border-subtle rounded-[2px] text-fg-muted"
+            onClick={() => navigator.clipboard.writeText(shareSearchUrl(raw)).catch(() => undefined)}
+          >
+            Copy link
+          </button>
+          <button
+            type="button"
+            className="text-[9px] px-2 py-0.5 border border-border-subtle rounded-[2px] text-fg-muted"
+            disabled={clustered.length === 0}
+            onClick={() => downloadTextFile('intel-search.csv', intelHitsToCsv(clustered.map((c) => c.hit)))}
+          >
+            Export CSV
+          </button>
+        </div>
+      )}
 
       <div className="flex gap-4">
         {(Object.keys(facets.byType).length > 0) && (
