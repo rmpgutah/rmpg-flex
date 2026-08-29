@@ -1858,7 +1858,8 @@ export default function ServeIntakePage() {
                   recipient — status {result.duplicate_of.status}. Documents were attached to the existing entry; no new call was created.
                 </span>
                 <button
-                  onClick={() => navigate(`/serve?queue_id=${result.duplicate_of!.serve_queue_id}`)}
+                  type="button"
+                  onClick={() => navigate(`/serve?job_id=${result.duplicate_of!.serve_queue_id}`)}
                   className="text-[10px] text-brand-400 whitespace-nowrap hover:underline shrink-0"
                 >
                   View Entry →
@@ -1902,9 +1903,20 @@ export default function ServeIntakePage() {
                 </div>
                 <p className="text-sm font-bold text-rmpg-100 font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + toDisplayLabel(result.extracted.processType.slice(1)) : 'PSO Client Request'} — Pending</p>
-                <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
-                  View in Dispatch →
-                </button>
+                <div className="flex flex-wrap gap-x-2 mt-1">
+                  {result.serve_queue_id != null && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/serve?job_id=${result.serve_queue_id}`)}
+                      className="text-[9px] text-brand-400 hover:underline"
+                    >
+                      Open in Process Server →
+                    </button>
+                  )}
+                  <button type="button" onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 hover:underline">
+                    View in Dispatch →
+                  </button>
+                </div>
               </div>
             </div>
 
