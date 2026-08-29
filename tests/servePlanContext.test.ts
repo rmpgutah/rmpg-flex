@@ -36,6 +36,18 @@ describe('R6: planContextFromRow', () => {
     expect(ctx.startNotBefore).toBe('2026-08-01');
   });
 
+  it('reads a confirmed corporate class from persisted parsed_data', () => {
+    const ctx = planContextFromRow({
+      klass: 'corporate',
+      confirmed: 0,
+      client_attempt_schedule: null,
+      service_days_allowed: null,
+      attempt_start_not_before: null,
+    });
+    expect(ctx.addressClass).toBe('corporate');
+    expect(ctx.addressClassConfirmed).toBe(false);
+  });
+
   it('a legacy row with no persisted class degrades to unknown/unconfirmed (D-2 safe direction)', () => {
     const ctx = planContextFromRow(null);
     expect(ctx).toEqual({

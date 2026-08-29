@@ -4231,23 +4231,30 @@ export default function ServePage() {
                     <label className="block text-[11px] text-fg-muted mb-1">
                       Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      {(['residential', 'unknown', 'business'] as const).map(k => (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {([
+                        ['residential', 'Residential'],
+                        ['corporate', 'Corporate'],
+                        ['small_business', 'Small Biz'],
+                        ['government', 'Government'],
+                        ['business', 'Business'],
+                        ['unknown', 'Unknown'],
+                      ] as const).map(([k, label]) => (
                         <button
                           key={k}
                           type="button"
                           onClick={() => handleAddressClassChange(editJob.id, k, k !== 'unknown')}
                           className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
                             klass === k
-                              ? k === 'business'
-                                ? 'bg-brand-800/60 border-brand-500 text-brand-200'
+                              ? k === 'unknown'
+                                ? 'bg-surface-raised border-rmpg-600 text-fg-muted'
                                 : k === 'residential'
                                 ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
-                                : 'bg-surface-raised border-rmpg-600 text-fg-muted'
+                                : 'bg-brand-800/60 border-brand-500 text-brand-200'
                               : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
                           }`}
                         >
-                          {k.charAt(0).toUpperCase() + k.slice(1)}
+                          {label}
                         </button>
                       ))}
                       {klass !== 'unknown' && (
@@ -4262,7 +4269,7 @@ export default function ServePage() {
                     </div>
                     {klass === 'business' && !confirmed && (
                       <p className="text-[10px] text-amber-400 mt-1">
-                        Unconfirmed — residential windows apply until confirmed. Select Business again to confirm.
+                        Unconfirmed generic business — residential windows apply until confirmed. Specific types (Corporate / Small Business / Government) use office hours from the location signal.
                       </p>
                     )}
                   </div>

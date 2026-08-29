@@ -984,6 +984,9 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     businessRecordMatched: businessRecordIsIndependent && isBusiness,
     instructionsText: queueRow.service_instructions || '',
     extracted: get('address_class'),
+    serviceAddress: fullLocation || addr,
+    entityName: queueRow.recipient_name || get('recipient_business_name') || queueRow.business_name,
+    recipientType: queueRow.recipient_type || (isBusiness ? 'business' : null),
   });
 
   const rawClientSchedule = get('client_attempt_schedule');

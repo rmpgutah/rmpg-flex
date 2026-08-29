@@ -14,10 +14,16 @@ import { resolveAddressClass } from '../src/utils/serveAddressClass';
 describe('resolveAddressClass', () => {
   it('maps commercial and gated aliases from the intake review dropdown', () => {
     expect(resolveAddressClass({ operatorOverride: 'commercial' })).toEqual({
-      klass: 'business', confirmed: true, source: 'operator',
+      klass: 'small_business', confirmed: true, source: 'operator',
     });
     expect(resolveAddressClass({ operatorOverride: 'gated' })).toEqual({
-      klass: 'residential', confirmed: true, source: 'operator',
+      klass: 'gated', confirmed: true, source: 'operator',
+    });
+    expect(resolveAddressClass({ operatorOverride: 'corporate' })).toEqual({
+      klass: 'corporate', confirmed: true, source: 'operator',
+    });
+    expect(resolveAddressClass({ operatorOverride: 'government' })).toEqual({
+      klass: 'government', confirmed: true, source: 'operator',
     });
   });
 
@@ -84,5 +90,35 @@ describe('resolveAddressClass', () => {
     expect(r.klass).toBe('residential');
     expect(r.source).toBe('packet_language');
     expect(r.confirmed).toBe(false);
+  });
+
+  it('infers corporate from an LLC + office suite even when OCR extracted generic business', () => {
+    const r = resolveAddressClass({
+      extracted: 'business',
+      serviceAddress: '2005 East 2700 South Suite 200, Salt Lake City, UT 84109',
+      entityName: 'BRISTOL HOSPICE LLC',
+      recipientType: 'business',
+    });
+    expect(r.klass).toBe('corporate');
+    expect(r.source).toBe('inferred');
+    expect(r.confirmed).toBe(false);
+  });
+
+  it('does not treat an apartment suite as corporate', () => {
+    const r = resolveAddressClass({
+      serviceAddress: '1180 E Vine St Apt 4B',
+      entityName: 'BRISTOL HOSPICE LLC',
+      recipientType: 'business',
+    });
+    expect(r.klass).toBe('residential');
+  });
+
+  it('infers government from courthouse / city-hall language', () => {
+    const r = resolveAddressClass({
+      serviceAddress: '450 South State Street, Salt Lake City, UT',
+      entityName: 'Salt Lake City Hall',
+    });
+    expect(r.klass).toBe('government');
+    expect(r.source).toBe('inferred');
   });
 });

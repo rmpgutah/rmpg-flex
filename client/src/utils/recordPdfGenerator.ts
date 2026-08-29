@@ -2754,6 +2754,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
         { label: 'Result', value: formatEnumValue(data.process_service_result) },
       ], y);
+      const locType = (() => {
+        const notes = Array.isArray(data.notes) ? data.notes : [];
+        for (const n of notes) {
+          const t = String((n as { text?: string; content?: string }).text || (n as { content?: string }).content || '');
+          const m = t.match(/Location type:\s*([^\n*]+)/i);
+          if (m) return m[1].trim();
+        }
+        return '';
+      })();
+      if (locType) {
+        y = addFieldPair(doc, 'Serve Location Type', locType, lx, y, ffw);
+      }
       if (data.deadline) {
         y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
       }
@@ -3338,34 +3350,27 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       officerSuffix: string,
       continued: boolean,
     ): number => {
-      // Note entry header — outline only (low ink)
-      doc.setDrawColor(...COLOR.BG_SECTION_HDR);
-      doc.setLineWidth(0.3);
-      doc.rect(lx, strip_y, ffw, headerH);
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(lx, strip_y, ffw, headerH, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
       const entryLead = continued
         ? `ENTRY ${entryNum} OF ${total} — CONTINUED`
-        : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
+        : `ENTRY ${entryNum} OF ${total}  ·  ${timestamp}`;
       doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
       doc.setFontSize(6);
-      const tagW = doc.getTextWidth(entryType) + 3;
+      const tagW = doc.getTextWidth(entryType) + 4;
       const tagX = lx + ffw - tagW - 1.5;
-      const tagY = strip_y + 1;
-      // Tag chip — outline only (low ink)
-      doc.setDrawColor(tagBg[0], tagBg[1], tagBg[2]);
-      doc.setLineWidth(0.2);
-      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
+      const tagY = strip_y + 0.9;
+      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
+      doc.roundedRect(tagX, tagY, tagW, headerH - 1.8, 0.4, 0.4, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.0, { align: 'center' });
       if (officerSuffix && !continued) {
         doc.setFont(PDF_VALUE_FONT, 'normal');
         doc.setFontSize(5.5);
-        // intentional one-off light gray, no matching COLOR token — very
-        // faint suffix text, close to BG_TABLE_HDR (224,224,224) but not
-        // the same use case (a table header fill, not near-white text)
-        doc.setTextColor(220, 220, 220);
+        doc.setTextColor(...COLOR.TEXT_SUBHEAD_INVERTED);
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
       }
@@ -3410,12 +3415,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
-        : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
-        : upper === 'OFFICER SAFETY' || upper === 'OCR' ? [80, 80, 80]
-        : !isSystemTag ? [90, 90, 90]
-        : [70, 70, 70];
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [26, 47, 92]
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [38, 62, 110]
+        : upper === 'NCIC' || upper === 'ALERT' ? [90, 32, 32]
+        : upper === 'OFFICER SAFETY' ? [90, 32, 32]
+        : upper === 'OCR' ? [55, 60, 72]
+        : !isSystemTag ? [70, 75, 85]
+        : [45, 55, 70];
 
       // Same field drift as the body: timestamp arrives as `created_at`
       // (interface) or `timestamp` (live CallNote). Coalesce so the header
@@ -3455,13 +3461,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         (n as { body?: string }).body ||
         (n as { narrative?: string }).narrative ||
         '';
+      const preserveMarkdown = isSystemTag;
       const bodyEndY = addFormattedText(
         doc,
-        noteBody.toUpperCase(),
+        preserveMarkdown ? noteBody : noteBody.toUpperCase(),
         lx + bodyIndent,
         y,
         ffw - bodyIndent,
-        FONT.SIZE_FIELD_VALUE,
+        preserveMarkdown ? FONT.SIZE_FIELD_VALUE + 0.5 : FONT.SIZE_FIELD_VALUE,
         onEntryPageBreak,
       );
       y = bodyEndY;

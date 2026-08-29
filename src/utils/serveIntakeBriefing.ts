@@ -33,7 +33,12 @@ import type { AttemptWindow } from './serveDiligencePlanner';
 import type { ServiceLocationNote } from './serveLocationNotes';
 import { noteConstraintSummary } from './serveLocationNotes';
 import type { AddressClass } from './serveAddressClass';
-import { DEFAULT_RESIDENTIAL_WINDOWS, DEFAULT_BUSINESS_WINDOWS } from './serveAttemptWindows';
+import { addressClassLabel, isSpecificOfficeClass } from './serveAddressClass';
+import {
+  DEFAULT_RESIDENTIAL_WINDOWS, DEFAULT_BUSINESS_WINDOWS,
+  DEFAULT_CORPORATE_WINDOWS, DEFAULT_SMALL_BUSINESS_WINDOWS,
+  DEFAULT_GOVERNMENT_WINDOWS,
+} from './serveAttemptWindows';
 
 // ── Operator policy switches ─────────────────────────────────
 const FLAG_EVICTION = true;        // eviction / unlawful detainer → HIGH
@@ -315,18 +320,29 @@ export interface PsoBriefing {
 // Utah Rules of Civil Procedure references current as of 2026.
 
 // Who may lawfully accept service, by recipient class (URCP 4(d)).
+function officeLike(addressClass: AddressClass, isBusiness: boolean): boolean {
+  return isBusiness || isSpecificOfficeClass(addressClass) || addressClass === 'business' || addressClass === 'po_box';
+}
+
 function serviceAuthorityLines(isBusiness: boolean, hint: string, addressClass: AddressClass): string[] {
   const lines: string[] = [];
-  if (!isBusiness && addressClass === 'business') {
+  if (!isBusiness && (addressClass === 'business' || isSpecificOfficeClass(addressClass))) {
     lines.push('SERVICE AT A PLACE OF EMPLOYMENT: substitute service on a co-worker is NOT dwelling substitute service. Unless the client expressly authorizes it, the recipient must be served PERSONALLY at a business address.');
   }
-  if (isBusiness) {
+  if (addressClass === 'government') {
+    lines.push('Government-office service: deliver to the clerk, records counter, or person designated to accept legal papers — ask for the authorized agent by title, not a random employee in the lobby.');
+    lines.push('Expect a security checkpoint and posted public hours. Do not attempt after the counter closes; after-hours drop boxes are not personal service unless the hiring party authorizes it in writing.');
+    lines.push('If the office will not accept: record the name/title of the person who refused, photograph the posted hours and the counter, and notify the hiring party — do not leave papers with security.');
+  } else if (officeLike(addressClass, isBusiness)) {
     lines.push('Corporate/LLC service per URCP 4(d)(1)(E): deliver to an officer, a managing or general agent, or the registered agent. Any employee 18+ expressly authorized to accept also qualifies at the business location.');
     lines.push('If serving at a RESIDENCE: personal delivery to the registered agent or an owner/member only — a spouse or co-resident may accept ONLY if authorized or a member of the company.');
     lines.push('If the entity cannot be located after diligence, Utah law permits service on the Division of Corporations as statutory agent — that is a counsel decision; report the failed diligence, do not self-initiate.');
   } else {
     lines.push('Individual service per URCP 4(d)(1)(A): personal delivery, or substitute service at the dwelling on a resident of suitable age and discretion, or delivery to an authorized agent.');
     lines.push('A minor or obviously impaired resident is NOT of suitable age and discretion — do not substitute-serve on them; re-attempt instead.');
+  }
+  if (addressClass === 'po_box') {
+    lines.push('PO BOX: a post-office box is not a lawful place of personal service. Identify the physical street address (box holder, skip trace, Division of Corporations) and re-plan — do not leave papers at the box.');
   }
   if (hint.includes('summons') || hint.includes('complaint')) {
     lines.push('Summons/complaint: the recipient has 21 days to answer if served in Utah, 30 days if served out of state (URCP 12(a)) — clock starts on the date of service; the affidavit date is jurisdictional. Do not advise the recipient beyond what is printed on the summons.');
@@ -349,7 +365,16 @@ function tacticalApproachLines(input: BriefingInput, hint: string): string[] {
   const f = (k: string) => get(fields, k);
   const lines: string[] = [];
 
-  if (isBusiness) {
+  const klass = input.addressClass || 'unknown';
+  if (klass === 'government') {
+    lines.push('Attempt during posted PUBLIC counter hours only (typically weekday mornings and early afternoon). Confirm you are at the correct agency/division on the directory before tendering.');
+    lines.push('Ask for the clerk or person authorized to accept legal papers. Note the full name AND title. Security is not an authorized recipient unless they so state.');
+    lines.push('If the counter is closed or the office has moved: photograph the frontage and posted hours, obtain a forwarding address from an adjacent office, and flag for skip trace — do not leave papers with after-hours security.');
+  } else if (klass === 'small_business') {
+    lines.push('Attempt during posted shop hours; small businesses often close midday or one weekday. Confirm the DBA on the door matches the packet before tendering. Ask for the owner or manager by name.');
+    lines.push('If closed or vacated: photograph the frontage, note neighboring tenant info, and flag for skip trace — do not leave papers in a mail slot or under the door.');
+    lines.push('Note the full name AND title of whoever accepts — "authorized to accept" must be supportable in the affidavit.');
+  } else if (klass === 'corporate' || klass === 'business' || klass === 'po_box' || (isBusiness && klass !== 'residential' && klass !== 'gated')) {
     lines.push('Attempt during posted business hours first; confirm the entity actually operates at the address (signage, suite directory, staff acknowledgment) before tendering. Ask for the registered agent or a manager by name.');
     lines.push('If the business has vacated: photograph the frontage/suite, obtain a forwarding address from neighboring tenants or property management, and flag for skip trace — do not leave papers at a vacated unit.');
     lines.push('Note the full name AND title of whoever accepts — "authorized to accept" must be supportable in the affidavit.');
@@ -375,12 +400,24 @@ function tacticalApproachLines(input: BriefingInput, hint: string): string[] {
 }
 
 // Attempt-cadence and proof-of-service doctrine — paper-type independent.
-const DILIGENCE_LINES = [
-  'Minimum three attempts before requesting alternative service: stagger across morning (07:00–09:00), midday, and evening (17:00–20:30), and include at least one weekend attempt — residential hit rates peak early morning and early evening.',
-  'First attempt within 48 hours of assignment. Log every attempt in the system at the scene, not end-of-shift — timestamps and GPS are the diligence record.',
-  'BAD ADDRESS: confirm with an occupant or neighbor, photograph the location, and request skip trace immediately — do not burn additional attempts on a confirmed bad address.',
-  'After exhausting attempts: compile the attempt log and notify the hiring party — alternative service (URCP 4(d)(5)) is counsel\'s motion to make, supported by your documented diligence.',
-];
+function diligenceLines(klass: AddressClass): string[] {
+  const office = isSpecificOfficeClass(klass) || klass === 'business' || klass === 'po_box';
+  const stagger = office
+    ? (klass === 'government'
+      ? 'Minimum three attempts before requesting alternative service: stagger across morning counter hours (08:30–11:30) and afternoon (13:00–15:30) on different weekdays. Do not count a weekend attempt at a closed government office as diligence.'
+      : klass === 'small_business'
+        ? 'Minimum three attempts before requesting alternative service: stagger across morning (09:00–11:00) and afternoon (13:00–16:00) on different weekdays. Confirm posted hours; a closed-for-lunch attempt is not a completed diligence contact.'
+        : 'Minimum three attempts before requesting alternative service: stagger across mid-morning (09:30–11:30) and afternoon (13:30–16:00) on different weekdays. Weekend attempts at a closed corporate office do not count toward diligence.')
+    : 'Minimum three attempts before requesting alternative service: stagger across morning (07:00–09:00), midday, and evening (17:00–20:30), and include at least one weekend attempt — residential hit rates peak early morning and early evening.';
+  return [
+    stagger,
+    'First attempt within 48 hours of assignment. Log every attempt in the system at the scene, not end-of-shift — timestamps and GPS are the diligence record.',
+    office
+      ? 'BAD ADDRESS: confirm with staff or neighboring tenants, photograph the frontage/suite, and request skip trace immediately — do not burn additional attempts on a confirmed vacated unit.'
+      : 'BAD ADDRESS: confirm with an occupant or neighbor, photograph the location, and request skip trace immediately — do not burn additional attempts on a confirmed bad address.',
+    'After exhausting attempts: compile the attempt log and notify the hiring party — alternative service (URCP 4(d)(5)) is counsel\'s motion to make, supported by your documented diligence.',
+  ];
+}
 
 const AFFIDAVIT_LINES = [
   'Each attempt: date, exact time, GPS coordinates, and outcome.',
@@ -518,30 +555,46 @@ function buildIntakeNote(input: BriefingInput, nowIso: string): string {
   const lines: string[] = [];
   lines.push('**PROCESS SERVICE — INTAKE PROFILE** *(auto-generated)*');
 
+  const klass = input.addressClass || 'unknown';
   lines.push('**■ SERVICE PROFILE**');
-  if (isBusiness) {
-    lines.push(`Target entity: ${queueRow.recipient_name || f('recipient_business_name') || 'Unknown business'}`);
-    if (agentName) lines.push(`Accept-service party: Registered Agent ${agentName}`);
+  lines.push(`Location type: ${addressClassLabel(klass)}${input.addressClassConfirmed ? ' (confirmed)' : ''}`);
+  if (isBusiness || isSpecificOfficeClass(klass)) {
+    lines.push(`Target Entity: ${queueRow.recipient_name || f('recipient_business_name') || 'Unknown business'}`);
+    if (agentName) lines.push(`Accept-Service Party: Registered Agent ${agentName}`);
   } else {
     lines.push(`Target: ${queueRow.recipient_name || 'Unknown'}${f('recipient_dob') ? `  (DOB ${f('recipient_dob')})` : ''}`);
   }
-  if (fullLocation) lines.push(`Service address: ${fullLocation}${f('recipient_county') ? `  (${f('recipient_county')} County)` : ''}`);
+  if (fullLocation) lines.push(`Service Address: ${fullLocation}${f('recipient_county') ? ` (${f('recipient_county')} County)` : ''}`);
   if (f('recipient_phone')) lines.push(`Recipient phone on file: ${f('recipient_phone')}`);
   if (f('process_type')) lines.push(`Process type: ${f('process_type')}`);
   if (f('document_subtype') && f('document_subtype') !== queueRow.document_type) {
     lines.push(`Document class: ${queueRow.document_type || 'civil paper'} / ${f('document_subtype')}`);
   }
-  lines.push(`Documents to serve: ${f('documents_to_serve') || queueRow.document_type || 'Civil paper'}  (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+  const docItems = (f('documents_to_serve') || '')
+    .split(/[;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (docItems.length > 1) {
+    lines.push('Documents to Serve:');
+    docItems.forEach((d, i) => lines.push(`${i + 1}. ${d}`));
+    lines.push(`• (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+  } else {
+    lines.push(`Documents to Serve: ${f('documents_to_serve') || queueRow.document_type || 'Civil paper'}  (${docCount} file${docCount === 1 ? '' : 's'} on record)`);
+  }
   if (f('witness_fee_instrument')) {
     lines.push(`__CARRY WITH YOU: ${f('witness_fee_instrument')}__ — a witness fee must be tendered at service. Arriving without it fails the attempt.`);
   }
 
   if (caseLine || parties) {
-    lines.push('**■ CASE**');
-    if (caseLine) lines.push(caseLine);
-    if (parties) lines.push(`Parties: ${parties}`);
-    if (f('filing_date')) lines.push(`Filed: ${f('filing_date')}`);
-    if (queueRow.deadline) lines.push(`__SERVICE DEADLINE: ${queueRow.deadline}__`);
+    lines.push('**■ CASE DETAILS**');
+    if (queueRow.case_number) lines.push(`1. CASE #: ${queueRow.case_number}`);
+    if (queueRow.court_name || queueRow.jurisdiction) {
+      lines.push(`1a. ${[queueRow.court_name, queueRow.jurisdiction].filter(Boolean).join(' — ')}`);
+    }
+    if (parties) lines.push(`1b. ${queueRow.plaintiff ? `Plaintiff: ${queueRow.plaintiff}` : 'Plaintiff: (not on file)'}${queueRow.defendant ? ` v. Defendant: ${queueRow.defendant}` : ''}`);
+    if (f('filing_date')) lines.push(`1c. DATE OF FILING: ${f('filing_date')}`);
+    if (queueRow.deadline) lines.push(`1d. SERVICE DEADLINE: ${queueRow.deadline}`);
+    if (!queueRow.case_number && caseLine) lines.push(caseLine);
     if (queueRow.court_date) lines.push(`Hearing date: ${queueRow.court_date} — service must be perfected with enough lead time for the recipient's appearance.`);
 
     const target = queueRow.recipient_name || '';
@@ -766,15 +819,26 @@ function buildPlanNote(input: BriefingInput): string {
   if (!clientDictated) {
     // Print only the window set that actually governs this job when the plan
     // says which one it is; print both when there is no plan to read.
-    const showBusiness = planAuthorities.has('business default')
-      || (!planAuthorities.has('residential default') && !planAuthorities.has('site note'));
-    const showResidential = planAuthorities.has('residential default')
-      || (!planAuthorities.has('business default') && !planAuthorities.has('site note'));
-    if (showResidential) {
+    const showResidential = planAuthorities.has('residential default');
+    const showCorporate = planAuthorities.has('corporate default');
+    const showSmall = planAuthorities.has('small_business default');
+    const showGov = planAuthorities.has('government default');
+    const showBusiness = planAuthorities.has('business default');
+    const noClassSignal = !showResidential && !showCorporate && !showSmall && !showGov && !showBusiness && !planAuthorities.has('site note');
+    if (showResidential || noClassSignal) {
       lines.push(`• Residential: ${windowList(DEFAULT_RESIDENTIAL_WINDOWS)}. Include at least one weekend attempt — residential hit rates peak Saturday 08:00–10:00.`);
     }
+    if (showCorporate || noClassSignal) {
+      lines.push(`• Corporate / large business: ${windowList(DEFAULT_CORPORATE_WINDOWS)} weekdays during posted office hours. Confirm the entity still operates at the suite before tendering.`);
+    }
+    if (showSmall || noClassSignal) {
+      lines.push(`• Small business: ${windowList(DEFAULT_SMALL_BUSINESS_WINDOWS)} weekdays; confirm posted shop hours (midday closures are common).`);
+    }
+    if (showGov || noClassSignal) {
+      lines.push(`• Government offices: ${windowList(DEFAULT_GOVERNMENT_WINDOWS)} weekdays at the public counter. Weekend attempts do not count.`);
+    }
     if (showBusiness) {
-      lines.push(`• Business (CONFIRMED business location only): ${windowList(DEFAULT_BUSINESS_WINDOWS)} during posted business hours. Confirm the entity still operates at the address before tendering.`);
+      lines.push(`• Business (CONFIRMED generic business location): ${windowList(DEFAULT_BUSINESS_WINDOWS)} during posted business hours.`);
     }
     if (planAuthorities.has('site note')) {
       lines.push('• The windows above came from a recorded site notation for this address — see SERVICE CONSTRAINTS in the intake note.');
@@ -795,7 +859,7 @@ function buildPlanNote(input: BriefingInput): string {
   }
 
   lines.push('**■ DILIGENCE STANDARD**');
-  for (const l of DILIGENCE_LINES) lines.push(`• ${l}`);
+  for (const l of diligenceLines(input.addressClass || 'unknown')) lines.push(`• ${l}`);
 
   return lines.join('\n');
 }
@@ -833,15 +897,17 @@ function buildContactsNote(input: BriefingInput): string {
     .filter(Boolean).join(' / ');
   const callback = f('attorney_phone');
   const lines: string[] = [];
-  lines.push('**PROCESS SERVICE — CONTACTS** *(auto-generated)*');
+  lines.push('**PROCESS SERVICE — CONTRACT DETAILS AND CONTACTS** *(auto-generated)*');
 
   if (hiringParty) {
-    lines.push('**■ CONTACTS**');
-    lines.push(`Hiring party: ${hiringParty}${callback ? `  ·  Callback: ${callback}` : ''}${f('attorney_email') ? `  ·  ${f('attorney_email')}` : ''}`);
-    if (f('attorney_bar_number')) lines.push(`Attorney bar #: ${f('attorney_bar_number')}`);
-    if (f('job_number')) lines.push(`Client job #: ${f('job_number')}${f('client_reference') ? `  ·  Ref: ${f('client_reference')}` : ''}${f('server_name') ? `  ·  Assigned server: ${f('server_name')}` : ''}`);
-    if (f('fee_amount')) lines.push(`Service fee: ${f('fee_amount')}`);
-    lines.push('All recipient questions about the case → refer to the issuing court or the hiring attorney. Servers do not interpret documents.');
+    lines.push('**■ CONTRACT DETAILS AND CONTACTS**');
+    lines.push(`1. Hiring Party: ${hiringParty}${callback ? ` | Phone: ${callback}` : ''}${f('attorney_email') ? ` | Email: ${f('attorney_email')}` : ''}`);
+    if (f('attorney_bar_number')) lines.push(`   Attorney bar #: ${f('attorney_bar_number')}`);
+    if (f('job_number')) lines.push(`2. Client Job #: ${f('job_number')}`);
+    if (f('client_reference')) lines.push(`3. Client Ref #: ${f('client_reference')}`);
+    if (f('server_name')) lines.push(`4. Assigned PSO: ${f('server_name')}`);
+    if (f('fee_amount')) lines.push(`5. Service Fee: ${f('fee_amount')}`);
+    lines.push('IMPORTANT NOTICE: All recipient questions about the case → refer to the issuing court or the hiring attorney. Servers do not interpret documents.');
   } else {
     // No hiring party extracted — say so and give the officer the field
     // contacts that DO exist rather than an empty header-only note.

@@ -1357,7 +1357,10 @@ sv.patch('/:id/address-class', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
   const body = await c.req.json<{ klass?: string; confirmed?: boolean }>().catch(() => ({} as { klass?: string; confirmed?: boolean }));
-  const VALID_KLASS = new Set(['residential', 'business', 'unknown']);
+  const VALID_KLASS = new Set([
+    'residential', 'business', 'corporate', 'small_business',
+    'government', 'gated', 'po_box', 'unknown',
+  ]);
   const klass = typeof body.klass === 'string' && VALID_KLASS.has(body.klass) ? body.klass : null;
   const confirmed = typeof body.confirmed === 'boolean' ? body.confirmed : null;
   if (klass === null && confirmed === null) return c.json({ error: 'Provide klass and/or confirmed' }, 400);
