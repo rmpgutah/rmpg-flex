@@ -338,7 +338,7 @@ const DEADLINE_URGENCY_BUFFER_MS = 60 * 60 * 1000; // 60 minutes
 
 function dwellMsForJob(job: ServeJob): number {
   const type = inferDefendantType(job.recipient_address, job.business_id, job.recipient_type);
-  return clampDwellSeconds(type) * 1000;
+  return clampDwellSeconds(type, job.learned_dwell_seconds) * 1000;
 }
 
 function serveWindowForJob(job: ServeJob, routeDate: string, shiftStartMs?: number) {

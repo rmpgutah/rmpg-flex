@@ -68,15 +68,15 @@ describe('buildServeRunProblem', () => {
     expect(svc10?.service_times).toBeUndefined();
   });
 
-  it('uses 12 min residential / 18 min business onsite duration', () => {
+  it('uses 18 min residential / 22 min business onsite duration', () => {
     const doc = buildServeRunProblem(stops, officer, SHIFT_START, SHIFT_END);
-    expect(doc.services.find((s) => s.name === '10')?.duration).toBe(12 * 60);
+    expect(doc.services.find((s) => s.name === '10')?.duration).toBe(18 * 60);
     const biz: ServeStop = {
       id: 30, recipient_address: '1 Commerce', recipient_lat: 40.77, recipient_lng: -111.88,
       recipient_type: 'business',
     };
     const bizDoc = buildServeRunProblem([biz], officer, SHIFT_START, SHIFT_END);
-    expect(bizDoc.services[0].duration).toBe(18 * 60);
+    expect(bizDoc.services[0].duration).toBe(22 * 60);
   });
 
   it('uses min-schedule-completion-time objective', () => {

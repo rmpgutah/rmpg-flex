@@ -1094,6 +1094,8 @@ export default function ServePage() {
     const result = await apiFetch<{
       queue_status: string;
       attempt_number: number;
+      due_diligence_complete?: boolean;
+      attempt_threshold_reached?: boolean;
     }>(`/process-server/${attemptJob.id}/attempt`, {
       method: 'POST',
       // Stamp from the officer's own device, not the server's receipt time.
@@ -1126,7 +1128,7 @@ export default function ServePage() {
     return {
       attemptNumber: result.attempt_number,
       jobStatus: result.queue_status,
-      dueDiligenceComplete: (result as any).due_diligence_complete,
+      dueDiligenceComplete: Boolean(result.due_diligence_complete || result.attempt_threshold_reached),
     };
   }, [attemptJob, refreshJobs, setJobs, addToast]);
 

@@ -1249,6 +1249,20 @@ calls.post('/:id/status', requireRole('dispatcher', 'supervisor', 'manager', 'ad
     if (dispSql) params.push(disposition);
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
+    if (status === 'cleared' || status === 'closed' || status === 'cancelled') {
+      try {
+        await execute(db,
+          `UPDATE calls_for_service SET onscene_duration_seconds = CASE
+             WHEN onscene_at IS NOT NULL AND (onscene_duration_seconds IS NULL OR onscene_duration_seconds = 0)
+             THEN CAST((julianday(COALESCE(cleared_at, closed_at, datetime('now'))) - julianday(onscene_at)) * 86400 AS INTEGER)
+             ELSE onscene_duration_seconds
+           END
+           WHERE id = ?`,
+          id);
+      } catch (err) {
+        log.error('[dispatch] failed to stamp onscene_duration_seconds', { callId: id }, err as Error);
+      }
+    }
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
 
     // ── Stack sync: propagate timestamp + cascaded unit status to siblings ──

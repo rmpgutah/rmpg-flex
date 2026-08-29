@@ -23,6 +23,7 @@ struct LogAttemptSheet: View {
     @State private var isUploading = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var arrivedAtIso: String = ISO8601DateFormatter().string(from: Date())
     @Environment(\.dismiss) private var dismiss
 
     private let location = OneShotLocation()
@@ -177,7 +178,9 @@ struct LogAttemptSheet: View {
             latitude: coordinate?.latitude,
             longitude: coordinate?.longitude,
             photoIds: photoIds,
-            signatureData: signatureBase64
+            signatureData: signatureBase64,
+            attemptAt: ISO8601DateFormatter().string(from: Date()),
+            arrivedAt: arrivedAtIso
         )
         do {
             try await api.logAttempt(jobId: job.id, request)

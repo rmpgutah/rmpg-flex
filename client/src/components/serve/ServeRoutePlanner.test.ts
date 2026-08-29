@@ -217,9 +217,9 @@ describe('computeArrivalsFromLegDurations', () => {
       [600, 300], // 10 min then 5 min
     );
     expect(arrivals.get(1)).toBe(start + 600_000);
-    // 10 min drive + 12 min individual dwell + 5 min drive
-    expect(arrivals.get(2)).toBe(start + 600_000 + 12 * 60_000 + 300_000);
-    expect(totalDurationMinutes).toBeCloseTo(10 + 12 + 5 + 12, 5);
+    // 10 min drive + 18 min individual dwell + 5 min drive
+    expect(arrivals.get(2)).toBe(start + 600_000 + 18 * 60_000 + 300_000);
+    expect(totalDurationMinutes).toBeCloseTo(10 + 18 + 5 + 18, 5);
   });
 });
 

@@ -1008,7 +1008,7 @@ export function dwellSeconds(arrivedAt: string, loggedAt: string): number {
 
 /**
  * Fetch per-stop average dwell times (seconds) from the serve_dwell_times table.
- * Learned values are clamped to the type range (house 10–15, apt 12–15, business 15–20).
+ * Learned values are clamped to the type range (see DWELL_RANGE_S).
  */
 export async function fetchDwellSeconds(
   db: D1Database,
@@ -1033,6 +1033,42 @@ export async function fetchDwellSeconds(
 
   const byHash = new Map(rows.map(r => [r.address_hash, r.avg_dwell]));
   return stops.map(s => clampDwellSeconds(s.defendantType as DefendantType, byHash.get(s.addressHash)));
+}
+
+/** Attach planner dwell (learned + clamped) onto serve_queue list rows. */
+export async function attachLearnedDwellSeconds<T extends {
+  recipient_address?: string | null;
+  business_id?: number | null;
+  recipient_type?: string | null;
+}>(db: D1Database, jobs: T[]): Promise<void> {
+  if (jobs.length === 0) return;
+  const hashed = await Promise.all(jobs.map(async (j) => {
+    const addr = (j.recipient_address || '').trim();
+    const addressHash = addr ? await hashAddress(addr) : '';
+    return {
+      job: j,
+      stop: {
+        jobId: 0,
+        lat: 0,
+        lng: 0,
+        geocodeSource: null,
+        deadlineAt: null,
+        defendantType: inferDefendantType(j.recipient_address, j.business_id, j.recipient_type),
+        addressHash,
+        defendant: '',
+        address: addr,
+        locationNote: null,
+      } satisfies RouteStop,
+    };
+  }));
+  const withHash = hashed.filter((h) => h.stop.addressHash);
+  const dwells = await fetchDwellSeconds(db, withHash.map((h) => h.stop));
+  const byHash = new Map(withHash.map((h, i) => [h.stop.addressHash, dwells[i]]));
+  for (const h of hashed) {
+    const learned = h.stop.addressHash ? byHash.get(h.stop.addressHash) : undefined;
+    (h.job as T & { learned_dwell_seconds: number }).learned_dwell_seconds =
+      learned ?? clampDwellSeconds(h.stop.defendantType);
+  }
 }
 
 /**
