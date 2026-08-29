@@ -232,6 +232,7 @@ export default function ShiftNotesPage() {
             value={noteSearch}
             onChange={e => setNoteSearch(e.target.value)}
             placeholder="Search notes…"
+            aria-label="Search shift notes"
             style={{ background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)', borderRadius: 2, color: 'var(--text-primary)', fontSize: 12, padding: '3px 7px' }}
           />
           <select

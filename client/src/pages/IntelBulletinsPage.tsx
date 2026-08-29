@@ -217,6 +217,7 @@ export default function IntelBulletinsPage() {
           <input
             type="text"
             placeholder="Search bulletins..."
+            aria-label="Search intelligence bulletins"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm flex-1"

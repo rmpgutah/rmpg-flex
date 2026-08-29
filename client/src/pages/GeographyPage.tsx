@@ -898,6 +898,7 @@ export default function GeographyPage() {
           value={state.searchQuery}
           onChange={(e) => setState((s) => ({ ...s, searchQuery: e.target.value }))}
           placeholder="Search all tiers… (press / to focus)"
+          aria-label="Search geography tiers"
           className="input-dark text-xs flex-1 max-w-md"
         />
         {state.searchQuery && (

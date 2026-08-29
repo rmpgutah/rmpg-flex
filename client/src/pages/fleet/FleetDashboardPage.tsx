@@ -167,7 +167,7 @@ export default function FleetDashboardPage() {
 
   const [period, setPeriod] = useState<Period>('30d');
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [kpi, setKpi] = useState<KpiData | null>(null);
   const [readiness, setReadiness] = useState<ReadinessRow[]>([]);
@@ -185,7 +185,7 @@ export default function FleetDashboardPage() {
 
   const load = useCallback(async (p: Period) => {
     setLoading(true);
-    setFetchError(false);
+    setLoadError(null);
     try {
       const q = `?period=${p}`;
       const [
@@ -211,8 +211,9 @@ export default function FleetDashboardPage() {
       setWoFlow(woRes.nodes || []);
       setFuelAnomalies((anomRes.data || []).filter((r) => r.flagged));
     } catch (err) {
-      setFetchError(true);
-      addToast(err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard', 'error');
+      const msg = err instanceof Error ? `Failed to load fleet dashboard: ${err.message}` : 'Failed to load fleet dashboard';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -355,16 +356,14 @@ export default function FleetDashboardPage() {
         >CSV</button>
       </PanelTitleBar>
 
-      {fetchError && (
-        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
-          <span>Failed to load fleet dashboard.</span>
-          <button type="button" className="toolbar-btn" onClick={() => { void load(period); }}>Retry</button>
-        </div>
-      )}
-
       {loading && !kpi ? (
         <div className="flex items-center justify-center gap-2 text-fg-muted py-10 text-xs">
           <Loader2 className="w-5 h-5 animate-spin" role="status" aria-label="Loading dashboard" /> Loading fleet dashboard...
+        </div>
+      ) : !kpi && loadError ? (
+        <div className="text-center py-10 space-y-2" role="alert">
+          <div className="text-[color:var(--sev-critical)] text-sm">{loadError}</div>
+          <button type="button" className="toolbar-btn" onClick={() => { void load(period); }}>Retry</button>
         </div>
       ) : (
         <>

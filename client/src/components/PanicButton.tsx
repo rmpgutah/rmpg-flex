@@ -325,47 +325,21 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
   }, [ownPanicId, addToast]);
 
   // False alarm (supervisor+ only)
-  const markFalseAlarm = useCallback(async () => {
-    const panicId = incomingAlert?.panic_id;
-    if (!panicId) return;
-    const notes = window.prompt('Enter false alarm notes:');
-    if (notes === null) return; // User cancelled prompt
-    try {
-      await apiFetch(`/dispatch/panic/${panicId}/false-alarm`, {
-        method: 'POST',
-        body: JSON.stringify({ notes: notes || 'No notes provided' }),
-      });
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    } catch (err) {
-      console.error('Failed to mark false alarm:', err);
-      addToast('Failed to mark false alarm', 'error', 5000);
-    }
-  }, [incomingAlert?.panic_id, addToast]);
+  const markFalseAlarm = useCallback(() => {
+    if (!incomingAlert?.panic_id) return;
+    setNotesText('');
+    setNotesKind('false-alarm');
+  }, [incomingAlert?.panic_id]);
 
   // Code 4 — resolve (supervisor+). Spillman: after acknowledging, the
   // dispatcher explicitly clears the emergency once the officer is code 4;
   // this is the normal terminal transition (false-alarm is the exception
   // path). Clears the alert row + the unit's EMERGENCY overlay fleet-wide.
-  const resolveCode4 = useCallback(async () => {
-    const panicId = incomingAlert?.panic_id;
-    if (!panicId) return;
-    const notes = window.prompt('Code 4 — resolution notes:');
-    if (notes === null) return; // user cancelled prompt
-    try {
-      await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
-        method: 'POST',
-        body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
-      });
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    } catch (err) {
-      console.error('Failed to resolve panic:', err);
-      addToast('Failed to resolve panic', 'error', 5000);
-    }
-  }, [incomingAlert?.panic_id, addToast]);
+  const resolveCode4 = useCallback(() => {
+    if (!incomingAlert?.panic_id) return;
+    setNotesText('');
+    setNotesKind('code4');
+  }, [incomingAlert?.panic_id]);
 
   // Admin fallback — force-deactivate sweeps ALL panic state server-side
   // (alert row, unit EMERGENCY overlay, P1 CAD call, AlertHubDO nag), even
@@ -387,6 +361,33 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       addToast('Failed to force-deactivate panic', 'error', 5000);
     }
   }, [incomingAlert?.panic_id, addToast]);
+
+  const submitPanicNotes = useCallback(async () => {
+    const panicId = incomingAlert?.panic_id;
+    if (!panicId || !notesKind) return;
+    const kind = notesKind;
+    const notes = notesText.trim();
+    setNotesKind(null);
+    try {
+      if (kind === 'false-alarm') {
+        await apiFetch(`/dispatch/panic/${panicId}/false-alarm`, {
+          method: 'POST',
+          body: JSON.stringify({ notes: notes || 'No notes provided' }),
+        });
+      } else {
+        await apiFetch(`/dispatch/panic/${panicId}/resolve`, {
+          method: 'POST',
+          body: JSON.stringify({ notes: notes || 'Code 4 — emergency resolved' }),
+        });
+      }
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+    } catch (err) {
+      console.error(kind === 'false-alarm' ? 'Failed to mark false alarm:' : 'Failed to resolve panic:', err);
+      addToast(kind === 'false-alarm' ? 'Failed to mark false alarm' : 'Failed to resolve panic', 'error', 5000);
+    }
+  }, [incomingAlert?.panic_id, notesKind, notesText, addToast]);
 
   // Check if current user can cancel (own panic within 30s)
   const canCancel = ownPanicId && ownPanicTime && (Date.now() - ownPanicTime < 30000);
@@ -497,7 +498,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
 
       {/* Incoming Panic Alert Overlay */}
       {incomingAlert && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center panic-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming panic alert">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center max-h-screen panic-overlay" role="alertdialog" aria-modal="true" aria-label="Incoming panic alert">
           <div className="absolute inset-0 bg-black/70 animate-emergency-blink" style={{ animationDuration: '0.5s' }} />
           <div
             className="relative max-w-md w-full mx-4 panic-alert-card"

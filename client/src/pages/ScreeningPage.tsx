@@ -164,7 +164,7 @@ export function ScreeningWorkspace() {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {/* Manual-entry combobox: pick a registry OR type one (incl. "All sources"). */}
-            <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" value={sourceText}
+            <input list="screening-source-list" placeholder="Registry (or type — e.g. All sources)" aria-label="Screening registry" value={sourceText}
               onChange={(e) => setSourceText(e.target.value)} className="bg-surface-sunken border border-border-default px-2 py-1 text-[11px] min-w-[16rem]" />
             <datalist id="screening-source-list">
               <option value="All sources" />
@@ -173,6 +173,7 @@ export function ScreeningWorkspace() {
             <input
               ref={nameInputRef}
               placeholder="Surname"
+              aria-label="Surname"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') search(); }}

@@ -8,6 +8,7 @@ import { TEMPLATES } from '../templates';
 import { listSavedTemplates, deleteTemplate, type SavedTemplate } from '../docActions';
 import type { DocumentTemplate, TemplateCategory } from '../types';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { coded } from '../../../utils/searchText';
 
@@ -67,6 +68,7 @@ export default function TemplateChooser({ onSelect }: Props) {
   const [query, setQuery] = useState('');
   const [activeGroup, setActiveGroup] = useState<string>('all');
   const [starred, setStarred] = useState<Set<string>>(() => loadStarred());
+  const [deleteName, setDeleteName] = useState<string | null>(null);
 
   const toggleStar = (id: string) => {
     setStarred((prev) => {
@@ -78,9 +80,14 @@ export default function TemplateChooser({ onSelect }: Props) {
   };
 
   const handleDeleteCustom = (name: string) => {
-    if (!window.confirm(`Delete saved template "${name}"?`)) return;
-    deleteTemplate(name);
+    setDeleteName(name);
+  };
+
+  const confirmDeleteCustom = () => {
+    if (!deleteName) return;
+    deleteTemplate(deleteName);
     setCustom(listSavedTemplates());
+    setDeleteName(null);
   };
 
   // Count of templates per group (memoised; star counts use the live set)
@@ -153,6 +160,7 @@ export default function TemplateChooser({ onSelect }: Props) {
   }
 
   return (
+    <>
     <div className="flex h-full min-h-0">
       {/* ── Left sidebar — category nav ─────────────────────────────── */}
       <div className="w-44 flex-shrink-0 border-r border-border-default bg-surface-base flex flex-col overflow-y-auto py-2">
@@ -167,6 +175,7 @@ export default function TemplateChooser({ onSelect }: Props) {
             <input
               type="text"
               placeholder="Search…"
+              aria-label="Search document templates"
               value={query}
               onChange={(e) => { setQuery(e.target.value); if (e.target.value) setActiveGroup('all'); }}
               className="bg-transparent text-[10px] text-rmpg-200 placeholder-rmpg-600 focus:outline-none w-full min-w-0"
@@ -272,5 +281,15 @@ export default function TemplateChooser({ onSelect }: Props) {
         )}
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={deleteName != null}
+      onClose={() => setDeleteName(null)}
+      onConfirm={confirmDeleteCustom}
+      title="Delete saved template"
+      message={`Delete saved template "${deleteName ?? ''}"? This cannot be undone.`}
+      confirmLabel="Delete"
+      confirmVariant="danger"
+    />
+    </>
   );
 }

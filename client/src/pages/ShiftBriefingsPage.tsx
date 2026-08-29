@@ -381,6 +381,7 @@ export default function ShiftBriefingsPage() {
               value={histSearch}
               onChange={(e) => setHistSearch(e.target.value)}
               placeholder="Search title / # / author"
+              aria-label="Search briefing history"
               className="w-40 px-2 py-1 text-[10px] bg-surface-sunken border border-border-default rounded-sm text-text-primary"
             />
             <select

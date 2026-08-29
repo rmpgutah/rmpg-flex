@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Editor } from '@tiptap/core';
 import { Camera, RotateCcw, Trash2, Plus } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import { listSnapshots, saveSnapshot, deleteSnapshot, type Snapshot } from '../autosave';
 
 /** Version snapshots side panel. Save a named checkpoint of the current document
@@ -17,6 +18,8 @@ export default function SnapshotsPanel({
 }) {
   const [snaps, setSnaps] = useState<Snapshot[]>(() => listSnapshots().slice().reverse());
   const [name, setName] = useState('');
+  const [restoreSnap, setRestoreSnap] = useState<Snapshot | null>(null);
+  const [deleteSnap, setDeleteSnap] = useState<Snapshot | null>(null);
 
   const refresh = () => setSnaps(listSnapshots().slice().reverse());
 
@@ -28,17 +31,29 @@ export default function SnapshotsPanel({
   };
 
   const handleRestore = (snap: Snapshot) => {
-    if (!window.confirm(`Restore "${snap.name}"? This replaces the current document content.`)) return;
-    editor.chain().focus().setContent(snap.html).run();
+    setRestoreSnap(snap);
+  };
+
+  const confirmRestore = () => {
+    if (!restoreSnap) return;
+    editor.chain().focus().setContent(restoreSnap.html).run();
     onRestore?.();
+    setRestoreSnap(null);
   };
 
   const handleDelete = (snap: Snapshot) => {
-    deleteSnapshot(snap.id);
+    setDeleteSnap(snap);
+  };
+
+  const confirmDelete = () => {
+    if (!deleteSnap) return;
+    deleteSnapshot(deleteSnap.id);
     refresh();
+    setDeleteSnap(null);
   };
 
   return (
+    <>
     <div className="w-48 sm:w-64 shrink-0 bg-surface-base border border-border-default rounded-[2px] p-2 overflow-auto flex flex-col">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
@@ -53,6 +68,7 @@ export default function SnapshotsPanel({
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           placeholder="Snapshot name…"
+          aria-label="Snapshot name"
           className="flex-1 min-w-0 bg-surface-base border border-border-default text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-1 focus:outline-none focus:border-accent-silver-500/50"
         />
         <IconButton aria-label="Save snapshot" onClick={handleSave}
@@ -84,5 +100,24 @@ export default function SnapshotsPanel({
         ))}
       </div>
     </div>
+    <ConfirmDialog
+      isOpen={restoreSnap != null}
+      onClose={() => setRestoreSnap(null)}
+      onConfirm={confirmRestore}
+      title="Restore snapshot"
+      message={`Restore "${restoreSnap?.name ?? ''}"? This replaces the current document content.`}
+      confirmLabel="Restore"
+      confirmVariant="warning"
+    />
+    <ConfirmDialog
+      isOpen={deleteSnap != null}
+      onClose={() => setDeleteSnap(null)}
+      onConfirm={confirmDelete}
+      title="Delete snapshot"
+      message={`Delete snapshot "${deleteSnap?.name ?? ''}"?`}
+      confirmLabel="Delete"
+      confirmVariant="danger"
+    />
+    </>
   );
 }

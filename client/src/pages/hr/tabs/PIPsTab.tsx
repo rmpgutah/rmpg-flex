@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ToastProvider';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -56,6 +57,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   });
   const [confirmFailId, setConfirmFailId] = useState<number | null>(null);
   const [confirmFailLoading, setConfirmFailLoading] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
@@ -214,7 +216,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id || !form.start_date || !form.end_date} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Creating...</> : 'Create PIP'}</button>
-            <button type="button" onClick={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={() => { if (isDirty) { setDiscardOpen(true); return; } setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -283,6 +285,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
         confirmVariant="danger"
         isLoading={confirmFailLoading}
       />
+      <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={() => { setDiscardOpen(false); setShowForm(false); }} />
     </div>
   );
 }

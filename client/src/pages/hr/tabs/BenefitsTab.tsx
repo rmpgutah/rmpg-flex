@@ -8,6 +8,7 @@ import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMe
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { asArray } from '../../../utils/asArray';
 import { useFormDraft } from '../../../hooks/useFormDraft';
+import DiscardUnsavedDialog from '../../../components/DiscardUnsavedDialog';
 
 interface Benefit {
   id: number;
@@ -39,6 +40,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const [benefits, setBenefits] = useState<Benefit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [officers, setOfficers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -185,7 +187,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.officer_id} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</> : 'Save'}</button>
-            <button type="button" onClick={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
+            <button type="button" onClick={() => { if (isDirty) { setDiscardOpen(true); return; } setShowForm(false); }} disabled={submitting} className="toolbar-btn text-xs">Cancel</button>
           </div>
         </div>
       )}
@@ -225,6 +227,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
           ))}
         </div>
       )}
+      <DiscardUnsavedDialog isOpen={discardOpen} onClose={() => setDiscardOpen(false)} onConfirm={() => { setDiscardOpen(false); setShowForm(false); }} />
     </div>
   );
 }

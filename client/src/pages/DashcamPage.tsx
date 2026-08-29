@@ -305,6 +305,7 @@ export default function DashcamPage() {
                       ref={searchInputRef}
                       className="bg-transparent border-none outline-none text-xs text-text-default w-32"
                       placeholder="Search devices… (/)"
+                      aria-label="Search dashcam devices"
                       value={search}
                       onChange={e => { setSearch(e.target.value); fetchDevices(1, e.target.value); }}
                     />

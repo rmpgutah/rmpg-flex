@@ -13,6 +13,7 @@ import {
 } from '../../utils/alertSoundPrefs';
 import { playToneAsync, type ToneType } from '../../utils/dispatchTones';
 import { flashAlert } from '../../utils/alertFlash';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // ============================================================
 // Admin → Alert Sounds — per-category mute toggles + previews
@@ -183,6 +184,8 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
   const [prefs, setPrefs] = useState<Record<AlertCategory, boolean>>(() => getAllAlertPrefs());
   const [globalMuted, setGlobalMuted] = useState<boolean>(() => localStorage.getItem('rmpg-sound') === 'false');
   const [testingCategory, setTestingCategory] = useState<AlertCategory | null>(null);
+  const [muteConfirm, setMuteConfirm] = useState<CategorySpec | null>(null);
+  const [resetAllOpen, setResetAllOpen] = useState(false);
 
   // Cross-tab + same-tab change subscription so toggling in another
   // window updates this view live.
@@ -310,12 +313,8 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
                   type="button"
                   onClick={() => {
                     if (spec.warnIfMuted && enabled) {
-                      const ok = window.confirm(
-                        `Mute ${spec.label}?\n\nThis is a safety-critical alert. ` +
-                        `Muting it means you will not hear panic activations from this browser. ` +
-                        `The visual flash will still fire.\n\nProceed?`
-                      );
-                      if (!ok) return;
+                      setMuteConfirm(spec);
+                      return;
                     }
                     toggle(spec.category);
                   }}
@@ -340,12 +339,7 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
       <div className="flex items-center gap-2 pt-2">
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm('Re-enable all alert sounds?')) {
-              CATEGORIES.forEach(c => setAlertSoundEnabled(c.category, true));
-              setPrefs(getAllAlertPrefs());
-            }
-          }}
+          onClick={() => setResetAllOpen(true)}
           className="px-3 py-1.5 text-[12px] font-mono border border-border-default hover:border-accent-silver-500 hover:text-accent-silver-400 text-text-secondary"
           style={{ borderRadius: 2 }}
         >
@@ -357,6 +351,31 @@ export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
       {/* Suppress unused-import warning for LoadingSpinner — included for prop
          contract consistency with sibling tabs. */}
       <span className="hidden"><LoadingSpinner /></span>
+      <ConfirmDialog
+        isOpen={muteConfirm != null}
+        onClose={() => setMuteConfirm(null)}
+        onConfirm={() => {
+          if (muteConfirm) toggle(muteConfirm.category);
+          setMuteConfirm(null);
+        }}
+        title={`Mute ${muteConfirm?.label ?? 'alert'}?`}
+        message="This is a safety-critical alert. Muting it means you will not hear panic activations from this browser. The visual flash will still fire."
+        confirmLabel="Mute"
+        confirmVariant="warning"
+      />
+      <ConfirmDialog
+        isOpen={resetAllOpen}
+        onClose={() => setResetAllOpen(false)}
+        onConfirm={() => {
+          CATEGORIES.forEach(c => setAlertSoundEnabled(c.category, true));
+          setPrefs(getAllAlertPrefs());
+          setResetAllOpen(false);
+        }}
+        title="Re-enable all alert sounds"
+        message="Reset every category to enabled? This undoes per-category mutes in this browser."
+        confirmLabel="Reset all"
+        confirmVariant="default"
+      />
     </div>
   );
 }

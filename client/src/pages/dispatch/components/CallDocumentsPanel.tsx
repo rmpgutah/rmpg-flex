@@ -92,7 +92,7 @@ export default function CallDocumentsPanel({ callId }: Props) {
               <button type="button" aria-label="Close" className="toolbar-btn p-1" onClick={() => setAttaching(false)}><X className="w-3 h-3" /></button>
             </div>
             <div className="flex gap-1 mb-2">
-              <input className="input-dark flex-1 text-xs" placeholder="Search titles…" value={search}
+              <input className="input-dark flex-1 text-xs" placeholder="Search titles…" aria-label="Search documents to attach" value={search}
                 onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }} />
               <button type="button" className="toolbar-btn text-xs px-2" onClick={runSearch}>Search</button>
             </div>

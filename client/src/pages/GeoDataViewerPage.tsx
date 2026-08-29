@@ -544,6 +544,7 @@ export default function GeoDataViewerPage() {
                   ref={searchInputRef}
                   type="text"
                   placeholder="Search features… (N)"
+                  aria-label="Search map features"
                   value={search}
                   onChange={(e) => handleSearch(e.target.value)}
                   className="flex-1 text-[10px] bg-transparent outline-none placeholder-rmpg-600"
