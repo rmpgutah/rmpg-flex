@@ -131,6 +131,11 @@ export type Bindings = {
   RESEND_API_KEY?: string;
   IPED_API_KEY?: string;
   EMAIL_FIELD_ENCRYPTION_KEK?: string;
+  // Microsoft 365 / Azure AD app registration (optional — Admin → Email tab
+  // stores encrypted copies in D1; env bindings take precedence when set).
+  MS_EMAIL_CLIENT_ID?: string;
+  MS_EMAIL_CLIENT_SECRET?: string;
+  MS_EMAIL_TENANT_ID?: string;
   // Analytics pipeline (optional — provisioned separately)
   ANALYTICS?: AnalyticsPipeline;
   EVENTS?: AnalyticsPipeline;

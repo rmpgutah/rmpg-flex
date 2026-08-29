@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, Link as RouterLink } from 'react-router';
 import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
@@ -2008,14 +2008,14 @@ export default function EmailPage() {
   // via /email/status — that flag is no longer a meaningful signal for
   // whether THIS user can use email, and AdminEmailTab no longer offers a
   // way to set it.
-  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null } | null>(null);
+  const [connectStatus, setConnectStatus] = useState<{ connected: boolean; mailbox: string | null; azureConfigured?: boolean } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
 
   const fetchConnectStatus = useCallback(() => {
-    apiFetch<{ connected: boolean; mailbox: string | null }>('/email/connect/status')
+    apiFetch<{ connected: boolean; mailbox: string | null; azureConfigured?: boolean }>('/email/connect/status')
       .then(setConnectStatus)
-      .catch(() => setConnectStatus({ connected: false, mailbox: null }));
+      .catch(() => setConnectStatus({ connected: false, mailbox: null, azureConfigured: false }));
   }, []);
   useEffect(() => { fetchConnectStatus(); }, [fetchConnectStatus]);
 
@@ -3044,6 +3044,7 @@ export default function EmailPage() {
   }
 
   if (!connectStatus.connected) {
+    const azureReady = connectStatus.azureConfigured !== false;
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center space-y-4 max-w-md panel-beveled bg-surface-base p-8">
@@ -3055,6 +3056,22 @@ export default function EmailPage() {
             Connect your Microsoft 365 mailbox to use email. Each operator now signs in with their own
             account — your email stays in Microsoft's servers, RMPG Flex only displays it.
           </p>
+          {!azureReady && (
+            <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>
+                Azure AD app registration is not configured yet — ask an admin to set it up
+                {canManage && (
+                  <> in{' '}
+                    <RouterLink to="/admin?tab=email" className="text-brand-400 hover:underline">
+                      Admin → Microsoft Email
+                    </RouterLink>
+                  </>
+                )}
+                .
+              </span>
+            </div>
+          )}
           {connectError && (
             <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-red-500/10 border border-red-500/30 text-red-400 text-left">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -3064,8 +3081,8 @@ export default function EmailPage() {
           <button
             type="button"
             onClick={handleConnectMailbox}
-            disabled={connecting}
-            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5"
+            disabled={connecting || !azureReady}
+            className="btn-primary text-xs px-4 py-1.5 inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <Mail className="w-3.5 h-3.5" />}
             {connecting ? 'Redirecting…' : 'Connect Microsoft 365'}
