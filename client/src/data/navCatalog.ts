@@ -5,9 +5,10 @@ import {
   Video, Camera, ClipboardList, ShieldBan, Gavel, UserX, Briefcase,
   Calendar, TrendingUp, ClipboardCheck, GraduationCap, Network,
   Building2, ShieldAlert, Package, DollarSign, Megaphone, CheckCircle,
-  Shield, Share2, CreditCard, Microscope, Mail, QrCode, FileWarning,
+  Shield, Share2, CreditCard,   Microscope, Mail, QrCode, FileWarning,
   Construction, User, Lock, ScrollText, UserCheck, Fingerprint, Globe,
   HelpCircle, BookOpen, ClipboardPen, ListChecks, Sparkles,
+  Phone,
   Navigation, Star, Clock, ExternalLink, RefreshCw, Grid3X3,
   Calculator, ArrowLeftRight, Clipboard, Timer, Cpu, Printer, Download,
   Layout, WifiOff, FileVideo,
@@ -40,6 +41,7 @@ export const CLIENT_VIEWER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/radio', '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar', '/desktop-company-browser',
+  '/dialer-connect',
 ]);
 
 export const CONTRACT_MANAGER_BLOCKED = new Set([
@@ -123,6 +125,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
     icon: MessageSquare,
     functions: [
       { path: '/communications', label: 'Communications', icon: MessageSquare, badgeKey: 'activeBOLOs', description: 'Secure messaging between dispatchers and units with channel-based comms', windowSize: { width: 1000, height: 800 } },
+      { path: '/dialer-connect', label: 'Dial Connect', icon: Phone, description: 'Dialer, voicemail, and call history with recording playback and transcript PDFs', windowSize: { width: 1100, height: 850 } },
       { path: '/radio', label: 'Radio Console', icon: Radio, description: 'Integrated radio console with channel management and PTT controls' },
       { path: '/email', label: 'Email', icon: Mail, badgeKey: 'unreadEmail', description: 'Integrated email client for agency communications' },
       { path: '/patrol', label: 'Patrol Operations', icon: QrCode, description: 'Patrol operations and QR-based reporting', windowSize: { width: 1100, height: 850 } },

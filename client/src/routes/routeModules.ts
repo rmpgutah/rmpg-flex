@@ -81,6 +81,7 @@ export const ROUTE_MODULES: Readonly<Record<string, RouteImporter>> = {
   '/training-docs': () => import('../pages/TrainingDocsPage'),
   '/training-mgmt': () => import('../pages/TrainingManagementPage'),
   '/communications': () => import('../pages/CommunicationsPage'),
+  '/dialer-connect': () => import('../pages/DialerConnectPage'),
   '/radio': () => import('../pages/radio'),
   '/email': () => import('../pages/EmailPage'),
   '/patrol': () => import('../pages/PatrolPage'),

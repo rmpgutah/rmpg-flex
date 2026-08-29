@@ -72,6 +72,7 @@ const IncidentsPage = lazyRetry(() => import('./pages/IncidentsPage'));
 const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
+const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const MyIdPage = lazyRetry(() => import('./pages/wallet/MyIdPage'));
@@ -604,6 +605,7 @@ function AppRoutes() {
             <Route path="/my-id" element={<RouteErrorBoundary><MyIdPage /></RouteErrorBoundary>} />
             <Route path="/verify-id" element={<RouteErrorBoundary><VerifyIdPage /></RouteErrorBoundary>} />
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
+            <Route path="/dialer-connect" element={<RouteErrorBoundary><DialerConnectPage /></RouteErrorBoundary>} />
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/analytics" element={<RouteErrorBoundary><AnalyticsPage /></RouteErrorBoundary>} />

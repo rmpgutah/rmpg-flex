@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { PhoneCall, X } from 'lucide-react';
+import { apiFetch } from '../hooks/useApi';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 /** Authenticated Dial Connect app. `/dialer-embed` is cookieless and cannot
@@ -16,9 +17,21 @@ const HEARTBEAT_CHECK_INTERVAL_MS = 5_000;
 const TOAST_DURATION_MS = 7_000;
 
 type DialConnectMessage =
-  | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string }
+  | { source: 'dial-connect'; type: 'call_status'; callSid: string; status: string; from?: string; to?: string; durationSeconds?: number; transcript?: string; recordingUrl?: string }
   | { source: 'dial-connect'; type: 'duress_alert'; dispatcherName: string; timestamp: string }
-  | { source: 'dial-connect'; type: 'heartbeat' };
+  | { source: 'dial-connect'; type: 'heartbeat' }
+  | { source: 'dial-connect'; type: 'voicemail'; callSid?: string; from?: string; to?: string; transcript?: string; recordingUrl?: string; durationSeconds?: number }
+  | { source: 'dial-connect'; type: 'recording_ready'; callSid: string; recordingUrl?: string }
+  | { source: 'dial-connect'; type: 'transcript_ready'; callSid: string; transcript: string };
+
+const INGEST_STATUSES = new Set(['completed', 'missed', 'failed', 'voicemail', 'busy']);
+
+function ingestDialConnect(payload: Record<string, unknown>): void {
+  void apiFetch('/dialer-connect/events', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }).catch(() => { /* never block the live-call UI on archive writes */ });
+}
 
 function isDialConnectMessage(data: unknown): data is DialConnectMessage {
   return (
@@ -109,6 +122,34 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         const msg = `Inbound call from ${message.from ?? 'unknown number'}`;
         addToast('ringing', msg);
         onRinging?.(msg);
+      } else if (message.type === 'call_status' && INGEST_STATUSES.has(message.status)) {
+        ingestDialConnect({
+          type: 'call_status',
+          callSid: message.callSid,
+          status: message.status,
+          from: message.from,
+          to: message.to,
+          durationSeconds: message.durationSeconds,
+          transcript: message.transcript,
+          recordingUrl: message.recordingUrl,
+        });
+      } else if (message.type === 'voicemail') {
+        ingestDialConnect({
+          type: 'voicemail',
+          callSid: message.callSid,
+          from: message.from,
+          to: message.to,
+          transcript: message.transcript,
+          recordingUrl: message.recordingUrl,
+          durationSeconds: message.durationSeconds,
+        });
+      } else if (message.type === 'recording_ready' || message.type === 'transcript_ready') {
+        ingestDialConnect({
+          type: 'call_status',
+          callSid: message.callSid,
+          recordingUrl: 'recordingUrl' in message ? message.recordingUrl : undefined,
+          transcript: 'transcript' in message ? message.transcript : undefined,
+        });
       } else if (message.type === 'duress_alert') {
         openDialerWindow();
         const msg = `Duress alert: ${message.dispatcherName}`;

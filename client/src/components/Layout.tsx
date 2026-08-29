@@ -144,6 +144,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/records': 'Records',
   '/personnel': 'Personnel',
   '/communications': 'Communications',
+  '/dialer-connect': 'Dial Connect',
   '/radio': 'Radio',
   '/email': 'Email',
   '/patrol': 'Patrol',
@@ -319,6 +320,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
+    { path: '/dialer-connect', icon: Phone, label: 'Dial Connect' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
