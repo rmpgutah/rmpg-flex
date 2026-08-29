@@ -32,6 +32,11 @@ describe('navCatalog — windowability metadata', () => {
     expect(fn?.notWindowable).toBeTruthy();
   });
 
+  it('/dialer-connect is excluded — persistent CAD-shell Dial Connect iframe', () => {
+    const fn = ALL.find(f => f.path === '/dialer-connect');
+    expect(fn?.notWindowable).toBeTruthy();
+  });
+
   it('the old broken "/national-warrants" path no longer exists — fixed to /national-warrant-search', () => {
     expect(ALL.some(f => f.path === '/national-warrants')).toBe(false);
     const fixed = ALL.find(f => f.path === '/national-warrant-search');
