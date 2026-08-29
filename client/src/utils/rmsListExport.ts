@@ -149,7 +149,7 @@ export function mutualAidToCsv(rows: Array<{
 
 export function plateHistoryToCsv(rows: Array<{ plate: string; state: string; at?: string; ts?: number }>): string {
   return rowsToCsv(['plate', 'state', 'at'],
-    rows.map((r) => [r.plate, r.state, r.at ?? (r.ts != null ? new Date(r.ts).toISOString() : '')]));
+    rows.map((r) => [r.plate, r.state, r.at ?? (r.ts != null ? new Date(r.ts).toISOString() : '')])); // new-date-ok — numeric Unix ms, not a D1 string
 }
 
 export function updateHistoryToCsv(rows: Array<{ version: string; date: string; notes?: string }>): string {
