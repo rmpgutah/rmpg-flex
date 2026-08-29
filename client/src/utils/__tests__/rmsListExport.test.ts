@@ -7,6 +7,8 @@ import {
   victimCasesToCsv, alarmAccountsToCsv, screeningHitsToCsv, warrantDocketToCsv,
   crimeOffensesToCsv, briefingWarrantsToCsv, personIntelXrefsToCsv,
   narcCasesToCsv, pawnItemsToCsv, bulletinsToCsv, animalCasesToCsv, impoundsToCsv,
+  accreditationStandardsToCsv, crisisIncidentsToCsv, alertTemplatesToCsv, inmateRosterToCsv,
+  communityTipsSafeToCsv, darListToCsv, bodyCamerasToCsv, loginHistoryToCsv, cdocResultsToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -88,5 +90,30 @@ describe('rmsListExport', () => {
     expect(b).not.toContain('suspect');
     expect(animalCasesToCsv([{ case_number: 'AC-1', animal_type: 'dog', location: 'Main' }])).toContain('AC-1');
     expect(impoundsToCsv([{ license_plate: 'ABC123', status: 'impounded' }])).toContain('ABC123');
+  });
+
+  it('omits crisis subjects, inmate names/DOB, DOC names/DOB, login names, camera officers, DAR narrative, and alert bodies', () => {
+    const c = crisisIncidentsToCsv([{
+      incident_number: 'CIT-1', incident_type: 'mental_health', location: '400 S', disposition: 'diverted',
+    }]);
+    expect(c).toContain('CIT-1');
+    expect(c).not.toContain('subject');
+    expect(c).not.toContain('notes');
+    const j = inmateRosterToCsv([{ booking_number: 'BK-1', status: 'housed', housing_unit: 'A', booking_date: '2026-01-01' }]);
+    expect(j).toContain('BK-1');
+    expect(j).not.toContain('name');
+    expect(j).not.toContain('dob');
+    const d = cdocResultsToCsv([{ doc_number: '12345', facility: 'CSP', status: 'incarcerated' }]);
+    expect(d).toContain('12345');
+    expect(d).not.toContain('dob');
+    expect(d).not.toContain('first_name');
+    expect(loginHistoryToCsv([{ created_at: 't', success: 1, ip_address: '1.2.3.4' }])).not.toContain('full_name');
+    expect(bodyCamerasToCsv([{ camera_id: 'CAM-1', make: 'Axon', model: '3', status: 'issued' }])).not.toContain('officer');
+    expect(darListToCsv([{ dar_number: 'DAR-1', shift_date: '2026-01-01', status: 'submitted' }])).not.toContain('narrative');
+    expect(alertTemplatesToCsv([{ template_name: 'Storm', subject: 'Weather', channel: 'sms', category: 'wx' }])).not.toContain('body');
+    expect(accreditationStandardsToCsv([{ standard_number: '1.1', standard_name: 'Use of Force', category: 'ops', compliance_status: 'compliant' }])).toContain('1.1');
+    const tip = communityTipsSafeToCsv([{ tip_number: 'T-9', is_anonymous: 1, submitter_name: 'Jane Doe', category: 'noise', location: 'Main', status: 'new', priority: 'low' }]);
+    expect(tip).toContain('[anonymous]');
+    expect(tip).not.toContain('Jane Doe');
   });
 });
