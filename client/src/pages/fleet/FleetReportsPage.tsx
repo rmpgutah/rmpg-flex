@@ -6,6 +6,7 @@ import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import IconButton from '../../components/IconButton';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // ============================================================
 // RMPG Flex — Fleet Daily Reports Archive
@@ -58,9 +59,12 @@ export default function FleetReportsPage() {
   const [loading, setLoading] = useState(true);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [regenDate, setRegenDate] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await apiFetch<{ months: MonthGroup[]; total_reports: number }>('/reports/daily-reports/by-month');
       setMonths(data.months || []);
@@ -70,7 +74,9 @@ export default function FleetReportsPage() {
         setExpandedMonths(prev => (prev.size === 0 ? new Set([data.months[0].month]) : prev));
       }
     } catch (err: any) {
-      addToast(err?.message || 'Failed to load daily reports', 'error');
+      const msg = err?.message || 'Failed to load daily reports';
+      setLoadError(msg);
+      addToast(msg, 'error');
     } finally {
       setLoading(false);
     }
@@ -104,7 +110,6 @@ export default function FleetReportsPage() {
 
   const regenerate = async (dateStr: string) => {
     if (!isAdmin) return;
-    if (!window.confirm(`Regenerate the daily report for ${dateStr}?\nThis will overwrite the existing PDF.`)) return;
     setRegenerating(dateStr);
     try {
       const res = await apiFetch<{ ok: boolean; filename?: string; message?: string }>('/reports/daily-reports/generate', {
@@ -125,7 +130,7 @@ export default function FleetReportsPage() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-surface-base text-white">
+    <div className="flex flex-col h-full bg-surface-base text-rmpg-100">
       <PanelTitleBar title="FLEET DAILY REPORTS" icon={Calendar}>
         <span className="text-[11px] text-fg-muted">{totalReports} reports archived</span>
         <IconButton onClick={loadReports} aria-label="Refresh reports list" className="p-1 hover:bg-surface-sunken">
@@ -141,7 +146,14 @@ export default function FleetReportsPage() {
           <div className="text-center text-fg-muted py-8">Loading reports…</div>
         )}
 
-        {!loading && months.length === 0 && (
+        {!loading && loadError && months.length === 0 && (
+          <div className="text-center py-8 space-y-2" role="alert">
+            <div className="text-[color:var(--sev-critical)] text-sm">{loadError}</div>
+            <button type="button" className="toolbar-btn" onClick={() => { void loadReports(); }}>Retry</button>
+          </div>
+        )}
+
+        {!loading && !loadError && months.length === 0 && (
           <div className="text-center text-fg-muted py-8">
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
             <div>No daily reports yet.</div>
@@ -193,9 +205,9 @@ export default function FleetReportsPage() {
                           </IconButton>
                           {isAdmin && (
                             <IconButton
-                              onClick={() => regenerate(d.date)}
+                              onClick={() => setRegenDate(d.date)}
                               aria-label={`Regenerate report for ${d.date}`}
-                              className="p-1 hover:bg-[#222] disabled:opacity-40"
+                              className="p-1 hover:bg-surface-sunken disabled:opacity-40"
                               title="Regenerate (admin)"
                               disabled={regenerating === d.date}
                             >
@@ -212,6 +224,20 @@ export default function FleetReportsPage() {
           })}
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={regenDate != null}
+        onClose={() => setRegenDate(null)}
+        onConfirm={() => {
+          const dateStr = regenDate;
+          setRegenDate(null);
+          if (dateStr) void regenerate(dateStr);
+        }}
+        title="Regenerate daily report"
+        message={regenDate ? `Regenerate the daily report for ${regenDate}? This overwrites the existing PDF.` : ''}
+        confirmLabel="Regenerate"
+        confirmVariant="warning"
+      />
     </div>
   );
 }

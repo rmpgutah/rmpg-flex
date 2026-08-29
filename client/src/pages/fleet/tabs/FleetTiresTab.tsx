@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Circle, Plus } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 
 interface Tire {
   id: number;
@@ -38,6 +39,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
   const [form, setForm] = useState(EMPTY);
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Tire | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -103,7 +105,6 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
   };
 
   const handleDelete = async (t: Tire) => {
-    if (!window.confirm(`Delete ${POSITION_LABELS[t.position] || t.position} tire (${t.brand || 'unknown'})?`)) return;
     try { await apiFetch(`/fleet/tires/${t.id}`, { method: 'DELETE' }); addToast('Tire deleted', 'success'); load(); }
     catch (e) { addToast(e instanceof Error ? e.message : 'Failed to delete tire', 'error'); }
   };
@@ -195,7 +196,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
                 <td className="text-right">{t.last_measured || '-'}</td>
                 <td className="text-right">
                   <button type="button" onClick={() => startEdit(t)} className="toolbar-btn text-[9px] mr-1">Edit</button>
-                  <button type="button" onClick={() => handleDelete(t)} className="toolbar-btn text-[9px] text-red-400">Del</button>
+                  <button type="button" onClick={() => setPendingDelete(t)} className="toolbar-btn text-[9px] text-red-400">Del</button>
                 </td>
               </tr>
             ))}
@@ -203,6 +204,19 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
         </table>
         </div>
       )}
+      <ConfirmDialog
+        isOpen={pendingDelete != null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const t = pendingDelete;
+          setPendingDelete(null);
+          if (t) void handleDelete(t);
+        }}
+        title="Delete tire"
+        message={pendingDelete ? `Delete ${POSITION_LABELS[pendingDelete.position] || pendingDelete.position} tire (${pendingDelete.brand || 'unknown'})?` : ''}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

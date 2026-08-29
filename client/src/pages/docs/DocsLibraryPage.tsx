@@ -44,7 +44,7 @@ export default function DocsLibraryPage() {
           <input className="input-dark w-full text-xs pl-7" placeholder="Search titles…" value={q}
             onChange={(e) => setQ(e.target.value)} />
         </div>
-        <label className="flex items-center gap-1 text-[10px] text-[#888]">
+        <label className="flex items-center gap-1 text-[10px] text-fg-muted">
           <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Mine
         </label>
         <select className="input-dark text-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as '' | 'draft' | 'finalized')}>
@@ -58,13 +58,13 @@ export default function DocsLibraryPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center text-[#888] text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
+        <div className="flex items-center text-fg-muted text-xs"><Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…</div>
       ) : items.length === 0 ? (
         <div className="text-rmpg-500 text-xs py-8 text-center">No documents. Create one to get started.</div>
       ) : (
         <div className="overflow-x-auto"><table className="w-full text-left">
           <thead>
-            <tr className="text-[9px] uppercase tracking-wider text-[#888] border-b border-border-default">
+            <tr className="text-[9px] uppercase tracking-wider text-fg-muted border-b border-border-default">
               <th className="py-[3px] font-semibold">Title</th>
               <th className="py-[3px] font-semibold">Status</th>
               <th className="py-[3px] font-semibold">Owner</th>
@@ -75,8 +75,8 @@ export default function DocsLibraryPage() {
             {items.map((d) => (
               <tr key={d.id} className="text-[11px] border-b border-border-subtle hover:bg-surface-sunken cursor-pointer" onClick={() => setOpenId(d.id)}>
                 <td className="py-[2px] text-rmpg-200">{d.title}</td>
-                <td className="py-[2px]"><span className={d.status === 'finalized' ? '[color:var(--panel-header-color)]' : 'text-[#888]'}>{toDisplayLabel(d.status)}</span></td>
-                <td className="py-[2px] text-[#888]">{d.owner_username || '—'}</td>
+                <td className="py-[2px]"><span className={d.status === 'finalized' ? '[color:var(--panel-header-color)]' : 'text-fg-muted'}>{toDisplayLabel(d.status)}</span></td>
+                <td className="py-[2px] text-fg-muted">{d.owner_username || '—'}</td>
                 <td className="py-[2px] text-rmpg-500 font-mono">{d.updated_at || d.created_at}</td>
               </tr>
             ))}
@@ -86,7 +86,7 @@ export default function DocsLibraryPage() {
 
       {openId != null && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="relative w-full max-w-[1000px] h-[88dvh] bg-[#000] border border-border-default rounded-[2px] overflow-hidden">
+          <div className="relative w-full max-w-[1000px] h-[88dvh] bg-surface-base border border-border-default rounded-[2px] overflow-hidden">
             <DocumentEditor documentId={openId} onClose={() => { setOpenId(null); void refresh(); }} onChanged={refresh} />
           </div>
         </div>

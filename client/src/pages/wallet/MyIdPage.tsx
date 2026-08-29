@@ -33,6 +33,8 @@ export default function MyIdPage() {
   const [credentialStatus, setCredentialStatus] = useState<string>('active');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [qrFailed, setQrFailed] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
   const tokenTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function renderQr(token: string) {
@@ -40,14 +42,16 @@ export default function MyIdPage() {
       const QRCode = (await importWithRetry(() => import('qrcode'))).default;
       const url = await QRCode.toDataURL(token, { margin: 1, width: 260, errorCorrectionLevel: 'M' });
       setQrDataUrl(url);
+      setQrFailed(false);
     } catch {
-      /* QR render failure is non-fatal — the badge still shows */
+      setQrFailed(true);
     }
   }
 
   // Initial load: badge + first token.
   useEffect(() => {
     let alive = true;
+    setError('');
     apiFetch<MeResponse>('/wallet/me')
       .then((data) => {
         if (!alive) return;
@@ -56,8 +60,8 @@ export default function MyIdPage() {
         renderQr(data.qr_token);
       })
       .catch(() => alive && setError('Could not load your ID. Try again.'));
-    return () => { alive = true; };
-  }, []);
+    return () => { alive = false; };
+  }, [reloadTick]);
 
   // Rotate the QR every 30s.
   useEffect(() => {
@@ -71,10 +75,15 @@ export default function MyIdPage() {
   }, [badge]);
 
   if (error) {
-    return <div className="p-4 text-sm text-[#888]">{error}</div>;
+    return (
+      <div className="p-4 text-sm text-fg-muted space-y-2" role="alert">
+        <p>{error}</p>
+        <button type="button" className="toolbar-btn" onClick={() => setReloadTick((n) => n + 1)}>Retry</button>
+      </div>
+    );
   }
   if (!badge) {
-    return <div className="p-4 text-sm text-[#888]">Loading your ID…</div>;
+    return <div className="p-4 text-sm text-fg-muted" role="status">Loading your ID…</div>;
   }
 
   const isActive = credentialStatus === 'active' && badge.officer_status === 'active';
@@ -118,8 +127,8 @@ export default function MyIdPage() {
             {qrDataUrl ? (
               <img src={qrDataUrl} alt="Verification QR" width={260} height={260} />
             ) : (
-              <div className="w-[260px] h-[260px] flex items-center justify-center text-[#888] text-xs">
-                Generating QR…
+              <div className="w-[260px] h-[260px] flex items-center justify-center text-fg-muted text-xs">
+                {qrFailed ? 'Could not draw QR. It will retry on the next refresh.' : 'Generating QR…'}
               </div>
             )}
           </div>

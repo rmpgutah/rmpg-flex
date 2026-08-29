@@ -104,7 +104,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
               aria-label="Re-enrich vehicle data"
               onClick={handleEnrich}
               disabled={enriching}
-              className="text-[#888] hover:text-rmpg-100">
+              className="text-fg-muted hover:text-rmpg-100">
               {enriching
                 ? <Loader2 className="w-4 h-4 animate-spin" />
                 : <RefreshCw className="w-4 h-4" />}
@@ -113,7 +113,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
               type="button"
               aria-label="Close dossier"
               onClick={onClose}
-              className="text-[#888] hover:text-rmpg-100">
+              className="text-fg-muted hover:text-rmpg-100">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -134,13 +134,13 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
         {/* Body */}
         <div className="overflow-y-auto flex-1 p-2 space-y-1">
           {loading && (
-            <div className="text-[11px] text-[#888] text-center py-6">Loading…</div>
+            <div className="text-[11px] text-fg-muted text-center py-6">Loading…</div>
           )}
           {err && (
             <div className="text-[11px] text-red-300 border border-red-600 bg-red-950/40 px-3 py-2">{err}</div>
           )}
           {!loading && !err && data && data.packages.length === 0 && (
-            <div className="text-[11px] text-[#888] text-center py-6">No packages on file for this plate.</div>
+            <div className="text-[11px] text-fg-muted text-center py-6">No packages on file for this plate.</div>
           )}
           {!loading && !err && data && data.packages.map((pkg) => {
             const imageUrl = pkg.full_r2_key
@@ -180,7 +180,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                     </span>
                     <TrustBadge trust={trust} />
                   </div>
-                  <div className="flex items-center gap-2 text-[9px] text-[#888]">
+                  <div className="flex items-center gap-2 text-[9px] text-fg-muted">
                     {pkg.source_type && (
                       <span className="border border-border-default px-1 py-[1px]">
                         {toDisplayLabel(pkg.source_type)}
@@ -189,7 +189,7 @@ export default function VehicleDossier({ plate, onClose }: { plate: string; onCl
                     <span>{fmtDate(pkg.created_at)}</span>
                   </div>
                   {variants.length > 0 && (
-                    <div className="text-[9px] text-[#888] border-t border-border-default pt-0.5 mt-0.5">
+                    <div className="text-[9px] text-fg-muted border-t border-border-default pt-0.5 mt-0.5">
                       variants: {variants.join(', ')} — <span className="text-[var(--field-label-color)]">verify</span>
                     </div>
                   )}

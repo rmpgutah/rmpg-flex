@@ -838,7 +838,7 @@ export default function GeographyPage() {
         <PanelTitleBar title="DISPATCH GEOGRAPHY" icon={MapPin} />
         <div className="panel-raised p-6 text-center">
           <p className="text-red-400 text-sm">{error}</p>
-          <button
+          <button type="button"
             onClick={refetch}
             className="mt-3 px-3 py-1 text-xs border border-border-subtle hover:bg-surface-raised text-[var(--text-primary)]"
           >
@@ -884,7 +884,7 @@ export default function GeographyPage() {
           className="input-dark text-xs flex-1 max-w-md"
         />
         {state.searchQuery && (
-          <button
+          <button type="button"
             onClick={() => setState((s) => ({ ...s, searchQuery: '' }))}
             className="p-1 text-[var(--text-muted)] hover:text-brand-gold-500"
             title="Clear search"
@@ -892,14 +892,14 @@ export default function GeographyPage() {
             <X size={14} />
           </button>
         )}
-        <button
+        <button type="button"
           onClick={refetch}
           className="p-1.5 text-[var(--text-muted)] hover:text-brand-gold-500"
           title="Refetch from server"
         >
           <RefreshCw size={12} />
         </button>
-        <button
+        <button type="button"
           onClick={handleExportCsv}
           disabled={!tree || (tree?.areas.length || 0) === 0}
           className="p-1.5 text-[var(--text-muted)] hover:text-brand-gold-500 disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1154,7 +1154,7 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
           {props.title}
         </span>
         {props.canAdd !== false && (
-          <button
+          <button type="button"
             onClick={props.onAdd}
             disabled={props.disabled}
             className="p-1 hover:bg-surface-raised disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1178,7 +1178,7 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
             const { primary, secondary, code } = props.renderItem(item);
             const selected = item.id === props.selectedId;
             return (
-              <button
+              <button type="button"
                 key={item.id}
                 onClick={() => props.onSelect(item.id)}
                 className={`w-full text-left px-3 py-2 border-l-2 text-[11px] ${
@@ -1411,7 +1411,7 @@ function DetailPane({
       {canWrite && (
         <div className="flex gap-2">
           {isEditing ? (
-            <button
+            <button type="button"
               onClick={onSaveEdit}
               disabled={saving}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-brand-gold-500 bg-brand-gold-500/10 text-brand-gold-500 hover:bg-brand-gold-500/20 disabled:opacity-50"
@@ -1420,7 +1420,7 @@ function DetailPane({
               Save
             </button>
           ) : (
-            <button
+            <button type="button"
               onClick={onStartEdit}
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-brand-gold-500 hover:bg-brand-gold-500/10 text-[var(--text-muted)] hover:text-brand-gold-500"
             >
@@ -1428,7 +1428,7 @@ function DetailPane({
               Edit
             </button>
           )}
-          <button
+          <button type="button"
             onClick={isEditing ? onCancelEdit : onDelete}
             className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-border-subtle hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
           >
