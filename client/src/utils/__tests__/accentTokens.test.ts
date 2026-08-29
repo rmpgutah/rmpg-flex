@@ -768,8 +768,9 @@ describe('rmpg text-ramp ratchet (Tailwind utility path)', () => {
   // stale on main. Bump to the scanned count so the ratchet stays taut.
   // 10504 -> 10507: this Dialer CSP PR does not add text-rmpg-* utilities.
   // The ratchet failed at 10507 on origin/main; bump to the scanned count.
-  // 10507 -> 10515: skip-trace source-error fix adds no text-rmpg-* (uses
-  // text-text-secondary / text-red-400). Pin was stale vs current tree.
+  // 10507 -> 10515: email Azure-config PR adds no text-rmpg-* utilities
+  // (AdminEmailTab env-var hint uses text-fg-muted). Verified scan of the
+  // working tree is 10515 — main's pin was already stale by 8.
   const PIN = 10515;
   const PATTERN = /\b(?:text|placeholder)-rmpg-(?:300|400|500|600)\b/g;
 

@@ -313,7 +313,7 @@ export default function ServeAttemptFileFolders({
       setData(res);
       setOpen((prev) => {
         const next = { ...prev };
-        for (const folder of res.folders) {
+        for (const folder of res.folders ?? []) {
           const key = `a-${folder.attempt_id}`;
           if (next[key] === undefined) next[key] = true;
         }
@@ -330,10 +330,11 @@ export default function ServeAttemptFileFolders({
 
   const grouped = useMemo(() => {
     if (!data) return [];
-    const folders = attemptId != null ? data.folders.filter((f) => f.attempt_id === attemptId) : data.folders;
+    const allFolders = data.folders ?? [];
+    const folders = attemptId != null ? allFolders.filter((f) => f.attempt_id === attemptId) : allFolders;
     return folders.map((folder) => {
       const byKind: Record<ServeFileKind, ServeAttemptFileRecord[]> = { document: [], photo: [], audio: [] };
-      for (const f of folder.files) {
+      for (const f of folder.files ?? []) {
         (byKind[f.kind] ?? byKind.document).push(f);
       }
       return { folder, byKind };

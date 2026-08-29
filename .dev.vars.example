@@ -45,6 +45,11 @@ CPG_ENC_KEY=your-clearpathgps-encryption-key
 # Post-quantum cryptography master key
 RMPG_PQ_MASTER_KEY=your-pq-master-key
 
+# Microsoft 365 / Azure AD (mailbox connect — optional if configured via Admin → Email)
+# MS_EMAIL_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# MS_EMAIL_CLIENT_SECRET=your-azure-client-secret-value
+# MS_EMAIL_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
 # Email field encryption key (required for email caching)
 EMAIL_FIELD_ENCRYPTION_KEK=your-email-encryption-key
 
