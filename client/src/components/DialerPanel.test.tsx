@@ -35,42 +35,61 @@ describe('DialerPanel', () => {
   });
 
   test('parks the iframe at a viewport-sized box while collapsed (never 0×0)', () => {
-    expect(dialerIframeHostStyle(true)).toEqual({
-      width: DIALER_PANEL_WIDTH,
-      height: DIALER_PANEL_HEIGHT,
-      maxWidth: 'calc(100vw - 32px)',
-      maxHeight: 'calc(100vh - 96px)',
-      overflow: 'hidden',
+    const parked = dialerIframeHostStyle(true);
+    const open = dialerIframeHostStyle(false);
+    expect(parked).toEqual({
       position: 'fixed',
       left: 16,
       bottom: 16,
-      opacity: 0,
-      pointerEvents: 'none',
-    });
-    expect(dialerIframeHostStyle(false)).toEqual({
       width: DIALER_PANEL_WIDTH,
       height: DIALER_PANEL_HEIGHT,
       maxWidth: 'calc(100vw - 32px)',
       maxHeight: 'calc(100vh - 96px)',
       overflow: 'hidden',
+      opacity: 0.01,
+      pointerEvents: 'none',
+      zIndex: 9998,
     });
+    expect(open.position).toBe(parked.position);
+    expect(open.width).toBe(parked.width);
+    expect(open.height).toBe(parked.height);
+    expect(open.left).toBe(parked.left);
+    expect(open.bottom).toBe(parked.bottom);
+    expect(open.zIndex).toBe(parked.zIndex);
+    expect(open.opacity).toBe(1);
+    expect(open.pointerEvents).toBe('auto');
+
     render(<DialerPanel />);
     const host = document.querySelector('[data-dialer-iframe-host]') as HTMLElement;
     expect(host).toHaveAttribute('data-collapsed', 'true');
     expect(host.style.width).toBe(DIALER_PANEL_WIDTH);
     expect(host.style.height).toBe(DIALER_PANEL_HEIGHT);
-    expect(host.style.opacity).toBe('0');
+    expect(host.style.position).toBe('fixed');
+    expect(host.style.opacity).toBe('0.01');
     expect(screen.getByTitle('Dial Connect')).toHaveAttribute('loading', 'eager');
   });
 
-  test('expanded panel drops the parked styles so the iframe is interactive', () => {
+  test('expanding only raises opacity — same iframe node and same host geometry', () => {
     render(<DialerPanel />);
-    fireEvent.click(screen.getByLabelText('Open dialer (disconnected)'));
+    const iframe = screen.getByTitle('Dial Connect');
     const host = document.querySelector('[data-dialer-iframe-host]') as HTMLElement;
+    const before = {
+      width: host.style.width,
+      height: host.style.height,
+      position: host.style.position,
+      left: host.style.left,
+      bottom: host.style.bottom,
+    };
+    fireEvent.click(screen.getByLabelText('Open dialer (disconnected)'));
     expect(host).toHaveAttribute('data-collapsed', 'false');
-    expect(host.style.opacity).toBe('');
-    expect(host.style.pointerEvents).toBe('');
-    expect(host.style.position).toBe('');
+    expect(host.style.opacity).toBe('1');
+    expect(host.style.pointerEvents).toBe('auto');
+    expect(host.style.width).toBe(before.width);
+    expect(host.style.height).toBe(before.height);
+    expect(host.style.position).toBe(before.position);
+    expect(host.style.left).toBe(before.left);
+    expect(host.style.bottom).toBe(before.bottom);
+    expect(screen.getByTitle('Dial Connect')).toBe(iframe);
   });
 
   test('keeps the Dial Connect iframe mounted even without a heartbeat', () => {

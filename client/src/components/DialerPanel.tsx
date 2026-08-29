@@ -5,7 +5,7 @@ import IconButton from './IconButton';
 
 export const DIALER_ORIGIN = 'https://dialer.rmpgutah.us';
 export const DIALER_PLACE_CALL_EVENT = 'rmpg-flex:place-call';
-export const DIALER_IFRAME_ALLOW = 'microphone; autoplay; clipboard-write';
+export const DIALER_IFRAME_ALLOW = "microphone *; autoplay *; clipboard-write";
 export const DIALER_PANEL_WIDTH_PX = 900;
 export const DIALER_PANEL_HEIGHT_PX = 680;
 export const DIALER_PANEL_WIDTH = `${DIALER_PANEL_WIDTH_PX}px`;
@@ -32,27 +32,29 @@ function isDialConnectMessage(data: unknown): data is DialConnectMessage {
 /**
  * Host box for the Dial Connect iframe.
  *
- * Collapsed must stay a real viewport-sized box. Sizing it to 0×0 (or
- * display:none) lets Chromium freeze the cross-origin iframe, which drops
- * Twilio Voice Device registration. PSTN then fails over to voicemail
- * immediately, and the ring UI only appears after the iframe thaws.
+ * Geometry (position + size) MUST be identical when collapsed and expanded.
+ * Chromium reloads a cross-origin iframe when its containing block changes
+ * (0×0 → 900×680, or position:fixed → in-flow). A reload drops Twilio Voice
+ * Device registration mid-invite: the dispatcher sees the inbound (IVR
+ * webhook / first ring), then the call disappears and PSTN fails over to
+ * voicemail as soon as the call tree Dials the Client.
+ *
+ * Collapse is opacity + pointer-events only. Keep a trace of opacity so
+ * Chrome still treats the frame as painted for getUserMedia.
  */
 export function dialerIframeHostStyle(collapsed: boolean): CSSProperties {
-  const size: CSSProperties = {
+  return {
+    position: 'fixed',
+    left: 16,
+    bottom: 16,
     width: DIALER_PANEL_WIDTH,
     height: DIALER_PANEL_HEIGHT,
     maxWidth: 'calc(100vw - 32px)',
     maxHeight: 'calc(100vh - 96px)',
     overflow: 'hidden',
-  };
-  if (!collapsed) return size;
-  return {
-    ...size,
-    position: 'fixed',
-    left: 16,
-    bottom: 16,
-    opacity: 0,
-    pointerEvents: 'none',
+    opacity: collapsed ? 0.01 : 1,
+    pointerEvents: collapsed ? 'none' : 'auto',
+    zIndex: 9998,
   };
 }
 
@@ -85,6 +87,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const lastSeenRef = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeSrcRef = useRef(`${DIALER_ORIGIN}/dialer-embed`);
 
   const addToast = useCallback((kind: Toast['kind'], message: string) => {
     const id = ++_toastId;
@@ -216,7 +219,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         className={
           collapsed
             ? undefined
-            : 'bg-surface-raised border border-border-subtle shadow-lg mb-2'
+            : 'bg-surface-raised border border-border-subtle shadow-lg'
         }
       >
         <div className="flex items-center justify-between px-2 py-1 border-b border-border-subtle">
@@ -234,7 +237,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         <iframe
           ref={iframeRef}
           title="Dial Connect"
-          src={`${DIALER_ORIGIN}/dialer-embed`}
+          src={iframeSrcRef.current}
           className="w-full border-0"
           style={{ height: 'calc(100% - 28px)' }}
           allow={DIALER_IFRAME_ALLOW}
@@ -245,7 +248,7 @@ export default function DialerPanel({ onRinging, onDuress }: DialerPanelProps) {
         <button
           type="button"
           onClick={() => setCollapsed(false)}
-          className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5"
+          className="bg-surface-raised border border-border-subtle px-3 py-2 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 relative z-[9999]"
           aria-label={`Open dialer (${connected ? 'connected' : 'disconnected'})`}
         >
           <PhoneCall className="w-3.5 h-3.5" />
