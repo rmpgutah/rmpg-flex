@@ -300,3 +300,81 @@ export function alprCapturesToCsv(rows: Array<{
       r.confidence != null ? Math.round(r.confidence * 100) : '', r.is_stolen ? 'yes' : 'no', r.call_id ?? '',
     ]));
 }
+
+export function gangMembersToCsv(rows: Array<{
+  name: string; moniker?: string; gang_name?: string; status?: string; threat_level?: string;
+}>): string {
+  return rowsToCsv(['name', 'moniker', 'gang', 'status', 'threat'],
+    rows.map((r) => [r.name, r.moniker ?? '', r.gang_name ?? '', r.status ?? '', r.threat_level ?? '']));
+}
+
+/** Case/substance only — never notes. */
+export function narcCasesToCsv(rows: Array<{
+  case_number: string; case_type?: string; substance?: string; status?: string; location?: string; street_value?: number;
+}>): string {
+  return rowsToCsv(['case', 'type', 'substance', 'status', 'location', 'street_value'],
+    rows.map((r) => [r.case_number, r.case_type ?? '', r.substance ?? '', r.status ?? '', r.location ?? '', r.street_value ?? 0]));
+}
+
+/** No owner phone or name. */
+export function animalCasesToCsv(rows: Array<{
+  case_number: string; case_type?: string; status?: string; animal_type?: string; breed?: string; location?: string;
+}>): string {
+  return rowsToCsv(['case', 'type', 'status', 'animal', 'breed', 'location'],
+    rows.map((r) => [r.case_number, r.case_type ?? '', r.status ?? '', r.animal_type ?? '', r.breed ?? '', r.location ?? '']));
+}
+
+/** No owner phone. */
+export function impoundsToCsv(rows: Array<{
+  license_plate?: string | null; license_state?: string | null; vehicle_make?: string | null;
+  vehicle_model?: string | null; status?: string; lot_location?: string | null; impound_date?: string;
+}>): string {
+  return rowsToCsv(['plate', 'state', 'make', 'model', 'status', 'lot', 'date'],
+    rows.map((r) => [r.license_plate ?? '', r.license_state ?? '', r.vehicle_make ?? '', r.vehicle_model ?? '', r.status ?? '', r.lot_location ?? '', r.impound_date ?? '']));
+}
+
+/** Shop/item/serial only — never seller DOB, phone, or ID. */
+export function pawnItemsToCsv(rows: Array<{
+  shop_name: string; item_description?: string; serial_number?: string; item_category?: string;
+  status?: string; flagged_stolen?: number;
+}>): string {
+  return rowsToCsv(['shop', 'item', 'serial', 'category', 'status', 'flagged'],
+    rows.map((r) => [r.shop_name, r.item_description ?? '', r.serial_number ?? '', r.item_category ?? '', r.status ?? '', r.flagged_stolen ? 'yes' : 'no']));
+}
+
+/** No suspect name or description. */
+export function bulletinsToCsv(rows: Array<{
+  bulletin_number: string; title: string; type?: string; priority?: string; status?: string; location?: string;
+}>): string {
+  return rowsToCsv(['number', 'title', 'type', 'priority', 'status', 'location'],
+    rows.map((r) => [r.bulletin_number, r.title, r.type ?? '', r.priority ?? '', r.status ?? '', r.location ?? '']));
+}
+
+export function alarmPermitsToCsv(rows: Array<{
+  permit_number: string; location_name?: string; alarm_type?: string; status?: string; false_alarm_count?: number;
+}>): string {
+  return rowsToCsv(['permit', 'location', 'type', 'status', 'false_alarms'],
+    rows.map((r) => [r.permit_number, r.location_name ?? '', r.alarm_type ?? '', r.status ?? '', r.false_alarm_count ?? 0]));
+}
+
+export function alarmActivationsToCsv(rows: Array<{
+  activation_date: string; alarm_type?: string; is_false_alarm?: boolean; responding_officer?: string; billed?: boolean;
+}>): string {
+  return rowsToCsv(['date', 'type', 'false_alarm', 'officer', 'billed'],
+    rows.map((r) => [r.activation_date, r.alarm_type ?? '', r.is_false_alarm ? 'yes' : 'no', r.responding_officer ?? '', r.billed ? 'yes' : 'no']));
+}
+
+export function fieldPhotosToCsv(rows: Array<{
+  id: number; filename?: string; original_filename?: string; officer_name?: string; created_at?: string;
+}>): string {
+  return rowsToCsv(['id', 'filename', 'officer', 'created_at'],
+    rows.map((r) => [r.id, r.original_filename ?? r.filename ?? '', r.officer_name ?? '', r.created_at ?? '']));
+}
+
+export function timerLapsToCsv(rows: Array<{ n: number; split: string; total: string }>): string {
+  return rowsToCsv(['lap', 'split', 'total'], rows.map((r) => [r.n, r.split, r.total]));
+}
+
+export function colorHistoryToCsv(rows: string[]): string {
+  return rowsToCsv(['hex'], rows.map((hex) => [hex]));
+}

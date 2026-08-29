@@ -11,6 +11,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import type { ContextMenuItem } from '../context/ContextMenuContext';
 import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2, Eye, Loader2 } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
+import { gangMembersToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface GangMember {
   id: number;
@@ -50,8 +51,11 @@ export default function GangIntelPage() {
 
   // Distinguish "initial load" vs "data loaded but empty" vs "no search results"
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<GangMember | null>(null);
@@ -87,14 +91,13 @@ export default function GangIntelPage() {
   }, []);
 
   const fetchData = useCallback(async () => {
+    setLoadError(false);
     try {
-      const [ms, gs, st] = await Promise.all([
-        apiFetch<GangMember[]>('/gang-intel').catch(() => [] as GangMember[]),
-        apiFetch<Gang[]>('/gang-intel/gangs').catch(() => [] as Gang[]),
-        apiFetch<Stats>('/gang-intel/stats').catch(
-          () => ({ totalMembers: 0, activeMembers: 0, totalGangs: 0 })
-        ),
-      ]);
+      const ms = await apiFetch<GangMember[]>('/gang-intel');
+      const gs = await apiFetch<Gang[]>('/gang-intel/gangs').catch(() => [] as Gang[]);
+      const st = await apiFetch<Stats>('/gang-intel/stats').catch(
+        () => ({ totalMembers: 0, activeMembers: 0, totalGangs: 0 })
+      );
       setMembers(ms);
       setGangs(gs);
       setStats(st);
@@ -111,6 +114,8 @@ export default function GangIntelPage() {
           setFormOpen(true);
         }
       }
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -127,6 +132,11 @@ export default function GangIntelPage() {
         tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
         (e.target as HTMLElement).isContentEditable;
       if (editable || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         openNew();
@@ -206,21 +216,23 @@ export default function GangIntelPage() {
 
   // ── Filtered list with search ──────────────────────────────
   const q = search.trim().toLowerCase();
-  const filtered = q
-    ? members.filter(
-        r =>
-          r.name.toLowerCase().includes(q) ||
-          (r.moniker || '').toLowerCase().includes(q) ||
-          (r.gang_name || '').toLowerCase().includes(q)
-      )
-    : members;
+  const filtered = members.filter((r) => {
+    if (statusFilter !== 'ALL' && r.status !== statusFilter) return false;
+    if (!q) return true;
+    return (
+      r.name.toLowerCase().includes(q) ||
+      (r.moniker || '').toLowerCase().includes(q) ||
+      (r.gang_name || '').toLowerCase().includes(q)
+    );
+  });
+  const hasFilter = !!q || statusFilter !== 'ALL';
 
   // ── Empty-state messaging ─────────────────────────────────
   let emptyMessage = 'No gang members tracked yet';
   if (!hasLoaded) {
     emptyMessage = 'Loading…';
-  } else if (q && members.length > 0 && filtered.length === 0) {
-    emptyMessage = `No results for "${search}"`;
+  } else if (hasFilter && members.length > 0 && filtered.length === 0) {
+    emptyMessage = 'No members match the current filter';
   } else if (members.length === 0) {
     emptyMessage = 'No gang members tracked yet — add the first record with New Member';
   }
@@ -294,6 +306,33 @@ export default function GangIntelPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="GANG INTELLIGENCE" icon={ShieldAlert}>
+        <input
+          ref={searchRef}
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search members, monikers, gangs…"
+          className="input-dark text-xs h-7 w-52"
+          aria-label="Search gang members"
+        />
+        <select
+          aria-label="Filter by status"
+          className="select-dark text-xs h-7"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="ALL">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="deceased">Deceased</option>
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('gang-members.csv', gangMembersToCsv(filtered))}
+        >CSV</button>
         <button
           onClick={openNew}
           className="toolbar-btn flex items-center gap-1.5"
@@ -311,17 +350,14 @@ export default function GangIntelPage() {
         <StatsCard label="THREAT LEVEL" value="MEDIUM" icon={ShieldAlert} />
       </div>
 
-      {/* Search bar */}
-      <div>
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search members, monikers, gangs…"
-          className="input-dark text-xs w-full"
-          style={{ height: 28 }}
-        />
-      </div>
+      {loadError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load gang intelligence.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void fetchData(); }}>Retry</button>
+        </div>
+      )}
+
+      {/* Search bar moved to title bar */}
 
       <DataTable
         columns={memberColumns}
@@ -333,6 +369,8 @@ export default function GangIntelPage() {
           m.action('Edit', () => openEdit(r), { icon: <Pencil size={12} /> }),
           m.separator(),
           m.copyId(r.id),
+          m.copy('Copy name', r.name),
+          m.copy('Copy moniker', r.moniker || ''),
           ...(canDelete
             ? [m.action('Delete', () => setDeleteTarget(r), { danger: true, icon: <Trash2 size={12} /> })]
             : []),

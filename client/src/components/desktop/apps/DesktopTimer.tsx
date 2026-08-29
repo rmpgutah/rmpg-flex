@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Timer, StopCircle, Copy, RotateCcw, Play, Pause, Flag } from 'lucide-react';
 import { useDraggablePosition } from '../../../hooks/useDraggablePosition';
+import { timerLapsToCsv, downloadTextFile } from '../../../utils/rmsListExport';
 
 const W = 380;
 const H = 460;
@@ -258,6 +259,9 @@ function StopwatchTab() {
         <button onClick={reset} style={btnBase}><RotateCcw size={12} /> Reset</button>
         {laps.length > 0 && (
           <button onClick={copyLaps} style={btnBase}><Copy size={12} /> Copy laps</button>
+        )}
+        {laps.length > 0 && (
+          <button onClick={() => downloadTextFile('timer-laps.csv', timerLapsToCsv(laps.map((l) => ({ n: l.n, split: fmtMSS(l.split), total: fmtMSS(l.total) }))))} style={btnBase}>CSV</button>
         )}
         {status && <span style={{ fontSize: 10, color: 'var(--text-muted)', alignSelf: 'center' }}>{status}</span>}
       </div>

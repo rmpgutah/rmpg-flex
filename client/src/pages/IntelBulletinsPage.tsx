@@ -5,6 +5,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { Shield, AlertTriangle, Plus, Search, Eye, Check, X, Clock, MapPin, User } from 'lucide-react';
 import { formatEnumValue, toDisplayLabel } from '../utils/formatters';
+import { bulletinsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface Bulletin {
   id: number;
@@ -74,6 +76,7 @@ export default function IntelBulletinsPage() {
   const [editingBulletin, setEditingBulletin] = useState<Bulletin | null>(null);
   const [form, setForm] = useState<BulletinForm>(emptyForm);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     fetchStats();
@@ -94,6 +97,7 @@ export default function IntelBulletinsPage() {
 
   async function fetchBulletins() {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -103,8 +107,9 @@ export default function IntelBulletinsPage() {
       const query = params.toString();
       const data = await apiFetch<Bulletin[]>(`/intel-bulletins${query ? '?' + query : ''}`);
       setBulletins(asArray<Bulletin>(data));
-    } catch (err) {
-      console.error('Failed to fetch bulletins', err);
+    } catch {
+      setLoadError(true);
+      setBulletins([]);
     } finally {
       setLoading(false);
     }
@@ -217,13 +222,29 @@ export default function IntelBulletinsPage() {
             className="bg-surface-base border border-border-default text-gray-200 text-xs px-2 py-1 rounded-sm flex-1"
           />
         </div>
+        <button
+          type="button"
+          className="px-2 py-1 text-xs border border-border-default"
+          disabled={bulletins.length === 0}
+          onClick={() => downloadTextFile('intel-bulletins.csv', bulletinsToCsv(bulletins))}
+        >CSV</button>
       </div>
 
       {/* Bulletin List */}
       <div className="space-y-2">
         {loading && <div className="text-center text-gray-500 text-xs py-8">Loading...</div>}
-        {!loading && bulletins.length === 0 && (
-          <div className="text-center text-gray-500 text-xs py-8">No bulletins found</div>
+        {loadError && (
+          <div className="text-xs text-red-400 flex items-center justify-between">
+            <span>Failed to load bulletins.</span>
+            <button type="button" className="px-2 py-1 border border-border-default" onClick={() => void fetchBulletins()}>Retry</button>
+          </div>
+        )}
+        {!loading && !loadError && bulletins.length === 0 && (
+          <div className="text-center text-gray-500 text-xs py-8">
+            {searchQuery || typeFilter !== 'all' || statusFilter !== 'active' || priorityFilter !== 'all'
+              ? 'No bulletins match the current filter'
+              : 'No bulletins found'}
+          </div>
         )}
         {bulletins.map((b) => (
           <div
@@ -238,6 +259,7 @@ export default function IntelBulletinsPage() {
                     {formatEnumValue(b.priority)}
                   </span>
                   <span className="font-mono text-xs text-gray-400">{b.bulletin_number}</span>
+                  <button type="button" className="text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(b.bulletin_number); }}>Copy</button>
                   <span className="px-1.5 py-0.5 text-[9px] bg-surface-sunken text-gray-300 rounded-sm uppercase">
                     {typeLabels[b.type] || b.type}
                   </span>

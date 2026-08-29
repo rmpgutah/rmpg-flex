@@ -6,6 +6,7 @@ import {
   jailBookingsToCsv, partnersToCsv, recruitmentPipelineToCsv, invoicesToCsv,
   victimCasesToCsv, alarmAccountsToCsv, screeningHitsToCsv, warrantDocketToCsv,
   crimeOffensesToCsv, briefingWarrantsToCsv, personIntelXrefsToCsv,
+  narcCasesToCsv, pawnItemsToCsv, bulletinsToCsv, animalCasesToCsv, impoundsToCsv,
 } from '../rmsListExport';
 
 describe('rmsListExport', () => {
@@ -71,5 +72,21 @@ describe('rmsListExport', () => {
     expect(crimeOffensesToCsv([{ offense_type: 'theft', count: 3 }])).toContain('theft');
     expect(briefingWarrantsToCsv([{ warrant_number: 'W-2', warrant_type: 'bench', charge: 'FTA' }])).toContain('FTA');
     expect(personIntelXrefsToCsv([{ source: 'FBI_WANTED', externalRef: 'x-1', confidence: 0.8, isCriminal: true }])).toContain('x-1');
+  });
+
+  it('omits narcotics notes, pawn seller PII, bulletin suspects, and owner phones', () => {
+    const n = narcCasesToCsv([{ case_number: 'N-1', substance: 'meth', status: 'open', location: '400 S' }]);
+    expect(n).toContain('N-1');
+    expect(n).not.toContain('notes');
+    expect(n).not.toContain('subject');
+    const p = pawnItemsToCsv([{ shop_name: 'PawnCo', serial_number: 'SN1', item_description: 'TV', status: 'held' }]);
+    expect(p).toContain('SN1');
+    expect(p).not.toContain('seller');
+    expect(p).not.toContain('dob');
+    const b = bulletinsToCsv([{ bulletin_number: 'BOLO-1', title: 'Alert', type: 'bolo', priority: 'high', status: 'active' }]);
+    expect(b).toContain('BOLO-1');
+    expect(b).not.toContain('suspect');
+    expect(animalCasesToCsv([{ case_number: 'AC-1', animal_type: 'dog', location: 'Main' }])).toContain('AC-1');
+    expect(impoundsToCsv([{ license_plate: 'ABC123', status: 'impounded' }])).toContain('ABC123');
   });
 });

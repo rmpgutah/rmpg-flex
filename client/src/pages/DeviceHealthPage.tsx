@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Cpu, HardDrive, Wifi, Battery, Activity, RefreshCw, CheckCircle, AlertTriangle, XCircle, Monitor, Server } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { networkIfacesToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface SystemInfo {
   hostname: string;
@@ -327,6 +329,37 @@ export default function DeviceHealthPage() {
           <RefreshCw size={11} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
           {loading ? 'Scanning…' : 'Run Diagnostics'}
         </button>
+        <button
+          type="button"
+          disabled={networks.length === 0}
+          onClick={() => downloadTextFile('device-ifaces.csv', networkIfacesToCsv(networks.map((n) => ({ name: n.name, ipv4: n.address, status: n.type }))))}
+          style={{
+            marginLeft: 8,
+            padding: '5px 10px',
+            background: 'var(--surface-raised)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 2,
+            color: 'var(--text-primary)',
+            fontSize: 10,
+            cursor: networks.length ? 'pointer' : 'not-allowed',
+          }}
+        >CSV</button>
+        {sysInfo?.hostname && (
+          <button
+            type="button"
+            onClick={() => void copyToClipboard(sysInfo.hostname)}
+            style={{
+              marginLeft: 8,
+              padding: '5px 10px',
+              background: 'var(--surface-raised)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 2,
+              color: 'var(--text-primary)',
+              fontSize: 10,
+              cursor: 'pointer',
+            }}
+          >Copy host</button>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
