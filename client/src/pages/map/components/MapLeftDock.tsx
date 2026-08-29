@@ -57,19 +57,17 @@ export default function MapLeftDock({ sections }: MapLeftDockProps) {
         LAYERS
       </div>
       <div className="px-2 py-1.5 border-b border-border-subtle">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <span className="text-[10px] text-fg-muted">{active.length} on</span>
+        </div>
         <input
           type="search"
+          aria-label="Find layer"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Find layer…"
-          aria-label="Find layer"
-          className="w-full bg-surface-sunken border border-border-subtle px-1.5 py-1 text-[10px] text-rmpg-200 placeholder:text-rmpg-500"
+          placeholder="Find layer"
+          className="w-full px-2 py-1 text-[11px] bg-surface-overlay border border-border-subtle rounded text-fg-primary placeholder:text-fg-muted"
         />
-        {active.length > 0 && (
-          <div className="mt-1 text-[8px] uppercase tracking-wide text-rmpg-500">
-            {active.length} on
-          </div>
-        )}
       </div>
       {!needle && favorites.length > 0 && (
         <DockSection title="Favorites" collapsible={false}>

@@ -327,7 +327,7 @@ export default function ServePage() {
   // Pending deep-link target — resolved once jobs hydrate.
   // ?serve_id= and ?job_id= are interchangeable; ?case_id= is stored separately.
   const pendingJobIdRef = useRef<string | null>(
-    searchParams.get('serve_id') ?? searchParams.get('job_id'),
+    searchParams.get('serve_id') ?? searchParams.get('job_id') ?? searchParams.get('queue_id'),
   );
   const pendingCaseIdRef = useRef<string | null>(searchParams.get('case_id'));
   // Delete-job confirm replaces the v480 window.confirm(). Carries the
@@ -2275,6 +2275,7 @@ export default function ServePage() {
     const next = new URLSearchParams(searchParams);
     next.delete('job_id');
     next.delete('serve_id');
+    next.delete('queue_id');
     next.delete('case_id');
     setSearchParams(next, { replace: true });
   }, [jobs, loading, searchParams, setSearchParams, addToast]);
