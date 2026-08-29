@@ -829,13 +829,82 @@ interface NoticeCompressTier {
   sigRowH: number;
   statusBandH: number;
   disclaimerBandH: number;
+  /** Subject panels + instrument title spacing — off for the relaxed tier. */
+  useTightLayout: boolean;
+  sectionPad: number;
+  disclaimerClearance: number;
+  stepGapScale: number;
 }
 
 const NOTICE_COMPRESS_TIERS: NoticeCompressTier[] = [
-  { gapScale: 0.65, proseOffset: -1, maxNoteChars: 90, gpsNoteChars: 58, maxAttempts: 6, sigRowH: 16, statusBandH: 6.0, disclaimerBandH: 7.5 },
-  { gapScale: 0.5, proseOffset: -1.5, maxNoteChars: 72, gpsNoteChars: 46, maxAttempts: 4, sigRowH: 14, statusBandH: 5.6, disclaimerBandH: 7.0 },
-  { gapScale: 0.4, proseOffset: -2, maxNoteChars: 58, gpsNoteChars: 38, maxAttempts: 3, sigRowH: 12, statusBandH: 5.2, disclaimerBandH: 6.5 },
+  {
+    gapScale: 0.78,
+    proseOffset: -0.5,
+    maxNoteChars: 90,
+    gpsNoteChars: 58,
+    maxAttempts: 6,
+    sigRowH: 17,
+    statusBandH: 6.3,
+    disclaimerBandH: 8,
+    useTightLayout: false,
+    sectionPad: 2,
+    disclaimerClearance: 3,
+    stepGapScale: 1,
+  },
+  {
+    gapScale: 0.66,
+    proseOffset: -1,
+    maxNoteChars: 80,
+    gpsNoteChars: 52,
+    maxAttempts: 5,
+    sigRowH: 15,
+    statusBandH: 6,
+    disclaimerBandH: 7.5,
+    useTightLayout: true,
+    sectionPad: 1.5,
+    disclaimerClearance: 2.5,
+    stepGapScale: 0.8,
+  },
+  {
+    gapScale: 0.54,
+    proseOffset: -1.5,
+    maxNoteChars: 68,
+    gpsNoteChars: 44,
+    maxAttempts: 4,
+    sigRowH: 13,
+    statusBandH: 5.6,
+    disclaimerBandH: 7,
+    useTightLayout: true,
+    sectionPad: 1.2,
+    disclaimerClearance: 2.2,
+    stepGapScale: 0.6,
+  },
 ];
+
+/** Top of the subject-facing QR block — flowing content must stay above this. */
+function noticeQrZoneTop(pageH: number): number {
+  const FOOTER_ACCENT_Y = pageH - 11;
+  const QR_SIZE = 22;
+  const QR_LABEL_H = 3.5;
+  return FOOTER_ACCENT_Y - 2 - QR_LABEL_H - QR_SIZE - 2;
+}
+
+/** Pick a starting tier from payload shape so typical jobs render relaxed. */
+function estimateNoticeCompressTier(data: NoticeOfAttemptData): number {
+  let score = 0;
+  score += Math.max(0, data.attempts.length - 1);
+  score += data.attempts.filter((a) => a.gpsLat != null && a.gpsLng != null).length >= 2 ? 1 : 0;
+  score += data.signature ? 2 : 0;
+  if ((data.nextAttemptNote?.length ?? 0) > 72) score += 1;
+  if ((data.recipientAddress?.length ?? 0) > 58) score += 1;
+  if ((data.recipientName?.length ?? 0) > 48) score += 1;
+  const hiringLen = (data.attorneyName?.length ?? 0) + (data.clientName?.length ?? 0);
+  if (hiringLen > 65) score += 1;
+  if ((data.documentType?.length ?? 0) > 42) score += 1;
+  if (score >= 7) return 2;
+  if (score >= 3) return 1;
+  return 0;
+}
 
 /**
  * Stamp the display zone onto a printed attempt time.
@@ -892,19 +961,19 @@ export function withZone(time: string): string {
 export async function generateNoticeOfAttempt(
   data: NoticeOfAttemptData,
   options: NoticeOfAttemptOptions = {},
-  compressTier = 0,
+  compressTier?: number,
 ): Promise<jsPDF> {
-  const compress = NOTICE_COMPRESS_TIERS[Math.min(compressTier, NOTICE_COMPRESS_TIERS.length - 1)];
+  const startTier = compressTier ?? estimateNoticeCompressTier(data);
+  const compress = NOTICE_COMPRESS_TIERS[Math.min(startTier, NOTICE_COMPRESS_TIERS.length - 1)];
   const ng = (n: number) => n * compress.gapScale;
 
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
 
-  // Compressed spacing for the one-page layout — same module flag the Civil
-  // Process Record uses, but always on here because a door notice that spills
-  // to sheet two loses the QR on the roll's trailing blank.
-  tightLayout = true;
+  // Relaxed tier keeps full panel spacing; tighter tiers borrow the Civil
+  // Process Record's compressed subject-panel rhythm.
+  tightLayout = compress.useTightLayout;
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   (doc as { __singlePageOnly?: boolean }).__singlePageOnly = true;
@@ -1095,6 +1164,8 @@ export async function generateNoticeOfAttempt(
       // wrap and costs a full extra line per row no matter how the characters
       // are divided. Half of live attempts carry GPS, so this is the common
       // case, not the edge one.
+      // Budget the note against the GPS suffix rather than clamping it in
+      // isolation — half of live attempts carry GPS, so this is the common case.
       const gpsSuffix = gps ? ` · GPS ${gps}` : '';
       const cellBudget = gps ? GPS_ROW_NOTE_CHARS : MAX_NOTE_CHARS;
       const noteBudget = Math.max(12, cellBudget - gpsSuffix.length);
@@ -1138,7 +1209,7 @@ export async function generateNoticeOfAttempt(
   y = checkPageBreak(doc, y, 55);
   {
     const sec = openAutoSection(doc, 'III. Important Notice — Attempted Service of Legal Documents', y);
-    y = sec.contentY + 1.5;
+    y = sec.contentY + compress.sectionPad;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -1176,7 +1247,7 @@ export async function generateNoticeOfAttempt(
     // ~2.5mm cap height then reached back UP into the gray fill, rendering
     // "Rocky Mountain Protective Group..." partially on top of the band's
     // last few pixels. 3mm clears the ascender with a hair of daylight left.
-    y = bandY + bandH + 2.5;
+    y = bandY + bandH + compress.disclaimerClearance;
 
     const NOTICE_FONT = FONT.SIZE_FIELD_VALUE + compress.proseOffset;
     const noticeText =
@@ -1251,7 +1322,7 @@ export async function generateNoticeOfAttempt(
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'IV. What To Do Next', y);
-    y = sec.contentY + 1.5;
+    y = sec.contentY + compress.sectionPad;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const phoneCue = data.serverPhone
       ? `at ${data.serverPhone}`
@@ -1274,7 +1345,7 @@ export async function generateNoticeOfAttempt(
       const numW = doc.getTextWidth(numLabel) + 2;
       doc.setFont(PDF_VALUE_FONT, 'normal');
       y = addWrappedText(doc, step, lx + numW, y, ffw - numW, STEP_FONT, { preserveCase: true });
-      y += ng(SPACING.XS) * 0.6;
+      y += ng(SPACING.XS) * compress.stepGapScale;
     });
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -1343,11 +1414,18 @@ export async function generateNoticeOfAttempt(
 
   // One-page contract: if content still runs past the QR/footer band, retry
   // at the next compression tier rather than accepting overlap or a spill.
-  const pageBottom = doc.internal.pageSize.getHeight() - 32;
-  if (y > pageBottom && compressTier < NOTICE_COMPRESS_TIERS.length - 1) {
+  const pageH = doc.internal.pageSize.getHeight();
+  const qrTop = noticeQrZoneTop(pageH);
+  if (y > qrTop && startTier < NOTICE_COMPRESS_TIERS.length - 1) {
     tightLayout = false;
-    return generateNoticeOfAttempt(data, options, compressTier + 1);
+    return generateNoticeOfAttempt(data, options, startTier + 1);
   }
+
+  (doc as { __noticeLayout?: { tier: number; contentBottomY: number; qrZoneTop: number } }).__noticeLayout = {
+    tier: startTier,
+    contentBottomY: y,
+    qrZoneTop: qrTop,
+  };
 
   // ── Subject-facing QR code ──
   try {
