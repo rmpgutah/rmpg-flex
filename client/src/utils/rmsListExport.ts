@@ -275,8 +275,7 @@ export function plateHistoryToCsv(rows: Array<{ plate: string; state: string; ts
     rows.map((r) => {
       let checked = '';
       if (typeof r.ts === 'number') {
-        // new-date-ok — Unix epoch milliseconds from local plate-history storage
-        checked = new Date(r.ts).toISOString();
+        checked = new Date(r.ts).toISOString(); // new-date-ok — Unix epoch ms from local plate history
       }
       return [r.plate, r.state, checked];
     }),
