@@ -143,7 +143,6 @@ const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'))
 const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
-const DialerConnectPage = lazyRetry(() => import('./pages/DialerConnectPage'));
 const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelReportsPage = lazyRetry(() => import('./pages/intel/IntelReportsPage'));

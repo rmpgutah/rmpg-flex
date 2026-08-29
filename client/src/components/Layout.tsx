@@ -145,7 +145,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/records': 'Records',
   '/personnel': 'Personnel',
   '/communications': 'Communications',
-  '/dialer-connect': 'Dial Connect',
   '/radio': 'Radio',
   '/email': 'Email',
   '/patrol': 'Patrol',
