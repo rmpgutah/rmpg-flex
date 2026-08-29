@@ -176,35 +176,4 @@ export function attestationsFor(variant: ReceiptVariant, party: string): Attesta
   }
 }
 
-/**
- * Address of service as a conventional two-line block:
- *
- *     1234 Wisconsin Street
- *     South Salt Lake, UT 85194
- *
- * NOT a comma-joined single string left to wrap wherever the column runs
- * out. On the 2026-07-27 service that produced
- * "1240 EAST 2100 SOUTH, SALT LAKE CITY, UT, 84106" breaking mid-city —
- * circled with "2 lines" — and it put a comma between the state and the
- * ZIP, which no postal or court address block does.
- *
- * The street stays whole on line one; city, state and ZIP travel together
- * on line two, because that is the unit a reader scans for.
- */
-export function formatServiceAddress(parts: {
-  address?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zip?: string | null;
-}): string {
-  const street = (parts.address ?? '').trim();
-  const city = (parts.city ?? '').trim();
-  const state = (parts.state ?? '').trim();
-  const zip = (parts.zip ?? '').trim();
-
-  // "South Salt Lake, UT 85194" — comma after the city only.
-  const locality = [city, [state, zip].filter(Boolean).join(' ')]
-    .filter(Boolean).join(', ');
-
-  return [street, locality].filter(Boolean).join('\n');
-}
+export { formatServiceAddress, flattenServiceAddress } from './formatServiceAddress';

@@ -13,6 +13,8 @@ import { useToast } from '../components/ToastProvider';
 import { safeDateStr, safeDateTimeStr, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../utils/dateUtils';
 import { asArray } from '../utils/asArray';
 import { formatEnumValue } from '../utils/formatters';
+import { alarmPermitsToCsv, alarmActivationsToCsv, downloadTextFile } from '../utils/rmsListExport';
+import { copyToClipboard } from '../utils/clipboard';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -113,6 +115,7 @@ export default function AlarmTrackingPage() {
   // Permits state
   const [permits, setPermits] = useState<AlarmPermit[]>([]);
   const [loadingPermits, setLoadingPermits] = useState(true);
+  const [permitError, setPermitError] = useState(false);
   const [permitSearch, setPermitSearch] = useState('');
   const [permitStatusFilter, setPermitStatusFilter] = useState<string>('all');
   const [selectedPermit, setSelectedPermit] = useState<AlarmPermit | null>(null);
@@ -144,6 +147,7 @@ export default function AlarmTrackingPage() {
 
   const fetchPermits = useCallback(async () => {
     setLoadingPermits(true);
+    setPermitError(false);
     try {
       const data = asArray<AlarmPermit>(await apiFetch<AlarmPermit[]>('/api/alarm-tracking/permits'));
       setPermits(data);
@@ -153,6 +157,7 @@ export default function AlarmTrackingPage() {
         suspended: data.filter(p => p.status === 'suspended').length,
       });
     } catch {
+      setPermitError(true);
       addToast('Failed to load alarm permits', 'error');
     } finally {
       setLoadingPermits(false);
@@ -468,6 +473,12 @@ export default function AlarmTrackingPage() {
             >
               <Plus className="w-3.5 h-3.5" /> New Permit
             </button>
+            <button
+              type="button"
+              className="px-2 py-1.5 text-[11px] border border-border-default"
+              disabled={filteredPermits.length === 0}
+              onClick={() => downloadTextFile('alarm-permits.csv', alarmPermitsToCsv(filteredPermits))}
+            >CSV</button>
           </div>
 
           {/* Table */}
@@ -488,15 +499,22 @@ export default function AlarmTrackingPage() {
               <tbody>
                 {loadingPermits ? (
                   <tr><td colSpan={8} className="px-2 py-8 text-center text-[11px] text-gray-500"><Loader2 className="w-4 h-4 animate-spin inline-block mr-1" />Loading…</td></tr>
+                ) : permitError ? (
+                  <tr><td colSpan={8} className="px-2 py-6 text-center text-[11px] text-red-400">
+                    Failed to load permits. <button type="button" className="ml-2 px-2 py-1 border border-border-default" onClick={() => void fetchPermits()}>Retry</button>
+                  </td></tr>
                 ) : filteredPermits.length === 0 ? (
-                  <tr><td colSpan={8}><EmptyState icon={Bell} title="No permits found" description="Create a new alarm permit to get started." /></td></tr>
+                  <tr><td colSpan={8}><EmptyState icon={Bell} title={permitSearch || permitStatusFilter !== 'all' ? 'No permits match the filter' : 'No permits found'} description={permitSearch || permitStatusFilter !== 'all' ? 'Clear search or status filter.' : 'Create a new alarm permit to get started.'} /></td></tr>
                 ) : filteredPermits.map(p => (
                   <tr
                     key={p.id}
                     onClick={() => selectPermit(p)}
                     className="border-b border-border-subtle hover:bg-surface-raised cursor-pointer transition-colors"
                   >
-                    <td className="px-2 py-[2px] text-[11px] text-rmpg-100 font-mono font-semibold">{p.permit_number}</td>
+                    <td className="px-2 py-[2px] text-[11px] text-rmpg-100 font-mono font-semibold">
+                      {p.permit_number}
+                      <button type="button" className="ml-1 text-[9px] border border-border-default px-1" onClick={(e) => { e.stopPropagation(); void copyToClipboard(p.permit_number); }}>Copy</button>
+                    </td>
                     <td className="px-2 py-[2px] text-[11px] text-gray-200">
                       <div>{p.location_name}</div>
                       <div className="text-[10px] text-gray-500">{p.location_address}</div>
@@ -555,6 +573,12 @@ export default function AlarmTrackingPage() {
             >
               <Plus className="w-3.5 h-3.5" /> Log Activation
             </button>
+            <button
+              type="button"
+              className="px-2 py-1.5 text-[11px] border border-border-default"
+              disabled={activations.length === 0}
+              onClick={() => downloadTextFile('alarm-activations.csv', alarmActivationsToCsv(activations))}
+            >CSV</button>
           </div>
 
           {/* Table */}

@@ -45,6 +45,7 @@ import { persistAttemptSchedule } from './serveAttemptScheduler';
 import { findLocationNote } from './serveLocationNotes';
 import { resolveAddressClass } from './serveAddressClass';
 import { inferVenueKind, buildOutputTree } from './serveIntakeOutputTree';
+import { coerceVenueKind, normalizeServeJobOps } from './serveJobOps';
 import { parseClientBands, parseAllowedDays } from './serveScheduleParse';
 import { scheduleFitsDeadline } from './serveAttemptWindows';
 import { log } from './logger';
@@ -1012,11 +1013,12 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
     });
   }
 
-  const venueKind = inferVenueKind(
+  const inferredVenue = inferVenueKind(
     fullLocation || addr,
     queueRow.recipient_name || get('recipient_business_name') || queueRow.business_name,
     queueRow.service_instructions,
   );
+  const venueKind = coerceVenueKind(get('venue_kind')) ?? inferredVenue;
 
   const attemptPlan = planAttemptWindows(nowIso, queueRow.deadline, 'America/Denver', {
     isBusiness,
@@ -1256,8 +1258,15 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
             fullLocation: fullLocation || addr,
             docCount: input.docCount,
             nowIso,
-            gateCode: propertyRecord?.gate_code,
+            gateCode: get('gate_code') || propertyRecord?.gate_code,
             hazardNotes: propertyRecord?.hazard_notes,
+            venueOverride: coerceVenueKind(get('venue_kind')),
+            dogsOnSite: /^(1|true|yes)$/i.test(get('dogs_on_site')),
+            camerasOnSite: /^(1|true|yes)$/i.test(get('cameras_on_site')),
+            noSunday: /^(1|true|yes)$/i.test(get('no_sunday')) || /do not serve on sunday/i.test(queueRow.service_instructions || ''),
+            authorizedAcceptor: get('authorized_acceptor') || null,
+            languageNeeded: get('language_needed') || null,
+            physicalDescription: get('physical_description') || null,
           });
           return {
             venue: tree.venue,
@@ -1265,6 +1274,7 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
             catalog_size: tree.catalogSize,
             fired_ids: tree.firedIds,
             fired_count: tree.features.length,
+            windows: attemptPlan.map((w) => ({ window: w.window, authority: w.authority, focus: w.focus })),
           };
         })(),
         attempt_plan: attemptPlan,
@@ -1279,6 +1289,22 @@ async function commitOneIntake(db: D1Database, input: CommitInput): Promise<Comm
           missing_critical: ocrContext.missingCritical,
         } : {}),
       },
+      _ops: normalizeServeJobOps({
+        documents_to_serve: get('documents_to_serve'),
+        venue_kind: get('venue_kind'),
+        gate_code: get('gate_code'),
+        dogs_on_site: get('dogs_on_site'),
+        cameras_on_site: get('cameras_on_site'),
+        language_needed: get('language_needed'),
+        authorized_acceptor: get('authorized_acceptor'),
+        photo_required: get('photo_required'),
+        physical_description: get('physical_description'),
+        vehicle_description: get('vehicle_description'),
+        best_contact_window: get('best_contact_window'),
+        no_sunday: get('no_sunday'),
+        no_saturday: get('no_saturday'),
+        sub_service_first: get('sub_service_authorized_first_attempt'),
+      }),
     });
     // Queue notes = extracted service windows + a compact provenance line so
     // the serve-queue views carry the OCR context without the full markdown.

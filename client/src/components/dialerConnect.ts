@@ -1,7 +1,5 @@
 export const DIALER_CONNECT_PATH = '/dialer-connect';
 export const DIALER_HOST_ID = 'dialer-connect-host';
-/** Dispatched after a Dial Connect `recording_ready` postMessage. Listeners may
- *  be absent after the recordings panel was removed; the name stays exported
- *  because DialerPanel still fires it. */
+/** Fired after Dial Connect posts a recording into Flex so the page list refreshes. */
 export const DIAL_RECORDING_READY_EVENT = 'rmpg-flex:dial-recording-ready';
 

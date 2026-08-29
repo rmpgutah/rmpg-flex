@@ -28,7 +28,7 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   return (
     <div>
       <span className="block text-[11px] uppercase tracking-wider text-gray-400">{label}</span>
-      <span className="block text-[14px] text-white leading-snug mt-0.5">{value || '—'}</span>
+      <span className="block text-[14px] text-white leading-snug mt-0.5 whitespace-pre-line">{value || '—'}</span>
     </div>
   );
 }
