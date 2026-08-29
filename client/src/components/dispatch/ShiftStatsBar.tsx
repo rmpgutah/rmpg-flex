@@ -9,6 +9,12 @@ interface ShiftStats {
   patrol_scans: number;
 }
 
+interface DispatchCorporate {
+  clocked_in?: number;
+  duty_miles_today?: number;
+  serve_attempts_today?: number;
+}
+
 interface ShiftStatsBarProps {
   /** Extra Tailwind / inline classes for the wrapper */
   className?: string;
@@ -18,10 +24,18 @@ interface ShiftStatsBarProps {
 
 export default function ShiftStatsBar({ className = '', activeUnits }: ShiftStatsBarProps) {
   const [stats, setStats] = useState<ShiftStats | null>(null);
+  const [corp, setCorp] = useState<DispatchCorporate | null>(null);
 
   const load = () => {
     apiFetch<ShiftStats>('/admin/shift-stats')
       .then(setStats)
+      .catch(() => {/* non-fatal */});
+    apiFetch<DispatchCorporate>('/dispatch')
+      .then((row) => setCorp({
+        clocked_in: row.clocked_in,
+        duty_miles_today: row.duty_miles_today,
+        serve_attempts_today: row.serve_attempts_today,
+      }))
       .catch(() => {/* non-fatal */});
   };
 
@@ -31,13 +45,18 @@ export default function ShiftStatsBar({ className = '', activeUnits }: ShiftStat
     return () => clearInterval(id);
   }, []);
 
-  if (!stats) return null;
+  if (!stats && !corp) return null;
 
   const items: { label: string; value: string | number }[] = [
-    { label: 'Shift', value: stats.shift_name },
-    { label: 'Calls', value: stats.calls },
-    { label: 'Incidents', value: stats.incidents },
+    ...(stats ? [
+      { label: 'Shift', value: stats.shift_name },
+      { label: 'Calls', value: stats.calls },
+      { label: 'Incidents', value: stats.incidents },
+    ] : []),
     ...(activeUnits != null ? [{ label: 'Units active', value: activeUnits }] : []),
+    ...(corp?.clocked_in != null ? [{ label: 'Clocked in', value: corp.clocked_in }] : []),
+    ...(corp?.duty_miles_today != null ? [{ label: 'Duty miles', value: Number(corp.duty_miles_today).toFixed(1) }] : []),
+    ...(corp?.serve_attempts_today != null ? [{ label: 'Serve attempts', value: corp.serve_attempts_today }] : []),
   ];
 
   return (

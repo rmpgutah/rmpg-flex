@@ -123,6 +123,7 @@ import { MapDensityProvider } from './hooks/useMapDensity';
 import { MapContext } from './MapContext';
 import MapLayout from './MapLayout';
 import MapTopToolbar from './components/MapTopToolbar';
+import CorporateLinkageStrip from '../../components/CorporateLinkageStrip';
 import type { V2Route } from '../../utils/mapboxOptimizationV2';
 import UnifiedMapLegend from './components/UnifiedMapLegend';
 import OsmFeatureEditor from '../../components/OsmFeatureEditor';
@@ -1626,6 +1627,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     <div className="tactical-dark relative w-full overflow-hidden bg-surface-base flex flex-col" style={{ height: '100%', minHeight: '100%' }}>
       {/* ── Region 1: Top toolbar (desktop/tablet only) ── */}
       {!isDockNarrow && <MapTopToolbar {...mapTopToolbarProps} />}
+      {!isDockNarrow && <CorporateLinkageStrip />}
       {/* Beat Planner — supervisor+ toolbar button */}
       {!isDockNarrow && isSupervisorPlusMap && (
         <div className="absolute top-9 right-2 z-30 flex items-center gap-1">

@@ -4,6 +4,7 @@ import { Wifi, WifiOff, Battery, BatteryCharging, BatteryLow, Navigation, Refres
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../ToastProvider';
+import { toastClockLinkWarnings, type ClockLinkFlags } from '../../utils/corporateOpsClient';
 import WifiSelector from './WifiSelector';
 
 interface BatteryStatus {
@@ -267,11 +268,12 @@ export default function DesktopSystemTray({ className }: DesktopSystemTrayProps)
     dutyBusyRef.current = true;
     const wasOnDuty = onDuty;
     try {
-      await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
+      const punch = await apiFetch(wasOnDuty ? '/personnel/time/clock-out' : '/personnel/time/clock-in', {
         method: 'POST',
         body: JSON.stringify({ officer_id: user.id }),
       });
       setOnDuty(v => !v);
+      if (!wasOnDuty) toastClockLinkWarnings(addToast, punch as ClockLinkFlags);
     } catch (err: any) {
       addToast(err?.message || (wasOnDuty ? 'Failed to clock out' : 'Failed to clock in'), 'error');
     } finally {

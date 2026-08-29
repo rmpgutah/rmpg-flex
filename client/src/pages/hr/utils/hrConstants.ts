@@ -1,4 +1,4 @@
-import { LayoutDashboard, CalendarDays, Shield, Star, DollarSign, FileText, AlertOctagon, ClipboardCheck, Heart, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Shield, Star, DollarSign, FileText, AlertOctagon, ClipboardCheck, Heart, TrendingUp, Link2 } from 'lucide-react';
 
 export const HR_TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -6,6 +6,7 @@ export const HR_TABS = [
   { key: 'disciplinary', label: 'Disciplinary', icon: Shield },
   { key: 'reviews', label: 'Reviews', icon: Star },
   { key: 'payroll', label: 'Payroll', icon: DollarSign },
+  { key: 'ops', label: 'Corporate Ops', icon: Link2 },
   { key: 'grievances', label: 'Grievances', icon: AlertOctagon },
   { key: 'documents', label: 'Documents', icon: FileText },
   { key: 'attendance', label: 'Attendance', icon: ClipboardCheck },
