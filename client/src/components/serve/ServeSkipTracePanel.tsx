@@ -132,6 +132,16 @@ export default function ServeSkipTracePanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [results, setResults] = useState<SkipSearchResult | null>(null);
   const [foundAddresses, setFoundAddresses] = useState<ServeSkipAddress[]>([]);
+  const [priorTraces, setPriorTraces] = useState<ServeSkipTrace[]>(job.skipTraces || []);
+
+  const loadPriorTraces = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: ServeSkipTrace[] }>(`/serve-intake/${job.id}/skip-trace`);
+      setPriorTraces(res?.data ?? []);
+    } catch {
+      setPriorTraces(job.skipTraces ?? []);
+    }
+  }, [job.id, job.skipTraces]);
 
   // Reset state when panel opens or job changes
   useEffect(() => {
@@ -146,7 +156,8 @@ export default function ServeSkipTracePanel({
     setHistoryOpen(false);
     setResults(null);
     setFoundAddresses([]);
-  }, [isOpen, job.id]);
+    void loadPriorTraces();
+  }, [isOpen, job.id, job.recipient_name, job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip, loadPriorTraces]);
 
   const runLookup = useCallback(async () => {
     const name = searchName.trim();
@@ -222,17 +233,16 @@ export default function ServeSkipTracePanel({
       }
 
       onLookupComplete?.();
+      void loadPriorTraces();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Skip trace lookup failed';
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, [job.id, job.recipient_city, job.recipient_state, searchName, searchAddress, onLookupComplete]);
+  }, [job.id, job.recipient_city, job.recipient_state, searchName, searchAddress, onLookupComplete, loadPriorTraces]);
 
   if (!isOpen) return null;
-
-  const priorTraces = job.skipTraces || [];
 
   return (
     <>

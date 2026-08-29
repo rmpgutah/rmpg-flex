@@ -73,7 +73,7 @@ export const NAV_CATEGORIES: NavCategory[] = [
       { path: '/field-interviews', label: 'Field Interviews', icon: ClipboardList, description: 'Field interview cards (FI/contact cards) with person and vehicle associations' },
       { path: '/criminal-history', label: 'Criminal History', icon: Search, description: 'Criminal history records and background check results' },
       { path: '/dl-search', label: 'DL Search', icon: CreditCard, description: "Driver's license lookup and verification across multiple states" },
-      { path: '/microbilt', label: 'MicroBilt', icon: Search, description: 'MicroBilt skip tracing and background data services' },
+      { path: '/microbilt', label: 'Skip Tracer / MicroBilt', icon: Search, description: 'Multi-source skip tracing (OSINT, RapidAPI, enrichment) and MicroBilt background data' },
       { path: '/evidence', label: 'Evidence / Property', icon: Package, description: 'Evidence and property management with chain-of-custody tracking', windowSize: { width: 1100, height: 850 } },
       { path: '/forensic-lab', label: 'Forensic Lab', icon: Microscope, description: 'Forensic analysis tracking, exhibit management, and lab workflow' },
       { path: '/connections', label: 'Connections Analysis', icon: Network, description: 'Link analysis and connection mapping between persons, vehicles, and incidents' },
@@ -148,7 +148,8 @@ export const NAV_CATEGORIES: NavCategory[] = [
     label: 'Investigations',
     icon: Search,
     functions: [
-      { path: '/skip-tracer', label: 'Skip Tracer', icon: Search, description: 'Multi-source skip tracing across 22+ public and proprietary databases' },
+      { path: '/microbilt', label: 'Skip Tracer', icon: Search, description: 'Multi-source skip tracing (OSINT, RapidAPI, enrichment) across public and proprietary databases' },
+      { path: '/skip-tracer', label: 'Skip Tracer (local)', icon: Search, description: 'Local D1 skip-trace cache search (legacy V1)' },
       { path: '/web-research', label: 'Web Research', icon: Globe, description: 'Open-source intelligence (OSINT) web research tools' },
       { path: '/colorado-doc', label: 'Colorado DOC Search', icon: User, description: 'Colorado Department of Corrections inmate search' },
       { path: '/iped', label: 'IPED Forensics', icon: Microscope, description: 'IPED digital forensics and device analysis' },
