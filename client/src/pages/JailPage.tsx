@@ -21,6 +21,7 @@ import {
 } from '../utils/jailBookingSheetPdf';
 import { parseTimestamp } from '../utils/dateUtils';
 import { formatEnumValue } from '../utils/formatters';
+import { inmateRosterToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -90,6 +91,8 @@ export default function JailPage() {
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [loadError, setLoadError] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const { addToast } = useToast();
@@ -100,7 +103,8 @@ export default function JailPage() {
     try {
       const r = await apiFetch<{ data: Inmate[]; pagination: any }>('/jail/inmates');
       setInmates(r.data || []);
-    } catch { /* ignore */ }
+      setLoadError(false);
+    } catch { setLoadError(true); }
   }, []);
 
   const fetchStats = useCallback(async () => {
@@ -327,13 +331,18 @@ export default function JailPage() {
   // / v1054 Training shortcut behavior.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'n' && e.key !== 'N') return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (!t) return;
       const tag = t.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (t.isContentEditable) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (e.key !== 'n' && e.key !== 'N') return;
       if (formOpen || deleteId !== null) return;
       if (!canCreate) return;
       e.preventDefault();
@@ -420,6 +429,14 @@ export default function JailPage() {
       <PanelTitleBar title="JAIL MANAGEMENT" icon={Building2}>
         <button
           type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filteredInmates.length === 0}
+          onClick={() => downloadTextFile('jail-roster.csv', inmateRosterToCsv(filteredInmates))}
+          title="CSV of booking #, status, housing — no names or DOB"
+        >CSV</button>
+        <button
+          type="button"
           onClick={handlePrintRoster}
           className="toolbar-btn flex items-center gap-1.5"
           style={{ height: 28, padding: '0 10px' }}
@@ -480,6 +497,13 @@ export default function JailPage() {
         </button>
       )}
 
+      {loadError && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load inmates.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void Promise.all([fetchInmates(), fetchStats(), fetchRosterCount()]).finally(() => setLoading(false)); }}>Retry</button>
+        </div>
+      )}
+
       {/* Filter strip — search + status. Keeps DataTable thin (the table is
           purely a renderer; filter state lives here so the roster-PDF action
           and the Esc-cascade-clear can read it). */}
@@ -487,10 +511,11 @@ export default function JailPage() {
         <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" />
           <input
+            ref={searchRef}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search booking #, name, unit…"
+            placeholder="Search booking #, name, unit… (/)"
             className="input-dark w-full pl-7 pr-2"
             style={{ height: 28 }}
             aria-label="Search inmates"
@@ -535,6 +560,7 @@ export default function JailPage() {
           m.action('Print booking sheet', () => handlePrintBookingSheet(row), { icon: <FileText size={12} /> }),
           m.separator(),
           m.copyId(row.id),
+          m.copy('Copy booking #', row.booking_number),
           ...(canDelete ? [m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> })] : []),
         ]}
       />

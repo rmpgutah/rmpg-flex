@@ -37,6 +37,7 @@ import {
   Filter as FilterIcon, X,
 } from 'lucide-react';
 import { formatEnumValue } from '../utils/formatters';
+import { alertTemplatesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface NotificationTemplate {
   id: number;
@@ -78,6 +79,8 @@ export default function AlertsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterChannel, setFilterChannel] = useState<string>(initialChannelParam);
   const [filterCategory, setFilterCategory] = useState<string>(initialCategoryParam);
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const { user } = useAuth();
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
@@ -109,12 +112,17 @@ export default function AlertsPage() {
   }, [templates]);
 
   const filteredTemplates = useMemo(() => {
+    const needle = search.trim().toLowerCase();
     return templates.filter(t => {
       if (filterChannel && t.channel !== filterChannel) return false;
       if (filterCategory && (t.category ?? '') !== filterCategory) return false;
+      if (needle) {
+        const blob = `${t.template_name} ${t.subject ?? ''} ${t.category ?? ''} ${t.channel}`.toLowerCase();
+        if (!blob.includes(needle)) return false;
+      }
       return true;
     });
-  }, [templates, filterChannel, filterCategory]);
+  }, [templates, filterChannel, filterCategory, search]);
 
   // Consume ?template_id once on first load — highlight the row, scroll
   // into view, and (if a filter is hiding it) clear filters + toast so
@@ -192,10 +200,11 @@ export default function AlertsPage() {
   }, [deleteTarget, fetchData, addToast]);
 
   const showForm = editingRecord !== null;
-  const hasFilters = !!(filterChannel || filterCategory);
+  const hasFilters = !!(filterChannel || filterCategory || search.trim());
   const clearFilters = useCallback(() => {
     setFilterChannel('');
     setFilterCategory('');
+    setSearch('');
   }, []);
 
   // ── Esc smart-cascade ──
@@ -219,12 +228,19 @@ export default function AlertsPage() {
   // and when a modal is already open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'n' && e.key !== 'N') return;
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (showForm || deleteTarget) return;
       const t = e.target as HTMLElement | null;
       const tag = (t?.tagName || '').toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable) return;
+      const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || t?.isContentEditable;
+      if (e.key === '/' && !typing) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.shiftKey) return;
+      if (typing) return;
       e.preventDefault();
       openNew();
     };
@@ -273,9 +289,21 @@ export default function AlertsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="MASS NOTIFICATION" icon={Megaphone}>
-        {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filteredTemplates.length === 0}
+          onClick={() => downloadTextFile('alert-templates.csv', alertTemplatesToCsv(filteredTemplates))}
+        >CSV</button>
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }} title="New Template (N)"><Plus size={13} /> New Template</button>
       </PanelTitleBar>
+      {error && (
+        <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-1 flex items-center justify-between" role="alert">
+          <span>{error}</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void fetchData().finally(() => setLoading(false)); }}>Retry</button>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={FileText} label="Templates" value={stats.templates} />
         <StatsCard icon={Send} label="Batches" value={stats.batches} />
@@ -287,6 +315,15 @@ export default function AlertsPage() {
           install doesn't show useless empty selects. */}
       <div className="flex items-center gap-3 text-xs">
         <FilterIcon className="w-3.5 h-3.5 text-rmpg-400" />
+        <input
+          ref={searchRef}
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search templates… (/)"
+          className="input-dark text-xs h-7 w-48"
+          aria-label="Search templates"
+        />
         <label className="flex items-center gap-1.5">
           <span className="text-rmpg-400 uppercase text-[10px] font-semibold">Channel</span>
           <select

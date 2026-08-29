@@ -26,6 +26,10 @@ import AnalyticsTab from './serve/AnalyticsTab';
 import SubjectFileTab from './serve/SubjectFileTab';
 import CollectionDatabaseTab from './serve/CollectionDatabaseTab';
 import { apiFetch } from '../hooks/useApi';
+import {
+  ADDRESS_CLASS_OPTIONS, VENUE_OPTIONS, parseServeJobMeta, EMPTY_SERVE_JOB_OPS,
+} from '../utils/serveJobIntake';
+import ServeJobOpsPanel from '../components/serve/ServeJobOpsPanel';
 import { useOptimizationV2 } from '../hooks/useOptimizationV2';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
@@ -263,6 +267,10 @@ const EMPTY_FORM = {
   registered_agent_name: '',
   registered_agent_title: '',
   registered_office_address: '',
+  court_date: '',
+  address_class: '' as string,
+  address_class_confirmed: false,
+  ops: { ...EMPTY_SERVE_JOB_OPS },
 };
 
 // ─── Stats Summary Type ─────────────────────────────────────────────────
@@ -370,6 +378,12 @@ export default function ServePage() {
     isActive: createJobOpen,
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [opsPreview, setOpsPreview] = useState<{
+    venue_label?: string;
+    windows?: { window: string; authority?: string; focus?: string }[];
+    fired_ids?: string[];
+    note?: string;
+  } | null>(null);
 
   // ── Feature 12: Deadline Tracking ──
   const [deadlines, setDeadlines] = useState<any>(null);
@@ -1288,6 +1302,10 @@ export default function ServePage() {
       registered_agent_name: job.registered_agent_name || '',
       registered_agent_title: job.registered_agent_title || '',
       registered_office_address: job.registered_office_address || '',
+      court_date: job.court_date || '',
+      address_class: parseServeJobMeta(job.parsed_data).addressClass,
+      address_class_confirmed: parseServeJobMeta(job.parsed_data).addressClassConfirmed,
+      ops: { ...EMPTY_SERVE_JOB_OPS, ...parseServeJobMeta(job.parsed_data).ops },
     });
     setCreateJobOpen(true);
     snapshotForm();
@@ -1301,12 +1319,23 @@ export default function ServePage() {
       if (editJob) {
         await apiFetch(`/process-server/${editJob.id}`, {
           method: 'PUT',
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            ...formData,
+            address_class: formData.address_class,
+            address_class_confirmed: formData.address_class_confirmed,
+            ops: formData.ops,
+          }),
         });
       } else {
         await apiFetch('/process-server', {
           method: 'POST',
-          body: JSON.stringify({ ...formData, serve_date: formData.serve_date || selectedDate }),
+          body: JSON.stringify({
+            ...formData,
+            serve_date: formData.serve_date || selectedDate,
+            address_class: formData.address_class,
+            address_class_confirmed: formData.address_class_confirmed,
+            ops: formData.ops,
+          }),
         });
       }
       setCreateJobOpen(false);
@@ -1323,6 +1352,55 @@ export default function ServePage() {
   const handleFormChange = useCallback((field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   }, []);
+
+  useEffect(() => {
+    if (!createJobOpen) { setOpsPreview(null); return; }
+    const t = window.setTimeout(() => {
+      apiFetch<{
+        venue_label?: string;
+        windows?: { window: string; authority?: string; focus?: string }[];
+        fired_ids?: string[];
+        note?: string;
+      }>('/process-server/preview-ops', {
+        method: 'POST',
+        body: JSON.stringify({
+          address_class: formData.address_class,
+          address_class_confirmed: formData.address_class_confirmed,
+          recipient_name: formData.recipient_name,
+          recipient_address: formData.recipient_address,
+          recipient_city: formData.recipient_city,
+          recipient_state: formData.recipient_state,
+          recipient_zip: formData.recipient_zip,
+          recipient_type: formData.recipient_type,
+          business_name: formData.business_name,
+          registered_agent_name: formData.registered_agent_name,
+          document_type: formData.document_type,
+          case_number: formData.case_number,
+          court_name: formData.court_name,
+          jurisdiction: formData.jurisdiction,
+          client_name: formData.client_name,
+          attorney_name: formData.attorney_name,
+          priority: formData.priority,
+          deadline: formData.deadline,
+          service_instructions: formData.service_instructions,
+          notes: formData.notes,
+          plaintiff_name: formData.plaintiff_name,
+          defendant_name: formData.defendant_name,
+          court_date: formData.court_date,
+          ops: formData.ops,
+        }),
+      }).then(setOpsPreview).catch(() => {});
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [
+    createJobOpen, formData.address_class, formData.address_class_confirmed,
+    formData.recipient_name, formData.recipient_address, formData.recipient_city,
+    formData.recipient_state, formData.recipient_zip, formData.recipient_type,
+    formData.business_name, formData.registered_agent_name, formData.document_type,
+    formData.case_number, formData.court_name, formData.jurisdiction, formData.client_name,
+    formData.attorney_name, formData.priority, formData.deadline, formData.service_instructions,
+    formData.notes, formData.plaintiff_name, formData.defendant_name, formData.court_date, formData.ops,
+  ]);
 
   // ── Feature 31: Clone job ────────────────────────────────────────────
   const handleCloneJob = useCallback(async (jobId: number) => {
@@ -2148,11 +2226,20 @@ export default function ServePage() {
         if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
         e.preventDefault();
         openCreate();
+        return;
       }
+      if (deleteJob || attemptJob || editAttempt || skipTraceJob || routePlannerOpen || createJobOpen) return;
+      const focused = expandedJobId != null ? jobs.find((j) => j.id === expandedJobId) : null;
+      if (!focused) return;
+      const k = e.key.toLowerCase();
+      if (k === 'a') { e.preventDefault(); setAttemptJob(focused); }
+      else if (k === 'e') { e.preventDefault(); openEdit(focused.id); }
+      else if (k === 'g') { e.preventDefault(); void handleNavigate(focused.id); }
+      else if (k === 't') { e.preventDefault(); setSkipTraceJob(focused); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate]);
+  }, [deleteJob, attemptJob, editAttempt, skipTraceJob, routePlannerOpen, createJobOpen, clearFormDraft, openCreate, expandedJobId, jobs, handleNavigate, openEdit, canManage]);
 
   // \u2500\u2500 Deep-link resolver \u2014 runs once jobs hydrate, then strips the params \u2500\u2500
   useEffect(() => {
@@ -2686,7 +2773,7 @@ export default function ServePage() {
                         <Briefcase size={20} className="text-rmpg-500" />
                       </div>
                       <p className="text-sm text-rmpg-400 font-medium">
-                        No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd>, or add manually.
+                        No jobs for {selectedDate}. Sync from ServeManager, press <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">N</kbd> to add, or expand a job then <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">A</kbd> attempt / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">E</kbd> edit / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">G</kbd> navigate / <kbd className="px-1 py-0.5 bg-surface-sunken border border-rmpg-700 rounded-[2px] text-[10px]">T</kbd> skip trace.
                       </p>
                     </div>
                   ) : (
@@ -2714,6 +2801,7 @@ export default function ServePage() {
                                 onEdit={openEdit}
                                 onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
                                 onAudit={setAuditJobId}
+                                onOpsSaved={refreshJobs}
                                 isExpanded={expandedJobId === job.id}
                                 onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                                 isSelected={selectedJobIds.has(job.id)}
@@ -2763,6 +2851,7 @@ export default function ServePage() {
                           onEdit={openEdit}
                           onEditAttempt={(jobId, attempt) => setEditAttempt({ jobId, attempt })}
                           onAudit={setAuditJobId}
+                          onOpsSaved={refreshJobs}
                           isExpanded={expandedJobId === job.id}
                           onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                           isSelected={selectedJobIds.has(job.id)}
@@ -3572,7 +3661,7 @@ export default function ServePage() {
         icon={Briefcase}
         submitLabel={editJob ? 'Update' : 'Create'}
         isSubmitting={formSubmitting}
-        maxWidth="max-w-3xl"
+        maxWidth="max-w-4xl"
         isDirty={formIsDirty}
         draftRestored={formWasRestored}
         onDiscardDraft={clearFormDraft}
@@ -3809,10 +3898,18 @@ export default function ServePage() {
                   <input id="ff-servepage-defendant" type="text"
                     value={formData.defendant_name}
                     onChange={e => handleFormChange('defendant_name', e.target.value)}
-                    placeholder="Party being sued"
+                    placeholder="Named defendant"
                     className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
                   />
                 </div>
+              </div>
+              <div>
+                <label htmlFor="ff-srv-court-date" className="block text-[11px] text-fg-muted mb-1">Court / Hearing Date</label>
+                <input id="ff-srv-court-date" type="date"
+                  value={formData.court_date}
+                  onChange={e => handleFormChange('court_date', e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors"
+                />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -4221,60 +4318,149 @@ export default function ServePage() {
                   className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 focus:border-rmpg-400 focus:outline-none focus:ring-1 focus:ring-rmpg-400/40 transition-colors resize-none"
                 />
               </div>
-              {editJob && (() => {
-                let ac: { klass?: string; confirmed?: boolean } = {};
-                try { ac = JSON.parse(editJob.parsed_data ?? '{}')._intake?.address_class ?? {}; } catch { /* ignore */ }
-                const klass = ac.klass ?? 'unknown';
-                const confirmed = !!ac.confirmed;
-                return (
-                  <div>
-                    <label className="block text-[11px] text-fg-muted mb-1">
-                      Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
-                    </label>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {([
-                        ['residential', 'Residential'],
-                        ['corporate', 'Corporate'],
-                        ['small_business', 'Small Biz'],
-                        ['government', 'Government'],
-                        ['business', 'Business'],
-                        ['unknown', 'Unknown'],
-                      ] as const).map(([k, label]) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => handleAddressClassChange(editJob.id, k, k !== 'unknown')}
-                          className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
-                            klass === k
-                              ? k === 'unknown'
-                                ? 'bg-surface-raised border-rmpg-600 text-fg-muted'
-                                : k === 'residential'
-                                ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
-                                : 'bg-brand-800/60 border-brand-500 text-brand-200'
-                              : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                      {klass !== 'unknown' && (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-[2px] border ${
-                          confirmed
-                            ? 'text-green-300 border-green-800/50 bg-green-900/20'
-                            : 'text-amber-300 border-amber-800/50 bg-amber-900/20'
-                        }`}>
-                          {confirmed ? 'Confirmed' : 'Unconfirmed'}
-                        </span>
-                      )}
-                    </div>
-                    {klass === 'business' && !confirmed && (
-                      <p className="text-[10px] text-amber-400 mt-1">
-                        Unconfirmed generic business — residential windows apply until confirmed. Specific types (Corporate / Small Business / Government) use office hours from the location signal.
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
+              <div>
+                <label className="block text-[11px] text-fg-muted mb-1">
+                  Serve Location Type <span className="text-fg-muted font-normal">(shapes attempt windows)</span>
+                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {ADDRESS_CLASS_OPTIONS.map(([k, label]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        handleFormChange('address_class', k);
+                        handleFormChange('address_class_confirmed', k !== 'unknown');
+                        if (editJob) void handleAddressClassChange(editJob.id, k, k !== 'unknown');
+                      }}
+                      className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${
+                        (formData.address_class || 'unknown') === k
+                          ? k === 'unknown'
+                            ? 'bg-surface-raised border-rmpg-600 text-fg-muted'
+                            : k === 'residential'
+                            ? 'bg-rmpg-800/60 border-rmpg-500 text-rmpg-100'
+                            : 'bg-brand-800/60 border-brand-500 text-brand-200'
+                          : 'bg-surface-deep border-rmpg-700 text-fg-muted hover:border-rmpg-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {formData.address_class === 'business' && !formData.address_class_confirmed && (
+                  <p className="text-[10px] text-amber-400 mt-1">
+                    Unconfirmed generic business — residential windows apply until confirmed.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold tracking-widest text-[color:var(--panel-header-color)] uppercase">Scene / Packet</span>
+              <div className="flex-1 h-px bg-border-default" />
+            </div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-fg-muted mb-1">Venue overlay</label>
+                  <select
+                    value={formData.ops.venue_kind}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, venue_kind: e.target.value } }))}
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                  >
+                    {VENUE_OPTIONS.map(([v, l]) => <option key={v || 'auto'} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-fg-muted mb-1">Best contact window</label>
+                  <input
+                    value={formData.ops.best_contact_window}
+                    onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, best_contact_window: e.target.value } }))}
+                    placeholder="e.g. after 14:00 weekdays"
+                    className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] text-fg-muted mb-1">Documents in packet</label>
+                <textarea
+                  value={formData.ops.documents_to_serve}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, documents_to_serve: e.target.value } }))}
+                  rows={2}
+                  placeholder="20 DAY SUMMONS; VERIFIED COMPLAINT; …"
+                  className="w-full px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100 resize-none"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={formData.ops.gate_code}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, gate_code: e.target.value } }))}
+                  placeholder="Gate / call-box code"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formData.ops.authorized_acceptor}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, authorized_acceptor: e.target.value } }))}
+                  placeholder="Who may accept (name/title)"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formData.ops.language_needed}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, language_needed: e.target.value } }))}
+                  placeholder="Language needed"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formData.ops.physical_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, physical_description: e.target.value } }))}
+                  placeholder="Physical description"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+                <input
+                  value={formData.ops.vehicle_description}
+                  onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, vehicle_description: e.target.value } }))}
+                  placeholder="Vehicle (plate / color / make)"
+                  className="px-3 py-2 text-sm bg-surface-deep border border-rmpg-700 rounded-[2px] text-rmpg-100"
+                />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-rmpg-200">
+                {([
+                  ['dogs_on_site', 'Dogs on site'],
+                  ['cameras_on_site', 'Cameras'],
+                  ['no_sunday', 'No Sunday'],
+                  ['no_saturday', 'No Saturday'],
+                  ['photo_required', 'Photo required'],
+                  ['sub_service_first', 'Sub-serve 1st attempt'],
+                ] as const).map(([k, lab]) => (
+                  <label key={k} className="inline-flex items-center gap-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!formData.ops[k]}
+                      onChange={(e) => setFormData((p) => ({ ...p, ops: { ...p.ops, [k]: e.target.checked } }))}
+                      className="w-3.5 h-3.5 rounded-[2px] border-rmpg-600 bg-surface-deep"
+                    />
+                    {lab}
+                  </label>
+                ))}
+              </div>
+              {opsPreview && (
+                <div className="p-2 border border-rmpg-700/40 rounded-[2px] bg-surface-sunken/50">
+                  <div className="text-[9px] font-bold uppercase mb-1" style={{ color: 'var(--panel-header-color)' }}>Live playbook</div>
+                  <ServeJobOpsPanel
+                    meta={{
+                      addressClass: formData.address_class || 'unknown',
+                      addressClassConfirmed: formData.address_class_confirmed,
+                      venue: opsPreview.venue_label ? formData.ops.venue_kind || 'inferred' : null,
+                      venueLabel: opsPreview.venue_label || null,
+                      ops: formData.ops,
+                      firedIds: opsPreview.fired_ids || [],
+                      windows: opsPreview.windows || [],
+                    }}
+                    note={opsPreview.note}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

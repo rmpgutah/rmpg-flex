@@ -8,6 +8,8 @@ import SignaturePad from '../SignaturePad';
 import { apiFetch, apiPostForm, authedImageUrl } from '../../hooks/useApi';
 import { useFormDraft } from '../../hooks/useFormDraft';
 import type { ServeJob, ServeAttemptData } from '../../types';
+import { parseServeJobMeta } from '../../utils/serveJobIntake';
+import ServeJobOpsPanel from './ServeJobOpsPanel';
 import ServeReceiptActions from './ServeReceiptActions';
 import {
   PSO_CATEGORIES, codesInCategory, lookupPsoCode,
@@ -1422,6 +1424,15 @@ export default function ServeAttemptModal({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {(() => {
+          const meta = parseServeJobMeta(job.parsed_data);
+          return (
+            <div className="px-4 py-2 border-b border-rmpg-700/40 bg-surface-sunken/40">
+              <ServeJobOpsPanel meta={meta} compact />
+            </div>
+          );
+        })()}
 
         {wasRestored && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-amber-500/30 bg-amber-950/20">

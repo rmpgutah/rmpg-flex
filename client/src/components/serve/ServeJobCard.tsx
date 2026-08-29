@@ -41,6 +41,9 @@ import { getMatterCategoryByDocType } from '../../constants/documentTypes';
 import ServeReceiptActions from './ServeReceiptActions';
 import DiligencePanel from './DiligencePanel';
 import ServeJobComments from './ServeJobComments';
+import ServeJobOpsPanel from './ServeJobOpsPanel';
+import ServeJobQuickFields from './ServeJobQuickFields';
+import { parseServeJobMeta } from '../../utils/serveJobIntake';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -54,6 +57,7 @@ interface ServeJobCardProps {
   onEditAttempt?: (jobId: number, attempt: ServeAttempt) => void;
   /** Open audit trail modal for this job. */
   onAudit?: (jobId: number) => void;
+  onOpsSaved?: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
   // ── Selection mode (bulk actions) ──────────────────────────────────────────
@@ -148,6 +152,7 @@ export default React.memo(function ServeJobCard({
   onEdit,
   onEditAttempt,
   onAudit,
+  onOpsSaved,
   isExpanded = false,
   onToggleExpand,
   isSelected = false,
@@ -190,6 +195,7 @@ export default React.memo(function ServeJobCard({
 
   const TimeIcon = TIME_WINDOW_CONFIG[job.time_window]?.icon ?? Clock;
   const timeLabel = TIME_WINDOW_CONFIG[job.time_window]?.label ?? job.time_window;
+  const opsMeta = useMemo(() => parseServeJobMeta(job.parsed_data), [job.parsed_data]);
 
   // Selection mode is active whenever the prop is wired up (parent has at
   // least one card selected or is displaying the selection UI).
@@ -365,6 +371,19 @@ export default React.memo(function ServeJobCard({
             <TimeIcon className="w-2.5 h-2.5" />
             {timeLabel}
           </span>
+          {opsMeta.venue && opsMeta.venue !== 'none' && (
+            <span className="text-[8px] font-bold uppercase font-mono px-1 py-0 border rounded-[2px] text-brand-200 border-brand-700/40 bg-brand-900/20">
+              {(opsMeta.venueLabel || opsMeta.venue).replace(/_/g, ' ')}
+            </span>
+          )}
+          {opsMeta.addressClass && opsMeta.addressClass !== 'unknown' && (
+            <span className="text-[8px] font-mono px-1 py-0 rounded-[2px] border border-rmpg-600/40 text-rmpg-300">
+              {opsMeta.addressClass.replace(/_/g, ' ')}
+            </span>
+          )}
+          {opsMeta.ops.no_sunday && (
+            <span className="text-[8px] font-bold px-1 py-0 rounded-[2px] border border-amber-700/50 text-amber-300">NO SUN</span>
+          )}
 
           {/* Enhancement 46: Deadline countdown */}
           {isDueSoon && job.deadline && (() => {
@@ -539,6 +558,11 @@ export default React.memo(function ServeJobCard({
             </div>
           )}
 
+          <ServeJobOpsPanel meta={opsMeta} compact />
+          {onOpsSaved && job.status !== 'served' && job.status !== 'archived' && (
+            <ServeJobQuickFields job={job} onUpdated={() => onOpsSaved()} />
+          )}
+
           {/* Feature 19-20: Contact info — phone, email, DOB */}
           {(job.recipient_phone || job.recipient_email || job.recipient_dob) && (
             <div>
@@ -596,6 +620,20 @@ export default React.memo(function ServeJobCard({
                 <Briefcase className="w-3 h-3 text-rmpg-400" />
                 <span className="text-rmpg-400">Case:</span>
                 <span className="font-mono tabular-nums text-rmpg-400">{job.case_number}</span>
+              </div>
+            )}
+            {job.court_date && (
+              <div className="flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-rmpg-400" />
+                <span className="text-rmpg-400">Court date:</span>
+                <span>{job.court_date}</span>
+              </div>
+            )}
+            {opsMeta.ops.documents_to_serve && (
+              <div className="flex items-start gap-1 col-span-2">
+                <FileText className="w-3 h-3 text-rmpg-400 flex-shrink-0 mt-0.5" />
+                <span className="text-rmpg-400 flex-shrink-0">Packet:</span>
+                <span className="text-rmpg-300">{opsMeta.ops.documents_to_serve}</span>
               </div>
             )}
             {job.sm_job_id && (

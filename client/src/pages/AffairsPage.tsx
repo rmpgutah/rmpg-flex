@@ -445,9 +445,7 @@ export default function AffairsPage() {
         <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 flex items-center gap-2" role="alert">
           <AlertTriangle size={14} className="shrink-0" />
           <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-400 hover:text-red-300" aria-label="Dismiss error">
-            <X size={12} />
-          </button>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoading(true); void fetchData().finally(() => setLoading(false)); }}>Retry</button>
         </div>
       )}
 

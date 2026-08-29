@@ -10,6 +10,8 @@ import {
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { toDisplayLabel } from '../utils/formatters';
+import { copyToClipboard } from '../utils/clipboard';
+import { personIntelXrefsToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface CrossRef {
   id: number;
@@ -69,17 +71,21 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
   const { addToast } = useToast();
   const [xrefs, setXrefs] = useState<CrossRef[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [xrefQ, setXrefQ] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ method: string; evidence: string }>({ method: 'dob', evidence: '' });
 
   const load = useCallback(async () => {
+    setLoadError(false);
     try {
       const data = await apiFetch<CrossRef[]>(`/person-intel/${dossierId}/cross-refs`);
       setXrefs(data);
-    } catch (e: any) {
-      // 404 / not-found surfaces quietly until the legal phase has run.
+    } catch (e: unknown) {
       setXrefs([]);
+      const msg = e instanceof Error ? e.message : '';
+      if (!/404|not found/i.test(msg)) setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -141,6 +147,20 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
     </div>
   );
 
+  if (loadError) {
+    return (
+      <div className="text-xs text-red-400 flex items-center justify-between py-4">
+        <span>Failed to load cross-references.</span>
+        <button type="button" className="text-xs px-2 py-1 border border-border-default" onClick={() => { setLoading(true); void load(); }}>Retry</button>
+      </div>
+    );
+  }
+
+  const needle = xrefQ.trim().toLowerCase();
+  const visible = needle
+    ? xrefs.filter((xr) => [xr.source, xr.externalRef, xr.label].join(' ').toLowerCase().includes(needle))
+    : xrefs;
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -158,15 +178,31 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
         <button onClick={() => downloadReport('csv')} className="text-xs px-2 py-1 rounded bg-surface-raised text-rmpg-100 hover:bg-surface-overlay flex items-center gap-1">
           <FileDown className="w-3 h-3" />CSV
         </button>
+        <button
+          type="button"
+          className="text-xs px-2 py-1 rounded bg-surface-raised text-rmpg-100 hover:bg-surface-overlay"
+          disabled={visible.length === 0}
+          onClick={() => downloadTextFile(`intel-xrefs-${dossierId}.csv`, personIntelXrefsToCsv(visible))}
+        >IDs CSV</button>
+        <input
+          type="search"
+          value={xrefQ}
+          onChange={(e) => setXrefQ(e.target.value)}
+          placeholder="Filter refs…"
+          aria-label="Filter cross-references"
+          className="text-xs px-2 py-1 bg-surface-sunken border border-border-default flex-1 min-w-[8rem]"
+        />
       </div>
 
-      {xrefs.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="text-center py-8 text-fg-muted text-xs">
           <Search className="w-5 h-5 mx-auto mb-2 text-rmpg-700" />
-          No cross-references captured yet. Click <span className="text-brand-400">Refresh</span> to run the
-          CourtListener / FBI Wanted / criminal-DB / skip-trace fan-out.
+          {needle
+            ? 'No cross-references match the filter.'
+            : <>No cross-references captured yet. Click <span className="text-brand-400">Refresh</span> to run the
+          CourtListener / FBI Wanted / criminal-DB / skip-trace fan-out.</>}
         </div>
-      ) : xrefs.map(xr => {
+      ) : visible.map(xr => {
         const Icon = SOURCE_ICON[xr.source] ?? Gavel;
         return (
           <div key={xr.id} className="bg-surface-raised rounded p-3 space-y-2">
@@ -190,6 +226,7 @@ export default function PersonIntelCrossReferencesTab({ dossierId }: { dossierId
             <div className="text-xs text-rmpg-100 font-medium">{xr.label}</div>
             <div className="text-[10px] text-fg-muted">
               {xr.externalRef}
+              <button type="button" className="ml-2 text-[10px] border border-border-default px-1" onClick={() => void copyToClipboard(xr.externalRef)}>Copy id</button>
               {xr.externalUrl && (
                 <a href={xr.externalUrl} target="_blank" rel="noreferrer" className="ml-2 text-brand-400 inline-flex items-center gap-0.5 hover:underline">
                   source <ExternalLink className="w-2.5 h-2.5" />

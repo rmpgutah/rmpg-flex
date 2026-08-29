@@ -11,6 +11,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { Heart, Shield, Phone, FileText, Plus, Pencil, Trash2, Users, Eye } from 'lucide-react';
 
 import { formatEnumValue } from '../utils/formatters';
+import { victimCasesToCsv, downloadTextFile } from '../utils/rmsListExport';
 
 interface Victim {
   id: number;
@@ -44,6 +45,8 @@ export default function VictimServicesPage() {
   const [stats, setStats] = useState<Stats>({ totalVictims: 0, activeVictims: 0, safetyPlans: 0 });
   const [loadState, setLoadState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const searchRef = useRef<HTMLInputElement>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<Victim | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>(EMPTY_FORM);
@@ -62,12 +65,10 @@ export default function VictimServicesPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [v, s] = await Promise.all([
-        apiFetch<Victim[]>('/victim-services/victims').catch(() => [] as Victim[]),
-        apiFetch<Stats>('/victim-services/stats').catch(
-          () => ({ totalVictims: 0, activeVictims: 0, safetyPlans: 0 } as Stats),
-        ),
-      ]);
+      const v = await apiFetch<Victim[]>('/victim-services/victims');
+      const s = await apiFetch<Stats>('/victim-services/stats').catch(
+        () => ({ totalVictims: 0, activeVictims: 0, safetyPlans: 0 } as Stats),
+      );
       setVictims(v);
       setStats(s);
       setLoadState('ok');
@@ -140,6 +141,11 @@ export default function VictimServicesPage() {
       }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingInField(e.target)) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        return;
+      }
       if ((e.key === 'n' || e.key === 'N') && canManage) {
         e.preventDefault();
         openNew();
@@ -210,16 +216,17 @@ export default function VictimServicesPage() {
   // -- Filtered view --
   const needle = search.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!needle) return victims;
     return victims.filter((v) => {
-      const blob = [v.victim_name, v.case_number, v.crime_type, v.status, v.phone, v.email]
+      if (statusFilter !== 'ALL' && v.status !== statusFilter) return false;
+      if (!needle) return true;
+      const blob = [v.victim_name, v.case_number, v.crime_type, v.status]
         .join(' ')
         .toLowerCase();
       return blob.includes(needle);
     });
-  }, [victims, needle]);
+  }, [victims, needle, statusFilter]);
 
-  const hasFilter = !!needle;
+  const hasFilter = !!needle || statusFilter !== 'ALL';
 
   const columns = [
     { key: 'victim_name', label: 'Name' },
@@ -276,13 +283,14 @@ export default function VictimServicesPage() {
   const emptyMessage =
     loadState === 'loading' ? 'Loading…'
     : loadState === 'error'   ? 'Failed to load victim records'
-    : hasFilter               ? `No records match "${search.trim()}"`
+    : hasFilter               ? 'No records match the current filter'
     :                           'No victim records on file';
 
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="VICTIM SERVICES" icon={Heart}>
         <input
+          ref={searchRef}
           type="search"
           placeholder="Search…"
           value={search}
@@ -290,6 +298,25 @@ export default function VictimServicesPage() {
           className="input-dark text-xs h-[28px] w-44"
           aria-label="Search victim records"
         />
+        <select
+          aria-label="Filter by status"
+          className="select-dark text-xs h-7"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="ALL">All statuses</option>
+          <option value="active">Active</option>
+          <option value="closed">Closed</option>
+          <option value="referred">Referred</option>
+          <option value="pending">Pending</option>
+        </select>
+        <button
+          type="button"
+          className="toolbar-btn"
+          style={{ height: 28, padding: '0 10px' }}
+          disabled={filtered.length === 0}
+          onClick={() => downloadTextFile('victim-cases.csv', victimCasesToCsv(filtered))}
+        >CSV</button>
         {canManage && (
           <button
             onClick={openNew}
@@ -309,6 +336,13 @@ export default function VictimServicesPage() {
         <StatsCard label="STATUS"         value="OPERATIONAL"                 icon={FileText} />
       </div>
 
+      {loadState === 'error' && (
+        <div className="p-3 text-xs text-red-400 flex items-center justify-between">
+          <span>Failed to load victim records.</span>
+          <button type="button" className="toolbar-btn" onClick={() => { setLoadState('loading'); void fetchData(); }}>Retry</button>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={filtered}
@@ -318,6 +352,7 @@ export default function VictimServicesPage() {
           m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
           m.separator(),
           m.copy('Copy name',  row.victim_name),
+          m.copy('Copy case #', row.case_number),
           m.copy('Copy phone', row.phone, <Phone size={12} />),
           m.copyId(row.id),
           ...(canManage ? [
