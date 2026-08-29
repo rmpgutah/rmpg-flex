@@ -136,7 +136,12 @@ skiptracerV2.get('/search', async (c) => {
       firstName: params.firstName,
       lastName: params.lastName,
       dob: params.dob,
+      city: params.city,
+      state: params.state,
+      ssn_last4: params.ssn_last4,
+      address: params.address,
       engine: params.engine,
+      categories: params.categories,
     });
 
     const ins = await execute(c.env.DB,

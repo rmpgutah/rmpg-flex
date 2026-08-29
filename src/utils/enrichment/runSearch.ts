@@ -5,6 +5,24 @@ import type { EnrichmentSeed, EnrichmentResponse, SourceResult, EnrichedRecord }
 import type { Bindings } from '../../types';
 import { OPEN_SOURCE_ENRICHMENT_SOURCES, type EnrichmentSourceDefinition } from './catalog';
 
+/** Sources that work without a person name (address-only enrichment). */
+const ADDRESS_ONLY_SOURCES = new Set(['census_geocoder', 'sl_assessor']);
+
+export function seedHasPersonName(seed: EnrichmentSeed): boolean {
+  return Boolean(seed.first_name?.trim() && seed.last_name?.trim());
+}
+
+function sourcesForSeed(
+  sources: EnrichmentSourceDefinition[],
+  seed: EnrichmentSeed,
+): EnrichmentSourceDefinition[] {
+  if (seedHasPersonName(seed)) return sources;
+  if (seed.address?.trim()) {
+    return sources.filter(s => ADDRESS_ONLY_SOURCES.has(s.key));
+  }
+  return sources;
+}
+
 export interface RunEnrichmentSearchOptions {
   sources?: EnrichmentSourceDefinition[];
   searchedBy?: number | null;
@@ -17,7 +35,7 @@ export async function runEnrichmentSearch(
   seed: EnrichmentSeed,
   options: RunEnrichmentSearchOptions = {},
 ): Promise<EnrichmentResponse> {
-  const sources = options.sources ?? OPEN_SOURCE_ENRICHMENT_SOURCES;
+  const sources = sourcesForSeed(options.sources ?? OPEN_SOURCE_ENRICHMENT_SOURCES, seed);
   const useCache = options.useCache !== false;
   const cacheKey = await computeCacheKey(seed);
   const now = new Date();

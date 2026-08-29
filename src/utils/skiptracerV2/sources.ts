@@ -53,6 +53,12 @@ export async function listSourceInfo(
     if (src.name === 'rapidapi_skiptrace' && !configured) {
       configured = Boolean((await getConfigValue(db, 'plate_check_rapidapi_key'))?.trim());
     }
+    if (src.name === 'open_sanctions') {
+      configured = Boolean(
+        (typeof env?.OPENSANCTIONS_API_KEY === 'string' && env.OPENSANCTIONS_API_KEY.trim())
+        || (await getConfigValue(db, 'opensanctions_api_key'))?.trim(),
+      );
+    }
     if (src.name === 'vehicle_enrichment') {
       configured = !!(env?.PLATE_TO_VIN_API_KEY || env?.VIN_DECODER_API_KEY || env?.PLATE_DECODER_API_KEY);
     }

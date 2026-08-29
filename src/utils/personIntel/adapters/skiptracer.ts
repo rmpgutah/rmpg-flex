@@ -10,7 +10,10 @@ interface SkipTracerConfig {
 }
 
 async function getConfig(db: D1Database): Promise<SkipTracerConfig> {
-  const apiKey = await getKey(db, 'skiptracer_rapidapi_key');
+  let apiKey = await getKey(db, 'skiptracer_rapidapi_key');
+  if (!apiKey?.trim()) {
+    apiKey = await getKey(db, 'plate_check_rapidapi_key');
+  }
   const hostRow = await db.prepare(
     "SELECT config_value FROM system_config WHERE config_key = 'skiptracer_api_host' AND is_active = 1 LIMIT 1"
   ).bind().first<{ config_value: string }>();
@@ -55,9 +58,9 @@ export async function querySkipTracer(db: D1Database, seed: IntelSeed): Promise<
     } else if (seed.name) {
       // Search Person by Name
       url = `https://${config.apiHost}/api/person/search`;
-      const nameParts = seed.name.split(/\s+/);
+      const nameParts = seed.name.split(/\s+/).filter(Boolean);
       params.set('firstName', nameParts[0] || '');
-      params.set('lastName', nameParts.slice(1).join(' ') || '');
+      params.set('lastName', nameParts.length > 1 ? nameParts[nameParts.length - 1] : '');
     } else {
       return makeSourceResult(SRC, 2, 'skipped', [], [], Date.now() - t0);
     }
